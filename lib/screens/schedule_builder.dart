@@ -1,0 +1,409 @@
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
+import 'package:fl_chart/fl_chart.dart';
+import '../theme/app_theme.dart';
+import '../data/meridian_data.dart';
+import '../widgets/schedule_day_row.dart';
+
+// ─── State ────────────────────────────────────────────────────────────────────
+
+class ScheduleForecastNotifier extends ChangeNotifier {
+  int _weeklyCovers = ScheduleForecastDefaults.defaultWeeklyCovers;
+
+  int get weeklyCovers => _weeklyCovers;
+
+  void setCovers(int covers) {
+    if (covers > 0) {
+      _weeklyCovers = covers;
+      notifyListeners();
+    }
+  }
+
+  double get requiredFohHours => _weeklyCovers / MeridianConfig.targetCPLH;
+  double get requiredBohHours =>
+      (_weeklyCovers * MeridianConfig.targetPPA) / MeridianConfig.targetSPLH;
+  double get forecastedFohLaborDollar =>
+      requiredFohHours * MeridianConfig.fohWage;
+  double get forecastedBohLaborDollar =>
+      requiredBohHours * MeridianConfig.bohWage;
+  double get forecastedTotalLaborDollar =>
+      forecastedFohLaborDollar + forecastedBohLaborDollar;
+  double get theoreticalLaborPct =>
+      forecastedTotalLaborDollar /
+      (_weeklyCovers * MeridianConfig.targetPPA) *
+      100;
+
+  List<ScheduleDay> get adjustedDays {
+    final defaultTotal = ScheduleForecastDefaults.defaultDays
+        .fold<int>(0, (s, d) => s + d.forecastCovers);
+    final ratio = _weeklyCovers / defaultTotal;
+    return ScheduleForecastDefaults.defaultDays
+        .map((d) => ScheduleDay(
+              day: d.day,
+              forecastCovers: (d.forecastCovers * ratio).round(),
+            ))
+        .toList();
+  }
+}
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
+
+class ScheduleBuilder extends StatelessWidget {
+  const ScheduleBuilder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => ScheduleForecastNotifier(),
+      child: const _ScheduleBuilderContent(),
+    );
+  }
+}
+
+class _ScheduleBuilderContent extends StatefulWidget {
+  const _ScheduleBuilderContent();
+
+  @override
+  State<_ScheduleBuilderContent> createState() =>
+      _ScheduleBuilderContentState();
+}
+
+class _ScheduleBuilderContentState
+    extends State<_ScheduleBuilderContent> {
+  final TextEditingController _controller =
+      TextEditingController(text: '1200');
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+            child: Text(
+              'Next Week',
+              style: AppTextStyles.display20(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            child: Text(
+              'Schedule to Covers',
+              style: AppTextStyles.mono10(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            child: Text(
+              ScheduleForecastDefaults.principleStatement,
+              style: AppTextStyles.body13(
+                color: AppColors.secondaryText,
+                style: FontStyle.italic,
+              ),
+            ),
+          ),
+
+          // Forecast input
+          _ForecastInput(controller: _controller),
+
+          const SizedBox(height: 8),
+
+          // Derived summary cards
+          Consumer<ScheduleForecastNotifier>(
+            builder: (context, notifier, _) =>
+                _DerivedSummaryCards(notifier: notifier),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Bar chart
+          Consumer<ScheduleForecastNotifier>(
+            builder: (context, notifier, _) =>
+                _CoverBarChart(notifier: notifier),
+          ),
+
+          const SizedBox(height: 8),
+
+          // Day-by-day table
+          Consumer<ScheduleForecastNotifier>(
+            builder: (context, notifier, _) =>
+                _DayTable(notifier: notifier),
+          ),
+
+          const SizedBox(height: 24),
+        ],
+      ),
+    );
+  }
+}
+
+class _ForecastInput extends StatelessWidget {
+  final TextEditingController controller;
+
+  const _ForecastInput({required this.controller});
+
+  @override
+  Widget build(BuildContext context) {
+    final notifier = context.read<ScheduleForecastNotifier>();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.rule, width: 1),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'FORECASTED COVERS - NEXT WEEK',
+                  style: AppTextStyles.mono7(),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  style: AppTextStyles.mono22(),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isDense: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: '1200',
+                    hintStyle:
+                        AppTextStyles.mono22(color: AppColors.secondaryText),
+                  ),
+                  onChanged: (val) {
+                    final parsed = int.tryParse(val);
+                    if (parsed != null && parsed > 0) {
+                      notifier.setCovers(parsed);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.edit, size: 16, color: AppColors.secondaryText),
+        ],
+      ),
+    );
+  }
+}
+
+class _DerivedSummaryCards extends StatelessWidget {
+  final ScheduleForecastNotifier notifier;
+
+  const _DerivedSummaryCards({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = [
+      ('REQ FOH HRS', notifier.requiredFohHours.round().toString()),
+      ('REQ BOH HRS', notifier.requiredBohHours.round().toString()),
+      ('LABOR %', '${notifier.theoreticalLaborPct.toStringAsFixed(1)}%'),
+      ('LABOR \$', '\$${_fmt(notifier.forecastedTotalLaborDollar)}'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: cards.asMap().entries.map((entry) {
+          final i = entry.key;
+          final card = entry.value;
+          return Expanded(
+            child: Container(
+              margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.surface,
+                border: Border.all(color: AppColors.rule, width: 1),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(card.$1, style: AppTextStyles.mono7()),
+                  const SizedBox(height: 4),
+                  Text(card.$2,
+                      style: AppTextStyles.mono12(
+                          color: AppColors.primaryText)),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  String _fmt(double n) => n
+      .toStringAsFixed(0)
+      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
+}
+
+class _CoverBarChart extends StatelessWidget {
+  final ScheduleForecastNotifier notifier;
+
+  const _CoverBarChart({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final days = notifier.adjustedDays;
+    final maxCovers = days.map((d) => d.forecastCovers).reduce(
+          (a, b) => a > b ? a : b,
+        );
+
+    final barGroups = days.asMap().entries.map((entry) {
+      final i = entry.key;
+      final day = entry.value;
+      return BarChartGroupData(
+        x: i,
+        barRods: [
+          BarChartRodData(
+            toY: day.forecastCovers.toDouble(),
+            color: AppColors.gold.withValues(alpha: 0.7),
+            width: 24,
+            borderRadius: BorderRadius.zero,
+          ),
+        ],
+      );
+    }).toList();
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.rule, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 12),
+            child: Text('COVER FORECAST BY DAY', style: AppTextStyles.mono7()),
+          ),
+          SizedBox(
+            height: 160,
+            child: BarChart(
+              BarChartData(
+                barGroups: barGroups,
+                maxY: (maxCovers * 1.3).toDouble(),
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: AppColors.rule,
+                    strokeWidth: 1,
+                  ),
+                ),
+                borderData: FlBorderData(show: false),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 36,
+                      getTitlesWidget: (val, meta) => Text(
+                        val.toInt().toString(),
+                        style: AppTextStyles.mono7(),
+                      ),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      getTitlesWidget: (val, meta) {
+                        final dayNames = ['M', 'Tu', 'W', 'Th', 'F', 'Sa', 'Su'];
+                        return Text(
+                          dayNames[val.toInt()],
+                          style: AppTextStyles.mono7(
+                              color: AppColors.primaryText),
+                        );
+                      },
+                    ),
+                  ),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                extraLinesData: ExtraLinesData(
+                  horizontalLines: [
+                    HorizontalLine(
+                      y: notifier.weeklyCovers / 7.0,
+                      color: AppColors.gold,
+                      strokeWidth: 1,
+                      dashArray: [4, 4],
+                    ),
+                  ],
+                ),
+                barTouchData: BarTouchData(enabled: false),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DayTable extends StatelessWidget {
+  final ScheduleForecastNotifier notifier;
+
+  const _DayTable({required this.notifier});
+
+  @override
+  Widget build(BuildContext context) {
+    final days = notifier.adjustedDays;
+    final totalCovers = days.fold<int>(0, (s, d) => s + d.forecastCovers);
+    final totalFoh = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
+    final totalBoh = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.rule, width: 1),
+      ),
+      child: Column(
+        children: [
+          ScheduleDayRow.header(),
+          Container(height: 1, color: AppColors.rule),
+          ...days.asMap().entries.map((entry) {
+            final day = entry.value;
+            return Column(
+              children: [
+                ScheduleDayRow(
+                  day: day.day,
+                  forecastCovers: day.forecastCovers,
+                  requiredFohHours: day.requiredFohHours,
+                  requiredBohHours: day.requiredBohHours,
+                ),
+                Container(height: 1, color: AppColors.rule),
+              ],
+            );
+          }),
+          ScheduleDayRow(
+            day: 'Total',
+            forecastCovers: totalCovers,
+            requiredFohHours: totalFoh,
+            requiredBohHours: totalBoh,
+            isTotal: true,
+          ),
+        ],
+      ),
+    );
+  }
+}
