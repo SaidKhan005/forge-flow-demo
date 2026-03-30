@@ -47,6 +47,9 @@ app.*.map.json
 # Local database
 *.db
 
+# Large binary assets
+Barrio Legado Business Plan.pdf
+
 # Claude Code
 .claude/
 
