@@ -7,6 +7,7 @@ class ScheduleDayRow extends StatelessWidget {
   final int requiredBohHours;
   final bool isHeader;
   final bool isTotal;
+  final bool isSubrow; // true for daypart sub-rows (indented, muted label)
 
   const ScheduleDayRow({
     super.key,
@@ -16,6 +17,7 @@ class ScheduleDayRow extends StatelessWidget {
     required this.requiredBohHours,
     this.isHeader = false,
     this.isTotal = false,
+    this.isSubrow = false,
   });
 
   factory ScheduleDayRow.header() {
@@ -36,7 +38,13 @@ class ScheduleDayRow extends StatelessWidget {
     if (isHeader) {
       return Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        color: AppColors.surface,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.backgroundSurface, AppColors.shimmer],
+          ),
+        ),
         child: Row(
           children: [
             Expanded(
@@ -62,8 +70,11 @@ class ScheduleDayRow extends StatelessWidget {
       );
     }
 
+    final labelColor = isSubrow ? AppColors.textMuted : textColor;
+    final leftPad    = isSubrow ? 32.0 : 16.0;
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      padding: EdgeInsets.fromLTRB(leftPad, 10, 16, 10),
       decoration: BoxDecoration(
         color: isTotal
             ? AppColors.rule.withValues(alpha: 0.5)
@@ -77,8 +88,8 @@ class ScheduleDayRow extends StatelessWidget {
               day,
               style: isTotal
                   ? AppTextStyles.mono12(
-                      color: textColor, weight: FontWeight.w700)
-                  : AppTextStyles.mono12(color: textColor),
+                      color: labelColor, weight: FontWeight.w700)
+                  : AppTextStyles.mono12(color: labelColor),
             ),
           ),
           Expanded(

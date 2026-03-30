@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
+import 'data/shift_data_source.dart';
+import 'data/week_data_notifier.dart';
+import 'data/baseline_manager_service.dart';
+import 'data/meridian_data.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/variance_report.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/baseline_tracker.dart';
+import 'screens/settings_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -14,6 +20,9 @@ void main() {
       statusBarIconBrightness: Brightness.light,
     ),
   );
+
+  await BaselineManagerService.instance.primeManagerOverride();
+
   runApp(const ForgeFlowApp());
 }
 
@@ -22,11 +31,21 @@ class ForgeFlowApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Forge & Flow',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.themeData,
-      home: const AppShell(),
+    return MultiProvider(
+      providers: [
+        Provider<ShiftDataSource>(
+          create: (_) => const LiveShiftDataSource(),
+        ),
+        ChangeNotifierProvider<WeekDataNotifier>(
+          create: (ctx) => WeekDataNotifier(ctx.read<ShiftDataSource>()),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Barrio',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.themeData,
+        home: const AppShell(),
+      ),
     );
   }
 }
@@ -48,22 +67,56 @@ class _AppShellState extends State<AppShell> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            // Tab 0 — Shift
-            ShiftDashboard(
-              onVarianceTap: () => _navigateTo(1),
+      backgroundColor: AppColors.backgroundDeep,
+      appBar: _selectedIndex == 0
+          ? null
+          : AppBar(
+              backgroundColor: AppColors.backgroundDeep,
+              elevation: 0,
+              automaticallyImplyLeading: false,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings_outlined,
+                      size: 20, color: AppColors.textMuted),
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                      fullscreenDialog: true,
+                    ),
+                  ),
+                ),
+              ],
             ),
-            // Tab 1 — Variance
-            const VarianceReport(),
-            // Tab 2 — Schedule
-            const ScheduleBuilder(),
-            // Tab 3 — Baseline
-            const BaselineTracker(),
-          ],
+      body: SafeArea(
+        child: ValueListenableBuilder<int>(
+          valueListenable: BaselineData.revision,
+          builder: (context, revision, __) => IndexedStack(
+            index: _selectedIndex,
+            children: [
+              // Tab 0 — Shift (has its own Scaffold with FAB; no global AppBar)
+              KeyedSubtree(
+                key: ValueKey('shift-$revision'),
+                child: ShiftDashboard(
+                  onVarianceTap: () => _navigateTo(1),
+                ),
+              ),
+              // Tab 1 — Variance
+              KeyedSubtree(
+                key: ValueKey('variance-$revision'),
+                child: const VarianceReport(),
+              ),
+              // Tab 2 — Schedule
+              KeyedSubtree(
+                key: ValueKey('schedule-$revision'),
+                child: const ScheduleBuilder(),
+              ),
+              // Tab 3 — Baseline
+              KeyedSubtree(
+                key: ValueKey('baseline-$revision'),
+                child: const BaselineTracker(),
+              ),
+            ],
+          ),
         ),
       ),
       bottomNavigationBar: _AppBottomNav(
@@ -86,23 +139,28 @@ class _AppBottomNav extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.shimmer, AppColors.backgroundDeep],
+        ),
         border: Border(
-          top: BorderSide(color: AppColors.rule, width: 1),
+          top: BorderSide(
+              color: AppColors.tealPrimary.withValues(alpha: 0.15), width: 1),
         ),
       ),
       child: BottomNavigationBar(
         currentIndex: selectedIndex,
         onTap: onTap,
-        backgroundColor: AppColors.surface,
-        selectedItemColor: AppColors.accent,
-        unselectedItemColor: AppColors.secondaryText,
+        backgroundColor: AppColors.backgroundDeep,
+        selectedItemColor: AppColors.tealPrimary,
+        unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         elevation: 0,
         selectedLabelStyle: const TextStyle(
           fontSize: 10,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w600,
           letterSpacing: 0.5,
         ),
         unselectedLabelStyle: const TextStyle(
@@ -112,19 +170,19 @@ class _AppBottomNav extends StatelessWidget {
         ),
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.show_chart, size: 20),
+            icon: Icon(Icons.show_chart, size: 22),
             label: 'Shift',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart, size: 20),
+            icon: Icon(Icons.bar_chart, size: 22),
             label: 'Variance',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_today, size: 20),
+            icon: Icon(Icons.calendar_today, size: 22),
             label: 'Schedule',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history, size: 20),
+            icon: Icon(Icons.history, size: 22),
             label: 'Baseline',
           ),
         ],

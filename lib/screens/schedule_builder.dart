@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_theme.dart';
 import '../data/meridian_data.dart';
+import '../services/labor_model.dart';
+import '../utils/formatters.dart';
 import '../widgets/schedule_day_row.dart';
 
 // ─── State ────────────────────────────────────────────────────────────────────
@@ -20,19 +22,18 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     }
   }
 
-  double get requiredFohHours => _weeklyCovers / MeridianConfig.targetCPLH;
-  double get requiredBohHours =>
-      (_weeklyCovers * MeridianConfig.targetPPA) / MeridianConfig.targetSPLH;
+  int get requiredFohHours =>
+      LaborModel.modelFohHours(_weeklyCovers, BaselineData.derivedTargetCPLH);
+  int get requiredBohHours =>
+      LaborModel.modelBohHours(
+          _weeklyCovers, BaselineData.derivedTargetPPA, BaselineData.derivedTargetSPLH);
   double get forecastedFohLaborDollar =>
       requiredFohHours * MeridianConfig.fohWage;
   double get forecastedBohLaborDollar =>
       requiredBohHours * MeridianConfig.bohWage;
   double get forecastedTotalLaborDollar =>
       forecastedFohLaborDollar + forecastedBohLaborDollar;
-  double get theoreticalLaborPct =>
-      forecastedTotalLaborDollar /
-      (_weeklyCovers * MeridianConfig.targetPPA) *
-      100;
+  double get theoreticalLaborPct => BaselineData.derivedTheoreticalLaborPct;
 
   List<ScheduleDay> get adjustedDays {
     final defaultTotal = ScheduleForecastDefaults.defaultDays
@@ -101,17 +102,6 @@ class _ScheduleBuilderContentState
               style: AppTextStyles.mono10(),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Text(
-              ScheduleForecastDefaults.principleStatement,
-              style: AppTextStyles.body13(
-                color: AppColors.secondaryText,
-                style: FontStyle.italic,
-              ),
-            ),
-          ),
-
           // Forecast input
           _ForecastInput(controller: _controller),
 
@@ -211,10 +201,10 @@ class _DerivedSummaryCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cards = [
-      ('REQ FOH HRS', notifier.requiredFohHours.round().toString()),
-      ('REQ BOH HRS', notifier.requiredBohHours.round().toString()),
+      ('REQ FOH HRS', notifier.requiredFohHours.toString()),
+      ('REQ BOH HRS', notifier.requiredBohHours.toString()),
       ('LABOR %', '${notifier.theoreticalLaborPct.toStringAsFixed(1)}%'),
-      ('LABOR \$', '\$${_fmt(notifier.forecastedTotalLaborDollar)}'),
+      ('LABOR \$', '\$${Fmt.dollars(notifier.forecastedTotalLaborDollar)}'),
     ];
 
     return Padding(
@@ -248,9 +238,6 @@ class _DerivedSummaryCards extends StatelessWidget {
     );
   }
 
-  String _fmt(double n) => n
-      .toStringAsFixed(0)
-      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
 class _CoverBarChart extends StatelessWidget {
@@ -359,17 +346,24 @@ class _CoverBarChart extends StatelessWidget {
   }
 }
 
-class _DayTable extends StatelessWidget {
+class _DayTable extends StatefulWidget {
   final ScheduleForecastNotifier notifier;
 
   const _DayTable({required this.notifier});
 
   @override
+  State<_DayTable> createState() => _DayTableState();
+}
+
+class _DayTableState extends State<_DayTable> {
+  final Set<int> _expanded = {};
+
+  @override
   Widget build(BuildContext context) {
-    final days = notifier.adjustedDays;
+    final days        = widget.notifier.adjustedDays;
     final totalCovers = days.fold<int>(0, (s, d) => s + d.forecastCovers);
-    final totalFoh = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
-    final totalBoh = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
+    final totalFoh    = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
+    final totalBoh    = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -381,19 +375,58 @@ class _DayTable extends StatelessWidget {
         children: [
           ScheduleDayRow.header(),
           Container(height: 1, color: AppColors.rule),
-          ...days.asMap().entries.map((entry) {
-            final day = entry.value;
-            return Column(
-              children: [
-                ScheduleDayRow(
-                  day: day.day,
-                  forecastCovers: day.forecastCovers,
-                  requiredFohHours: day.requiredFohHours,
-                  requiredBohHours: day.requiredBohHours,
+          ...days.asMap().entries.expand((entry) {
+            final i          = entry.key;
+            final day        = entry.value;
+            final isExpanded = _expanded.contains(i);
+            final breakdown  = day.daypartBreakdown;
+            final hasSubrows = breakdown.isNotEmpty;
+
+            return [
+              // Day row — tappable when it has daypart sub-rows
+              GestureDetector(
+                onTap: hasSubrows
+                    ? () => setState(() {
+                          isExpanded
+                              ? _expanded.remove(i)
+                              : _expanded.add(i);
+                        })
+                    : null,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ScheduleDayRow(
+                        day: day.day,
+                        forecastCovers: day.forecastCovers,
+                        requiredFohHours: day.requiredFohHours,
+                        requiredBohHours: day.requiredBohHours,
+                      ),
+                    ),
+                    if (hasSubrows)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Icon(
+                          isExpanded
+                              ? Icons.expand_less
+                              : Icons.expand_more,
+                          size: 14,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                  ],
                 ),
-                Container(height: 1, color: AppColors.rule),
-              ],
-            );
+              ),
+              // Daypart sub-rows (shown when expanded)
+              if (isExpanded)
+                ...breakdown.map((dp) => ScheduleDayRow(
+                      day: dp.label,
+                      forecastCovers: dp.forecastCovers,
+                      requiredFohHours: dp.requiredFohHours,
+                      requiredBohHours: dp.requiredBohHours,
+                      isSubrow: true,
+                    )),
+              Container(height: 1, color: AppColors.rule),
+            ];
           }),
           ScheduleDayRow(
             day: 'Total',

@@ -3,7 +3,7 @@ import '../theme/app_theme.dart';
 import '../data/meridian_data.dart';
 
 class DaypartTable extends StatelessWidget {
-  final List<DaypartStat> dayparts;
+  final List<DaypartRange> dayparts;
 
   const DaypartTable({super.key, required this.dayparts});
 
@@ -11,9 +11,15 @@ class DaypartTable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [AppColors.surface, AppColors.cardGlow],
+        ),
         border: Border.all(color: AppColors.rule, width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Column(
         children: [

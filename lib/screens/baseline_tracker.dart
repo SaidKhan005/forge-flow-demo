@@ -1,8 +1,9 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_theme.dart';
 import '../data/meridian_data.dart';
 import '../widgets/daypart_table.dart';
+import 'baseline_manager_screen.dart';
 
 class BaselineTracker extends StatelessWidget {
   const BaselineTracker({super.key});
@@ -21,35 +22,32 @@ class BaselineTracker extends StatelessWidget {
               children: [
                 Text('Your Baseline', style: AppTextStyles.display20()),
                 const SizedBox(height: 2),
-                Text('Last 60 Days', style: AppTextStyles.mono10()),
+                Text('Last 60 Days', style: AppTextStyles.mono11()),
               ],
             ),
           ),
 
-          // Summary cards
+          // Manager override banner — only shown when active
+          if (BaselineData.hasManagerOverride) _OverrideBanner(),
+
+          // Summary cards — unchanged, readable at a glance
           _SummaryCards(),
 
           const SizedBox(height: 8),
 
-          // CPLH line chart
-          _CplhLineChart(),
+          // CPLH range bar — replaces 60-day line chart
+          _CplhRangeBar(),
 
           const SizedBox(height: 8),
 
-          // Daypart table
+          // Daypart breakdown
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
             child: Text('Daypart Breakdown', style: AppTextStyles.body14()),
           ),
-          DaypartTable(dayparts: BaselineData.dayparts),
+          DaypartTable(dayparts: BaselineData.daypartRanges),
 
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Text(
-              BaselineData.daypartNote,
-              style: AppTextStyles.body12(),
-            ),
-          ),
+          const SizedBox(height: 8),
 
           // Baseline targets card
           _BaselineTargetsCard(),
@@ -61,14 +59,55 @@ class BaselineTracker extends StatelessWidget {
   }
 }
 
+// ─── Override banner ───────────────────────────────────────────────────────────
+
+class _OverrideBanner extends StatelessWidget {
+  const _OverrideBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final count = BaselineData.selectedRecordCount;
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.tealPrimary.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.tealPrimary, width: 1),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.star_rounded, size: 16, color: AppColors.tealPrimary),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'MANAGER OVERRIDE ACTIVE',
+                  style: AppTextStyles.mono8(color: AppColors.tealPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '$count STAR SHIFTS SELECTED',
+                  style: AppTextStyles.mono10(
+                      color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _SummaryCards extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cards = [
-      ('TOTAL COVERS', _fmt(BaselineData.totalCoversTracked)),
-      ('WEEKLY AVG', '${BaselineData.weeklyAvgCovers}'),
-      ('BEST CPLH', BaselineData.bestDaysAvgCPLH.toStringAsFixed(2)),
-      ('WORST CPLH', BaselineData.worstDaysAvgCPLH.toStringAsFixed(2)),
+      ('TOTAL COVERS LAST 60 DAYS', BaselineData.historicalTotalCoversTracked.toString()),
+      ('WEEKLY AVG COVERS', '${BaselineData.historicalWeeklyAvgCovers}'),
     ];
 
     return Padding(
@@ -82,8 +121,8 @@ class _SummaryCards extends StatelessWidget {
               margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.rule, width: 1),
+                color: AppColors.backgroundMid,
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -91,8 +130,8 @@ class _SummaryCards extends StatelessWidget {
                   Text(card.$1, style: AppTextStyles.mono7()),
                   const SizedBox(height: 4),
                   Text(card.$2,
-                      style: AppTextStyles.mono12(
-                          color: AppColors.primaryText)),
+                      style:
+                          AppTextStyles.mono12(color: AppColors.textPrimary)),
                 ],
               ),
             ),
@@ -102,174 +141,269 @@ class _SummaryCards extends StatelessWidget {
     );
   }
 
-  String _fmt(int n) => n
-      .toString()
-      .replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',');
 }
 
-class _CplhLineChart extends StatefulWidget {
-  const _CplhLineChart();
-
-  @override
-  State<_CplhLineChart> createState() => _CplhLineChartState();
-}
-
-class _CplhLineChartState extends State<_CplhLineChart> {
-  late final LineChartData _chartData;
-
-  @override
-  void initState() {
-    super.initState();
-    final spots = BaselineData.days
-        .asMap()
-        .entries
-        .map((e) => FlSpot(e.key.toDouble(), e.value.cplh))
-        .toList();
-    _chartData = _buildChartData(spots);
-  }
-
-  LineChartData _buildChartData(List<FlSpot> spots) {
-    return LineChartData(
-      minY: 2.5,
-      maxY: 7.0,
-      gridData: FlGridData(
-        show: true,
-        drawVerticalLine: false,
-        getDrawingHorizontalLine: (_) => FlLine(
-          color: AppColors.rule,
-          strokeWidth: 1,
-        ),
-      ),
-      borderData: FlBorderData(show: false),
-      titlesData: FlTitlesData(
-        leftTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            reservedSize: 32,
-            getTitlesWidget: (val, meta) => Text(
-              val.toStringAsFixed(1),
-              style: AppTextStyles.mono7(),
-            ),
-          ),
-        ),
-        bottomTitles: AxisTitles(
-          sideTitles: SideTitles(
-            showTitles: true,
-            interval: 10,
-            getTitlesWidget: (val, meta) => Text(
-              'D${val.toInt() + 1}',
-              style: AppTextStyles.mono7(),
-            ),
-          ),
-        ),
-        topTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-        rightTitles:
-            const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-      ),
-      lineBarsData: [
-        LineChartBarData(
-          spots: spots,
-          isCurved: true,
-          color: AppColors.primaryText.withValues(alpha: 0.6),
-          barWidth: 1.5,
-          dotData: const FlDotData(show: false),
-          belowBarData: BarAreaData(
-            show: true,
-            color: AppColors.positive.withValues(alpha: 0.08),
-            cutOffY: MeridianConfig.opzCeilingCPLH,
-            applyCutOffY: true,
-          ),
-        ),
-      ],
-      extraLinesData: ExtraLinesData(
-        horizontalLines: [
-          HorizontalLine(
-            y: MeridianConfig.targetCPLH,
-            color: AppColors.gold,
-            strokeWidth: 1.5,
-            dashArray: [6, 4],
-            label: HorizontalLineLabel(
-              show: true,
-              alignment: Alignment.topRight,
-              labelResolver: (_) => 'Target',
-              style: AppTextStyles.mono7(color: AppColors.gold),
-            ),
-          ),
-          HorizontalLine(
-            y: MeridianConfig.opzCeilingCPLH,
-            color: AppColors.gold.withValues(alpha: 0.6),
-            strokeWidth: 1,
-            dashArray: [4, 4],
-            label: HorizontalLineLabel(
-              show: true,
-              alignment: Alignment.topRight,
-              labelResolver: (_) => 'OPZ ceiling',
-              style: AppTextStyles.mono7(color: AppColors.gold),
-            ),
-          ),
-        ],
-      ),
-      lineTouchData: const LineTouchData(enabled: false),
-    );
-  }
+class _CplhRangeBar extends StatelessWidget {
+  const _CplhRangeBar();
 
   @override
   Widget build(BuildContext context) {
+    final graph      = BaselineData.rangeGraphModel;
+    final validation = BaselineData.baselineRangeValidation;
+    final badgeColor = validation.showWarning ? AppColors.warning : AppColors.positive;
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.rule, width: 1),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.backgroundDeep],
+        ),
+        border: Border.all(color: AppColors.borderStrong, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 12),
-            child: Text('CPLH - LAST 60 DAYS', style: AppTextStyles.mono7()),
-          ),
-          SizedBox(
-            height: 200,
-            child: RepaintBoundary(
-              child: LineChart(_chartData),
-            ),
-          ),
-          const SizedBox(height: 8),
+          Text(graph.title,
+              style: AppTextStyles.mono11(color: AppColors.textSecondary)),
+          const SizedBox(height: 18),
+
+          // Endpoint labels — full-width row, float above the line endpoints
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              _LegendDot(color: AppColors.positive, label: 'In OPZ'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.accent, label: 'Below target'),
-              const SizedBox(width: 12),
-              _LegendDot(color: AppColors.gold, label: 'Above ceiling'),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(graph.startLabel,
+                      style: AppTextStyles.mono7(color: AppColors.textMuted)),
+                  const SizedBox(height: 3),
+                  Text(graph.displayRangeStartCPLH.toStringAsFixed(2),
+                      style: AppTextStyles.mono14(color: AppColors.textPrimary)),
+                ],
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(graph.endLabel,
+                      style: AppTextStyles.mono7(color: AppColors.textMuted)),
+                  const SizedBox(height: 3),
+                  Text(graph.displayRangeEndCPLH.toStringAsFixed(2),
+                      style: AppTextStyles.mono14(color: AppColors.textPrimary)),
+                ],
+              ),
             ],
+          ),
+          const SizedBox(height: 10),
+
+          // Graph — all positions read from rangeGraphModel, full card width
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final totalWidth = constraints.maxWidth;
+              final targetPos = (graph.targetPosition * totalWidth).clamp(0.0, totalWidth);
+              final opzLeft   = (graph.activeRangeStartPosition * totalWidth).clamp(0.0, totalWidth);
+              final opzRight  = (graph.activeRangeEndPosition * totalWidth).clamp(0.0, totalWidth);
+              final opzW      = math.max(2.0, opzRight - opzLeft);
+
+              // Vertical layout — all constants, no recomputation
+              const double opzLabelH   = 14.0;  // range label text
+              const double opzLabelGap = 4.0;
+              const double opzBoxPad   = 10.0;  // OPZ box extends this far above/below line
+              const double lineY       = opzLabelH + opzLabelGap + opzBoxPad; // 28
+              const double lnH         = 3.0;   // thicker line for presence
+              const double opzBoxTop   = lineY - opzBoxPad; // 18
+              const double opzBoxH     = lnH + opzBoxPad * 2; // 23
+              const double tickUp      = opzBoxPad + 3; // tick extends 3px above OPZ box top
+              const double tickH       = tickUp + lnH + opzBoxPad + 3; // full crossing height
+              const double glowW       = 16.0;  // target glow halo width
+              const double belowGap    = 9.0;
+              const double targetLabelH = 46.0; // mono8 label + 3px gap + mono20 value
+              const double stkH        = lineY + lnH + belowGap + targetLabelH; // 86
+
+              return SizedBox(
+                height: stkH,
+                child: Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    // Range label — centered above the highlighted box
+                    Positioned(
+                      left: (opzLeft + opzW / 2 - 27.0)
+                          .clamp(0.0, math.max(0.0, totalWidth - 54.0)),
+                      top: 0,
+                      child: Text(
+                        graph.rangeLabel,
+                        style: AppTextStyles.mono7(color: AppColors.positive),
+                      ),
+                    ),
+
+                    // Highlighted range region — green-bordered box over the line
+                    Positioned(
+                      left: opzLeft,
+                      top: opzBoxTop,
+                      child: Container(
+                        width: opzW,
+                        height: opzBoxH,
+                        decoration: BoxDecoration(
+                          color: AppColors.positive.withValues(alpha: 0.09),
+                          border: Border.all(
+                            color: AppColors.positive.withValues(alpha: 0.55),
+                            width: 1,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // Horizontal range line — neutral, full-width
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: lineY,
+                      child: Container(
+                        height: lnH,
+                        color: AppColors.textSecondary.withValues(alpha: 0.45),
+                      ),
+                    ),
+
+                    // Left endpoint tick
+                    Positioned(
+                      left: 0,
+                      top: lineY - 7,
+                      child: Container(
+                        width: 2,
+                        height: 18,
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                      ),
+                    ),
+
+                    // Right endpoint tick
+                    Positioned(
+                      right: 0,
+                      top: lineY - 7,
+                      child: Container(
+                        width: 2,
+                        height: 18,
+                        color: AppColors.textSecondary.withValues(alpha: 0.7),
+                      ),
+                    ),
+
+                    // Target glow halo — subtle teal wash behind the tick
+                    Positioned(
+                      left: (targetPos - glowW / 2)
+                          .clamp(0.0, math.max(0.0, totalWidth - glowW)),
+                      top: lineY - tickUp - 2,
+                      child: Container(
+                        width: glowW,
+                        height: tickH + 4,
+                        color: AppColors.tealPrimary.withValues(alpha: 0.12),
+                      ),
+                    ),
+
+                    // Target tick — dominant; 4px teal, crosses through range box
+                    Positioned(
+                      left: targetPos - 2.0,
+                      top: lineY - tickUp,
+                      child: Container(
+                        width: 4,
+                        height: tickH,
+                        color: AppColors.tealPrimary,
+                      ),
+                    ),
+
+                    // CPLH TARGET label + value — below the line, anchored to tick
+                    Positioned(
+                      left: (targetPos - 36.0)
+                          .clamp(0.0, math.max(0.0, totalWidth - 72.0)),
+                      top: lineY + lnH + belowGap,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('CPLH TARGET',
+                              style: AppTextStyles.mono8(color: AppColors.tealPrimary)),
+                          const SizedBox(height: 3),
+                          Text(graph.targetCPLH.toStringAsFixed(2),
+                              style: AppTextStyles.mono20(
+                                  color: AppColors.tealPrimary,
+                                  weight: FontWeight.w700)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 16),
+          Container(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 16),
+
+          // Explanation block
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: badgeColor.withValues(alpha: 0.12),
+                  border: Border.all(color: badgeColor, width: 1),
+                ),
+                child: Text(validation.statusLabel,
+                    style: AppTextStyles.mono8(color: badgeColor)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  graph.recommendedExplanation,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+
+          // Manager override CTA — taps into BaselineManagerScreen
+          GestureDetector(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const BaselineManagerScreen(),
+              ),
+            ),
+            child: SizedBox(
+              width: double.infinity,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: AppColors.tealSoft.withValues(alpha: 0.45),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        graph.overrideLabel,
+                        style: AppTextStyles.mono8(color: AppColors.tealSoft),
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right,
+                      size: 16,
+                      color: AppColors.tealSoft,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-
-  const _LegendDot({required this.color, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 4),
-        Text(label, style: AppTextStyles.mono7(color: AppColors.secondaryText)),
-      ],
     );
   }
 }
@@ -278,47 +412,47 @@ class _BaselineTargetsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final targets = [
-      ('CPLH', MeridianConfig.targetCPLH.toStringAsFixed(1)),
-      ('SPLH', '\$${MeridianConfig.targetSPLH.toStringAsFixed(0)}'),
-      ('PPA', '\$${MeridianConfig.targetPPA.toStringAsFixed(0)}'),
+      ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(1)),
+      ('SPLH', '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}'),
+      ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(0)}'),
       (
         'THEORETICAL LABOR %',
-        '${MeridianConfig.totalTheoreticalLaborPct.toStringAsFixed(1)}%'
+        '${BaselineData.derivedTheoreticalLaborPct.toStringAsFixed(1)}%'
       ),
+      ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(1)),
+      ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(1)),
+      ('HEADROOM', BaselineData.opzHeadroomCPLH.toStringAsFixed(2)),
     ];
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.rule, width: 1),
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('TARGETS DERIVED FROM BASELINE', style: AppTextStyles.mono7()),
+          Text('TARGETS DERIVED FROM BASELINE',
+              style: AppTextStyles.mono11()),
           const SizedBox(height: 12),
           ...targets.map((t) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(t.$1, style: AppTextStyles.mono10()),
+                    Text(t.$1,
+                        style:
+                            AppTextStyles.mono10(color: AppColors.textMuted)),
                     Text(
                       t.$2,
-                      style:
-                          AppTextStyles.mono14(color: AppColors.primaryText),
+                      style: AppTextStyles.mono14(
+                          color: AppColors.textPrimary),
                     ),
                   ],
                 ),
               )),
-          Container(height: 1, color: AppColors.rule),
-          const SizedBox(height: 10),
-          Text(
-            BaselineData.baselineTargetsNote,
-            style: AppTextStyles.body11(),
-          ),
         ],
       ),
     );

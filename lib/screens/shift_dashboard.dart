@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../data/meridian_data.dart';
+import '../services/labor_model.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
 import '../widgets/variance_banner.dart';
+
 class ShiftDashboard extends StatelessWidget {
   final VoidCallback? onVarianceTap;
 
@@ -13,65 +15,103 @@ class ShiftDashboard extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
-        // ── Header ─────────────────────────────────────────────────────────
-        SliverToBoxAdapter(
-          child: _ShiftHeader(),
-        ),
-
-        // ── Zone status card ───────────────────────────────────────────────
-        const SliverToBoxAdapter(
-          child: ZoneStatusCard(),
-        ),
-
-        // ── Sticky variance banner ─────────────────────────────────────────
+        SliverToBoxAdapter(child: _ShiftHeader()),
+        const SliverToBoxAdapter(child: ZoneStatusCard()),
         SliverPersistentHeader(
           pinned: true,
           delegate: _VarianceBannerDelegate(onTap: onVarianceTap),
         ),
-
-        // ── Five input metric cards ────────────────────────────────────────
-        SliverToBoxAdapter(
-          child: _MetricCardsGrid(),
-        ),
-
-        // ── Which Lever Moved ──────────────────────────────────────────────
-        SliverToBoxAdapter(
-          child: _WhichLeverMoved(),
-        ),
-
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(child: _MetricCardsSection()),
+        SliverToBoxAdapter(child: _HoursSection()),
+        SliverToBoxAdapter(child: _TeachingTakeaway()),
+        const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
     );
   }
 }
 
+// ─── Header ──────────────────────────────────────────────────────────────────
+
 class _ShiftHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.backgroundDeep,
+            AppColors.backgroundDeep.withValues(alpha: 0.0),
+          ],
+        ),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Restaurant logo + name
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
+              Image.asset(
+                'assets/images/logo.png',
+                width: 32,
+                height: 32,
+              ),
+              const SizedBox(width: 10),
               Text(
                 MeridianConfig.restaurantName,
-                style: AppTextStyles.display16(),
-              ),
-              Text(
-                '${ShiftSnapshot.daypart} · ${ShiftSnapshot.day}',
-                style: AppTextStyles.mono10(),
+                style: AppTextStyles.display36(color: AppColors.tealPrimary),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${ShiftSnapshot.time} · ${ShiftSnapshot.serviceElapsed}',
-            style: AppTextStyles.mono10(),
+          const SizedBox(height: 12),
+          // Context row
+          Row(
+            children: [
+              // Daypart pill
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppColors.tealPrimary.withValues(alpha: 0.15),
+                      AppColors.tealPrimary.withValues(alpha: 0.08),
+                    ],
+                  ),
+                  border: Border.all(
+                      color: AppColors.tealPrimary.withValues(alpha: 0.3),
+                      width: 1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: AppColors.tealPrimary,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '${ShiftSnapshot.daypart} \u00b7 ${ShiftSnapshot.day}',
+                      style:
+                          AppTextStyles.mono11(color: AppColors.tealPrimary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 14),
+              // Time
+              Text(
+                '${ShiftSnapshot.time} \u00b7 ${ShiftSnapshot.serviceElapsed}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
           ),
         ],
       ),
@@ -79,7 +119,9 @@ class _ShiftHeader extends StatelessWidget {
   }
 }
 
-class _MetricCardsGrid extends StatelessWidget {
+// ─── Metric cards section ────────────────────────────────────────────────────
+
+class _MetricCardsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final gridCards = ShiftMetrics.cards.where((m) => !m.fullWidth).toList();
@@ -87,61 +129,206 @@ class _MetricCardsGrid extends StatelessWidget {
         ShiftMetrics.cards.where((m) => m.fullWidth).toList();
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Section label
+          _SectionHeader(label: 'SHIFT INPUTS'),
+          const SizedBox(height: 10),
+          // Grid
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
-            childAspectRatio: 1.4,
-            children: gridCards
-                .map((m) => InputMetricCard(metric: m))
-                .toList(),
+            childAspectRatio: 1.05,
+            children:
+                gridCards.map((m) => InputMetricCard(metric: m)).toList(),
           ),
-          const SizedBox(height: 8),
-          ...fullWidthCards.map((m) => InputMetricCard(metric: m)),
+          if (fullWidthCards.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            ...fullWidthCards.map((m) => InputMetricCard(metric: m)),
+          ],
         ],
       ),
     );
   }
 }
 
-class _WhichLeverMoved extends StatelessWidget {
+// ─── Hours vs Model section ──────────────────────────────────────────────────
+
+class _HoursSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SectionHeader(label: 'HOURS vs MODEL'),
+          const SizedBox(height: 10),
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: _SideSummaryCard(side: 'FOH')),
+                const SizedBox(width: 8),
+                Expanded(child: _SideSummaryCard(side: 'BOH')),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Section header ──────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
       children: [
-        // FOH / BOH side cards
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Expanded(child: _SideSummaryCard(side: 'FOH')),
-              const SizedBox(width: 8),
-              Expanded(child: _SideSummaryCard(side: 'BOH')),
-            ],
+        Container(
+          width: 3,
+          height: 14,
+          decoration: BoxDecoration(
+            color: AppColors.tealPrimary,
+            borderRadius: BorderRadius.circular(1),
           ),
         ),
-
-        // Plain-language read
-        Padding(
-          padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          child: Text(
-            'Fewer guests than forecast, and the hours did not move with them. '
-            'That is where the variance came from. This is a scheduling gap, not a team problem.',
-            style: AppTextStyles.body13(color: AppColors.secondaryText),
+        const SizedBox(width: 10),
+        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: AppColors.borderSubtle.withValues(alpha: 0.4),
           ),
         ),
-
       ],
     );
   }
 }
+
+// ─── Teaching takeaway ───────────────────────────────────────────────────────
+
+class _TeachingTakeaway extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final lever = ShiftSnapshot.primaryLeverCard;
+    final accentColor =
+        lever.isFavorable ? AppColors.positive : AppColors.negative;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.backgroundSurface.withValues(alpha: 0.6),
+            AppColors.backgroundMid,
+          ],
+        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Accent top edge
+          Container(height: 3, color: accentColor),
+          // Header strip
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.05),
+              border: Border(
+                bottom: BorderSide(
+                    color: AppColors.borderSubtle.withValues(alpha: 0.5),
+                    width: 1),
+              ),
+            ),
+            child: Row(
+              children: [
+                // Icon in a circle
+                Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.lightbulb_outline,
+                      size: 13, color: accentColor),
+                ),
+                const SizedBox(width: 10),
+                Text('PRIMARY DRIVER',
+                    style: AppTextStyles.mono10(color: accentColor)),
+                const Spacer(),
+                // Lever badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.10),
+                    border: Border.all(
+                        color: accentColor.withValues(alpha: 0.3), width: 1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Text(lever.shortLabel,
+                      style: AppTextStyles.mono8(color: accentColor)),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundMid.withValues(alpha: 0.6),
+                    border: Border.all(
+                        color: AppColors.borderSubtle, width: 1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Text(lever.sideLabel,
+                      style: AppTextStyles.mono8(
+                          color: AppColors.textSecondary)),
+                ),
+              ],
+            ),
+          ),
+          // Lever headline
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+            child: Text(
+              lever.metric,
+              style: AppTextStyles.mono14(
+                  color: AppColors.textPrimary, weight: FontWeight.w600),
+            ),
+          ),
+          // Teaching body
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Text(
+              lever.whatHappened,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Side summary card ───────────────────────────────────────────────────────
 
 class _SideSummaryCard extends StatelessWidget {
   final String side;
@@ -151,51 +338,91 @@ class _SideSummaryCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isFoh = side == 'FOH';
+
     final scheduled = isFoh
-        ? WeeklyVariance.actualFohHours
-        : WeeklyVariance.actualBohHours;
+        ? ShiftSnapshot.scheduledFohHours
+        : ShiftSnapshot.scheduledBohHours;
     final needed = isFoh
-        ? WeeklyVariance.theoreticalFohHours
-        : WeeklyVariance.theoreticalBohHours;
-    final excess = isFoh
-        ? WeeklyVariance.fohHoursVariance
-        : WeeklyVariance.bohHoursVariance;
-    final cost = isFoh
-        ? WeeklyVariance.fohExcessCost
-        : WeeklyVariance.bohExcessCost;
+        ? LaborModel.modelFohHours(
+            ShiftSnapshot.actualCovers, BaselineData.derivedTargetCPLH)
+        : LaborModel.modelBohHours(ShiftSnapshot.actualCovers,
+            BaselineData.derivedTargetPPA, BaselineData.derivedTargetSPLH);
+    final excess = scheduled - needed;
+
+    final costPerHour =
+        isFoh ? MeridianConfig.fohWage : MeridianConfig.bohWage;
+    final excessCost = (excess * costPerHour).abs().toStringAsFixed(0);
+
+    final isOverModel = excess > 0;
+    final deltaColor = isOverModel ? AppColors.negative : AppColors.positive;
+    final deltaIcon = isOverModel ? Icons.arrow_upward : Icons.arrow_downward;
 
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.rule, width: 1),
+        color: AppColors.backgroundMid,
+        border: Border(
+          left: BorderSide(
+            color: deltaColor.withValues(alpha: 0.6),
+            width: 3,
+          ),
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
+          right: BorderSide(color: AppColors.borderSubtle, width: 1),
+          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Side badge
           Container(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            color: AppColors.slateTag.withValues(alpha: 0.4),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.tealPrimary,
+              borderRadius: BorderRadius.circular(2),
+            ),
             child: Text(
-              side,
-              style: AppTextStyles.mono7(color: AppColors.secondaryText),
+              '$side  \u00b7  ${isFoh ? 'FLOOR' : 'KITCHEN'}',
+              style: AppTextStyles.mono7(color: AppColors.backgroundDeep),
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '$scheduled hrs scheduled',
-            style: AppTextStyles.mono10(color: AppColors.primaryText),
+          const SizedBox(height: 14),
+          // Hours
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text('$scheduled', style: AppTextStyles.mono28()),
+              const SizedBox(width: 4),
+              Text('hrs',
+                  style: AppTextStyles.mono12(color: AppColors.textMuted)),
+            ],
           ),
-          const SizedBox(height: 2),
-          Text(
-            'Model needed $needed',
-            style: AppTextStyles.mono10(),
+          const SizedBox(height: 4),
+          Text('Model needs $needed',
+              style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          const SizedBox(height: 14),
+          // Divider
+          Container(
+              height: 1,
+              color: AppColors.borderSubtle.withValues(alpha: 0.4)),
+          const SizedBox(height: 12),
+          // Delta + cost
+          Row(
+            children: [
+              Icon(deltaIcon, size: 14, color: deltaColor),
+              const SizedBox(width: 4),
+              Text(
+                '${isOverModel ? '+' : ''}$excess hrs',
+                style: AppTextStyles.mono15(
+                    color: deltaColor, weight: FontWeight.w700),
+              ),
+            ],
           ),
           const SizedBox(height: 4),
           Text(
-            '+$excess hrs · +$cost',
-            style: AppTextStyles.mono10(color: AppColors.accent),
+            '${isOverModel ? '+' : '\u2212'}\$$excessCost impact',
+            style: AppTextStyles.mono10(color: deltaColor),
           ),
         ],
       ),
@@ -203,7 +430,8 @@ class _SideSummaryCard extends StatelessWidget {
   }
 }
 
-// SliverPersistentHeaderDelegate for the sticky variance banner
+// ─── Variance banner delegate ────────────────────────────────────────────────
+
 class _VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onTap;
 
@@ -216,10 +444,10 @@ class _VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  double get minExtent => 60;
+  double get minExtent => 98;
 
   @override
-  double get maxExtent => 60;
+  double get maxExtent => 98;
 
   @override
   bool shouldRebuild(_VarianceBannerDelegate oldDelegate) => false;

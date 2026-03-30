@@ -9,20 +9,27 @@ class LeverCardWidget extends StatelessWidget {
 
   Color get _causeBadgeColor =>
       data.direction == LeverDirection.unfavorable
-          ? AppColors.accent
+          ? AppColors.negative
           : AppColors.positive;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.rule, width: 1),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(height: 2, color: _causeBadgeColor.withValues(alpha: 0.6)),
           // Header row — badges
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
@@ -32,11 +39,6 @@ class LeverCardWidget extends StatelessWidget {
                   label: data.causeCategory,
                   color: _causeBadgeColor,
                 ),
-                const Spacer(),
-                _Badge(
-                  label: data.sideLabel,
-                  color: AppColors.slateTag,
-                ),
               ],
             ),
           ),
@@ -45,8 +47,8 @@ class LeverCardWidget extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               data.metric,
-              style: AppTextStyles.mono14(
-                color: AppColors.primaryText,
+              style: AppTextStyles.mono15(
+                color: AppColors.textPrimary,
                 weight: FontWeight.w700,
               ),
             ),
@@ -57,7 +59,7 @@ class LeverCardWidget extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               'WHAT HAPPENED',
-              style: AppTextStyles.mono7(),
+              style: AppTextStyles.mono11(),
             ),
           ),
           const SizedBox(height: 8),
@@ -65,27 +67,27 @@ class LeverCardWidget extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               data.whatHappened,
-              style: AppTextStyles.body13(color: AppColors.primaryText),
+              style: AppTextStyles.body15(color: AppColors.textPrimary),
             ),
           ),
           const SizedBox(height: 16),
           // Divider
-          Container(height: 1, color: AppColors.rule),
+          Container(height: 1, color: AppColors.borderSubtle),
           const SizedBox(height: 16),
-          // WHAT TO DO section
+          // WHAT TO STUDY section
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Text(
-              'WHAT TO DO',
-              style: AppTextStyles.mono7(),
+              'WHAT TO STUDY',
+              style: AppTextStyles.mono11(),
             ),
           ),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: Text(
-              data.whatToDo,
-              style: AppTextStyles.body13(color: AppColors.primaryText),
+              data.teachingNote,
+              style: AppTextStyles.body15(color: AppColors.textPrimary),
             ),
           ),
         ],
@@ -107,10 +109,11 @@ class _Badge extends StatelessWidget {
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.2),
         border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono7(color: color),
+        style: AppTextStyles.mono8(color: color),
       ),
     );
   }

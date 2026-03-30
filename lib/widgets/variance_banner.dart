@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../data/meridian_data.dart';
+import '../data/week_data_notifier.dart';
+import '../utils/formatters.dart';
 
 class VarianceBanner extends StatelessWidget {
   final VoidCallback? onTap;
@@ -9,56 +12,146 @@ class VarianceBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        color: AppColors.surface,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(height: 1, color: AppColors.rule),
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Text(
-                  'Theoretical ${WeeklyVariance.theoreticalTotalLaborPct.toStringAsFixed(1)}%',
-                  style: AppTextStyles.mono12(color: AppColors.secondaryText),
+    return Consumer<WeekDataNotifier>(
+      builder: (context, notifier, _) {
+        final weekData = notifier.weekData;
+
+        final theoretical = MeridianConfig.totalTheoreticalLaborPct;
+        final actual = weekData?.actualLaborPct ?? theoretical;
+        final variancePts = weekData?.variancePts ?? 0.0;
+        final dollarGap = weekData?.dollarGap ?? 0.0;
+        final annualized = weekData?.dollarGapAnnualized ?? 0.0;
+
+        final isOver = variancePts > 0;
+        final accentColor = isOver ? AppColors.negative : AppColors.positive;
+        final ptSign = isOver ? '+' : '\u2212';
+        final gapSign = isOver ? '\u2212' : '+';
+
+        return GestureDetector(
+          onTap: onTap,
+          child: SizedBox.expand(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    AppColors.shimmer,
+                    AppColors.backgroundMid.withValues(alpha: 0.8),
+                    AppColors.cardGlow,
+                  ],
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward,
-                    size: 14, color: AppColors.secondaryText),
-                const SizedBox(width: 8),
-                Text(
-                  'Actual ${WeeklyVariance.actualTotalLaborPct.toStringAsFixed(1)}%',
-                  style: AppTextStyles.mono14(
-                    color: AppColors.accent,
-                    weight: FontWeight.w700,
+                border: Border(
+                  left: BorderSide(color: accentColor, width: 4),
+                  top: BorderSide(
+                      color: accentColor.withValues(alpha: 0.15), width: 1),
+                  bottom: BorderSide(
+                      color: AppColors.borderSubtle.withValues(alpha: 0.6),
+                      width: 1),
+                ),
+              ),
+              padding: const EdgeInsets.fromLTRB(14, 10, 16, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  // Header row
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.08),
+                          border: Border.all(
+                              color: accentColor.withValues(alpha: 0.25),
+                              width: 1),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: Text('LABOR % VARIANCE',
+                            style: AppTextStyles.mono7(
+                                color: accentColor)),
+                      ),
+                      const Spacer(),
+                      Text('VIEW DETAILS',
+                          style: AppTextStyles.mono7(
+                              color: AppColors.textMuted)),
+                      const SizedBox(width: 2),
+                      Icon(Icons.chevron_right,
+                          size: 14, color: AppColors.textMuted),
+                    ],
                   ),
-                ),
-                const Spacer(),
-                const Icon(Icons.chevron_right,
-                    size: 16, color: AppColors.secondaryText),
-              ],
+                  const SizedBox(height: 8),
+                  // Main row
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Text(
+                        '${theoretical.toStringAsFixed(1)}%',
+                        style: AppTextStyles.mono14(
+                            color: AppColors.textSecondary),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Icon(Icons.arrow_forward,
+                            size: 12, color: AppColors.tealSoft),
+                      ),
+                      Text(
+                        '${actual.toStringAsFixed(1)}%',
+                        style: AppTextStyles.mono20(
+                            color: accentColor, weight: FontWeight.w700),
+                      ),
+                      const SizedBox(width: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 7, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: accentColor.withValues(alpha: 0.10),
+                          border: Border.all(
+                              color: accentColor.withValues(alpha: 0.3),
+                              width: 1),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                        child: Text(
+                          '$ptSign${variancePts.abs().toStringAsFixed(1)} pts',
+                          style: AppTextStyles.mono10(color: accentColor),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // Dollar gap
+                  Row(
+                    children: [
+                      Text(
+                        '$gapSign\$${Fmt.dollars(dollarGap.abs())}',
+                        style: AppTextStyles.mono11(color: accentColor),
+                      ),
+                      Text(' weekly',
+                          style: AppTextStyles.mono10(
+                              color: AppColors.textMuted)),
+                      const SizedBox(width: 12),
+                      Text(
+                        '$gapSign\$${Fmt.dollars(annualized.abs())}',
+                        style: AppTextStyles.mono11(color: accentColor),
+                      ),
+                      Text(' annualized',
+                          style: AppTextStyles.mono10(
+                              color: AppColors.textMuted)),
+                    ],
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(
-              '+${WeeklyVariance.totalLaborPctVariance.toStringAsFixed(1)} pts  ·  '
-              '\$${WeeklyVariance.dollarGapWeekly.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')} this week  ·  '
-              '\$${WeeklyVariance.dollarGapAnnualized.toStringAsFixed(0).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (m) => ',')} annualized',
-              style: AppTextStyles.mono10(),
-            ),
-            const SizedBox(height: 10),
-            Container(height: 1, color: AppColors.rule),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }
 
-// SliverPersistentHeader delegate for sticky behavior — used in shift_dashboard.dart
+// SliverPersistentHeader delegate for sticky behavior
 class VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onTap;
   final double _minExtent;
@@ -66,8 +159,8 @@ class VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
 
   const VarianceBannerDelegate({
     this.onTap,
-    double minExtent = 60,
-    double maxExtent = 60,
+    double minExtent = 98,
+    double maxExtent = 98,
   })  : _minExtent = minExtent,
         _maxExtent = maxExtent;
 

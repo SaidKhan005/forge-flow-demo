@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jim Taylor - How the Metrics Work in Real Life</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink:#2c2a27; --paper:#faf8f4; --accent:#b83515; --gold:#a07808;
+  --mid:#7a756e; --light:#ede9e2; --rule:#d8d3ca; --navy:#1e3558;
+  --mono-bg:#272522; --mono-fg:#e8c97b; --green-c:#275227; --red-c:#7a1515;
+  --white:#fff; --key-bg:#fffbf0;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'IBM Plex Sans',sans-serif;background:#ccc9c0;color:var(--ink);font-size:10.5pt;line-height:1.7;}
+.page{background:var(--paper);width:210mm;min-height:297mm;margin:20px auto;padding:14mm 16mm 12mm;box-shadow:0 2px 14px rgba(0,0,0,.15);}
+@media print{body{background:#fff;}.page{width:100%;min-height:0;margin:0;padding:11mm 13mm 10mm;box-shadow:none;page-break-after:always;}.page:last-child{page-break-after:avoid;}.noprint{display:none!important;}}
+
+.rule3{height:3px;background:var(--accent);margin-bottom:18px;}
+.ey{font-family:'IBM Plex Mono',monospace;font-size:7.5pt;letter-spacing:.3em;text-transform:uppercase;color:var(--gold);margin-bottom:10px;}
+.h1{font-family:'Playfair Display',serif;font-size:32pt;line-height:1.05;color:var(--ink);}
+.h1 em{font-style:italic;color:var(--accent);}
+.cdesc{font-size:10pt;color:var(--mid);line-height:1.6;margin:12px 0 18px;padding-left:12px;border-left:3px solid var(--rule);max-width:450px;}
+.toc{list-style:none;}
+.toc li{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid var(--rule);font-size:10pt;}
+.tn{font-family:'IBM Plex Mono',monospace;font-size:8pt;color:var(--accent);min-width:24px;font-weight:600;}
+.tt{margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:7pt;color:var(--mid);background:var(--light);padding:1px 6px;white-space:nowrap;}
+.cfoot{border-top:1px solid var(--rule);padding-top:9px;margin-top:12px;font-family:'IBM Plex Mono',monospace;font-size:7pt;color:var(--mid);display:flex;justify-content:space-between;}
+
+.ch{border-top:3px solid var(--accent);padding-top:8px;margin-bottom:11px;}
+.cn{font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.2em;text-transform:uppercase;color:var(--accent);margin-bottom:1px;}
+.ct{font-family:'Playfair Display',serif;font-size:18pt;line-height:1.15;color:var(--ink);margin-bottom:1px;}
+.cs{font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.1em;text-transform:uppercase;color:var(--mid);}
+h3{font-size:11pt;font-weight:600;margin:13px 0 5px;padding-left:9px;border-left:3px solid var(--accent);}
+p{margin-bottom:6px;font-size:10.5pt;}
+ul,ol{padding-left:17px;margin-bottom:7px;}
+li{margin-bottom:3px;font-size:10pt;line-height:1.55;}
+strong{font-weight:600;}
+hr.r{border:none;border-top:1px solid var(--rule);margin:11px 0;}
+
+.src{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:6.5pt;letter-spacing:.1em;text-transform:uppercase;padding:1px 5px;border-radius:2px;vertical-align:middle;margin-left:3px;font-weight:600;}
+.sb{background:#4a6fa5;color:#deeaff;}
+.sl{background:#b87808;color:#fff4d0;}
+
+.fm{background:var(--mono-bg);color:var(--mono-fg);font-family:'IBM Plex Mono',monospace;padding:12px 15px;margin:9px 0;font-size:9.5pt;line-height:2;border-left:4px solid var(--gold);}
+.fm .fl{font-size:6pt;letter-spacing:.2em;text-transform:uppercase;color:#777;margin-bottom:4px;}
+.fm .fh{color:#fff;font-weight:600;}
+.fm .fd{color:#999;}
+.fm .fg{color:#8ec98e;}
+.fm .fr{color:#e89090;}
+
+.wx{border:1.5px solid var(--rule);padding:13px 15px;margin:9px 0;background:var(--white);position:relative;}
+.wx::before{content:attr(data-label);position:absolute;top:-8px;left:11px;background:var(--accent);color:white;font-family:'IBM Plex Mono',monospace;font-size:6.5pt;letter-spacing:.12em;text-transform:uppercase;padding:2px 8px;}
+.wx p{font-size:10pt;margin-bottom:5px;}
+.sl-label{font-family:'IBM Plex Mono',monospace;font-size:8pt;color:var(--mid);display:block;margin-top:7px;margin-bottom:1px;letter-spacing:.08em;text-transform:uppercase;}
+.step{font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--navy);margin:2px 0;line-height:1.75;padding-left:10px;}
+.ans{font-family:'IBM Plex Mono',monospace;font-size:10pt;font-weight:600;color:var(--accent);margin:6px 0 2px;border-top:1px solid var(--rule);padding-top:5px;}
+.reveal{background:#f5f7ff;border-left:3px solid #4a6fa5;padding:7px 11px;margin-top:7px;font-size:9.5pt;color:var(--navy);}
+.reveal strong{color:var(--accent);}
+
+.key{background:var(--key-bg);border-left:4px solid var(--gold);padding:9px 13px;margin:9px 0;}
+.key .kl{font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);margin-bottom:3px;font-weight:600;}
+.key p,.key li{font-size:10pt;}
+.callout{border:2px solid var(--accent);color:var(--accent);padding:9px 13px;margin:9px 0;font-size:11pt;font-weight:600;line-height:1.5;}
+.warn{background:#fff4f4;border-left:4px solid var(--red-c);padding:9px 13px;margin:9px 0;font-size:10pt;}
+.good{background:#f3fff3;border-left:4px solid var(--green-c);padding:9px 13px;margin:9px 0;font-size:10pt;color:var(--green-c);}
+.src-blk{background:#f0f4ff;border-left:4px solid #4a6fa5;padding:10px 14px;margin:9px 0;}
+.src-blk .bl{font-family:'IBM Plex Mono',monospace;font-size:6.5pt;letter-spacing:.12em;text-transform:uppercase;color:#4a6fa5;margin-bottom:3px;font-weight:600;}
+.src-blk p{font-size:10pt;margin-bottom:4px;}
+
+table{width:100%;border-collapse:collapse;margin:9px 0;font-size:9.5pt;}
+th{background:var(--navy);color:#d8e8f8;padding:5px 9px;text-align:left;font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.08em;text-transform:uppercase;font-weight:600;}
+td{padding:5px 9px;border-bottom:1px solid var(--rule);vertical-align:top;}
+tr:nth-child(even) td{background:var(--white);}
+.tg{color:var(--green-c);font-weight:600;}
+.tr{color:var(--red-c);font-weight:600;}
+.to{color:#7a5800;font-weight:600;}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin:9px 0;}
+.col{border:1.5px solid var(--rule);padding:11px;background:var(--white);}
+.col h5{font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:var(--mid);margin-bottom:6px;}
+
+.chain{display:flex;align-items:flex-start;gap:11px;margin:8px 0;}
+.cnum{background:var(--accent);color:white;font-family:'IBM Plex Mono',monospace;font-size:9pt;font-weight:600;min-width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px;}
+.ccont{flex:1;}
+.ccont strong{display:block;font-size:10.5pt;margin-bottom:2px;}
+.ccont p{font-size:10pt;color:var(--mid);margin:0;}
+.carrow{text-align:center;font-size:16pt;color:var(--rule);margin:2px 0;}
+.tag{display:inline-block;background:var(--light);border:1px solid var(--rule);font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;margin:2px 2px 2px 0;color:var(--mid);}
+.pbtn{position:fixed;bottom:24px;right:24px;background:var(--accent);color:white;border:none;font-family:'IBM Plex Mono',monospace;font-size:8pt;letter-spacing:.1em;text-transform:uppercase;padding:11px 16px;cursor:pointer;box-shadow:3px 3px 0 var(--navy);z-index:100;}
+.pbtn:hover{background:var(--navy);}
+.sp{height:8px;}
+.sm{font-size:9pt;color:var(--mid);font-style:italic;}
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="page">
+  <div class="rule3"></div>
+  <div class="ey">Jim Taylor · Benchmark Sixty · Study Notes</div>
+  <div class="h1">How the Metrics<br><em>Actually Work</em></div>
+  <p class="cdesc">These notes build from zero. Every chapter builds on the last. By the end you can look at any shift's numbers and know exactly what story they are telling - and what to do about it. Sources are marked: <span class="src sb">Book</span> = <em>Bold Operations</em> (2024) &nbsp; <span class="src sl">LinkedIn</span> = Jim's LinkedIn posts.</p>
+  <div style="font-family:var(--mono);font-size:7.5pt;letter-spacing:.15em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;">Part 1 - Labor</div>
+  <ul class="toc">
+    <li><span class="tn">01</span> The Foundation - Covers, Hours, PPA, Wage Mix <span class="tt">Start Here</span></li>
+    <li><span class="tn">02</span> Labor % - What It Is and Why It Lies <span class="tt">The Problem</span></li>
+    <li><span class="tn">03</span> The 4 Inputs - Who Controls What <span class="tt">The Formula</span></li>
+    <li><span class="tn">04</span> CPLH - Covers Per Labor Hour <span class="tt">FOH Metric</span></li>
+    <li><span class="tn">05</span> CPLH In Action - Scheduling and the 28% Story <span class="tt">Applied</span></li>
+    <li><span class="tn">06</span> SPLH - Sales Per Labor Hour <span class="tt">BOH Metric</span></li>
+    <li><span class="tn">07</span> CPLH and SPLH Together <span class="tt">Both Metrics</span></li>
+    <li><span class="tn">08</span> Theoretical Labor - Your Real Target <span class="tt">The Target</span></li>
+    <li><span class="tn">09</span> The 60-Day Tracking Discipline <span class="tt">Build Your Data</span></li>
+    <li><span class="tn">10</span> Variance - The Gap <span class="tt">The Gap</span></li>
+    <li><span class="tn">11</span> The Optimal Productivity Zone <span class="tt">OPZ</span></li>
+    <li><span class="tn">12</span> Reading the Full Story <span class="tt">Everything Together</span></li>
+  </ul>
+  <div style="font-family:var(--mono);font-size:7.5pt;letter-spacing:.15em;text-transform:uppercase;color:var(--mid);margin:14px 0 8px;">Part 2 - Food Cost (coming soon)</div>
+  <ul class="toc" style="opacity:0.45;">
+    <li><span class="tn" style="color:var(--mid);">13</span> Dollar Contribution vs Food Cost % <span class="tt">Food Cost</span></li>
+    <li><span class="tn" style="color:var(--mid);">14</span> Menu Engineering <span class="tt">Stars &amp; Plowhorses</span></li>
+    <li><span class="tn" style="color:var(--mid);">15</span> Theoretical vs Actual Food Cost <span class="tt">Variance</span></li>
+  </ul>
+  <div class="cfoot">
+    <span>Bold Operations © 2024 Jim Taylor · benchmarksixty.com</span>
+    <span>LinkedIn posts 2024–2025</span>
+  </div>
+</div>
+
+
+<!-- CH01 FOUNDATION -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 01</div>
+    <div class="ct">The Foundation</div>
+    <div class="cs">The four raw inputs everything is built from</div>
+  </div>
+
+  <p>Before any metric makes sense you need to know the four building blocks. Everything Jim teaches is assembled from these.</p>
+
+  <h3>Cover - one guest served</h3>
+  <p>A table of 4 = 4 covers. Jim uses covers not tables because a table of 2 and a table of 6 are completely different amounts of work. Covers are honest. Tables aren't.</p>
+
+  <h3>Labor Hour - one person working one hour</h3>
+  <p>3 servers on a 6-hour shift = 18 labor hours. Every person, every hour, adds to the total.</p>
+
+  <div class="wx" data-label="Counting labor hours - Saturday dinner">
+    <div class="step">3 servers  × 6 hrs  =  18 hrs</div>
+    <div class="step">2 runners  × 5 hrs  =  10 hrs</div>
+    <div class="step">1 host     × 6 hrs  =   6 hrs</div>
+    <div class="step">1 manager  × 8 hrs  =   8 hrs</div>
+    <div class="ans">Total labor hours: 42 hours</div>
+  </div>
+
+
+  <hr class="r">
+
+  <h3>PPA - Per Person Average (average spend per guest)</h3>
+  <div class="fm">
+    <div class="fl">Formula</div>
+    <span class="fh">PPA = Total Sales ÷ Total Covers</span>
+  </div>
+
+  <div class="wx" data-label="PPA - Saturday dinner">
+    <div class="step">Sales: $14,440 &nbsp; Covers: 380</div>
+    <div class="ans">PPA = $14,440 ÷ 380 = $38.00 per guest</div>
+    <div class="reveal">If PPA drops from $38 to $30, revenue drops $3,040 on the same 380 guests - without a single fewer person walking in. That $8 is what the team failed to upsell, or what a rushed experience caused guests not to order.</div>
+  </div>
+
+  <hr class="r">
+
+  <h3>Wage Mix - blended average hourly rate across all roles</h3>
+
+  <div class="wx" data-label="Calculating blended wage mix - full team, upscale casual">
+    <div class="sl-label">FOH</div>
+    <div class="step">4 servers     @ $16.00/hr  =  $64.00</div>
+    <div class="step">2 runners     @ $16.00/hr  =  $32.00</div>
+    <div class="step">1 host        @ $16.00/hr  =  $16.00</div>
+    <div class="step">1 bartender   @ $16.00/hr  =  $16.00</div>
+    <div class="sl-label">BOH</div>
+    <div class="step">3 line cooks  @ $20.00/hr  =  $60.00</div>
+    <div class="step">2 prep cooks  @ $17.50/hr  =  $35.00</div>
+    <div class="step">2 dishwashers @ $16.50/hr  =  $33.00</div>
+    <div class="sl-label">Management</div>
+    <div class="step">1 manager     @ $26.00/hr  =  $26.00</div>
+    <div class="step">Total hourly cost: $282.00 ÷ 16 people</div>
+    <div class="ans">Blended wage mix: $17.62/hr</div>
+    <div class="reveal">This single number - $17.62 - is what goes into the labor % formula as "wage." Every role, every pay rate, collapsed into one blended average. Call in a $26 manager to cover a $16 server shift and that number moves. Add a line cook shift at $20 instead of a dishwasher at $16.50 and that number moves. Labor % moves with it - without a single cover or hour changing.</div>
+  </div>
+</div>
+
+
+<!-- CH02 LABOR % -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 02</div>
+    <div class="ct">Labor % - What It Is and Why It Lies</div>
+    <div class="cs">The most tracked number in restaurants and the most misunderstood</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">Bold Operations, Chapter Three <span class="src sb">Book</span></div>
+    <p>"Surprisingly, although several restaurants measure units of productivity, and almost all of them measure labor costs, few actually understand the importance of understanding how the two work together."</p>
+  </div>
+
+  <h3>What it calculates</h3>
+  <p>Labor % is a ratio. For every $100 of revenue, how many dollars went to paying the team? That is all it does. It does not tell you if the team worked hard, if the schedule was right, or if the operation was well run. It just shows you two dollar amounts as a ratio.</p>
+
+  <div class="fm">
+    <div class="fl">Step 1 - Basic formula</div>
+    <span class="fh">Labor % = Total Labor Cost ÷ Total Sales × 100</span><br>
+    <span class="fd">$20,400 labor ÷ $68,000 sales = 30%</span>
+  </div>
+
+  <div class="fm">
+    <div class="fl">Step 2 - Expand both sides</div>
+    <span class="fh">Labor Cost $ = Hours × Wage</span><br>
+    <span class="fh">Total Sales  = Covers × PPA</span><br><br>
+    <span class="fh">Labor % = (Hours × Wage) ÷ (Covers × PPA)</span>
+  </div>
+
+  <p>Now you can see what is actually inside the number. Four variables. Look at who controls each one:</p>
+
+  <table>
+    <thead><tr><th>Input</th><th>Who controls it</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Hours worked</strong></td><td>The manager - scheduling decision</td></tr>
+      <tr><td><strong>Wage mix</strong></td><td>Market rates and corporate pay bands</td></tr>
+      <tr><td><strong>Covers</strong></td><td>The guests - whether they walk in</td></tr>
+      <tr><td><strong>PPA</strong></td><td>The guests - what they choose to order</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn">A manager directly controls one of the four variables that produce labor %. Yet operators hold managers accountable for the output of all four. This is why good managers get blamed for numbers that were never in their hands.</div>
+
+  <h3>Why cutting labor % rarely fixes labor %</h3>
+
+  <div class="wx" data-label="The math of why cuts backfire">
+    <div class="sl-label">Starting position</div>
+    <div class="step">Sales:  $68,000 &nbsp; Labor: $20,400 &nbsp; Labor %: 30%</div>
+    <div class="step">Owner says: cut to 28%. That means cutting $1,360 in labor.</div>
+    <div class="sl-label">Manager cuts 40 hours × $19/hr = $760 saved</div>
+    <div class="step">New labor cost: $19,640</div>
+    <div class="step">Fewer staff → service slows → check-backs stop</div>
+    <div class="step">Guests skip second drinks and desserts → PPA drops</div>
+    <div class="step">Some regulars don't return → covers drop next week</div>
+    <div class="step">Sales fall to: $62,000</div>
+    <div class="ans">New labor %: $19,640 ÷ $62,000 = 31.7% - went UP</div>
+    <div class="reveal">The cut saved $760. It lost $6,000 in sales. The ratio got worse. Absolute profit got worse. The manager followed instructions and is now being blamed for 31.7%. This is the death spiral.</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Labor % is a scoreboard. Not a strategy. You can't schedule your way out of weak productivity. You can't cut your way to a better system."</p>
+  </div>
+</div>
+
+
+<!-- CH03 THE 4 INPUTS -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 03</div>
+    <div class="ct">The 4 Inputs</div>
+    <div class="cs">Change any one of these and labor % moves - even if nothing else changes</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"What actually drives labor spend: guest count, average spend, hours worked, wage mix. Change the inputs, the output follows. Keep staring at the percentage, and you'll keep getting the same results."</p>
+  </div>
+
+  <h3>Change one input - watch labor % move</h3>
+
+  <p>Base case: a real full-service restaurant week. <strong>400 covers · $42 PPA · 280 hours · $19 wage = $5,320 labor ÷ $16,800 sales = 31.7%.</strong> Change one input at a time:</p>
+
+  <table>
+    <thead><tr><th>Input</th><th>Change</th><th>Labor $</th><th>Sales $</th><th>Labor %</th><th>Direction</th></tr></thead>
+    <tbody>
+      <tr>
+        <td rowspan="2"><strong>Covers</strong><br><span style="font-size:8.5pt;color:#7a756e;">Manager cannot control</span></td>
+        <td>400 → 500</td><td>$5,320</td><td>$21,000</td><td class="tg">25.3% ↓</td><td>More guests, same cost</td>
+      </tr>
+      <tr>
+        <td>400 → 300</td><td>$5,320</td><td>$12,600</td><td class="tr">42.2% ↑</td><td>Fewer guests, same cost</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>PPA</strong><br><span style="font-size:8.5pt;color:#7a756e;">Manager cannot control</span></td>
+        <td>$42 → $52</td><td>$5,320</td><td>$20,800</td><td class="tg">25.6% ↓</td><td>Guests spent more</td>
+      </tr>
+      <tr>
+        <td>$42 → $32</td><td>$5,320</td><td>$12,800</td><td class="tr">41.6% ↑</td><td>Guests spent less</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>Hours</strong><br><span style="font-size:8.5pt;color:#275227;">Manager controls this</span></td>
+        <td>280 → 330</td><td>$6,270</td><td>$16,800</td><td class="tr">37.3% ↑</td><td>More hours, sales unchanged</td>
+      </tr>
+      <tr>
+        <td>280 → 230</td><td>$4,370</td><td>$16,800</td><td class="tg">26.0% ↓</td><td>Fewer hours - but does service hold?</td>
+      </tr>
+      <tr>
+        <td rowspan="2"><strong>Wage Mix</strong><br><span style="font-size:8.5pt;color:#7a756e;">Set by market/corporate</span></td>
+        <td>$19 → $23</td><td>$6,440</td><td>$16,800</td><td class="tr">38.3% ↑</td><td>Higher blended wage</td>
+      </tr>
+      <tr>
+        <td>$19 → $16</td><td>$4,480</td><td>$16,800</td><td class="tg">26.7% ↓</td><td>Lower blended wage</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="key">
+    <div class="kl">What this table exposes</div>
+    <p>Three of the four inputs - covers, PPA, wage - are largely outside a manager's control on any given shift. They can move labor % by 10+ percentage points through no action or fault of the manager. This is Jim's core argument: you cannot evaluate a manager against a number they barely control.</p>
+  </div>
+
+</div>
+
+
+<!-- CH04 CPLH -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 04</div>
+    <div class="ct">CPLH - Covers Per Labor Hour</div>
+    <div class="cs">What it measures, what it reveals, why Jim calls it the best FOH metric</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">Bold Operations, p.62 and p.66 <span class="src sb">Book</span></div>
+    <p>"Covers per labor hour - measures how many people are required to serve the number of guests visiting the restaurant... CPLH is the best metric to be used in the front of the house."</p>
+  </div>
+
+  <div class="fm">
+    <div class="fl">CPLH Formula</div>
+    <span class="fh">CPLH = Total Covers ÷ Total Labor Hours</span><br><br>
+    <span class="fg">Higher CPLH = more guests per hour of labor = more productive</span><br>
+    <span class="fr">Lower CPLH  = fewer guests per hour = overstaffed or slow</span>
+  </div>
+
+  <div class="wx" data-label="Calculating CPLH - Friday dinner shift">
+    <div class="step">Covers served:   380</div>
+    <div class="step">FOH hours:       5 servers×6hrs + 2 runners×5hrs + 1 host×6hrs = 46 hrs</div>
+    <div class="ans">CPLH = 380 ÷ 46 = 8.26 covers per labor hour</div>
+    <div class="reveal">8.26 means each FOH labor hour served just over 8 guests. Whether that is good depends on the concept and your OPZ (Chapter 10). For upscale casual, 8+ likely means the team is stretched - see the OPZ ceiling.</div>
+  </div>
+
+  <h3>Why CPLH is a better manager metric than labor %</h3>
+  <p>CPLH strips out money entirely. It only asks: how many guests did the team serve per hour of work? That removes the distortion from PPA (what guests ordered) and wage mix (what the market pays) - two things the manager cannot control. Same covers, same hours, same team - watch what happens when PPA shifts.</p>
+
+  <div class="wx" data-label="Same manager, same schedule - labor % swings, CPLH holds">
+    <div class="sl-label">Week A - guests engaged fully · 800 covers · 515 total hrs · $17.62 blended wage</div>
+    <div class="step">CPLH:     800 ÷ 160 FOH hrs = 5.0</div>
+    <div class="step">Labor $:  515 × $17.62 = $9,074</div>
+    <div class="step">PPA:      $42 (guests ordered drinks, appetizers, desserts)</div>
+    <div class="step">Sales:    800 × $42 = $33,600</div>
+    <div class="ans">Labor %: $9,074 ÷ $33,600 = 27.0%</div>
+
+    <hr style="border:none;border-top:1px solid var(--rule);margin:7px 0">
+
+    <div class="sl-label">Week B - same covers, same hours, same team - guests pulled back on spend</div>
+    <div class="step">CPLH:     800 ÷ 160 FOH hrs = 5.0  ← identical</div>
+    <div class="step">Labor $:  515 × $17.62 = $9,074  ← identical</div>
+    <div class="step">PPA:      $31 (guests skipped second drinks and desserts)</div>
+    <div class="step">Sales:    800 × $31 = $24,800  ← $8,800 less revenue, same guest count</div>
+    <div class="ans">Labor %: $9,074 ÷ $24,800 = 36.6% ← jumped 9.6 points</div>
+    <div class="reveal">CPLH held at 5.0 both weeks. The manager scheduled identically, deployed identically, served the same number of guests. Labor % jumped 9.6 points because guests chose to spend less. If you evaluate this manager on labor %, Week B is a crisis. CPLH tells the truth: nothing changed on the operations side. The metric moved because of what guests decided to order.</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Covers per labor hour tells you if scheduling was right. Labor % tells you if guests showed up and spent money. One measures management. One measures the business."</p>
+  </div>
+
+  <h3>CPLH ranges by concept type</h3>
+  <table>
+    <thead><tr><th>Concept</th><th>Typical CPLH</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Fine Dining</td><td>2.0 – 3.5</td><td>Long stays, many service touches, low turns</td></tr>
+      <tr><td>Casual / Upscale Casual</td><td>3.5 – 6.0</td><td>Balanced volume and service</td></tr>
+      <tr><td>High Volume Casual</td><td>5.0 – 8.0</td><td>Faster turns, simpler service</td></tr>
+      <tr><td>Fast Casual / Counter</td><td>8.0 – 15.0+</td><td>Minimal table service, high throughput</td></tr>
+    </tbody>
+  </table>
+  <p class="sm">No universal correct CPLH. Your target comes from your OPZ data - Chapter 10.</p>
+
+  <h3>What a 0.63 CPLH gap costs in real life</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Two restaurants. Same brand. Same volume. Same wage rate. Location A: 4.99 guests per labor hour, $19 PPA. Location B: 4.36 guests per labor hour, $17 PPA. That's it. That's the whole story. One location is simply more productive. Not because of who's running it. Because of how it's being run."</p>
+  </div>
+
+  <div class="wx" data-label="Same wage - two different operations - 5-point labor gap">
+    <div class="sl-label">Location A - more productive</div>
+    <div class="step">CPLH: 4.99 &nbsp; PPA: $19 &nbsp; Labor: 19.7%</div>
+    <div class="sl-label">Location B - less productive</div>
+    <div class="step">CPLH: 4.36 &nbsp; PPA: $17 &nbsp; Labor: 24.6%</div>
+    <div class="ans">Gap: 5 labor points. Same brand. Same wage. Same market.</div>
+    <div class="reveal">The gap is entirely explained by two CPLH/PPA differences. Location B serves 0.63 fewer covers per labor hour and each guest spends $2 less. No wage advantage exists - the entire 5-point labor gap is a productivity and service execution gap. Jim's math: a 5% improvement in productivity across both locations equals roughly $6K per week - $300K+ annualized.</div>
+  </div>
+
+  <div class="callout">Labor % is a scoreboard. Not a strategy. Location B's 24.6% isn't a wage problem. It is not a staffing problem. It is a productivity problem. CPLH names it. Labor % never could.</div>
+</div>
+
+
+<!-- CH05 CPLH IN ACTION -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 05</div>
+    <div class="ct">CPLH In Action</div>
+    <div class="cs">How it is used to schedule - and what it reveals that labor % cannot</div>
+  </div>
+
+  <h3>Point 1 - Why scheduling to revenue fails</h3>
+  <p>Most managers look at last Friday's $18,000 in sales and schedule enough staff to handle $18,000. Jim says this is the wrong input. Revenue tells you nothing about how many people are walking in. The same $18,000 comes from two completely different nights:</p>
+
+  <div class="wx" data-label="Same revenue - two completely different staffing needs">
+    <div class="sl-label">Night A - 450 guests at $40 PPA = $18,000</div>
+    <div class="step">At 5.0 CPLH: 450 ÷ 5.0 = 90 FOH hours needed</div>
+    <div class="sl-label">Night B - 300 guests at $60 PPA = $18,000</div>
+    <div class="step">At 5.0 CPLH: 300 ÷ 5.0 = 60 FOH hours needed</div>
+    <div class="ans">Same $18,000. One needs 90 hours. One needs 60 hours.</div>
+    <div class="reveal">If you scheduled 75 hours to a $18,000 revenue target - Night A is 15 hours short, team overwhelmed, service breaks. Night B is 15 hours over, team idle, labor bleeds. Revenue gave the wrong answer both times. Cover count gives the right answer every time.</div>
+  </div>
+
+  <div class="key">
+    <div class="kl">The correct scheduling formula</div>
+    <p><strong>Required Hours = Expected Covers ÷ Target CPLH</strong></p>
+    <p>Forecast your covers from historical same-day data. Apply your CPLH target. That gives you the hours to schedule. Build the shift from those hours - not from a revenue guess.</p>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Stop scheduling to revenue. You're wasting time on something you can't control. Schedule to guest count instead. You don't control what guests order. You control how many people you put on the floor. And you can forecast how many guests walk through the door. That's it."</p>
+  </div>
+
+  <hr class="r">
+
+  <h3>Point 2 - Same 28%, two completely different operations</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn - verbatim <span class="src sl">LinkedIn</span></div>
+    <p>"Two restaurants. Same labor %. Restaurant A: 28% labor. Overstaffed by 40 hours. Covers came in hot and saved them. Got lucky. Restaurant B: 28% labor. Scheduled perfectly to demand. Covers came in exactly as expected. Executed smoothly. Same number. Completely different operations. Labor % can't tell you the difference."</p>
+  </div>
+
+  <p>These are two separate restaurants. Same brand. Same week. Both landed at 28% by the end of it. But they got there by completely different paths - because one applied Point 1 and one didn't.</p>
+
+  <p>Restaurant A did not schedule to covers with CPLH. They carried too many hours all week without grounding them in a cover forecast. That overstaffing is the direct cause of their problem. Restaurant B did exactly what Point 1 describes - they forecasted their covers from history, applied their CPLH target, and scheduled the right hours. When their forecast came in accurately, the model held.</p>
+
+  <p>B's 480 covers was not a surprise to them. It was the plan - their history told them to expect 480 that week. A's 480 was the lucky accident that rescued a bloated schedule.</p>
+
+  <p>Here is the math underneath each one. Read the CPLH number at the end of each - that is the only number that reveals which operation is in control.</p>
+
+  <div class="wx" data-label="Restaurant A - 28% labor, overstaffed, saved by a hot cover week">
+    <div class="sl-label">How the week was built - forecasted 400 covers, kept too many staff on</div>
+    <div class="step">Cover forecast:        400 for the week</div>
+    <div class="step">Should have scheduled: 400 ÷ 5.0 CPLH = 80 FOH hours</div>
+    <div class="step">Actually kept on:      120 FOH hours - 40 hours overstaffed all week</div>
+    <div class="step">Total hours:           283 &nbsp; Wage: $19/hr &nbsp; Labor $: 283 × $19 = $5,377</div>
+    <div class="sl-label">What happened - 480 covers walked in, not 400</div>
+    <div class="step">Actual covers:   480 (a hot week - 80 more guests than expected)</div>
+    <div class="step">PPA: $40 &nbsp; Sales: 480 × $40 = $19,200</div>
+    <div class="ans">Labor %: $5,377 ÷ $19,200 = 28.0%</div>
+    <div class="sl-label">Now check CPLH</div>
+    <div class="step">FOH CPLH: 480 covers ÷ 120 FOH hrs = 4.0 - below the 5.0 OPZ target</div>
+    <div class="step">Too many people on the floor all week. Labor was bleeding. Covers rescued it.</div>
+    <div class="reveal"><strong>The 28% was luck.</strong> The 40 extra hours that were kept on all week should have pushed labor % to 33.6% - that is what the number would have been if only 400 covers had come in as forecast: $5,377 ÷ (400 × $40 = $16,000) = 33.6%. The 80 extra guests inflated the sales denominator and made the number look fine. Next week when it's a normal week, this restaurant is at 33–34%.</div>
+  </div>
+
+  <div class="wx" data-label="Restaurant B - 28% labor, scheduled to demand, earned it">
+    <div class="sl-label">How the week was built - forecasted 480 covers, scheduled correctly</div>
+    <div class="step">Cover forecast:        480 for the week</div>
+    <div class="step">Scheduled:             480 ÷ 5.0 CPLH = 96 FOH hours - right number</div>
+    <div class="step">Total hours:           283 &nbsp; Wage: $19/hr &nbsp; Labor $: 283 × $19 = $5,377</div>
+    <div class="sl-label">What happened - 480 covers, exactly as forecast</div>
+    <div class="step">Actual covers:   480 (exactly as planned)</div>
+    <div class="step">PPA: $40 &nbsp; Sales: 480 × $40 = $19,200</div>
+    <div class="ans">Labor %: $5,377 ÷ $19,200 = 28.0%</div>
+    <div class="sl-label">Now check CPLH</div>
+    <div class="step">FOH CPLH: 480 covers ÷ 96 FOH hrs = 5.0 - exactly on target</div>
+    <div class="step">Right number of people all week. Team productive. Service consistent.</div>
+    <div class="reveal"><strong>The 28% was designed.</strong> Same model next week gives the same result. If the cover forecast is off, CPLH shows it during the week - not on the P&L a month later. This operation is in control.</div>
+  </div>
+
+  <div class="callout">Both: 28.0%. Same hours. Same labor $. Same sales. Same week. Labor % sees two identical restaurants. CPLH sees 4.0 vs 5.0 - one team overstaffed and bailed out by lucky volume, one team right on target. One number was luck. One was design.</div>
+
+</div>
+<!-- CH06 SPLH -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 06</div>
+    <div class="ct">SPLH - Sales Per Labor Hour</div>
+    <div class="cs">Revenue generated per hour of labor - Jim's best BOH metric</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">Bold Operations, p.62 and p.66 <span class="src sb">Book</span></div>
+    <p>"Sales per labor hour - measures how much revenue is generated for each hour of work... SPLH is the best metric to be used in the back of the house."</p>
+  </div>
+
+  <div class="fm">
+    <div class="fl">SPLH Formula</div>
+    <span class="fh">SPLH = Total Sales ÷ Total Labor Hours</span><br><br>
+    <span class="fd">$22,400 sales ÷ 88 BOH hours = $254.55 SPLH</span><br>
+    <span class="fd">Every BOH labor hour generated $254.55 in revenue.</span>
+  </div>
+
+  <div class="wx" data-label="Calculating SPLH - Saturday dinner BOH">
+    <div class="step">Total sales:    $22,400</div>
+    <div class="step">Total BOH hrs:  88 hours (line cooks, prep, dishwashers)</div>
+    <div class="ans">SPLH = $22,400 ÷ 88 = $254.55 per BOH labor hour</div>
+    <div class="reveal">Every BOH labor hour this Saturday produced $254.55 in revenue. Track this across weeks and you will see which shifts the kitchen is fully productive vs which ones drag. A drop in SPLH with consistent covers means the kitchen is taking longer per ticket, remakes are climbing, or BOH was overstaffed for the volume.</div>
+  </div>
+
+  <h3>Why SPLH belongs in the kitchen</h3>
+  <p>The kitchen produces food, not covers. A single order can feed 1 person or 6. CPLH is harder to apply to BOH because ticket complexity varies. SPLH is cleaner for the kitchen - every station's output ultimately converts to sales, so revenue per hour is the right lens.</p>
+
+  <div class="key">
+    <div class="kl">The rule from the book</div>
+    <p>CPLH for FOH. SPLH for BOH. They are measuring the same concept - productivity per labor hour - applied to the part of the operation that makes most sense for each metric. <span class="src sb">Book p.66</span></p>
+  </div>
+</div>
+
+
+<!-- CH07 CPLH AND SPLH TOGETHER -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 07</div>
+    <div class="ct">CPLH and SPLH Together</div>
+    <div class="cs">Reading both metrics at the same time - they tell different parts of the same story</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">Bold Operations, p.65 <span class="src sb">Book</span></div>
+    <p>"They are often spoken about independently from other areas of the business, however opportunities are often missed when they are left on their own."</p>
+  </div>
+
+  <p>When CPLH and SPLH move in different directions, something specific happened. Here are the four combinations:</p>
+
+  <table>
+    <thead><tr><th>CPLH</th><th>SPLH</th><th>What the data is saying</th><th>What to investigate</th></tr></thead>
+    <tbody>
+      <tr><td class="tg">On target</td><td class="tg">On target</td><td>Everything working. Right covers, right spend.</td><td>Document this shift. Replicate it.</td></tr>
+      <tr><td class="tg">On target</td><td class="tr">Below target</td><td>Right cover count, guests spent less than expected.</td><td>PPA dropped. Upselling issue or rushed service.</td></tr>
+      <tr><td class="tr">Below target</td><td class="tg">On target</td><td>Fewer covers but each guest spent more.</td><td>Volume problem, not an execution problem. Fix the forecast.</td></tr>
+      <tr><td class="tr">Below target</td><td class="tr">Below target</td><td>Fewer covers AND less spend.</td><td>Check external cause first - weather, event nearby, day of week anomaly.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="wx" data-label="Reading both metrics - Wednesday dinner">
+    <div class="step">Target CPLH: 5.0   Actual CPLH: 4.1  ← below</div>
+    <div class="step">Target SPLH: $200   Actual SPLH: $218  ← above</div>
+    <div class="ans">Fewer covers than expected. But each guest who came in spent more than usual.</div>
+    <div class="reveal">This is not a team performance problem. SPLH above target means the team executed well - every guest who came in was served properly and spent generously. CPLH below target means the restaurant was slightly overstaffed for the actual volume. The fix is in the forecast, not on the floor. The team had a good night.</div>
+  </div>
+
+</div>
+
+
+<!-- CH08 THEORETICAL LABOR -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 08</div>
+    <div class="ct">Theoretical Labor</div>
+    <div class="cs">What your labor should cost - calculated from your actual inputs, not borrowed from anywhere</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Theoretical labor cost = (Hours × Avg Wage) ÷ (Covers × Avg Spend). That's the number your manager should be measured against. Not a guess. Not a benchmark. Not last year."</p>
+  </div>
+
+  <h3>What it is</h3>
+  <p>Theoretical labor is the answer to: if everything went perfectly - right hours scheduled, right team deployed, at your actual wage rates and actual PPA - what would labor % be? This is your floor. The minimum achievable without compromising service.</p>
+
+  <h3>Why it matters - the walk-in tears story</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Their labor was running 31%. Target was 27%. On paper, they were failing. But here's what nobody looked at: their average wage was $21/hour. The location across town? $18/hour. Same brand. Same target. Completely different math."</p>
+  </div>
+
+  <div class="wx" data-label="Proving the manager was right - full calculation">
+    <div class="sl-label">Both locations - shared inputs</div>
+    <div class="step">200 covers · $45 PPA · 126 total labor hours</div>
+    <div class="step">Sales: 200 × $45 = $9,000</div>
+    <div class="step">FOH hours (~40% of total): 50 hrs → FOH CPLH: 200 ÷ 50 = 4.0 ✓</div>
+
+    <hr style="border:none;border-top:1px solid var(--rule);margin:8px 0">
+
+    <div class="sl-label">Her location - $21/hr wages</div>
+    <div class="step">Theoretical labor $: 126 × $21 = $2,646</div>
+    <div class="step">Theoretical labor %: $2,646 ÷ $9,000 = <strong>29.4%</strong></div>
+    <div class="step">She was running 31%. Variance: 31 − 29.4 = <strong>1.6 points</strong></div>
+    <div class="reveal">1.6 points. Fixable. But the corporate target was 27% - a number that sat 2.4 points below her mathematical floor. She could not hit 27%. The math made it impossible. She was being evaluated against a target that was never achievable at her wage rate.</div>
+
+    <hr style="border:none;border-top:1px solid var(--rule);margin:8px 0">
+
+    <div class="sl-label">The other manager - $18/hr wages, same everything else</div>
+    <div class="step">Theoretical labor $: 126 × $18 = $2,268</div>
+    <div class="step">Theoretical labor %: $2,268 ÷ $9,000 = <strong>25.2%</strong></div>
+    <div class="step">He was running 28%. Variance: 28 − 25.2 = <strong>2.8 points</strong></div>
+    <div class="reveal">2.8 points - nearly twice her gap. But his floor sat 1.8 points below the 27% corporate target. He had room. She didn't. He was being celebrated. She was in tears in the walk-in. Same company. Same target. Completely different math.</div>
+  </div>
+
+  <div class="callout">Theoretical labor shows you what is actually possible. Without it you are evaluating people against a number that was never built for their reality.</div>
+
+  <p>Now you know what theoretical labor is and why it matters. The question is: how do you build the data to calculate it for <em>your</em> restaurant? That is what Chapter 09 covers.</p>
+
+</div>
+
+
+<!-- CH09 60-DAY TRACKING DISCIPLINE -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 09</div>
+    <div class="ct">The 60-Day Tracking Discipline</div>
+    <div class="cs">How to build the data foundation that makes your theoretical labor target real</div>
+  </div>
+
+  <div class="key">
+    <div class="kl">The goal</div>
+    <ul>
+      <li>Acquire your restaurant's realistic weekly labor percentage target</li>
+      <li>Acquire your target CPLH and SPLH for your team and your concept</li>
+    </ul>
+    <p style="margin-top:7px;">This is done without changing anything operationally yet, and without optimizing for anything yet. You are observing. You are building a picture of what your operation actually is.</p>
+  </div>
+
+  <h3>What you track - across dayparts, every shift</h3>
+
+  <p>Over 60 days you track five numbers across every daypart - lunch, dinner, late night:</p>
+
+  <div class="two">
+    <div class="col">
+      <h5>FOH metrics</h5>
+      <ul>
+        <li><strong>Covers</strong> - how many guests per daypart</li>
+        <li><strong>PPA</strong> - what each guest spent</li>
+        <li><strong>CPLH</strong> - covers per FOH labor hour</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h5>BOH metrics</h5>
+      <ul>
+        <li><strong>SPLH</strong> - sales per BOH labor hour</li>
+      </ul>
+    </div>
+  </div>
+  <div style="border:1.5px solid var(--rule);padding:9px 11px;background:var(--white);margin-top:-2px;">
+    <h5 style="font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.12em;text-transform:uppercase;color:var(--mid);margin-bottom:6px;">Whole team - FOH + BOH + Management</h5>
+    <ul style="margin:0;padding-left:17px;">
+      <li><strong>Blended Wage</strong> - your actual wage mix across every role, every shift</li>
+    </ul>
+  </div>
+
+  <div class="key">
+    <div class="kl">Why dayparts and not just daily totals</div>
+    <p>Lunch and dinner are different businesses. A strong dinner can mask a bleeding lunch every day of the week and your daily total will look fine. Tracking by daypart gives you the resolution to see which shift is consistently off target. That is what makes your targets precise - and what makes variance actionable later in Chapter 10.</p>
+  </div>
+
+  <h3>What you are looking for</h3>
+
+  <p>Over those 60 days you are analyzing when BOH and FOH were performing their best on the floor. The key indicator is when three things are high together: CPLH, SPLH, and PPA. On the floor you already know what that shift feels like - good pacing, clean ticket times, table touches happening, plates cleared, floor looking sharp. Guests are engaged. The team is moving but not scrambling. On paper, that shift shows up as high CPLH, high SPLH, high PPA all at once. Those are the days you build your targets from.</p>
+
+  <div class="wx" data-label="Reading your 60-day data - what a strong shift looks like">
+    <div class="sl-label">The pattern you are identifying</div>
+    <div class="step">CPLH is high - FOH is productive, right number of people for the covers</div>
+    <div class="step">SPLH is high - BOH is producing efficiently, kitchen not backed up or overstaffed</div>
+    <div class="step">PPA is high - guests are being attended to, upsells are happening, service is not rushed</div>
+    <div class="ans">When all three are high together - that is your team at their best</div>
+    <div class="reveal">You are not looking for your best single day. You are looking for the range where your team was consistently comfortable and productive. From that range you set your target CPLH and target SPLH. These become the inputs that build your theoretical labor %.</div>
+  </div>
+
+  <h3>Why 60 days - the replication problem</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"I reviewed 300 days of data for a client last week. On their best days, they were hitting 5.28 guests per labor hour, $103 SPLH, $19.67 average check, and 17.73% labor. On their worst days? 3.51 guests per labor hour. $67 SPLH. 33% labor. Same building. Same team. The gap between best and worst cost them $11,300 in less than a month. But here's the part that should worry you: they didn't know why Wednesday worked. They just knew it did. That means it was an accident. And you can't build a business on accidents."</p>
+  </div>
+
+  <p>60 days is not arbitrary. It is the minimum before your data stops being a collection of accidents and starts being a pattern you can trust. Two good Wednesdays do not give you a CPLH target - they give you a false floor. You need enough days to see both ends of what your operation actually does, not just what it does when everything goes right.</p>
+
+  <div class="warn">A CPLH target built from too few days is just your best Wednesday disguised as a standard. Track long enough to see the full range. Your target lives somewhere inside it.</div>
+
+  <h3>How it assembles into your theoretical labor %</h3>
+
+  <p>Once you have 60 days of data and have identified your target CPLH and SPLH, here is how those numbers build your theoretical labor %.</p>
+
+  <div class="wx" data-label="Step 0 - Convert your 60-day totals into a weekly forecast">
+    <div class="step">60-day total covers:    10,286</div>
+    <div class="step">Weeks in 60 days:       60 ÷ 7 = 8.57 weeks</div>
+    <div class="step">Average weekly covers:  10,286 ÷ 8.57 = <strong>1,200 covers per week</strong></div>
+    <div class="reveal">That 1,200 is your forecasted covers input. It is not a guess - it is your own operation averaged across 60 days of real trading. Every other input - PPA, CPLH, SPLH, Blended Wage - is already an average and feeds directly into the formula below.</div>
+  </div>
+
+  <!-- INPUTS PANEL -->
+  <div class="two" style="margin-bottom:4px;">
+    <div class="col">
+      <h5>Your FOH inputs</h5>
+      <div class="step">Forecasted Covers &nbsp;→&nbsp; <strong>1,200</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(10,286 ÷ 8.57 weeks)</span></div>
+      <div class="step">Target CPLH &nbsp;→&nbsp; <strong>4.5</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(from your best sustainable daypart range)</span></div>
+      <div class="step">PPA &nbsp;→&nbsp; <strong>$42</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(your 60-day average spend per guest)</span></div>
+      <div class="step">FOH Wage &nbsp;→&nbsp; <strong>$16.50/hr</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(servers, runners, host, FOH managers)</span></div>
+    </div>
+    <div class="col">
+      <h5>Your BOH inputs</h5>
+      <div class="step">Target SPLH &nbsp;→&nbsp; <strong>$180</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(from your best sustainable daypart range)</span></div>
+      <div class="step">BOH Wage &nbsp;→&nbsp; <strong>$21.35/hr</strong> &nbsp;<span style="color:var(--mid);font-size:9pt;">(line cooks, prep, dishwashers, BOH managers)</span></div>
+    </div>
+  </div>
+
+  <!-- FORMULA CHAIN -->
+  <div class="chain">
+    <div class="cnum">1</div>
+    <div class="ccont">
+      <strong>Required FOH Hours</strong>
+      <p>Forecasted Covers ÷ Target CPLH<br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">1,200 ÷ 4.5 = <strong>267 FOH hours</strong></span></p>
+    </div>
+  </div>
+  <div class="carrow">↓</div>
+
+  <div class="chain">
+    <div class="cnum">2</div>
+    <div class="ccont">
+      <strong>Required BOH Hours</strong>
+      <p>Forecasted Sales ÷ Target SPLH &nbsp;<span style="color:var(--mid);font-size:9pt;">(Forecasted Sales = Covers × PPA)</span><br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">(1,200 × $42 PPA = $50,400) ÷ $180 SPLH = <strong>280 BOH hours</strong></span></p>
+    </div>
+  </div>
+  <div class="carrow">↓</div>
+
+  <div class="chain">
+    <div class="cnum">3</div>
+    <div class="ccont">
+      <strong>Theoretical Labor $ - FOH and BOH separately</strong>
+      <p>FOH Hours × FOH Wage &nbsp;+&nbsp; BOH Hours × BOH Wage<br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">267 × $16.50 = $4,405 &nbsp;(FOH)</span><br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">280 × $21.35 = $5,978 &nbsp;(BOH)</span><br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">Total theoretical labor $: $4,405 + $5,978 = <strong>$10,383</strong></span></p>
+    </div>
+  </div>
+  <div class="carrow">↓</div>
+
+  <div class="chain">
+    <div class="cnum">4</div>
+    <div class="ccont">
+      <strong>Theoretical Labor % - FOH, BOH, and Total</strong>
+      <p>FOH Labor $ ÷ Forecasted Sales &nbsp;·&nbsp; BOH Labor $ ÷ Forecasted Sales<br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">FOH: $4,405 ÷ $50,400 = <strong>8.7%</strong></span><br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">BOH: $5,978 ÷ $50,400 = <strong>11.9%</strong></span><br>
+      <span style="font-family:'IBM Plex Mono',monospace;font-size:9pt;color:var(--accent);">Total: 8.7 + 11.9 = <strong>20.6%</strong></span></p>
+    </div>
+  </div>
+
+  <div class="reveal" style="margin-top:10px;">20.6% is your floor - 8.7% FOH and 11.9% BOH. Built from your covers, your PPA, your target CPLH, your target SPLH, your FOH and BOH wages. Not borrowed from a benchmark. Not copied from another location. Built from 60 days of your own operation. When variance appears you know immediately which side of the house to look at first.</div>
+
+  <h3>What this looks like tracked across 60 days</h3>
+  <p>Below is what the two tracking spreadsheets look like after 60 days of shift data - one for CPLH by daypart, one for SPLH by daypart. These are the sheets you are building during the discipline period. The patterns in them are what your targets come from.</p>
+
+  <div style="border:2px dashed var(--rule);padding:20px 18px;margin:9px 0;background:var(--white);text-align:center;">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:7pt;letter-spacing:.15em;text-transform:uppercase;color:var(--mid);margin-bottom:10px;">Screenshot Placeholder</div>
+    <div style="font-size:10pt;color:var(--mid);line-height:1.8;">
+      <strong style="color:var(--ink);display:block;margin-bottom:6px;">Insert: CPLH Tracking Spreadsheet (Excel)</strong>
+      Daily covers, FOH hours, CPLH per shift by daypart - 60 days. OPZ band highlighted. Target line at 4.5.
+    </div>
+    <div style="height:1px;background:var(--rule);margin:12px 0;"></div>
+    <div style="font-size:10pt;color:var(--mid);line-height:1.8;">
+      <strong style="color:var(--ink);display:block;margin-bottom:6px;">Insert: SPLH Tracking Spreadsheet (Excel)</strong>
+      Daily sales, BOH hours, SPLH per shift by daypart - 60 days. Target SPLH line. PPA column alongside.
+    </div>
+  </div>
+
+</div>
+
+
+<!-- CH10 VARIANCE -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 10</div>
+    <div class="ct">Variance - The Gap</div>
+    <div class="cs">Manage the variance, not the %. The weekly labor calculation that shows you exactly where the hours went.</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"If you want to make more profit. Manage the variance. Not the %."</p>
+  </div>
+
+  <h3>The three-part model</h3>
+  <p>Jim's framing is precise. There are three things to know about your labor. Most operators only track one. That's the problem.</p>
+
+  <div class="fm">
+    <div class="fl">Jim Taylor - LinkedIn</div>
+    <span class="fh">Theoretical  =  What should happen</span><br>
+    <span class="fh">Actual       =  What actually happened</span><br>
+    <span class="fh">The Gap      =  Management opportunity</span><br><br>
+    <span class="fd">Variance = Actual Labor % − Theoretical Labor %</span><br><br>
+    <span class="fg">0 points      → Perfect. Hours matched the model exactly.</span><br>
+    <span class="fg">+1 to 2 pts   → Small. Normal variation. Watch it weekly.</span><br>
+    <span class="fd">+3 to 5 pts   → Meaningful. Find the cause this week.</span><br>
+    <span class="fr">+5 pts+       → Large. Significant money leaving the building.</span>
+  </div>
+
+  <h3>What a 4-point gap actually costs</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"If theoretical labor is 15% and actual is 19%, that 4-point gap isn't a wage problem. It's a productivity management gap."</p>
+  </div>
+
+  <div class="wx" data-label="Jim's example - translated to dollars">
+    <div class="step">Sales:                      $50,000 this week</div>
+    <div class="step">Theoretical labor (15%):    $50,000 × 0.15 = $7,500</div>
+    <div class="step">Actual labor (19%):         $50,000 × 0.19 = $9,500</div>
+    <div class="ans">Gap: $2,000 this week - $104,000 annualised</div>
+    <div class="reveal">$104,000 a year. No new staff hired. No wage increases. Just the gap between what the model required and what actually got scheduled and deployed. That is a productivity management gap - not a cost problem. The fix is operational, not financial.</div>
+  </div>
+
+  <h3>Full weekly variance - built from Chapter 09</h3>
+  <p>This is the same restaurant from Chapter 09. The theoretical baseline was built from real inputs. Now the week is over and the actuals are in. Here is how you run the calculation.</p>
+
+  <div class="two" style="align-items:start;">
+    <div class="col">
+      <h5>Theoretical baseline (Chapter 09)</h5>
+      <div class="step">Covers:          1,200</div>
+      <div class="step">CPLH target:     4.5</div>
+      <div class="step">SPLH target:     $180</div>
+      <div class="step">PPA:             $42</div>
+      <div class="step">FOH hours:       267 &nbsp;·&nbsp; FOH wage: $16.50</div>
+      <div class="step">BOH hours:       280 &nbsp;·&nbsp; BOH wage: $21.35</div>
+      <div class="step">FOH labor $:     267 × $16.50 = $4,405</div>
+      <div class="step">BOH labor $:     280 × $21.35 = $5,978</div>
+      <div class="step">Total labor $:   $10,383</div>
+      <div class="step">Sales:           1,200 × $42 = $50,400</div>
+      <div class="ans">FOH floor: 8.7% &nbsp;·&nbsp; BOH floor: 11.9% &nbsp;·&nbsp; Total: 20.6%</div>
+    </div>
+    <div class="col">
+      <h5>What actually happened</h5>
+      <div class="step">Covers:          1,140 &nbsp;<span style="color:var(--red-c)">−60</span></div>
+      <div class="step">CPLH actual:     1,140 ÷ 280 = <span style="color:var(--red-c)">4.07</span></div>
+      <div class="step">SPLH actual:     $47,880 ÷ 290 = <span style="color:var(--red-c)">$165.10</span></div>
+      <div class="step">PPA:             $42 &nbsp;<span style="color:var(--green-c)">held</span></div>
+      <div class="step">FOH hours:       280 &nbsp;<span style="color:var(--red-c)">model needed 253</span></div>
+      <div class="step">BOH hours:       290 &nbsp;<span style="color:var(--red-c)">+10 overtime</span></div>
+      <div class="step">FOH labor $:     280 × $16.50 = $4,620</div>
+      <div class="step">BOH labor $:     290 × $21.35 = $6,192</div>
+      <div class="step">Total labor $:   $10,812</div>
+      <div class="step">Sales:           1,140 × $42 = $47,880</div>
+      <div class="ans">FOH: 9.7% <span style="color:var(--red-c)">↑1.0</span> &nbsp;·&nbsp; BOH: 12.9% <span style="color:var(--red-c)">↑1.0</span> &nbsp;·&nbsp; Total: 22.6% <span style="color:var(--red-c)">↑2.0 pts</span></div>
+    </div>
+  </div>
+  <div class="reveal" style="margin-top:4px;">2.0 points on $47,880 = $958 above the floor this week. Annualised: $49,816. The split tells you immediately: both FOH and BOH drifted equally - a cover shortfall hit both sides. Now the question is: which of the five levers moved, and why?</div>
+
+  <h3>The diagnostic - tracing which input moved</h3>
+  <p>Variance tells you something went wrong. The five levers below tell you exactly what. Each moves labor % in a specific direction for a specific reason. Each has a different fix. FOH and BOH are shown separately so you know immediately which side of the house to look at. All numbers use the same 1,200-cover baseline from Chapter 09.</p>
+
+  <!-- LEVER CARDS CSS injected inline for scoped styling -->
+  <style>
+    .lever-group { margin: 10px 0; }
+    .lever-group-label { font-family:'IBM Plex Mono',monospace; font-size:7pt; letter-spacing:.15em; text-transform:uppercase; color:var(--mid); margin-bottom:6px; padding-left:2px; }
+    .lever-pair { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+    .lever-card { border:1.5px solid var(--rule); background:var(--white); padding:10px 12px; position:relative; }
+    .lever-card.up { border-left:4px solid var(--green-c); }
+    .lever-card.down { border-left:4px solid var(--red-c); }
+    .lever-badge { display:inline-block; font-family:'IBM Plex Mono',monospace; font-size:8pt; font-weight:700; padding:1px 7px; border-radius:2px; margin-bottom:6px; }
+    .lever-badge.up { background:#f3fff3; color:var(--green-c); }
+    .lever-badge.down { background:#fff4f4; color:var(--red-c); }
+    .lever-title { font-weight:600; font-size:10pt; margin-bottom:4px; }
+    .lever-before-after { background:var(--mono-bg); color:var(--mono-fg); font-family:'IBM Plex Mono',monospace; font-size:8pt; padding:7px 9px; margin:6px 0; line-height:1.8; }
+    .lever-before-after .la-label { font-size:6pt; letter-spacing:.15em; text-transform:uppercase; color:#777; }
+    .lever-before-after .la-result { color:var(--mono-fg); font-weight:600; }
+    .lever-before-after .la-good { color:#8ec98e; font-weight:600; }
+    .lever-before-after .la-bad { color:#e89090; font-weight:600; }
+    .lever-note { font-size:9pt; color:var(--mid); font-style:italic; margin-top:5px; line-height:1.5; }
+  </style>
+
+  <!-- COVERS -->
+  <div class="lever-group">
+    <div class="lever-group-label">Covers - affects both FOH and BOH</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ Covers up</div>
+        <div class="lever-title">1,200 → 1,320 guests</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After</div>
+          FOH 7.9% · BOH 10.8% · Total <span class="la-good">18.7% ↓ 1.9 pts</span>
+        </div>
+        <div class="lever-note">More guests than forecast, same hours. Both sides improve as the sales denominator grows. If consistent, recalibrate the forecast upward.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ Covers down</div>
+        <div class="lever-title">1,200 → 1,080 guests</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After</div>
+          FOH 9.7% · BOH 13.2% · Total <span class="la-bad">22.9% ↑ 2.3 pts</span>
+        </div>
+        <div class="lever-note">Hours didn't flex with volume. Both sides drift. Forecast or scheduling gap. Track covers mid-week and cut hours in real time.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PPA -->
+  <div class="lever-group">
+    <div class="lever-group-label">PPA - affects both FOH and BOH</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ PPA up</div>
+        <div class="lever-title">$42 → $46 per guest</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After</div>
+          FOH 7.9% · BOH 10.8% · Total <span class="la-good">18.7% ↓ 1.9 pts</span>
+        </div>
+        <div class="lever-note">Team executed well. Upsells happened, guests were attended to, service wasn't rushed. The OPZ working as designed.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ PPA down</div>
+        <div class="lever-title">$42 → $38 per guest</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After</div>
+          FOH 9.6% · BOH 13.2% · Total <span class="la-bad">22.8% ↑ 2.2 pts</span>
+        </div>
+        <div class="lever-note">Check if the team was overstretched - upsells die above the OPZ ceiling. Guests felt rushed. FOH problem showing up across both sides.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CPLH -->
+  <div class="lever-group">
+    <div class="lever-group-label">CPLH - FOH productivity · FOH labor % moves · BOH unchanged</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ CPLH up</div>
+        <div class="lever-title">4.5 → 5.2 covers per hour</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 231 FOH hrs × $16.50 = $3,812</div>
+          FOH <span class="la-good">7.6%</span> · BOH 11.9% · Total <span class="la-good">19.5% ↓ 1.1 pts</span>
+        </div>
+        <div class="lever-note">FOH more productive per hour. Schedule was right for the volume. Document this shift and replicate it.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ CPLH down</div>
+        <div class="lever-title">4.5 → 3.8 covers per hour</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 316 FOH hrs × $16.50 = $5,214</div>
+          FOH <span class="la-bad">10.3%</span> · BOH 11.9% · Total <span class="la-bad">22.2% ↑ 1.6 pts</span>
+        </div>
+        <div class="lever-note">FOH overstaffed for actual volume. Hours weren't built from covers. Fix the schedule, not the team. BOH unaffected.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SPLH -->
+  <div class="lever-group">
+    <div class="lever-group-label">SPLH - BOH productivity · BOH labor % moves · FOH unchanged</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ SPLH up</div>
+        <div class="lever-title">$180 → $200 per BOH hour</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 252 BOH hrs × $21.35 = $5,380</div>
+          FOH 8.7% · BOH <span class="la-good">10.7%</span> · Total <span class="la-good">19.4% ↓ 1.2 pts</span>
+        </div>
+        <div class="lever-note">BOH producing more per hour. Kitchen efficient, ticket times clean. FOH unaffected.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ SPLH down</div>
+        <div class="lever-title">$180 → $155 per BOH hour</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 325 BOH hrs × $21.35 = $6,939</div>
+          FOH 8.7% · BOH <span class="la-bad">13.8%</span> · Total <span class="la-bad">22.5% ↑ 1.9 pts</span>
+        </div>
+        <div class="lever-note">BOH underproducing per hour. Ticket times slow, kitchen complexity, or overstaffed. FOH unaffected - this is a kitchen problem.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FOH WAGE -->
+  <div class="lever-group">
+    <div class="lever-group-label">FOH Wage - FOH labor % moves · BOH unchanged</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ FOH Wage up</div>
+        <div class="lever-title">$16.50 → $18.50/hr (overtime)</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 267 hrs × $18.50 = $4,940</div>
+          FOH <span class="la-bad">9.8%</span> · BOH 11.9% · Total <span class="la-bad">21.7% ↑ 1.1 pts</span>
+        </div>
+        <div class="lever-note">FOH overtime or wrong role covering a shift. Same hours, higher cost. Smarter FOH deployment. BOH unaffected.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ FOH Wage down</div>
+        <div class="lever-title">$16.50 → $15.00/hr (favorable mix)</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 267 hrs × $15.00 = $4,005</div>
+          FOH <span class="la-good">7.9%</span> · BOH 11.9% · Total <span class="la-good">19.8% ↓ 0.8 pts</span>
+        </div>
+        <div class="lever-note">Right FOH roles on right shifts. Note the deployment pattern and replicate it.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- BOH WAGE -->
+  <div class="lever-group">
+    <div class="lever-group-label">BOH Wage - BOH labor % moves · FOH unchanged</div>
+    <div class="lever-pair">
+      <div class="lever-card up">
+        <div class="lever-badge up">↑ BOH Wage up</div>
+        <div class="lever-title">$21.35 → $23.50/hr (overtime)</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 280 hrs × $23.50 = $6,580</div>
+          FOH 8.7% · BOH <span class="la-bad">13.1%</span> · Total <span class="la-bad">21.8% ↑ 1.2 pts</span>
+        </div>
+        <div class="lever-note">BOH overtime or kitchen manager covering a line position. Same hours, higher cost. Smarter BOH deployment. FOH unaffected.</div>
+      </div>
+      <div class="lever-card down">
+        <div class="lever-badge down">↓ BOH Wage down</div>
+        <div class="lever-title">$21.35 → $19.50/hr (favorable mix)</div>
+        <div class="lever-before-after">
+          <div class="la-label">Before</div>
+          FOH 8.7% · BOH 11.9% · Total <span class="la-result">20.6%</span><br>
+          <div class="la-label">After · 280 hrs × $19.50 = $5,460</div>
+          FOH 8.7% · BOH <span class="la-good">10.8%</span> · Total <span class="la-good">19.5% ↓ 1.1 pts</span>
+        </div>
+        <div class="lever-note">Right BOH roles on right shifts. Note the kitchen deployment pattern and replicate it.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout">Variance tells you something went wrong. The levers tell you exactly what. The FOH/BOH split tells you exactly where. Fix the specific input that moved.</div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"If you've never calculated your theoretical labor cost before, you're not alone. Most operators haven't. But once you see the gap, you can't unsee it."</p>
+  </div>
+
+  <div class="key">
+    <div class="kl">Part 2 - Food Cost (coming)</div>
+    <p>Jim applies the exact same framework to food cost - theoretical vs actual COGS, recipe costing, contribution margin, menu engineering. The logic is identical. The foundation work is different. Part 2 covers that system in full.</p>
+    <p style="margin-top:6px">Master the labor model first. Once you can read a shift's numbers in 90 seconds, the food cost layer drops in on top of a model that already works.</p>
+  </div>
+
+</div>
+
+
+<!-- CH11 OPZ -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 11</div>
+    <div class="ct">The Optimal Productivity Zone</div>
+    <div class="cs">The floor and the ceiling - why going above it costs you as much as going below</div>
+  </div>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"This is what I call the Optimal Productivity Zone. The balance where your team produces more without being overloaded. Too few people? Team burns out. Service suffers. Turnover spikes. Average spend drops. Too many people? Payroll bleeds. Staff gets bored. Margins disappear."</p>
+  </div>
+
+  <div class="two">
+    <div class="col">
+      <h5>Below OPZ - too many staff</h5>
+      <ul>
+        <li>Servers standing around between tables</li>
+        <li>Hours paid, covers not being produced</li>
+        <li>CPLH low - labor bleeds</li>
+        <li>Staff bored and complacent</li>
+      </ul>
+    </div>
+    <div class="col">
+      <h5>Above OPZ - too few staff</h5>
+      <ul>
+        <li>Servers running 8 tables instead of 5</li>
+        <li>Check-backs stop - upsells die</li>
+        <li>PPA drops - guests not prompted to order more</li>
+        <li>Best people burn out and quit</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="good">Inside the OPZ: team is busy but not overwhelmed. Service is smooth. Upsells happen. Guests feel attended to. CPLH is at target. Labor % lands where the model predicts. This is the only zone where profit is consistently designed.</div>
+
+  <h3>Jim's real data - one restaurant tracked for 30 days</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"Target: 7 covers per labor hour. When productivity dropped to 5.3 CPLH → labor cost hit 8.2%. When productivity rose to 7.5 CPLH → labor cost dropped to 6.8%. Productivity swung from 5.3 to 8.0 CPLH. That's a 51% swing."</p>
+  </div>
+
+  <table>
+    <thead><tr><th>CPLH</th><th>FOH Labor %</th><th>Zone</th><th>What was happening</th></tr></thead>
+    <tbody>
+      <tr><td>5.3</td><td class="tr">8.2%</td><td>Below OPZ</td><td>Overstaffed. Too many hours for the covers.</td></tr>
+      <tr><td>6.5</td><td class="tg">7.4%</td><td class="tg">OPZ ✓</td><td>Good. Team busy, service holding.</td></tr>
+      <tr><td>7.0</td><td class="tg">7.1%</td><td class="tg">OPZ ✓</td><td>Optimal. Right balance.</td></tr>
+      <tr><td>7.5</td><td class="tg">6.8%</td><td class="tg">OPZ ✓</td><td>Strong. Approaching ceiling.</td></tr>
+      <tr><td>8.0</td><td class="to">6.6%</td><td class="to">Ceiling</td><td>Team stressed. Service complaints rising.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>The counterintuitive result - add staff, drop labor %</h3>
+
+  <div class="src-blk">
+    <div class="bl">LinkedIn <span class="src sl">LinkedIn</span></div>
+    <p>"The fix was counterintuitive: add people back. Intentionally. Labor climbed to 28%. Then dropped back to 25% on its own, because a properly staffed team actually had time to sell, serve, and stay. +$400K in annual revenue. Turnover cut in half."</p>
+  </div>
+
+  <p>How adding staff drops labor %: when the team is properly staffed, upsells happen, PPA rises, revenue grows. Labor cost is slightly higher but the sales denominator grows faster. The ratio improves. That is the OPZ working as designed.</p>
+</div>
+
+
+<!-- CH12 FULL STORY -->
+<div class="page">
+  <div class="ch">
+    <div class="cn">Chapter 12</div>
+    <div class="ct">Reading the Full Story</div>
+    <div class="cs">Every metric, every formula, and the 90-second post-shift read</div>
+  </div>
+
+  <h3>How the metrics chain together</h3>
+
+  <div class="chain"><div class="cnum">1</div><div class="ccont"><strong>Count covers, sales, and labor hours every shift - by daypart</strong><p>Raw inputs. Lunch, dinner, late night tracked separately. Everything else is built from these.</p></div></div>
+  <div class="carrow">↓</div>
+  <div class="chain"><div class="cnum">2</div><div class="ccont"><strong>Calculate CPLH (FOH) and SPLH (BOH) after every shift</strong><p>CPLH = Covers ÷ FOH Hours. SPLH = Sales ÷ BOH Hours. Your two productivity reads, every daypart, every shift.</p></div></div>
+  <div class="carrow">↓</div>
+  <div class="chain"><div class="cnum">3</div><div class="ccont"><strong>Track for 60 days - identify your sustainable range</strong><p>Look for when CPLH, SPLH, and PPA are all high together. That is your team at their best. That range sets your targets. Not a benchmark. Not last year. Your own 60 days.</p></div></div>
+  <div class="carrow">↓</div>
+  <div class="chain"><div class="cnum">4</div><div class="ccont"><strong>Convert your 60-day cover total into a weekly forecast</strong><p>Total covers ÷ (60 ÷ 7) = weekly average. That number, with your target CPLH, SPLH, PPA, and blended wage, builds your theoretical labor %.</p></div></div>
+  <div class="carrow">↓</div>
+  <div class="chain"><div class="cnum">5</div><div class="ccont"><strong>Track variance weekly</strong><p>Actual % − Theoretical %. If it moved, one of the five levers moved with it. Go to the lever cards in Chapter 10. Find the specific input. Fix that thing only.</p></div></div>
+  <div class="carrow">↓</div>
+  <div class="chain"><div class="cnum">6</div><div class="ccont"><strong>Find and defend your OPZ</strong><p>From your 60 days of CPLH data, identify the range where labor % declines and service holds. Below it you are bleeding hours. Above it you are burning your team. Stay inside it.</p></div></div>
+
+  <h3>All formulas</h3>
+  <div class="fm">
+    <div class="fl">Every Formula in Sequence</div>
+    <span class="fh">PPA                     = Total Sales ÷ Total Covers</span><br>
+    <span class="fh">CPLH                    = Total Covers ÷ FOH Labor Hours</span><br>
+    <span class="fh">SPLH                    = Total Sales ÷ BOH Labor Hours</span><br>
+    <span class="fh">Weekly Covers           = 60-Day Cover Total ÷ (60 ÷ 7)</span><br>
+    <span class="fh">Required FOH Hours      = Forecasted Covers ÷ Target CPLH</span><br>
+    <span class="fh">Required BOH Hours      = Forecasted Sales ÷ Target SPLH</span><br>
+    <span class="fh">FOH Theoretical Labor $ = Required FOH Hours × FOH Wage</span><br>
+    <span class="fh">BOH Theoretical Labor $ = Required BOH Hours × BOH Wage</span><br>
+    <span class="fh">Total Theoretical Labor $= FOH Labor $ + BOH Labor $</span><br>
+    <span class="fh">FOH Theoretical Labor % = FOH Labor $ ÷ Forecasted Sales</span><br>
+    <span class="fh">BOH Theoretical Labor % = BOH Labor $ ÷ Forecasted Sales</span><br>
+    <span class="fh">Labor %                 = (Hours × Wage) ÷ (Covers × PPA)</span><br>
+    <span class="fh">Variance                = Actual Labor % − Theoretical Labor %</span><br>
+  </div>
+
+  <h3>Reading a shift in 90 seconds</h3>
+  <ol>
+    <li>Pull covers, sales, and labor hours from POS - by daypart.</li>
+    <li>Calculate CPLH. Inside your OPZ? Above it or below it?</li>
+    <li>Calculate SPLH. Is BOH producing at target? Is PPA where you expected?</li>
+    <li>Compare to theoretical. What is the variance?</li>
+    <li>If CPLH inside OPZ, SPLH on target, variance tight → benchmark shift. Write down what made it work. That is a replicable day.</li>
+    <li>If variance exists → go to the lever cards in Chapter 10. Identify which input moved. Fix that specific thing. Not "labor." The input.</li>
+  </ol>
+
+  <div class="key">
+    <div class="kl">The final thought - from the book</div>
+    <p>"We introduced the concept of 'employee workload' to the restaurant industry, drawing inspiration from professional sports' approach to athlete management. By carefully monitoring and managing employee workload, we sought to create a more sustainable and productive work environment." - Jim Taylor, Bold Operations p.7 <span class="src sb">Book</span></p>
+    <p style="margin-top:6px">Every metric here exists in service of one goal: making sure the people on your floor are working hard enough to be productive, but not so hard that they break. That is the OPZ. That is the whole framework.</p>
+  </div>
+
+  <div style="margin-top:12px">
+    <span class="tag">Covers</span><span class="tag">Labor Hours</span><span class="tag">PPA</span>
+    <span class="tag">Wage Mix</span><span class="tag">CPLH - FOH</span><span class="tag">SPLH - BOH</span>
+    <span class="tag">60-Day Tracking Discipline</span><span class="tag">Required FOH Hours</span>
+    <span class="tag">Required BOH Hours</span><span class="tag">Theoretical Labor</span>
+    <span class="tag">Variance</span><span class="tag">OPZ</span>
+  </div>
+</div>
+
+<button class="pbtn noprint" onclick="window.print()">⎙ Print</button>
+</body>
+</html>
