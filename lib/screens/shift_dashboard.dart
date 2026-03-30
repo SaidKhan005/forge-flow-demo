@@ -50,20 +50,10 @@ class _ShiftHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Restaurant logo + name
-          Row(
-            children: [
-              Image.asset(
-                'assets/images/logo.png',
-                width: 32,
-                height: 32,
-              ),
-              const SizedBox(width: 10),
-              Text(
-                MeridianConfig.restaurantName,
-                style: AppTextStyles.display36(color: AppColors.tealPrimary),
-              ),
-            ],
+          // Restaurant name
+          Text(
+            MeridianConfig.restaurantName,
+            style: AppTextStyles.display36(color: AppColors.tealPrimary),
           ),
           const SizedBox(height: 12),
           // Context row
