@@ -1,18 +1,32 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
 
 class ZoneStatusCard extends StatelessWidget {
-  const ZoneStatusCard({super.key});
+  final double currentCPLH;
+  final double opzFloorCPLH;
+  final double opzCeilingCPLH;
+  final double targetCPLH;
+  final String opzStatus;
+  final String opzLabel;
+  final String opzSubLabel;
+
+  const ZoneStatusCard({
+    super.key,
+    required this.currentCPLH,
+    required this.opzFloorCPLH,
+    required this.opzCeilingCPLH,
+    required this.targetCPLH,
+    required this.opzStatus,
+    required this.opzLabel,
+    required this.opzSubLabel,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final status = BaselineData.opzStatusForCplh(ShiftSnapshot.actualCPLH);
-    final opzLabel = BaselineData.opzStatusLabelForCplh(ShiftSnapshot.actualCPLH);
-    final opzColor = status == 'in'
+    final opzColor = opzStatus == 'in'
         ? AppColors.positive
-        : status == 'below'
+        : opzStatus == 'below'
             ? AppColors.negative
             : AppColors.warning;
 
@@ -37,7 +51,6 @@ class ZoneStatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Status row — hero label + CPLH reading
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -51,7 +64,7 @@ class ZoneStatusCard extends StatelessWidget {
                   Text('CURRENT CPLH',
                       style: AppTextStyles.mono8(color: AppColors.textMuted)),
                   Text(
-                    ShiftSnapshot.actualCPLH.toStringAsFixed(2),
+                    currentCPLH.toStringAsFixed(2),
                     style: AppTextStyles.mono28(color: AppColors.textPrimary),
                   ),
                 ],
@@ -59,17 +72,15 @@ class ZoneStatusCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          // CPLH gauge
           _CplhGauge(
-            opzFloor: BaselineData.opzFloorCPLH,
-            opzCeiling: BaselineData.opzCeilingCPLH,
-            target: BaselineData.derivedTargetCPLH,
-            current: ShiftSnapshot.actualCPLH,
+            opzFloor: opzFloorCPLH,
+            opzCeiling: opzCeilingCPLH,
+            target: targetCPLH,
+            current: currentCPLH,
           ),
           const SizedBox(height: 12),
-          // Sub-label
           Text(
-            BaselineData.opzSubLabelForCplh(ShiftSnapshot.actualCPLH),
+            opzSubLabel,
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ],

@@ -1,4 +1,4 @@
-// ─── Baseline Range Logic Tests ──────────────────────────────────────────────
+// â”€â”€â”€ Baseline Range Logic Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Prompt 6.1 + 6.2 verification:
 //   - Historical context metrics are stable regardless of override state
 //   - Graph outer endpoints are always the 60-day historical range
@@ -9,9 +9,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/baseline_manager_service.dart';
-import 'package:forge_flow_demo/data/database_helper.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
+import 'package:forge_and_flow/data/baseline_manager_service.dart';
+import 'package:forge_and_flow/data/database_helper.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 
 void main() {
   setUp(() async {
@@ -25,9 +25,9 @@ void main() {
     BaselineData.clearHistoricalContext();
   });
 
-  // ── A: historical context metrics do not depend on active override ────────
+  // â”€â”€ A: historical context metrics do not depend on active override â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('A — historical context stability', () {
+  group('A â€” historical context stability', () {
     test('historicalTotalCoversTracked and historicalWeeklyAvgCovers are stable across override',
         () async {
       await BaselineManagerService.instance.primeManagerOverride();
@@ -69,9 +69,9 @@ void main() {
     });
   });
 
-  // ── B: historical weekly average formula ──────────────────────────────────
+  // â”€â”€ B: historical weekly average formula â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('B — historical weekly average formula', () {
+  group('B â€” historical weekly average formula', () {
     test('historicalWeeklyAvgCovers == (totalCovers / (60/7)).round()',
         () async {
       await BaselineManagerService.instance.primeManagerOverride();
@@ -84,9 +84,9 @@ void main() {
     });
   });
 
-  // ── C: graph labels by override state ─────────────────────────────────────
+  // â”€â”€ C: graph labels by override state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('C — graph labels by override state', () {
+  group('C â€” graph labels by override state', () {
     test('no override: historical labels and BENCHMARK RANGE', () async {
       await BaselineManagerService.instance.primeManagerOverride();
 
@@ -125,9 +125,9 @@ void main() {
     });
   });
 
-  // ── D: active range reflects selected star shifts ─────────────────────────
+  // â”€â”€ D: active range reflects selected star shifts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('D — active range under override', () {
+  group('D â€” active range under override', () {
     test('activeRange matches selected candidate min/max CPLH', () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
@@ -144,9 +144,9 @@ void main() {
     });
   });
 
-  // ── E: baseline range validation status rules ─────────────────────────────
+  // â”€â”€ E: baseline range validation status rules â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('E — BaselineRangeValidation status rules', () {
+  group('E â€” BaselineRangeValidation status rules', () {
     tearDown(() {
       BaselineData.clearManagerOverride();
       BaselineData.clearHistoricalContext();

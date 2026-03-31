@@ -1,4 +1,4 @@
-// ─── Target Consistency + OPZ Tests ──────────────────────────────────────────
+// â”€â”€â”€ Target Consistency + OPZ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Prompt 4.1 verification:
 //   - OPZ gauge inputs are fully centralized through BaselineData
 //   - Baseline-derived targets flow through Schedule and Shift
@@ -14,14 +14,14 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
-import 'package:forge_flow_demo/screens/baseline_tracker.dart';
-import 'package:forge_flow_demo/screens/schedule_builder.dart';
-import 'package:forge_flow_demo/services/labor_model.dart';
-import 'package:forge_flow_demo/widgets/zone_status_card.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/screens/baseline_tracker.dart';
+import 'package:forge_and_flow/screens/schedule_builder.dart';
+import 'package:forge_and_flow/services/labor_model.dart';
+import 'package:forge_and_flow/widgets/zone_status_card.dart';
 
 void main() {
-  // ── A. BaselineData OPZ validation ────────────────────────────────────────
+  // â”€â”€ A. BaselineData OPZ validation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('A. BaselineData OPZ validation', () {
     test('opzValidation exposes correct floor, ceiling, target, headroom', () {
@@ -95,23 +95,38 @@ void main() {
     });
   });
 
-  // ── B. ScheduleForecastNotifier target consistency ─────────────────────────
+  // â”€â”€ B. ScheduleForecastNotifier target consistency â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('B. ScheduleForecastNotifier uses baseline-derived targets', () {
+  group('B. ScheduleForecastNotifier uses injected active-target values', () {
     late ScheduleForecastNotifier notifier;
 
+    // Explicit test target values (not from BaselineData)
+    const testCPLH = 4.75;
+    const testPPA = 43.0;
+    const testSPLH = 185.0;
+    const testFohWage = 17.00;
+    const testBohWage = 22.00;
+    const testTheoPct = 21.0;
+
     setUp(() {
-      notifier = ScheduleForecastNotifier();
+      notifier = ScheduleForecastNotifier(
+        targetCPLH: testCPLH,
+        targetPPA: testPPA,
+        targetSPLH: testSPLH,
+        fohWage: testFohWage,
+        bohWage: testBohWage,
+        theoreticalLaborPct: testTheoPct,
+      );
     });
 
     tearDown(() {
       notifier.dispose();
     });
 
-    test('requiredFohHours matches LaborModel with derivedTargetCPLH', () {
+    test('requiredFohHours matches LaborModel with injected targetCPLH', () {
       final expected = LaborModel.modelFohHours(
         notifier.weeklyCovers,
-        BaselineData.derivedTargetCPLH,
+        testCPLH,
       );
       expect(notifier.requiredFohHours, equals(expected));
     });
@@ -121,57 +136,93 @@ void main() {
         notifier.weeklyCovers,
         MeridianConfig.targetCPLH,
       );
-      final withBaseline = LaborModel.modelFohHours(
+      final withInjected = LaborModel.modelFohHours(
         notifier.weeklyCovers,
-        BaselineData.derivedTargetCPLH,
+        testCPLH,
       );
-      expect(withBaseline, isNot(equals(withConfig)));
+      expect(withInjected, isNot(equals(withConfig)));
     });
 
-    test('requiredBohHours matches LaborModel with derivedTargetPPA and derivedTargetSPLH', () {
+    test('requiredBohHours matches LaborModel with injected targetPPA and targetSPLH', () {
       final expected = LaborModel.modelBohHours(
         notifier.weeklyCovers,
-        BaselineData.derivedTargetPPA,
-        BaselineData.derivedTargetSPLH,
+        testPPA,
+        testSPLH,
       );
       expect(notifier.requiredBohHours, equals(expected));
     });
 
-    test('theoreticalLaborPct equals BaselineData.derivedTheoreticalLaborPct', () {
-      expect(
-        notifier.theoreticalLaborPct,
-        closeTo(BaselineData.derivedTheoreticalLaborPct, 0.0001),
-      );
+    test('theoreticalLaborPct equals injected value', () {
+      expect(notifier.theoreticalLaborPct, closeTo(testTheoPct, 0.0001));
     });
 
-    test('theoreticalLaborPct differs from config-hardcoded computation', () {
-      final configPct = LaborModel.theoreticalLaborPct(
-        MeridianConfig.targetCPLH,
-        MeridianConfig.targetSPLH,
-        MeridianConfig.targetPPA,
-        MeridianConfig.fohWage,
-        MeridianConfig.bohWage,
+    test('forecastedFohLaborDollar uses injected wage', () {
+      expect(notifier.forecastedFohLaborDollar,
+          closeTo(notifier.requiredFohHours * testFohWage, 0.01));
+    });
+
+    test('updateTargets changes Schedule outputs without BaselineData', () {
+      final fohBefore = notifier.requiredFohHours;
+      notifier = ScheduleForecastNotifier(
+        targetCPLH: 5.0,
+        targetPPA: testPPA,
+        targetSPLH: testSPLH,
+        fohWage: testFohWage,
+        bohWage: testBohWage,
+        theoreticalLaborPct: testTheoPct,
       );
-      expect(notifier.theoreticalLaborPct, isNot(closeTo(configPct, 0.0001)));
+      expect(notifier.requiredFohHours, isNot(equals(fohBefore)));
+    });
+
+    test('adjustedDayViews row hours use injected targets, not BaselineData',
+        () {
+      final views = notifier.adjustedDayViews;
+      expect(views, isNotEmpty);
+      final firstDay = views.first;
+      final expectedFoh = LaborModel.modelFohHours(
+          firstDay.forecastCovers, testCPLH);
+      expect(firstDay.requiredFohHours, equals(expectedFoh));
+      // Verify it differs from BaselineData path
+      final baselineFoh = LaborModel.modelFohHours(
+          firstDay.forecastCovers, BaselineData.derivedTargetCPLH);
+      expect(firstDay.requiredFohHours, isNot(equals(baselineFoh)));
+    });
+
+    test('daypart subrow hours use injected targets and weighted allocation',
+        () {
+      final views = notifier.adjustedDayViews;
+      // Mon has lunch + dinner â€” subrows should be weighted, not equal
+      final mon = views.firstWhere((v) => v.day == 'Mon');
+      expect(mon.subrows.length, 2);
+
+      // Subrow hours use injected targets
+      final lunch = mon.subrows.first;
+      final expectedFoh = LaborModel.modelFohHours(
+          lunch.forecastCovers, testCPLH);
+      expect(lunch.requiredFohHours, equals(expectedFoh));
+
+      // Weighted allocation: lunch and dinner should NOT be equal
+      final dinner = mon.subrows.last;
+      expect(lunch.forecastCovers, isNot(equals(dinner.forecastCovers)));
     });
   });
 
-  // ── C. OPZ zone label helpers ──────────────────────────────────────────────
+  // â”€â”€ C. OPZ zone label helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('C. opzStatusLabelForCplh returns correct labels', () {
-    test('below floor → BELOW OPZ', () {
+    test('below floor â†’ BELOW OPZ', () {
       expect(
         BaselineData.opzStatusLabelForCplh(BaselineData.opzFloorCPLH - 0.1),
         equals('BELOW OPZ'),
       );
     });
 
-    test('inside band → IN OPZ', () {
+    test('inside band â†’ IN OPZ', () {
       final mid = (BaselineData.opzFloorCPLH + BaselineData.opzCeilingCPLH) / 2;
       expect(BaselineData.opzStatusLabelForCplh(mid), equals('IN OPZ'));
     });
 
-    test('above ceiling → ABOVE OPZ', () {
+    test('above ceiling â†’ ABOVE OPZ', () {
       expect(
         BaselineData.opzStatusLabelForCplh(BaselineData.opzCeilingCPLH + 0.1),
         equals('ABOVE OPZ'),
@@ -184,7 +235,7 @@ void main() {
     });
   });
 
-  // ── D. Baseline OPZ row values ─────────────────────────────────────────────
+  // â”€â”€ D. Baseline OPZ row values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('D. Baseline OPZ row values', () {
     test('opzFloorCPLH equals min CPLH of selected historical records', () {
@@ -199,18 +250,31 @@ void main() {
       expect(BaselineData.opzCeilingCPLH, equals(selectedMax));
     });
 
-    test('headroom is positive — target sits below historically-derived ceiling', () {
+    test('headroom is positive â€” target sits below historically-derived ceiling', () {
       expect(BaselineData.opzHeadroomCPLH, greaterThan(0));
     });
   });
 
-  // ── E. ZoneStatusCard widget ───────────────────────────────────────────────
+  // â”€â”€ E. ZoneStatusCard widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('E. ZoneStatusCard widget', () {
     testWidgets('shows target, ceiling, status label, and sub-label from centralized OPZ logic',
         (tester) async {
+      final testCPLH = ShiftSnapshot.actualCPLH;
+      final status = BaselineData.opzStatusForCplh(testCPLH);
+      final label = BaselineData.opzStatusLabelForCplh(testCPLH);
+      final subLabel = BaselineData.opzSubLabelForCplh(testCPLH);
+
       await tester.pumpWidget(
-        const MaterialApp(home: Scaffold(body: ZoneStatusCard())),
+        MaterialApp(home: Scaffold(body: ZoneStatusCard(
+          currentCPLH: testCPLH,
+          opzFloorCPLH: BaselineData.opzFloorCPLH,
+          opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+          targetCPLH: BaselineData.derivedTargetCPLH,
+          opzStatus: status,
+          opzLabel: label,
+          opzSubLabel: subLabel,
+        ))),
       );
 
       // Target value (2-decimal precision after label-anchoring pass)
@@ -225,22 +289,22 @@ void main() {
       );
       // OPZ status label
       expect(
-        find.text(BaselineData.opzStatusLabelForCplh(ShiftSnapshot.actualCPLH)),
+        find.text(label),
         findsOneWidget,
       );
       // Sub-label
       expect(
-        find.text(BaselineData.opzSubLabelForCplh(ShiftSnapshot.actualCPLH)),
+        find.text(subLabel),
         findsOneWidget,
       );
     });
   });
 
-  // ── F. BaselineTracker widget ──────────────────────────────────────────────
+  // â”€â”€ F. BaselineTracker widget â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('F. BaselineTracker widget', () {
     testWidgets(
-        'paints from rangeGraphModel — correct labels, range, target, and CTA (no override)',
+        'paints from rangeGraphModel â€” correct labels, range, target, and CTA (no override)',
         (tester) async {
       // Ensure no override is active
       BaselineData.clearManagerOverride();
@@ -252,7 +316,7 @@ void main() {
       // Graph title
       expect(find.text('RECOMMENDED TARGET'), findsOneWidget);
 
-      // Summary cards — historical context, plain count (not dollar-formatted)
+      // Summary cards â€” historical context, plain count (not dollar-formatted)
       expect(find.text('TOTAL COVERS LAST 60 DAYS'), findsOneWidget);
       expect(find.text('WEEKLY AVG COVERS'), findsOneWidget);
       expect(
@@ -268,11 +332,11 @@ void main() {
       expect(find.text('BEST CPLH'), findsNothing);
       expect(find.text('WORST CPLH'), findsNothing);
 
-      // Endpoint labels — always historical
+      // Endpoint labels â€” always historical
       expect(find.text('LOWEST CPLH LAST 60 DAYS'), findsOneWidget);
       expect(find.text('HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
 
-      // Inner range label — no override = BENCHMARK RANGE
+      // Inner range label â€” no override = BENCHMARK RANGE
       expect(find.text('BENCHMARK RANGE'), findsOneWidget);
 
       // Endpoint values from rangeGraphModel
@@ -307,9 +371,9 @@ void main() {
       expect(find.text('HEADROOM'), findsOneWidget);
 
       // Old titles must be gone
-      expect(find.text('RECOMMENDED TARGET — 60 DAY RANGE'), findsNothing);
-      expect(find.text('CPLH RANGE — LAST 60 DAYS'), findsNothing);
-      expect(find.text('OPZ BAND — TARGET POSITION'), findsNothing);
+      expect(find.text('RECOMMENDED TARGET â€” 60 DAY RANGE'), findsNothing);
+      expect(find.text('CPLH RANGE â€” LAST 60 DAYS'), findsNothing);
+      expect(find.text('OPZ BAND â€” TARGET POSITION'), findsNothing);
 
       // Old inner-range label must be gone
       expect(find.text('OPZ RANGE'), findsNothing);
@@ -354,7 +418,7 @@ void main() {
     });
   });
 
-  // ── G. BaselineRangeGraphModel semantics ───────────────────────────────────
+  // â”€â”€ G. BaselineRangeGraphModel semantics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('G. BaselineRangeGraphModel uses historical and active range', () {
     setUp(() {

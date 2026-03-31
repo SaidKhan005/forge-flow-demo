@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
+import '../data/active_target_profile_notifier.dart';
+import '../data/legacy_fixture_data.dart';
+import '../domain/models/active_target_profile.dart';
 import '../services/labor_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/schedule_day_row.dart';
@@ -12,6 +14,40 @@ import '../widgets/schedule_day_row.dart';
 
 class ScheduleForecastNotifier extends ChangeNotifier {
   int _weeklyCovers = ScheduleForecastDefaults.defaultWeeklyCovers;
+
+  // Explicit active-target values — injected from persisted authority
+  double _targetCPLH;
+  double _targetPPA;
+  double _targetSPLH;
+  double _fohWage;
+  double _bohWage;
+  double _theoreticalLaborPct;
+
+  ScheduleForecastNotifier({
+    required double targetCPLH,
+    required double targetPPA,
+    required double targetSPLH,
+    required double fohWage,
+    required double bohWage,
+    required double theoreticalLaborPct,
+  })  : _targetCPLH = targetCPLH,
+        _targetPPA = targetPPA,
+        _targetSPLH = targetSPLH,
+        _fohWage = fohWage,
+        _bohWage = bohWage,
+        _theoreticalLaborPct = theoreticalLaborPct;
+
+  /// Builds from an ActiveTargetProfile.
+  factory ScheduleForecastNotifier.fromProfile(ActiveTargetProfile profile) {
+    return ScheduleForecastNotifier(
+      targetCPLH: profile.targetCPLH,
+      targetPPA: profile.targetPPA,
+      targetSPLH: profile.targetSPLH,
+      fohWage: profile.fohWage,
+      bohWage: profile.bohWage,
+      theoreticalLaborPct: profile.theoreticalLaborPct,
+    );
+  }
 
   int get weeklyCovers => _weeklyCovers;
 
@@ -22,30 +58,112 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     }
   }
 
+  /// Updates target values from the current active profile.
+  void updateTargets(ActiveTargetProfile profile) {
+    _targetCPLH = profile.targetCPLH;
+    _targetPPA = profile.targetPPA;
+    _targetSPLH = profile.targetSPLH;
+    _fohWage = profile.fohWage;
+    _bohWage = profile.bohWage;
+    _theoreticalLaborPct = profile.theoreticalLaborPct;
+    notifyListeners();
+  }
+
   int get requiredFohHours =>
-      LaborModel.modelFohHours(_weeklyCovers, BaselineData.derivedTargetCPLH);
+      LaborModel.modelFohHours(_weeklyCovers, _targetCPLH);
   int get requiredBohHours =>
-      LaborModel.modelBohHours(
-          _weeklyCovers, BaselineData.derivedTargetPPA, BaselineData.derivedTargetSPLH);
-  double get forecastedFohLaborDollar =>
-      requiredFohHours * MeridianConfig.fohWage;
-  double get forecastedBohLaborDollar =>
-      requiredBohHours * MeridianConfig.bohWage;
+      LaborModel.modelBohHours(_weeklyCovers, _targetPPA, _targetSPLH);
+  double get forecastedFohLaborDollar => requiredFohHours * _fohWage;
+  double get forecastedBohLaborDollar => requiredBohHours * _bohWage;
   double get forecastedTotalLaborDollar =>
       forecastedFohLaborDollar + forecastedBohLaborDollar;
-  double get theoreticalLaborPct => BaselineData.derivedTheoreticalLaborPct;
+  double get theoreticalLaborPct => _theoreticalLaborPct;
 
-  List<ScheduleDay> get adjustedDays {
+  /// Adjusted days with model hours computed from injected target values.
+  List<ScheduleDayView> get adjustedDayViews {
     final defaultTotal = ScheduleForecastDefaults.defaultDays
         .fold<int>(0, (s, d) => s + d.forecastCovers);
     final ratio = _weeklyCovers / defaultTotal;
-    return ScheduleForecastDefaults.defaultDays
-        .map((d) => ScheduleDay(
-              day: d.day,
-              forecastCovers: (d.forecastCovers * ratio).round(),
-            ))
-        .toList();
+    return ScheduleForecastDefaults.defaultDays.map((d) {
+      final covers = (d.forecastCovers * ratio).round();
+      final foh = LaborModel.modelFohHours(covers, _targetCPLH);
+      final boh = LaborModel.modelBohHours(covers, _targetPPA, _targetSPLH);
+
+      // Build daypart sub-rows — covers weighted by fixture daypart proportions
+      final ids = WeekDayOrder.daypartsFor(d.day);
+      final weights = ids.map((id) => _daypartCoverWeight[id] ?? 1.0).toList();
+      final totalWeight = weights.fold(0.0, (s, w) => s + w);
+      final subrows = totalWeight > 0
+          ? List.generate(ids.length, (i) {
+              final dpCovers = (covers * weights[i] / totalWeight).round();
+              return ScheduleDaySubrow(
+                label: _daypartLabel(ids[i]),
+                forecastCovers: dpCovers,
+                requiredFohHours:
+                    LaborModel.modelFohHours(dpCovers, _targetCPLH),
+                requiredBohHours:
+                    LaborModel.modelBohHours(dpCovers, _targetPPA, _targetSPLH),
+              );
+            })
+          : <ScheduleDaySubrow>[];
+
+      return ScheduleDayView(
+        day: d.day,
+        forecastCovers: covers,
+        requiredFohHours: foh,
+        requiredBohHours: boh,
+        subrows: subrows,
+      );
+    }).toList();
   }
+}
+
+/// Default daypart cover weight proportions for Schedule subrow allocation.
+/// Derived from fixture daypart shape — lunch ~45%, dinner ~40%, late night ~15%.
+/// Not read from BaselineData at render time.
+const _daypartCoverWeight = <String, double>{
+  'lunch': 0.45,
+  'dinner': 0.40,
+  'late_night': 0.15,
+};
+
+String _daypartLabel(String id) {
+  switch (id) {
+    case 'lunch':      return 'Lunch';
+    case 'dinner':     return 'Dinner';
+    case 'late_night': return 'Late Night';
+    default:           return id;
+  }
+}
+
+/// Pre-computed Schedule day row — model hours from injected target values.
+class ScheduleDayView {
+  final String day;
+  final int forecastCovers;
+  final int requiredFohHours;
+  final int requiredBohHours;
+  final List<ScheduleDaySubrow> subrows;
+  const ScheduleDayView({
+    required this.day,
+    required this.forecastCovers,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+    required this.subrows,
+  });
+}
+
+/// Pre-computed daypart sub-row.
+class ScheduleDaySubrow {
+  final String label;
+  final int forecastCovers;
+  final int requiredFohHours;
+  final int requiredBohHours;
+  const ScheduleDaySubrow({
+    required this.label,
+    required this.forecastCovers,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+  });
 }
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
@@ -55,8 +173,31 @@ class ScheduleBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ScheduleForecastNotifier(),
+    return ChangeNotifierProxyProvider<ActiveTargetProfileNotifier,
+        ScheduleForecastNotifier>(
+      create: (ctx) {
+        final profile =
+            ctx.read<ActiveTargetProfileNotifier>().profile;
+        if (profile != null) {
+          return ScheduleForecastNotifier.fromProfile(profile);
+        }
+        // Fallback during initial load — will be updated by proxy
+        return ScheduleForecastNotifier(
+          targetCPLH: BaselineData.derivedTargetCPLH,
+          targetPPA: BaselineData.derivedTargetPPA,
+          targetSPLH: BaselineData.derivedTargetSPLH,
+          fohWage: MeridianConfig.fohWage,
+          bohWage: MeridianConfig.bohWage,
+          theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+        );
+      },
+      update: (ctx, targetNotifier, previous) {
+        final profile = targetNotifier.profile;
+        if (profile != null && previous != null) {
+          previous.updateTargets(profile);
+        }
+        return previous!;
+      },
       child: const _ScheduleBuilderContent(),
     );
   }
@@ -247,7 +388,7 @@ class _CoverBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = notifier.adjustedDays;
+    final days = notifier.adjustedDayViews;
     final maxCovers = days.map((d) => d.forecastCovers).reduce(
           (a, b) => a > b ? a : b,
         );
@@ -360,7 +501,7 @@ class _DayTableState extends State<_DayTable> {
 
   @override
   Widget build(BuildContext context) {
-    final days        = widget.notifier.adjustedDays;
+    final days        = widget.notifier.adjustedDayViews;
     final totalCovers = days.fold<int>(0, (s, d) => s + d.forecastCovers);
     final totalFoh    = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
     final totalBoh    = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
@@ -379,11 +520,9 @@ class _DayTableState extends State<_DayTable> {
             final i          = entry.key;
             final day        = entry.value;
             final isExpanded = _expanded.contains(i);
-            final breakdown  = day.daypartBreakdown;
-            final hasSubrows = breakdown.isNotEmpty;
+            final hasSubrows = day.subrows.isNotEmpty;
 
             return [
-              // Day row — tappable when it has daypart sub-rows
               GestureDetector(
                 onTap: hasSubrows
                     ? () => setState(() {
@@ -416,9 +555,8 @@ class _DayTableState extends State<_DayTable> {
                   ],
                 ),
               ),
-              // Daypart sub-rows (shown when expanded)
               if (isExpanded)
-                ...breakdown.map((dp) => ScheduleDayRow(
+                ...day.subrows.map((dp) => ScheduleDayRow(
                       day: dp.label,
                       forecastCovers: dp.forecastCovers,
                       requiredFohHours: dp.requiredFohHours,

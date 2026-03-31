@@ -1,15 +1,15 @@
-// Tests for ShiftService.closeShift — the Phase 3 ingest path.
+// Tests for ShiftService.closeShift â€” the Phase 3 ingest path.
 //
 // These tests use the real SQLite database (sqflite_common_ffi on desktop)
 // and call reseedDemo() before each test to ensure a clean, reproducible state.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/database_helper.dart';
-import 'package:forge_flow_demo/data/shift_service.dart';
-import 'package:forge_flow_demo/domain/models/closed_shift_input.dart';
-import 'package:forge_flow_demo/models/week_data.dart';
+import 'package:forge_and_flow/data/database_helper.dart';
+import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
+import 'package:forge_and_flow/models/week_data.dart';
 
-// ── Shared close inputs ────────────────────────────────────────────────────
+// â”€â”€ Shared close inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ClosedShiftInput _friDinner() => ClosedShiftInput(
       businessDate: DateTime(2026, 3, 27),
@@ -101,14 +101,14 @@ ClosedShiftInput _sunDinner() => ClosedShiftInput(
       sourceShiftId: 'w13-sun-dinner-close',
     );
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void main() {
   setUp(() async {
     await DatabaseHelper.instance.reseedDemo();
   });
 
-  // ── Test 1: projected slot is replaced cleanly ─────────────────────────
+  // â”€â”€ Test 1: projected slot is replaced cleanly â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('projected Fri dinner slot is replaced cleanly', () async {
     // Before: one projected Fri/dinner row
@@ -157,7 +157,7 @@ void main() {
     expect(wtd!.totalCovers, 1884); // 1580 existing closed + 304
     expect(wtd.shiftsCompleted, 10);
 
-    // ── WTD uses stored actual labor dollars, not config-wage fallback ──────
+    // â”€â”€ WTD uses stored actual labor dollars, not config-wage fallback â”€â”€â”€â”€â”€â”€
 
     final closedShifts = after.where((s) => s.isClosed).toList();
 
@@ -188,7 +188,7 @@ void main() {
         isNot(closeTo(configFallbackLaborDollar, 0.001)));
   });
 
-  // ── Test 2: completed week creates a WeekRecord ────────────────────────
+  // â”€â”€ Test 2: completed week creates a WeekRecord â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('closing all 14 shifts creates a WeekRecord for the week', () async {
     // Close the 5 remaining projected slots
@@ -212,7 +212,7 @@ void main() {
     expect(record.blendedBohWage, greaterThan(0));
   });
 
-  // ── Test 3: incomplete week does not create a WeekRecord ──────────────
+  // â”€â”€ Test 3: incomplete week does not create a WeekRecord â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   test('partial week (13 closed) does not create a WeekRecord', () async {
     // Close only one of the five projected shifts
@@ -223,11 +223,11 @@ void main() {
     expect(w13, isEmpty);
   });
 
-  // ── Test 4: WeekData fallback to config-wage when stored totals absent ─
+  // â”€â”€ Test 4: WeekData fallback to config-wage when stored totals absent â”€
 
   test('WeekData falls back to config-wage labor dollars when stored totals are absent',
       () {
-    const wtd = WeekData(
+    final wtd = WeekData(
       weekId: 'test',
       weekLabel: 'Test',
       totalCovers: 100,
@@ -239,11 +239,19 @@ void main() {
       wtdForecastCovers: 110,
       totalWeekForecastCovers: 700,
       primaryLeverId: 'covers_down',
+      targetCPLH: 4.5,
+      targetSPLH: 180.0,
+      targetPPA: 42.0,
+      targetFohWage: 16.50,
+      targetBohWage: 21.35,
+      theoreticalFohLaborPct: 8.7,
+      theoreticalBohLaborPct: 11.9,
+      theoreticalLaborPct: 20.6,
       // storedTotalFohLaborDollar and storedTotalBohLaborDollar intentionally omitted
     );
 
-    expect(wtd.totalFohLaborDollar, closeTo(165.0, 0.001));  // 10 × 16.50
-    expect(wtd.totalBohLaborDollar, closeTo(427.0, 0.001));  // 20 × 21.35
+    expect(wtd.totalFohLaborDollar, closeTo(165.0, 0.001));  // 10 Ã— 16.50
+    expect(wtd.totalBohLaborDollar, closeTo(427.0, 0.001));  // 20 Ã— 21.35
     expect(wtd.totalLaborDollar,    closeTo(592.0, 0.001));  // 165 + 427
   });
 }

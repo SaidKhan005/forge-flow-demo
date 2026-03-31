@@ -6,13 +6,13 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/demo_data.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
-import 'package:forge_flow_demo/models/week_record.dart';
-import 'package:forge_flow_demo/services/labor_model.dart';
-import 'package:forge_flow_demo/widgets/lever_card.dart';
-import 'package:forge_flow_demo/widgets/week_history_tile.dart';
-import 'package:forge_flow_demo/screens/week_detail_screen.dart';
+import 'package:forge_and_flow/data/fixture_seed_data.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/models/week_record.dart';
+import 'package:forge_and_flow/services/labor_model.dart';
+import 'package:forge_and_flow/widgets/lever_card.dart';
+import 'package:forge_and_flow/widgets/week_history_tile.dart';
+import 'package:forge_and_flow/screens/week_detail_screen.dart';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +34,9 @@ const WeekRecord _overModel = WeekRecord(
   theoreticalLaborPct: 20.48, actualLaborPct: 21.45,
   dollarGap: 478.50,
   primaryLeverId: 'cplh_down',
+  targetSourceType: 'system_baseline',
+  targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+  targetFohWage: 16.50, targetBohWage: 21.35,
 );
 
 const WeekRecord _underModel = WeekRecord(
@@ -44,6 +47,9 @@ const WeekRecord _underModel = WeekRecord(
   theoreticalLaborPct: 20.48, actualLaborPct: 19.71,
   dollarGap: -396.00,
   primaryLeverId: 'cplh_up',
+  targetSourceType: 'system_baseline',
+  targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+  targetFohWage: 16.50, targetBohWage: 21.35,
 );
 
 const WeekRecord _zeroGap = WeekRecord(
@@ -54,6 +60,9 @@ const WeekRecord _zeroGap = WeekRecord(
   theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
   dollarGap: 0.0,
   primaryLeverId: 'covers_down',
+  targetSourceType: 'system_baseline',
+  targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+  targetFohWage: 16.50, targetBohWage: 21.35,
 );
 
 // ─── WeekHistoryTile tests ────────────────────────────────────────────────────
@@ -237,9 +246,8 @@ void main() {
         home: WeekDetailScreen(week: _overModel),
       ));
       await tester.pump();
-      // targetFohHours = modelFohHours(1200, derivedTargetCPLH)
-      final expected = LaborModel.modelFohHours(
-          1200, BaselineData.derivedTargetCPLH);
+      // targetFohHours = modelFohHours(1200, storedTargetCPLH)
+      final expected = LaborModel.modelFohHours(1200, 4.58);
       expect(find.text(expected.toString()), findsWidgets);
     });
 
@@ -249,8 +257,7 @@ void main() {
         home: WeekDetailScreen(week: _overModel),
       ));
       await tester.pump();
-      final expected = LaborModel.modelBohHours(
-          1200, 41.79, BaselineData.derivedTargetSPLH);
+      final expected = LaborModel.modelBohHours(1200, 41.79, 180.0);
       expect(find.text(expected.toString()), findsWidgets);
     });
   });
@@ -316,14 +323,16 @@ void main() {
         theoreticalLaborPct: 20.48, actualLaborPct: 21.0,
         dollarGap: 200.0, primaryLeverId: 'covers_down',
         shiftsCompleted: 6,
+        targetSourceType: 'system_baseline',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
       );
       await tester.pumpWidget(MaterialApp(
         theme: ThemeData.dark(),
         home: WeekDetailScreen(week: partial),
       ));
       await tester.pump();
-      final expected = LaborModel.modelFohHours(
-          540, BaselineData.derivedTargetCPLH);
+      final expected = LaborModel.modelFohHours(540, 4.58);
       // Model formula value should appear in the table
       expect(find.text(expected.toString()), findsWidgets);
     });

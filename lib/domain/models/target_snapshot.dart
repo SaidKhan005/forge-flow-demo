@@ -9,6 +9,22 @@
 // No UI imports. No database code. No widget code.
 
 class TargetSnapshot {
+  // ── Scope ────────────────────────────────────────────────────────────────
+
+  /// Restaurant scope this snapshot was locked for.
+  final String restaurantId;
+
+  // ── Profile identity ────────────────────────────────────────────────────
+
+  /// The active target profile id at close time.
+  final String? targetProfileId;
+
+  /// The immutable version id locked for this snapshot.
+  final String? targetProfileVersionId;
+
+  /// Source type: 'system_baseline' or 'manager_override'.
+  final String? sourceType;
+
   // ── Rate targets ──────────────────────────────────────────────────────────
 
   /// Target covers-per-labor-hour for FOH scheduling (Jim Taylor Ch. 5).
@@ -51,6 +67,10 @@ class TargetSnapshot {
   final double theoreticalLaborPct;
 
   const TargetSnapshot({
+    this.restaurantId = 'demo_restaurant_001',
+    this.targetProfileId,
+    this.targetProfileVersionId,
+    this.sourceType,
     required this.targetCPLH,
     required this.targetSPLH,
     required this.targetPPA,

@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-03-29
+Updated: 2026-03-30
 Owner: You
 Purpose: Make sure the app is fully aligned for live POS + labor integrations before Phase 8 begins.
 
@@ -29,6 +29,17 @@ In plain terms:
 - Providers and notifiers should expose current app state from repositories and queries, not from vendor payloads or screen constants.
 - UI should render that app state without needing to know where the data came from.
 
+## Live Data Clarification
+
+- The current repo is not connected to a live POS or labor vendor yet.
+- Current displayed data is still fixture, replay, or demo-backed at the transport layer.
+- Internally, that data now flows through the same aligned path that live vendor data should use:
+  - canonical source facts
+  - SQLite persistence
+  - app state and read models
+  - UI rendering
+- Phase 8 should replace fixture or replay transport with live vendor transport.
+- Phase 8 should not replace the internal app-side data flow.
 ## Scope Clarification
 
 - Current rollout target: one restaurant or location at a time.
@@ -582,7 +593,7 @@ These are current examples that should be revisited when the post-Phase-7 audit 
   - Full Week section currently reads `DemoData.currentWeekShifts`
 - `lib/screens/settings_screen.dart`
   - current reset actions still revolve around demo reseeding
-- `lib/data/demo_data.dart`
+- `lib/data/fixture_seed_data.dart` (formerly `demo_data.dart`)
   - should remain available as fixture material or seed content, but not as direct screen truth
 - `lib/models/week_data.dart`
   - still derives targets from current global target state
@@ -891,9 +902,192 @@ These are the implementation-level read boundaries the app should converge on.
 - Settings / Sync
   - reads import status, replay mode, last successful sync, and reset/import actions
 
-## Formal Readiness Gate For Phase 8
+## Phase 7.51 Closeout Scope
 
-Do not start live adapter work until the answer is "yes" to all of these:
+The post-`7.5` repo audit found that the structural alignment work landed, but the Phase 8 gate is not honest enough to call fully passed yet. `Phase 7.51` is the narrow closeout pass between `7.5` and `8`.
+
+### 7.51a. Historical Truth Closeout
+
+- `variance_report.dart` closed-shift rows must stop comparing against current `BaselineData`.
+- Closed shifts shown inside Full Week must read the locked target fields already persisted on `ShiftRecord`.
+- Manager override must continue to update open and future state immediately without rewriting already-closed shift detail.
+- Replay and deterministic tests should prove this explicitly before the gate is signed off.
+
+### 7.51b. Active-Target Bridge Containment
+
+- Persisted `ActiveTargetProfile` plus notifier or provider state should become the app-wide active-target authority.
+- `BaselineData.revision` should stop acting as the shell-level rebuild authority.
+- Baseline, Schedule, and Learn should stop treating direct `BaselineData` reads as the long-term runtime source of truth.
+- If any `BaselineData` bridge remains temporarily, the exact allowed read sites should be documented and treated as compatibility-only.
+- The source-of-truth map should be updated for every visible number that still depends on the bridge.
+
+### 7.51c. Vendor Readiness Artifacts + Gate Evidence
+
+- Check in written capability profiles for the first Phase 8 vendors.
+- Check in the POS/labor/app source-ownership matrix.
+- Capture replay scenarios for no data, partial data, stale data, failed import, and fixture mode.
+- Run deterministic tests and replay proof in a Flutter-capable environment.
+- Do not mark Phase 8 active until this evidence exists in the repo and the gate answers are all yes.
+
+## Post-7.51 Verification Findings
+
+The verification pass after 7.51a-e found:
+
+- 7.51a complete: closed-shift Full Week detail reads locked target truth.
+- 7.51b complete: app-shell authority off BaselineData.revision; remaining bridge frozen.
+- 7.51c complete: gate artifacts checked in; vendor profiles remain TBD.
+- 7.51d complete: projected/open Variance uses active target profile; Shift empty-state renders truthfully; connector config persistence boundary exists; Clear All Data actually clears; Schedule visible surface uses injected targets; variance banner uses WeekData theoretical labor %.
+- repo-wide code and architecture audit says the app is structurally ready for Phase 8 transport work.
+- the tracked test corpus is now 28 test files.
+- the checked-in rerun artifacts are:
+  - docs/phase_8_gate/test_execution_manifest.md
+  - scripts/run_phase8_gate_tests.ps1
+- 7.51e complete: 28-file Flutter corpus rerun passed (all 28/28, re-verified post-7.52c). Gate blocked on vendor selection only.
+- Phase 8 is blocked on vendor selection only.
+- 7.52 can proceed in parallel as non-architectural cleanup and product-boundary work:
+  - repo rename
+  - file and asset cleanup
+  - product identity clarification
+  - private Barrio layer setup inside the same repo
+  - no changes to the aligned Phase 8 data path
+
+### 7.51d. Compatibility-Bridge Retirement + Pending-State Closure
+- Decide which production `BaselineData` reads are being retired now versus explicitly frozen as temporary compatibility scope.
+- Migrate or clearly freeze the remaining bridge usage in:
+  - Baseline
+  - Schedule
+  - Learn
+- Close the replay-readiness scenarios that are still pending when they are required by the formal Phase 8 gate:
+  - no data
+  - stale data
+  - failed import
+  - historical-only cold start
+  - any other scenario still required pre-Phase-8
+- Update the sign-off and replay matrix so the gate documents do not disagree with each other.
+
+### 7.51e. Vendor Selection + Final Gate Sign-Off
+
+- Select the first POS vendor.
+- Select the first labor vendor.
+- Replace TBD entries in both capability profiles with real vendor-specific details.
+- Run the current 28-file Flutter test corpus one file at a time in a supported environment.
+  - use docs/phase_8_gate/test_execution_manifest.md
+  - use scripts/run_phase8_gate_tests.ps1
+  - record exact pass or fail results without reusing older file counts
+- Only after the above is done should the final sign-off change from blocked to passed.
+
+## Phase 7.52 Follow-On Scope
+
+This is intentionally outside the core data-alignment gate.
+
+7.52 is allowed to proceed while vendor selection is still pending as long as it does not reopen the aligned architecture.
+
+Allowed 7.52 work:
+
+- repo and package naming cleanup
+- legacy file and asset cleanup
+- product identity clarification so Forge & Flow is the product and restaurant name remains runtime-scoped
+- private Barrio layer setup inside the same repo
+- dual-build or flavor foundation for separate Forge & Flow and Barrio app identities from one codebase
+- Barrio shell and private-route structure
+- structured interactive private content surfaces built from source documents
+- preparation for Phase 9 and Phase 10
+
+Disallowed 7.52 drift:
+
+- no new Phase 8 transport work without a vendor
+- no new screen-level demo truth
+- no forked Barrio codebase that duplicates Forge & Flow core
+- no real login or permission enforcement before Phase 9
+- no raw PDF or raw HTML file viewer being treated as the final private app experience if the content is meant to become a polished in-app surface
+- no changes that bypass canonical models, SQLite, app state, and UI layering
+
+## Phase 7.52 Execution Breakdown
+
+7.52 is a product-shell and private-build phase, not a new data-architecture phase.
+
+### 7.52a. Tracker Lock + Scope
+
+- freeze the naming and product contract:
+  - Forge & Flow = shared product
+  - restaurant name = runtime restaurant scope
+  - Barrio = private internal build identity
+- freeze the phase boundary:
+  - 7.52 builds shell, content structure, and build identity
+  - Phase 9 owns login, permissions, and real access control
+  - Phase 10 owns cross-device shared state
+- lock the execution contract in:
+  - `docs/phase_7_52_execution_plan.md`
+- once that contract is written and accepted, advance the active execution block to `7.52b`
+
+### 7.52b. Product Identity + Naming Cleanup
+
+- rename public product-facing identity away from demo placeholders and public `Barrio` naming
+- resolved hotspots included:
+  - `pubspec.yaml`
+  - `forge_and_flow.iml`
+  - `README.md`
+  - `android/app/src/main/AndroidManifest.xml`
+  - `ios/Runner/Info.plist`
+  - `windows/runner/Runner.rc`
+  - `windows/runner/main.cpp`
+  - `windows/CMakeLists.txt`
+- keep restaurant display name runtime-scoped in the app itself
+- completion note:
+  - public product identity now reads as Forge & Flow across package, module, README, Android, iOS, and Windows visible app strings
+  - default demo restaurant scope no longer uses the product name as the restaurant label
+  - app title now remains `Forge & Flow` even when restaurant scope is loaded
+  - stale persisted restaurant scope rows using `Forge & Flow Demo` are normalized on load so old demo branding does not leak back into the UI
+
+### 7.52c. Legacy File + Private Asset Cleanup
+
+- rename legacy/demo-heavy files to honest neutral names
+- move Barrio-only root files into a private boundary under docs or assets
+- remove stale root clutter that is not part of the shared product identity
+- do not touch the aligned Phase 8 data path while doing this
+
+### 7.52d. Private Barrio Boundary
+
+- create a private Barrio layer inside the same repo
+- Barrio-only docs, assets, routes, and content should live there
+- shared product logic must remain in Forge & Flow core
+- no forked customer product codebase
+
+### 7.52e. Dual-Build Foundation
+
+- prepare two future app identities from one codebase:
+  - Forge & Flow
+  - Barrio
+- separate branding, app name, and icon identity are allowed here
+- this is a build and product-shell concern, not a data-layer concern
+
+### 7.52f. Barrio Shell + Navigation
+
+- build the private Barrio shell before real auth exists
+- the shell should include entry points for:
+  - Forge & Flow
+  - Company Handbook
+  - Interview Playbook
+  - Jim Taylor Labor Model
+  - Preston Lee Model (`Coming Soon`)
+  - future supervisor-specific content area
+- the information architecture can be role-aware in structure even though enforcement waits for Phase 9
+
+### 7.52g. Structured Interactive Content Surfaces
+
+- source PDFs and HTML files should be treated as source material, not as the final runtime experience
+- handbook, interview, and model content should become structured in-app surfaces
+- these surfaces should be designed to be searchable, navigable, and ready for later role gating
+- the goal of 7.52 is that everything is there and looks right before auth arrives
+
+### 7.52h. Phase 9 Handoff
+
+- if useful, add role-aware preview structure only
+- do not implement real auth checks or permission enforcement
+- stop 7.52 after shell, content, and build boundaries are ready for Phase 9 login and roles
+
+## Formal Readiness Gate For Phase 8
+Do not start live adapter work until `Phase 7.51` is complete and the answer is "yes" to all of these:
 
 - Can the app run end to end from imported fixture bundles without relying on direct screen-level demo constants?
 - Can every tab explain where its numbers come from?
@@ -926,6 +1120,10 @@ Do not start live adapter work until the answer is "yes" to all of these:
 - persistence separation between raw imports, canonical records, and target state
 - explicit restaurant or location scope in canonical models and persistence
 - persisted historical target truth for closed records
+- closed-shift Full Week detail reading locked shift targets instead of current-global targets
+- app-wide active-target propagation no longer depending on `BaselineData.revision`
+- compatibility-bridge scope either retired or explicitly frozen and documented for remaining production surfaces
+- no disagreement between the final sign-off doc and the replay-readiness matrix
 - replay scenarios for historical, current-week, intraday, and close-shift flows
 - explicit readiness sign-off that the app is aligned
 
@@ -940,6 +1138,7 @@ The app is aligned when a realistic imported fixture bundle can drive:
 - live shift diagnosis
 - week-to-date variance
 - historical teaching
+- closed-shift Full Week detail without rewriting history when overrides change later
 
 without changing screen logic.
 

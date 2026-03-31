@@ -1,10 +1,11 @@
 // One shift (one daypart) — stored in SQLite.
 // Raw inputs are set at close time; all labor % and dollar fields are derived.
 
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
 
 class ShiftRecord {
   final int? id;
+  final String restaurantId;
   final String weekId;              // "2026-W13"
   final String dayLabel;            // "Mon", "Tue", …, "Sun"
   final String daypart;             // "lunch" | "dinner" | "late_night"
@@ -36,6 +37,20 @@ class ShiftRecord {
   /// When absent, `bohLaborDollar` falls back to `bohHours × MeridianConfig.bohWage`.
   final double? storedBohLaborDollar;
 
+  // ── Locked target fields (Phase 7.5b) ──────────────────────────────────
+  final String? targetProfileId;
+  final String? targetProfileVersionId;
+  final String? targetSourceType;
+  final double? targetCPLH;
+  final double? targetSPLH;
+  final double? targetPPA;
+  final double? targetFohWage;
+  final double? targetBohWage;
+  final double? opzFloorCPLH;
+  final double? opzCeilingCPLH;
+  final double? theoreticalFohLaborPct;
+  final double? theoreticalBohLaborPct;
+
   /// Identifier for the originating system (e.g. "toast", "demo_pos").
   final String? sourceSystem;
 
@@ -44,6 +59,7 @@ class ShiftRecord {
 
   const ShiftRecord({
     this.id,
+    this.restaurantId = 'demo_restaurant_001',
     required this.weekId,
     required this.dayLabel,
     required this.daypart,
@@ -61,6 +77,18 @@ class ShiftRecord {
     this.scheduledBohHours,
     this.storedFohLaborDollar,
     this.storedBohLaborDollar,
+    this.targetProfileId,
+    this.targetProfileVersionId,
+    this.targetSourceType,
+    this.targetCPLH,
+    this.targetSPLH,
+    this.targetPPA,
+    this.targetFohWage,
+    this.targetBohWage,
+    this.opzFloorCPLH,
+    this.opzCeilingCPLH,
+    this.theoreticalFohLaborPct,
+    this.theoreticalBohLaborPct,
     this.sourceSystem,
     this.sourceShiftId,
   });
@@ -96,6 +124,28 @@ class ShiftRecord {
 
   bool get isClosed    => status == 'closed';
   bool get isProjected => status == 'projected';
+  bool get isOpen      => status == 'open';
+
+  // ── Strict locked-target getters for historical closed-shift truth ────────
+  double get lockedTargetPPA => _requireLocked(targetPPA, 'targetPPA');
+  double get lockedTargetCPLH => _requireLocked(targetCPLH, 'targetCPLH');
+  double get lockedTargetSPLH => _requireLocked(targetSPLH, 'targetSPLH');
+  double get lockedTargetFohWage => _requireLocked(targetFohWage, 'targetFohWage');
+  double get lockedTargetBohWage => _requireLocked(targetBohWage, 'targetBohWage');
+  double get lockedTheoreticalFohLaborPct =>
+      _requireLocked(theoreticalFohLaborPct, 'theoreticalFohLaborPct');
+  double get lockedTheoreticalBohLaborPct =>
+      _requireLocked(theoreticalBohLaborPct, 'theoreticalBohLaborPct');
+
+  static double _requireLocked(double? value, String field) {
+    if (value == null) {
+      throw StateError(
+        'ShiftRecord.$field is null — locked target field must be '
+        'backfilled before reading historical truth.',
+      );
+    }
+    return value;
+  }
 
   /// Normalized lever id: lowercase underscore form of [primaryLever].
   /// "CPLH_DOWN" → "cplh_down", "ON_MODEL" → "on_model".
@@ -114,6 +164,7 @@ class ShiftRecord {
 
   Map<String, dynamic> toMap() => {
         'id': id,
+        'restaurant_id': restaurantId,
         'week_id': weekId,
         'day_label': dayLabel,
         'daypart': daypart,
@@ -137,12 +188,25 @@ class ShiftRecord {
         'scheduled_boh_hours': scheduledBohHours,
         'foh_labor_dollar': storedFohLaborDollar,
         'boh_labor_dollar': storedBohLaborDollar,
+        'target_profile_id': targetProfileId,
+        'target_profile_version_id': targetProfileVersionId,
+        'target_source_type': targetSourceType,
+        'target_cplh': targetCPLH,
+        'target_splh': targetSPLH,
+        'target_ppa': targetPPA,
+        'target_foh_wage': targetFohWage,
+        'target_boh_wage': targetBohWage,
+        'opz_floor_cplh': opzFloorCPLH,
+        'opz_ceiling_cplh': opzCeilingCPLH,
+        'theoretical_foh_labor_pct': theoreticalFohLaborPct,
+        'theoretical_boh_labor_pct': theoreticalBohLaborPct,
         'source_system': sourceSystem,
         'source_shift_id': sourceShiftId,
       };
 
   factory ShiftRecord.fromMap(Map<String, dynamic> m) => ShiftRecord(
         id: m['id'] as int?,
+        restaurantId: (m['restaurant_id'] as String?) ?? 'demo_restaurant_001',
         weekId: m['week_id'] as String,
         dayLabel: m['day_label'] as String,
         daypart: m['daypart'] as String,
@@ -160,6 +224,18 @@ class ShiftRecord {
         scheduledBohHours: m['scheduled_boh_hours'] as int?,
         storedFohLaborDollar: (m['foh_labor_dollar'] as num?)?.toDouble(),
         storedBohLaborDollar: (m['boh_labor_dollar'] as num?)?.toDouble(),
+        targetProfileId: m['target_profile_id'] as String?,
+        targetProfileVersionId: m['target_profile_version_id'] as String?,
+        targetSourceType: m['target_source_type'] as String?,
+        targetCPLH: (m['target_cplh'] as num?)?.toDouble(),
+        targetSPLH: (m['target_splh'] as num?)?.toDouble(),
+        targetPPA: (m['target_ppa'] as num?)?.toDouble(),
+        targetFohWage: (m['target_foh_wage'] as num?)?.toDouble(),
+        targetBohWage: (m['target_boh_wage'] as num?)?.toDouble(),
+        opzFloorCPLH: (m['opz_floor_cplh'] as num?)?.toDouble(),
+        opzCeilingCPLH: (m['opz_ceiling_cplh'] as num?)?.toDouble(),
+        theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num?)?.toDouble(),
+        theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num?)?.toDouble(),
         sourceSystem: m['source_system'] as String?,
         sourceShiftId: m['source_shift_id'] as String?,
       );

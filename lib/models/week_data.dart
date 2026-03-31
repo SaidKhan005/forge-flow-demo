@@ -3,9 +3,8 @@
 // Created by ShiftService.getWeekToDate(). Consumed by VarianceReport.
 //
 // All computed getters derive from raw fields — no business logic in the UI.
-// Replaces WeekToDate static constants in VarianceReport._ThisWeekTab.
+// Target/theoretical fields are explicitly injected by the caller.
 
-import '../data/meridian_data.dart';
 import '../services/labor_model.dart';
 
 class WeekData {
@@ -16,21 +15,29 @@ class WeekData {
   final double totalSales;
   final int totalFohHours;
   final int totalBohHours;
-  final int shiftsCompleted;         // closed shifts so far
-  final int shiftsTotal;             // total shifts in a full week
-  final int wtdForecastCovers;       // sum of forecastCovers for closed shifts
-  final int totalWeekForecastCovers; // sum of forecastCovers for ALL shifts in week
-  final String primaryLeverId;       // from LaborModel.determineLever
-  final String lastClosedDay;        // full day name, e.g. 'Friday'
-  final int    closedDayNumber;      // Mon=1, Tue=2, …, Fri=5, Sat=6, Sun=7
+  final int shiftsCompleted;
+  final int shiftsTotal;
+  final int wtdForecastCovers;
+  final int totalWeekForecastCovers;
+  final String primaryLeverId;
+  final String lastClosedDay;
+  final int closedDayNumber;
 
   // ── Stored aggregate labor dollars (Phase 3 addition) ────────────────────
-  // Summed from closed ShiftRecord.fohLaborDollar / bohLaborDollar.
-  // When absent, getters fall back to hours × config wage.
   final double? storedTotalFohLaborDollar;
   final double? storedTotalBohLaborDollar;
 
-  const WeekData({
+  // ── Explicit active target fields (required) ─────────────────────────────
+  final double _targetCPLH;
+  final double _targetSPLH;
+  final double _targetPPA;
+  final double _targetFohWage;
+  final double _targetBohWage;
+  final double _theoreticalFohLaborPct;
+  final double _theoreticalBohLaborPct;
+  final double _theoreticalLaborPct;
+
+  WeekData({
     required this.weekId,
     required this.weekLabel,
     required this.totalCovers,
@@ -42,23 +49,38 @@ class WeekData {
     required this.wtdForecastCovers,
     required this.totalWeekForecastCovers,
     required this.primaryLeverId,
-    this.lastClosedDay   = 'Monday',
+    this.lastClosedDay = 'Monday',
     this.closedDayNumber = 1,
     this.storedTotalFohLaborDollar,
     this.storedTotalBohLaborDollar,
-  });
+    required double targetCPLH,
+    required double targetSPLH,
+    required double targetPPA,
+    required double targetFohWage,
+    required double targetBohWage,
+    required double theoreticalFohLaborPct,
+    required double theoreticalBohLaborPct,
+    required double theoreticalLaborPct,
+  })  : _targetCPLH = targetCPLH,
+        _targetSPLH = targetSPLH,
+        _targetPPA = targetPPA,
+        _targetFohWage = targetFohWage,
+        _targetBohWage = targetBohWage,
+        _theoreticalFohLaborPct = theoreticalFohLaborPct,
+        _theoreticalBohLaborPct = theoreticalBohLaborPct,
+        _theoreticalLaborPct = theoreticalLaborPct;
 
-  // ── Aggregate labor dollars — stored source facts with config-wage fallback
+  // ── Aggregate labor dollars ───────────────────────────────────────────────
   double get totalFohLaborDollar =>
-      storedTotalFohLaborDollar ?? totalFohHours * MeridianConfig.fohWage;
+      storedTotalFohLaborDollar ?? totalFohHours * _targetFohWage;
 
   double get totalBohLaborDollar =>
-      storedTotalBohLaborDollar ?? totalBohHours * MeridianConfig.bohWage;
+      storedTotalBohLaborDollar ?? totalBohHours * _targetBohWage;
 
   double get totalLaborDollar => totalFohLaborDollar + totalBohLaborDollar;
 
   // ── Rate metrics ──────────────────────────────────────────────────────────
-  double get avgPPA  => totalCovers > 0 ? totalSales / totalCovers : 0;
+  double get avgPPA => totalCovers > 0 ? totalSales / totalCovers : 0;
   double get avgCPLH => totalFohHours > 0 ? totalCovers / totalFohHours : 0;
   double get avgSPLH => totalBohHours > 0 ? totalSales / totalBohHours : 0;
 
@@ -70,96 +92,82 @@ class WeekData {
   // ── Labor % — actual ─────────────────────────────────────────────────────
   double get actualLaborPct =>
       totalSales > 0 ? totalLaborDollar / totalSales * 100 : 0;
-
   double get actualFohLaborPct =>
       totalSales > 0 ? totalFohLaborDollar / totalSales * 100 : 0;
-
   double get actualBohLaborPct =>
       totalSales > 0 ? totalBohLaborDollar / totalSales * 100 : 0;
 
-  // ── Passthrough targets — callers never import BaselineData or MeridianConfig
-  double get targetPPA  => BaselineData.derivedTargetPPA;
-  double get targetCPLH => BaselineData.derivedTargetCPLH;
-  double get targetSPLH => BaselineData.derivedTargetSPLH;
+  // ── Target getters ────────────────────────────────────────────────────────
+  double get targetPPA => _targetPPA;
+  double get targetCPLH => _targetCPLH;
+  double get targetSPLH => _targetSPLH;
 
   // ── Labor % — theoretical ─────────────────────────────────────────────────
-  double get theoreticalLaborPct    => BaselineData.derivedTheoreticalLaborPct;
-  double get theoreticalFohLaborPct => BaselineData.derivedFohTheoreticalLaborPct;
-  double get theoreticalBohLaborPct => BaselineData.derivedBohTheoreticalLaborPct;
+  double get theoreticalLaborPct => _theoreticalLaborPct;
+  double get theoreticalFohLaborPct => _theoreticalFohLaborPct;
+  double get theoreticalBohLaborPct => _theoreticalBohLaborPct;
   double get variancePts => actualLaborPct - theoreticalLaborPct;
 
   // ── Model hours for actual volume (Jim Taylor Ch. 10) ─────────────────────
   int get modelFohHoursWtd =>
-      LaborModel.modelFohHours(totalCovers, BaselineData.derivedTargetCPLH);
-
+      LaborModel.modelFohHours(totalCovers, _targetCPLH);
   int get modelBohHoursWtd =>
-      LaborModel.modelBohHours(totalCovers, avgPPA, BaselineData.derivedTargetSPLH);
+      LaborModel.modelBohHours(totalCovers, avgPPA, _targetSPLH);
 
   // ── Dollar gap ────────────────────────────────────────────────────────────
   double get dollarGap => LaborModel.dollarGap(
-    totalLaborDollar,
-    totalCovers,
-    avgPPA,
-    targetCPLH: BaselineData.derivedTargetCPLH,
-    targetSPLH: BaselineData.derivedTargetSPLH,
-    fohWage: MeridianConfig.fohWage,
-    bohWage: MeridianConfig.bohWage,
-  );
+        totalLaborDollar,
+        totalCovers,
+        avgPPA,
+        targetCPLH: _targetCPLH,
+        targetSPLH: _targetSPLH,
+        fohWage: _targetFohWage,
+        bohWage: _targetBohWage,
+      );
 
   double get dollarGapAnnualized => dollarGap * 52;
 
   // ── Projected end-of-week ─────────────────────────────────────────────────
-  // Remaining shifts are assumed to run at theoretical labor %.
-  // This gives managers a realistic full-week projection from mid-week.
-
   int get remainingForecastCovers {
     final r = totalWeekForecastCovers - wtdForecastCovers;
     return r < 0 ? 0 : r;
   }
 
   double get projectedRemainingShiftSales =>
-      remainingForecastCovers * BaselineData.derivedTargetPPA;
-
+      remainingForecastCovers * _targetPPA;
   double get projTotalSales => totalSales + projectedRemainingShiftSales;
-
   int get projTotalCovers => totalCovers + remainingForecastCovers;
-
   double get projRemainingLaborDollar =>
       projectedRemainingShiftSales * theoreticalLaborPct / 100;
-
-  double get projTotalLaborDollar => totalLaborDollar + projRemainingLaborDollar;
-
+  double get projTotalLaborDollar =>
+      totalLaborDollar + projRemainingLaborDollar;
   double get projActualLaborPct =>
       projTotalSales > 0 ? projTotalLaborDollar / projTotalSales * 100 : 0;
-
   double get projTargetLaborPct => theoreticalLaborPct;
-
   double get projVariancePts => projActualLaborPct - projTargetLaborPct;
 
   double get projDollarGapWeekly {
     final blendedPPA = projTotalCovers > 0
         ? projTotalSales / projTotalCovers
-        : BaselineData.derivedTargetPPA;
+        : _targetPPA;
     return LaborModel.dollarGap(
       projTotalLaborDollar,
       projTotalCovers,
       blendedPPA,
-      targetCPLH: BaselineData.derivedTargetCPLH,
-      targetSPLH: BaselineData.derivedTargetSPLH,
-      fohWage: MeridianConfig.fohWage,
-      bohWage: MeridianConfig.bohWage,
+      targetCPLH: _targetCPLH,
+      targetSPLH: _targetSPLH,
+      fohWage: _targetFohWage,
+      bohWage: _targetBohWage,
     );
   }
 
   // ── Theoretical blended wage ──────────────────────────────────────────────
-  // Model labor $ / model total hours for actual volume.
   double get theoreticalBlendedWage {
     final theoFoh = modelFohHoursWtd;
     final theoBoh = modelBohHoursWtd;
     final totalModelHours = theoFoh + theoBoh;
     if (totalModelHours == 0) return 0;
-    return (theoFoh * MeridianConfig.fohWage +
-            theoBoh * MeridianConfig.bohWage) /
+    return (theoFoh * _targetFohWage + theoBoh * _targetBohWage) /
         totalModelHours;
   }
 }

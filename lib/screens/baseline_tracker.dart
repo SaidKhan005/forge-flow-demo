@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
 import '../widgets/daypart_table.dart';
 import 'baseline_manager_screen.dart';
 

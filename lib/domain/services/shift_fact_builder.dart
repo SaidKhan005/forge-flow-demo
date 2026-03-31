@@ -63,6 +63,7 @@ class ShiftFactBuilder {
     );
 
     return ShiftFact(
+      restaurantId: input.restaurantId,
       businessDate: input.businessDate,
       weekId: input.weekId,
       dayLabel: input.dayLabel,

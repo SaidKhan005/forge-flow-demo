@@ -13,9 +13,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_flow_demo/data/shift_data_source.dart';
-import 'package:forge_flow_demo/data/week_data_notifier.dart';
-import 'package:forge_flow_demo/screens/variance_report.dart';
+import 'package:forge_and_flow/data/shift_data_source.dart';
+import 'package:forge_and_flow/data/week_data_notifier.dart';
+import 'package:forge_and_flow/screens/variance_report.dart';
 
 // ── Test harness ──────────────────────────────────────────────────────────────
 

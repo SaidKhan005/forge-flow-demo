@@ -1,21 +1,9 @@
-// Phase 5.1 — BaselineManagerScreen widget tests.
-//
-// Uses BaselineManagerScreen.withCandidates() to inject pre-built candidate
-// lists directly, bypassing the async DB load. This avoids the runAsync /
-// google_fonts HTTP incompatibility and keeps tests deterministic.
-// Navigation tests (Cancel / Done) verify the DB commit path via tester.runAsync
-// because sqflite isolate responses don't complete inside Flutter's fakeAsync.
-// pump() is NOT called after CANCEL/DONE taps to avoid Navigator animation loops.
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/baseline_manager_service.dart';
-import 'package:forge_flow_demo/data/database_helper.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
-import 'package:forge_flow_demo/models/baseline_candidate_shift.dart';
-import 'package:forge_flow_demo/screens/baseline_manager_screen.dart';
-
-// ── Shared test fixtures ──────────────────────────────────────────────────────
+import 'package:forge_and_flow/data/database_helper.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
+import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
 
 const _lunch1 = BaselineCandidateShift(
   recordKey: '2026-W10|Mon|lunch',
@@ -81,14 +69,20 @@ Widget _wrap(Widget child) => MaterialApp(
       home: child,
     );
 
+Future<Set<String>> _commitDoneAndReadKeys(WidgetTester tester) async {
+  return (await tester.runAsync(() async {
+    await tester.tap(find.text('DONE'));
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    return DatabaseHelper.instance.getBaselineSelectedRecordKeys();
+  }))!;
+}
+
 void main() {
   setUp(() async {
     BaselineData.clearManagerOverride();
     await DatabaseHelper.instance.reseedDemo();
     await DatabaseHelper.instance.replaceBaselineSelectedRecordKeys({});
   });
-
-  // ── Loading indicator (kept from prior suite) ─────────────────────────────
 
   testWidgets('shows loading indicator when no initialCandidates provided',
       (tester) async {
@@ -97,9 +91,7 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
   });
 
-  // ── A: manager page renders required labels ───────────────────────────────
-
-  group('A — required labels present', () {
+  group('A - required labels present', () {
     testWidgets('page title, buttons, and all six preview labels render',
         (tester) async {
       await tester.pumpWidget(_wrap(
@@ -119,17 +111,13 @@ void main() {
     });
   });
 
-  // ── B: zero-selection preview shows empty state ───────────────────────────
-
-  group('B — zero-selection preview', () {
+  group('B - zero-selection preview', () {
     testWidgets('SELECTED SHIFTS shows 0 when nothing selected',
         (tester) async {
       await tester.pumpWidget(_wrap(
         BaselineManagerScreen.withCandidates(_allCandidates),
       ));
       await tester.pump();
-
-      // Count cell shows the integer '0'
       expect(find.text('0'), findsOneWidget);
     });
 
@@ -139,15 +127,11 @@ void main() {
         BaselineManagerScreen.withCandidates(_allCandidates),
       ));
       await tester.pump();
-
-      // TARGET CPLH, TARGET SPLH, TARGET PPA, OPZ FLOOR, OPZ CEILING
       expect(find.text('--'), findsNWidgets(5));
     });
   });
 
-  // ── C: selecting a candidate updates live preview ─────────────────────────
-
-  group('C — live preview updates on selection', () {
+  group('C - live preview updates on selection', () {
     testWidgets('selecting one candidate clears all -- from preview',
         (tester) async {
       await tester.pumpWidget(_wrap(
@@ -155,16 +139,13 @@ void main() {
       ));
       await tester.pump();
 
-      // Precondition: five dashes showing
       expect(find.text('--'), findsNWidgets(5));
 
-      // Tap first tile (→ _lunch1, cplh 4.80)
       final boxes = find.byType(AnimatedContainer);
       await tester.tap(boxes.first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
 
-      // No -- remaining in preview
       expect(find.text('--'), findsNothing);
     });
 
@@ -189,13 +170,11 @@ void main() {
       await tester.pump();
 
       final boxes = find.byType(AnimatedContainer);
-      // Select
       await tester.tap(boxes.first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('--'), findsNothing);
 
-      // Deselect
       final boxes2 = find.byType(AnimatedContainer);
       await tester.tap(boxes2.first);
       await tester.pump();
@@ -204,9 +183,7 @@ void main() {
     });
   });
 
-  // ── D: candidate tiles and section headers ────────────────────────────────
-
-  group('D — candidate tiles show required fields', () {
+  group('D - candidate tiles show required fields', () {
     testWidgets('LUNCH section header renders', (tester) async {
       await tester.pumpWidget(_wrap(
         BaselineManagerScreen.withCandidates(_allCandidates),
@@ -230,77 +207,59 @@ void main() {
       ));
       await tester.pump();
 
-      // Three candidates → three chips of each label
       expect(find.text('CPLH '), findsNWidgets(3));
       expect(find.text('COVERS '), findsNWidgets(3));
       expect(find.text('SPLH '), findsNWidgets(3));
       expect(find.text('PPA '), findsNWidgets(3));
       expect(find.text('LEVER '), findsNWidgets(3));
-
-      // primaryLeverId value from fixture appears at least once
       expect(find.text('cplh_up'), findsWidgets);
     });
   });
 
-  // ── E: Cancel discards draft ──────────────────────────────────────────────
-
-  group('E — Cancel discards draft', () {
+  group('E - Cancel discards draft', () {
     testWidgets('Cancel does not write selection to DB', (tester) async {
       await tester.pumpWidget(_wrap(
         BaselineManagerScreen.withCandidates(_allCandidates),
       ));
       await tester.pump();
 
-      // Select a candidate so there is a draft selection
       final boxes = find.byType(AnimatedContainer);
       await tester.tap(boxes.first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('1'), findsOneWidget);
 
-      // Tap Cancel — must NOT commit (no pump after to avoid nav loop)
       await tester.tap(find.text('CANCEL'));
+      await tester.pump();
 
-      // DB must still be empty
       final stored = await tester.runAsync(() async {
-        return await DatabaseHelper.instance.getBaselineSelectedRecordKeys();
+        return DatabaseHelper.instance.getBaselineSelectedRecordKeys();
       });
       expect(stored!, isEmpty);
     });
   });
 
-  // ── F: Done with non-empty draft commits ──────────────────────────────────
-
-  group('F — Done with non-empty draft commits selection', () {
+  group('F - Done with non-empty draft commits selection', () {
     testWidgets('Done writes selected record key to DB', (tester) async {
       await tester.pumpWidget(_wrap(
         BaselineManagerScreen.withCandidates(_allCandidates),
       ));
       await tester.pump();
 
-      // Select first candidate (_lunch1)
       final boxes = find.byType(AnimatedContainer);
       await tester.tap(boxes.first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       expect(find.text('1'), findsOneWidget);
 
-      // Tap Done and wait for sqflite write to complete
-      await tester.tap(find.text('DONE'));
-      final stored = await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 600));
-        return await DatabaseHelper.instance.getBaselineSelectedRecordKeys();
-      });
-      expect(stored!, contains(_lunch1.recordKey));
+      final stored = await _commitDoneAndReadKeys(tester);
+      expect(stored, contains(_lunch1.recordKey));
     });
   });
 
-  // ── G: Done with empty draft clears override ──────────────────────────────
-
-  group('G — Done with empty draft clears override', () {
+  group('G - Done with empty draft clears override', () {
     testWidgets('deselect all then Done empties DB and clears override',
         (tester) async {
-      // Precondition: a selection exists in DB and override is active
       await tester.runAsync(() async {
         await DatabaseHelper.instance
             .replaceBaselineSelectedRecordKeys({_selectedLunch.recordKey});
@@ -316,29 +275,20 @@ void main() {
       ]);
       expect(BaselineData.hasManagerOverride, isTrue);
 
-      // Open screen with _selectedLunch pre-selected (isSelected: true)
       await tester.pumpWidget(_wrap(
         BaselineManagerScreen.withCandidates(_withPreSelected),
       ));
       await tester.pump();
 
-      // Deselect the pre-selected candidate (first AnimatedContainer = _selectedLunch)
       final boxes = find.byType(AnimatedContainer);
       await tester.tap(boxes.first);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
-
-      // Draft is now empty
       expect(find.text('0'), findsOneWidget);
 
-      // Tap Done — empty draft must call saveSelection({}) → clearManagerOverride
-      await tester.tap(find.text('DONE'));
-      final stored = await tester.runAsync(() async {
-        await Future<void>.delayed(const Duration(milliseconds: 600));
-        return await DatabaseHelper.instance.getBaselineSelectedRecordKeys();
-      });
+      final stored = await _commitDoneAndReadKeys(tester);
 
-      expect(stored!, isEmpty);
+      expect(stored, isEmpty);
       expect(BaselineData.hasManagerOverride, isFalse);
     });
   });

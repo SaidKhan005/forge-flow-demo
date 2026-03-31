@@ -1,5 +1,5 @@
-name: forge_flow_demo
-description: "Forge & Flow — Live labor productivity dashboard for restaurant floor managers."
+name: forge_and_flow
+description: "Forge & Flow - live labor productivity dashboard for restaurant floor managers."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -50,6 +50,7 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.4
 
 flutter_launcher_icons:
   android: true
@@ -58,6 +59,13 @@ flutter_launcher_icons:
   image_path: "assets/images/logo.png"
   adaptive_icon_background: "#3DCFCF"
   adaptive_icon_foreground: "assets/images/logo.png"
+
+flutter_native_splash:
+  background_image: "assets/images/splash.png"
+  android_12:
+    color: "#E5F0EC"
+    image: "assets/images/splash_icon.png"
+    icon_background_color: "#E5F0EC"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

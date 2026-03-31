@@ -4,12 +4,12 @@
 // History pattern analysis with active Baseline truth.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/demo_data.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
-import 'package:forge_flow_demo/models/history_pattern_record.dart';
-import 'package:forge_flow_demo/services/history_pattern_builder.dart';
-import 'package:forge_flow_demo/services/history_teaching_analyzer.dart';
-import 'package:forge_flow_demo/services/learn_teaching_analyzer.dart';
+import 'package:forge_and_flow/data/fixture_seed_data.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/models/history_pattern_record.dart';
+import 'package:forge_and_flow/services/history_pattern_builder.dart';
+import 'package:forge_and_flow/services/history_teaching_analyzer.dart';
+import 'package:forge_and_flow/services/learn_teaching_analyzer.dart';
 
 void main() {
   setUp(() {

@@ -7,7 +7,7 @@ Use this file for:
 - detailed progress notes
 - older implementation decisions that still matter later
 
-The active roadmap, current watchlist, and next prompts now live in [PROJECT_TRACKER.md](C:/Git%20Local%20Repos/forge_flow_demo/PROJECT_TRACKER.md).
+The active roadmap, watchlist, and next prompts now live in [PROJECT_TRACKER.md](C:/Git%20Local%20Repos/forge_flow_demo/PROJECT_TRACKER.md).
 
 ## Completed Prompt History
 
@@ -42,6 +42,18 @@ The active roadmap, current watchlist, and next prompts now live in [PROJECT_TRA
 | Prompt 7.14 | Learn depth from structured teaching sources | Done | Learn now teaches deeper recurring-leak and benchmark-pattern guidance from analyzers plus existing lever-card content |
 | Prompt 7.15 | History + Learn premium surface alignment | Done | History drill-ins now use the grouped premium Variance table language and Learn/History styling now matches the upgraded This Week surface |
 | Prompt 7.15a | History drill-in dollar-impact sign fix | Done | Fixed the annualized sign-formatting issue in the History detail `DOLLAR IMPACT` card |
+| Prompt 7.5a | Persistence and scope alignment | Done | Restaurant scope, SQLite bootstrap/DAO/repo split, additive migration/backfill, raw import tracking, and compatibility delegation landed |
+| Prompt 7.5a.1 | 7.5a correctness follow-up | Done | Fixed destructive v7 migration behavior and explicit restaurantId propagation through the close-shift domain path |
+| Prompt 7.5a.2 | week_records scoped migration fix | Done | Upgraded pre-v7 week_records now rebuild into restaurant-scoped uniqueness with real upgrade-path coverage |
+| Prompt 7.5a.3 | 7.5a contract completion cleanup | Done | DatabaseHelper now delegates and fixture replay raw import metadata carries true business-date semantics |
+| Prompt 7.5a.4 | raw import businessDate fallback fix | Done | Fixture replay business_date now always resolves to a real ISO date string |
+| Prompt 7.5b | Target-state alignment | Done | Active target profile persistence, immutable target-profile versions, locked historical target truth, and explicit WTD target injection landed |
+| Prompt 7.5b.1 | historical target fallback removal | Done | WeekRecord, week rollups, and WeekData no longer drift back to current-global target state |
+| Prompt 7.5b.2 | target provenance backfill + upgrade coverage | Done | Legacy historical shifts now receive compat target-profile provenance and pre-v8 upgrade coverage was added |
+| Prompt 7.5b.3 | partial migration provenance repair | Done | Partially migrated rows now repair missing target-profile identity and upgrade-path tests rehydrate migrated model rows |
+| Prompt 7.5c | Live-state and replay alignment | Done | Open/current-state persistence, Shift dashboard read models, and repository-backed Full Week state landed |
+| Prompt 7.5c.1 | live current-week + open-row semantics fix | Done | Live WTD now resolves the persisted current week and open rows stay open in merged Full Week state |
+| Prompt 7.5c.2 | final current-state contract cleanup | Done | Current-week fallback is deterministic and repository-backed, and open rows no longer show projected-only copy |
 
 ## Archived Progress Log
 
@@ -80,6 +92,17 @@ Use one line per meaningful session.
 | 2026-03-30 | Stabilization | Learn depth pass completed | Learn now teaches deeper recurring-leak and repeatable-win patterns from History summaries, Baseline truth, and existing lever-card content | Start Phase 7.5 alignment gate |
 | 2026-03-30 | Stabilization | History + Learn premium alignment completed | History list, week-detail drill-ins, and Learn now visually match the upgraded This Week Variance system without changing the underlying logic | Fix one tiny History dollar-impact sign issue in 7.15a |
 | 2026-03-30 | Stabilization | History drill-in dollar-impact sign fix completed | The annualized value in the History detail `DOLLAR IMPACT` card now follows the same sign-format convention as the weekly value | Resume Phase 7.5 alignment gate |
+| 2026-03-30 | Phase 7.5a | Persistence and scope alignment completed in small follow-ups | Restaurant scope, repository/DAO boundaries, additive migrations, import tracking, compatibility delegation, and raw-import date accuracy now align with the 7.5a contract | Run Prompt 7.5b |
+| 2026-03-30 | Phase 7.5b | Target-state alignment completed in small follow-ups | Active target profile persistence, immutable target-profile versions, locked historical target truth, provenance backfill, and explicit WTD target injection now align with the 7.5b contract | Run Prompt 7.5c |
+| 2026-03-30 | Phase 7.5c | Live-state and replay alignment completed in small follow-ups | Shift, Zone status hero, and Variance Full Week now read repository-backed current state, and fixture replay can drive the aligned app end to end | Run Prompt 8.1 |
+| 2026-03-30 | Audit | Post-7.5 readiness review reopened the Phase 8 gate | Structural alignment landed, but remaining closed-shift drift, `BaselineData` bridge authority, missing vendor docs, and missing runnable-env proof require a short `7.51` closeout first | Run Prompt 7.51a |
+| 2026-03-30 | Audit | Post-7.51 verification refined the remaining blockers | `7.51a` verified complete, but `7.51b/c` remained only partially closed due compatibility-bridge scope, pending replay states, TBD vendor profiles, and missing runnable Flutter proof | Run Prompt 7.51d |
+| 2026-03-30 | Audit | Final code-side Phase 8 readiness pass completed | Connector-config persistence is safe, visible restaurant identity is scope-backed, Shift empty-state is truthful, and the repo is structurally ready for connector work; the remaining gate work is vendor selection plus rerunning the current 28-file corpus from the checked-in manifest | Run Prompt 7.51e |
+| 2026-03-30 | Planning | Shift from 7.51e to 7.52 cleanup and private-build prep | 7.51e is complete on the app side; while Phase 8 waits on vendor selection, the next useful work is repo cleanup, product identity clarification, and a private Barrio layer inside the same repo | Run Prompt 7.52 |
+| 2026-03-30 | Planning | Expanded 7.52 into an execution sequence for Barrio shell and private content | 7.52 is now broken into tracker lock, product identity cleanup, private boundary creation, dual-build prep, Barrio shell work, structured interactive content, and a clean Phase 9 handoff | Run Prompt 7.52a |
+| 2026-03-30 | Planning | 7.52a execution contract locked | Added `docs/phase_7_52_execution_plan.md` so the Barrio shell vision, pre-auth role-aware structure, structured-content rule, and handoff into 7.52b-h are frozen in one place | Run Prompt 7.52b |
+| 2026-03-30 | Phase 7.52b | Public product identity cleanup completed | Forge & Flow now appears as the public product across package/module naming, README, Android, iOS, and Windows visible app strings; the app title no longer reads restaurant scope as product identity; stale `Forge & Flow Demo` restaurant scope rows now normalize back to the demo restaurant name | Run Prompt 7.52c |
+| 2026-03-30 | Phase 7.52c | Legacy naming cleanup and private root file relocation completed | `meridian_data.dart` renamed to `legacy_fixture_data.dart`, `demo_data.dart` renamed to `fixture_seed_data.dart`, private Barrio root files (`Barrio Legado Business Plan.pdf`, `jim_taylor_labor_model_deep_dive.html`, `Logo.png`) moved into `docs/internal/barrio/` and `assets/internal/barrio/branding/`; all imports and doc references updated | Run Prompt 7.52d |
 
 ## Archived Decision Log
 
@@ -98,3 +121,14 @@ Record only decisions that affect future implementation.
 | 2026-03-29 | Split future auth/login from future shared multi-device sync, and keep corporate structure as a later placeholder phase | Makes each future layer smaller, easier to reason about, and less likely to blur restaurant truth with cross-device or cross-store concerns |
 | 2026-03-30 | Use 7.11 to 7.14 as a short stabilization sequence before Phase 7.5 | Keeps bug and polish work contained without diluting the larger alignment gate |
 | 2026-03-30 | Keep Baseline naming frozen during stabilization | Avoids reopening a wide visible-label surface while focus stays on behavior and teaching accuracy |
+| 2026-03-30 | Finish 7.5a fully before starting 7.5b | Avoid carrying persistence-contract debt into target-state alignment |
+| 2026-03-30 | Finish 7.5b fully before starting 7.5c | Prevents mixed target-state fallback or weak migration coverage from leaking into live-state alignment |
+| 2026-03-30 | Treat Phase 7.5 as the final internal state-boundary gate before connectors | Keeps Phase 8 focused on onboarding and adapter transport rather than another round of demo-truth unwinding |
+| 2026-03-30 | Reopen the post-7.5 gate as `Phase 7.51` before starting live adapters | Keeps the tracker honest by closing the remaining historical-truth drift, `BaselineData` bridge authority, and vendor/gate artifact gaps before connector work begins |
+| 2026-03-30 | Split the remaining post-7.51 work into `7.51d` and `7.51e` | Separates code-side bridge/pending-state cleanup from vendor-selection and final runnable gate proof so Phase 8 only starts once both are truly closed |
+| 2026-03-30 | Track the live test corpus by the repo's actual *_test.dart file count and rerun it from checked-in tooling before marking the Phase 8 gate passed | Prevents stale test counts from making the gate docs say passed on an outdated corpus |
+| 2026-03-30 | Keep Barrio as a private layer inside Forge & Flow rather than a forked repo | Lets future Forge & Flow updates and vendor integrations flow into the internal Barrio build without maintaining two divergent codebases |
+| 2026-03-30 | Build the Barrio shell before Phase 9 auth, but keep real gating out of 7.52 | Lets the private internal app experience, information architecture, and visual system settle before login and permissions are added |
+| 2026-03-30 | Treat handbook PDFs and source documents as source material rather than the final runtime UX | Keeps private content maintainable, interactive, searchable, and ready for later role-based access instead of locking the app into raw document viewers |
+| 2026-03-30 | Prepare Forge & Flow and Barrio as separate build identities from one shared codebase | Supports different app names, icons, and private content without splitting the product into multiple repos |
+| 2026-03-30 | Lock the Barrio shell and content contract in a dedicated 7.52 execution doc before renaming or build work begins | Keeps the cleanup/build sequence deterministic and prevents Phase 9 auth concerns from leaking into the shell/content phase |

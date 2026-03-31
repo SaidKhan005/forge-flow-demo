@@ -1,12 +1,12 @@
-// Phase 5 — BaselineManagerService unit tests.
+// Phase 5 â€” BaselineManagerService unit tests.
 //
 // Uses the real SQLite database (sqflite_common_ffi on desktop).
 // reseedDemo() is called before each test for a clean, reproducible state.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/baseline_manager_service.dart';
-import 'package:forge_flow_demo/data/database_helper.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
+import 'package:forge_and_flow/data/baseline_manager_service.dart';
+import 'package:forge_and_flow/data/database_helper.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 
 void main() {
   setUp(() async {
@@ -14,9 +14,9 @@ void main() {
     await DatabaseHelper.instance.reseedDemo();
   });
 
-  // ── A: getCandidateShifts returns closed shifts ────────────────────────────
+  // â”€â”€ A: getCandidateShifts returns closed shifts â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('A — getCandidateShifts', () {
+  group('A â€” getCandidateShifts', () {
     test('returns only closed shifts from all seeded weeks', () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
@@ -49,12 +49,12 @@ void main() {
         // Daypart order must be non-decreasing
         expect(dpA, lessThanOrEqualTo(dpB),
             reason:
-                'Expected ${a.daypart} ≤ ${b.daypart} at index $i');
+                'Expected ${a.daypart} â‰¤ ${b.daypart} at index $i');
         if (dpA == dpB) {
           // Within same daypart: CPLH must be non-increasing
           expect(a.cplh, greaterThanOrEqualTo(b.cplh),
               reason:
-                  'Expected CPLH ${a.cplh} ≥ ${b.cplh} at index $i within ${a.daypart}');
+                  'Expected CPLH ${a.cplh} â‰¥ ${b.cplh} at index $i within ${a.daypart}');
         }
       }
     });
@@ -69,7 +69,7 @@ void main() {
       await DatabaseHelper.instance
           .replaceBaselineSelectedRecordKeys({first.recordKey});
 
-      // Re-fetch — isSelected should now be true for that key only
+      // Re-fetch â€” isSelected should now be true for that key only
       final refreshed =
           await BaselineManagerService.instance.getCandidateShifts();
       final found = refreshed.firstWhere((c) => c.recordKey == first.recordKey);
@@ -85,9 +85,9 @@ void main() {
     });
   });
 
-  // ── B: saveSelection persists and applies override ─────────────────────────
+  // â”€â”€ B: saveSelection persists and applies override â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('B — saveSelection', () {
+  group('B â€” saveSelection', () {
     test('persists selected keys to DB and applies override', () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
@@ -119,9 +119,9 @@ void main() {
     });
   });
 
-  // ── C: primeManagerOverride restores override from DB ─────────────────────
+  // â”€â”€ C: primeManagerOverride restores override from DB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('C — primeManagerOverride', () {
+  group('C â€” primeManagerOverride', () {
     test('applies override when selected keys exist in DB', () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
@@ -155,9 +155,9 @@ void main() {
     });
   });
 
-  // ── D: derived target reflects selected candidates ─────────────────────────
+  // â”€â”€ D: derived target reflects selected candidates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('D — derived target after saveSelection', () {
+  group('D â€” derived target after saveSelection', () {
     test('BaselineData.derivedTargetCPLH is avg CPLH of selected candidates',
         () async {
       final candidates =
@@ -174,9 +174,9 @@ void main() {
     });
   });
 
-  // ── E: revision increments on save ────────────────────────────────────────
+  // â”€â”€ E: revision increments on save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('E — revision notifier', () {
+  group('E â€” revision notifier', () {
     test('revision increments after saveSelection', () async {
       final before = BaselineData.revision.value;
       final candidates =
@@ -190,9 +190,9 @@ void main() {
     });
   });
 
-  // ── F: late-night records participate in override logic ───────────────────
+  // â”€â”€ F: late-night records participate in override logic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('F — late-night override support', () {
+  group('F â€” late-night override support', () {
     test('applyManagerOverride accepts late_night DaypartBaseline records',
         () {
       // Prove the override path handles late_night daypart without filtering

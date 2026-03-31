@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart'; // LeverCards
 import '../models/week_record.dart';
 import '../utils/formatters.dart';
 import '../widgets/lever_card.dart';
@@ -108,16 +108,16 @@ class _GroupedSummaryTable extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final coversVar = week.totalCovers - week.targetCovers;
-    final ppaVar = week.avgPPA - BaselineData.derivedTargetPPA;
-    final cplhVar = week.avgCPLH - BaselineData.derivedTargetCPLH;
-    final splhVar = week.avgSPLH - BaselineData.derivedTargetSPLH;
+    final ppaVar = week.avgPPA - week.storedTargetPPA;
+    final cplhVar = week.avgCPLH - week.storedTargetCPLH;
+    final splhVar = week.avgSPLH - week.storedTargetSPLH;
     final fohVar = week.totalFohHours - week.targetFohHours;
     final bohVar = week.totalBohHours - week.targetBohHours;
 
     // Blended wage
     final actualBlendedWage = (week.blendedFohWage + week.blendedBohWage) / 2;
     final targetBlendedWage =
-        (MeridianConfig.fohWage + MeridianConfig.bohWage) / 2;
+        (week.storedTargetFohWage + week.storedTargetBohWage) / 2;
     final wageVar = actualBlendedWage - targetBlendedWage;
 
     return Container(
@@ -159,7 +159,7 @@ class _GroupedSummaryTable extends StatelessWidget {
           _GroupBand('EXECUTION'),
           _TableRow(
             label: 'PPA',
-            target: '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}',
+            target: '\$${week.storedTargetPPA.toStringAsFixed(2)}',
             actual: '\$${week.avgPPA.toStringAsFixed(2)}',
             variance: Fmt.varDollars(ppaVar),
             varColor: Fmt.varColor('PPA', ppaVar),
@@ -183,7 +183,7 @@ class _GroupedSummaryTable extends StatelessWidget {
           _divider(),
           _TableRow(
             label: 'CPLH',
-            target: BaselineData.derivedTargetCPLH.toStringAsFixed(2),
+            target: week.storedTargetCPLH.toStringAsFixed(2),
             actual: week.avgCPLH.toStringAsFixed(2),
             variance: Fmt.varDelta(cplhVar),
             varColor: Fmt.varColor('CPLH', cplhVar),
@@ -191,7 +191,7 @@ class _GroupedSummaryTable extends StatelessWidget {
           _divider(),
           _TableRow(
             label: 'SPLH',
-            target: '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}',
+            target: '\$${week.storedTargetSPLH.toStringAsFixed(0)}',
             actual: '\$${week.avgSPLH.toStringAsFixed(0)}',
             variance: Fmt.varDollars(splhVar),
             varColor: Fmt.varColor('SPLH', splhVar),

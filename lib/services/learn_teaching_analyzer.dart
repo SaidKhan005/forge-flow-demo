@@ -1,8 +1,13 @@
 // Phase 7.14 — Learn Teaching Analyzer
 // Combines History pattern analysis with active Baseline truth to produce
 // deterministic coaching guidance grounded in Jim Taylor Chapters 9–12.
+//
+// Compatibility bridge: still reads BaselineData for benchmark context
+// (selectedRecordCount, rangeValidation, hasManagerOverride, derived targets).
+// Not canonical authority — persisted ActiveTargetProfile is canonical.
+// Pending later retirement when Learn migrates to repository-backed state.
 
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
 import '../models/history_pattern_record.dart';
 import '../models/learn_teaching_summary.dart';
 import 'history_teaching_analyzer.dart';

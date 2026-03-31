@@ -8,6 +8,11 @@
 // No UI imports. No database code. No widget code.
 
 class ClosedShiftInput {
+  // ── Scope ────────────────────────────────────────────────────────────────
+
+  /// Restaurant scope for this shift.
+  final String restaurantId;
+
   // ── Identity ──────────────────────────────────────────────────────────────
 
   /// The calendar date this shift belongs to.
@@ -64,6 +69,7 @@ class ClosedShiftInput {
   final String? sourceShiftId;
 
   const ClosedShiftInput({
+    this.restaurantId = 'demo_restaurant_001',
     required this.businessDate,
     required this.weekId,
     required this.dayLabel,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
 
 class LeverCardWidget extends StatelessWidget {
   final LeverCardData data;

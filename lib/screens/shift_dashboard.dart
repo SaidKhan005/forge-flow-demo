@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
+import '../data/restaurant_scope_notifier.dart';
+import '../data/shift_dashboard_notifier.dart';
+import '../models/shift_dashboard_read_model.dart';
 import '../services/labor_model.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
@@ -13,19 +17,47 @@ class ShiftDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        SliverToBoxAdapter(child: _ShiftHeader()),
-        const SliverToBoxAdapter(child: ZoneStatusCard()),
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _VarianceBannerDelegate(onTap: onVarianceTap),
-        ),
-        SliverToBoxAdapter(child: _MetricCardsSection()),
-        SliverToBoxAdapter(child: _HoursSection()),
-        SliverToBoxAdapter(child: _TeachingTakeaway()),
-        const SliverToBoxAdapter(child: SizedBox(height: 40)),
-      ],
+    return Consumer<ShiftDashboardNotifier>(
+      builder: (context, notifier, _) {
+        if (notifier.isLoading) {
+          return const Center(
+            child: CircularProgressIndicator(color: AppColors.tealPrimary),
+          );
+        }
+        final rm = notifier.readModel;
+        if (rm == null) {
+          return _ShiftEmptyState(
+            headline: notifier.status?.label ?? 'NO LIVE SHIFT',
+            body: notifier.status?.description ??
+                'No open or projected shift is available.',
+            timestamp: notifier.status?.latestImportTimestamp,
+          );
+        }
+        return CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(child: _ShiftHeader(readModel: rm)),
+            SliverToBoxAdapter(
+              child: ZoneStatusCard(
+                currentCPLH: rm.actualCPLH,
+                opzFloorCPLH: rm.opzFloorCPLH,
+                opzCeilingCPLH: rm.opzCeilingCPLH,
+                targetCPLH: rm.targetCPLH,
+                opzStatus: rm.opzStatus,
+                opzLabel: rm.opzLabel,
+                opzSubLabel: rm.opzSubLabel,
+              ),
+            ),
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _VarianceBannerDelegate(onTap: onVarianceTap),
+            ),
+            SliverToBoxAdapter(child: _MetricCardsSection(cards: rm.metricCards)),
+            SliverToBoxAdapter(child: _HoursSection(readModel: rm)),
+            SliverToBoxAdapter(child: _TeachingTakeaway(lever: rm.primaryLeverCard)),
+            const SliverToBoxAdapter(child: SizedBox(height: 48)),
+          ],
+        );
+      },
     );
   }
 }
@@ -33,16 +65,24 @@ class ShiftDashboard extends StatelessWidget {
 // ─── Header ──────────────────────────────────────────────────────────────────
 
 class _ShiftHeader extends StatelessWidget {
+  final ShiftDashboardReadModel readModel;
+  const _ShiftHeader({required this.readModel});
+
   @override
   Widget build(BuildContext context) {
+    final restaurantName =
+        context.watch<RestaurantScopeNotifier?>()?.restaurant?.displayName ??
+            'Restaurant';
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 28, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 32, 20, 22),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.6, 1.0],
           colors: [
             AppColors.backgroundDeep,
+            AppColors.shimmer.withValues(alpha: 0.3),
             AppColors.backgroundDeep.withValues(alpha: 0.0),
           ],
         ),
@@ -50,28 +90,25 @@ class _ShiftHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Restaurant name
           Text(
-            MeridianConfig.restaurantName,
+            restaurantName,
             style: AppTextStyles.display36(color: AppColors.tealPrimary),
           ),
-          const SizedBox(height: 12),
-          // Context row
+          const SizedBox(height: 14),
           Row(
             children: [
-              // Daypart pill
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.tealPrimary.withValues(alpha: 0.15),
-                      AppColors.tealPrimary.withValues(alpha: 0.08),
+                      AppColors.tealPrimary.withValues(alpha: 0.14),
+                      AppColors.tealPrimary.withValues(alpha: 0.06),
                     ],
                   ),
                   border: Border.all(
-                      color: AppColors.tealPrimary.withValues(alpha: 0.3),
+                      color: AppColors.tealPrimary.withValues(alpha: 0.25),
                       width: 1),
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -81,14 +118,14 @@ class _ShiftHeader extends StatelessWidget {
                     Container(
                       width: 6,
                       height: 6,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: AppColors.tealPrimary,
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '${ShiftSnapshot.daypart} \u00b7 ${ShiftSnapshot.day}',
+                      '${readModel.daypart} \u00b7 ${readModel.day}',
                       style:
                           AppTextStyles.mono11(color: AppColors.tealPrimary),
                     ),
@@ -96,9 +133,8 @@ class _ShiftHeader extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 14),
-              // Time
               Text(
-                '${ShiftSnapshot.time} \u00b7 ${ShiftSnapshot.serviceElapsed}',
+                '${readModel.timeLabel} \u00b7 ${readModel.serviceElapsedLabel}',
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
               ),
             ],
@@ -109,24 +145,67 @@ class _ShiftHeader extends StatelessWidget {
   }
 }
 
+// ─── Section header ──────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  const _SectionHeader({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 3,
+          height: 14,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.tealPrimary, AppColors.tealSoft],
+            ),
+            borderRadius: BorderRadius.circular(1.5),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.borderSubtle.withValues(alpha: 0.5),
+                  AppColors.borderSubtle.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 // ─── Metric cards section ────────────────────────────────────────────────────
 
 class _MetricCardsSection extends StatelessWidget {
+  final List<InputMetric> cards;
+  const _MetricCardsSection({required this.cards});
+
   @override
   Widget build(BuildContext context) {
-    final gridCards = ShiftMetrics.cards.where((m) => !m.fullWidth).toList();
-    final fullWidthCards =
-        ShiftMetrics.cards.where((m) => m.fullWidth).toList();
+    final gridCards = cards.where((m) => !m.fullWidth).toList();
+    final fullWidthCards = cards.where((m) => m.fullWidth).toList();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Section label
           _SectionHeader(label: 'SHIFT INPUTS'),
-          const SizedBox(height: 10),
-          // Grid
+          const SizedBox(height: 12),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -150,166 +229,26 @@ class _MetricCardsSection extends StatelessWidget {
 // ─── Hours vs Model section ──────────────────────────────────────────────────
 
 class _HoursSection extends StatelessWidget {
+  final ShiftDashboardReadModel readModel;
+  const _HoursSection({required this.readModel});
+
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 22, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(label: 'HOURS vs MODEL'),
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: _SideSummaryCard(side: 'FOH')),
+                Expanded(child: _SideSummaryCard(side: 'FOH', readModel: readModel)),
                 const SizedBox(width: 8),
-                Expanded(child: _SideSummaryCard(side: 'BOH')),
+                Expanded(child: _SideSummaryCard(side: 'BOH', readModel: readModel)),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Section header ──────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String label;
-  const _SectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 3,
-          height: 14,
-          decoration: BoxDecoration(
-            color: AppColors.tealPrimary,
-            borderRadius: BorderRadius.circular(1),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: AppColors.borderSubtle.withValues(alpha: 0.4),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─── Teaching takeaway ───────────────────────────────────────────────────────
-
-class _TeachingTakeaway extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final lever = ShiftSnapshot.primaryLeverCard;
-    final accentColor =
-        lever.isFavorable ? AppColors.positive : AppColors.negative;
-
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            AppColors.backgroundSurface.withValues(alpha: 0.6),
-            AppColors.backgroundMid,
-          ],
-        ),
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Accent top edge
-          Container(height: 3, color: accentColor),
-          // Header strip
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
-            decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.05),
-              border: Border(
-                bottom: BorderSide(
-                    color: AppColors.borderSubtle.withValues(alpha: 0.5),
-                    width: 1),
-              ),
-            ),
-            child: Row(
-              children: [
-                // Icon in a circle
-                Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(Icons.lightbulb_outline,
-                      size: 13, color: accentColor),
-                ),
-                const SizedBox(width: 10),
-                Text('PRIMARY DRIVER',
-                    style: AppTextStyles.mono10(color: accentColor)),
-                const Spacer(),
-                // Lever badge
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.10),
-                    border: Border.all(
-                        color: accentColor.withValues(alpha: 0.3), width: 1),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(lever.shortLabel,
-                      style: AppTextStyles.mono8(color: accentColor)),
-                ),
-                const SizedBox(width: 6),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: AppColors.backgroundMid.withValues(alpha: 0.6),
-                    border: Border.all(
-                        color: AppColors.borderSubtle, width: 1),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Text(lever.sideLabel,
-                      style: AppTextStyles.mono8(
-                          color: AppColors.textSecondary)),
-                ),
-              ],
-            ),
-          ),
-          // Lever headline
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
-            child: Text(
-              lever.metric,
-              style: AppTextStyles.mono14(
-                  color: AppColors.textPrimary, weight: FontWeight.w600),
-            ),
-          ),
-          // Teaching body
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-            child: Text(
-              lever.whatHappened,
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -322,25 +261,24 @@ class _TeachingTakeaway extends StatelessWidget {
 
 class _SideSummaryCard extends StatelessWidget {
   final String side;
+  final ShiftDashboardReadModel readModel;
 
-  const _SideSummaryCard({required this.side});
+  const _SideSummaryCard({required this.side, required this.readModel});
 
   @override
   Widget build(BuildContext context) {
     final isFoh = side == 'FOH';
 
     final scheduled = isFoh
-        ? ShiftSnapshot.scheduledFohHours
-        : ShiftSnapshot.scheduledBohHours;
+        ? readModel.scheduledFohHours
+        : readModel.scheduledBohHours;
     final needed = isFoh
-        ? LaborModel.modelFohHours(
-            ShiftSnapshot.actualCovers, BaselineData.derivedTargetCPLH)
-        : LaborModel.modelBohHours(ShiftSnapshot.actualCovers,
-            BaselineData.derivedTargetPPA, BaselineData.derivedTargetSPLH);
+        ? LaborModel.modelFohHours(readModel.actualCovers, readModel.targetCPLH)
+        : LaborModel.modelBohHours(
+            readModel.actualCovers, readModel.targetPPA, readModel.targetSPLH);
     final excess = scheduled - needed;
 
-    final costPerHour =
-        isFoh ? MeridianConfig.fohWage : MeridianConfig.bohWage;
+    final costPerHour = isFoh ? readModel.fohWage : readModel.bohWage;
     final excessCost = (excess * costPerHour).abs().toStringAsFixed(0);
 
     final isOverModel = excess > 0;
@@ -350,25 +288,33 @@ class _SideSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
         border: Border(
           left: BorderSide(
             color: deltaColor.withValues(alpha: 0.6),
             width: 3,
           ),
-          top: BorderSide(color: AppColors.borderSubtle, width: 1),
-          right: BorderSide(color: AppColors.borderSubtle, width: 1),
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+          top: BorderSide(
+              color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
+          right: BorderSide(
+              color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
+          bottom: BorderSide(
+              color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
         ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Side badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.tealPrimary,
+              gradient: const LinearGradient(
+                colors: [AppColors.tealPrimary, AppColors.tealSoft],
+              ),
               borderRadius: BorderRadius.circular(2),
             ),
             child: Text(
@@ -377,7 +323,6 @@ class _SideSummaryCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          // Hours
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
@@ -392,29 +337,213 @@ class _SideSummaryCard extends StatelessWidget {
           Text('Model needs $needed',
               style: AppTextStyles.mono10(color: AppColors.textMuted)),
           const SizedBox(height: 14),
-          // Divider
           Container(
-              height: 1,
-              color: AppColors.borderSubtle.withValues(alpha: 0.4)),
+            height: 1,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.borderSubtle.withValues(alpha: 0.6),
+                  AppColors.borderSubtle.withValues(alpha: 0.1),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 12),
-          // Delta + cost
           Row(
             children: [
-              Icon(deltaIcon, size: 14, color: deltaColor),
-              const SizedBox(width: 4),
-              Text(
-                '${isOverModel ? '+' : ''}$excess hrs',
-                style: AppTextStyles.mono15(
-                    color: deltaColor, weight: FontWeight.w700),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: deltaColor.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(deltaIcon, size: 12, color: deltaColor),
+                    const SizedBox(width: 3),
+                    Text(
+                      '${isOverModel ? '+' : ''}$excess hrs',
+                      style: AppTextStyles.mono14(
+                          color: deltaColor, weight: FontWeight.w700),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
             '${isOverModel ? '+' : '\u2212'}\$$excessCost impact',
             style: AppTextStyles.mono10(color: deltaColor),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Teaching takeaway ───────────────────────────────────────────────────────
+
+class _TeachingTakeaway extends StatelessWidget {
+  final LeverCardData lever;
+  const _TeachingTakeaway({required this.lever});
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor =
+        lever.isFavorable ? AppColors.positive : AppColors.negative;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 22, 16, 0),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          stops: const [0.0, 0.4, 1.0],
+          colors: [
+            AppColors.backgroundSurface.withValues(alpha: 0.7),
+            AppColors.shimmer,
+            AppColors.cardGlow,
+          ],
+        ),
+        border: Border.all(
+            color: AppColors.borderSubtle.withValues(alpha: 0.8), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            height: 3,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [accentColor, accentColor.withValues(alpha: 0.3)],
+              ),
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+            decoration: BoxDecoration(
+              color: accentColor.withValues(alpha: 0.04),
+              border: Border(
+                bottom: BorderSide(
+                    color: AppColors.borderSubtle.withValues(alpha: 0.4),
+                    width: 1),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 26,
+                  height: 26,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        accentColor.withValues(alpha: 0.15),
+                        accentColor.withValues(alpha: 0.06),
+                      ],
+                    ),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: accentColor.withValues(alpha: 0.2), width: 1),
+                  ),
+                  child: Icon(Icons.lightbulb_outline,
+                      size: 13, color: accentColor),
+                ),
+                const SizedBox(width: 10),
+                Text('PRIMARY DRIVER',
+                    style: AppTextStyles.mono10(color: accentColor)),
+                const Spacer(),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: accentColor.withValues(alpha: 0.08),
+                    border: Border.all(
+                        color: accentColor.withValues(alpha: 0.25), width: 1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(lever.shortLabel,
+                      style: AppTextStyles.mono8(color: accentColor)),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppColors.shimmer.withValues(alpha: 0.6),
+                    border: Border.all(
+                        color: AppColors.borderSubtle.withValues(alpha: 0.6),
+                        width: 1),
+                    borderRadius: BorderRadius.circular(3),
+                  ),
+                  child: Text(lever.sideLabel,
+                      style: AppTextStyles.mono8(
+                          color: AppColors.textSecondary)),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Text(
+              lever.metric,
+              style: AppTextStyles.mono14(
+                  color: AppColors.textPrimary, weight: FontWeight.w600),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+            child: Text(
+              lever.whatHappened,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Variance banner delegate ────────────────────────────────────────────────
+
+// ─── Empty state ────────────────────────────────────────────────────────────
+
+class _ShiftEmptyState extends StatelessWidget {
+  final String headline;
+  final String body;
+  final String? timestamp;
+  const _ShiftEmptyState({
+    required this.headline,
+    required this.body,
+    this.timestamp,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(headline,
+                style: AppTextStyles.mono14(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            Text(body,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+                textAlign: TextAlign.center),
+            if (timestamp != null) ...[
+              const SizedBox(height: 8),
+              Text('Last import: $timestamp',
+                  style: AppTextStyles.mono8(color: AppColors.textMuted)),
+            ],
+          ],
+        ),
       ),
     );
   }

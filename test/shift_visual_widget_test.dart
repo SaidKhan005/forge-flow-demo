@@ -1,27 +1,95 @@
-// Prompt 7.12 — Shift Visual Widget Tests
+// Prompt 7.12 â€” Shift Visual Widget Tests
 //
 // Verifies that the polished Shift screen still exposes the required
 // structure and key visible labels after the visual pass.
+// Now proves rendering from provider-backed read model, not demo constants.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_flow_demo/data/meridian_data.dart';
-import 'package:forge_flow_demo/data/shift_data_source.dart';
-import 'package:forge_flow_demo/data/week_data_notifier.dart';
-import 'package:forge_flow_demo/screens/shift_dashboard.dart';
+import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/data/restaurant_scope_notifier.dart';
+import 'package:forge_and_flow/data/shift_data_source.dart';
+import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
+import 'package:forge_and_flow/data/week_data_notifier.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/models/restaurant_location.dart';
+import 'package:forge_and_flow/models/shift_dashboard_read_model.dart';
+import 'package:forge_and_flow/screens/shift_dashboard.dart';
 
-Widget _buildShiftDashboard() => ChangeNotifierProvider<WeekDataNotifier>(
-      create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
-      child: const MaterialApp(
-        home: Scaffold(body: ShiftDashboard()),
+// Build a read model from the same fixture values ShiftSnapshot used to carry.
+ShiftDashboardReadModel _fixtureReadModel() {
+  final profile = ActiveTargetProfile(
+    targetProfileId: 'test_active',
+    restaurantId: 'demo_restaurant_001',
+    sourceType: 'system_baseline',
+    targetCPLH: BaselineData.derivedTargetCPLH,
+    targetSPLH: BaselineData.derivedTargetSPLH,
+    targetPPA: BaselineData.derivedTargetPPA,
+    fohWage: MeridianConfig.fohWage,
+    bohWage: MeridianConfig.bohWage,
+    opzFloorCPLH: BaselineData.opzFloorCPLH,
+    opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+    theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
+    theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
+    theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+    builtAt: '2026-03-27T19:42:00',
+  );
+  final snapshot = OpenShiftSnapshot(
+    restaurantId: 'demo_restaurant_001',
+    weekId: '2026-W13',
+    dayLabel: 'Fri',
+    daypart: 'dinner',
+    status: 'open',
+    businessDate: '2026-03-27',
+    forecastCovers: ShiftSnapshot.shiftForecastCovers,
+    currentCovers: ShiftSnapshot.actualCovers,
+    scheduledFohHours: ShiftSnapshot.scheduledFohHours,
+    scheduledBohHours: ShiftSnapshot.scheduledBohHours,
+    currentPPA: ShiftSnapshot.actualPPA,
+    currentCPLH: ShiftSnapshot.actualCPLH,
+    currentSPLH: ShiftSnapshot.actualSPLH,
+    blendedWage: ShiftSnapshot.blendedWage,
+    timeLabel: ShiftSnapshot.time,
+    serviceElapsedLabel: ShiftSnapshot.serviceElapsed,
+    updatedAt: '2026-03-27T19:42:00',
+  );
+  return ShiftDashboardReadModel.build(snapshot, profile);
+}
+
+Widget _buildShiftDashboard({String? restaurantName}) {
+  final rm = _fixtureReadModel();
+  return MultiProvider(
+    providers: [
+      ChangeNotifierProvider<RestaurantScopeNotifier>(
+        create: (_) => RestaurantScopeNotifier.fromRestaurant(
+          RestaurantLocation(
+            restaurantId: 'demo_restaurant_001',
+            displayName: restaurantName ?? MeridianConfig.restaurantName,
+            businessTimezone: 'America/St_Johns',
+            createdAt: '2026-03-30T10:00:00',
+            updatedAt: '2026-03-30T10:00:00',
+          ),
+        ),
       ),
-    );
+      ChangeNotifierProvider<WeekDataNotifier>(
+        create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
+      ),
+      ChangeNotifierProvider<ShiftDashboardNotifier>(
+        create: (_) => ShiftDashboardNotifier.fromReadModel(rm),
+      ),
+    ],
+    child: const MaterialApp(
+      home: Scaffold(body: ShiftDashboard()),
+    ),
+  );
+}
 
 void main() {
-  // ── A: core sections render ──────────────────────────────────────────────
+  // â”€â”€ A: core sections render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('A — core sections', () {
+  group('A â€” core sections', () {
     testWidgets('restaurant name is present', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
@@ -30,14 +98,25 @@ void main() {
           findsOneWidget);
     });
 
+    testWidgets('restaurant name prefers persisted scope when provided',
+        (tester) async {
+      await tester.pumpWidget(
+        _buildShiftDashboard(restaurantName: 'Forge & Flow Halifax'),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(
+        find.text('Forge & Flow Halifax', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('daypart and day are present', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
       expect(
-          find.text(
-              '${ShiftSnapshot.daypart} \u00b7 ${ShiftSnapshot.day}',
-              skipOffstage: false),
+          find.text('Dinner \u00b7 Friday', skipOffstage: false),
           findsOneWidget);
     });
 
@@ -61,16 +140,15 @@ void main() {
     });
   });
 
-  // ── B: OPZ widget key pieces ─────────────────────────────────────────────
+  // â”€â”€ B: OPZ widget key pieces â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('B — OPZ widget', () {
+  group('B â€” OPZ widget', () {
     testWidgets('OPZ status label exists', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
-      final label =
-          BaselineData.opzStatusLabelForCplh(ShiftSnapshot.actualCPLH);
-      expect(find.text(label, skipOffstage: false), findsOneWidget);
+      final rm = _fixtureReadModel();
+      expect(find.text(rm.opzLabel, skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('CPLH label exists', (tester) async {
@@ -85,9 +163,9 @@ void main() {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
+      final rm = _fixtureReadModel();
       expect(
-          find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(2),
-              skipOffstage: false),
+          find.text(rm.targetCPLH.toStringAsFixed(2), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
 
@@ -95,16 +173,16 @@ void main() {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
+      final rm = _fixtureReadModel();
       expect(
-          find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2),
-              skipOffstage: false),
+          find.text(rm.opzCeilingCPLH.toStringAsFixed(2), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
   });
 
-  // ── C: metric cards render ───────────────────────────────────────────────
+  // â”€â”€ C: metric cards render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('C — metric cards', () {
+  group('C â€” metric cards', () {
     testWidgets('COVERS card exists', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
@@ -146,25 +224,26 @@ void main() {
     });
   });
 
-  // ── D: teaching container ────────────────────────────────────────────────
+  // â”€â”€ D: teaching container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('D — teaching container', () {
+  group('D â€” teaching container', () {
     testWidgets('active lever whatHappened text is present', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
+      final rm = _fixtureReadModel();
       expect(
-          find.text(ShiftSnapshot.primaryLeverCard.whatHappened,
-              skipOffstage: false),
+          find.text(rm.primaryLeverCard.whatHappened, skipOffstage: false),
           findsOneWidget);
     });
   });
 
-  // ── E: hero truth intact ─────────────────────────────────────────────────
+  // â”€â”€ E: hero truth intact â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  group('E — hero truth', () {
-    test('exactly one hero card in ShiftMetrics.cards', () {
-      final heroes = ShiftMetrics.cards.where((c) => c.isHero).toList();
+  group('E â€” hero truth', () {
+    test('exactly one hero card in read model', () {
+      final rm = _fixtureReadModel();
+      final heroes = rm.metricCards.where((c) => c.isHero).toList();
       expect(heroes.length, equals(1));
     });
 

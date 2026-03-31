@@ -177,6 +177,9 @@ class DemoData {
       dollarGap: 0.00,
       primaryLeverId: 'covers_down', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W11 — covers_up: volume +5% vs plan, rates on target ────────────────
@@ -190,6 +193,9 @@ class DemoData {
       dollarGap: 0.00,
       primaryLeverId: 'covers_up', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W10 — ppa_down: avgPPA −5% (39.70 vs 41.79), other rates on target ──
@@ -203,6 +209,9 @@ class DemoData {
       dollarGap: 0.00,
       primaryLeverId: 'ppa_down', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W09 — ppa_up: avgPPA +8% (45.13 vs 41.79), other rates on target ─────
@@ -216,6 +225,9 @@ class DemoData {
       dollarGap: 0.00,
       primaryLeverId: 'ppa_up', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W08 — cplh_down: CPLH −10% (4.12 vs 4.58), BOH on target ────────────
@@ -230,6 +242,9 @@ class DemoData {
       dollarGap: 478.50,
       primaryLeverId: 'cplh_down', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W07 — cplh_up: CPLH +10% (5.04 vs 4.58), BOH on target ─────────────
@@ -244,6 +259,9 @@ class DemoData {
       dollarGap: -396.00,
       primaryLeverId: 'cplh_up', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W06 — splh_down: SPLH −10% (162.06 vs 180.07), FOH on target ─────────
@@ -258,6 +276,9 @@ class DemoData {
       dollarGap: 661.85,
       primaryLeverId: 'splh_down', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W05 — splh_up: SPLH +10% (198.08 vs 180.07), FOH on target ──────────
@@ -272,6 +293,9 @@ class DemoData {
       dollarGap: -555.10,
       primaryLeverId: 'splh_up', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W04 — foh_wage_up: FOH blended wage +9% (17.99 vs 16.50) ─────────────
@@ -285,6 +309,9 @@ class DemoData {
       dollarGap: 390.38,
       primaryLeverId: 'foh_wage_up', shiftsCompleted: 14,
       blendedFohWage: 17.99, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W03 — foh_wage_down: FOH blended wage −10% (14.85 vs 16.50) ──────────
@@ -298,6 +325,9 @@ class DemoData {
       dollarGap: -432.30,
       primaryLeverId: 'foh_wage_down', shiftsCompleted: 14,
       blendedFohWage: 14.85, blendedBohWage: 21.35,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W02 — boh_wage_up: BOH blended wage +13% (24.13 vs 21.35) ────────────
@@ -311,6 +341,9 @@ class DemoData {
       dollarGap: 775.62,
       primaryLeverId: 'boh_wage_up', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 24.13,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
 
     // ── W01 — boh_wage_down: BOH blended wage −13% (18.57 vs 21.35) ─────────
@@ -324,6 +357,9 @@ class DemoData {
       dollarGap: -775.62,
       primaryLeverId: 'boh_wage_down', shiftsCompleted: 14,
       blendedFohWage: 16.50, blendedBohWage: 18.57,
+      targetSourceType: 'system_baseline',
+      targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+      targetFohWage: 16.50, targetBohWage: 21.35,
     ),
   ];
 

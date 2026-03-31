@@ -28,6 +28,7 @@ migrate_working_dir/
 **/ios/Flutter/.last_build_id
 .dart_tool/
 .flutter-plugins-dependencies
+*.flutter-plugins-dependencies
 .pub-cache/
 .pub/
 /build/
@@ -48,10 +49,13 @@ app.*.map.json
 *.db
 
 # Large binary assets
-Barrio Legado Business Plan.pdf
+docs/internal/barrio/barrio_legado_business_plan.pdf
 
 # Claude Code
 .claude/
+
+# Codex local tooling
+.codex_appdata/
 
 # Kotlin compiler sessions
 android/.kotlin/

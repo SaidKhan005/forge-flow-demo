@@ -5,7 +5,7 @@
 // reads those records back and produces the pattern signal that
 // HistoryTeachingAnalyzer summarizes.
 
-import '../data/meridian_data.dart';
+import '../data/legacy_fixture_data.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_record.dart';
 import '../services/labor_model.dart';

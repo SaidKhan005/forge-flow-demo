@@ -5,8 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
-import '../data/demo_data.dart';
+import '../data/legacy_fixture_data.dart';
 import '../data/shift_data_source.dart';
 import '../data/week_data_notifier.dart';
 import '../models/history_pattern_record.dart';
@@ -177,8 +176,9 @@ class _ThisWeekContent extends StatelessWidget {
           // ── Full Week: Collapsible Day Rows ───────────────────────────
           _SectionLabel('FULL WEEK PROJECTION'),
           const SizedBox(height: 8),
-          _FullWeekSection(
-              theoreticalBlendedWage: weekData.theoreticalBlendedWage),
+          _FullWeekLoader(
+              theoreticalBlendedWage: weekData.theoreticalBlendedWage,
+              weekId: weekData.weekId),
 
           const SizedBox(height: 32),
         ],
@@ -576,11 +576,57 @@ class _DollarImpactCard extends StatelessWidget {
   }
 }
 
+// ─── Full Week loader — bridges data source to _FullWeekSection ──────────────
+
+class _FullWeekLoader extends StatefulWidget {
+  final double theoreticalBlendedWage;
+  final String weekId;
+  const _FullWeekLoader({
+    required this.theoreticalBlendedWage,
+    required this.weekId,
+  });
+
+  @override
+  State<_FullWeekLoader> createState() => _FullWeekLoaderState();
+}
+
+class _FullWeekLoaderState extends State<_FullWeekLoader> {
+  List<ShiftRecord>? _shifts;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final source = context.read<ShiftDataSource>();
+    final shifts = await source.getFullWeekShifts(widget.weekId);
+    if (mounted) setState(() => _shifts = shifts);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final shifts = _shifts;
+    if (shifts == null) {
+      return const SizedBox(height: 60);
+    }
+    return _FullWeekSection(
+      theoreticalBlendedWage: widget.theoreticalBlendedWage,
+      shifts: shifts,
+    );
+  }
+}
+
 // ─── Full Week — Collapsible Day Rows ─────────────────────────────────────────
 
 class _FullWeekSection extends StatefulWidget {
   final double theoreticalBlendedWage;
-  const _FullWeekSection({required this.theoreticalBlendedWage});
+  final List<ShiftRecord> shifts;
+  const _FullWeekSection({
+    required this.theoreticalBlendedWage,
+    required this.shifts,
+  });
 
   @override
   State<_FullWeekSection> createState() => _FullWeekSectionState();
@@ -590,7 +636,7 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
   final Set<String> _expanded = {};
 
   List<_DayGroup> _buildGroups() {
-    final shifts = DemoData.currentWeekShifts;
+    final shifts = widget.shifts;
     return WeekDayOrder.dayLabels.map((day) {
       final order = WeekDayOrder.daypartsFor(day);
       final dayShifts = shifts
@@ -666,16 +712,28 @@ class _DayGroup {
   double get laborPct {
     final totalSales = shifts.fold(0.0, (s, r) => s + r.actualSales);
     final totalLabor = shifts.fold(0.0, (s, r) => s + r.totalLaborDollar);
-    return totalSales > 0
-        ? totalLabor / totalSales * 100
-        : MeridianConfig.totalTheoreticalLaborPct;
+    return totalSales > 0 ? totalLabor / totalSales * 100 : theoreticalLaborPct;
   }
 
-  double get variancePts =>
-      laborPct - MeridianConfig.totalTheoreticalLaborPct;
+  double get theoreticalLaborPct {
+    if (shifts.isEmpty) return 0.0;
+    final totalSales = shifts.fold(0.0, (s, r) => s + r.actualSales);
+    if (totalSales > 0) {
+      // Sales-weighted average
+      final weighted = shifts.fold(
+          0.0, (s, r) => s + r.theoreticalLaborPct * r.actualSales);
+      return weighted / totalSales;
+    }
+    // Arithmetic mean when no sales
+    return shifts.fold(0.0, (s, r) => s + r.theoreticalLaborPct) /
+        shifts.length;
+  }
+
+  double get variancePts => laborPct - theoreticalLaborPct;
 
   bool get allClosed => shifts.every((s) => s.isClosed);
   bool get allProjected => shifts.every((s) => s.isProjected);
+  bool get hasOpen => shifts.any((s) => s.isOpen);
 }
 
 // ─── Daypart status chips (L✓ D→ LN→) ────────────────────────────────────────
@@ -706,11 +764,13 @@ class _DaypartChips extends StatelessWidget {
           for (int i = 0; i < shifts.length; i++) ...[
             if (i > 0) const SizedBox(width: 4),
             Text(
-              '${_abbr(shifts[i].daypart)}${shifts[i].isClosed ? '✓' : '→'}',
+              '${_abbr(shifts[i].daypart)}${shifts[i].isClosed ? '✓' : shifts[i].isOpen ? '●' : '→'}',
               style: AppTextStyles.mono7(
                 color: shifts[i].isClosed
                     ? AppColors.positive
-                    : AppColors.textMuted,
+                    : shifts[i].isOpen
+                        ? AppColors.tealPrimary
+                        : AppColors.textMuted,
               ),
             ),
           ],
@@ -763,7 +823,9 @@ class _DayRow extends StatelessWidget {
                           style: AppTextStyles.mono14(
                               color: group.allProjected
                                   ? AppColors.textMuted
-                                  : AppColors.textPrimary,
+                                  : group.hasOpen
+                                      ? AppColors.tealPrimary
+                                      : AppColors.textPrimary,
                               weight: FontWeight.w600)),
                       const SizedBox(height: 2),
                       _DaypartChips(shifts: group.shifts),
@@ -778,7 +840,9 @@ class _DayRow extends StatelessWidget {
                     style: AppTextStyles.mono11(
                         color: group.allProjected
                             ? AppColors.textMuted
-                            : AppColors.textSecondary),
+                            : group.hasOpen
+                                ? AppColors.tealSoft
+                                : AppColors.textSecondary),
                   ),
                 ),
 
@@ -846,11 +910,11 @@ class _DayExpanded extends StatelessWidget {
             if (i > 0)
               Container(height: 1, color: AppColors.borderSubtle),
             group.shifts[i].isClosed
-                ? _ClosedShiftDetail(
+                ? _ClosedShiftDetail(shift: group.shifts[i])
+                : _ProjectedShiftDetail(
                     shift: group.shifts[i],
-                    theoreticalBlendedWage: theoreticalBlendedWage,
-                  )
-                : _ProjectedShiftDetail(shift: group.shifts[i]),
+                    isOpen: group.shifts[i].isOpen,
+                  ),
           ],
         ],
       ),
@@ -862,24 +926,36 @@ class _DayExpanded extends StatelessWidget {
 
 class _ClosedShiftDetail extends StatelessWidget {
   final ShiftRecord shift;
-  final double theoreticalBlendedWage;
-  const _ClosedShiftDetail(
-      {required this.shift, required this.theoreticalBlendedWage});
+  const _ClosedShiftDetail({required this.shift});
 
   @override
   Widget build(BuildContext context) {
     final s = shift;
-    final coversDelta = s.covers - s.forecastCovers;
-    final ppaDelta = s.ppa - BaselineData.derivedTargetPPA;
-    final cplhDelta = s.cplh - BaselineData.derivedTargetCPLH;
-    final splhDelta = s.splh - BaselineData.derivedTargetSPLH;
-    final wageDelta = s.blendedWage - theoreticalBlendedWage;
 
-    // Model hours for this shift (Jim Taylor Ch. 10)
-    final theoFoh = LaborModel.modelFohHours(
-        s.forecastCovers, BaselineData.derivedTargetCPLH);
-    final theoBoh = LaborModel.modelBohHours(
-        s.forecastCovers, BaselineData.derivedTargetPPA, BaselineData.derivedTargetSPLH);
+    // All target comparisons use locked shift truth — not current globals
+    final lockedPPA = s.lockedTargetPPA;
+    final lockedCPLH = s.lockedTargetCPLH;
+    final lockedSPLH = s.lockedTargetSPLH;
+    final lockedFohWage = s.lockedTargetFohWage;
+    final lockedBohWage = s.lockedTargetBohWage;
+    final lockedFohPct = s.lockedTheoreticalFohLaborPct;
+    final lockedBohPct = s.lockedTheoreticalBohLaborPct;
+
+    final coversDelta = s.covers - s.forecastCovers;
+    final ppaDelta = s.ppa - lockedPPA;
+    final cplhDelta = s.cplh - lockedCPLH;
+    final splhDelta = s.splh - lockedSPLH;
+
+    // Model hours from locked targets (Jim Taylor Ch. 10)
+    final theoFoh = LaborModel.modelFohHours(s.forecastCovers, lockedCPLH);
+    final theoBoh = LaborModel.modelBohHours(s.forecastCovers, lockedPPA, lockedSPLH);
+
+    // Blended-wage target from locked shift truth
+    final totalModelHours = theoFoh + theoBoh;
+    final lockedBlendedWage = totalModelHours > 0
+        ? (theoFoh * lockedFohWage + theoBoh * lockedBohWage) / totalModelHours
+        : 0.0;
+    final wageDelta = s.blendedWage - lockedBlendedWage;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
@@ -918,7 +994,7 @@ class _ClosedShiftDetail extends StatelessWidget {
           _micro(),
           _ShiftRow(
             label: 'PPA',
-            target: '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}',
+            target: '\$${lockedPPA.toStringAsFixed(2)}',
             actual: '\$${s.ppa.toStringAsFixed(2)}',
             variance: Fmt.varDollars(ppaDelta),
             varColor: Fmt.varColor('PPA', ppaDelta),
@@ -926,7 +1002,7 @@ class _ClosedShiftDetail extends StatelessWidget {
           _micro(),
           _ShiftRow(
             label: 'CPLH',
-            target: BaselineData.derivedTargetCPLH.toStringAsFixed(2),
+            target: lockedCPLH.toStringAsFixed(2),
             actual: s.cplh.toStringAsFixed(2),
             variance: Fmt.varDelta(cplhDelta),
             varColor: Fmt.varColor('CPLH', cplhDelta),
@@ -934,7 +1010,7 @@ class _ClosedShiftDetail extends StatelessWidget {
           _micro(),
           _ShiftRow(
             label: 'SPLH',
-            target: '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}',
+            target: '\$${lockedSPLH.toStringAsFixed(0)}',
             actual: '\$${s.splh.toStringAsFixed(0)}',
             variance: Fmt.varDollars(splhDelta),
             varColor: Fmt.varColor('SPLH', splhDelta),
@@ -942,7 +1018,7 @@ class _ClosedShiftDetail extends StatelessWidget {
           _micro(),
           _ShiftRow(
             label: 'Blended Wage',
-            target: '\$${theoreticalBlendedWage.toStringAsFixed(2)}',
+            target: '\$${lockedBlendedWage.toStringAsFixed(2)}',
             actual: '\$${s.blendedWage.toStringAsFixed(2)}',
             variance: Fmt.varDollars(wageDelta),
             varColor: Fmt.varColor('Blended Wage', wageDelta),
@@ -975,24 +1051,20 @@ class _ClosedShiftDetail extends StatelessWidget {
           _micro(),
           _ShiftRow(
             label: 'FOH Labor %',
-            target:
-                '${BaselineData.derivedFohTheoreticalLaborPct.toStringAsFixed(1)}%',
+            target: '${lockedFohPct.toStringAsFixed(1)}%',
             actual: '${s.fohLaborPct.toStringAsFixed(1)}%',
-            variance: Fmt.varPts(s.fohLaborPct -
-                BaselineData.derivedFohTheoreticalLaborPct),
+            variance: Fmt.varPts(s.fohLaborPct - lockedFohPct),
             varColor: Fmt.varColor('FOH Labor %',
-                s.fohLaborPct - BaselineData.derivedFohTheoreticalLaborPct),
+                s.fohLaborPct - lockedFohPct),
           ),
           _micro(),
           _ShiftRow(
             label: 'BOH Labor %',
-            target:
-                '${BaselineData.derivedBohTheoreticalLaborPct.toStringAsFixed(1)}%',
+            target: '${lockedBohPct.toStringAsFixed(1)}%',
             actual: '${s.bohLaborPct.toStringAsFixed(1)}%',
-            variance: Fmt.varPts(s.bohLaborPct -
-                BaselineData.derivedBohTheoreticalLaborPct),
+            variance: Fmt.varPts(s.bohLaborPct - lockedBohPct),
             varColor: Fmt.varColor('BOH Labor %',
-                s.bohLaborPct - BaselineData.derivedBohTheoreticalLaborPct),
+                s.bohLaborPct - lockedBohPct),
           ),
           _micro(),
           _ShiftRow(
@@ -1021,10 +1093,15 @@ class _ClosedShiftDetail extends StatelessWidget {
 
 class _ProjectedShiftDetail extends StatelessWidget {
   final ShiftRecord shift;
-  const _ProjectedShiftDetail({required this.shift});
+  final bool isOpen;
+  const _ProjectedShiftDetail({required this.shift, this.isOpen = false});
 
   @override
   Widget build(BuildContext context) {
+    final statusLabel = isOpen ? 'OPEN' : 'PROJ';
+    final headerLabel = isOpen ? 'CURRENT' : 'PROJECTED';
+    final statusColor = isOpen ? AppColors.tealPrimary : AppColors.textMuted;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       child: Column(
@@ -1036,12 +1113,12 @@ class _ProjectedShiftDetail extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.backgroundSurface,
               border:
-                  Border.all(color: AppColors.borderSubtle, width: 1),
+                  Border.all(color: isOpen ? AppColors.tealSoft : AppColors.borderSubtle, width: 1),
             ),
             child: Text(
               '${shift.dayLabel.toUpperCase()} ${shift.daypartLabel.toUpperCase()}  ·  '
-              '${shift.forecastCovers} covers  ·  PROJ',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              '${isOpen ? shift.covers : shift.forecastCovers} covers  ·  $statusLabel',
+              style: AppTextStyles.mono10(color: statusColor),
             ),
           ),
           const SizedBox(height: 10),
@@ -1055,8 +1132,8 @@ class _ProjectedShiftDetail extends StatelessWidget {
             ),
             Expanded(
               flex: 6,
-              child: Text('PROJECTED',
-                  style: AppTextStyles.mono8(color: AppColors.textMuted),
+              child: Text(headerLabel,
+                  style: AppTextStyles.mono8(color: statusColor),
                   textAlign: TextAlign.right),
             ),
           ]),
@@ -1132,8 +1209,10 @@ class _ProjectedShiftDetail extends StatelessWidget {
 
           const SizedBox(height: 4),
           Text(
-            'Projected from 60-day baseline. Actuals populate when shift closes.',
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
+            isOpen
+                ? 'Live shift in progress. Finalizes on close.'
+                : 'Projected from 60-day baseline. Actuals populate when shift closes.',
+            style: AppTextStyles.mono8(color: isOpen ? AppColors.tealSoft : AppColors.textMuted),
           ),
         ],
       ),

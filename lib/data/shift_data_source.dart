@@ -1,16 +1,14 @@
 // ─── ShiftDataSource — data-layer interface ───────────────────────────────────
 // Decouples screens from SQLite. Swap LiveShiftDataSource for
 // StaticShiftDataSource (or a mock) without touching any UI file.
-//
-// All screens that need WTD or history data call ShiftDataSource methods —
-// never ShiftService directly.
 
 import '../models/history_pattern_record.dart';
+import '../models/shift_record.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
 import '../services/history_pattern_builder.dart';
-import 'demo_data.dart';
-import 'meridian_data.dart';
+import 'fixture_seed_data.dart';
+import 'legacy_fixture_data.dart';
 import 'shift_service.dart';
 import '../services/labor_model.dart';
 
@@ -18,6 +16,7 @@ abstract class ShiftDataSource {
   Future<WeekData?> getWeekToDate();
   Future<List<WeekRecord>> getWeekHistory();
   Future<List<HistoryPatternRecord>> getHistoryPatternRecords();
+  Future<List<ShiftRecord>> getFullWeekShifts(String weekId);
 }
 
 // ── Live — reads from SQLite via ShiftService ─────────────────────────────────
@@ -26,8 +25,8 @@ class LiveShiftDataSource implements ShiftDataSource {
   const LiveShiftDataSource();
 
   @override
-  Future<WeekData?> getWeekToDate() => ShiftService.instance
-      .getWeekToDate(WeekToDate.currentWeekId, WeekToDate.weekLabel);
+  Future<WeekData?> getWeekToDate() =>
+      ShiftService.instance.getLiveWeekToDate();
 
   @override
   Future<List<WeekRecord>> getWeekHistory() =>
@@ -36,9 +35,16 @@ class LiveShiftDataSource implements ShiftDataSource {
   @override
   Future<List<HistoryPatternRecord>> getHistoryPatternRecords() =>
       ShiftService.instance.getHistoryPatternRecords();
+
+  @override
+  Future<List<ShiftRecord>> getFullWeekShifts(String weekId) =>
+      ShiftService.instance.getFullWeekShifts(weekId);
 }
 
 // ── Static — wraps WeekToDate constants for demo / offline use ────────────────
+// Compatibility bridge: reads BaselineData + MeridianConfig for demo/offline
+// mode. Not canonical authority — persisted ActiveTargetProfile is canonical.
+// Pending retirement when demo mode migrates fully to repository-backed state.
 
 class StaticShiftDataSource implements ShiftDataSource {
   const StaticShiftDataSource();
@@ -69,10 +75,18 @@ class StaticShiftDataSource implements ShiftDataSource {
       shiftsCompleted:         WeekToDate.shiftsCompleted,
       shiftsTotal:             WeekToDate.shiftsTotal,
       wtdForecastCovers:       WeekToDate.wtdForecastCovers,
-      totalWeekForecastCovers: 2760, // 9 closed (1780) + 5 projected (980)
+      totalWeekForecastCovers: 2760,
       primaryLeverId:          primaryLeverId,
       lastClosedDay:           WeekToDate.lastClosedDay,
       closedDayNumber:         WeekToDate.closedDayNumber,
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetSPLH: BaselineData.derivedTargetSPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      targetFohWage: MeridianConfig.fohWage,
+      targetBohWage: MeridianConfig.bohWage,
+      theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
+      theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
+      theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
     );
   }
 
@@ -87,4 +101,8 @@ class StaticShiftDataSource implements ShiftDataSource {
     return HistoryPatternBuilder.fromClosedShifts(
         DemoData.historicalClosedShifts, weekLabelsById);
   }
+
+  @override
+  Future<List<ShiftRecord>> getFullWeekShifts(String weekId) async =>
+      DemoData.currentWeekShifts;
 }

@@ -10,6 +10,10 @@ import '../../services/labor_model.dart';
 import 'target_snapshot.dart';
 
 class ShiftFact {
+  // ── Scope ────────────────────────────────────────────────────────────────
+
+  final String restaurantId;
+
   // ── Identity ──────────────────────────────────────────────────────────────
 
   final DateTime businessDate;
@@ -55,6 +59,7 @@ class ShiftFact {
   final String? sourceShiftId;
 
   const ShiftFact({
+    this.restaurantId = 'demo_restaurant_001',
     required this.businessDate,
     required this.weekId,
     required this.dayLabel,

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
-import '../data/meridian_data.dart';
 import '../data/week_data_notifier.dart';
 import '../utils/formatters.dart';
 
@@ -16,8 +15,8 @@ class VarianceBanner extends StatelessWidget {
       builder: (context, notifier, _) {
         final weekData = notifier.weekData;
 
-        final theoretical = MeridianConfig.totalTheoreticalLaborPct;
-        final actual = weekData?.actualLaborPct ?? theoretical;
+        final theoretical = weekData?.theoreticalLaborPct ?? 0.0;
+        final actual = weekData?.actualLaborPct ?? 0.0;
         final variancePts = weekData?.variancePts ?? 0.0;
         final dollarGap = weekData?.dollarGap ?? 0.0;
         final annualized = weekData?.dollarGapAnnualized ?? 0.0;

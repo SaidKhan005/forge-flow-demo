@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'theme/app_theme.dart';
+import 'data/active_target_profile_notifier.dart';
+import 'data/restaurant_scope_notifier.dart';
 import 'data/shift_data_source.dart';
+import 'data/shift_dashboard_notifier.dart';
 import 'data/week_data_notifier.dart';
 import 'data/baseline_manager_service.dart';
-import 'data/meridian_data.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/variance_report.dart';
 import 'screens/schedule_builder.dart';
@@ -21,6 +23,9 @@ Future<void> main() async {
     ),
   );
 
+  // Compatibility bridge: prime in-memory BaselineData from persisted selection.
+  // This is temporary bridge behavior — persisted ActiveTargetProfile is the
+  // canonical authority; BaselineData is kept for Baseline/Schedule/Learn compat.
   await BaselineManagerService.instance.primeManagerOverride();
 
   runApp(const ForgeFlowApp());
@@ -33,15 +38,34 @@ class ForgeFlowApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        ChangeNotifierProvider<RestaurantScopeNotifier>(
+          create: (_) => RestaurantScopeNotifier(),
+        ),
         Provider<ShiftDataSource>(
           create: (_) => const LiveShiftDataSource(),
         ),
-        ChangeNotifierProvider<WeekDataNotifier>(
+        ChangeNotifierProvider<ActiveTargetProfileNotifier>(
+          create: (_) => ActiveTargetProfileNotifier(),
+        ),
+        ChangeNotifierProxyProvider<ActiveTargetProfileNotifier,
+            WeekDataNotifier>(
           create: (ctx) => WeekDataNotifier(ctx.read<ShiftDataSource>()),
+          update: (ctx, targetNotifier, previous) {
+            previous!.refresh();
+            return previous;
+          },
+        ),
+        ChangeNotifierProxyProvider<ActiveTargetProfileNotifier,
+            ShiftDashboardNotifier>(
+          create: (_) => ShiftDashboardNotifier(),
+          update: (ctx, targetNotifier, previous) {
+            previous!.refresh();
+            return previous;
+          },
         ),
       ],
       child: MaterialApp(
-        title: 'Barrio',
+        title: 'Forge & Flow',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
         home: const AppShell(),
@@ -66,6 +90,11 @@ class _AppShellState extends State<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    // App-shell rebuild now driven by persisted active-target authority,
+    // not BaselineData.revision.
+    final revision =
+        context.watch<ActiveTargetProfileNotifier>().revision;
+
     return Scaffold(
       backgroundColor: AppColors.backgroundDeep,
       appBar: _selectedIndex == 0
@@ -88,35 +117,28 @@ class _AppShellState extends State<AppShell> {
               ],
             ),
       body: SafeArea(
-        child: ValueListenableBuilder<int>(
-          valueListenable: BaselineData.revision,
-          builder: (context, revision, __) => IndexedStack(
-            index: _selectedIndex,
-            children: [
-              // Tab 0 — Shift (has its own Scaffold with FAB; no global AppBar)
-              KeyedSubtree(
-                key: ValueKey('shift-$revision'),
-                child: ShiftDashboard(
-                  onVarianceTap: () => _navigateTo(1),
-                ),
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            KeyedSubtree(
+              key: ValueKey('shift-$revision'),
+              child: ShiftDashboard(
+                onVarianceTap: () => _navigateTo(1),
               ),
-              // Tab 1 — Variance
-              KeyedSubtree(
-                key: ValueKey('variance-$revision'),
-                child: const VarianceReport(),
-              ),
-              // Tab 2 — Schedule
-              KeyedSubtree(
-                key: ValueKey('schedule-$revision'),
-                child: const ScheduleBuilder(),
-              ),
-              // Tab 3 — Baseline
-              KeyedSubtree(
-                key: ValueKey('baseline-$revision'),
-                child: const BaselineTracker(),
-              ),
-            ],
-          ),
+            ),
+            KeyedSubtree(
+              key: ValueKey('variance-$revision'),
+              child: const VarianceReport(),
+            ),
+            KeyedSubtree(
+              key: ValueKey('schedule-$revision'),
+              child: const ScheduleBuilder(),
+            ),
+            KeyedSubtree(
+              key: ValueKey('baseline-$revision'),
+              child: const BaselineTracker(),
+            ),
+          ],
         ),
       ),
       bottomNavigationBar: _AppBottomNav(

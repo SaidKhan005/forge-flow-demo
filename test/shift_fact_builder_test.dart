@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/domain/models/closed_shift_input.dart';
-import 'package:forge_flow_demo/domain/models/target_snapshot.dart';
-import 'package:forge_flow_demo/domain/services/shift_fact_builder.dart';
-import 'package:forge_flow_demo/services/labor_model.dart';
+import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
+import 'package:forge_and_flow/domain/models/target_snapshot.dart';
+import 'package:forge_and_flow/domain/services/shift_fact_builder.dart';
+import 'package:forge_and_flow/services/labor_model.dart';
 
-// ── Shared fixtures ────────────────────────────────────────────────────────
+// â”€â”€ Shared fixtures â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 // A realistic Monday-lunch closed shift.
 final _baseDate = DateTime(2026, 3, 23);
@@ -25,7 +25,7 @@ const _snapshot = TargetSnapshot(
 ClosedShiftInput _input({
   int covers = 154,
   int forecastCovers = 170,
-  double actualSales = 6344.80,   // 154 × 41.20
+  double actualSales = 6344.80,   // 154 Ã— 41.20
   int actualFohHours = 36,
   int actualBohHours = 37,
   int? scheduledFohHours,
@@ -52,10 +52,10 @@ ClosedShiftInput _input({
   );
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void main() {
-  group('ShiftFactBuilder — rate metrics derived from raw source facts', () {
+  group('ShiftFactBuilder â€” rate metrics derived from raw source facts', () {
     test('ppa = actualSales / covers', () {
       final fact = ShiftFactBuilder.fromClosedShiftInput(_input(), _snapshot);
       expect(fact.ppa, closeTo(6344.80 / 154, 0.0001));
@@ -72,8 +72,8 @@ void main() {
     });
   });
 
-  group('ShiftFactBuilder — labor dollar resolution', () {
-    test('falls back to hours × wage when actual labor dollars absent', () {
+  group('ShiftFactBuilder â€” labor dollar resolution', () {
+    test('falls back to hours Ã— wage when actual labor dollars absent', () {
       final fact = ShiftFactBuilder.fromClosedShiftInput(_input(), _snapshot);
       expect(fact.actualFohLaborDollars, closeTo(36 * 16.50, 0.0001));
       expect(fact.actualBohLaborDollars, closeTo(37 * 21.35, 0.0001));
@@ -106,8 +106,8 @@ void main() {
     });
   });
 
-  group('ShiftFactBuilder — schedule variance hours', () {
-    test('fohScheduledVarianceHours = actual − scheduled when scheduled provided', () {
+  group('ShiftFactBuilder â€” schedule variance hours', () {
+    test('fohScheduledVarianceHours = actual âˆ’ scheduled when scheduled provided', () {
       final fact = ShiftFactBuilder.fromClosedShiftInput(
         _input(actualFohHours: 36, scheduledFohHours: 34),
         _snapshot,
@@ -115,7 +115,7 @@ void main() {
       expect(fact.fohScheduledVarianceHours, 2);
     });
 
-    test('bohScheduledVarianceHours = actual − scheduled when scheduled provided', () {
+    test('bohScheduledVarianceHours = actual âˆ’ scheduled when scheduled provided', () {
       final fact = ShiftFactBuilder.fromClosedShiftInput(
         _input(actualBohHours: 37, scheduledBohHours: 38),
         _snapshot,
@@ -134,14 +134,14 @@ void main() {
     });
   });
 
-  group('ShiftFactBuilder — primaryLeverId populated from LaborModel', () {
+  group('ShiftFactBuilder â€” primaryLeverId populated from LaborModel', () {
     test('primaryLeverId is non-empty string', () {
       final fact = ShiftFactBuilder.fromClosedShiftInput(_input(), _snapshot);
       expect(fact.primaryLeverId, isNotEmpty);
     });
 
     test('covers_down fires when actual covers significantly below forecast', () {
-      // 154 covers vs 200 forecast = −23% → covers_down
+      // 154 covers vs 200 forecast = âˆ’23% â†’ covers_down
       final fact = ShiftFactBuilder.fromClosedShiftInput(
         _input(covers: 154, forecastCovers: 200),
         _snapshot,
@@ -151,14 +151,14 @@ void main() {
 
     test('covers_up fires when actual covers significantly above forecast', () {
       // 230 covers vs 170 forecast = +35% covers_up.
-      // BOH hours scaled so SPLH stays near target (230 × 41.79 / 180.07 ≈ 53).
+      // BOH hours scaled so SPLH stays near target (230 Ã— 41.79 / 180.07 â‰ˆ 53).
       final fact = ShiftFactBuilder.fromClosedShiftInput(
         _input(
           covers: 230,
           forecastCovers: 170,
           actualSales: 230 * 41.79,
-          actualFohHours: 50,  // CPLH = 230/50 = 4.6 ≈ target (within 5%)
-          actualBohHours: 53,  // SPLH = 9613.7/53 ≈ 181.4 ≈ target (within 5%)
+          actualFohHours: 50,  // CPLH = 230/50 = 4.6 â‰ˆ target (within 5%)
+          actualBohHours: 53,  // SPLH = 9613.7/53 â‰ˆ 181.4 â‰ˆ target (within 5%)
         ),
         _snapshot,
       );

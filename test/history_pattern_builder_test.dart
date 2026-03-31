@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/models/shift_record.dart';
-import 'package:forge_flow_demo/services/history_pattern_builder.dart';
+import 'package:forge_and_flow/models/shift_record.dart';
+import 'package:forge_and_flow/services/history_pattern_builder.dart';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 ShiftRecord _shift({
   required String weekId,
@@ -34,11 +34,11 @@ ShiftRecord _shift({
   );
 }
 
-// ── Tests ─────────────────────────────────────────────────────────────────────
+// â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 void main() {
   group('HistoryPatternBuilder.fromClosedShifts', () {
-    group('filtering — status', () {
+    group('filtering â€” status', () {
       test('projected shifts are skipped', () {
         final shifts = [
           _shift(
@@ -68,7 +68,7 @@ void main() {
       });
     });
 
-    group('filtering — ON_MODEL', () {
+    group('filtering â€” ON_MODEL', () {
       test('ON_MODEL shifts are skipped', () {
         final shifts = [
           _shift(
@@ -98,7 +98,7 @@ void main() {
       });
     });
 
-    group('filtering — unknown lever ids', () {
+    group('filtering â€” unknown lever ids', () {
       test('unknown lever id is skipped', () {
         final shifts = [
           _shift(
@@ -128,7 +128,7 @@ void main() {
       });
     });
 
-    group('normalization — uppercase to lowercase', () {
+    group('normalization â€” uppercase to lowercase', () {
       test('CPLH_DOWN normalizes to cplh_down', () {
         final shifts = [
           _shift(
@@ -288,15 +288,15 @@ void main() {
       test('mix of eligible and ineligible shifts filters correctly', () {
         final shifts = [
           _shift(weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'CPLH_DOWN'),   // ✓ eligible
+              status: 'closed',    primaryLever: 'CPLH_DOWN'),   // âœ“ eligible
           _shift(weekId: '2026-W12', dayLabel: 'Wed', daypart: 'dinner',
-              status: 'projected', primaryLever: 'CPLH_UP'),    // ✗ not closed
+              status: 'projected', primaryLever: 'CPLH_UP'),    // âœ— not closed
           _shift(weekId: '2026-W12', dayLabel: 'Thu', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'ON_MODEL'),    // ✗ on_model
+              status: 'closed',    primaryLever: 'ON_MODEL'),    // âœ— on_model
           _shift(weekId: '2026-W12', dayLabel: 'Fri', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'UNKNOWN'),     // ✗ unknown id
+              status: 'closed',    primaryLever: 'UNKNOWN'),     // âœ— unknown id
           _shift(weekId: '2026-W12', dayLabel: 'Sat', daypart: 'dinner',
-              status: 'closed',    primaryLever: 'SPLH_DOWN'),   // ✓ eligible
+              status: 'closed',    primaryLever: 'SPLH_DOWN'),   // âœ“ eligible
         ];
         final result = HistoryPatternBuilder.fromClosedShifts(shifts, {});
         expect(result, hasLength(2));

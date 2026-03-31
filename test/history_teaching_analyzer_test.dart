@@ -1,4 +1,4 @@
-// ─── HistoryTeachingAnalyzer Tests ────────────────────────────────────────────
+// â”€â”€â”€ HistoryTeachingAnalyzer Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Verifies deterministic output from real closed shift records.
 // Expected outcome (per spec):
 //   mostCommonLeakId    = 'cplh_down'
@@ -8,16 +8,16 @@
 //   benchmarkDayparts   = ['Wed Dinner', 'Thu Dinner']
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_flow_demo/data/demo_data.dart';
-import 'package:forge_flow_demo/services/history_pattern_builder.dart';
-import 'package:forge_flow_demo/services/history_teaching_analyzer.dart';
+import 'package:forge_and_flow/data/fixture_seed_data.dart';
+import 'package:forge_and_flow/services/history_pattern_builder.dart';
+import 'package:forge_and_flow/services/history_teaching_analyzer.dart';
 
 void main() {
-  group('HistoryTeachingAnalyzer — canonical seed data', () {
+  group('HistoryTeachingAnalyzer â€” canonical seed data', () {
     late HistoryTeachingSummary summary;
 
     setUpAll(() {
-      // Build pattern records from real closed shift records — same path the
+      // Build pattern records from real closed shift records â€” same path the
       // app uses at runtime through ShiftDataSource.getHistoryPatternRecords().
       final weekLabelsById = {
         for (final w in DemoData.weekHistory) w.weekId: w.weekLabel,
