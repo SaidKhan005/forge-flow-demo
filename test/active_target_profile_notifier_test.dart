@@ -52,7 +52,6 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       final initialRevision = notifier.revision;
-      final initialCPLH = notifier.profile!.targetCPLH;
 
       // Apply manager override through existing service path
       final candidates =

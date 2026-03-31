@@ -2,7 +2,6 @@
 // Manager inspects historical closed shifts, toggles star selections,
 // previews the full draft target, then commits or discards.
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../data/baseline_manager_service.dart';
 import '../models/baseline_candidate_shift.dart';

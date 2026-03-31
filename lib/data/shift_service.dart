@@ -1,9 +1,7 @@
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/closed_shift_input.dart';
-import '../domain/models/open_shift_snapshot.dart';
 import '../domain/models/shift_fact.dart';
 import '../domain/models/target_profile_version.dart';
-import '../domain/models/target_snapshot.dart';
 import '../domain/repositories/open_shift_snapshot_repository.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';

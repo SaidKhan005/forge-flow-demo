@@ -208,8 +208,6 @@ void main() {
       await BaselineManagerService.instance
           .saveSelection({candidates[0].recordKey});
 
-      // Re-read the stored shift from DB
-      final shifts = await ShiftService.instance.getWeekHistory();
       // The shift is persisted in shift_records, re-read it
       final db = await SqliteDatabase.instance.database;
       final rows = await db.query('shift_records',
