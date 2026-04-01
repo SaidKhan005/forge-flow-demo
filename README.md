@@ -28,9 +28,16 @@ The current product flow is:
 ## Current Status
 
 - Phase 7.5 structural alignment is complete (restaurant scope, locked target truth, fixture replay)
-- Phase 7.52 cleanup and private-build prep is in progress
+- Phase 7.52 cleanup and private Barrio shell work is complete
+- Phase 7.53 native dual-build hardening is the current build-identity step
 - Phase 8 gate artifacts are checked in at `docs/phase_8_gate/`
 - Phase 8 (live POS + labor adapters) is blocked only on vendor selection
+
+
+flutter clean
+flutter pub get
+flutter run --flavor forgeflow
+flutter run --flavor barrio
 
 ## Local Development
 
@@ -39,6 +46,71 @@ flutter pub get
 flutter run
 flutter test
 ```
+
+## Android Flavor Commands
+
+Current Android flavors:
+
+- `forgeflow`
+- `barrio`
+
+Basic cleanup and dependency refresh:
+
+```bash
+flutter clean
+flutter pub get
+```
+
+Run either flavor on a connected device or emulator:
+
+```bash
+flutter run --flavor forgeflow -t lib/main_forgeflow.dart
+flutter run --flavor barrio -t lib/main_barrio.dart
+```
+
+If multiple devices are connected, specify one explicitly:
+
+```bash
+flutter run --flavor forgeflow -t lib/main_forgeflow.dart -d <deviceId>
+flutter run --flavor barrio -t lib/main_barrio.dart -d <deviceId>
+```
+
+Build APKs:
+
+```bash
+flutter build apk --flavor forgeflow -t lib/main_forgeflow.dart --debug
+flutter build apk --flavor forgeflow -t lib/main_forgeflow.dart --release
+
+flutter build apk --flavor barrio -t lib/main_barrio.dart --debug
+flutter build apk --flavor barrio -t lib/main_barrio.dart --release
+```
+
+Build Android App Bundles:
+
+```bash
+flutter build appbundle --flavor forgeflow -t lib/main_forgeflow.dart --release
+flutter build appbundle --flavor barrio -t lib/main_barrio.dart --release
+```
+
+Clean the Android Gradle build directly if needed:
+
+```bash
+cd android
+./gradlew clean
+cd ..
+```
+
+Typical APK output path:
+
+- `build/app/outputs/flutter-apk/`
+
+Important note:
+
+- the repo currently has Android flavor names and source folders in place, but `pubspec.yaml` still contains one shared `flutter_launcher_icons` block and one shared `flutter_native_splash` block
+- until flavor-specific generator config files are added, icon and splash generation still behaves like a single-brand setup
+- the two flavors now use separate Dart entrypoints:
+  - `lib/main_forgeflow.dart`
+  - `lib/main_barrio.dart`
 
 ## Notes
 

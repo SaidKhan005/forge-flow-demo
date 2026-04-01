@@ -1,0 +1,4 @@
+#include "Release.xcconfig"
+PRODUCT_BUNDLE_IDENTIFIER = com.forgeflow.barrio
+FLUTTER_FLAVOR = barrio
+DISPLAY_NAME = Barrio

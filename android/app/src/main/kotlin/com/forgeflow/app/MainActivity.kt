@@ -1,4 +1,4 @@
-package com.forgeflow.forge_flow_demo
+package com.forgeflow.app
 
 import io.flutter.embedding.android.FlutterActivity
 

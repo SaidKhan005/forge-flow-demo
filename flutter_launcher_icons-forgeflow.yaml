@@ -1,0 +1,8 @@
+flutter_launcher_icons:
+  android: true
+  ios: true
+  flavor: forgeflow
+  remove_alpha_ios: true
+  image_path: "assets/images/forge_flow_new_icon.png"
+  adaptive_icon_background: "#FF6B35"
+  adaptive_icon_foreground: "assets/images/forge_flow_new_icon.png"

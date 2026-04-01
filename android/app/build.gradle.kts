@@ -6,7 +6,7 @@ plugins {
 }
 
 android {
-    namespace = "com.forgeflow.forge_flow_demo"
+    namespace = "com.forgeflow.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,14 +20,26 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.forgeflow.forge_flow_demo"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.forgeflow.app"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    flavorDimensions += "brand"
+
+    productFlavors {
+        create("forgeflow") {
+            dimension = "brand"
+            applicationId = "com.forgeflow.app"
+            resValue("string", "app_name", "Forge & Flow")
+        }
+        create("barrio") {
+            dimension = "brand"
+            applicationId = "com.forgeflow.barrio"
+            resValue("string", "app_name", "Barrio")
+        }
     }
 
     buildTypes {

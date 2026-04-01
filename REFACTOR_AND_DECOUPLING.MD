@@ -1,6 +1,6 @@
 # Refactor and Decoupling Plan
 
-Updated: 2026-03-30
+Updated: 2026-03-31
 Owner: You
 Purpose: Define the repo-wide refactor needed to reach the pre-Phase-8 alignment gate so live vendor integrations can remain adapter and transport work only.
 
@@ -1086,6 +1086,12 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
 
 ### Post-7.51 Verification Result
 
+- `docs/internal/barrio/` is the canonical home for private Barrio source docs, including the business plan, company handbook, and interview playbook; `assets/internal/barrio/` holds supporting visual source material such as branding, logos, color inspiration, and reference imagery/style inspiration.
+- follow-on `7.52e`/`7.52f`/`7.52g`/`7.52h`/`7.52i` work must fulfill those sources as native Barrio experiences rather than raw document viewers, including visual identity, staff learning/play-style teaching, and planned gamified motivation surfaces such as leaderboard-style progress.
+- `docs/internal/barrio/barrio_visual_teaching_system_execution_blueprint.md` is the authoritative Barrio visual/teaching blueprint for future native fulfillment, including the living-system bubble hierarchy, subtle falling-leaf atmosphere, card-based microlearning, decision-first teaching loop, and controlled gamification.
+- future Barrio UX work should preserve the blueprint's core operating rule: every visual element must help staff decide faster.
+- during `7.52e`/`7.52f`/`7.52g`/`7.52h`/`7.52i`, Forge & Flow should be treated as frozen: no edits to its public screens, navigation, styling, copy, behavior, data flow, or operational UX while Barrio work is underway.
+
 - 7.51a verified complete
 - 7.51b verified complete: app-shell authority off BaselineData.revision; remaining bridge frozen
 - 7.51c verified complete: gate artifacts checked in; vendor profiles remain TBD
@@ -1097,7 +1103,8 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
   - scripts/run_phase8_gate_tests.ps1
 - 7.51e complete: 28-file Flutter corpus rerun passed (all 28/28). Gate blocked on vendor selection only
 - Phase 8 remains blocked on vendor selection only
-- 7.52 may proceed as cleanup and private-layer work, but it should not reopen the completed Phase 7.5/7.51 alignment boundary
+- 7.52 may proceed as cleanup, private-layer, and Barrio shell work, but it should not reopen the completed Phase 7.5/7.51 alignment boundary
+- 7.52d complete: the internal Barrio code boundary now exists under `lib/internal/barrio/` with dormant destination/source-material scaffolding and no public runtime wiring
 
 ### 7.51d
 - retire or explicitly freeze remaining production `BaselineData` bridge usage
@@ -1119,16 +1126,16 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
 - rename or split legacy demo-heavy files where needed without changing the aligned data path
 - create a private Barrio layer inside the same repo for internal-only content
 - prepare the dual-build foundation so Forge & Flow and Barrio can become separate app identities from one shared codebase
-- build the Barrio shell and content structure before Phase 9 auth begins
-- do not fork Forge & Flow core
-- keep future vendor integrations and customer onboarding in Forge & Flow core only
+- build the Barrio shell, handbook, and manager-learning structure before Phase 9 auth begins
+  - do not fork Forge & Flow core
+  - keep future vendor integrations and customer onboarding in Forge & Flow core only
 
 #### 7.52 Design Contract
 
 - Forge & Flow is the shared product.
 - Restaurant identity inside the app remains runtime-scoped.
 - Barrio is a private internal build identity, not the public customer product.
-- 7.52 may change naming, file structure, build identity, private-route structure, and content presentation.
+- 7.52 may change naming, file structure, build identity, private-route structure, shell hierarchy, and content presentation.
 - 7.52 must not change the aligned Phase 8 data path.
 - 7.52 must stop before real login, permissions, and cross-device sync.
 
@@ -1161,7 +1168,7 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
 - legacy/demo-heavy files renamed (7.52c):
   - `lib/data/meridian_data.dart` → `lib/data/legacy_fixture_data.dart`
   - `lib/data/demo_data.dart` → `lib/data/fixture_seed_data.dart`
-- Android internal package namespace and applicationId in `android/app/build.gradle.kts` still use `com.forgeflow.forge_flow_demo` — future cleanup item, not a v1.1.0 blocker
+- Android native ids are now split correctly for `forgeflow` and `barrio`; the remaining native-build follow-up is the shared iOS asset catalog
 
 #### 7.52 Execution Breakdown
 
@@ -1202,6 +1209,10 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
 - keep Barrio-only docs, assets, routes, and content inside that boundary
 - keep Forge & Flow core logic shared and reusable
 - do not fork the product into a separate repo or duplicated code tree
+- completion note:
+  - `lib/internal/barrio/` now exists with `content/`, `routes/`, `screens/`, and `widgets/`
+  - the boundary defines internal-only ownership plus typed destination/source-material metadata
+  - the scaffolding is dormant and does not touch the public Forge & Flow runtime
 
 ##### 7.52e. Dual-Build Foundation
 
@@ -1209,32 +1220,69 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
   - Forge & Flow
   - Barrio
 - allow separate branding, icons, splash identity, and later flavors
+- split those identities at the native build layer first:
+  - Android product flavors
+  - iOS schemes and build configurations
+- use separate package or bundle ids, display names, app icon sets, and splash assets per identity
+- keep one shared Dart runtime and `lib/main.dart` unless the Forge & Flow and Barrio shells truly diverge later
+- prefer flavor-specific launcher-icon and native-splash config files over one shared single-brand generator block
 - do not add auth logic in this step
 
-##### 7.52f. Barrio Shell + Navigation
+##### 7.52f. Barrio Shell IA + Home Navigation
 
 - build the private Barrio shell before auth exists
-- include destinations for:
-  - Forge & Flow
-  - Company Handbook
-  - Interview Playbook
-  - Jim Taylor Labor Model
-  - Preston Lee Model (`Coming Soon`)
-  - future supervisor-specific content area
+- use a living-system-map home hub rather than a flat utility menu
+- keep Forge & Flow as the primary destination inside Barrio
+- include destinations for Handbook, Interview Playbook, Jim Taylor, Preston Lee, and future supervisor content
 - the shell can be role-aware in information architecture, but not gated yet
+- completion note:
+  - the private shell root, living-system-map bubble hub, typed route map, and destination placeholder screens now exist
+  - focused shell widget coverage passed
+  - no public Forge & Flow runtime wiring was added
 
-##### 7.52g. Structured Interactive Content Surfaces
+##### 7.52g. Company Handbook Experience
 
 - treat PDFs and HTML source files as source material, not as the final private app experience
-- handbook, playbooks, and model content should become structured in-app surfaces
-- these surfaces should be polished, navigable, and ready for later search and gating
+- build the handbook first as the all-staff learning surface
+- use structured chapters, progress, interactive teaching, and later search or gating readiness
 - the goal is that everything is there and looks right before auth arrives
+- completion note:
+  - the handbook placeholder was replaced by a real native handbook screen inside the private Barrio boundary
+  - typed handbook content now exists with three real source-backed chapters and two scaffolded chapters
+  - chapter rail switching, decision interactions, and checkpoint interactions are now implemented natively
+  - focused handbook and shell widget coverage passed and the public Forge & Flow runtime remained untouched
 
-##### 7.52h. Phase 9 Handoff
+##### 7.52h. Manager/Admin Learning Surfaces
+
+- build Interview Playbook and Jim Taylor as structured private destinations
+- keep Preston Lee as Coming Soon for now
+- reserve supervisor-specific content in the shell structure
+- completion note:
+  - the Interview Playbook placeholder was replaced by a real native learning surface with two fully built sections and two scaffolded sections
+  - the Jim Taylor placeholder was replaced by a real native learning surface with three fully built modules and one scaffolded module
+  - scenario and checkpoint interactions now exist across both manager/admin destinations
+  - focused playbook, Jim Taylor, and shell widget coverage passed and the public Forge & Flow runtime remained untouched
+
+##### 7.52i. Phase 9 Handoff
 
 - optional role-preview structure is allowed
 - real login, permissions, and access checks are not
 - stop the phase once the shell, content structure, and build identity are ready for Phase 9
+- completion note:
+  - typed preview-role behavior now exists for `Staff`, `Supervisor`, `Manager`, and `Admin`
+  - the Barrio home shell now has a local role-preview control with `Admin` as the default preview state
+  - route navigation now carries preview-role context into the private destination screens
+  - a shared access-intent banner now communicates preview role, intended audiences, and the Phase 9 handoff contract across the Barrio destinations
+  - focused preview-role, shell, handbook, playbook, and Jim Taylor widget coverage passed and the public Forge & Flow runtime remained untouched
+
+#### Post-7.52 Outcome
+
+- `7.52` is now complete as a private Barrio shell and content phase.
+- the next active implementation path is `7.53b - iOS per-flavor asset catalog split (macOS/Xcode)`.
+- `7.53a` is effectively complete: Android flavors plus iOS schemes/configurations, ids, and display-name wiring landed while one shared Dart runtime remained intact.
+- `7.53b` is the remaining native-build blocker: finish the iOS per-flavor app icon and splash asset-catalog split on macOS/Xcode.
+- `9.1 - Restaurant identity + role model` should remain the next follow-on path after `7.53`.
+- Phase 8 remains architecturally ready and blocked only on vendor selection.
 
 #### 7.52 Target Private Structure
 

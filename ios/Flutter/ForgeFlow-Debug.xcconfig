@@ -1,0 +1,4 @@
+#include "Debug.xcconfig"
+PRODUCT_BUNDLE_IDENTIFIER = com.forgeflow.app
+FLUTTER_FLAVOR = forgeflow
+DISPLAY_NAME = Forge & Flow
