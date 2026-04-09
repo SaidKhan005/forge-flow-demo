@@ -295,8 +295,8 @@ At minimum, tracker updates must stay aligned across:
 
 - `PROJECT_TRACKER.md`
 - `PROJECT_TRACKER_ARCHIVE.md`
-- `DATA_ALIGNMENT_TRACKER.md`
-- `REFACTOR_AND_DECOUPLING.MD`
+- `docs/DATA_ALIGNMENT_TRACKER.md`
+- `docs/REFACTOR_AND_DECOUPLING.MD`
 - any active execution-plan doc
 - any gate/signoff doc affected by the work
 

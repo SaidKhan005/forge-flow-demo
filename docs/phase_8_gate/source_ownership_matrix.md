@@ -2,7 +2,7 @@
 
 Field-level ownership for operational truth in the Forge & Flow app.
 
-Authority source: `DATA_ALIGNMENT_TRACKER.md` Section "Source Ownership Matrix".
+Authority source: `docs/DATA_ALIGNMENT_TRACKER.md` Section "Source Ownership Matrix".
 
 ## POS-Owned Fields
 

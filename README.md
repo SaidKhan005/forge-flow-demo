@@ -18,8 +18,8 @@ The current product flow is:
 
 - [PROJECT_TRACKER.md](PROJECT_TRACKER.md): active roadmap, current prompt, and next execution block
 - [PROJECT_TRACKER_ARCHIVE.md](PROJECT_TRACKER_ARCHIVE.md): completed prompt history and archived progress notes
-- [DATA_ALIGNMENT_TRACKER.md](DATA_ALIGNMENT_TRACKER.md): trusted vs mixed-surface notes and data-alignment watchpoints
-- [REFACTOR_AND_DECOUPLING.MD](REFACTOR_AND_DECOUPLING.MD): Phase 7.5 alignment contract
+- [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md): trusted vs mixed-surface notes and data-alignment watchpoints
+- [docs/REFACTOR_AND_DECOUPLING.MD](docs/REFACTOR_AND_DECOUPLING.MD): Phase 7.5 alignment contract
 - [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
 - [docs/phase_7_52_execution_plan.md](docs/phase_7_52_execution_plan.md): Phase 7.52 cleanup, private-build, and Barrio shell contract
 - [docs/phase_8_gate/](docs/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
@@ -28,8 +28,9 @@ The current product flow is:
 ## Current Status
 
 - Phase 7.5 structural alignment is complete (restaurant scope, locked target truth, fixture replay)
-- Phase 7.52 cleanup and private Barrio shell work is complete
-- Phase 7.53 native dual-build hardening is the current build-identity step
+- Phases 7.52, 7.53, and 7.54 are complete
+- Phase 7.55 is the active release-stabilization lane
+- Phase 9 auth planning is locked in `docs/phase_9_auth_plan.md`
 - Phase 8 gate artifacts are checked in at `docs/phase_8_gate/`
 - Phase 8 (live POS + labor adapters) is blocked only on vendor selection
 
@@ -111,6 +112,50 @@ Important note:
 - the two flavors now use separate Dart entrypoints:
   - `lib/main_forgeflow.dart`
   - `lib/main_barrio.dart`
+
+## Build Size and Local Disk Usage
+
+Local workspace size, debug build size, and release package size are three different things:
+
+| Metric | What it measures | Typical size |
+|---|---|---|
+| Local workspace (`build/` + `.dart_tool/`) | Cached build artifacts, intermediate outputs, debug symbols | ~4–5 GB |
+| Debug APK | Unstripped, unoptimized, includes debug overhead | ~150–160 MB |
+| Release split APK (per ABI) | Shipped payload, stripped, tree-shaken, compressed | ~20–25 MB |
+
+`flutter clean` removes cached build artifacts and reclaims local disk space. It does not change the shipped release size — that is controlled by asset declarations, code tree-shaking, and release build flags.
+
+Cleanup commands:
+
+```bash
+flutter clean          # removes build/ and .dart_tool/
+flutter pub get        # re-fetches dependencies after clean
+cd android && ./gradlew clean && cd ..   # cleans Android Gradle cache directly
+```
+
+## Flavor Asset Containment
+
+The repo has two asset directories:
+
+- `assets/images/` — shared assets used by ForgeFlow and/or both flavors (launcher icons, splash images, logo)
+- `assets/internal/barrio/` — Barrio-private runtime assets (background photos, handbook icon)
+
+Barrio-private **non-runtime** reference material (`branding/`, `inspiration/` subdirectories) is stored under `assets/internal/barrio/` on disk but is **not** declared in `pubspec.yaml` subdirectory listings and is therefore **not bundled** into any APK.
+
+### Known limitation: Flutter does not support flavor-conditional asset bundling
+
+Flutter's `pubspec.yaml` asset declarations apply globally to all build flavors. There is no built-in mechanism to conditionally include or exclude asset directories per flavor. This means:
+
+- **ForgeFlow APKs currently include Barrio-private runtime assets** (~1.1 MB of background images + handbook icon)
+- This is a Flutter toolchain limitation, not a configuration oversight
+- The ForgeFlow Dart entrypoint never references or loads these assets — they are dead payload in ForgeFlow builds
+- Eliminating this would require extracting Barrio into a separate Flutter package with its own asset declarations, which is a larger restructure outside the scope of the current optimization block
+
+### What is contained
+
+- Barrio non-runtime reference assets (`branding/`, `inspiration/`) are **not bundled** in either flavor
+- All Barrio-private runtime assets are consolidated under `assets/internal/barrio/`, clearly separated from shared assets
+- `handbook_icon.png` was moved out of `assets/images/` into `assets/internal/barrio/` since it is only used by Barrio screens
 
 ## Notes
 

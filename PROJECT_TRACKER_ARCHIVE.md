@@ -15,6 +15,91 @@ Detailed `7.52` scope, destination contracts, completion notes, and the post-`7.
 
 Use this archive plus that execution-plan doc together when you need to revisit how the private Barrio shell and content phase was delivered.
 
+## Archived Active Tracker Summaries (moved 2026-04-02)
+
+These summaries previously lived in the active tracker and were moved here to keep `PROJECT_TRACKER.md` focused on current work and next prompts.
+
+### Phase 9 Planning Baseline
+
+Detailed Phase 9 execution planning now lives in [phase_9_auth_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phase_9_auth_plan.md).
+
+The active tracker should only carry:
+
+- current Phase 9 status
+- the next prompt in the Phase 9 ladder
+- immediate prerequisites or blockers
+
+The following planning truths were moved out of the active tracker and should now be read from the dedicated auth plan instead:
+
+- one shared email/password Firebase Auth system across Forge & Flow and Barrio
+- Firestore as the canonical profile, role, permission, and later shared learning-data store
+- SQLite remains local operational/cache data only
+- login persists until explicit logout
+- no guest mode
+- no PIN auth
+- no biometrics
+- Forge & Flow is the commercial baseline app
+- Barrio is the internal superset shell
+- Forge & Flow does not depend on Barrio
+- Barrio consumes the shared Forge & Flow runtime
+- permission keys stay fixed and app-defined
+- seeded roles ship with recommended defaults, remain editable, and admins may create custom roles
+- Phase 9 implementation is broken into `9a` through `9e` plus `9.5`
+- Firebase setup and trusted admin-backend setup are explicit checkpoints and must be confirmed before implementation is treated as complete
+
+### Phase 7.53 Summary
+
+All sub-prompts (`7.53a` through `7.53f` plus polish) are complete.
+
+Key outcomes:
+
+- Dual native build identities (ForgeFlow + Barrio) with separate Android flavors, iOS schemes, icons, and splash
+- Shared Forge & Flow runtime boundary extracted; Barrio consumes it
+- Premium teaching UI: PageView carousel, 3D perspective, card press/glass/expand, worm dots, enhanced sparkle, photo backgrounds
+- All content complete from source PDFs/HTML: 86 units across 13 chapters/sections/modules, zero placeholders
+- Answer positions shuffled (A=10, B=9, C=8), unique badgeHint per unit, 13 rail icons verified from Flutter SDK
+- El Podio scoreboard with Phase-9-ready `PodioEntry` model + home screen button
+- Preston Lee cleaned for UI consistency; Phase 9 Barrio requirements documented
+- Performance: film grain removed, carousel breathing removed, blur radii halved
+- Colour-temperature scrim breathing on home screen (12s warm↔cool loop)
+- 513 tests passing, 0 errors
+- Final iOS build/run verification still needs a macOS/Xcode pass before release confidence
+
+### Phase 7.54 Summary
+
+All sub-prompts (`7.54a` through `7.54c`) are complete.
+
+Key outcomes:
+
+- `7.54a`: Repaint boundaries, lifecycle animation gating, merged animation listeners, cache-sized image decode paths on hottest Barrio surfaces
+- `7.54b`: Dynamic `IconData` blockers replaced with constant icon mappings for release icon tree shaking; heavy PNG backgrounds converted to JPEG; `handbook_icon.png` recompressed; release split APK build succeeds without `--no-tree-shake-icons`; focused Barrio tests passing
+- `7.54c`: `handbook_icon.png` moved from shared `assets/images/` to `assets/internal/barrio/`; confirmed `branding/` and `inspiration/` subdirectories not bundled; documented Flutter toolchain limitation — `pubspec.yaml` does not support flavor-conditional asset bundling, so ForgeFlow still carries ~2 MB of Barrio-private runtime assets as dead payload; README updated with build-size/cleanup/containment documentation
+
+### Phase 7.55a Summary
+
+Font size, readability, and accessibility pass based on real user feedback that text was too small on mobile devices and the Manager Override button in Baseline was too small.
+
+Key outcomes:
+
+- Raised floor on core text styles and bottom-nav labels
+- Manager Override button enlarged with larger text, stronger padding, larger icon, and clearer fill/border treatment
+- Barrio inline font-size floor raised across multiple files
+- Dense Forge & Flow widgets received spacing/overflow fixes
+- Shift dashboard, schedule cards, zone-status label, and El Podio home button received targeted layout fixes
+- Tests remained green
+
+### Superseded Phase 9 Barrio Requirements
+
+The earlier tracker-only Barrio auth notes have now been superseded by the full Phase 9 auth contract in `docs/phase_9_auth_plan.md`.
+
+The important carry-forward points were:
+
+- learning completion was still in-memory only
+- streak tracking was global and not user-scoped
+- no real user identity flowed into Barrio learning screens
+- El Podio was still demo-backed
+- preview-role dimming was still visual-only and not real enforcement
+
 ## Completed Prompt History
 
 | Prompt | Objective | Status | Notes |
@@ -44,6 +129,9 @@ Use this archive plus that execution-plan doc together when you need to revisit 
 | Prompt 7.53d | Content fix + answer shuffle + icon alignment | Done | Shuffled answers (A=10 B=9 C=8), filled all 4 scaffolded areas, badgeHint on all 86 units, 13 rail icons verified from Flutter SDK |
 | Prompt 7.53e | El Podio scoreboard + home screen integration | Done | Premium podium top-3, demo users (Brian/Emily/Amy/Priya), Phase-9-ready PodioEntry with userId, frosted glass home button |
 | Prompt 7.53f | Preston Lee + UI consistency + Phase 9 prep | Done | Removed audience tags/banner, fixed icon mismatch, increased comingSoon dimming, documented Phase 9 Barrio requirements |
+| Prompt 7.54a | Barrio thermal/render-cost pass | Done | Repaint boundaries, lifecycle animation gating, merged animation listeners, cache-sized image decode paths on hottest Barrio surfaces |
+| Prompt 7.54b | Release-size and asset-compression pass | Done | Dynamic IconData blockers replaced with constant icon mappings; heavy PNGs converted to JPEG; handbook_icon recompressed; release split APK builds without --no-tree-shake-icons; 47 focused tests passing |
+| Prompt 7.54c | Flavor asset-bundle containment + space hygiene | Done | handbook_icon.png moved to Barrio-private dir; branding/inspiration confirmed not bundled; Flutter flavor-conditional limitation documented with real APK evidence; README updated with build-size/cleanup/containment docs; 47 focused tests passing |
 | Prompt 6.1 | Baseline context + benchmark-range alignment | Done | Historical context metrics are separated, best/worst cards removed, and Baseline range-quality messaging now uses benchmark-range states |
 | Prompt 6.2 | Baseline historical-range honesty pass | Done | Baseline graph now keeps historical outer anchors, renders the benchmark range inside that context, and displays total covers as a count |
 | Prompt 7 | Learn layer | Done | Variance now includes a Learn tab that combines recurring history patterns with active Baseline benchmark truth |
@@ -130,6 +218,9 @@ Use one line per meaningful session.
 | 2026-04-01 | Phase 7.53e | El Podio scoreboard completed | Premium glassmorphic podium with gold/silver/bronze top 3, demo users (Brian/Emily/Amy/Priya -42pts), Phase-9-ready PodioEntry model with userId, frosted glass home button | Run Prompt 7.53f |
 | 2026-04-01 | Phase 7.53f | Preston Lee + Phase 9 prep completed | Removed audience tags and access intent banner (consistency), fixed icon mismatch, increased comingSoon dimming to 0.30, documented Phase 9 Barrio requirements | Phase 7.53 complete |
 | 2026-04-01 | Housekeeping | Repo cleanup completed | Removed 5 dead placeholder files, 7 stray root files (~10 MB), cleaned redundant pubspec entry, fixed stale barrio_shell_widget_test.dart | 513/513 tests pass |
+| 2026-04-01 | Phase 7.54a | Barrio thermal/render-cost pass completed | RepaintBoundary around static/animated islands, lifecycle animation gating, merged animation listeners, cache-sized image decode paths | Run Prompt 7.54b |
+| 2026-04-01 | Phase 7.54b | Release-size and asset-compression pass completed | Dynamic IconData replaced with constant mappings for icon tree shaking; 4 heavy PNGs converted to JPEG; handbook_icon recompressed to 28KB; release split APK builds without --no-tree-shake-icons; 47 focused Barrio tests pass | Run Prompt 7.54c |
+| 2026-04-01 | Phase 7.54c | Flavor asset-bundle containment completed | handbook_icon.png moved from shared assets/images/ to assets/internal/barrio/; branding/ and inspiration/ confirmed excluded from APK bundles; ForgeFlow still bundles ~2MB Barrio-private assets due to Flutter pubspec.yaml global asset declarations (documented limitation); README updated with size/cleanup/containment documentation; 47 focused Barrio tests pass | Phase 7.54 complete |
 
 ## Barrio Legado — UI Change Log (Phase 7.53c)
 
@@ -254,5 +345,10 @@ Record only decisions that affect future implementation.
 | 2026-04-01 | Use badgeHint per unit instead of type-based labels | Prevents CONCEPT/CONCEPT/CONCEPT repetition; each card gets a contextually unique badge |
 | 2026-04-01 | Defer mastery/completion persistence to Phase 9 | Requires user auth for user-scoped SharedPreferences keys; in-memory tracking is sufficient for the demo build |
 | 2026-04-01 | Build El Podio as a standalone route, not a BarrioDestination | Scoreboard is a utility screen, not a learning destination; doesn't belong in the bubble hub |
+| 2026-04-01 | Accept Flutter flavor-conditional asset limitation rather than extracting Barrio into a separate package | Full flavor-private asset exclusion requires a separate Flutter package with its own pubspec.yaml; the restructure cost is not justified while both flavors ship from the same repo and ForgeFlow's dead-payload cost is ~2 MB |
 | 2026-04-01 | Remove audience tags and access intent banners from all screens | Inconsistent (only Preston Lee had them); Phase 9 will add real gating systematically |
 | 2026-04-01 | Remove film grain and carousel breathing glow for performance | Film grain drew 4000 rects; carousel glow ran an infinite AnimationController; phone was heating up |
+| 2026-04-02 | Standardize Phase 9 on one shared email/password Firebase Auth system with persistent login until logout | Keeps Forge & Flow and Barrio on one identity plane, avoids guest/PIN/biometric complexity, and fits the existing one-way product boundary |
+| 2026-04-02 | Keep permission keys fixed and app-defined while allowing editable seeded roles and custom roles | Preserves flexibility for admins without turning runtime role data into an unbounded permission-schema system |
+| 2026-04-02 | Treat Forge & Flow as the commercial baseline app and Barrio as the internal superset shell | Keeps permission design aligned with the current dependency boundary: Forge & Flow stays independent, Barrio adds on top |
+| 2026-04-02 | Split Phase 9 into `9a` through `9e` plus `9.5` and require explicit Firebase setup checkpoints | Makes auth prompt-sized, forces honest Firebase/backend prerequisites, and separates learning El Podio identity from later operational ranking |
