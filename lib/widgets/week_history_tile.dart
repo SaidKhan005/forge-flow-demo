@@ -45,7 +45,7 @@ class WeekHistoryTile extends StatelessWidget {
             colors: [AppColors.backgroundMid, AppColors.cardGlow],
           ),
           border: Border(
-            left: BorderSide(color: gapColor.withValues(alpha: 0.6), width: 3),
+            left: const BorderSide(color: AppColors.borderSubtle, width: 3),
             top: const BorderSide(color: AppColors.borderSubtle, width: 1),
             right: const BorderSide(color: AppColors.borderSubtle, width: 1),
             bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),

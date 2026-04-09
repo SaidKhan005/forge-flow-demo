@@ -3,6 +3,17 @@ import 'package:google_fonts/google_fonts.dart';
 import 'barrio_destination_scaffold.dart';
 import '../content/company_handbook_content.dart';
 
+/// Constant icon lookup for handbook chapter rail icons.
+/// Maps each known iconCodePoint to its tree-shake-friendly Icons constant
+/// so that release builds can eliminate unused glyphs from MaterialIcons.
+const _chapterIcons = <int, IconData>{
+  0xe533: Icons.restaurant_menu,
+  0xe556: Icons.schedule,
+  0xe4d9: Icons.policy,
+  0xea21: Icons.groups,
+  0xe305: Icons.health_and_safety,
+};
+
 /// Horizontal chapter selector rail for the Company Handbook screen.
 ///
 /// Active chapter uses the destination's accent color with a subtle glow.
@@ -70,8 +81,8 @@ class HandbookChapterRail extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        IconData(chapter.iconCodePoint,
-                            fontFamily: 'MaterialIcons'),
+                        _chapterIcons[chapter.iconCodePoint] ??
+                            Icons.circle_outlined,
                         size: 16,
                         color: isActive ? activeAccent : BarrioColors.textMuted,
                       ),
@@ -88,7 +99,7 @@ class HandbookChapterRail extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.ibmPlexSans(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight:
                           isActive ? FontWeight.w600 : FontWeight.w400,
                       color: isActive

@@ -247,7 +247,7 @@ class _JtModuleHero extends StatelessWidget {
               Text(
                 'MASTERY',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 1.2,
                   color: accent.withValues(alpha: 0.55),
@@ -257,7 +257,7 @@ class _JtModuleHero extends StatelessWidget {
               Text(
                 'Module ${moduleIndex + 1}',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 10,
+                  fontSize: 12,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 1.0,
                   color: accent.withValues(alpha: 0.7),
@@ -300,7 +300,7 @@ class _JtModuleHero extends StatelessWidget {
                 ? '$remaining lesson${remaining == 1 ? '' : 's'} to go'
                 : 'Module complete',
             style: GoogleFonts.ibmPlexMono(
-              fontSize: 9,
+              fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
                   : const Color(0xFF2ECC71),
@@ -336,7 +336,7 @@ class _JtPremiumBackground extends StatelessWidget {
         // Layer 1: Full-bleed book photo
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/jim_taylor_bg.png',
+            'assets/internal/barrio/jim_taylor_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.2),
             errorBuilder: (_, __, ___) => const ColoredBox(

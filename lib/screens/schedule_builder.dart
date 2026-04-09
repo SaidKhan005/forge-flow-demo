@@ -350,31 +350,45 @@ class _DerivedSummaryCards extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: cards.asMap().entries.map((entry) {
-          final i = entry.key;
-          final card = entry.value;
-          return Expanded(
-            child: Container(
-              margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.rule, width: 1),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: cards.asMap().entries.map((entry) {
+            final i = entry.key;
+            final card = entry.value;
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.rule, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 28,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Text(card.$1, style: AppTextStyles.mono7()),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(card.$2,
+                          style: AppTextStyles.mono16(
+                              color: AppColors.primaryText)),
+                    ),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(card.$1, style: AppTextStyles.mono7()),
-                  const SizedBox(height: 4),
-                  Text(card.$2,
-                      style: AppTextStyles.mono12(
-                          color: AppColors.primaryText)),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -401,7 +415,7 @@ class _CoverBarChart extends StatelessWidget {
         barRods: [
           BarChartRodData(
             toY: day.forecastCovers.toDouble(),
-            color: AppColors.gold.withValues(alpha: 0.7),
+            color: AppColors.sunset.withValues(alpha: 0.7),
             width: 24,
             borderRadius: BorderRadius.zero,
           ),
@@ -471,7 +485,7 @@ class _CoverBarChart extends StatelessWidget {
                   horizontalLines: [
                     HorizontalLine(
                       y: notifier.weeklyCovers / 7.0,
-                      color: AppColors.gold,
+                      color: AppColors.sunset,
                       strokeWidth: 1,
                       dashArray: [4, 4],
                     ),
@@ -531,28 +545,20 @@ class _DayTableState extends State<_DayTable> {
                               : _expanded.add(i);
                         })
                     : null,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ScheduleDayRow(
-                        day: day.day,
-                        forecastCovers: day.forecastCovers,
-                        requiredFohHours: day.requiredFohHours,
-                        requiredBohHours: day.requiredBohHours,
-                      ),
-                    ),
-                    if (hasSubrows)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: Icon(
+                child: ScheduleDayRow(
+                  day: day.day,
+                  forecastCovers: day.forecastCovers,
+                  requiredFohHours: day.requiredFohHours,
+                  requiredBohHours: day.requiredBohHours,
+                  trailing: hasSubrows
+                      ? Icon(
                           isExpanded
                               ? Icons.expand_less
                               : Icons.expand_more,
                           size: 14,
                           color: AppColors.textMuted,
-                        ),
-                      ),
-                  ],
+                        )
+                      : null,
                 ),
               ),
               if (isExpanded)

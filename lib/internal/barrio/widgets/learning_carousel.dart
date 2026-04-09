@@ -222,7 +222,7 @@ class _CarouselPositionIndicator extends StatelessWidget {
               child: Text(
                 '${currentPage + 1} of $count',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 0.5,
                   color: accent.withValues(alpha: 0.6),

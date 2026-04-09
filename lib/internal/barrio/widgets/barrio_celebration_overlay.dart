@@ -153,7 +153,7 @@ class _ModuleCompleteBannerState extends State<_ModuleCompleteBanner>
                   Text(
                     'COMPLETE',
                     style: GoogleFonts.ibmPlexMono(
-                      fontSize: 9,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 1.2,
                       color: widget.accentColor,

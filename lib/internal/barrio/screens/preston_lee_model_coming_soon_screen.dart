@@ -144,7 +144,7 @@ class _PrestonPremiumBackground extends StatelessWidget {
         // Layer 1: Full-bleed photo
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/preston_lee_bg.png',
+            'assets/internal/barrio/preston_lee_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.3),
             errorBuilder: (_, __, ___) => const ColoredBox(

@@ -21,7 +21,7 @@ class ShiftDashboard extends StatelessWidget {
       builder: (context, notifier, _) {
         if (notifier.isLoading) {
           return const Center(
-            child: CircularProgressIndicator(color: AppColors.tealPrimary),
+            child: CircularProgressIndicator(color: AppColors.sunset),
           );
         }
         final rm = notifier.readModel;
@@ -92,10 +92,13 @@ class _ShiftHeader extends StatelessWidget {
         children: [
           Text(
             restaurantName,
-            style: AppTextStyles.display36(color: AppColors.tealPrimary),
+            style: AppTextStyles.display36(color: AppColors.textPrimary),
           ),
           const SizedBox(height: 14),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               Container(
                 padding:
@@ -103,12 +106,12 @@ class _ShiftHeader extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      AppColors.tealPrimary.withValues(alpha: 0.14),
-                      AppColors.tealPrimary.withValues(alpha: 0.06),
+                      AppColors.sunset.withValues(alpha: 0.14),
+                      AppColors.sunset.withValues(alpha: 0.06),
                     ],
                   ),
                   border: Border.all(
-                      color: AppColors.tealPrimary.withValues(alpha: 0.25),
+                      color: AppColors.sunset.withValues(alpha: 0.25),
                       width: 1),
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -119,7 +122,7 @@ class _ShiftHeader extends StatelessWidget {
                       width: 6,
                       height: 6,
                       decoration: const BoxDecoration(
-                        color: AppColors.tealPrimary,
+                        color: AppColors.sunset,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -127,12 +130,11 @@ class _ShiftHeader extends StatelessWidget {
                     Text(
                       '${readModel.daypart} \u00b7 ${readModel.day}',
                       style:
-                          AppTextStyles.mono11(color: AppColors.tealPrimary),
+                          AppTextStyles.mono11(color: AppColors.sunsetDark),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 14),
               Text(
                 '${readModel.timeLabel} \u00b7 ${readModel.serviceElapsedLabel}',
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
@@ -153,37 +155,40 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 3,
-          height: 14,
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [AppColors.tealPrimary, AppColors.tealSoft],
-            ),
-            borderRadius: BorderRadius.circular(1.5),
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.sunset, AppColors.sunsetDark],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(label, style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
+            ],
           ),
-        ),
-        const SizedBox(width: 10),
-        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Container(
-            height: 1,
-            decoration: BoxDecoration(
+          const SizedBox(height: 8),
+          Container(
+            height: 2,
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [
-                  AppColors.borderSubtle.withValues(alpha: 0.5),
-                  AppColors.borderSubtle.withValues(alpha: 0.0),
-                ],
+                colors: [AppColors.sunset, AppColors.sunsetDark],
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -200,12 +205,11 @@ class _MetricCardsSection extends StatelessWidget {
     final fullWidthCards = cards.where((m) => m.fullWidth).toList();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(label: 'SHIFT INPUTS'),
-          const SizedBox(height: 12),
           GridView.count(
             crossAxisCount: 2,
             shrinkWrap: true,
@@ -240,7 +244,6 @@ class _HoursSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _SectionHeader(label: 'HOURS vs MODEL'),
-          const SizedBox(height: 12),
           IntrinsicHeight(
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -295,7 +298,7 @@ class _SideSummaryCard extends StatelessWidget {
         ),
         border: Border(
           left: BorderSide(
-            color: deltaColor.withValues(alpha: 0.6),
+            color: AppColors.borderSubtle,
             width: 3,
           ),
           top: BorderSide(
@@ -312,14 +315,13 @@ class _SideSummaryCard extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [AppColors.tealPrimary, AppColors.tealSoft],
-              ),
+              color: AppColors.shimmer,
+              border: Border.all(color: AppColors.borderSubtle, width: 1),
               borderRadius: BorderRadius.circular(2),
             ),
             child: Text(
               '$side  \u00b7  ${isFoh ? 'FLOOR' : 'KITCHEN'}',
-              style: AppTextStyles.mono7(color: AppColors.backgroundDeep),
+              style: AppTextStyles.mono7(color: AppColors.textMuted),
             ),
           ),
           const SizedBox(height: 14),
@@ -355,7 +357,7 @@ class _SideSummaryCard extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: deltaColor.withValues(alpha: 0.08),
+                  color: AppColors.shimmer,
                   borderRadius: BorderRadius.circular(2),
                 ),
                 child: Row(
@@ -392,9 +394,6 @@ class _TeachingTakeaway extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor =
-        lever.isFavorable ? AppColors.positive : AppColors.negative;
-
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 22, 16, 0),
       clipBehavior: Clip.antiAlias,
@@ -418,17 +417,13 @@ class _TeachingTakeaway extends StatelessWidget {
         children: [
           Container(
             height: 3,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [accentColor, accentColor.withValues(alpha: 0.3)],
-              ),
-            ),
+            color: AppColors.borderSubtle,
           ),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
             decoration: BoxDecoration(
-              color: accentColor.withValues(alpha: 0.04),
+              color: AppColors.cardGlow,
               border: Border(
                 bottom: BorderSide(
                     color: AppColors.borderSubtle.withValues(alpha: 0.4),
@@ -441,34 +436,36 @@ class _TeachingTakeaway extends StatelessWidget {
                   width: 26,
                   height: 26,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
+                    gradient: const LinearGradient(
                       colors: [
-                        accentColor.withValues(alpha: 0.15),
-                        accentColor.withValues(alpha: 0.06),
+                        AppColors.shimmer,
+                        AppColors.cardGlow,
                       ],
                     ),
                     shape: BoxShape.circle,
                     border: Border.all(
-                        color: accentColor.withValues(alpha: 0.2), width: 1),
+                        color: AppColors.borderSubtle, width: 1),
                   ),
-                  child: Icon(Icons.lightbulb_outline,
-                      size: 13, color: accentColor),
+                  child: const Icon(Icons.lightbulb_outline,
+                      size: 13, color: AppColors.sunset),
                 ),
                 const SizedBox(width: 10),
                 Text('PRIMARY DRIVER',
-                    style: AppTextStyles.mono10(color: accentColor)),
+                    style: AppTextStyles.mono10(color: AppColors.textMuted)),
                 const Spacer(),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: accentColor.withValues(alpha: 0.08),
+                    color: AppColors.shimmer.withValues(alpha: 0.6),
                     border: Border.all(
-                        color: accentColor.withValues(alpha: 0.25), width: 1),
+                        color: AppColors.borderSubtle.withValues(alpha: 0.6),
+                        width: 1),
                     borderRadius: BorderRadius.circular(3),
                   ),
                   child: Text(lever.shortLabel,
-                      style: AppTextStyles.mono8(color: accentColor)),
+                      style: AppTextStyles.mono8(
+                          color: AppColors.textSecondary)),
                 ),
                 const SizedBox(width: 6),
                 Container(
@@ -563,10 +560,10 @@ class _VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
   }
 
   @override
-  double get minExtent => 98;
+  double get minExtent => 108;
 
   @override
-  double get maxExtent => 98;
+  double get maxExtent => 108;
 
   @override
   bool shouldRebuild(_VarianceBannerDelegate oldDelegate) => false;

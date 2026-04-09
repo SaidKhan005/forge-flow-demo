@@ -17,9 +17,6 @@ class InputMetricCard extends StatelessWidget {
         metric.deltaFormatted == '\u2014' || metric.deltaFormatted == '-';
     final isHero = metric.isHero;
     final statusOk = metric.statusFavorable ?? !isUnfavorable;
-    final heroColor =
-        isUnfavorable ? AppColors.negative : AppColors.positive;
-
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -28,7 +25,7 @@ class InputMetricCard extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  heroColor.withValues(alpha: 0.06),
+                  AppColors.sunset.withValues(alpha: 0.06),
                   AppColors.cardGlow,
                 ],
               )
@@ -39,13 +36,13 @@ class InputMetricCard extends StatelessWidget {
               ),
         border: isHero
             ? Border(
-                left: BorderSide(color: heroColor, width: 4),
+                left: BorderSide(color: AppColors.borderStrong, width: 4),
                 top: BorderSide(
-                    color: heroColor.withValues(alpha: 0.25), width: 1),
+                    color: AppColors.borderSubtle, width: 1),
                 right: BorderSide(
-                    color: heroColor.withValues(alpha: 0.25), width: 1),
+                    color: AppColors.borderSubtle, width: 1),
                 bottom: BorderSide(
-                    color: heroColor.withValues(alpha: 0.25), width: 1),
+                    color: AppColors.borderSubtle, width: 1),
               )
             : Border.all(
                 color: AppColors.borderSubtle.withValues(alpha: 0.7),
@@ -61,20 +58,20 @@ class InputMetricCard extends StatelessWidget {
             children: [
               Text(metric.name.toUpperCase(),
                   style: AppTextStyles.mono10(
-                      color: isHero ? heroColor : AppColors.textMuted)),
+                      color: isHero ? AppColors.sunsetDark : AppColors.textMuted)),
               if (isHero) ...[
                 const SizedBox(width: 6),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
                   decoration: BoxDecoration(
-                    color: heroColor.withValues(alpha: 0.10),
+                    color: AppColors.sunset.withValues(alpha: 0.10),
                     border: Border.all(
-                        color: heroColor.withValues(alpha: 0.35), width: 1),
+                        color: AppColors.sunset.withValues(alpha: 0.35), width: 1),
                     borderRadius: BorderRadius.circular(2),
                   ),
                   child: Text('DRIVER',
-                      style: AppTextStyles.mono7(color: heroColor)),
+                      style: AppTextStyles.mono7(color: AppColors.sunsetDark)),
                 ),
               ],
             ],
@@ -102,7 +99,7 @@ class InputMetricCard extends StatelessWidget {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(arrowIcon, size: 10, color: deltaColor),
+                      Icon(arrowIcon, size: 14, color: deltaColor),
                       const SizedBox(width: 2),
                       Text(
                         metric.deltaFormatted,

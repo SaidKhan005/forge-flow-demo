@@ -7,11 +7,6 @@ class LeverCardWidget extends StatelessWidget {
 
   const LeverCardWidget({super.key, required this.data});
 
-  Color get _causeBadgeColor =>
-      data.direction == LeverDirection.unfavorable
-          ? AppColors.negative
-          : AppColors.positive;
-
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -29,7 +24,7 @@ class LeverCardWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(height: 2, color: _causeBadgeColor.withValues(alpha: 0.6)),
+          Container(height: 2, color: AppColors.sunset.withValues(alpha: 0.60)),
           // Header row — badges
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
@@ -37,7 +32,6 @@ class LeverCardWidget extends StatelessWidget {
               children: [
                 _Badge(
                   label: data.causeCategory,
-                  color: _causeBadgeColor,
                 ),
               ],
             ),
@@ -98,22 +92,21 @@ class LeverCardWidget extends StatelessWidget {
 
 class _Badge extends StatelessWidget {
   final String label;
-  final Color color;
 
-  const _Badge({required this.label, required this.color});
+  const _Badge({required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.2),
-        border: Border.all(color: color.withValues(alpha: 0.5), width: 1),
+        color: AppColors.sunset.withValues(alpha: 0.10),
+        border: Border.all(color: AppColors.sunset.withValues(alpha: 0.35), width: 1),
         borderRadius: BorderRadius.circular(3),
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono8(color: color),
+        style: AppTextStyles.mono8(color: AppColors.sunsetDark),
       ),
     );
   }

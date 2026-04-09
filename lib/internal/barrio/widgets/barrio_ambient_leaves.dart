@@ -32,6 +32,7 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
   late final List<AnimationController> _leafControllers;
   late final List<Animation<double>> _posAnimations;
   late final List<Animation<double>> _opacityAnimations;
+  late final Listenable _leafAnimationTick;
 
   // Stopwatch for horizontal sway — independent of which controllers have
   // started, so sway is never frozen during the staggered start window.
@@ -48,9 +49,7 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
     _leafControllers = List.generate(_leafCount, (i) {
       // Near leaves (0–5): 5000–7000 ms (faster); far leaves (6–11): 9100–12750 ms (slower).
       final isNear = i < 6;
-      final ms = isNear
-          ? 5000 + (i * 400)
-          : 9100 + ((i - 6) * 730);
+      final ms = isNear ? 5000 + (i * 400) : 9100 + ((i - 6) * 730);
       // Stagger via initial phase — no Future.delayed, no pending timers in tests.
       final initialPhase = i / _leafCount;
       final ctrl = AnimationController(
@@ -65,8 +64,8 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
     // Position: 0.0 (just above screen, -5%) → 1.0 (just below screen, +10%)
     _posAnimations = List.generate(
       _leafCount,
-      (i) => Tween<double>(begin: -0.05, end: 1.10)
-          .animate(_leafControllers[i]),
+      (i) =>
+          Tween<double>(begin: -0.05, end: 1.10).animate(_leafControllers[i]),
     );
 
     // Opacity envelope: fade in (top 20%) → hold (middle 60%) → fade out (bottom 20%)
@@ -76,15 +75,23 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
       final isNear = i < 6;
       final holdOpacity = isNear ? 0.9 : 0.45;
       return TweenSequence<double>([
-        TweenSequenceItem(tween: Tween(begin: 0.0, end: holdOpacity), weight: 20),
+        TweenSequenceItem(
+          tween: Tween(begin: 0.0, end: holdOpacity),
+          weight: 20,
+        ),
         TweenSequenceItem(tween: ConstantTween(holdOpacity), weight: 60),
-        TweenSequenceItem(tween: Tween(begin: holdOpacity, end: 0.0), weight: 20),
+        TweenSequenceItem(
+          tween: Tween(begin: holdOpacity, end: 0.0),
+          weight: 20,
+        ),
       ]).animate(_leafControllers[i]);
     });
+    _leafAnimationTick = Listenable.merge(_leafControllers);
   }
 
   @override
   void dispose() {
+    _stopwatch.stop();
     for (final c in _leafControllers) {
       c.dispose();
     }
@@ -95,21 +102,23 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        widget.child,
+        RepaintBoundary(child: widget.child),
         Positioned.fill(
           child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: Listenable.merge(_leafControllers),
-              builder: (context, _) {
-                return CustomPaint(
-                  painter: _LeafPainter(
-                    leaves: _leaves,
-                    positions: _posAnimations.map((a) => a.value).toList(),
-                    opacities: _opacityAnimations.map((a) => a.value).toList(),
-                    time: _stopwatch.elapsedMilliseconds.toDouble(),
-                  ),
-                );
-              },
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _leafAnimationTick,
+                builder: (context, _) {
+                  return CustomPaint(
+                    painter: _LeafPainter(
+                      leaves: _leaves,
+                      positions: _posAnimations,
+                      opacities: _opacityAnimations,
+                      time: _stopwatch.elapsedMilliseconds.toDouble(),
+                    ),
+                  );
+                },
+              ),
             ),
           ),
         ),
@@ -119,14 +128,14 @@ class _BarrioAmbientLeavesState extends State<BarrioAmbientLeaves>
 }
 
 class _Leaf {
-  final double x;           // 0..1 base horizontal position
-  final double size;        // half-length of the leaf shape
-  final double sway;        // horizontal sway amplitude (fraction of screen width)
-  final double swayFreq;    // radians per millisecond — unique per leaf
-  final double swayPhase;   // starting phase offset
-  final double initialRot;  // starting rotation in radians
-  final double rotSpeed;    // rotation speed (signed, radians per second)
-  final Color color;        // leaf fill color (opacity baked in as base)
+  final double x; // 0..1 base horizontal position
+  final double size; // half-length of the leaf shape
+  final double sway; // horizontal sway amplitude (fraction of screen width)
+  final double swayFreq; // radians per millisecond — unique per leaf
+  final double swayPhase; // starting phase offset
+  final double initialRot; // starting rotation in radians
+  final double rotSpeed; // rotation speed (signed, radians per second)
+  final Color color; // leaf fill color (opacity baked in as base)
 
   const _Leaf({
     required this.x,
@@ -143,15 +152,21 @@ class _Leaf {
     // Three-way color cycle: gold / teal / navy — gold leaves add warmth.
     // Gold alpha is slightly higher (0.11) to compensate for the darker hue.
     final color = switch (index % 3) {
-      0 => const Color(0xFFDFAA40).withValues(alpha: 0.13), // warm gold — richer
-      1 => const Color(0xFF40CFCF).withValues(alpha: 0.11), // brand teal — brighter
+      0 => const Color(
+        0xFFDFAA40,
+      ).withValues(alpha: 0.13), // warm gold — richer
+      1 => const Color(
+        0xFF40CFCF,
+      ).withValues(alpha: 0.11), // brand teal — brighter
       _ => const Color(0xFF1A2456).withValues(alpha: 0.08), // deep navy
     };
 
     final isNear = index < 6;
     final leafSize = isNear
-        ? 12.0 + rng.nextDouble() * 10.0 // near: 12–22 px
-        : 5.0 + rng.nextDouble() * 7.0;  // far:  5–12 px
+        ? 12.0 +
+              rng.nextDouble() *
+                  10.0 // near: 12–22 px
+        : 5.0 + rng.nextDouble() * 7.0; // far:  5–12 px
     return _Leaf(
       x: rng.nextDouble(),
       size: leafSize,
@@ -161,8 +176,12 @@ class _Leaf {
       swayPhase: rng.nextDouble() * pi * 2,
       initialRot: rng.nextDouble() * pi * 2,
       // Gentle rotation — sign alternates by index for natural variety
-      rotSpeed: (index.isEven ? 1.0 : -1.0) *
-          (0.08 + rng.nextDouble() * 0.22) * pi * 2 / 10000.0,
+      rotSpeed:
+          (index.isEven ? 1.0 : -1.0) *
+          (0.08 + rng.nextDouble() * 0.22) *
+          pi *
+          2 /
+          10000.0,
       color: color,
     );
   }
@@ -170,9 +189,11 @@ class _Leaf {
 
 class _LeafPainter extends CustomPainter {
   final List<_Leaf> leaves;
-  final List<double> positions;  // current y fraction per leaf, -0.05..1.10
-  final List<double> opacities;  // current opacity multiplier per leaf, 0..1
-  final double time;             // elapsed ms for sway sin function
+  final List<Animation<double>>
+  positions; // current y fraction per leaf, -0.05..1.10
+  final List<Animation<double>>
+  opacities; // current opacity multiplier per leaf, 0..1
+  final double time; // elapsed ms for sway sin function
 
   _LeafPainter({
     required this.leaves,
@@ -185,11 +206,16 @@ class _LeafPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     for (var i = 0; i < leaves.length; i++) {
       final leaf = leaves[i];
-      final opacity = opacities[i];
-      if (opacity <= 0.0) continue; // skip invisible leaves (also avoids draws during stagger)
+      final opacity = opacities[i].value;
+      if (opacity <= 0.0) {
+        // Skip invisible leaves and avoid draws during staggered startup.
+        continue;
+      }
 
-      final cy = positions[i] * size.height;
-      final cx = (leaf.x + sin(time * leaf.swayFreq + leaf.swayPhase) * leaf.sway) * size.width;
+      final cy = positions[i].value * size.height;
+      final cx =
+          (leaf.x + sin(time * leaf.swayFreq + leaf.swayPhase) * leaf.sway) *
+          size.width;
       final rotation = leaf.initialRot + time * leaf.rotSpeed;
 
       // Multiply the leaf's baked-in base alpha by the opacity envelope
@@ -215,8 +241,5 @@ class _LeafPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_LeafPainter oldDelegate) =>
-      oldDelegate.time != time ||
-      oldDelegate.positions != positions ||
-      oldDelegate.opacities != opacities;
+  bool shouldRepaint(_LeafPainter oldDelegate) => oldDelegate.time != time;
 }

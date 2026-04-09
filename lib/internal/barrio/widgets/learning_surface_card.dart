@@ -189,7 +189,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     Text(
                       _readingTime,
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 8,
+                        fontSize: 11,
                         color: BarrioColors.textMuted.withValues(alpha: 0.7),
                         letterSpacing: 0.2,
                       ),
@@ -224,7 +224,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     Text(
                       'Tap to expand',
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 8,
+                        fontSize: 11,
                         color: widget.badgeColor.withValues(alpha: 0.45),
                         letterSpacing: 0.3,
                       ),
@@ -257,7 +257,7 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
                     Text(
                       'Tap to begin',
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 9,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: widget.badgeColor.withValues(alpha: 0.5),
                         letterSpacing: 0.5,
@@ -447,7 +447,7 @@ class _PremiumBadge extends StatelessWidget {
       child: Text(
         label,
         style: GoogleFonts.ibmPlexMono(
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
           color: color,
@@ -506,6 +506,22 @@ class _StaggeredOptionState extends State<_StaggeredOption>
 // ---------------------------------------------------------------------------
 // Generic section/module rail — shared by Playbook and Jim Taylor screens
 // ---------------------------------------------------------------------------
+
+/// Constant icon lookup for section/module rail icons.
+/// Maps each known iconCodePoint to its tree-shake-friendly Icons constant
+/// so that release builds can eliminate unused glyphs from MaterialIcons.
+const _sectionIcons = <int, IconData>{
+  // Interview Playbook sections
+  0xf06be: Icons.handshake,
+  0xe2b9: Icons.format_list_numbered,
+  0xe28e: Icons.flag,
+  0xe0c8: Icons.badge,
+  // Jim Taylor modules
+  0xe2c9: Icons.foundation,
+  0xf0547: Icons.percent,
+  0xe59f: Icons.show_chart,
+  0xe5e0: Icons.speed,
+};
 
 /// Horizontal section selector with per-destination accent color.
 class LearningSectionRail extends StatelessWidget {
@@ -573,8 +589,8 @@ class LearningSectionRail extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       Icon(
-                        IconData(iconCodePoints[i],
-                            fontFamily: 'MaterialIcons'),
+                        _sectionIcons[iconCodePoints[i]] ??
+                            Icons.circle_outlined,
                         size: 16,
                         color: isActive ? activeAccent : BarrioColors.textMuted,
                       ),
@@ -591,7 +607,7 @@ class LearningSectionRail extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: GoogleFonts.ibmPlexSans(
-                      fontSize: 10,
+                      fontSize: 12,
                       fontWeight:
                           isActive ? FontWeight.w600 : FontWeight.w400,
                       color: isActive

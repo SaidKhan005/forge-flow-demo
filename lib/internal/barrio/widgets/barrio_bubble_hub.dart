@@ -32,22 +32,23 @@ const _personalities = [
 ];
 
 // Forge & Flow logo brand colors — used for the orbit ring and Dashboard bubble.
-const _logoBlue   = Color(0xFF2E6EE0); // slightly brighter royal blue
+const _logoBlue = Color(0xFF2E6EE0); // slightly brighter royal blue
 const _logoOrange = Color(0xFFFF6B35);
 
 /// Per-destination accent colors — jewel tones, not neon.
 /// Deep, saturated hues read as premium on a dark photo background.
 const _destinationAccents = {
-  'company_handbook':       Color(0xFFD4584C), // warm brick red — matches building
-  'interview_playbook':     Color(0xFF1EA870), // forest green — more vivid
-  'jim_taylor_labor_model': Color(0xFF3A6ED0), // royal blue — matches book cover
-  'preston_lee_model':      Color(0xFFCC8A3A), // warm amber — matches photo tones
-  'supervisor_content':     Color(0xFF6080A8),
-  'forge_and_flow':         Color(0xFF2E6EE0), // royal blue — brighter
+  'company_handbook': Color(0xFFD4584C), // warm brick red — matches building
+  'interview_playbook': Color(0xFF1EA870), // forest green — more vivid
+  'jim_taylor_labor_model': Color(
+    0xFF3A6ED0,
+  ), // royal blue — matches book cover
+  'preston_lee_model': Color(0xFFCC8A3A), // warm amber — matches photo tones
+  'supervisor_content': Color(0xFF6080A8),
+  'forge_and_flow': Color(0xFF2E6EE0), // royal blue — brighter
 };
 
-Color _accentFor(String id) =>
-    _destinationAccents[id] ?? BarrioColors.tealWarm;
+Color _accentFor(String id) => _destinationAccents[id] ?? BarrioColors.tealWarm;
 
 /// Fixed pixel diameters — all secondary/tertiary bubbles are equal size.
 double _diameterFor(BarrioDestination dest) {
@@ -60,22 +61,45 @@ double _diameterFor(BarrioDestination dest) {
 /// Image.asset calls include an errorBuilder so that test environments (which
 /// don't load real asset bytes) fall back to an icon rather than throwing.
 Widget _iconWidgetFor(
-    String id, double size, Color accent, bool isDimmed) {
-  final color =
-      isDimmed ? BarrioColors.textMuted.withValues(alpha: 0.4) : accent;
+  BuildContext context,
+  String id,
+  double size,
+  Color accent,
+  bool isDimmed,
+) {
+  final color = isDimmed
+      ? BarrioColors.textMuted.withValues(alpha: 0.4)
+      : accent;
+  final dpr = MediaQuery.devicePixelRatioOf(context);
+
+  int? cacheDimension(double logicalSize) {
+    final px = (logicalSize * dpr).round();
+    return px > 0 ? px : null;
+  }
+
   switch (id) {
     case 'forge_and_flow':
-      return Image.asset('assets/images/forge_flow_new_icon.png',
-          width: size, height: size,
-          color: isDimmed ? color : null,
-          errorBuilder: (_, __, ___) =>
-              Icon(Icons.show_chart_rounded, size: size, color: color));
+      return Image.asset(
+        'assets/images/forge_flow_new_icon.png',
+        width: size,
+        height: size,
+        cacheWidth: cacheDimension(size),
+        cacheHeight: cacheDimension(size),
+        color: isDimmed ? color : null,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.show_chart_rounded, size: size, color: color),
+      );
     case 'company_handbook':
-      return Image.asset('assets/images/handbook_icon.png',
-          width: size * 2.4, height: size * 2.4,
-          color: isDimmed ? color : null,
-          errorBuilder: (_, __, ___) =>
-              Icon(Icons.menu_book_rounded, size: size, color: color));
+      return Image.asset(
+        'assets/internal/barrio/handbook_icon.png',
+        width: size * 2.4,
+        height: size * 2.4,
+        cacheWidth: cacheDimension(size * 2.4),
+        cacheHeight: cacheDimension(size * 2.4),
+        color: isDimmed ? color : null,
+        errorBuilder: (_, __, ___) =>
+            Icon(Icons.menu_book_rounded, size: size, color: color),
+      );
     case 'jim_taylor_labor_model':
       return Icon(Icons.show_chart_rounded, size: size, color: color);
     case 'interview_playbook':
@@ -143,6 +167,7 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
   // Shimmer arc — dedicated controller so shimmer speed is independent of orbit time.
   late final AnimationController _shimmerController;
   late final Animation<double> _shimmerAngle;
+  late final Listenable _animationTick;
 
   @override
   void initState() {
@@ -174,8 +199,10 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
       vsync: this,
       duration: const Duration(milliseconds: 21000),
     )..repeat();
-    _shimmerAngle = Tween<double>(begin: 0.0, end: 2 * pi)
-        .animate(_shimmerController);
+    _shimmerAngle = Tween<double>(
+      begin: 0.0,
+      end: 2 * pi,
+    ).animate(_shimmerController);
 
     // Idle breathing — 3s slow pulse, starts after 4s of no interaction.
     _idleController = AnimationController(
@@ -211,14 +238,19 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
     _floatAnimations = List.generate(_orbitCount, (i) {
       // Gentle drift — kept small so bubbles can't pull close enough to overlap.
       final rx = (rng.nextDouble() * 0.032) - 0.016; // −0.016 .. +0.016
-      return Tween<Offset>(
-        begin: Offset.zero,
-        end: Offset(rx, -0.022),
-      ).animate(CurvedAnimation(
-        parent: _floatControllers[i],
-        curve: Curves.easeInOut,
-      ));
+      return Tween<Offset>(begin: Offset.zero, end: Offset(rx, -0.022)).animate(
+        CurvedAnimation(parent: _floatControllers[i], curve: Curves.easeInOut),
+      );
     });
+
+    _animationTick = Listenable.merge([
+      _orbitController,
+      _centerController,
+      _entranceController,
+      _shimmerController,
+      _idleController,
+      ..._floatControllers,
+    ]);
   }
 
   /// Cancels any pending idle timer, resets the idle controller to rest,
@@ -234,6 +266,7 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
   @override
   void dispose() {
+    _stopwatch.stop();
     _idleTimer?.cancel();
     _orbitController.dispose();
     _centerController.dispose();
@@ -248,24 +281,20 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: Listenable.merge([
-        _orbitController,
-        _centerController,
-        _entranceController,
-        _shimmerController,
-        _idleController,
-        ..._floatControllers,
-      ]),
-      builder: (context, _) {
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            final hubSize =
-                Size(constraints.maxWidth, constraints.maxHeight);
-            return Stack(
-              clipBehavior: Clip.none,
-              children: _buildBubbles(
-                  hubSize, _stopwatch.elapsedMilliseconds.toDouble()),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final hubSize = Size(constraints.maxWidth, constraints.maxHeight);
+        return AnimatedBuilder(
+          animation: _animationTick,
+          builder: (context, _) {
+            return RepaintBoundary(
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: _buildBubbles(
+                  hubSize,
+                  _stopwatch.elapsedMilliseconds.toDouble(),
+                ),
+              ),
             );
           },
         );
@@ -274,8 +303,7 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
   }
 
   List<Widget> _buildBubbles(Size hubSize, double time) {
-    final visible =
-        widget.destinations.where((d) => d.showOnHomeHub).toList();
+    final visible = widget.destinations.where((d) => d.showOnHomeHub).toList();
     final center = Offset(hubSize.width / 2, hubSize.height / 2);
 
     final primary = visible
@@ -291,15 +319,19 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
     // Orbit ring track — drawn first so it sits behind all bubbles.
     if (secondary.isNotEmpty) {
-      widgets.add(Positioned.fill(
-        child: CustomPaint(
-          painter: _OrbitRingPainter(
-            center: center,
-            orbitRadius: baseOrbitRadius,
-            shimmerAngle: _shimmerAngle.value,
+      widgets.add(
+        Positioned.fill(
+          child: RepaintBoundary(
+            child: CustomPaint(
+              painter: _OrbitRingPainter(
+                center: center,
+                orbitRadius: baseOrbitRadius,
+                shimmerAngle: _shimmerAngle.value,
+              ),
+            ),
           ),
         ),
-      ));
+      );
     }
 
     // Center / primary bubble — fixed size, pulse applied only to glow.
@@ -310,8 +342,16 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
         parent: _entranceController,
         curve: const Interval(0.0, 0.22, curve: Curves.elasticOut),
       ).value;
-      widgets.add(_buildBubbleAt(dest, center, radius, hubSize,
-          isPrimary: true, entranceScale: centerEntrance));
+      widgets.add(
+        _buildBubbleAt(
+          dest,
+          center,
+          radius,
+          hubSize,
+          isPrimary: true,
+          entranceScale: centerEntrance,
+        ),
+      );
     }
 
     // Orbit bubbles — orbit position + per-bubble float offset.
@@ -326,9 +366,10 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
       // Continuous time — all bubbles orbit at identical speed (speedFactor=1.0
       // for every personality), permanently preserving the 72° spacing.
-      final orbitAngle = baseAngle
-          + (time / 28000.0) * 2 * pi
-          + sin((time / 28000.0) * 2 * pi + i * 1.7) * p.swayAmp;
+      final orbitAngle =
+          baseAngle +
+          (time / 28000.0) * 2 * pi +
+          sin((time / 28000.0) * 2 * pi + i * 1.7) * p.swayAmp;
       // Breathe: ±5 px so radius variation can't cause overlap.
       final breathe = sin((time / 8000.0) * 2 * pi + i * 1.1) * 5.0;
       final orbitR = baseOrbitRadius * p.radiusFactor + breathe;
@@ -347,13 +388,23 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
       final entranceStart = (i + 1) * 0.12;
       final orbitEntrance = CurvedAnimation(
         parent: _entranceController,
-        curve: Interval(entranceStart, entranceStart + 0.35,
-            curve: Curves.elasticOut),
+        curve: Interval(
+          entranceStart,
+          entranceStart + 0.35,
+          curve: Curves.elasticOut,
+        ),
       ).value;
 
       final radius = _diameterFor(dest) / 2;
-      widgets.add(_buildBubbleAt(dest, pos, radius, hubSize,
-          entranceScale: orbitEntrance));
+      widgets.add(
+        _buildBubbleAt(
+          dest,
+          pos,
+          radius,
+          hubSize,
+          entranceScale: orbitEntrance,
+        ),
+      );
     }
 
     return widgets;
@@ -404,7 +455,9 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
 
     // Dimmed bubbles (role not assigned) are fully non-interactive.
     // Coming Soon bubbles still navigate (placeholder screen) and respond to touch.
-    Widget touchTarget = SizedBox(width: diameter, height: diameter, child: bubble);
+    Widget touchTarget = RepaintBoundary(
+      child: SizedBox(width: diameter, height: diameter, child: bubble),
+    );
     if (!isDimmed) {
       touchTarget = GestureDetector(
         onTapDown: (_) {
@@ -436,14 +489,16 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
   // ---------------------------------------------------------------------------
 
   Widget _buildCenterNode(
-      BarrioDestination dest, double diameter, bool isPressed) {
+    BarrioDestination dest,
+    double diameter,
+    bool isPressed,
+  ) {
     final r = diameter / 2;
     final accent = _accentFor(dest.id);
     final time = _stopwatch.elapsedMilliseconds.toDouble();
 
     // Glow breathes with center pulse; flares on press.
-    final glowBlur =
-        (28.0 + _centerPulse.value * 4) * (isPressed ? 1.5 : 1.0);
+    final glowBlur = (28.0 + _centerPulse.value * 4) * (isPressed ? 1.5 : 1.0);
     final glowSpread = _centerPulse.value * 2;
     final glowAlpha = isPressed ? 0.80 : 0.55;
 
@@ -506,10 +561,14 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
               height: diameter,
               decoration: const BoxDecoration(
                 shape: BoxShape.circle,
-                border: Border.fromBorderSide(BorderSide(
-                  color: Color(0xAAFF6B35), // orange at 67% — visible against blue fill
-                  width: 1.0,
-                )),
+                border: Border.fromBorderSide(
+                  BorderSide(
+                    color: Color(
+                      0xAAFF6B35,
+                    ), // orange at 67% — visible against blue fill
+                    width: 1.0,
+                  ),
+                ),
               ),
               child: Stack(
                 children: [
@@ -553,22 +612,25 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        _iconWidgetFor(dest.id, diameter * 0.30, accent, false),
+                        _iconWidgetFor(
+                          context,
+                          dest.id,
+                          diameter * 0.30,
+                          accent,
+                          false,
+                        ),
                         SizedBox(height: diameter * 0.05),
                         Text(
                           'Dashboard',
                           textAlign: TextAlign.center,
                           style: GoogleFonts.playfairDisplay(
-                            fontSize: diameter * 0.12,
+                            fontSize: max(diameter * 0.12, 11),
                             fontWeight: FontWeight.w600,
                             letterSpacing: 0.5,
                             color: BarrioColors.textPrimary,
                             height: 1.2,
                             shadows: const [
-                              Shadow(
-                                color: Color(0x60000000),
-                                blurRadius: 8,
-                              ),
+                              Shadow(color: Color(0x60000000), blurRadius: 8),
                             ],
                           ),
                         ),
@@ -589,7 +651,11 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
   // ---------------------------------------------------------------------------
 
   Widget _buildOrbitNode(
-      BarrioDestination dest, double diameter, bool isDimmed, bool isPressed) {
+    BarrioDestination dest,
+    double diameter,
+    bool isDimmed,
+    bool isPressed,
+  ) {
     final r = diameter / 2;
     final accent = _accentFor(dest.id);
 
@@ -676,8 +742,9 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                         center: const Alignment(0.0, -0.65),
                         radius: 0.52,
                         colors: [
-                          Colors.white
-                              .withValues(alpha: isDimmed ? 0.05 : 0.16),
+                          Colors.white.withValues(
+                            alpha: isDimmed ? 0.05 : 0.16,
+                          ),
                           Colors.transparent,
                         ],
                       ),
@@ -692,7 +759,12 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                           child: Align(
                             alignment: const Alignment(0.0, -0.3),
                             child: _iconWidgetFor(
-                                dest.id, diameter * 0.30, accent, isDimmed),
+                              context,
+                              dest.id,
+                              diameter * 0.30,
+                              accent,
+                              isDimmed,
+                            ),
                           ),
                         ),
                         // Label — below the leaf, centered horizontally
@@ -706,12 +778,13 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: GoogleFonts.ibmPlexSans(
-                                fontSize: diameter * 0.100,
+                                fontSize: max(diameter * 0.100, 11),
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 0.2,
                                 color: isDimmed
-                                    ? BarrioColors.textMuted
-                                        .withValues(alpha: 0.35)
+                                    ? BarrioColors.textMuted.withValues(
+                                        alpha: 0.35,
+                                      )
                                     : BarrioColors.textPrimary,
                                 height: 1.2,
                                 shadows: isDimmed
@@ -729,55 +802,61 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
                       ],
                     )
                   else
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          _iconWidgetFor(
-                              dest.id, diameter * 0.30, accent, isDimmed),
-                          SizedBox(height: diameter * 0.05),
-                          Text(
-                            dest.label,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: GoogleFonts.ibmPlexSans(
-                              fontSize: diameter * 0.100,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.2,
-                              color: isDimmed
-                                  ? BarrioColors.textMuted
-                                      .withValues(alpha: 0.35)
-                                  : BarrioColors.textPrimary,
-                              height: 1.2,
-                              shadows: isDimmed
-                                  ? null
-                                  : const [
-                                      Shadow(
-                                        color: Color(0x50000000),
-                                        blurRadius: 6,
-                                      ),
-                                    ],
+                    Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _iconWidgetFor(
+                              context,
+                              dest.id,
+                              diameter * 0.30,
+                              accent,
+                              isDimmed,
                             ),
-                          ),
-                          if (dest.comingSoon) ...[
-                            SizedBox(height: diameter * 0.03),
+                            SizedBox(height: diameter * 0.05),
                             Text(
-                              'Coming Soon',
-                              style: GoogleFonts.ibmPlexMono(
-                                fontSize: diameter * 0.080,
-                                color: BarrioColors.gold,
-                                letterSpacing: 0.5,
+                              dest.label,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: GoogleFonts.ibmPlexSans(
+                                fontSize: max(diameter * 0.100, 11),
+                                fontWeight: FontWeight.w600,
+                                letterSpacing: 0.2,
+                                color: isDimmed
+                                    ? BarrioColors.textMuted.withValues(
+                                        alpha: 0.35,
+                                      )
+                                    : BarrioColors.textPrimary,
+                                height: 1.2,
+                                shadows: isDimmed
+                                    ? null
+                                    : const [
+                                        Shadow(
+                                          color: Color(0x50000000),
+                                          blurRadius: 6,
+                                        ),
+                                      ],
                               ),
                             ),
+                            if (dest.comingSoon) ...[
+                              SizedBox(height: diameter * 0.03),
+                              Text(
+                                'Coming Soon',
+                                style: GoogleFonts.ibmPlexMono(
+                                  fontSize: max(diameter * 0.080, 11),
+                                  color: BarrioColors.gold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -912,7 +991,10 @@ class _CenterArcPainter extends CustomPainter {
 
       // Glow pass
       canvas.drawArc(
-        rect, start, sweep, false,
+        rect,
+        start,
+        sweep,
+        false,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 4.0
@@ -922,7 +1004,10 @@ class _CenterArcPainter extends CustomPainter {
 
       // Crisp pass
       canvas.drawArc(
-        rect, start, sweep, false,
+        rect,
+        start,
+        sweep,
+        false,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1.5

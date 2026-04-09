@@ -41,15 +41,11 @@ class BaselineTracker extends StatelessWidget {
           const SizedBox(height: 8),
 
           // Daypart breakdown
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text('Daypart Breakdown', style: AppTextStyles.body14()),
-          ),
+          _SectionLabel('DAYPART BREAKDOWN'),
           DaypartTable(dayparts: BaselineData.daypartRanges),
 
-          const SizedBox(height: 8),
-
-          // Baseline targets card
+          // Baseline targets
+          _SectionLabel('TARGETS DERIVED FROM BASELINE'),
           _BaselineTargetsCard(),
 
           const SizedBox(height: 24),
@@ -57,6 +53,54 @@ class BaselineTracker extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Section label ────────────────────────────────────────────────────────────
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+  const _SectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  text,
+                  style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary, weight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.sunset, AppColors.sunsetDark],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 }
 
 // ─── Override banner ───────────────────────────────────────────────────────────
@@ -71,12 +115,12 @@ class _OverrideBanner extends StatelessWidget {
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.tealPrimary.withValues(alpha: 0.12),
-        border: Border.all(color: AppColors.tealPrimary, width: 1),
+        color: AppColors.sunset.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.sunset, width: 1),
       ),
       child: Row(
         children: [
-          const Icon(Icons.star_rounded, size: 16, color: AppColors.tealPrimary),
+          const Icon(Icons.star_rounded, size: 16, color: AppColors.sunset),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -85,7 +129,7 @@ class _OverrideBanner extends StatelessWidget {
               children: [
                 Text(
                   'MANAGER OVERRIDE ACTIVE',
-                  style: AppTextStyles.mono8(color: AppColors.tealPrimary),
+                  style: AppTextStyles.mono8(color: AppColors.sunsetDark),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -112,31 +156,41 @@ class _SummaryCards extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: cards.asMap().entries.map((entry) {
-          final i = entry.key;
-          final card = entry.value;
-          return Expanded(
-            child: Container(
-              margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundMid,
-                border: Border.all(color: AppColors.borderSubtle, width: 1),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: cards.asMap().entries.map((entry) {
+            final i = entry.key;
+            final card = entry.value;
+            return Expanded(
+              child: Container(
+                margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.backgroundMid,
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SizedBox(
+                      height: 28,
+                      child: Align(
+                        alignment: Alignment.topLeft,
+                        child: Text(card.$1, style: AppTextStyles.mono7()),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(card.$2,
+                        style:
+                            AppTextStyles.mono16(color: AppColors.textPrimary)),
+                  ],
+                ),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(card.$1, style: AppTextStyles.mono7()),
-                  const SizedBox(height: 4),
-                  Text(card.$2,
-                      style:
-                          AppTextStyles.mono12(color: AppColors.textPrimary)),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -175,27 +229,33 @@ class _CplhRangeBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(graph.startLabel,
-                      style: AppTextStyles.mono7(color: AppColors.textMuted)),
-                  const SizedBox(height: 3),
-                  Text(graph.displayRangeStartCPLH.toStringAsFixed(2),
-                      style: AppTextStyles.mono14(color: AppColors.textPrimary)),
-                ],
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(graph.startLabel,
+                        style: AppTextStyles.mono7(color: AppColors.textMuted)),
+                    const SizedBox(height: 3),
+                    Text(graph.displayRangeStartCPLH.toStringAsFixed(2),
+                        style: AppTextStyles.mono14(color: AppColors.textPrimary)),
+                  ],
+                ),
               ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(graph.endLabel,
-                      style: AppTextStyles.mono7(color: AppColors.textMuted)),
-                  const SizedBox(height: 3),
-                  Text(graph.displayRangeEndCPLH.toStringAsFixed(2),
-                      style: AppTextStyles.mono14(color: AppColors.textPrimary)),
-                ],
+              const SizedBox(width: 12),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(graph.endLabel,
+                        textAlign: TextAlign.right,
+                        style: AppTextStyles.mono7(color: AppColors.textMuted)),
+                    const SizedBox(height: 3),
+                    Text(graph.displayRangeEndCPLH.toStringAsFixed(2),
+                        style: AppTextStyles.mono14(color: AppColors.textPrimary)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -237,7 +297,7 @@ class _CplhRangeBar extends StatelessWidget {
                       top: 0,
                       child: Text(
                         graph.rangeLabel,
-                        style: AppTextStyles.mono7(color: AppColors.positive),
+                        style: AppTextStyles.mono7(color: AppColors.textSecondary),
                       ),
                     ),
 
@@ -249,9 +309,9 @@ class _CplhRangeBar extends StatelessWidget {
                         width: opzW,
                         height: opzBoxH,
                         decoration: BoxDecoration(
-                          color: AppColors.positive.withValues(alpha: 0.09),
+                          color: AppColors.shimmer,
                           border: Border.all(
-                            color: AppColors.positive.withValues(alpha: 0.55),
+                            color: AppColors.borderSubtle,
                             width: 1,
                           ),
                         ),
@@ -299,7 +359,7 @@ class _CplhRangeBar extends StatelessWidget {
                       child: Container(
                         width: glowW,
                         height: tickH + 4,
-                        color: AppColors.tealPrimary.withValues(alpha: 0.12),
+                        color: AppColors.sunset.withValues(alpha: 0.12),
                       ),
                     ),
 
@@ -310,7 +370,7 @@ class _CplhRangeBar extends StatelessWidget {
                       child: Container(
                         width: 4,
                         height: tickH,
-                        color: AppColors.tealPrimary,
+                        color: AppColors.sunset,
                       ),
                     ),
 
@@ -324,11 +384,11 @@ class _CplhRangeBar extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text('CPLH TARGET',
-                              style: AppTextStyles.mono8(color: AppColors.tealPrimary)),
+                              style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
                           const SizedBox(height: 3),
                           Text(graph.targetCPLH.toStringAsFixed(2),
                               style: AppTextStyles.mono20(
-                                  color: AppColors.tealPrimary,
+                                  color: AppColors.sunset,
                                   weight: FontWeight.w700)),
                         ],
                       ),
@@ -377,10 +437,11 @@ class _CplhRangeBar extends StatelessWidget {
             child: SizedBox(
               width: double.infinity,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                 decoration: BoxDecoration(
+                  color: AppColors.sunsetDark.withValues(alpha: 0.08),
                   border: Border.all(
-                    color: AppColors.tealSoft.withValues(alpha: 0.45),
+                    color: AppColors.sunsetDark.withValues(alpha: 0.6),
                     width: 1,
                   ),
                 ),
@@ -389,13 +450,13 @@ class _CplhRangeBar extends StatelessWidget {
                     Expanded(
                       child: Text(
                         graph.overrideLabel,
-                        style: AppTextStyles.mono8(color: AppColors.tealSoft),
+                        style: AppTextStyles.mono12(color: AppColors.sunsetDark),
                       ),
                     ),
                     const Icon(
                       Icons.chevron_right,
-                      size: 16,
-                      color: AppColors.tealSoft,
+                      size: 20,
+                      color: AppColors.sunsetDark,
                     ),
                   ],
                 ),
@@ -434,9 +495,6 @@ class _BaselineTargetsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('TARGETS DERIVED FROM BASELINE',
-              style: AppTextStyles.mono11()),
-          const SizedBox(height: 12),
           ...targets.map((t) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(

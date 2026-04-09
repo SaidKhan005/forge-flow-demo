@@ -92,24 +92,24 @@ void main() {
   // ── C: WTD table — coaching group labels ─────────────────────────────────
 
   group('C — WTD coaching group labels', () {
-    Future<void> _loadThisWeek(WidgetTester tester) async {
+    Future<void> loadThisWeek(WidgetTester tester) async {
       await tester.pumpWidget(_buildVarianceReport());
       await tester.pump();
       await tester.pump();
     }
 
     testWidgets('CONDITIONS group label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('CONDITIONS'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('EXECUTION group label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('EXECUTION'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('OUTCOMES group label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('OUTCOMES'), findsAtLeastNWidgets(1));
     });
   });
@@ -117,59 +117,59 @@ void main() {
   // ── D: WTD table — metric labels ────────────────────────────────────────
 
   group('D — WTD metric labels', () {
-    Future<void> _loadThisWeek(WidgetTester tester) async {
+    Future<void> loadThisWeek(WidgetTester tester) async {
       await tester.pumpWidget(_buildVarianceReport());
       await tester.pump();
       await tester.pump();
     }
 
     testWidgets('Covers label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('Covers'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('PPA label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('PPA'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('CPLH label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('CPLH'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('SPLH label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('SPLH'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('Blended Wage label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('Blended Wage'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('FOH Hours label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('FOH Hours'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('BOH Hours label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('BOH Hours'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('FOH Labor % label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('FOH Labor %'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('BOH Labor % label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('BOH Labor %'), findsAtLeastNWidgets(1));
     });
 
     testWidgets('Total Labor % label appears', (tester) async {
-      await _loadThisWeek(tester);
+      await loadThisWeek(tester);
       expect(find.text('Total Labor %'), findsAtLeastNWidgets(1));
     });
   });

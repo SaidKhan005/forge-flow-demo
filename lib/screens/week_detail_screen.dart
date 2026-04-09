@@ -49,7 +49,6 @@ class WeekDetailScreen extends StatelessWidget {
 
             // ── Grouped Summary Table ───────────────────────────────────
             _SectionLabel('WEEKLY SUMMARY vs BASELINE'),
-            const SizedBox(height: 8),
             _GroupedSummaryTable(week: week),
 
             const SizedBox(height: 20),
@@ -61,7 +60,6 @@ class WeekDetailScreen extends StatelessWidget {
 
             // ── Primary Lever ──────────────────────────────────────────
             _SectionLabel('PRIMARY DRIVER'),
-            const SizedBox(height: 8),
             Builder(builder: (context) {
               final lever = LeverCards.all.firstWhere(
                 (l) => l.id == week.primaryLeverId,
@@ -86,14 +84,38 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(width: 3, height: 14, color: AppColors.tealPrimary),
-            const SizedBox(width: 8),
-            Text(text,
-                style: AppTextStyles.mono10(color: AppColors.textSecondary)),
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(text,
+                    style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.sunset, AppColors.sunsetDark],
+                ),
+              ),
+            ),
           ],
         ),
       );
@@ -236,11 +258,10 @@ class _ColumnHeader extends StatelessWidget {
       decoration: const BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border(
-          top: BorderSide(color: AppColors.tealPrimary, width: 3),
           bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
         children: [
           const Expanded(flex: 5, child: SizedBox()),
@@ -259,7 +280,7 @@ class _ColumnHeader extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Text('VAR',
-                style: AppTextStyles.mono8(color: AppColors.tealPrimary),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark),
                 textAlign: TextAlign.right),
           ),
         ],
@@ -281,15 +302,15 @@ class _GroupBand extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
       child: Row(
         children: [
-          Container(width: 2, height: 10, color: AppColors.tealSoft),
+          Container(width: 2, height: 10, color: AppColors.sunsetDark),
           const SizedBox(width: 6),
           Text(label,
-              style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+              style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           const SizedBox(width: 8),
           Expanded(
             child: Container(
                 height: 1,
-                color: AppColors.tealSoft.withValues(alpha: 0.2)),
+                color: AppColors.sunsetDark.withValues(alpha: 0.2)),
           ),
         ],
       ),
@@ -319,7 +340,7 @@ class _TableRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
       child: Row(
         children: [
           Expanded(
@@ -390,9 +411,9 @@ class _DollarImpactCard extends StatelessWidget {
           colors: [AppColors.backgroundSurface, AppColors.shimmer, AppColors.cardGlow],
         ),
         border: Border(
-          left: BorderSide(color: accentColor, width: 4),
+          left: const BorderSide(color: AppColors.borderSubtle, width: 4),
           top: BorderSide(
-              color: accentColor.withValues(alpha: 0.15), width: 1),
+              color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
           right: const BorderSide(color: AppColors.borderSubtle, width: 1),
           bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),
         ),

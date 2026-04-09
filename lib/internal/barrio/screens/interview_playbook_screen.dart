@@ -245,7 +245,7 @@ class _PlaybookHero extends StatelessWidget {
               Text(
                 'MASTERY',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 1.2,
                   color: accent.withValues(alpha: 0.55),
@@ -288,7 +288,7 @@ class _PlaybookHero extends StatelessWidget {
                 ? '$remaining lesson${remaining == 1 ? '' : 's'} to go'
                 : 'Section complete',
             style: GoogleFonts.ibmPlexMono(
-              fontSize: 9,
+              fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
                   : const Color(0xFF2ECC71),
@@ -322,7 +322,7 @@ class _PlaybookPremiumBackground extends StatelessWidget {
         // Layer 1: Full-bleed photo
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/interview_bg.png',
+            'assets/internal/barrio/interview_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.2),
             errorBuilder: (_, __, ___) => const ColoredBox(

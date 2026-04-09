@@ -227,7 +227,7 @@ class _HandbookHero extends StatelessWidget {
               Text(
                 'MASTERY',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 9,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   letterSpacing: 1.2,
                   color: accent.withValues(alpha: 0.55),
@@ -270,7 +270,7 @@ class _HandbookHero extends StatelessWidget {
                 ? '$remaining lesson${remaining == 1 ? '' : 's'} to go'
                 : 'Chapter complete',
             style: GoogleFonts.ibmPlexMono(
-              fontSize: 9,
+              fontSize: 11,
               color: remaining > 0
                   ? BarrioColors.textMuted
                   : const Color(0xFF2ECC71),
@@ -306,7 +306,7 @@ class _HandbookPremiumBackground extends StatelessWidget {
         // Layer 1: Full-bleed building photo
         Positioned.fill(
           child: Image.asset(
-            'assets/internal/barrio/handbook_bg.png',
+            'assets/internal/barrio/handbook_bg.jpg',
             fit: BoxFit.cover,
             alignment: const Alignment(0.0, -0.3), // show upper facade
             errorBuilder: (_, __, ___) => const ColoredBox(

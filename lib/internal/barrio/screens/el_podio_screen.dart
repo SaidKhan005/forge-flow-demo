@@ -330,7 +330,7 @@ class _PodiumColumn extends StatelessWidget {
               Text(
                 'pts',
                 style: GoogleFonts.ibmPlexMono(
-                  fontSize: 8,
+                  fontSize: 11,
                   fontWeight: FontWeight.w500,
                   color: medalColor.withValues(alpha: 0.5),
                   letterSpacing: 0.3,
@@ -345,7 +345,7 @@ class _PodiumColumn extends StatelessWidget {
                 ? '+${entry.weeklyChange} this week'
                 : '${entry.weeklyChange} this week',
             style: GoogleFonts.ibmPlexMono(
-              fontSize: 8,
+              fontSize: 11,
               color: entry.weeklyChange >= 0
                   ? const Color(0xFF2ECC71).withValues(alpha: 0.7)
                   : BarrioColors.textMuted.withValues(alpha: 0.5),
@@ -549,7 +549,7 @@ class _RankTile extends StatelessWidget {
                       ? '+${entry.weeklyChange} this week'
                       : '${entry.weeklyChange} this week',
                   style: GoogleFonts.ibmPlexMono(
-                    fontSize: 9,
+                    fontSize: 11,
                     color: entry.weeklyChange >= 0
                         ? const Color(0xFF2ECC71).withValues(alpha: 0.6)
                         : BarrioColors.textMuted.withValues(alpha: 0.4),
@@ -575,7 +575,7 @@ class _RankTile extends StatelessWidget {
           Text(
             'pts',
             style: GoogleFonts.ibmPlexMono(
-              fontSize: 8,
+              fontSize: 11,
               color: BarrioColors.textMuted.withValues(alpha: 0.4),
               letterSpacing: 0.3,
             ),

@@ -104,7 +104,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
       ),
       body: _loading
           ? const Center(
-              child: CircularProgressIndicator(color: AppColors.tealPrimary))
+              child: CircularProgressIndicator(color: AppColors.sunset))
           : Column(
               children: [
                 _PreviewPanel(selected: _draftSelected),
@@ -249,7 +249,7 @@ class _PreviewCell extends StatelessWidget {
         Text(
           value,
           style: AppTextStyles.mono14(
-            color: highlight ? AppColors.tealPrimary : AppColors.textSecondary,
+            color: highlight ? AppColors.sunsetDark : AppColors.textSecondary,
             weight: FontWeight.w600,
           ),
         ),
@@ -357,10 +357,10 @@ class _CandidateTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final borderColor = isSelected
-        ? AppColors.tealPrimary.withValues(alpha: 0.7)
+        ? AppColors.sunset.withValues(alpha: 0.7)
         : AppColors.borderSubtle;
     final bgColor = isSelected
-        ? AppColors.tealPrimary.withValues(alpha: 0.07)
+        ? AppColors.sunset.withValues(alpha: 0.07)
         : Colors.transparent;
 
     return GestureDetector(
@@ -381,10 +381,10 @@ class _CandidateTile extends StatelessWidget {
               height: 18,
               decoration: BoxDecoration(
                 color:
-                    isSelected ? AppColors.tealPrimary : Colors.transparent,
+                    isSelected ? AppColors.sunset : Colors.transparent,
                 border: Border.all(
                   color: isSelected
-                      ? AppColors.tealPrimary
+                      ? AppColors.sunset
                       : AppColors.textMuted,
                   width: 1.5,
                 ),
@@ -472,7 +472,7 @@ class _MetricChip extends StatelessWidget {
           value,
           style: AppTextStyles.mono10(
               color:
-                  highlight ? AppColors.tealPrimary : AppColors.textSecondary),
+                  highlight ? AppColors.sunsetDark : AppColors.textSecondary),
         ),
       ],
     );
@@ -527,7 +527,7 @@ class _BottomBar extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: const BoxDecoration(
-                  color: AppColors.tealPrimary,
+                  color: AppColors.sunset,
                 ),
                 alignment: Alignment.center,
                 child: Text(

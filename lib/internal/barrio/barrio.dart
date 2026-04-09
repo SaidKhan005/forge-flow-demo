@@ -32,7 +32,7 @@
 /// - Cross-device sync logic (Phase 10)
 /// - Raw document viewers for PDF/HTML source material
 /// - Anything that modifies the public Forge & Flow runtime bundle
-library barrio;
+library;
 
 // Route/destination metadata
 export 'routes/barrio_destinations.dart';

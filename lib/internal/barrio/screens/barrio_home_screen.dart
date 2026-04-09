@@ -23,8 +23,9 @@ class BarrioHomeScreen extends StatefulWidget {
 }
 
 class _BarrioHomeScreenState extends State<BarrioHomeScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   BarrioPreviewRole _previewRole = BarrioPreviewRole.admin;
+  bool _animationsEnabled = true;
 
   // Colour-temperature scrim breathing — 12s loop shifting the bottom
   // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
@@ -39,15 +40,38 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
   ).animate(CurvedAnimation(parent: _scrimCtrl, curve: Curves.easeInOut));
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final shouldAnimate = state == AppLifecycleState.resumed;
+    if (shouldAnimate == _animationsEnabled) return;
+
+    if (shouldAnimate) {
+      _scrimCtrl.repeat(reverse: true);
+    } else {
+      _scrimCtrl.stop(canceled: false);
+    }
+
+    if (!mounted) return;
+    setState(() => _animationsEnabled = shouldAnimate);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _scrimCtrl.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final homeDestinations =
-        barrioDestinations.where((d) => d.showOnHomeHub).toList();
+    final homeDestinations = barrioDestinations
+        .where((d) => d.showOnHomeHub)
+        .toList();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -55,9 +79,10 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
         children: [
           // 1 — Full-bleed photo
           Positioned.fill(
-            child: Image.asset(
-              'assets/internal/barrio/home_bg.png',
-              fit: BoxFit.cover,
+            child: RepaintBoundary(
+              child: _ViewportAssetFill(
+                assetPath: 'assets/internal/barrio/home_bg.png',
+              ),
             ),
           ),
 
@@ -65,40 +90,44 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
           //     dark at top (header legibility) → transparent in hub area
           //     (photo breathes) → animated warm↔cool at bottom.
           Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedBuilder(
-                animation: _scrimColour,
-                builder: (context, _) {
-                  return Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          const Color(0xF0070D1A), // 94% — header zone
-                          const Color(0xBB070D1A), // 73% — below header
-                          const Color(0x44070D1A), // 27% — hub: photo shows
-                          const Color(0x66070D1A), // 40% — below hub
-                          _scrimColour.value!,      // animated warm↔cool
-                        ],
-                        stops: const [0.0, 0.20, 0.52, 0.75, 1.0],
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: AnimatedBuilder(
+                  animation: _scrimColour,
+                  builder: (context, _) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            const Color(0xF0070D1A), // 94% — header zone
+                            const Color(0xBB070D1A), // 73% — below header
+                            const Color(0x44070D1A), // 27% — hub: photo shows
+                            const Color(0x66070D1A), // 40% — below hub
+                            _scrimColour.value!, // animated warm↔cool
+                          ],
+                          stops: const [0.0, 0.20, 0.52, 0.75, 1.0],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
 
           // 3 — Teal bloom — top-centre brand anchor
           Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(0.0, -0.55),
-                    radius: 0.85,
-                    colors: [Color(0x4040CFCF), Colors.transparent],
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(0.0, -0.55),
+                      radius: 0.85,
+                      colors: [Color(0x4040CFCF), Colors.transparent],
+                    ),
                   ),
                 ),
               ),
@@ -107,13 +136,15 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
 
           // 4 — Gold warmth bloom — bottom-right hospitality accent
           Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment(1.0, 1.1),
-                    radius: 0.75,
-                    colors: [Color(0x2ADFAA40), Colors.transparent],
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment(1.0, 1.1),
+                      radius: 0.75,
+                      colors: [Color(0x2ADFAA40), Colors.transparent],
+                    ),
                   ),
                 ),
               ),
@@ -122,14 +153,16 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
 
           // 5 — Edge vignette — cinematic corner darkness
           Positioned.fill(
-            child: IgnorePointer(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: RadialGradient(
-                    center: Alignment.center,
-                    radius: 1.2,
-                    colors: [Colors.transparent, Color(0x88000000)],
-                    stops: [0.55, 1.0],
+            child: RepaintBoundary(
+              child: IgnorePointer(
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.2,
+                      colors: [Colors.transparent, Color(0x88000000)],
+                      stops: [0.55, 1.0],
+                    ),
                   ),
                 ),
               ),
@@ -138,44 +171,84 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
 
           // 6 — Content
           SafeArea(
-            child: BarrioAmbientLeaves(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _BarrioHeader(
-                    previewRole: _previewRole,
-                    onRoleChanged: (r) => setState(() => _previewRole = r),
-                  ),
-                  _ElPodioButton(
-                    onTap: () {
-                      HapticFeedback.lightImpact();
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                            builder: (_) => const ElPodioScreen()),
-                      );
-                    },
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: BarrioBubbleHub(
-                        destinations: homeDestinations,
+            child: TickerMode(
+              enabled: _animationsEnabled,
+              child: BarrioAmbientLeaves(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    RepaintBoundary(
+                      child: _BarrioHeader(
                         previewRole: _previewRole,
-                        onDestinationTap: (dest) =>
-                            BarrioRouteMap.navigateTo(
-                          context,
-                          dest,
-                          previewRole: _previewRole,
+                        onRoleChanged: (r) => setState(() => _previewRole = r),
+                      ),
+                    ),
+                    RepaintBoundary(
+                      child: _ElPodioButton(
+                        onTap: () {
+                          HapticFeedback.lightImpact();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ElPodioScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: RepaintBoundary(
+                          child: BarrioBubbleHub(
+                            destinations: homeDestinations,
+                            previewRole: _previewRole,
+                            onDestinationTap: (dest) =>
+                                BarrioRouteMap.navigateTo(
+                                  context,
+                                  dest,
+                                  previewRole: _previewRole,
+                                ),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ViewportAssetFill extends StatelessWidget {
+  final String assetPath;
+
+  const _ViewportAssetFill({required this.assetPath});
+
+  @override
+  Widget build(BuildContext context) {
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cacheWidth = constraints.maxWidth.isFinite
+            ? (constraints.maxWidth * dpr).round()
+            : null;
+        final cacheHeight = constraints.maxHeight.isFinite
+            ? (constraints.maxHeight * dpr).round()
+            : null;
+
+        return Image.asset(
+          assetPath,
+          fit: BoxFit.cover,
+          cacheWidth: cacheWidth != null && cacheWidth > 0 ? cacheWidth : null,
+          cacheHeight: cacheHeight != null && cacheHeight > 0
+              ? cacheHeight
+              : null,
+        );
+      },
     );
   }
 }
@@ -188,10 +261,7 @@ class _BarrioHeader extends StatefulWidget {
   final BarrioPreviewRole previewRole;
   final ValueChanged<BarrioPreviewRole> onRoleChanged;
 
-  const _BarrioHeader({
-    required this.previewRole,
-    required this.onRoleChanged,
-  });
+  const _BarrioHeader({required this.previewRole, required this.onRoleChanged});
 
   @override
   State<_BarrioHeader> createState() => _BarrioHeaderState();
@@ -375,7 +445,7 @@ class _RolePreviewRow extends StatelessWidget {
             Text(
               'PREVIEW',
               style: GoogleFonts.ibmPlexMono(
-                fontSize: 8.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 2.0,
                 color: BarrioColors.textSecondary,
@@ -398,8 +468,10 @@ class _RolePreviewRow extends StatelessWidget {
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   gradient: isActive
                       ? LinearGradient(
@@ -420,7 +492,9 @@ class _RolePreviewRow extends StatelessWidget {
                   boxShadow: isActive
                       ? [
                           BoxShadow(
-                            color: BarrioColors.tealWarm.withValues(alpha: 0.45),
+                            color: BarrioColors.tealWarm.withValues(
+                              alpha: 0.45,
+                            ),
                             blurRadius: 12,
                             offset: const Offset(0, 2),
                           ),
@@ -430,11 +504,10 @@ class _RolePreviewRow extends StatelessWidget {
                 child: Text(
                   role.label,
                   style: GoogleFonts.ibmPlexMono(
-                    fontSize: 9.5,
+                    fontSize: 12,
                     fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
                     letterSpacing: 0.4,
-                    color:
-                        isActive ? Colors.white : BarrioColors.textSecondary,
+                    color: isActive ? Colors.white : BarrioColors.textSecondary,
                   ),
                 ),
               ),
@@ -463,57 +536,56 @@ class _ElPodioButtonState extends State<_ElPodioButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: GestureDetector(
-          onTapDown: (_) => setState(() => _pressed = true),
-          onTapUp: (_) {
-            setState(() => _pressed = false);
-            widget.onTap();
-          },
-          onTapCancel: () => setState(() => _pressed = false),
-          child: AnimatedScale(
-            scale: _pressed ? 0.95 : 1.0,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOutBack,
-            child: Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 18, vertical: 9),
-              decoration: BoxDecoration(
-                color: const Color(0x20FFFFFF),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: const Color(0xFFD4AF37).withValues(alpha: 0.25),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFD4AF37).withValues(alpha: 0.08),
-                    blurRadius: 12,
-                    spreadRadius: 0,
-                  ),
-                ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: GestureDetector(
+        onTapDown: (_) => setState(() => _pressed = true),
+        onTapUp: (_) {
+          setState(() => _pressed = false);
+          widget.onTap();
+        },
+        onTapCancel: () => setState(() => _pressed = false),
+        child: AnimatedScale(
+          scale: _pressed ? 0.95 : 1.0,
+          duration: const Duration(milliseconds: 150),
+          curve: Curves.easeOutBack,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFD4AF37).withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: const Color(0xFFD4AF37).withValues(alpha: 0.45),
+                width: 1.5,
               ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.emoji_events,
-                        color: const Color(0xFFD4AF37).withValues(alpha: 0.8),
-                        size: 18,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        'EL PODIO',
-                        style: GoogleFonts.ibmPlexMono(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 1.2,
-                          color: const Color(0xFFD4AF37).withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFD4AF37).withValues(alpha: 0.15),
+                  blurRadius: 16,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.emoji_events,
+                  color: Color(0xFFD4AF37),
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'EL PODIO',
+                  style: GoogleFonts.ibmPlexMono(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.5,
+                    color: const Color(0xFFD4AF37),
                   ),
+                ),
+              ],
             ),
           ),
         ),

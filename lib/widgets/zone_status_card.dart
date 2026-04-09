@@ -55,8 +55,15 @@ class ZoneStatusCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(opzLabel, style: AppTextStyles.display36(color: opzColor)),
-              const Spacer(),
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(opzLabel,
+                      style: AppTextStyles.display36(color: opzColor)),
+                ),
+              ),
+              const SizedBox(width: 8),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
@@ -374,7 +381,7 @@ class _CplhGauge extends StatelessWidget {
                     child: Container(
                       width: 3,
                       height: barH + 12,
-                      color: AppColors.tealPrimary,
+                      color: AppColors.sunset,
                     ),
                   ),
 
@@ -389,7 +396,7 @@ class _CplhGauge extends StatelessWidget {
                         color: AppColors.textPrimary,
                         shape: BoxShape.circle,
                         border:
-                            Border.all(color: AppColors.tealPrimary, width: 2),
+                            Border.all(color: AppColors.sunset, width: 2),
                       ),
                     ),
                   ),
@@ -424,12 +431,12 @@ class _CplhGauge extends StatelessWidget {
                           Text(
                             target.toStringAsFixed(2),
                             style: AppTextStyles.mono12(
-                                color: AppColors.tealPrimary),
+                                color: AppColors.sunsetDark),
                             textAlign: TextAlign.center,
                           ),
                           Text('TARGET',
                               style: AppTextStyles.mono7(
-                                  color: AppColors.tealSoft)),
+                                  color: AppColors.sunsetDark)),
                         ],
                       ),
                     ),
@@ -507,7 +514,7 @@ class _CplhGauge extends StatelessWidget {
             left: (targetPos - 1.5).clamp(0.0, totalWidth - 3),
             top: -6,
             child: Container(
-                width: 3, height: barH + 12, color: AppColors.tealPrimary),
+                width: 3, height: barH + 12, color: AppColors.sunset),
           ),
           Positioned(
             left: dotLeft,
@@ -518,7 +525,7 @@ class _CplhGauge extends StatelessWidget {
               decoration: BoxDecoration(
                 color: AppColors.textPrimary,
                 shape: BoxShape.circle,
-                border: Border.all(color: AppColors.tealPrimary, width: 2),
+                border: Border.all(color: AppColors.sunset, width: 2),
               ),
             ),
           ),

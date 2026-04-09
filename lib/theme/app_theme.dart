@@ -2,48 +2,50 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AppColors {
-  // ── Backgrounds — layered depth ──────────────────────────────────────────
-  static const Color backgroundDeep = Color(0xFF0D1528);
-  static const Color backgroundMid = Color(0xFF152040);
-  static const Color backgroundSurface = Color(0xFF1C2E55);
+  // ── Backgrounds — Shell + warm cream (beach-sand base) ───────────────────
+  static const Color backgroundDeep = Color(0xFFF8EDE6);
+  static const Color backgroundMid = Color(0xFFEFE8E0);
+  static const Color backgroundSurface = Color(0xFFFFFFFF);
 
-  // ── Brand — from Barrio Legado business plan ─────────────────────────────
-  static const Color tealPrimary = Color(0xFF3DCFCF);
-  static const Color tealSoft = Color(0xFF2A9E9E);
-  static const Color navyAccent = Color(0xFF1A3A6E);
+  // ── Brand — Sunset primary + Peacock secondary ────────────────────────────
+  static const Color sunset = Color(0xFFCC7A3E);
+  static const Color sunsetDark = Color(0xFF9A5C2A);
+  static const Color jade = Color(0xFFA8D8D0);
 
-  // ── Text hierarchy ────────────────────────────────────────────────────────
-  static const Color textPrimary = Color(0xFFFFFFFF);
-  static const Color textSecondary = Color(0xFFB8D4E8);
-  static const Color textMuted = Color(0xFF6B8FAF);
+  // ── Text hierarchy — warm darks on light ──────────────────────────────────
+  static const Color textPrimary = Color(0xFF2C2C2C);
+  static const Color textSecondary = Color(0xFF5A524A);
+  static const Color textMuted = Color(0xFF5E564E);
 
-  // ── Directional — must be immediately readable ────────────────────────────
-  static const Color positive = Color(0xFF2ECC71);
-  static const Color negative = Color(0xFFE74C3C);
-  static const Color warning = Color(0xFFF39C12);
-  static const Color neutral = Color(0xFF6B8FAF);
+  // ── Directional — must be immediately readable on light ───────────────────
+  static const Color positive = Color(0xFF256B29);
+  static const Color negative = Color(0xFFC62828);
+  static const Color warning = Color(0xFF997000);
+  static const Color neutral = Color(0xFF5E564E);
 
-  // ── Variance specific ─────────────────────────────────────────────────────
-  static const Color varianceAlert = Color(0xFFE74C3C);
-  static const Color theoreticalColor = Color(0xFFB8D4E8);
-
-  // ── Premium surface ────────────────────────────────────────────────────────
-  static const Color shimmer = Color(0xFF1A3050);
-  static const Color cardGlow = Color(0xFF0F1E35);
+  // ── Premium surface — soft gradient helpers ────────────────────────────────
+  static const Color shimmer = Color(0xFFE8E2DA);
+  static const Color cardGlow = Color(0xFFF2ECE4);
 
   // ── Borders ───────────────────────────────────────────────────────────────
-  static const Color borderSubtle = Color(0xFF1E3A5F);
-  static const Color borderStrong = Color(0xFF3DCFCF);
+  static const Color borderSubtle = Color(0xFFDDD6CC);
+  static const Color borderStrong = Color(0xFFCC7A3E);
+
+  // ── Named inspo palette ────────────────────────────────────────────────────
+  static const Color redSand = Color(0xFFE8A87C);
+  static const Color peacock = Color(0xFF0E8080);
+  static const Color peacockDark = Color(0xFF0A6060);
+  static const Color ocean = Color(0xFF14B4AC);
+  static const Color shell = Color(0xFFF8EDE6);
+  static const Color warningBadgeBg = Color(0x26997000); // warning @ 15%
 
   // ── Backward-compatible aliases ───────────────────────────────────────────
   static const Color background = backgroundDeep;
   static const Color surface = backgroundMid;
   static const Color primaryText = textPrimary;
   static const Color secondaryText = textSecondary;
-  static const Color accent = tealPrimary;
-  static const Color gold = tealPrimary;
+  static const Color accent = sunset;
   static const Color rule = borderSubtle;
-  static const Color slateTag = navyAccent;
 }
 
 class AppTextStyles {
@@ -115,6 +117,7 @@ class AppTextStyles {
         fontSize: 14,
         fontWeight: weight ?? FontWeight.w400,
         color: color ?? AppColors.textPrimary,
+        height: 1.4,
       );
 
   static TextStyle mono12({Color? color, FontWeight? weight}) =>
@@ -122,32 +125,34 @@ class AppTextStyles {
         fontSize: 12,
         fontWeight: weight ?? FontWeight.w400,
         color: color ?? AppColors.textPrimary,
+        height: 1.4,
       );
 
   static TextStyle mono11({Color? color}) => GoogleFonts.ibmPlexMono(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w500,
-        letterSpacing: 1.2,
+        letterSpacing: 0.6,
         color: color ?? AppColors.textMuted,
       );
 
   static TextStyle mono10({Color? color}) => GoogleFonts.ibmPlexMono(
-        fontSize: 10,
+        fontSize: 12,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
+        height: 1.4,
       );
 
   static TextStyle mono8({Color? color}) => GoogleFonts.ibmPlexMono(
-        fontSize: 8,
+        fontSize: 11,
         fontWeight: FontWeight.w500,
-        letterSpacing: 1.2,
+        letterSpacing: 1.0,
         color: color ?? AppColors.textSecondary,
       );
 
   static TextStyle mono7({Color? color}) => GoogleFonts.ibmPlexMono(
-        fontSize: 7,
+        fontSize: 11,
         fontWeight: FontWeight.w500,
-        letterSpacing: 1.5,
+        letterSpacing: 0.6,
         color: color ?? AppColors.textSecondary,
       );
 
@@ -180,7 +185,7 @@ class AppTextStyles {
 
   static TextStyle body12({Color? color, FontStyle? style}) =>
       GoogleFonts.ibmPlexSans(
-        fontSize: 12,
+        fontSize: 13,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
         fontStyle: style ?? FontStyle.italic,
@@ -188,7 +193,7 @@ class AppTextStyles {
 
   static TextStyle body11({Color? color, FontStyle? style}) =>
       GoogleFonts.ibmPlexSans(
-        fontSize: 11,
+        fontSize: 12,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
         fontStyle: style ?? FontStyle.italic,
@@ -197,29 +202,29 @@ class AppTextStyles {
 
 class AppTheme {
   static ThemeData get themeData => ThemeData(
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: AppColors.backgroundDeep,
-        colorScheme: const ColorScheme.dark(
+        colorScheme: const ColorScheme.light(
           surface: AppColors.backgroundMid,
-          primary: AppColors.tealPrimary,
-          onPrimary: AppColors.textPrimary,
+          primary: AppColors.sunsetDark,
+          onPrimary: AppColors.backgroundSurface,
           onSurface: AppColors.textPrimary,
         ),
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: AppColors.backgroundDeep,
-          selectedItemColor: AppColors.tealPrimary,
+          backgroundColor: AppColors.backgroundSurface,
+          selectedItemColor: AppColors.sunsetDark,
           unselectedItemColor: AppColors.textMuted,
           type: BottomNavigationBarType.fixed,
           elevation: 0,
           showSelectedLabels: true,
           showUnselectedLabels: true,
           selectedLabelStyle:
-              TextStyle(fontSize: 10, fontWeight: FontWeight.w600),
+              TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
           unselectedLabelStyle:
-              TextStyle(fontSize: 10, fontWeight: FontWeight.w400),
+              TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
         ),
         dividerColor: AppColors.borderSubtle,
-        cardColor: AppColors.backgroundMid,
+        cardColor: AppColors.backgroundSurface,
         textTheme: GoogleFonts.ibmPlexSansTextTheme(
           const TextTheme(
             bodyMedium: TextStyle(color: AppColors.textPrimary),

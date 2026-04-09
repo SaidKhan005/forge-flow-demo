@@ -52,19 +52,19 @@ class VarianceReport extends StatelessWidget {
                   decoration: BoxDecoration(
                     border: Border(
                       bottom: BorderSide(
-                          color: AppColors.tealPrimary.withValues(alpha: 0.2),
+                          color: AppColors.sunset.withValues(alpha: 0.2),
                           width: 1),
                     ),
                   ),
                   child: TabBar(
                     isScrollable: false,
                     labelStyle: AppTextStyles.mono12(
-                        color: AppColors.tealPrimary),
+                        color: AppColors.sunsetDark),
                     unselectedLabelStyle: AppTextStyles.mono12(
                         color: AppColors.textMuted),
-                    indicatorColor: AppColors.tealPrimary,
+                    indicatorColor: AppColors.sunset,
                     indicatorWeight: 3,
-                    labelColor: AppColors.tealPrimary,
+                    labelColor: AppColors.sunsetDark,
                     unselectedLabelColor: AppColors.textMuted,
                     dividerColor: Colors.transparent,
                     tabs: const [
@@ -101,7 +101,7 @@ class _ThisWeekTab extends StatelessWidget {
       builder: (context, notifier, _) {
         if (notifier.isLoading) {
           return const Center(
-            child: CircularProgressIndicator(color: AppColors.tealPrimary),
+            child: CircularProgressIndicator(color: AppColors.sunset),
           );
         }
         final weekData = notifier.weekData;
@@ -140,7 +140,7 @@ class _ThisWeekContent extends StatelessWidget {
             child: Text('This Week', style: AppTextStyles.display20()),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
             child: Text(
               '${weekData.weekLabel} · ${weekData.lastClosedDay} · Day ${weekData.closedDayNumber} of 7',
               style: AppTextStyles.body13(color: AppColors.textMuted),
@@ -149,7 +149,6 @@ class _ThisWeekContent extends StatelessWidget {
 
           // ── WTD Variance Table ────────────────────────────────────────
           _SectionLabel('WEEK-TO-DATE vs BASELINE'),
-          const SizedBox(height: 8),
           _WtdTable(data: weekData),
 
           const SizedBox(height: 20),
@@ -163,19 +162,12 @@ class _ThisWeekContent extends StatelessWidget {
                 '${weekData.totalCovers} covers WTD · run rate.',
           ),
 
-          const SizedBox(height: 16),
-
           // ── Primary Lever ─────────────────────────────────────────────
           _SectionLabel('PRIMARY DRIVER'),
-          const SizedBox(height: 8),
           LeverCardWidget(data: lever),
-
-          Container(height: 1, color: AppColors.borderSubtle),
-          const SizedBox(height: 20),
 
           // ── Full Week: Collapsible Day Rows ───────────────────────────
           _SectionLabel('FULL WEEK PROJECTION'),
-          const SizedBox(height: 8),
           _FullWeekLoader(
               theoreticalBlendedWage: weekData.theoreticalBlendedWage,
               weekId: weekData.weekId),
@@ -195,19 +187,39 @@ class _SectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
+        padding: const EdgeInsets.fromLTRB(16, 32, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              width: 3,
-              height: 14,
-              color: AppColors.tealPrimary,
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  text,
+                  style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Text(
-              text,
-              style: AppTextStyles.mono10(color: AppColors.textSecondary),
+            const SizedBox(height: 8),
+            Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.sunset, AppColors.sunsetDark],
+                ),
+              ),
             ),
           ],
         ),
@@ -362,9 +374,8 @@ class _WtdColumnHeader extends StatelessWidget {
           colors: [AppColors.backgroundSurface, AppColors.shimmer],
         ),
         border: Border(
-          top: const BorderSide(color: AppColors.tealPrimary, width: 3),
           bottom: BorderSide(
-              color: AppColors.tealPrimary.withValues(alpha: 0.15), width: 1),
+              color: AppColors.sunset.withValues(alpha: 0.15), width: 1),
         ),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -386,7 +397,7 @@ class _WtdColumnHeader extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Text('VAR',
-                style: AppTextStyles.mono8(color: AppColors.tealPrimary),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark),
                 textAlign: TextAlign.right),
           ),
         ],
@@ -408,15 +419,15 @@ class _GroupBand extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
       child: Row(
         children: [
-          Container(width: 2, height: 10, color: AppColors.tealSoft),
+          Container(width: 2, height: 10, color: AppColors.sunsetDark),
           const SizedBox(width: 6),
           Text(label,
-              style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+              style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           const SizedBox(width: 8),
           Expanded(
             child: Container(
                 height: 1,
-                color: AppColors.tealSoft.withValues(alpha: 0.2)),
+                color: AppColors.sunsetDark.withValues(alpha: 0.2)),
           ),
         ],
       ),
@@ -524,11 +535,11 @@ class _DollarImpactCard extends StatelessWidget {
           colors: [AppColors.backgroundSurface, AppColors.shimmer, AppColors.cardGlow],
         ),
         border: Border(
-          left: BorderSide(color: accentColor, width: 4),
+          left: const BorderSide(color: AppColors.borderSubtle, width: 4),
           top: BorderSide(
-              color: accentColor.withValues(alpha: 0.15), width: 1),
-          right: BorderSide(color: AppColors.borderSubtle, width: 1),
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+              color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
+          right: const BorderSide(color: AppColors.borderSubtle, width: 1),
+          bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
       ),
       child: Column(
@@ -665,15 +676,6 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
       ),
       child: Column(
         children: [
-          // Teal top accent on Full Week section
-          Container(
-            height: 2,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.tealPrimary, AppColors.tealSoft],
-              ),
-            ),
-          ),
           for (int i = 0; i < groups.length; i++) ...[
             _DayRow(
               group: groups[i],
@@ -687,7 +689,11 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
               }),
             ),
             if (i < groups.length - 1)
-              Container(height: 1, color: AppColors.borderSubtle),
+              Container(
+                height: 1,
+                margin: const EdgeInsets.symmetric(horizontal: 14),
+                color: AppColors.borderSubtle,
+              ),
           ],
 
           // ── Projected Total Row ──────────────────────────────────────
@@ -769,7 +775,7 @@ class _DaypartChips extends StatelessWidget {
                 color: shifts[i].isClosed
                     ? AppColors.positive
                     : shifts[i].isOpen
-                        ? AppColors.tealPrimary
+                        ? AppColors.sunsetDark
                         : AppColors.textMuted,
               ),
             ),
@@ -802,15 +808,21 @@ class _DayRow extends StatelessWidget {
     final isOver = varPts > 0;
     final varColor = isOver ? AppColors.negative : AppColors.positive;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Collapsed header row
-        InkWell(
-          onTap: onTap,
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+    return Container(
+      decoration: isExpanded
+          ? BoxDecoration(
+              border: Border.all(color: AppColors.sunset, width: 2),
+            )
+          : null,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Collapsed header row
+          InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             child: Row(
               children: [
                 // Day label + per-daypart status chips
@@ -824,7 +836,7 @@ class _DayRow extends StatelessWidget {
                               color: group.allProjected
                                   ? AppColors.textMuted
                                   : group.hasOpen
-                                      ? AppColors.tealPrimary
+                                      ? AppColors.sunsetDark
                                       : AppColors.textPrimary,
                               weight: FontWeight.w600)),
                       const SizedBox(height: 2),
@@ -841,7 +853,7 @@ class _DayRow extends StatelessWidget {
                         color: group.allProjected
                             ? AppColors.textMuted
                             : group.hasOpen
-                                ? AppColors.tealSoft
+                                ? AppColors.sunsetDark
                                 : AppColors.textSecondary),
                   ),
                 ),
@@ -883,6 +895,7 @@ class _DayRow extends StatelessWidget {
             theoreticalBlendedWage: theoreticalBlendedWage,
           ),
       ],
+      ),
     );
   }
 }
@@ -901,14 +914,22 @@ class _DayExpanded extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(
           top: BorderSide(color: AppColors.borderSubtle, width: 1),
-          left: BorderSide(color: AppColors.tealSoft, width: 2),
         ),
       ),
       child: Column(
         children: [
           for (int i = 0; i < group.shifts.length; i++) ...[
             if (i > 0)
-              Container(height: 1, color: AppColors.borderSubtle),
+              Container(
+                height: 6,
+                decoration: const BoxDecoration(
+                  border: Border(
+                    top: BorderSide(color: AppColors.borderSubtle, width: 1),
+                    bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
+                  ),
+                  color: AppColors.shimmer,
+                ),
+              ),
             group.shifts[i].isClosed
                 ? _ClosedShiftDetail(shift: group.shifts[i])
                 : _ProjectedShiftDetail(
@@ -1100,7 +1121,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
   Widget build(BuildContext context) {
     final statusLabel = isOpen ? 'OPEN' : 'PROJ';
     final headerLabel = isOpen ? 'CURRENT' : 'PROJECTED';
-    final statusColor = isOpen ? AppColors.tealPrimary : AppColors.textMuted;
+    final statusColor = isOpen ? AppColors.sunsetDark : AppColors.textMuted;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
@@ -1113,7 +1134,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.backgroundSurface,
               border:
-                  Border.all(color: isOpen ? AppColors.tealSoft : AppColors.borderSubtle, width: 1),
+                  Border.all(color: isOpen ? AppColors.sunsetDark : AppColors.borderSubtle, width: 1),
             ),
             child: Text(
               '${shift.dayLabel.toUpperCase()} ${shift.daypartLabel.toUpperCase()}  ·  '
@@ -1153,7 +1174,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
               child: Text(
                 '${shift.forecastCovers}  (baseline)',
                 style: AppTextStyles.mono12(
-                    color: AppColors.tealPrimary),
+                    color: AppColors.sunsetDark),
                 textAlign: TextAlign.right,
               ),
             ),
@@ -1173,7 +1194,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
               child: Text(
                 '${shift.theoreticalLaborPct.toStringAsFixed(1)}%  (theoretical)',
                 style: AppTextStyles.mono12(
-                    color: AppColors.tealPrimary),
+                    color: AppColors.sunsetDark),
                 textAlign: TextAlign.right,
               ),
             ),
@@ -1212,7 +1233,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
             isOpen
                 ? 'Live shift in progress. Finalizes on close.'
                 : 'Projected from 60-day baseline. Actuals populate when shift closes.',
-            style: AppTextStyles.mono8(color: isOpen ? AppColors.tealSoft : AppColors.textMuted),
+            style: AppTextStyles.mono8(color: isOpen ? AppColors.sunsetDark : AppColors.textMuted),
           ),
         ],
       ),
@@ -1356,18 +1377,34 @@ class _ProjectedTotalRow extends StatelessWidget {
           ),
           Expanded(
             flex: 3,
-            child: Text(
-              '${wd.projTargetLaborPct.toStringAsFixed(1)}% target',
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-              textAlign: TextAlign.right,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${wd.projTargetLaborPct.toStringAsFixed(1)}%',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                ),
+                Text(
+                  'target',
+                  style: AppTextStyles.mono7(color: AppColors.textMuted),
+                ),
+              ],
             ),
           ),
           Expanded(
             flex: 3,
-            child: Text(
-              '${wd.projActualLaborPct.toStringAsFixed(1)}% proj',
-              style: AppTextStyles.mono12(color: ptColor),
-              textAlign: TextAlign.right,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  '${wd.projActualLaborPct.toStringAsFixed(1)}%',
+                  style: AppTextStyles.mono12(color: ptColor),
+                ),
+                Text(
+                  'proj',
+                  style: AppTextStyles.mono7(color: AppColors.textMuted),
+                ),
+              ],
             ),
           ),
           Expanded(
@@ -1386,6 +1423,52 @@ class _ProjectedTotalRow extends StatelessWidget {
 }
 
 // ─── Teaching Summary Card (History tab) ──────────────────────────────────────
+
+class _HistorySectionLabel extends StatelessWidget {
+  final String text;
+  const _HistorySectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(top: 32, bottom: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  text,
+                  style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary, weight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.sunset, AppColors.sunsetDark],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+}
 
 class _TeachingSummaryCard extends StatelessWidget {
   final HistoryTeachingSummary summary;
@@ -1418,18 +1501,6 @@ class _TeachingSummaryCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Teal top accent
-          Container(height: 3, color: AppColors.tealPrimary),
-          // Section header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-            child: Text(
-              'WHAT HISTORY IS TEACHING',
-              style: AppTextStyles.mono11(color: AppColors.tealSoft),
-            ),
-          ),
-          Container(height: 1, color: AppColors.borderSubtle),
-
           // MOST COMMON LEAK
           _TeachRow(
             title: 'MOST COMMON LEAK',
@@ -1563,7 +1634,7 @@ class _HistoryTabState extends State<_HistoryTab>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(color: AppColors.tealPrimary),
+            child: CircularProgressIndicator(color: AppColors.sunset),
           );
         }
         if (snapshot.hasError) {
@@ -1593,7 +1664,7 @@ class _HistoryTabState extends State<_HistoryTab>
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 22, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1609,7 +1680,13 @@ class _HistoryTabState extends State<_HistoryTab>
             ),
 
             // ── Teaching summary — only when pattern records are present ──
-            if (teachingSummary != null && leakCard != null)
+            if (teachingSummary != null && leakCard != null) ...[
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _HistorySectionLabel('WHAT HISTORY IS TEACHING'),
+                ),
+              ),
               SliverToBoxAdapter(
                 child: _TeachingSummaryCard(
                   summary: teachingSummary,
@@ -1617,6 +1694,7 @@ class _HistoryTabState extends State<_HistoryTab>
                   weekCount: weeks.length,
                 ),
               ),
+            ],
 
             if (weeks.isEmpty)
               SliverFillRemaining(
@@ -1688,7 +1766,7 @@ class _LearnTabState extends State<_LearnTab>
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(
-            child: CircularProgressIndicator(color: AppColors.tealPrimary),
+            child: CircularProgressIndicator(color: AppColors.sunset),
           );
         }
         if (snapshot.hasError) {
@@ -1722,7 +1800,7 @@ class _LearnContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 22, 16, 32),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1735,29 +1813,21 @@ class _LearnContent extends StatelessWidget {
                 : 'No tracked weeks yet',
             style: AppTextStyles.body13(color: AppColors.textMuted),
           ),
-          const SizedBox(height: 20),
 
           // ── Benchmark Set ───────────────────────────────────────────
           _LearnSectionLabel(label: 'BENCHMARK SET'),
-          const SizedBox(height: 10),
           _BenchmarkSetCard(summary: summary),
-          const SizedBox(height: 20),
 
           // ── Recurring Leak ──────────────────────────────────────────
           _LearnSectionLabel(label: 'RECURRING LEAK'),
-          const SizedBox(height: 10),
           _RecurringLeakCard(summary: summary),
-          const SizedBox(height: 20),
 
           // ── Repeatable Wins ─────────────────────────────────────────
           _LearnSectionLabel(label: 'REPEATABLE WINS'),
-          const SizedBox(height: 10),
           _RepeatableWinsCard(summary: summary),
-          const SizedBox(height: 20),
 
           // ── Coach Next Week ─────────────────────────────────────────
           _LearnSectionLabel(label: 'COACH NEXT WEEK'),
-          const SizedBox(height: 10),
           _CoachNextWeekCard(summary: summary),
         ],
       ),
@@ -1773,13 +1843,41 @@ class _LearnSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(width: 3, height: 14, color: AppColors.tealPrimary),
-        const SizedBox(width: 8),
-        Text(label,
-            style: AppTextStyles.mono10(color: AppColors.textSecondary)),
-      ],
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 4,
+                height: 20,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [AppColors.sunset, AppColors.sunsetDark],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(label,
+                  style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            height: 2,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [AppColors.sunset, AppColors.sunsetDark],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1803,17 +1901,13 @@ class _BenchmarkSetCard extends StatelessWidget {
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(3),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(height: 3, color: AppColors.tealPrimary),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _LearnMetricRow(
-                    label: 'SOURCE', value: summary.benchmarkSourceLabel),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _LearnMetricRow(
+                label: 'SOURCE', value: summary.benchmarkSourceLabel),
                 const SizedBox(height: 10),
                 _LearnMetricRow(
                     label: 'STAR SHIFTS',
@@ -1857,8 +1951,6 @@ class _BenchmarkSetCard extends StatelessWidget {
               ],
             ),
           ),
-        ],
-      ),
     );
   }
 }
@@ -1914,7 +2006,7 @@ class _RecurringLeakCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(
               border: Border(
-                left: BorderSide(color: AppColors.negative, width: 4),
+                left: BorderSide(color: AppColors.borderSubtle, width: 4),
               ),
             ),
             child: Column(
@@ -1929,12 +2021,12 @@ class _RecurringLeakCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     _LearnChip(
                       label: leakCard.causeCategory,
-                      color: AppColors.navyAccent,
+                      color: AppColors.textMuted,
                     ),
                     const SizedBox(width: 8),
                     _LearnChip(
                       label: leakCard.sideLabel,
-                      color: AppColors.navyAccent,
+                      color: AppColors.textMuted,
                     ),
                   ],
                 ),
@@ -1978,7 +2070,7 @@ class _RecurringLeakCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT HAPPENED',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -1992,7 +2084,7 @@ class _RecurringLeakCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT TO DO',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -2006,7 +2098,7 @@ class _RecurringLeakCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT TO STUDY',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -2084,7 +2176,7 @@ class _RepeatableWinsCard extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: const BoxDecoration(
               border: Border(
-                left: BorderSide(color: AppColors.positive, width: 4),
+                left: BorderSide(color: AppColors.borderSubtle, width: 4),
               ),
             ),
             child: Column(
@@ -2099,12 +2191,12 @@ class _RepeatableWinsCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     _LearnChip(
                       label: benchmarkCard.causeCategory,
-                      color: AppColors.tealSoft,
+                      color: AppColors.sunsetDark,
                     ),
                     const SizedBox(width: 8),
                     _LearnChip(
                       label: benchmarkCard.sideLabel,
-                      color: AppColors.tealSoft,
+                      color: AppColors.sunsetDark,
                     ),
                   ],
                 ),
@@ -2148,7 +2240,7 @@ class _RepeatableWinsCard extends StatelessWidget {
               children: [
                 _LearnChip(
                   label: summary.benchmarkSourceLabel,
-                  color: AppColors.tealSoft,
+                  color: AppColors.sunsetDark,
                 ),
                 const SizedBox(width: 8),
                 _LearnChip(
@@ -2169,7 +2261,7 @@ class _RepeatableWinsCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT HELD',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -2183,7 +2275,7 @@ class _RepeatableWinsCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT TO PROTECT',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -2197,7 +2289,7 @@ class _RepeatableWinsCard extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
             child: Text('WHAT TO STUDY',
-                style: AppTextStyles.mono8(color: AppColors.tealSoft)),
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -2233,8 +2325,6 @@ class _CoachNextWeekCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Teal top accent
-          Container(height: 3, color: AppColors.tealPrimary),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             child: Column(
@@ -2248,7 +2338,7 @@ class _CoachNextWeekCard extends StatelessWidget {
                 const SizedBox(height: 14),
                 _CoachLine(
                   icon: Icons.search_rounded,
-                  color: AppColors.tealPrimary,
+                  color: AppColors.sunset,
                   text: summary.studyLine,
                 ),
                 const SizedBox(height: 14),

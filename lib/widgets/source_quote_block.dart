@@ -53,10 +53,10 @@ class SourceQuoteBlock extends StatelessWidget {
               Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                color: AppColors.gold.withValues(alpha: 0.15),
+                color: AppColors.sunset.withValues(alpha: 0.15),
                 child: Text(
                   _badgeLabel,
-                  style: AppTextStyles.mono7(color: AppColors.gold),
+                  style: AppTextStyles.mono7(color: AppColors.sunsetDark),
                 ),
               ),
             ],

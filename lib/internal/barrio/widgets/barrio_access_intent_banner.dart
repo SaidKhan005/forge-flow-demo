@@ -65,7 +65,7 @@ class BarrioAccessIntentBanner extends StatelessWidget {
                 RichText(
                   text: TextSpan(
                     style: GoogleFonts.ibmPlexMono(
-                      fontSize: 9,
+                      fontSize: 11,
                       color: BarrioColors.textMuted,
                       letterSpacing: 0.2,
                     ),
@@ -90,7 +90,7 @@ class BarrioAccessIntentBanner extends StatelessWidget {
                 Text(
                   'Intended: ${intendedAudiences.join(", ")}  |  Real gating: Phase 9',
                   style: GoogleFonts.ibmPlexMono(
-                    fontSize: 8,
+                    fontSize: 11,
                     color: BarrioColors.textMuted.withValues(alpha: 0.5),
                     letterSpacing: 0.2,
                   ),

@@ -41,9 +41,9 @@ class VarianceBanner extends StatelessWidget {
                   ],
                 ),
                 border: Border(
-                  left: BorderSide(color: accentColor, width: 4),
+                  left: BorderSide(color: AppColors.borderSubtle, width: 4),
                   top: BorderSide(
-                      color: accentColor.withValues(alpha: 0.15), width: 1),
+                      color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
                   bottom: BorderSide(
                       color: AppColors.borderSubtle.withValues(alpha: 0.6),
                       width: 1),
@@ -61,15 +61,15 @@ class VarianceBanner extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
-                          color: accentColor.withValues(alpha: 0.08),
+                          color: AppColors.shimmer,
                           border: Border.all(
-                              color: accentColor.withValues(alpha: 0.25),
+                              color: AppColors.borderSubtle,
                               width: 1),
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: Text('LABOR % VARIANCE',
                             style: AppTextStyles.mono7(
-                                color: accentColor)),
+                                color: AppColors.textMuted)),
                       ),
                       const Spacer(),
                       Text('VIEW DETAILS',
@@ -94,7 +94,7 @@ class VarianceBanner extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: Icon(Icons.arrow_forward,
-                            size: 12, color: AppColors.tealSoft),
+                            size: 12, color: AppColors.sunsetDark),
                       ),
                       Text(
                         '${actual.toStringAsFixed(1)}%',
@@ -158,8 +158,8 @@ class VarianceBannerDelegate extends SliverPersistentHeaderDelegate {
 
   const VarianceBannerDelegate({
     this.onTap,
-    double minExtent = 98,
-    double maxExtent = 98,
+    double minExtent = 108,
+    double maxExtent = 108,
   })  : _minExtent = minExtent,
         _maxExtent = maxExtent;
 

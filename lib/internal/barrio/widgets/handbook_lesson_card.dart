@@ -172,7 +172,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                     Text(
                       _readingTime,
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 8,
+                        fontSize: 11,
                         color: BarrioColors.textMuted.withValues(alpha: 0.7),
                         letterSpacing: 0.2,
                       ),
@@ -207,7 +207,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                     Text(
                       'Tap to expand',
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 8,
+                        fontSize: 11,
                         color: _badgeColor.withValues(alpha: 0.45),
                         letterSpacing: 0.3,
                       ),
@@ -240,7 +240,7 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
                     Text(
                       'Tap to begin',
                       style: GoogleFonts.ibmPlexMono(
-                        fontSize: 9,
+                        fontSize: 11,
                         fontWeight: FontWeight.w500,
                         color: _badgeColor.withValues(alpha: 0.5),
                         letterSpacing: 0.5,
@@ -366,7 +366,7 @@ class _TypeBadge extends StatelessWidget {
       child: Text(
         label,
         style: GoogleFonts.ibmPlexMono(
-          fontSize: 9,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
           letterSpacing: 1.0,
           color: color,

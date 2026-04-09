@@ -205,7 +205,7 @@ class _DataStatusTile extends StatelessWidget {
 
     final statusColor = switch (s.type) {
       AppDataStatusType.current => AppColors.positive,
-      AppDataStatusType.historicalOnly => AppColors.tealSoft,
+      AppDataStatusType.historicalOnly => AppColors.sunsetDark,
       AppDataStatusType.stale => AppColors.warning,
       AppDataStatusType.failedImport => AppColors.negative,
       AppDataStatusType.noData => AppColors.textMuted,

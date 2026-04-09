@@ -8,6 +8,7 @@ class ScheduleDayRow extends StatelessWidget {
   final bool isHeader;
   final bool isTotal;
   final bool isSubrow; // true for daypart sub-rows (indented, muted label)
+  final Widget? trailing; // optional chevron or icon, rendered inside the row
 
   const ScheduleDayRow({
     super.key,
@@ -18,6 +19,7 @@ class ScheduleDayRow extends StatelessWidget {
     this.isHeader = false,
     this.isTotal = false,
     this.isSubrow = false,
+    this.trailing,
   });
 
   factory ScheduleDayRow.header() {
@@ -37,7 +39,7 @@ class ScheduleDayRow extends StatelessWidget {
 
     if (isHeader) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -71,10 +73,9 @@ class ScheduleDayRow extends StatelessWidget {
     }
 
     final labelColor = isSubrow ? AppColors.textMuted : textColor;
-    final leftPad    = isSubrow ? 32.0 : 16.0;
 
     return Container(
-      padding: EdgeInsets.fromLTRB(leftPad, 10, 16, 10),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
       decoration: BoxDecoration(
         color: isTotal
             ? AppColors.rule.withValues(alpha: 0.5)
@@ -84,12 +85,20 @@ class ScheduleDayRow extends StatelessWidget {
         children: [
           Expanded(
             flex: 2,
-            child: Text(
-              day,
-              style: isTotal
-                  ? AppTextStyles.mono12(
-                      color: labelColor, weight: FontWeight.w700)
-                  : AppTextStyles.mono12(color: labelColor),
+            child: Row(
+              children: [
+                if (isSubrow) const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    day,
+                    style: isTotal
+                        ? AppTextStyles.mono12(
+                            color: labelColor, weight: FontWeight.w700)
+                        : AppTextStyles.mono12(color: labelColor),
+                  ),
+                ),
+                if (trailing != null) trailing!,
+              ],
             ),
           ),
           Expanded(
@@ -105,7 +114,7 @@ class ScheduleDayRow extends StatelessWidget {
             child: Text(
               requiredFohHours.toString(),
               style: AppTextStyles.mono12(
-                  color: isTotal ? AppColors.gold : AppColors.secondaryText),
+                  color: isTotal ? AppColors.sunsetDark : AppColors.secondaryText),
               textAlign: TextAlign.right,
             ),
           ),
@@ -114,7 +123,7 @@ class ScheduleDayRow extends StatelessWidget {
             child: Text(
               requiredBohHours.toString(),
               style: AppTextStyles.mono12(
-                  color: isTotal ? AppColors.gold : AppColors.secondaryText),
+                  color: isTotal ? AppColors.sunsetDark : AppColors.secondaryText),
               textAlign: TextAlign.right,
             ),
           ),
