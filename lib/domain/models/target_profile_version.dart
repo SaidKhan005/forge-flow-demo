@@ -2,6 +2,7 @@
 ///
 /// Created when a shift is closed, locking the targets that were in force.
 /// Never mutated after creation.
+library;
 
 class TargetProfileVersion {
   final String targetProfileVersionId;

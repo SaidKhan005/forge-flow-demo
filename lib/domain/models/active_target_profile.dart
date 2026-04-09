@@ -2,6 +2,7 @@
 ///
 /// Built from either the system baseline or a manager override.
 /// One active profile exists per restaurant at any time.
+library;
 
 class ActiveTargetProfile {
   final String targetProfileId;

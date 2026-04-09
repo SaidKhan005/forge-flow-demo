@@ -2,6 +2,7 @@
 ///
 /// Every operational record in the app is scoped to one restaurant.
 /// This is the canonical identity for that scope boundary.
+library;
 
 class RestaurantLocation {
   final String restaurantId;

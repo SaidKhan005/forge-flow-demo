@@ -1,4 +1,5 @@
 /// Tracks the sync cursor position for a restaurant + source type.
+library;
 
 class SyncWatermark {
   final String restaurantId;

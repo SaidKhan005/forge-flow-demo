@@ -1,4 +1,5 @@
 /// One raw imported record from an external source.
+library;
 
 class RawImportRecord {
   final String rawImportId;

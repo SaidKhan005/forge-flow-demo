@@ -1,4 +1,5 @@
 /// Current-week read model merging closed shifts + open/projected snapshots.
+library;
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/open_shift_snapshot.dart';

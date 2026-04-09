@@ -1,4 +1,5 @@
 /// Metadata for one import execution against a restaurant.
+library;
 
 class ImportRun {
   final String importRunId;

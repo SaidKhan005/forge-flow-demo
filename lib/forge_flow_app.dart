@@ -143,36 +143,36 @@ class _AppShellState extends State<AppShell> {
           );
 
     return Scaffold(
-      backgroundColor: AppColors.backgroundDeep,
-      appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
-      body: SafeArea(
-        top: !widget.embeddedInBarrio,
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: [
-            KeyedSubtree(
-              key: ValueKey('shift-$revision'),
-              child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
-            ),
-            KeyedSubtree(
-              key: ValueKey('variance-$revision'),
-              child: const VarianceReport(),
-            ),
-            KeyedSubtree(
-              key: ValueKey('schedule-$revision'),
-              child: const ScheduleBuilder(),
-            ),
-            KeyedSubtree(
-              key: ValueKey('baseline-$revision'),
-              child: const BaselineTracker(),
-            ),
-          ],
+        backgroundColor: AppColors.backgroundDeep,
+        appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
+        body: SafeArea(
+          top: !widget.embeddedInBarrio,
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              KeyedSubtree(
+                key: ValueKey('shift-$revision'),
+                child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
+              ),
+              KeyedSubtree(
+                key: ValueKey('variance-$revision'),
+                child: const VarianceReport(),
+              ),
+              KeyedSubtree(
+                key: ValueKey('schedule-$revision'),
+                child: const ScheduleBuilder(),
+              ),
+              KeyedSubtree(
+                key: ValueKey('baseline-$revision'),
+                child: const BaselineTracker(),
+              ),
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: _AppBottomNav(
-        selectedIndex: _selectedIndex,
-        onTap: _navigateTo,
-      ),
+        bottomNavigationBar: _AppBottomNav(
+          selectedIndex: _selectedIndex,
+          onTap: _navigateTo,
+        ),
     );
   }
 }
@@ -187,14 +187,9 @@ class _AppBottomNav extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.shimmer, AppColors.backgroundDeep],
-        ),
         border: Border(
           top: BorderSide(
-            color: AppColors.tealPrimary.withValues(alpha: 0.15),
+            color: AppColors.borderSubtle,
             width: 1,
           ),
         ),
@@ -203,7 +198,7 @@ class _AppBottomNav extends StatelessWidget {
         currentIndex: selectedIndex,
         onTap: onTap,
         backgroundColor: AppColors.backgroundDeep,
-        selectedItemColor: AppColors.tealPrimary,
+        selectedItemColor: AppColors.sunsetDark,
         unselectedItemColor: AppColors.textMuted,
         type: BottomNavigationBarType.fixed,
         elevation: 0,

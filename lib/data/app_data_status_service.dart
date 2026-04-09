@@ -1,4 +1,5 @@
 /// Evaluates app data readiness from persisted state.
+library;
 
 import '../infrastructure/persistence/sqlite/repositories/sqlite_import_tracking_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';

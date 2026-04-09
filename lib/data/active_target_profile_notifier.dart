@@ -4,6 +4,7 @@
 /// Exposes a revision counter that increments on each profile change.
 /// This notifier replaces `BaselineData.revision` as the app-shell
 /// propagation authority for active-target changes.
+library;
 
 import 'package:flutter/foundation.dart';
 import '../domain/models/active_target_profile.dart';

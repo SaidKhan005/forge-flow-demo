@@ -1,4 +1,5 @@
 /// Configuration for a vendor connector mapped to a restaurant.
+library;
 
 class ConnectorConfig {
   final String connectorId;

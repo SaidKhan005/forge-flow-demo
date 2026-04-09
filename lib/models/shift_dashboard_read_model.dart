@@ -1,5 +1,6 @@
 /// Everything the Shift dashboard screen needs to render, built from
 /// persisted current-state + active target profile.
+library;
 
 import '../data/legacy_fixture_data.dart';
 import '../domain/models/active_target_profile.dart';

@@ -2,6 +2,7 @@
 ///
 /// Represents a shift slot that is not yet a closed historical ShiftRecord.
 /// Used by the Shift screen, Zone status hero, and Variance Full Week.
+library;
 
 class OpenShiftSnapshot {
   final String restaurantId;

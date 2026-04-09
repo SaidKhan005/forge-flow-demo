@@ -1,4 +1,5 @@
 /// App data readiness status, evaluated from persisted state.
+library;
 
 enum AppDataStatusType {
   noData,

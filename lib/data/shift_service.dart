@@ -277,7 +277,7 @@ class ShiftService {
         ? totalLaborDollar / totalSales * 100 : 0.0;
 
     // ── Materialize week-level locked targets from shift locked targets ────
-    double _weightedAvg(double Function(ShiftRecord) field,
+    double weightedAvg(double Function(ShiftRecord) field,
         double Function(ShiftRecord) weight) {
       final totalW = closedShifts.fold<double>(0, (s, r) => s + weight(r));
       if (totalW == 0) {
@@ -289,7 +289,7 @@ class ShiftService {
           totalW;
     }
 
-    double _requireShiftField(ShiftRecord r, double? value, String name) {
+    double requireShiftField(ShiftRecord r, double? value, String name) {
       if (value == null) {
         throw StateError(
           'ShiftRecord ${r.weekId}/${r.dayLabel}/${r.daypart} has null $name '
@@ -299,28 +299,28 @@ class ShiftService {
       return value;
     }
 
-    final wkTargetCPLH = _weightedAvg(
-        (r) => _requireShiftField(r, r.targetCPLH, 'targetCPLH'),
+    final wkTargetCPLH = weightedAvg(
+        (r) => requireShiftField(r, r.targetCPLH, 'targetCPLH'),
         (r) => r.covers.toDouble());
-    final wkTargetSPLH = _weightedAvg(
-        (r) => _requireShiftField(r, r.targetSPLH, 'targetSPLH'),
+    final wkTargetSPLH = weightedAvg(
+        (r) => requireShiftField(r, r.targetSPLH, 'targetSPLH'),
         (r) => r.actualSales);
-    final wkTargetPPA = _weightedAvg(
-        (r) => _requireShiftField(r, r.targetPPA, 'targetPPA'),
+    final wkTargetPPA = weightedAvg(
+        (r) => requireShiftField(r, r.targetPPA, 'targetPPA'),
         (r) => r.covers.toDouble());
-    final wkTargetFohWage = _weightedAvg(
-        (r) => _requireShiftField(r, r.targetFohWage, 'targetFohWage'),
+    final wkTargetFohWage = weightedAvg(
+        (r) => requireShiftField(r, r.targetFohWage, 'targetFohWage'),
         (r) => r.fohHours.toDouble());
-    final wkTargetBohWage = _weightedAvg(
-        (r) => _requireShiftField(r, r.targetBohWage, 'targetBohWage'),
+    final wkTargetBohWage = weightedAvg(
+        (r) => requireShiftField(r, r.targetBohWage, 'targetBohWage'),
         (r) => r.bohHours.toDouble());
-    final wkTheoFohPct = _weightedAvg(
-        (r) => _requireShiftField(r, r.theoreticalFohLaborPct, 'theoreticalFohLaborPct'),
+    final wkTheoFohPct = weightedAvg(
+        (r) => requireShiftField(r, r.theoreticalFohLaborPct, 'theoreticalFohLaborPct'),
         (r) => r.actualSales);
-    final wkTheoBohPct = _weightedAvg(
-        (r) => _requireShiftField(r, r.theoreticalBohLaborPct, 'theoreticalBohLaborPct'),
+    final wkTheoBohPct = weightedAvg(
+        (r) => requireShiftField(r, r.theoreticalBohLaborPct, 'theoreticalBohLaborPct'),
         (r) => r.actualSales);
-    final wkTheoTotalPct = _weightedAvg(
+    final wkTheoTotalPct = weightedAvg(
         (r) => r.theoreticalLaborPct,
         (r) => r.actualSales);
 
