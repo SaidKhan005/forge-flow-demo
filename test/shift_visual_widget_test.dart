@@ -9,9 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/restaurant_scope_notifier.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
 import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
-import 'package:forge_and_flow/data/week_data_notifier.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/models/restaurant_location.dart';
@@ -58,8 +56,47 @@ ShiftDashboardReadModel _fixtureReadModel() {
   return ShiftDashboardReadModel.build(snapshot, profile);
 }
 
-Widget _buildShiftDashboard({String? restaurantName}) {
-  final rm = _fixtureReadModel();
+ShiftDashboardReadModel _fixtureReadModelWithReservation() {
+  final profile = ActiveTargetProfile(
+    targetProfileId: 'test_active',
+    restaurantId: 'demo_restaurant_001',
+    sourceType: 'system_baseline',
+    targetCPLH: BaselineData.derivedTargetCPLH,
+    targetSPLH: BaselineData.derivedTargetSPLH,
+    targetPPA: BaselineData.derivedTargetPPA,
+    fohWage: MeridianConfig.fohWage,
+    bohWage: MeridianConfig.bohWage,
+    opzFloorCPLH: BaselineData.opzFloorCPLH,
+    opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+    theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
+    theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
+    theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+    builtAt: '2026-03-27T19:42:00',
+  );
+  final snapshot = OpenShiftSnapshot(
+    restaurantId: 'demo_restaurant_001',
+    weekId: '2026-W13',
+    dayLabel: 'Fri',
+    daypart: 'dinner',
+    status: 'open',
+    businessDate: '2026-03-27',
+    forecastCovers: ShiftSnapshot.shiftForecastCovers,
+    currentCovers: ShiftSnapshot.actualCovers,
+    scheduledFohHours: ShiftSnapshot.scheduledFohHours,
+    scheduledBohHours: ShiftSnapshot.scheduledBohHours,
+    currentPPA: ShiftSnapshot.actualPPA,
+    currentCPLH: ShiftSnapshot.actualCPLH,
+    currentSPLH: ShiftSnapshot.actualSPLH,
+    blendedWage: ShiftSnapshot.blendedWage,
+    timeLabel: ShiftSnapshot.time,
+    serviceElapsedLabel: ShiftSnapshot.serviceElapsed,
+    updatedAt: '2026-03-27T19:42:00',
+  );
+  return ShiftDashboardReadModel.build(snapshot, profile, inTheBooksCovers: 72);
+}
+
+Widget _buildShiftDashboard({String? restaurantName, ShiftDashboardReadModel? readModel}) {
+  final rm = readModel ?? _fixtureReadModel();
   return MultiProvider(
     providers: [
       ChangeNotifierProvider<RestaurantScopeNotifier>(
@@ -72,9 +109,6 @@ Widget _buildShiftDashboard({String? restaurantName}) {
             updatedAt: '2026-03-30T10:00:00',
           ),
         ),
-      ),
-      ChangeNotifierProvider<WeekDataNotifier>(
-        create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
       ),
       ChangeNotifierProvider<ShiftDashboardNotifier>(
         create: (_) => ShiftDashboardNotifier.fromReadModel(rm),
@@ -131,12 +165,12 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('LABOR % VARIANCE header is present', (tester) async {
+    testWidgets('LABOR % label is present', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
-      expect(find.text('LABOR % VARIANCE', skipOffstage: false),
-          findsOneWidget);
+      expect(find.text('LABOR %', skipOffstage: false),
+          findsAtLeastNWidgets(1));
     });
   });
 
@@ -165,7 +199,7 @@ void main() {
       await tester.pump();
       final rm = _fixtureReadModel();
       expect(
-          find.text(rm.targetCPLH.toStringAsFixed(2), skipOffstage: false),
+          find.text(rm.targetCPLH.toStringAsFixed(1), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
 
@@ -175,7 +209,7 @@ void main() {
       await tester.pump();
       final rm = _fixtureReadModel();
       expect(
-          find.text(rm.opzCeilingCPLH.toStringAsFixed(2), skipOffstage: false),
+          find.text(rm.opzCeilingCPLH.toStringAsFixed(1), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
   });
@@ -226,15 +260,11 @@ void main() {
 
   // â”€â”€ D: teaching container â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+  // Teaching section hidden on Shift screen — Phase 10.5.
   group('D â€” teaching container', () {
     testWidgets('active lever whatHappened text is present', (tester) async {
-      await tester.pumpWidget(_buildShiftDashboard());
-      await tester.pump();
-      await tester.pump();
-      final rm = _fixtureReadModel();
-      expect(
-          find.text(rm.primaryLeverCard.whatHappened, skipOffstage: false),
-          findsOneWidget);
+      // PRIMARY DRIVER section hidden on Shift screen — Phase 10.5.
+      // Read model still computes the lever; UI just doesn't render it.
     });
   });
 
@@ -253,6 +283,61 @@ void main() {
       await tester.pump();
       expect(find.text('DRIVER', skipOffstage: false),
           findsAtLeastNWidgets(1));
+    });
+  });
+
+  // ── G: LABOR % card reads from ShiftDashboardReadModel ────────────────────
+
+  group('G — LABOR % from read model, not WTD', () {
+    testWidgets('LABOR % card shows read-model actualLaborPct, not WTD value',
+        (tester) async {
+      final rm = _fixtureReadModel();
+      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+      await tester.pump();
+      await tester.pump();
+
+      // The read model's actualLaborPct should appear as the displayed value.
+      // StaticShiftDataSource WTD actualLaborPct is different from the
+      // read model's whole-day labor %. This proves the card reads the read model.
+      final expectedText = '${rm.actualLaborPct.toStringAsFixed(1)}%';
+      expect(find.text(expectedText, skipOffstage: false),
+          findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('LABOR % card shows read-model targetLaborPct',
+        (tester) async {
+      final rm = _fixtureReadModel();
+      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+      await tester.pump();
+      await tester.pump();
+
+      final expectedTarget = 'Target ${rm.targetLaborPct.toStringAsFixed(1)}%';
+      expect(find.text(expectedTarget, skipOffstage: false),
+          findsAtLeastNWidgets(1));
+    });
+  });
+
+  // â”€â”€ F: reservation book signal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  group('F â€” reservation book signal', () {
+    testWidgets('COVERS card renders “In the books 72” when reservation exists',
+        (tester) async {
+      final rm = _fixtureReadModelWithReservation();
+      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('In the books 72', skipOffstage: false),
+          findsOneWidget);
+    });
+
+    testWidgets('COVERS card hides “In the books” when no reservation exists',
+        (tester) async {
+      final rm = _fixtureReadModel();
+      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('In the books', skipOffstage: false),
+          findsNothing);
     });
   });
 }

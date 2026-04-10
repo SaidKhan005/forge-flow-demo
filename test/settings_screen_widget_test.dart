@@ -83,4 +83,58 @@ void main() {
       );
     });
   });
+
+  // ── Mock replay controls ──────────────────────────────────────────────
+
+  group('Settings mock replay controls', () {
+    testWidgets('shows Mock Business Date label', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('Mock Business Date'), findsOneWidget);
+    });
+
+    testWidgets('shows formatted mock date when provided', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('Fri, Mar 27, 2026'), findsOneWidget);
+    });
+
+    testWidgets('shows Reset Mock Scenario action', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('Reset Mock Scenario'), findsOneWidget);
+    });
+
+    testWidgets('shows Advance Mock Day action', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('Advance Mock Day'), findsOneWidget);
+      expect(find.text('Move mock business date forward one day'),
+          findsOneWidget);
+    });
+  });
 }

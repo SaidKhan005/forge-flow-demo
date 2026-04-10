@@ -363,18 +363,49 @@ class DemoData {
     ),
   ];
 
-  // ── Historical closed shifts — teaching layer source of truth ────────────
-  // One representative closed shift per notable daypart signal across weeks
-  // W01–W12.  HistoryPatternBuilder.fromClosedShifts() reads these records and
-  // produces HistoryPatternRecords for HistoryTeachingAnalyzer.
+  // ── Historical closed shifts ──────────────────────────────────────────────
+  // W05–W12 (60-day window) are expanded to full 14-shift weeks via
+  // _generateWeekShifts so that shift-level sums match WeekRecord rollups.
+  // W01–W04 (outside 60-day window) keep sparse teaching shifts only.
   //
-  // primaryLever is stored in uppercase underscore form (matches production
-  // convention). normalizedLeverId lowercases it at read time.
-  //
-  // Numeric values are simple and plausible — not re-derived from lever logic.
-  // The teaching summary in Phase 2 relies on stored shift levers, not
-  // re-computed levers.
-  static final List<ShiftRecord> historicalClosedShifts = [
+  // Teaching shifts carry specific lever assignments for HistoryPatternBuilder.
+  // Fill shifts use ON_MODEL (filtered out by HistoryPatternBuilder).
+
+  /// Weeks within the 60-day window that get full 14-shift expansion.
+  static const _sixtyDayWeekIds = {
+    '2026-W12', '2026-W11', '2026-W10', '2026-W09',
+    '2026-W08', '2026-W07', '2026-W06', '2026-W05',
+  };
+
+  /// 14 daypart slots per complete week (Mon–Sun).
+  static const _weekSlots = [
+    ('Mon', 'lunch'),    ('Mon', 'dinner'),
+    ('Tue', 'lunch'),    ('Tue', 'dinner'),
+    ('Wed', 'lunch'),    ('Wed', 'dinner'),
+    ('Thu', 'lunch'),    ('Thu', 'dinner'),
+    ('Fri', 'lunch'),    ('Fri', 'dinner'),    ('Fri', 'late_night'),
+    ('Sat', 'dinner'),   ('Sat', 'late_night'),
+    ('Sun', 'dinner'),
+  ];
+
+  /// Day-shape cover weights (unnormalized). Derived from
+  /// ScheduleForecastDefaults at 1200 weekly total with daypart splits:
+  /// Mon–Thu lunch/dinner = 45%/55%, Fri = 45%/40%/15%,
+  /// Sat dinner/late_night = 77.5%/22.5%, Sun dinner = 100%.
+  static const _slotWeights = <(String, String), double>{
+    ('Mon', 'lunch'):      63.0,  ('Mon', 'dinner'):      77.0,
+    ('Tue', 'lunch'):      67.5,  ('Tue', 'dinner'):      82.5,
+    ('Wed', 'lunch'):      72.0,  ('Wed', 'dinner'):      88.0,
+    ('Thu', 'lunch'):      85.5,  ('Thu', 'dinner'):     104.5,
+    ('Fri', 'lunch'):      99.0,  ('Fri', 'dinner'):      88.0,
+    ('Fri', 'late_night'): 33.0,
+    ('Sat', 'dinner'):    178.25, ('Sat', 'late_night'):  51.75,
+    ('Sun', 'dinner'):    110.0,
+  };
+
+  /// Teaching shifts — the original hand-authored shifts with specific levers.
+  /// These are preserved byte-identical; fill shifts are generated around them.
+  static final List<ShiftRecord> _teachingShifts = [
     // ── W12 — Mar 17 ─────────────────────────────────────────────────────────
     ShiftRecord(weekId: '2026-W12', dayLabel: 'Tue', daypart: 'dinner', status: 'closed',
         covers: 178, forecastCovers: 200, ppa: 42.00, cplh: 3.90, splh: 172.0,
@@ -453,6 +484,121 @@ class DemoData {
         covers: 200, forecastCovers: 200, ppa: 45.30, cplh: 4.55, splh: 180.5,
         fohHours: 44, bohHours: 50, primaryLever: 'PPA_UP'),
   ];
+
+  /// Teaching shifts grouped by weekId for generator lookup.
+  static final Map<String, List<ShiftRecord>> _teachingByWeek = {
+    for (final weekId in weekHistory.map((w) => w.weekId))
+      weekId: _teachingShifts.where((s) => s.weekId == weekId).toList(),
+  };
+
+  /// Full historical closed shifts: 14-shift weeks for W05–W12 (60-day window),
+  /// sparse teaching shifts for W01–W04 (outside window).
+  static final List<ShiftRecord> historicalClosedShifts = [
+    for (final week in weekHistory)
+      if (_sixtyDayWeekIds.contains(week.weekId))
+        ..._generateWeekShifts(
+          weekId: week.weekId,
+          weekTarget: week,
+          existingShifts: _teachingByWeek[week.weekId] ?? [],
+        )
+      else
+        ...(_teachingByWeek[week.weekId] ?? []),
+  ];
+
+  /// Generates a complete 14-shift week from a WeekRecord target and existing
+  /// teaching shifts. Fill shifts use ON_MODEL lever and week-level PPA.
+  /// Covers, FOH hours, and BOH hours sum exactly to the WeekRecord targets.
+  static List<ShiftRecord> _generateWeekShifts({
+    required String weekId,
+    required WeekRecord weekTarget,
+    required List<ShiftRecord> existingShifts,
+  }) {
+    // 1. Map existing teaching shifts by slot
+    final existingBySlot = <(String, String), ShiftRecord>{};
+    for (final s in existingShifts) {
+      existingBySlot[(s.dayLabel, s.daypart)] = s;
+    }
+
+    // 2. Subtract existing contributions from targets
+    int remainCovers = weekTarget.totalCovers;
+    int remainFoh = weekTarget.totalFohHours;
+    int remainBoh = weekTarget.totalBohHours;
+    double remainSales = weekTarget.totalCovers * weekTarget.avgPPA;
+    for (final s in existingShifts) {
+      remainCovers -= s.covers;
+      remainFoh -= s.fohHours;
+      remainBoh -= s.bohHours;
+      remainSales -= s.covers * s.ppa;
+    }
+
+    // 3. Identify missing slots and their proportional weights
+    final missingSlots = <(String, String)>[];
+    double totalMissingWeight = 0;
+    for (final slot in _weekSlots) {
+      if (!existingBySlot.containsKey(slot)) {
+        missingSlots.add(slot);
+        totalMissingWeight += _slotWeights[slot]!;
+      }
+    }
+
+    // 4. Distribute remaining covers/hours proportionally across fill slots
+    final fillShifts = <ShiftRecord>[];
+    int allocCovers = 0, allocFoh = 0, allocBoh = 0;
+    final fillPPA = remainCovers > 0 ? remainSales / remainCovers : weekTarget.avgPPA;
+
+    for (int i = 0; i < missingSlots.length; i++) {
+      final slot = missingSlots[i];
+      final w = _slotWeights[slot]! / totalMissingWeight;
+      final isLast = (i == missingSlots.length - 1);
+
+      final covers = isLast ? remainCovers - allocCovers : (remainCovers * w).round();
+      final foh = isLast ? remainFoh - allocFoh : (remainFoh * w).round();
+      final boh = isLast ? remainBoh - allocBoh : (remainBoh * w).round();
+      allocCovers += covers;
+      allocFoh += foh;
+      allocBoh += boh;
+
+      final cplh = foh > 0 ? covers / foh : weekTarget.avgCPLH;
+      final splh = boh > 0 ? (covers * fillPPA) / boh : 180.0;
+
+      fillShifts.add(ShiftRecord(
+        weekId: weekId,
+        dayLabel: slot.$1,
+        daypart: slot.$2,
+        status: 'closed',
+        covers: covers,
+        forecastCovers: covers,
+        ppa: double.parse(fillPPA.toStringAsFixed(2)),
+        cplh: double.parse(cplh.toStringAsFixed(2)),
+        splh: double.parse(splh.toStringAsFixed(2)),
+        fohHours: foh,
+        bohHours: boh,
+        primaryLever: 'ON_MODEL',
+      ));
+    }
+
+    // 5. Merge in slot order
+    final allShifts = <ShiftRecord>[];
+    int fillIdx = 0;
+    for (final slot in _weekSlots) {
+      if (existingBySlot.containsKey(slot)) {
+        allShifts.add(existingBySlot[slot]!);
+      } else {
+        allShifts.add(fillShifts[fillIdx++]);
+      }
+    }
+
+    // 6. Assert sum invariants (debug mode only)
+    assert(allShifts.length == 14, '$weekId: expected 14 shifts, got ${allShifts.length}');
+    assert(allShifts.fold<int>(0, (s, r) => s + r.covers) == weekTarget.totalCovers,
+        '$weekId covers mismatch');
+    assert(allShifts.fold<int>(0, (s, r) => s + r.fohHours) == weekTarget.totalFohHours,
+        '$weekId FOH mismatch');
+    assert(allShifts.fold<int>(0, (s, r) => s + r.bohHours) == weekTarget.totalBohHours,
+        '$weekId BOH mismatch');
+
+    return allShifts;
+  }
 
   // ── Daypart-level pattern records — teaching layer ────────────────────────
   // One record per notable daypart signal across 17 historical shifts.

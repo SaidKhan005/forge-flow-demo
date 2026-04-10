@@ -1,27 +1,37 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
 import '../data/legacy_fixture_data.dart';
+import '../data/schedule_distribution_weights_notifier.dart';
 import '../domain/models/active_target_profile.dart';
-import '../services/labor_model.dart';
+import '../domain/models/schedule_distribution_weights.dart';
+import '../domain/models/schedule_forecast_demand.dart';
+import '../domain/models/schedule_plan.dart';
+import '../domain/services/schedule_forecast_demand_resolver.dart';
+import '../domain/services/schedule_plan_resolver.dart';
 import '../utils/formatters.dart';
 import '../widgets/schedule_day_row.dart';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
 class ScheduleForecastNotifier extends ChangeNotifier {
-  int _weeklyCovers = ScheduleForecastDefaults.defaultWeeklyCovers;
-
-  // Explicit active-target values — injected from persisted authority
+  // Target values — injected from persisted authority
   double _targetCPLH;
   double _targetPPA;
   double _targetSPLH;
   double _fohWage;
   double _bohWage;
-  double _theoreticalLaborPct;
+
+  /// Optional data-driven distribution weights from closed ShiftRecords.
+  /// When available, used for both day-level allocation (via SchedulePlanResolver)
+  /// and daypart subrow splits (via adjustedDayViews).
+  ScheduleDistributionWeights? _distributionWeights;
+
+  /// The shared weekly plan built by [SchedulePlanResolver].
+  /// Null when demand is unavailable.
+  SchedulePlan? _plan;
 
   ScheduleForecastNotifier({
     required double targetCPLH,
@@ -30,15 +40,46 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     required double fohWage,
     required double bohWage,
     required double theoreticalLaborPct,
+    int? initialCovers,
+    ForecastDemandSource coversSource = ForecastDemandSource.demoFallback,
+    ForecastDemandSource salesSource = ForecastDemandSource.appDerivedFromCoversAndPpa,
+    ScheduleDistributionWeights? distributionWeights,
   })  : _targetCPLH = targetCPLH,
         _targetPPA = targetPPA,
         _targetSPLH = targetSPLH,
         _fohWage = fohWage,
         _bohWage = bohWage,
-        _theoreticalLaborPct = theoreticalLaborPct;
+        _distributionWeights = distributionWeights {
+    // Guard: do not fabricate a plan when demand is truly unavailable.
+    if (initialCovers == null && coversSource == ForecastDemandSource.unavailable) {
+      _plan = null;
+    } else {
+      _plan = SchedulePlanResolver.resolveFromValues(
+        forecastCovers: initialCovers ?? ScheduleForecastDefaults.defaultWeeklyCovers,
+        targetPPA: targetPPA,
+        targetCPLH: targetCPLH,
+        targetSPLH: targetSPLH,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        coversSource: coversSource,
+        salesSource: salesSource,
+        distributionWeights: distributionWeights,
+      );
+    }
+  }
 
-  /// Builds from an ActiveTargetProfile.
-  factory ScheduleForecastNotifier.fromProfile(ActiveTargetProfile profile) {
+  /// Builds from an ActiveTargetProfile, resolving demand through the resolver.
+  factory ScheduleForecastNotifier.fromProfile(
+    ActiveTargetProfile profile, {
+    int? historicalWeeklyAvgCovers,
+    bool demoMode = false,
+    ScheduleDistributionWeights? distributionWeights,
+  }) {
+    final demand = ScheduleForecastDemandResolver.resolve(
+      targetPPA: profile.targetPPA,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+      demoMode: demoMode,
+    );
     return ScheduleForecastNotifier(
       targetCPLH: profile.targetCPLH,
       targetPPA: profile.targetPPA,
@@ -46,74 +87,152 @@ class ScheduleForecastNotifier extends ChangeNotifier {
       fohWage: profile.fohWage,
       bohWage: profile.bohWage,
       theoreticalLaborPct: profile.theoreticalLaborPct,
+      initialCovers: demand.forecastCovers,
+      coversSource: demand.coversSource,
+      salesSource: demand.salesSource,
+      distributionWeights: distributionWeights,
     );
   }
 
-  int get weeklyCovers => _weeklyCovers;
+  /// The current weekly [SchedulePlan]. Null when demand is unavailable.
+  SchedulePlan? get plan => _plan;
 
-  void setCovers(int covers) {
-    if (covers > 0) {
-      _weeklyCovers = covers;
-      notifyListeners();
-    }
+  /// Whether a valid plan exists.
+  bool get hasPlan => _plan != null;
+
+  int get weeklyCovers => _plan?.forecastCovers ?? 0;
+
+  /// Current covers source provenance.
+  ForecastDemandSource get coversSource =>
+      _plan?.coversSource ?? ForecastDemandSource.unavailable;
+
+  /// Current sales source provenance.
+  ForecastDemandSource get salesSource =>
+      _plan?.salesSource ?? ForecastDemandSource.unavailable;
+
+  /// Human-readable label for the current forecast source.
+  String get forecastSourceLabel =>
+      _plan?.coversSourceLabel ?? 'Unavailable';
+
+  /// Updates distribution weights and rebuilds the plan.
+  ///
+  /// Preserves current covers, provenance, and targets. Does not reset
+  /// manager-entered covers — only the day/daypart allocation changes.
+  void updateDistributionWeights(ScheduleDistributionWeights? distributionWeights) {
+    if (identical(_distributionWeights, distributionWeights)) return;
+    _distributionWeights = distributionWeights;
+    _rebuildPlan();
+    notifyListeners();
   }
 
-  /// Updates target values from the current active profile.
+  /// Updates target values from the current active profile and rebuilds the plan.
   void updateTargets(ActiveTargetProfile profile) {
     _targetCPLH = profile.targetCPLH;
     _targetPPA = profile.targetPPA;
     _targetSPLH = profile.targetSPLH;
     _fohWage = profile.fohWage;
     _bohWage = profile.bohWage;
-    _theoreticalLaborPct = profile.theoreticalLaborPct;
+    _rebuildPlan();
     notifyListeners();
   }
 
-  int get requiredFohHours =>
-      LaborModel.modelFohHours(_weeklyCovers, _targetCPLH);
-  int get requiredBohHours =>
-      LaborModel.modelBohHours(_weeklyCovers, _targetPPA, _targetSPLH);
-  double get forecastedFohLaborDollar => requiredFohHours * _fohWage;
-  double get forecastedBohLaborDollar => requiredBohHours * _bohWage;
-  double get forecastedTotalLaborDollar =>
-      forecastedFohLaborDollar + forecastedBohLaborDollar;
-  double get theoreticalLaborPct => _theoreticalLaborPct;
+  void _rebuildPlan() {
+    if (_plan == null) return; // no plan to rebuild
+    _plan = SchedulePlanResolver.resolveFromValues(
+      forecastCovers: _plan!.forecastCovers,
+      targetPPA: _targetPPA,
+      targetCPLH: _targetCPLH,
+      targetSPLH: _targetSPLH,
+      fohWage: _fohWage,
+      bohWage: _bohWage,
+      coversSource: _plan!.coversSource,
+      salesSource: _plan!.salesSource,
+      distributionWeights: _distributionWeights,
+    );
+  }
 
-  /// Adjusted days with model hours computed from injected target values.
+  // ── Delegated weekly-level getters ─────────────────────────────────────────
+
+  double get forecastedSales => _plan?.forecastSales ?? 0;
+  int get requiredFohHours => _plan?.requiredFohHours ?? 0;
+  int get requiredBohHours => _plan?.requiredBohHours ?? 0;
+  double get forecastedFohLaborDollar => _plan?.theoreticalFohLaborDollars ?? 0;
+  double get forecastedBohLaborDollar => _plan?.theoreticalBohLaborDollars ?? 0;
+  double get forecastedTotalLaborDollar => _plan?.theoreticalTotalLaborDollars ?? 0;
+  double get theoreticalLaborPct => _plan?.theoreticalLaborPct ?? 0;
+
+  /// Day views from the shared [SchedulePlan] day rows.
+  /// Daypart sub-rows are a presentation concern — built from plan day covers.
+  ///
+  /// When [_distributionWeights] has day-specific daypart weights for a given
+  /// day, those weights drive the subrow split. Otherwise falls back to
+  /// [WeekDayOrder.daypartsFor] + [_daypartCoverWeight].
   List<ScheduleDayView> get adjustedDayViews {
-    final defaultTotal = ScheduleForecastDefaults.defaultDays
-        .fold<int>(0, (s, d) => s + d.forecastCovers);
-    final ratio = _weeklyCovers / defaultTotal;
-    return ScheduleForecastDefaults.defaultDays.map((d) {
-      final covers = (d.forecastCovers * ratio).round();
-      final foh = LaborModel.modelFohHours(covers, _targetCPLH);
-      final boh = LaborModel.modelBohHours(covers, _targetPPA, _targetSPLH);
+    if (_plan == null) return [];
+    return _plan!.dayPlans.map((dp) {
+      // Resolve daypart IDs and integer cover weights for this day.
+      final daypartData = _resolveDaypartWeights(dp.day);
+      final ids = daypartData.map((e) => e.$1).toList();
+      final intWeights = daypartData.map((e) => e.$2).toList();
 
-      // Build daypart sub-rows — covers weighted by fixture daypart proportions
-      final ids = WeekDayOrder.daypartsFor(d.day);
-      final weights = ids.map((id) => _daypartCoverWeight[id] ?? 1.0).toList();
-      final totalWeight = weights.fold(0.0, (s, w) => s + w);
-      final subrows = totalWeight > 0
-          ? List.generate(ids.length, (i) {
-              final dpCovers = (covers * weights[i] / totalWeight).round();
-              return ScheduleDaySubrow(
-                label: _daypartLabel(ids[i]),
-                forecastCovers: dpCovers,
-                requiredFohHours:
-                    LaborModel.modelFohHours(dpCovers, _targetCPLH),
-                requiredBohHours:
-                    LaborModel.modelBohHours(dpCovers, _targetPPA, _targetSPLH),
-              );
-            })
-          : <ScheduleDaySubrow>[];
+      // Allocate covers across dayparts using largest-remainder.
+      final subCovers = _allocateLargestRemainder(dp.forecastCovers, intWeights);
+
+      // Derive per-subrow sales from covers × PPA.
+      final subSales = subCovers.map((c) => c * _targetPPA).toList();
+
+      // Allocate FOH hours proportional to subrow covers.
+      final subFoh = _allocateLargestRemainder(dp.requiredFohHours, subCovers);
+
+      // Allocate BOH hours proportional to subrow sales.
+      final subBoh = _allocateLargestRemainderByDouble(
+          dp.requiredBohHours, subSales);
+
+      final subrows = List.generate(ids.length, (i) {
+        return ScheduleDaySubrow(
+          label: _daypartLabel(ids[i]),
+          forecastCovers: subCovers[i],
+          forecastSales: subSales[i],
+          requiredFohHours: subFoh[i],
+          requiredBohHours: subBoh[i],
+        );
+      });
 
       return ScheduleDayView(
-        day: d.day,
-        forecastCovers: covers,
-        requiredFohHours: foh,
-        requiredBohHours: boh,
+        day: dp.day,
+        forecastCovers: dp.forecastCovers,
+        forecastSales: dp.forecastSales,
+        requiredFohHours: dp.requiredFohHours,
+        requiredBohHours: dp.requiredBohHours,
         subrows: subrows,
       );
+    }).toList();
+  }
+
+  /// Resolves daypart IDs and integer weights for a given day.
+  ///
+  /// Prefers data-driven weights from [_distributionWeights] when available
+  /// and containing at least one positive value for the day. Falls back to
+  /// [WeekDayOrder.daypartsFor] + [_daypartCoverWeight].
+  ///
+  /// Returns entries in canonical daypart order: lunch, dinner, late_night,
+  /// then any unknown IDs sorted alphabetically.
+  List<(String, int)> _resolveDaypartWeights(String day) {
+    if (_distributionWeights != null && _distributionWeights!.isAvailable) {
+      final daypartMap = _distributionWeights!.daypartWeightsFor(day);
+      if (daypartMap.isNotEmpty && daypartMap.values.any((v) => v > 0)) {
+        final entries = daypartMap.entries.toList();
+        entries.sort((a, b) => _daypartSortKey(a.key)
+            .compareTo(_daypartSortKey(b.key)));
+        return entries.map((e) => (e.key, e.value)).toList();
+      }
+    }
+    // Fallback: fixture-based daypart IDs with proportional weights
+    // converted to integer basis (multiply by 100 to preserve precision).
+    final ids = WeekDayOrder.daypartsFor(day);
+    return ids.map((id) {
+      final w = _daypartCoverWeight[id] ?? 1.0;
+      return (id, (w * 100).round());
     }).toList();
   }
 }
@@ -136,16 +255,67 @@ String _daypartLabel(String id) {
   }
 }
 
+/// Known daypart sort indices — ensures canonical lunch → dinner → late_night
+/// ordering. Unknown IDs sort after known ones, alphabetically.
+const _knownDaypartOrder = <String, int>{
+  'lunch': 0,
+  'dinner': 1,
+  'late_night': 2,
+};
+
+/// Sort key for daypart ordering: known IDs get low indices, unknown IDs
+/// get a high base plus their alphabetical position.
+String _daypartSortKey(String id) {
+  final idx = _knownDaypartOrder[id];
+  if (idx != null) return '0_$idx';
+  return '1_$id';
+}
+
+/// Largest-remainder allocation of [total] across integer [weights].
+/// Guarantees sum(result) == total. Returns zeros when all weights are zero.
+List<int> _allocateLargestRemainder(int total, List<int> weights) {
+  final weightSum = weights.fold<int>(0, (s, v) => s + v);
+  if (weightSum == 0) return List.filled(weights.length, 0);
+  final fractional = weights.map((w) => total * w / weightSum).toList();
+  return _largestRemainderCore(total, fractional);
+}
+
+/// Largest-remainder allocation of [total] across double [shares].
+List<int> _allocateLargestRemainderByDouble(int total, List<double> shares) {
+  final shareSum = shares.fold<double>(0, (s, v) => s + v);
+  if (shareSum == 0) return List.filled(shares.length, 0);
+  final fractional = shares.map((s) => total * s / shareSum).toList();
+  return _largestRemainderCore(total, fractional);
+}
+
+/// Core largest-remainder: floor each fractional value, then distribute
+/// the remaining units to the slots with the largest fractional parts.
+List<int> _largestRemainderCore(int total, List<double> fractional) {
+  final floors = fractional.map((f) => f.floor()).toList();
+  var remainder = total - floors.fold<int>(0, (s, v) => s + v);
+  final remainders = List.generate(
+      fractional.length, (i) => (i, fractional[i] - floors[i]));
+  remainders.sort((a, b) => b.$2.compareTo(a.$2));
+  for (final entry in remainders) {
+    if (remainder <= 0) break;
+    floors[entry.$1] += 1;
+    remainder -= 1;
+  }
+  return floors;
+}
+
 /// Pre-computed Schedule day row — model hours from injected target values.
 class ScheduleDayView {
   final String day;
   final int forecastCovers;
+  final double forecastSales;
   final int requiredFohHours;
   final int requiredBohHours;
   final List<ScheduleDaySubrow> subrows;
   const ScheduleDayView({
     required this.day,
     required this.forecastCovers,
+    required this.forecastSales,
     required this.requiredFohHours,
     required this.requiredBohHours,
     required this.subrows,
@@ -156,11 +326,13 @@ class ScheduleDayView {
 class ScheduleDaySubrow {
   final String label;
   final int forecastCovers;
+  final double forecastSales;
   final int requiredFohHours;
   final int requiredBohHours;
   const ScheduleDaySubrow({
     required this.label,
     required this.forecastCovers,
+    required this.forecastSales,
     required this.requiredFohHours,
     required this.requiredBohHours,
   });
@@ -173,15 +345,26 @@ class ScheduleBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProxyProvider<ActiveTargetProfileNotifier,
-        ScheduleForecastNotifier>(
+    return ChangeNotifierProxyProvider2<ActiveTargetProfileNotifier,
+        ScheduleDistributionWeightsNotifier, ScheduleForecastNotifier>(
       create: (ctx) {
         final profile =
             ctx.read<ActiveTargetProfileNotifier>().profile;
+        final histCovers = BaselineData.historicalWeeklyAvgCovers;
+        final weights =
+            ctx.read<ScheduleDistributionWeightsNotifier>().weights;
         if (profile != null) {
-          return ScheduleForecastNotifier.fromProfile(profile);
+          return ScheduleForecastNotifier.fromProfile(
+            profile,
+            historicalWeeklyAvgCovers: histCovers,
+            distributionWeights: weights,
+          );
         }
-        // Fallback during initial load — will be updated by proxy
+        // Fallback during initial load — resolve demand through resolver
+        final demand = ScheduleForecastDemandResolver.resolve(
+          targetPPA: BaselineData.derivedTargetPPA,
+          historicalWeeklyAvgCovers: histCovers,
+        );
         return ScheduleForecastNotifier(
           targetCPLH: BaselineData.derivedTargetCPLH,
           targetPPA: BaselineData.derivedTargetPPA,
@@ -189,12 +372,19 @@ class ScheduleBuilder extends StatelessWidget {
           fohWage: MeridianConfig.fohWage,
           bohWage: MeridianConfig.bohWage,
           theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+          initialCovers: demand.forecastCovers,
+          coversSource: demand.coversSource,
+          salesSource: demand.salesSource,
+          distributionWeights: weights,
         );
       },
-      update: (ctx, targetNotifier, previous) {
-        final profile = targetNotifier.profile;
-        if (profile != null && previous != null) {
-          previous.updateTargets(profile);
+      update: (ctx, targetNotifier, weightsNotifier, previous) {
+        if (previous != null) {
+          final profile = targetNotifier.profile;
+          if (profile != null) {
+            previous.updateTargets(profile);
+          }
+          previous.updateDistributionWeights(weightsNotifier.weights);
         }
         return previous!;
       },
@@ -213,15 +403,6 @@ class _ScheduleBuilderContent extends StatefulWidget {
 
 class _ScheduleBuilderContentState
     extends State<_ScheduleBuilderContent> {
-  final TextEditingController _controller =
-      TextEditingController(text: '1200');
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -243,8 +424,8 @@ class _ScheduleBuilderContentState
               style: AppTextStyles.mono10(),
             ),
           ),
-          // Forecast input
-          _ForecastInput(controller: _controller),
+          // Forecast display (read-only, system-resolved)
+          const _ForecastDisplay(),
 
           const SizedBox(height: 8),
 
@@ -277,14 +458,12 @@ class _ScheduleBuilderContentState
   }
 }
 
-class _ForecastInput extends StatelessWidget {
-  final TextEditingController controller;
-
-  const _ForecastInput({required this.controller});
+class _ForecastDisplay extends StatelessWidget {
+  const _ForecastDisplay();
 
   @override
   Widget build(BuildContext context) {
-    final notifier = context.read<ScheduleForecastNotifier>();
+    final notifier = context.watch<ScheduleForecastNotifier>();
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -293,41 +472,23 @@ class _ForecastInput extends StatelessWidget {
         color: AppColors.surface,
         border: Border.all(color: AppColors.rule, width: 1),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'FORECASTED COVERS - NEXT WEEK',
-                  style: AppTextStyles.mono7(),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  style: AppTextStyles.mono22(),
-                  decoration: InputDecoration(
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                    hintText: '1200',
-                    hintStyle:
-                        AppTextStyles.mono22(color: AppColors.secondaryText),
-                  ),
-                  onChanged: (val) {
-                    final parsed = int.tryParse(val);
-                    if (parsed != null && parsed > 0) {
-                      notifier.setCovers(parsed);
-                    }
-                  },
-                ),
-              ],
-            ),
+          Text(
+            'FORECASTED COVERS - NEXT WEEK',
+            style: AppTextStyles.mono7(),
           ),
-          const Icon(Icons.edit, size: 16, color: AppColors.secondaryText),
+          const SizedBox(height: 8),
+          Text(
+            notifier.weeklyCovers.toString(),
+            style: AppTextStyles.mono22(),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Forecast source: ${notifier.forecastSourceLabel}',
+            style: AppTextStyles.mono7(color: AppColors.textMuted),
+          ),
         ],
       ),
     );
@@ -403,6 +564,20 @@ class _CoverBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final days = notifier.adjustedDayViews;
+    if (days.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.rule, width: 1),
+        ),
+        child: Text(
+          'No forecast data available',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      );
+    }
     final maxCovers = days.map((d) => d.forecastCovers).reduce(
           (a, b) => a > b ? a : b,
         );
@@ -515,8 +690,23 @@ class _DayTableState extends State<_DayTable> {
 
   @override
   Widget build(BuildContext context) {
-    final days        = widget.notifier.adjustedDayViews;
+    final days = widget.notifier.adjustedDayViews;
+    if (days.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          border: Border.all(color: AppColors.rule, width: 1),
+        ),
+        child: Text(
+          'No schedule plan available',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      );
+    }
     final totalCovers = days.fold<int>(0, (s, d) => s + d.forecastCovers);
+    final totalSales  = days.fold<double>(0, (s, d) => s + d.forecastSales);
     final totalFoh    = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
     final totalBoh    = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
 
@@ -548,6 +738,7 @@ class _DayTableState extends State<_DayTable> {
                 child: ScheduleDayRow(
                   day: day.day,
                   forecastCovers: day.forecastCovers,
+                  forecastSales: day.forecastSales,
                   requiredFohHours: day.requiredFohHours,
                   requiredBohHours: day.requiredBohHours,
                   trailing: hasSubrows
@@ -565,6 +756,7 @@ class _DayTableState extends State<_DayTable> {
                 ...day.subrows.map((dp) => ScheduleDayRow(
                       day: dp.label,
                       forecastCovers: dp.forecastCovers,
+                      forecastSales: dp.forecastSales,
                       requiredFohHours: dp.requiredFohHours,
                       requiredBohHours: dp.requiredBohHours,
                       isSubrow: true,
@@ -575,9 +767,17 @@ class _DayTableState extends State<_DayTable> {
           ScheduleDayRow(
             day: 'Total',
             forecastCovers: totalCovers,
+            forecastSales: totalSales,
             requiredFohHours: totalFoh,
             requiredBohHours: totalBoh,
             isTotal: true,
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            child: Text(
+              'FOH plans from covers. BOH plans from forecast sales.',
+              style: AppTextStyles.mono7(color: AppColors.textMuted),
+            ),
           ),
         ],
       ),

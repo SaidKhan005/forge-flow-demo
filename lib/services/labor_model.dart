@@ -22,12 +22,20 @@ class LaborModel {
     return (covers / targetCPLH).round();
   }
 
-  // ── BOH model hours ───────────────────────────────────────────────────────
-  // Jim Taylor Ch. 5: (covers × ppa) ÷ targetSPLH = sales ÷ targetSPLH
-  // Pass avgPPA for closed-shift/WTD analysis; pass targetPPA for projection.
-  static int modelBohHours(int covers, double ppa, double targetSPLH) {
+  // ── BOH model hours (sales-first) ──────────────────────────────────────────
+  // Jim Taylor Ch. 5: forecastSales ÷ targetSPLH, rounded to nearest whole hour.
+  // This is the primary BOH formula — BOH staffing is driven by sales volume.
+  static int modelBohHoursFromSales(double forecastSales, double targetSPLH) {
     if (targetSPLH == 0) return 0;
-    return ((covers * ppa) / targetSPLH).round();
+    return (forecastSales / targetSPLH).round();
+  }
+
+  // ── BOH model hours (derived-sales compatibility) ─────────────────────────
+  // Convenience wrapper for surfaces that only have covers + PPA.
+  // Derives forecast sales as covers × ppa, then delegates to the
+  // sales-first formula.
+  static int modelBohHours(int covers, double ppa, double targetSPLH) {
+    return modelBohHoursFromSales(covers * ppa, targetSPLH);
   }
 
   // ── Theoretical labor % ───────────────────────────────────────────────────
@@ -86,6 +94,8 @@ class LaborModel {
   //   avgSPLH / targetSPLH   — enables splh_up / splh_down
   //   avgFohBlendedWage / targetFohWage — enables foh_wage_up / foh_wage_down
   //   avgBohBlendedWage / targetBohWage — enables boh_wage_up / boh_wage_down
+  //   scheduledFohHours / modelFohHours — enables foh_hours_over / foh_hours_under
+  //   scheduledBohHours / modelBohHours — enables boh_hours_over / boh_hours_under
   static String determineLever({
     required int actualCovers,
     required int forecastCovers,
@@ -102,6 +112,11 @@ class LaborModel {
     // BOH wage lever
     double? avgBohBlendedWage,
     double? targetBohWage,
+    // Hours flex levers
+    int? scheduledFohHours,
+    int? modelFohHours,
+    int? scheduledBohHours,
+    int? modelBohHours,
   }) {
     final coversDelta = forecastCovers > 0
         ? (actualCovers - forecastCovers) / forecastCovers
@@ -121,6 +136,8 @@ class LaborModel {
       'splh_down',   'splh_up',
       'foh_wage_down', 'foh_wage_up',
       'boh_wage_down', 'boh_wage_up',
+      'foh_hours_over', 'foh_hours_under',
+      'boh_hours_over', 'boh_hours_under',
     ];
 
     final candidates = <String, double>{
@@ -153,6 +170,20 @@ class LaborModel {
       if (bohWageDelta > 0.03)  candidates['boh_wage_up']   = bohWageDelta.abs();
     }
 
+    // FOH hours flex lever — schedule vs model ±10%
+    if (scheduledFohHours != null && modelFohHours != null && modelFohHours > 0) {
+      final fohFlexDelta = (scheduledFohHours - modelFohHours) / modelFohHours;
+      if (fohFlexDelta > 0.10) candidates['foh_hours_over'] = fohFlexDelta.abs();
+      if (fohFlexDelta < -0.10) candidates['foh_hours_under'] = fohFlexDelta.abs();
+    }
+
+    // BOH hours flex lever — schedule vs model ±10%
+    if (scheduledBohHours != null && modelBohHours != null && modelBohHours > 0) {
+      final bohFlexDelta = (scheduledBohHours - modelBohHours) / modelBohHours;
+      if (bohFlexDelta > 0.10) candidates['boh_hours_over'] = bohFlexDelta.abs();
+      if (bohFlexDelta < -0.10) candidates['boh_hours_under'] = bohFlexDelta.abs();
+    }
+
     if (candidates.isEmpty) return 'covers_down';
 
     // Find the maximum deviation; resolve ties by priority order
@@ -180,6 +211,8 @@ class LaborModel {
       case 'splh_up':
       case 'foh_wage_down':
       case 'boh_wage_down':
+      case 'foh_hours_under':
+      case 'boh_hours_under':
         return true;
       default:
         return false;

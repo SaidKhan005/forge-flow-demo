@@ -52,7 +52,10 @@ class MeridianConfig {
 }
 
 // ─── Demo shift snapshot — Friday dinner, 7:42 PM (shift-level) ──────────────
-// Actual shift numbers vs the dinner_weekend daypart forecast (220 covers).
+// Friday dinner shift — forecast aligned with Schedule demand resolver.
+// Schedule: weeklyCovers ≈ 1,119 → Friday = round(220 × 1119/1200) = 205
+//           Friday dinner = round(205 × 0.40) = 82 covers
+// Actuals: 52 covers (63% of forecast — covers light narrative).
 
 class ShiftSnapshot {
   static const String daypart = 'Dinner';
@@ -61,24 +64,24 @@ class ShiftSnapshot {
   static const String serviceElapsed = '3h 14m into service';
 
   // Shift-level actuals
-  static const int actualCovers = 140;         // running count so far
-  static const int shiftForecastCovers = 220;  // dinner_weekend plan
-  static const int scheduledFohHours = 34;     // hours on the floor tonight
-  static const int scheduledBohHours = 33;     // hours in the kitchen tonight
+  static const int actualCovers = 52;          // running count — covers light
+  static const int shiftForecastCovers = 82;   // Friday dinner from demand resolver
+  static const int scheduledFohHours = 20;     // model+2 (overschedule narrative)
+  static const int scheduledBohHours = 21;     // model+2 (overschedule narrative)
 
   // Computed shift metrics
-  static const double actualPPA = 41.20;       // sales ÷ covers
-  static const double actualCPLH = 4.1;        // 140 ÷ 34
-  static const double actualSPLH = 174.0;      // (140 × 41.20) ÷ 33
+  static const double actualPPA = 41.20;       // sales ÷ covers (kept)
+  static const double actualCPLH = 2.6;        // 52 ÷ 20
+  static const double actualSPLH = 102.0;      // (52 × 41.20) ÷ 21 ≈ 102.0
   static const double blendedWage = 18.74;
 
-  // Model needed for 140 covers
-  static const int modelFohHours = 31;   // 140 ÷ 4.5, rounded
-  static const int modelBohHours = 32;   // 140 × 42 ÷ 180, rounded
+  // Model needed for 82 forecast covers
+  static const int modelFohHours = 18;   // round(82 / 4.578)
+  static const int modelBohHours = 19;   // round(82 × 41.79 / 180.07)
 
   // OPZ status — 'below' | 'in' | 'above'
-  static const String opzStatus = 'in';
-  static const String opzSubLabel = 'Team is producing. Watch covers.';
+  static const String opzStatus = 'below';
+  static const String opzSubLabel = 'Covers are light. Watch the door.';
 
   // ── Runtime active lever (Prompt 7.11) ──────────────────────────────────
   // Uses the same lever-detection model as WTD/History to determine
@@ -520,6 +523,92 @@ class LeverCards {
     weekActionLine: 'Note the kitchen deployment that produced this result.',
   );
 
+  static const fohHoursOver = LeverCardData(
+    id: 'foh_hours_over',
+    metric: 'FOH HOURS DID NOT FLEX DOWN',
+    causeCategory: 'SCHEDULING',
+    side: LeverSide.foh,
+    direction: LeverDirection.unfavorable,
+    whatHappened:
+        'The floor carried more hours than the covers needed. The model says you needed fewer FOH hours '
+        'for what actually walked in — but the schedule didn\'t come down. Those excess hours are showing '
+        'up as labor cost above model. Your BOH is unaffected — this is a front-of-house flex issue.',
+    whatToDo:
+        'Compare your published FOH schedule to the model hours for each daypart. Where the gap is widest, '
+        'that\'s where hours need to be pulled before the shift opens. Don\'t wait until close to find out.',
+    teachingNote:
+        'Study which FOH dayparts carry the most excess hours. If the same slots repeat, the schedule is '
+        'being built above what the forecast supports. The fix is pre-shift — cut before you open, not after.',
+    shortLabel: 'HOURS',
+    isFavorable: false,
+    weekActionLine: 'Pull FOH hours to match model before shifts open.',
+  );
+
+  static const fohHoursUnder = LeverCardData(
+    id: 'foh_hours_under',
+    metric: 'FOH RAN LEAN ON HOURS',
+    causeCategory: 'SCHEDULING',
+    side: LeverSide.foh,
+    direction: LeverDirection.favorable,
+    whatHappened:
+        'FOH hours came in below what the model needed for the volume. The floor ran lean — fewer servers '
+        'covered more guests. As long as PPA held and CPLH stayed inside the OPZ ceiling, this is exactly '
+        'what efficient scheduling looks like. Check your PPA — if it dropped, the team was stretched too thin.',
+    whatToDo:
+        'Cross-check PPA and CPLH for this shift. If PPA held and CPLH stayed below the ceiling, document '
+        'this FOH configuration — it\'s your benchmark. If PPA dropped, the floor was too lean to sell.',
+    teachingNote:
+        'Lean hours are favorable when service metrics hold. Study whether PPA dips when FOH hours run below '
+        'model — if it does, you found the staffing floor. If it doesn\'t, you found the efficient setup.',
+    shortLabel: 'HOURS',
+    isFavorable: true,
+    weekActionLine: 'Document this FOH setup if PPA and service held.',
+  );
+
+  static const bohHoursOver = LeverCardData(
+    id: 'boh_hours_over',
+    metric: 'BOH HOURS DID NOT FLEX DOWN',
+    causeCategory: 'SCHEDULING',
+    side: LeverSide.boh,
+    direction: LeverDirection.unfavorable,
+    whatHappened:
+        'The kitchen carried more hours than the sales volume required. The model says you needed fewer BOH '
+        'hours for what actually came through — but the schedule didn\'t flex. Those excess hours are driving '
+        'labor cost above theoretical. Your FOH is unaffected — this is a back-of-house scheduling issue.',
+    whatToDo:
+        'Review your BOH lineup against actual sales by daypart. Where prep hours or line cooks exceeded what '
+        'the volume needed, that\'s where to tighten. Build next week\'s BOH schedule from sales forecast ÷ '
+        'target SPLH.',
+    teachingNote:
+        'Study which BOH dayparts carry the most excess hours. If kitchen overstaffing repeats in the same '
+        'slots, the schedule is being built above what the sales forecast supports.',
+    shortLabel: 'HOURS',
+    isFavorable: false,
+    weekActionLine: 'Tighten BOH lineup to match model hours by daypart.',
+  );
+
+  static const bohHoursUnder = LeverCardData(
+    id: 'boh_hours_under',
+    metric: 'BOH RAN LEAN ON HOURS',
+    causeCategory: 'SCHEDULING',
+    side: LeverSide.boh,
+    direction: LeverDirection.favorable,
+    whatHappened:
+        'BOH hours came in below what the model needed for the sales volume. The kitchen ran lean — fewer '
+        'hours covered more output. If ticket times stayed clean and food quality held, this is a well-run '
+        'kitchen. Check your SPLH — if it\'s above target, the deployment worked.',
+    whatToDo:
+        'Cross-check SPLH and ticket times. If both held, document this BOH configuration — station '
+        'assignments, prep staging, lineup. That is your replicable kitchen setup. If ticket times slipped, '
+        'the kitchen was stretched too thin.',
+    teachingNote:
+        'Lean kitchen hours are favorable when throughput holds. Study whether ticket times slip when BOH '
+        'hours run below model — if they do, you found the staffing floor. If they don\'t, you found efficiency.',
+    shortLabel: 'HOURS',
+    isFavorable: true,
+    weekActionLine: 'Document this BOH setup if ticket times and quality held.',
+  );
+
   static const List<LeverCardData> all = [
     coversDown,
     coversUp,
@@ -533,6 +622,10 @@ class LeverCards {
     fohWageDown,
     bohWageUp,
     bohWageDown,
+    fohHoursOver,
+    fohHoursUnder,
+    bohHoursOver,
+    bohHoursUnder,
   ];
 
   // Primary lever for demo scenario
@@ -557,6 +650,9 @@ class InputMetric {
   final bool isHero;
   final String statusLine;
   final bool fullWidth;
+  /// Optional support line rendered directly under targetFormatted.
+  /// Used for contextual signals like "In the books 72" on the COVERS card.
+  final String? targetSupportFormatted;
 
   const InputMetric({
     required this.name,
@@ -568,6 +664,7 @@ class InputMetric {
     this.isHero = false,
     required this.statusLine,
     this.fullWidth = false,
+    this.targetSupportFormatted,
   });
 }
 

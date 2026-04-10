@@ -1,12 +1,12 @@
 # Data Alignment Tracker
 
-Updated: 2026-03-31
+Updated: 2026-04-10
 Owner: You
-Purpose: Make sure the app is fully aligned for live POS + labor integrations before Phase 8 begins.
+Purpose: Make sure the app is fully aligned for live POS, labor, and later official reservation integrations before Phase 8 / Phase 8R work begins.
 
 ## North Star
 
-POS + Labor Systems -> Canonical Shift Facts -> Rolling 60-Day Baseline -> Active Target Profile -> Schedule -> Shift -> Variance -> Learn
+POS + Labor + Reservation Systems -> Canonical Operational Facts -> Rolling 60-Day Baseline Build -> Demand Forecast Context + Active Target Profile -> Schedule Plan -> Shift -> Variance -> Learn
 
 ## Desired Separation
 
@@ -23,7 +23,7 @@ Vendor APIs / Fixture Replays
 
 In plain terms:
 
-- API adapters should only pull the relevant POS and labor data.
+- API adapters should only pull the relevant POS, labor, and reservation data.
 - The app should reshape that data into its own canonical format immediately.
 - SQLite should hold at least the restaurant's rolling 60-day operational truth plus current-week and target-profile state.
 - Providers and notifiers should expose current app state from repositories and queries, not from vendor payloads or screen constants.
@@ -31,7 +31,7 @@ In plain terms:
 
 ## Live Data Clarification
 
-- The current repo is not connected to a live POS or labor vendor yet.
+- The current repo is not connected to a live POS, labor, forecast, or reservation vendor yet.
 - Current displayed data is still fixture, replay, or demo-backed at the transport layer.
 - Internally, that data now flows through the same aligned path that live vendor data should use:
   - canonical source facts
@@ -40,6 +40,18 @@ In plain terms:
   - UI rendering
 - Phase 8 should replace fixture or replay transport with live vendor transport.
 - Phase 8 should not replace the internal app-side data flow.
+- Phase 7.55b clarified the Schedule formula seam: FOH required hours are cover-driven and BOH required hours are forecast-sales-driven.
+- Phase 7.55c.2 clarified the Schedule demand-source seam: forecast covers come from POS 60-day history, and forecast sales is always derived as forecast covers * target PPA.
+- Phase 7.55c.2 now adds an app-owned Schedule forecast demand model/resolver so forecast sales and forecast covers carry source provenance before live adapters arrive.
+- Phase 7.55d is closed through `7.55d.3c`: Demand Forecast Context comes from the eligible 60-day cover total divided by 60/7, Active Target Profile carries PPA/CPLH/SPLH/wage/OPZ standards, Schedule Plan combines them for Schedule and Shift, and static/demo closed-shift rows are backfilled with stable locked targets so strict Variance getters remain safe.
+- Phase 7.55e is complete through `7.55e.6a`: distribution weights are data-driven, SQLite operational seed truth comes from deterministic mock POS/labor replay, app runtime no longer depends on hardcoded `DemoData` operational lists, and every seeded `open_shift_snapshots` row carries mock replay source provenance.
+- Phase 7.55f is complete through verified `7.55f.4`: true `business_date` exists on closed ShiftRecords, Manager Override uses a real 60-day business-date window with calendar navigation and candidate actual labor %, lever/date copy is manager-facing, and mock replay reset/advance now reseeds coherent scenario truth across all runtime operational tables.
+- Phase 7.55i is planned to close the remaining non-airtight authority gaps: canonical Demand Forecast Context, shared SchedulePlan read service, explicit WTD target semantics, and Learn benchmark context migration off `BaselineData`.
+- Phase 7.55j is planned as the persistent integration feature/endpoint inventory: every current feature should be mapped to the official POS, labor, and reservation capabilities it needs before Phase 8 / Phase 8R implementation begins.
+- Phase 7.55k is planned for downstream daypart semantics and long-term service-period separation: define the `restaurantId + businessDate + daypart` boundary, decide what can be implemented before live integrations, identify what must wait for official API capability profiles, and make Variance Full Week Projection, History Benchmark Dayparts, and Learn Repeatable Wins use closed daypart evidence honestly while Shift remains whole-business-day until Phase 10.5.
+- Phase 7.56 added an app-side reservation-book signal demo: seeded SQLite reservation snapshots now feed the Shift COVERS card through repository/read-model/UI layers.
+- That reservation signal is not live OpenTable or reservation-platform integration. Official reservation transport, status mapping, and capability profiling remain Phase 8R.
+
 ## Scope Clarification
 
 - Current rollout target: one restaurant or location at a time.
@@ -109,6 +121,17 @@ Minimum fields:
 
 This should exist even when the vendor access is partnership-only, because the app still needs an explicit contract for what the adapter can and cannot provide.
 
+Reservation connectors need the same written capability profile before Phase 8R begins. Minimum reservation-specific fields include:
+
+- official access path and approval status
+- reservation status vocabulary
+- seated/completed/cancelled/no-show status mapping
+- business-date and service/daypart timestamp semantics
+- whether guest-level detail is available and whether the app should intentionally discard it
+- polling, webhook, or event-stream support
+- rate limits, partner restrictions, and data-retention constraints
+- fallback behavior when the reservation platform is unavailable
+
 ## Source Ownership Matrix
 
 The app should keep an explicit matrix of which system owns which operational truths.
@@ -129,8 +152,28 @@ Recommended starting rule:
   - overtime state
   - job or role assignments
   - labor dollars when exposed
+- App derives forecast demand from POS history:
+  - forecast covers = 60-day total covers ÷ (60/7) weeks
+  - forecast sales = forecast covers × target PPA (always derived, never direct input)
+  - no vendor-provided forecast covers or sales
+  - no manager editing of forecast on Schedule — manager influence is Baseline target profile override only
+- Reservation platform owns:
+  - reservation party size
+  - reservation time
+  - reservation status before seating
+  - arrival, waiting, seated, cancelled, and no-show state when exposed
+  - reservation source/service id
 - App owns:
   - daypart mapping rules
+  - labor-model formula boundaries
+  - FOH required-hours derivation from covers and target CPLH
+  - BOH required-hours derivation from forecast or actual sales and target SPLH
+  - forecast-sales derivation as forecast covers * target PPA
+  - Schedule Plan construction from Demand Forecast Context plus Active Target Profile
+  - whole-day Shift plan-vs-actual read model until Phase 10.5 adds service-period live views
+  - schedule forecast demand source precedence and provenance
+  - reservation-book aggregation by restaurant, business date, and daypart
+  - whether a reservation status counts as unseated covers for the Shift signal
   - rolling 60-day baseline
   - active target profile
   - OPZ bounds
@@ -158,7 +201,7 @@ Inputs:
 
 - intraday POS updates
 - labor punch or hour updates
-- schedule or forecast updates
+- closed-shift POS history updates that refresh the 60-day forecast context
 
 Writes:
 
@@ -172,6 +215,35 @@ UI impact:
 - Shift
 - current-week projections
 - schedule/live banners when relevant
+
+### Lane 1R. Reservation Book Signal Lane
+
+Purpose:
+
+- keep the Shift COVERS card aware of known-but-not-yet-seated reservation demand
+
+Inputs:
+
+- official reservation-platform reservation/event data
+- app-owned daypart mapping
+- reservation status mapping from Phase 8R capability profile
+
+Writes:
+
+- raw reservation import/event records when live transport exists
+- `ReservationBookSnapshot`
+
+UI impact:
+
+- Shift COVERS card support line only
+
+Guardrails:
+
+- `ReservationBookSnapshot.unseatedCovers` is context, not actual covers.
+- The signal must not mutate current covers, forecast covers, target covers, labor percent, OPZ, or lever math.
+- Guest-level detail should not be stored or displayed for this Shift-card signal.
+- Phase 7.56 may seed this lane locally for demo proof.
+- Phase 8R must use official platform access only; no scraping, no shared restaurant credentials in the Flutter client, and no direct mobile API secrets.
 
 ### Lane 2. Finalization Lane
 
@@ -301,6 +373,387 @@ poll or receive vendor updates
 -> refresh active target profile when baseline or manager override changes
 -> update provider-backed app state
 ```
+
+## Phase 7.55d Whole-Day Shift / Schedule Alignment Plan
+
+Status: closed through implementation report `7.55d.3c`; this section remains the architecture contract.
+
+Planning artifact:
+
+- `docs/phase_7_55d_whole_day_shift_schedule_plan.md`
+
+Corrected architecture:
+
+- The 60-day baseline process produces two sibling outputs, not one overloaded object.
+- Demand Forecast Context comes from the eligible 60-day closed-shift cover total divided by 60/7.
+- Active Target Profile comes from baseline-selected standards: target PPA, target CPLH, target SPLH, wage standards, OPZ, and theoretical labor standards.
+- Schedule Plan combines Demand Forecast Context + Active Target Profile.
+- Schedule renders from Schedule Plan.
+- Shift compares whole-business-day live/current actuals against today's Schedule Plan.
+- Daypart closed facts remain the finalization truth for Variance, History, and Learn.
+- Live daypart-aware Shift views remain Phase 10.5, not 7.55d.
+
+Formula chain:
+
+```text
+60-day total covers / (60 / 7) = weekly forecast covers
+weekly forecast covers * target PPA = weekly forecast sales
+weekly forecast covers / target CPLH = required FOH hours
+weekly forecast sales / target SPLH = required BOH hours
+```
+
+Manager Override planning impact:
+
+- Manager Override can change active target standards through the selected baseline shifts.
+- Changing target PPA must not change forecast covers.
+- Changing target PPA must change forecast sales because forecast sales = forecast covers * target PPA.
+- Changing target PPA must affect BOH required hours because BOH required hours = forecast sales / target SPLH.
+- FOH required hours should change only when forecast covers or target CPLH changes.
+- Closed historical shifts and live actuals must not be rewritten by Manager Override.
+
+Prompt breakdown:
+
+Closed prompt breakdown:
+
+- `7.55d.1`: created the SchedulePlan math contract and made Schedule render from it.
+- `7.55d.2`: made Shift consume today's whole-business-day SchedulePlan and whole-day live/current actuals.
+- `7.55d.3`: expanded Manager Override impact preview and audit proof for PPA/plan effects.
+- `7.55d.3a`: corrected WTD, WeekRecord, and ShiftFact BOH model hours to use actual sales instead of target PPA.
+- `7.55d.3b`: corrected closed Variance detail target/model hours to use locked actual-volume getters.
+- `7.55d.3c`: backfilled static/demo locked target fields from stable `MeridianConfig` defaults so strict historical getters stay strict and demo Variance expansion no longer throws.
+
+Remaining follow-up:
+
+- Canonical demand and shared SchedulePlan service authority are intentionally moved to Phase 7.55i.
+
+## Phase 7.55e Distribution + Mock Integration Replay
+
+Status: complete through `7.55e.6a`.
+
+Planning artifact:
+
+- `docs/phase_7_55e_distribution_architecture_findings.md`
+
+Verified implementation:
+
+- `7.55e.1`: added immutable `ScheduleDistributionWeights` and pure `DistributionWeightBuilder` from closed `ShiftRecord`s.
+- `7.55e.2`: made `SchedulePlanResolver` accept optional distribution weights for weekly-to-day allocation while preserving weekly-level planning math.
+- `7.55e.3`: made Schedule daypart subrows consume day x daypart weights with largest-remainder reconciliation and fallback behavior.
+- `7.55e.4`: added runtime loading through `ScheduleDistributionWeightsNotifier`, wired into `ForgeFlowScope`, and passed closed-shift-derived weights into Schedule.
+- `7.55e.5`: added deterministic mock POS/labor integration replay into SQLite operational seed truth.
+- `7.55e.6`: retired production runtime dependence on `DemoData` operational lists; `StaticShiftDataSource` is now mock-replay-backed test/preview compatibility.
+- `7.55e.6a`: stamped mock provenance on every seeded `open_shift_snapshots` row, including projected/open/closed snapshot rows.
+
+Live-polish note:
+
+- `ScheduleDistributionWeightsNotifier` currently loads on app startup. Add a refresh hook after new shifts close during the same app session so Schedule distribution weights can update without an app restart. This is not a 7.55e.4 blocker; it belongs to the live integration/post-close refresh path.
+
+Remaining 7.55e follow-up:
+
+- None.
+
+Architecture target:
+
+```text
+mock POS/labor integration replay
+-> raw/import metadata where useful
+-> normalized shift_records / week_records / open_shift_snapshots
+-> DistributionWeightBuilder
+-> SchedulePlanResolver
+-> Schedule day rows and daypart subrows
+```
+
+Guardrails:
+
+- This is still mock transport, not a live vendor connector.
+- The mock replay should behave like the future official integration path: write canonical operational facts into SQLite, then let repositories/notifiers/screens read from SQLite.
+- Do not add live vendor credentials, scraping, or unofficial APIs.
+- Do not start true `business_date` persistence here; that belongs to 7.55f unless a later prompt explicitly pulls it forward.
+- Do not remove fallback defaults yet. Schedule must remain safe with insufficient history.
+- Daypart distribution is planning shape, not live intraday truth. Live service-period views remain Phase 10.5.
+
+## Phase 7.55f Manager Override Calendar + business_date
+
+Status: complete through verified `7.55f.4`.
+
+Planning artifact:
+
+- `docs/phase_7_55f_manager_override_calendar_plan.md`
+
+Verified implementation:
+
+- `7.55f.1`: persisted `business_date` on closed `ShiftRecord`s, added SQLite migration/backfill, stamped mock replay rows, and added true closed-shift date-range queries.
+- `7.55f.1a`: hardened V12 backfill so malformed legacy week/day rows remain null instead of fabricating sentinel dates.
+- `7.55f.1b`: made business-date helpers require strict `YYYY-W##` week ids and removed lib-side `1970-01-01` fallback behavior.
+- `7.55f.2`: made Manager Override candidate loading use the latest closed `businessDate` as the anchor for an inclusive 60-day window, added candidate `businessDate` + historical actual labor %, and added draft-only Clear All behavior.
+- `7.55f.3`: replaced the flat candidate list with a 60-day calendar -> day-detail flow anchored to candidate `businessDate`.
+- `7.55f.3a`: removed DST-sensitive calendar iteration and added focused regression proof around the DST boundary.
+- `7.55f.3b`: added available/suggested/selected calendar states + legend, natural-language copy, human-friendly date text, and a larger Clear All touch target while keeping the candidate pool broad and selection shift-level.
+- `7.55f.3c`: fixed lever chips to preserve full canonical lever meaning instead of collapsing distinct levers into generic metric buckets.
+- `7.55f.4`: added persistent mock replay business-date state, scenario-aware replay generation, reset/advance controls, scenario-aware Manager Override anchoring, and coherent reseeding across `shift_records`, `week_records`, `open_shift_snapshots`, and `reservation_book_snapshots`.
+
+Guardrails:
+
+- Candidate tile `LABOR %` must remain historical actual labor percentage from the closed shift.
+- Preview panel `LABOR %` must remain downstream `SchedulePlan` theoretical labor percentage.
+- Suggested-star-day highlighting is advisory only; it must not shrink the candidate pool or change selection persistence semantics.
+- Manager Override selection still operates at the shift/daypart level, not as a whole-day boolean.
+- Non-blocking note: some test/preview compatibility surfaces still intentionally read `MockIntegrationReplaySeed.output`, so they remain fixed to the default scenario while runtime SQLite-backed surfaces move with the mock replay clock.
+
+## Phase 7.55i Canonical Demand + Shared SchedulePlan Authority
+
+Status: planned, not implemented.
+
+Planning artifact:
+
+- `docs/phase_7_55i_canonical_demand_schedule_plan_authority.md`
+
+Reason this exists:
+
+- Phase 7.55e covers distribution weights.
+- Phase 7.55f covers true business-date windows.
+- Phase 7.55g covers Schedule/Baseline presentation.
+- Phase 7.55h covers blended wage and decimal consistency.
+- None of those fully retire the remaining `BaselineData` compatibility bridge or guarantee that Schedule, Shift, Manager Override preview, and Data Alignment Audit all consume one resolved plan authority.
+
+Required architecture:
+
+```text
+closed ShiftRecords
+-> rolling 60-day Baseline Context
+-> Demand Forecast Context + ActiveTargetProfile + distribution weights
+-> shared SchedulePlan authority
+-> Schedule + Shift + Audit
+```
+
+7.55i must keep these boundaries:
+
+- ActiveTargetProfile owns standards only: PPA, CPLH, SPLH, wage standards, OPZ, theoretical standards.
+- Demand Forecast Context owns forecast covers and demand provenance.
+- SchedulePlan combines demand + standards + distribution.
+- Reservation `In the books` remains contextual and never mutates forecast covers.
+- Target PPA can affect forecast sales and BOH plan hours, but must not rewrite actual sales, covers, or actual PPA.
+
+Implementation scope:
+
+- Add a repository-backed Demand Forecast Context or equivalent read service.
+- Replace production-facing `BaselineData.historicalWeeklyAvgCovers` plan/demand reads in Schedule, Shift, Data Alignment Audit, and Manager Override preview where feasible.
+- Add a shared SchedulePlan read service so Schedule and Shift no longer independently choose demand inputs.
+- Decide whether WTD Variance compares against current active targets or closed-shift locked targets, then test and label that behavior.
+- Move Learn benchmark/target context away from mutable `BaselineData` and onto persisted active target/baseline summary state.
+- End with a grep/audit note for any remaining `BaselineData` imports and why each remaining use is allowed.
+
+Acceptance proof:
+
+- The same restaurant/date/profile inputs produce the same SchedulePlan values in Schedule, Shift, Audit, and Manager Override preview.
+- Forecast covers remain fixed when Manager Override changes target PPA.
+- Forecast sales and BOH plan hours change when Manager Override changes target PPA.
+- FOH plan hours change only when forecast covers or target CPLH changes.
+- Closed ShiftRecord truth and actual-sales BOH model hours are not rewritten by target PPA.
+- Learn pattern analysis remains closed-history-driven and benchmark context is repository-backed.
+
+## Phase 7.55j Integration Feature + Endpoint Inventory
+
+Status: planned, not implemented.
+
+Persistent planning artifact:
+
+- `docs/phase_7_55j_integration_feature_endpoint_inventory.md`
+
+Reason this exists:
+
+- The app should not enter Phase 8 / Phase 8R with vague assumptions about what the POS, labor, or reservation systems expose.
+- The integration work should fully power Baseline, Schedule, Shift, Variance, History, Learn, and Data Alignment Audit instead of pulling only the first fields needed by one screen.
+- Endpoint names are vendor-specific and should be filled in after vendor selection, but the app's required capabilities can be listed now.
+
+Required 7.55j audit output:
+
+- feature inventory across Baseline, Schedule, Shift, Variance, History, Learn, Settings/status, Data Alignment Audit, and Reservation `In the books`
+- required POS fields and endpoint capabilities
+- required labor fields and endpoint capabilities
+- required reservation fields and endpoint capabilities
+- freshness requirements: historical backfill, daily close, intraday, or live
+- source ownership and fallback behavior
+- connector-readiness gaps before Phase 8 / Phase 8R
+
+Core integration requirements:
+
+- POS must provide official access to location mapping, business date, closed sales/covers, live/intraday sales when available, source ids, close/finalization or correction semantics, and historical backfill.
+- Labor must provide official access to schedules, time punches, roles/job codes, FOH/BOH mapping inputs, wages or labor dollars, actual hours, scheduled hours, and correction/finalization semantics.
+- Reservation platform must provide official access to reservation id, business date/time, party size, status vocabulary, status timestamps, and enough status mapping to calculate unseated covers.
+
+Guardrail:
+
+- Vendor forecast fields may be documented if available, but current Schedule demand policy remains app-derived: forecast covers from POS history and forecast sales from covers * target PPA.
+
+## Phase 7.55k Daypart Separation, Variance, History, and Learn
+
+Status: planned, not implemented.
+
+Planning artifact:
+
+- `docs/phase_7_55k_daypart_variance_history_learn_plan.md`
+
+Reason this exists:
+
+- Baseline and Schedule are now meaningfully daypart-aware.
+- Shift is still intentionally whole-business-day until Phase 10.5.
+- Variance Full Week already renders day/daypart rows but mixes closed, open, and projected states.
+- History and Learn currently summarize daypart labels from lightweight pattern records, not rich daypart benchmark evidence.
+- Full daypart separation needs a long-term service-period boundary before the app starts adapting to vendor-specific API quirks.
+
+Required architecture:
+
+```text
+closed daypart ShiftRecords
+-> daypart pattern summaries
+-> History benchmark dayparts
+-> Learn repeatable wins
+```
+
+7.55k must keep these boundaries:
+
+- Closed daypart facts are eligible for History and Learn.
+- Open/projected rows are not eligible for benchmark or repeatable-win history.
+- Full Week Projection can show closed/open/projected daypart rows, but every row must keep its scope explicit.
+- Shift remains whole-business-day in this phase.
+- Live service-period Shift views remain Phase 10.5.
+- The long-term service-period key is `restaurantId + businessDate + daypart`; `weekId` and `dayLabel` are grouping/display fields.
+- Vendor-specific DTOs and endpoint semantics must stay in adapters, not leak into UI/read models.
+
+Implementation scope:
+
+- Audit daypart scope across Variance, History, and Learn.
+- Document the long-term full daypart separation plan and read-service boundaries.
+- Identify which decisions must wait for official POS/labor/reservation API capability profiles.
+- Define which weak daypart claims should be hidden or soft-labeled until enough closed evidence exists.
+- Add or plan a richer closed-shift daypart summary model with counts, averages, lever frequency, and exemplar source ids.
+- Tighten Variance Full Week row labels and reconciliation tests.
+- Upgrade History Benchmark Dayparts from simple frequency labels to evidence-backed daypart summaries.
+- Upgrade Learn Repeatable Wins so the card explains why a win repeats, not just where it repeated.
+- Feed new endpoint/field requirements back into 7.55j.
+
+Acceptance proof:
+
+- Day row totals reconcile to expanded daypart rows in Variance Full Week.
+- Closed rows use locked target truth and actual-volume model hours.
+- Open/projected rows remain clearly non-final.
+- History benchmark dayparts are closed-history-only.
+- Learn Repeatable Wins excludes open/projected rows and carries enough evidence to justify the coaching.
+- Tracker notes continue to state that Shift is whole-day until Phase 10.5.
+
+## Phase 7.55b Schedule Demand-Source Status
+
+Phase 7.55b is complete on the app-side Schedule path.
+
+Current implementation:
+
+- `LaborModel` remains the single formula source.
+- `LaborModel.modelBohHoursFromSales(forecastSales, targetSPLH)` is now the primary BOH required-hours formula.
+- `LaborModel.modelBohHours(covers, ppa, targetSPLH)` remains as a compatibility helper for surfaces that only have covers and PPA.
+- `ScheduleForecastNotifier.forecastedSales` currently derives forecast sales as weekly forecast covers * target PPA.
+- Schedule day and daypart row view models now carry `forecastSales`.
+- Schedule BOH required hours calculate from forecast sales.
+- The Schedule table now presents `DAY | COVERS | SALES | FOH HRS | BOH HRS`.
+- The Schedule table includes short copy: `FOH plans from covers. BOH plans from forecast sales.`
+
+Architectural guardrail:
+
+- FOH Schedule demand is cover-driven.
+- BOH Schedule demand is forecast-sales-driven.
+- Forecast covers come from POS 60-day history.
+- Forecast sales is app-derived as forecast covers * target PPA, not vendor-provided.
+- Reservation-book signals may inform known future demand context, but they must not cause BOH required hours to be modeled as cover-driven.
+
+Verification recorded on 2026-04-09:
+
+- `flutter analyze` passed.
+- `flutter test test/labor_model_boh_sales_test.dart test/target_consistency_opz_test.dart` passed.
+- Full `flutter test` passed with 533 tests.
+- `git diff --check` reported no whitespace errors; only expected CRLF warnings.
+
+## Phase 7.55c Schedule Forecast Demand-Source Status
+
+Phase 7.55c.2 is complete on the app-side Schedule path.
+
+Planning and implementation artifact:
+
+- `docs/phase_7_55c_schedule_forecast_demand_source_plan.md`
+
+Current implementation:
+
+Architecture: covers always from POS 60-day history; sales always derived as covers × target PPA.
+
+- `ForecastDemandSource` enum: `appDerivedFromHistoricalAverage` (primary), `appDerivedFromCoversAndPpa` (sales derivation), `appDerivedFromReservationAndWalkInModel` (Phase 8R future), `demoFallback`, `unavailable`.
+- `ScheduleForecastDemand` carries resolved weekly forecast sales, forecast covers, and source provenance.
+- `ScheduleForecastDemandResolver` waterfall: POS 60-day historical avg → demo fallback → unavailable.
+- Schedule is read-only — no manager editing. Manager influence is Baseline target profile override only.
+- Schedule displays `Forecast source: 60-day weekly average` as provenance.
+- `LaborModel` remains the formula source: FOH hours = forecast covers ÷ target CPLH; BOH hours = forecast sales ÷ target SPLH.
+
+Forecast derivation chain:
+
+```text
+POS closed shifts (60 days) → total covers → ÷ (60/7) → weekly avg covers
+weekly avg covers × target PPA → forecasted sales
+forecasted covers ÷ target CPLH → FOH hours
+forecasted sales ÷ target SPLH → BOH hours
+```
+
+Guardrails:
+
+- Covers always from POS history, never vendor-provided or manager-entered.
+- Sales always derived from covers × PPA, never a direct input.
+- Do not let reservation `in the books` become forecast covers.
+- Do not let BOH required hours become cover-driven.
+- Do not let widgets decide forecast source precedence.
+- Do not leave demo `1200` as an unexplained production default.
+
+Remaining future integration work:
+
+- No live POS, labor, OpenTable, or reservation transport exists yet.
+- Phase 8 replaces the transport (fixture → live POS) but not the derivation logic.
+- The app derives forecast from its own historical data — vendors provide raw shift data, not forecasts.
+
+Verification recorded on 2026-04-10:
+
+- `flutter analyze` passed.
+- `flutter test test/schedule_forecast_demand_resolver_test.dart test/labor_model_boh_sales_test.dart test/target_consistency_opz_test.dart` passed with 63 tests.
+- Full `flutter test` passed with 541 tests.
+- `git diff --check` reported no whitespace errors; only expected CRLF warnings.
+
+## Phase 7.56 Reservation Signal Status
+
+Phase 7.56 is complete on the app-side demo path.
+
+Current implementation:
+
+- `ReservationBookSnapshot` is the app-owned aggregate for one restaurant, business date, and daypart.
+- SQLite schema v11 adds `reservation_book_snapshots`.
+- The demo seed writes Friday dinner with `72` unseated covers and `18` unseated parties.
+- Shift dashboard notifier/service read the snapshot through the SQLite repository.
+- `ShiftDashboardReadModel.inTheBooksCovers` carries the optional display value.
+- The COVERS card renders `In the books 72` under the existing forecast line only when a snapshot exists.
+
+Non-claims:
+
+- No live OpenTable or reservation-platform API has been implemented.
+- No guest-level reservation details are displayed.
+- No reservation data changes operational math.
+- Phase 8R remains responsible for official vendor transport, capability profile, status mapping, and sync policy.
+
+Verification recorded on 2026-04-09:
+
+- `flutter analyze` passed.
+- Focused reservation repository, notifier, and widget tests passed.
+- OPZ contract test passed after stale 7.55 expectation cleanup.
+- Full `flutter test` passed with 525 tests.
+
+Commit hygiene:
+
+- The current dirty worktree mixes Phase 7.55 stabilization, Phase 7.56 reservation signal work, tracker/docs updates, and one stale OPZ test-contract cleanup.
+- Prefer separate commits by phase and purpose before review.
+- If committed together, the commit message should explicitly name the mixed scope.
 
 ## Why This Exists
 
@@ -452,7 +905,10 @@ This rule exists to prevent false negatives while Phases 5 and 6 are still being
 ### 4. Tabs Are Functionally Aligned
 
 - Baseline is the source-of-truth tab for targets and ranges.
-- Schedule uses forecast covers plus the active target profile.
+- Schedule uses forecast covers for FOH demand, forecast sales for BOH demand, and the active target profile for target CPLH, target SPLH, target PPA, and wage targets.
+- Forecast covers come from POS 60-day history.
+- Forecast sales is always derived as forecast covers * target PPA, and downstream BOH math treats that derived forecast sales as the input.
+- Schedule should retain demand-source provenance for forecast covers and forecast sales.
 - Shift uses live or imported operational facts plus the active target profile.
 - Variance uses closed-shift and week-rollup facts, with locked targets where appropriate.
 - History and Learn teach repeating patterns from tracked facts, not from hand-authored summaries.
@@ -888,7 +1344,10 @@ These are the implementation-level read boundaries the app should converge on.
 - Baseline
   - reads `BaselineBuild` and `ActiveTargetProfile`
 - Schedule
-  - reads forecast input plus `ActiveTargetProfile`
+  - reads POS-history forecast covers, app-derived forecast sales, and `ActiveTargetProfile`
+  - derives forecast sales as forecast covers * target PPA
+  - never derives forecast covers from sales
+  - should retain forecast source/provenance instead of treating demand as anonymous screen state
 - Shift
   - reads `OpenShiftSnapshot` plus `ActiveTargetProfile`
 - Variance -> This Week
@@ -1170,6 +1629,7 @@ Do not start live adapter work until `Phase 7.51` is complete and the answer is 
 - fixture bundles that mimic future vendor inputs
 - a local import or replay harness
 - written connector capability profiles for the first target vendors
+- written reservation connector capability profile before Phase 8R official reservation transport starts
 - a source-ownership matrix for POS fields, labor fields, and app-owned derivations
 - persistence separation between raw imports, canonical records, and target state
 - explicit restaurant or location scope in canonical models and persistence

@@ -155,7 +155,7 @@ void main() {
       BaselineData.applyManagerOverride(_overrideRecords);
 
       final expectedValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
 
       await tester.pumpWidget(
           MaterialApp(home: Scaffold(body: ZoneStatusCard(
@@ -177,12 +177,12 @@ void main() {
         (tester) async {
       // Capture the seed target value before any override
       final seedTargetValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
 
       BaselineData.applyManagerOverride(_overrideRecords);
 
       final overrideTargetValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
 
       // Verify values differ (test is only meaningful when they do)
       expect(overrideTargetValue, isNot(equals(seedTargetValue)));

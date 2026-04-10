@@ -26,6 +26,28 @@ class OpenShiftSnapshotDao {
     return OpenShiftSnapshot.fromMap(rows.first);
   }
 
+  Future<String?> getCurrentBusinessDate(String restaurantId) async {
+    final rows = await _db.query(
+      'open_shift_snapshots',
+      columns: ['business_date'],
+      where: "restaurant_id = ? AND status = 'open'",
+      whereArgs: [restaurantId],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['business_date'] as String;
+  }
+
+  Future<List<OpenShiftSnapshot>> getSnapshotsForDay(
+      String restaurantId, String businessDate) async {
+    final rows = await _db.query(
+      'open_shift_snapshots',
+      where: 'restaurant_id = ? AND business_date = ?',
+      whereArgs: [restaurantId, businessDate],
+    );
+    return rows.map(OpenShiftSnapshot.fromMap).toList();
+  }
+
   Future<void> replaceOpenShiftSnapshot(OpenShiftSnapshot snapshot) async {
     await _db.transaction((txn) async {
       await txn.delete(

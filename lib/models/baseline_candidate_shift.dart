@@ -14,6 +14,14 @@ class BaselineCandidateShift {
   final String primaryLeverId;  // normalizedLeverId from ShiftRecord
   final bool isSelected;
 
+  /// ISO 8601 business date from ShiftRecord (e.g. '2026-03-27').
+  /// Nullable for backward compatibility with older records.
+  final String? businessDate;
+
+  /// Historical actual labor percentage from the closed shift
+  /// (ShiftRecord.totalLaborPct). This is not the target/theoretical value.
+  final double actualLaborPct;
+
   const BaselineCandidateShift({
     required this.recordKey,
     required this.weekId,
@@ -26,6 +34,8 @@ class BaselineCandidateShift {
     required this.ppa,
     required this.primaryLeverId,
     required this.isSelected,
+    this.businessDate,
+    this.actualLaborPct = 0.0,
   });
 
   String get daypartLabel {
@@ -52,6 +62,8 @@ class BaselineCandidateShift {
       ppa:            ppa,
       primaryLeverId: primaryLeverId,
       isSelected:     isSelected ?? this.isSelected,
+      businessDate:   businessDate,
+      actualLaborPct: actualLaborPct,
     );
   }
 }

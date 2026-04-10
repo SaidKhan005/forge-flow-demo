@@ -166,6 +166,85 @@ void main() {
     });
   });
 
+  // ── Actual-sales BOH model-hour guardrail (Phase 7.55d.3a) ─────────────────
+
+  group('ShiftFactBuilder — BOH model hours use actual sales, not target PPA', () {
+    test('boh_hours_over fires when model BOH uses actual sales but not target PPA', () {
+      // Scenario: high volume to amplify the PPA gap into different model BOH.
+      //   actual covers = 1000, actual sales = 40000 → actual PPA = 40
+      //   target PPA = 41 (delta = −2.4%, below 3% threshold → no PPA lever)
+      //   target SPLH = 100
+      //
+      //   Actual-sales model BOH = 40000 / 100 = 400
+      //   Target-PPA model BOH   = 1000 × 41 / 100 = 410
+      //
+      //   scheduled BOH = 445
+      //   vs actual-sales model (400): (445−400)/400 = 11.25% > 10% → boh_hours_over
+      //   vs target-PPA model  (410): (445−410)/410 = 8.5%  < 10% → would NOT fire
+      //
+      //   All other levers kept neutral:
+      //   - covers: 1000 vs 1000 forecast → 0%
+      //   - CPLH: 1000/250 = 4.0 vs 4.0 target → 0%
+      //   - SPLH: 40000/400 = 100 vs 100 target → 0%
+      //   - wages: fallback = target wage → 0%
+      //   - FOH hours: 250 scheduled vs 250 model → 0%
+      const snapshot = TargetSnapshot(
+        targetCPLH: 4.0,
+        targetSPLH: 100.0,
+        targetPPA: 41.0,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        opzFloorCPLH: 3.0,
+        opzCeilingCPLH: 5.5,
+        theoreticalFohLaborPct: 10.0,
+        theoreticalBohLaborPct: 10.0,
+        theoreticalLaborPct: 20.0,
+      );
+
+      final input = ClosedShiftInput(
+        businessDate: DateTime(2026, 3, 23),
+        weekId: '2026-W13',
+        dayLabel: 'Mon',
+        daypart: 'lunch',
+        covers: 1000,
+        forecastCovers: 1000,
+        actualSales: 40000.0,      // actual PPA = 40
+        actualFohHours: 250,       // CPLH = 1000/250 = 4.0 = target
+        actualBohHours: 400,       // SPLH = 40000/400 = 100 = target
+        scheduledFohHours: 250,    // exact match to model FOH (1000/4.0=250)
+        scheduledBohHours: 445,    // over model BOH
+        sourceSystem: 'test',
+        sourceShiftId: 'guardrail-test-001',
+      );
+
+      final fact = ShiftFactBuilder.fromClosedShiftInput(input, snapshot);
+
+      // The actual-sales model BOH = 40000 / 100 = 400
+      final expectedModelBoh = LaborModel.modelBohHoursFromSales(40000.0, 100.0);
+      expect(expectedModelBoh, 400);
+
+      // The target-PPA model BOH would be 1000 × 41 / 100 = 410
+      final targetPpaModelBoh = LaborModel.modelBohHours(1000, 41.0, 100.0);
+      expect(targetPpaModelBoh, 410);
+
+      // With actual-sales model (400), scheduled 445 is 11.25% over → fires
+      // With target-PPA model (410), scheduled 445 is 8.5% over → would NOT fire
+      expect(fact.primaryLeverId, 'boh_hours_over');
+    });
+
+    test('model BOH hours on ShiftFact getter uses actual PPA, not target PPA', () {
+      // Verify the ShiftFact.modelBohHours getter also uses actual PPA
+      final fact = ShiftFactBuilder.fromClosedShiftInput(
+        _input(covers: 100, actualSales: 4000.0, actualBohHours: 40),
+        _snapshot,
+      );
+      // ShiftFact.modelBohHours = LaborModel.modelBohHours(covers, ppa, targetSPLH)
+      //   where ppa = actualSales/covers = 40.0
+      final expected = LaborModel.modelBohHoursFromSales(4000.0, _snapshot.targetSPLH);
+      expect(fact.modelBohHours, expected);
+    });
+  });
+
   group('LaborModel.isFavorableLever', () {
     test('ppa_up is favorable', () {
       expect(LaborModel.isFavorableLever('ppa_up'), isTrue);

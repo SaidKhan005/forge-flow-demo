@@ -3,17 +3,23 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
 import '../data/app_data_status_service.dart';
+import '../data/mock_integration_replay_seed.dart';
 import '../data/restaurant_scope_notifier.dart';
+import '../data/schedule_distribution_weights_notifier.dart';
 import '../data/shift_dashboard_notifier.dart';
 import '../data/shift_service.dart';
 import '../data/week_data_notifier.dart';
 import '../models/app_data_status.dart';
+import '../widgets/data_alignment_audit_panel.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// Optional injected status for testability. When null, loads from service.
   final AppDataStatus? initialStatus;
 
-  const SettingsScreen({super.key, this.initialStatus});
+  /// Optional injected mock replay date for testability.
+  final String? initialMockDate;
+
+  const SettingsScreen({super.key, this.initialStatus, this.initialMockDate});
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -21,6 +27,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   AppDataStatus? _status;
+  String? _mockReplayDate;
 
   @override
   void initState() {
@@ -30,11 +37,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } else {
       _loadStatus();
     }
+    if (widget.initialMockDate != null) {
+      _mockReplayDate = widget.initialMockDate;
+    } else {
+      _loadMockDate();
+    }
   }
 
   Future<void> _loadStatus() async {
     final status = await AppDataStatusService.instance.evaluate();
     if (mounted) setState(() => _status = status);
+  }
+
+  Future<void> _loadMockDate() async {
+    final date = await ShiftService.instance.getMockReplayBusinessDate();
+    if (mounted) setState(() => _mockReplayDate = date);
   }
 
   Future<void> _refreshAppState() async {
@@ -47,7 +64,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (_) {
       // Providers may not be available in test injection mode
     }
+    try {
+      context.read<ScheduleDistributionWeightsNotifier>().load();
+    } catch (_) {
+      // ScheduleDistributionWeightsNotifier may not be in scope
+    }
     await _loadStatus();
+    await _loadMockDate();
+  }
+
+  /// Formats an ISO date string as a human-readable label.
+  static String _formatDate(String isoDate) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final parts = isoDate.split('-');
+    if (parts.length != 3) return isoDate;
+    final y = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    final d = int.tryParse(parts[2]);
+    if (y == null || m == null || d == null) return isoDate;
+    final dt = DateTime(y, m, d);
+    return '${weekdays[dt.weekday - 1]}, ${months[m - 1]} $d, $y';
   }
 
   @override
@@ -89,9 +129,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: AppTextStyles.mono8(color: AppColors.textMuted)),
           ),
 
+          // Mock business date display
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            color: AppColors.backgroundMid,
+            child: Row(
+              children: [
+                Text('Mock Business Date',
+                    style: AppTextStyles.mono12(
+                        color: AppColors.textPrimary)),
+                const Spacer(),
+                Text(
+                  _mockReplayDate != null
+                      ? _formatDate(_mockReplayDate!)
+                      : '...',
+                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+
+          Container(height: 1, color: AppColors.borderSubtle),
+
           _SettingsTile(
-            label: 'Load Demo Data',
-            description: 'Reseed 9 closed shifts + 7-week history',
+            label: 'Reset Mock Scenario',
+            description:
+                'Reset to default scenario date (${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)})',
             onTap: () async {
               await ShiftService.instance.reseedDemo();
               await _refreshAppState();
@@ -99,7 +162,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'Demo data loaded.',
+                      'Mock scenario reset to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
+                      style:
+                          AppTextStyles.mono11(color: AppColors.textPrimary),
+                    ),
+                    backgroundColor: AppColors.backgroundMid,
+                    duration: const Duration(seconds: 2),
+                  ),
+                );
+              }
+            },
+          ),
+
+          Container(height: 1, color: AppColors.borderSubtle),
+
+          _SettingsTile(
+            label: 'Advance Mock Day',
+            description: 'Move mock business date forward one day',
+            onTap: () async {
+              await ShiftService.instance.advanceMockReplayDay();
+              await _refreshAppState();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Mock scenario advanced to ${_mockReplayDate != null ? _formatDate(_mockReplayDate!) : "next day"}.',
                       style:
                           AppTextStyles.mono11(color: AppColors.textPrimary),
                     ),
@@ -168,6 +255,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               }
             },
           ),
+
+          const SizedBox(height: 16),
+
+          // Audit section
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Text('AUDIT',
+                style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          ),
+          const DataAlignmentAuditPanel(),
 
           const SizedBox(height: 32),
 

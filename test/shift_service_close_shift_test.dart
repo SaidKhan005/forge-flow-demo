@@ -154,7 +154,7 @@ void main() {
     // WTD reflects the new closed shift
     final wtd = await ShiftService.instance.getWeekToDate('2026-W13', 'Mar 24');
     expect(wtd, isNotNull);
-    expect(wtd!.totalCovers, 1884); // 1580 existing closed + 304
+    expect(wtd!.totalCovers, 989); // 685 mock-replay closed + 304
     expect(wtd.shiftsCompleted, 10);
 
     // â”€â”€ WTD uses stored actual labor dollars, not config-wage fallback â”€â”€â”€â”€â”€â”€
@@ -206,7 +206,7 @@ void main() {
     final record = w13.first;
     expect(record.weekLabel, 'Mar 24');
     expect(record.shiftsCompleted, 14);
-    expect(record.forecastCovers, 2760);
+    expect(record.forecastCovers, 1721);
     expect(record.primaryLeverId, isNotEmpty);
     expect(record.blendedFohWage, greaterThan(0));
     expect(record.blendedBohWage, greaterThan(0));

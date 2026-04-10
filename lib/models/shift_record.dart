@@ -2,6 +2,7 @@
 // Raw inputs are set at close time; all labor % and dollar fields are derived.
 
 import '../data/legacy_fixture_data.dart';
+import '../services/labor_model.dart';
 
 class ShiftRecord {
   final int? id;
@@ -51,6 +52,10 @@ class ShiftRecord {
   final double? theoreticalFohLaborPct;
   final double? theoreticalBohLaborPct;
 
+  /// ISO 8601 date string for the business day of this shift (e.g. '2026-03-27').
+  /// Nullable for backward compatibility with rows created before 7.55f.
+  final String? businessDate;
+
   /// Identifier for the originating system (e.g. "toast", "demo_pos").
   final String? sourceSystem;
 
@@ -89,6 +94,7 @@ class ShiftRecord {
     this.opzCeilingCPLH,
     this.theoreticalFohLaborPct,
     this.theoreticalBohLaborPct,
+    this.businessDate,
     this.sourceSystem,
     this.sourceShiftId,
   });
@@ -147,6 +153,73 @@ class ShiftRecord {
     return value;
   }
 
+  // ── Actual-volume model hours (Jim Taylor Ch. 10) ─────────────────────────
+  // For closed shifts: how many hours the model says you should have used
+  // given the actual volume that walked in the door.
+
+  /// FOH model hours based on actual covers and locked target CPLH.
+  int get modelFohHours =>
+      LaborModel.modelFohHours(covers, lockedTargetCPLH);
+
+  /// BOH model hours based on actual sales and locked target SPLH.
+  /// Uses actual sales directly — never derives from target PPA.
+  int get modelBohHours =>
+      LaborModel.modelBohHoursFromSales(actualSales, lockedTargetSPLH);
+
+  /// Returns a copy with locked target fields filled from the given defaults
+  /// where the original fields are null. Preserves all existing non-null values.
+  ShiftRecord withLockedTargetDefaults({
+    required double defaultTargetCPLH,
+    required double defaultTargetSPLH,
+    required double defaultTargetPPA,
+    required double defaultFohWage,
+    required double defaultBohWage,
+    required double defaultOpzFloorCPLH,
+    required double defaultOpzCeilingCPLH,
+    required double defaultTheoreticalFohLaborPct,
+    required double defaultTheoreticalBohLaborPct,
+    String defaultTargetProfileId = 'demo_static_locked_target',
+    String defaultTargetProfileVersionId = 'demo_static_locked_target_v1',
+    String defaultTargetSourceType = 'static_demo_locked_target',
+  }) {
+    return ShiftRecord(
+      id: id,
+      restaurantId: restaurantId,
+      weekId: weekId,
+      dayLabel: dayLabel,
+      daypart: daypart,
+      status: status,
+      covers: covers,
+      forecastCovers: forecastCovers,
+      ppa: ppa,
+      cplh: cplh,
+      splh: splh,
+      fohHours: fohHours,
+      bohHours: bohHours,
+      theoreticalLaborPct: theoreticalLaborPct,
+      primaryLever: primaryLever,
+      scheduledFohHours: scheduledFohHours,
+      scheduledBohHours: scheduledBohHours,
+      storedFohLaborDollar: storedFohLaborDollar,
+      storedBohLaborDollar: storedBohLaborDollar,
+      targetProfileId: targetProfileId ?? defaultTargetProfileId,
+      targetProfileVersionId: targetProfileVersionId ?? defaultTargetProfileVersionId,
+      targetSourceType: targetSourceType ?? defaultTargetSourceType,
+      targetCPLH: targetCPLH ?? defaultTargetCPLH,
+      targetSPLH: targetSPLH ?? defaultTargetSPLH,
+      targetPPA: targetPPA ?? defaultTargetPPA,
+      targetFohWage: targetFohWage ?? defaultFohWage,
+      targetBohWage: targetBohWage ?? defaultBohWage,
+      opzFloorCPLH: opzFloorCPLH ?? defaultOpzFloorCPLH,
+      opzCeilingCPLH: opzCeilingCPLH ?? defaultOpzCeilingCPLH,
+      theoreticalFohLaborPct: theoreticalFohLaborPct ?? defaultTheoreticalFohLaborPct,
+      theoreticalBohLaborPct: theoreticalBohLaborPct ?? defaultTheoreticalBohLaborPct,
+      businessDate: businessDate,
+      sourceSystem: sourceSystem,
+      sourceShiftId: sourceShiftId,
+    );
+  }
+
   /// Normalized lever id: lowercase underscore form of [primaryLever].
   /// "CPLH_DOWN" → "cplh_down", "ON_MODEL" → "on_model".
   String get normalizedLeverId => primaryLever.toLowerCase();
@@ -200,6 +273,7 @@ class ShiftRecord {
         'opz_ceiling_cplh': opzCeilingCPLH,
         'theoretical_foh_labor_pct': theoreticalFohLaborPct,
         'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+        'business_date': businessDate,
         'source_system': sourceSystem,
         'source_shift_id': sourceShiftId,
       };
@@ -236,6 +310,7 @@ class ShiftRecord {
         opzCeilingCPLH: (m['opz_ceiling_cplh'] as num?)?.toDouble(),
         theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num?)?.toDouble(),
         theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num?)?.toDouble(),
+        businessDate: m['business_date'] as String?,
         sourceSystem: m['source_system'] as String?,
         sourceShiftId: m['source_shift_id'] as String?,
       );

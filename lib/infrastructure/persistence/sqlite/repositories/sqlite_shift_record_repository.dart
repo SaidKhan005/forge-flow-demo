@@ -32,6 +32,19 @@ class SqliteShiftRecordRepository implements ShiftRecordRepository {
   }
 
   @override
+  Future<List<ShiftRecord>> getClosedShiftsInDateRange(
+      String restaurantId, String startDate, String endDate) async {
+    final dao = await _daoReady;
+    return dao.getClosedShiftsInDateRange(restaurantId, startDate, endDate);
+  }
+
+  @override
+  Future<String?> getLatestClosedBusinessDate(String restaurantId) async {
+    final dao = await _daoReady;
+    return dao.getLatestClosedBusinessDate(restaurantId);
+  }
+
+  @override
   Future<int> replaceShiftForSlot(ShiftRecord record) async {
     final dao = await _daoReady;
     return dao.replaceShiftForSlot(record);

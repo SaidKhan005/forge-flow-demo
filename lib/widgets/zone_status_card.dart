@@ -51,30 +51,23 @@ class ZoneStatusCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Text('CURRENT CPLH',
+              style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          const SizedBox(height: 4),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
             children: [
+              Text(
+                currentCPLH.toStringAsFixed(1),
+                style: AppTextStyles.mono28(color: AppColors.textPrimary),
+              ),
+              const Spacer(),
               Flexible(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
+                  alignment: Alignment.centerRight,
                   child: Text(opzLabel,
-                      style: AppTextStyles.display36(color: opzColor)),
+                      style: AppTextStyles.mono28(color: opzColor)),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text('CURRENT CPLH',
-                      style: AppTextStyles.mono8(color: AppColors.textMuted)),
-                  Text(
-                    currentCPLH.toStringAsFixed(2),
-                    style: AppTextStyles.mono28(color: AppColors.textPrimary),
-                  ),
-                ],
               ),
             ],
           ),
@@ -84,11 +77,6 @@ class ZoneStatusCard extends StatelessWidget {
             opzCeiling: opzCeilingCPLH,
             target: targetCPLH,
             current: currentCPLH,
-          ),
-          const SizedBox(height: 12),
-          Text(
-            opzSubLabel,
-            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -411,7 +399,7 @@ class _CplhGauge extends StatelessWidget {
                       child: SizedBox(
                         width: valW,
                         child: Text(
-                          safeFloor.toStringAsFixed(2),
+                          safeFloor.toStringAsFixed(1),
                           style: AppTextStyles.mono10(
                               color: AppColors.textSecondary),
                           textAlign: TextAlign.center,
@@ -429,7 +417,7 @@ class _CplhGauge extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            target.toStringAsFixed(2),
+                            target.toStringAsFixed(1),
                             style: AppTextStyles.mono12(
                                 color: AppColors.sunsetDark),
                             textAlign: TextAlign.center,
@@ -450,7 +438,7 @@ class _CplhGauge extends StatelessWidget {
                       child: SizedBox(
                         width: valW,
                         child: Text(
-                          safeCeiling.toStringAsFixed(2),
+                          safeCeiling.toStringAsFixed(1),
                           style: AppTextStyles.mono10(
                               color: AppColors.textSecondary),
                           textAlign: TextAlign.center,

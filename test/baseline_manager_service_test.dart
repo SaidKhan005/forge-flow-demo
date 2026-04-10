@@ -2,6 +2,7 @@
 //
 // Uses the real SQLite database (sqflite_common_ffi on desktop).
 // reseedDemo() is called before each test for a clean, reproducible state.
+// Phase 7.55f.2 adds 60-day date-window candidate loading tests.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/baseline_manager_service.dart';
@@ -187,6 +188,43 @@ void main() {
           .saveSelection({candidates[0].recordKey});
 
       expect(BaselineData.revision.value, greaterThan(before));
+    });
+  });
+
+  // ── G: 60-day date-window candidate loading (Phase 7.55f.2) ────────────────
+
+  group('G — 60-day date-window candidate loading', () {
+    test('getCandidateShifts returns candidates within 60-day window', () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      expect(candidates, isNotEmpty);
+
+      // All returned candidates should have businessDate
+      for (final c in candidates) {
+        expect(c.businessDate, isNotNull,
+            reason: '${c.recordKey} should carry businessDate');
+      }
+    });
+
+    test('candidates carry actualLaborPct from ShiftRecord.totalLaborPct',
+        () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      expect(candidates, isNotEmpty);
+
+      // actualLaborPct should be >= 0 for all candidates (derived from closed shifts)
+      for (final c in candidates) {
+        expect(c.actualLaborPct, greaterThanOrEqualTo(0),
+            reason: '${c.recordKey} actualLaborPct should be non-negative');
+      }
+    });
+
+    test('primeManagerOverride context comes from date-window candidates',
+        () async {
+      // Prime the override and verify historical context is populated
+      await BaselineManagerService.instance.primeManagerOverride();
+      expect(BaselineData.historicalTotalCoversTracked, greaterThan(0));
+      expect(BaselineData.historicalContextRecords, isNotEmpty);
     });
   });
 

@@ -7,10 +7,10 @@ import '../models/shift_record.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
 import '../services/history_pattern_builder.dart';
-import 'fixture_seed_data.dart';
-import 'legacy_fixture_data.dart';
-import 'shift_service.dart';
 import '../services/labor_model.dart';
+import 'legacy_fixture_data.dart';
+import 'mock_integration_replay_seed.dart';
+import 'shift_service.dart';
 
 abstract class ShiftDataSource {
   Future<WeekData?> getWeekToDate();
@@ -41,44 +41,56 @@ class LiveShiftDataSource implements ShiftDataSource {
       ShiftService.instance.getFullWeekShifts(weekId);
 }
 
-// ── Static — wraps WeekToDate constants for demo / offline use ────────────────
-// Compatibility bridge: reads BaselineData + MeridianConfig for demo/offline
-// mode. Not canonical authority — persisted ActiveTargetProfile is canonical.
-// Pending retirement when demo mode migrates fully to repository-backed state.
+// ── Static — test/preview compatibility using mock replay ────────────────────
+// Non-SQLite fixture source backed by MockIntegrationReplaySeed.
+// Used by widget tests that cannot use sqflite I/O.
+// NOT wired into app runtime — ForgeFlowScope provides LiveShiftDataSource.
+// Target fields use BaselineData/MeridianConfig as compatibility bridge (7.55i).
 
 class StaticShiftDataSource implements ShiftDataSource {
   const StaticShiftDataSource();
 
   @override
   Future<WeekData?> getWeekToDate() async {
+    final replay = MockIntegrationReplaySeed.output;
+    final closed = replay.currentWeekShifts.where((s) => s.isClosed).toList();
+
+    final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
+    final totalFohHours = closed.fold<int>(0, (s, r) => s + r.fohHours);
+    final totalBohHours = closed.fold<int>(0, (s, r) => s + r.bohHours);
+    final totalSales = closed.fold<double>(0, (s, r) => s + r.actualSales);
+    final wtdForecastCovers =
+        closed.fold<int>(0, (s, r) => s + r.forecastCovers);
+    final allForecastCovers =
+        replay.currentWeekShifts.fold<int>(0, (s, r) => s + r.forecastCovers);
+
+    final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
+    final avgCPLH = totalFohHours > 0 ? totalCovers / totalFohHours : 0.0;
+    final avgSPLH = totalBohHours > 0 ? totalSales / totalBohHours : 0.0;
+
     final primaryLeverId = LaborModel.determineLever(
-      actualCovers:      WeekToDate.totalCovers,
-      forecastCovers:    WeekToDate.wtdForecastCovers,
-      avgCPLH:           WeekToDate.avgCPLH,
-      avgPPA:            WeekToDate.avgPPA,
-      targetCPLH:        BaselineData.derivedTargetCPLH,
-      targetPPA:         BaselineData.derivedTargetPPA,
-      avgSPLH:           WeekToDate.avgSPLH,
-      targetSPLH:        BaselineData.derivedTargetSPLH,
-      avgFohBlendedWage: WeekToDate.blendedFohWage,
-      targetFohWage:     MeridianConfig.fohWage,
-      avgBohBlendedWage: WeekToDate.blendedBohWage,
-      targetBohWage:     MeridianConfig.bohWage,
+      actualCovers: totalCovers,
+      forecastCovers: wtdForecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: BaselineData.derivedTargetSPLH,
     );
+
     return WeekData(
-      weekId:            WeekToDate.currentWeekId,
-      weekLabel:         WeekToDate.weekLabel,
-      totalCovers:       WeekToDate.totalCovers,
-      totalSales:        WeekToDate.totalCovers * WeekToDate.avgPPA,
-      totalFohHours:     WeekToDate.totalFohHours,
-      totalBohHours:     WeekToDate.totalBohHours,
-      shiftsCompleted:         WeekToDate.shiftsCompleted,
-      shiftsTotal:             WeekToDate.shiftsTotal,
-      wtdForecastCovers:       WeekToDate.wtdForecastCovers,
-      totalWeekForecastCovers: 2760,
-      primaryLeverId:          primaryLeverId,
-      lastClosedDay:           WeekToDate.lastClosedDay,
-      closedDayNumber:         WeekToDate.closedDayNumber,
+      weekId: MockIntegrationReplaySeed.currentWeekId,
+      weekLabel: 'Week of Mar 24',
+      totalCovers: totalCovers,
+      totalSales: totalSales,
+      totalFohHours: totalFohHours,
+      totalBohHours: totalBohHours,
+      shiftsCompleted: closed.length,
+      shiftsTotal: replay.currentWeekShifts.length,
+      wtdForecastCovers: wtdForecastCovers,
+      totalWeekForecastCovers: allForecastCovers,
+      primaryLeverId: primaryLeverId,
       targetCPLH: BaselineData.derivedTargetCPLH,
       targetSPLH: BaselineData.derivedTargetSPLH,
       targetPPA: BaselineData.derivedTargetPPA,
@@ -91,18 +103,32 @@ class StaticShiftDataSource implements ShiftDataSource {
   }
 
   @override
-  Future<List<WeekRecord>> getWeekHistory() async => DemoData.weekHistory;
+  Future<List<WeekRecord>> getWeekHistory() async =>
+      MockIntegrationReplaySeed.output.weekRecords;
 
   @override
   Future<List<HistoryPatternRecord>> getHistoryPatternRecords() async {
+    final replay = MockIntegrationReplaySeed.output;
     final weekLabelsById = {
-      for (final w in DemoData.weekHistory) w.weekId: w.weekLabel
+      for (final w in replay.weekRecords) w.weekId: w.weekLabel
     };
     return HistoryPatternBuilder.fromClosedShifts(
-        DemoData.historicalClosedShifts, weekLabelsById);
+        replay.historicalClosedShifts, weekLabelsById);
   }
 
   @override
   Future<List<ShiftRecord>> getFullWeekShifts(String weekId) async =>
-      DemoData.currentWeekShifts;
+      MockIntegrationReplaySeed.output.currentWeekShifts
+          .map((s) => s.withLockedTargetDefaults(
+                defaultTargetCPLH: MeridianConfig.targetCPLH,
+                defaultTargetSPLH: MeridianConfig.targetSPLH,
+                defaultTargetPPA: MeridianConfig.targetPPA,
+                defaultFohWage: MeridianConfig.fohWage,
+                defaultBohWage: MeridianConfig.bohWage,
+                defaultOpzFloorCPLH: MeridianConfig.opzFloorCPLH,
+                defaultOpzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
+                defaultTheoreticalFohLaborPct: MeridianConfig.fohTheoreticalLaborPct,
+                defaultTheoreticalBohLaborPct: MeridianConfig.bohTheoreticalLaborPct,
+              ))
+          .toList();
 }

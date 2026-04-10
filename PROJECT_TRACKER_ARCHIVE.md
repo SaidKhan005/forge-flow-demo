@@ -88,6 +88,159 @@ Key outcomes:
 - Shift dashboard, schedule cards, zone-status label, and El Podio home button received targeted layout fixes
 - Tests remained green
 
+### Phase 7.55b Summary
+
+Schedule demand-source clarity pass based on the presentation issue that the Schedule table implied covers drove both FOH and BOH hours.
+
+Key outcomes:
+
+- Kept `LaborModel` as the single formula source.
+- Added `LaborModel.modelBohHoursFromSales(forecastSales, targetSPLH)` as the primary BOH required-hours formula.
+- Kept `LaborModel.modelBohHours(covers, ppa, targetSPLH)` as a compatibility helper that derives sales as covers * PPA.
+- Added `forecastedSales` to `ScheduleForecastNotifier`.
+- Added `forecastSales` to Schedule day and daypart row view models.
+- Updated Schedule BOH required hours to calculate from forecast sales, not directly from covers.
+- Updated the Schedule table from `DAY | COVERS | FOH HRS | BOH HRS` to `DAY | COVERS | SALES | FOH HRS | BOH HRS`.
+- Added short manager-facing Schedule copy: `FOH plans from covers. BOH plans from forecast sales.`
+- Added focused `test/labor_model_boh_sales_test.dart` coverage for the sales-first BOH seam and Schedule notifier behavior.
+- Did not add live POS, labor, OpenTable, or reservation transport.
+- Did not change active target profile behavior, labor math, Shift math, Variance math, or database schema.
+
+Verification recorded on 2026-04-09:
+
+- `flutter analyze` passed.
+- `flutter test test/labor_model_boh_sales_test.dart test/target_consistency_opz_test.dart` passed.
+- Full `flutter test` passed with 533 tests.
+- `git diff --check` reported no whitespace errors; only expected CRLF warnings.
+
+### Phase 7.55c Summary
+
+Schedule forecast demand-source planning and the first app-side implementation are documented in `docs/phase_7_55c_schedule_forecast_demand_source_plan.md`.
+
+Key outcomes:
+
+- Baseline supplies standards and exposes the POS-history context used by Schedule.
+- POS 60-day history supplies forecast demand through historical weekly average covers.
+- `LaborModel` combines standards and demand.
+- Added `ForecastDemandSource` and `ScheduleForecastDemand` as app-owned demand/provenance models.
+- Added `ScheduleForecastDemandResolver` with an explicit waterfall: POS 60-day historical weekly average covers, demo fallback only when enabled, then unavailable.
+- Forecast sales is always derived as forecast covers * target PPA.
+- Forecast covers always come from POS 60-day history (historicalWeeklyAvgCovers ÷ (60/7) weeks). Sales always derived as covers × target PPA. No vendor forecast inputs, no manager editing on Schedule — manager influence is Baseline target profile override only.
+- Historical weekly average covers is now the normal Schedule seed when no explicit forecast exists; the old `1200` value remains only as an explicit demo fallback.
+- Schedule displays `Forecast source: 60-day weekly average` as read-only provenance.
+- No live POS, forecast, labor, OpenTable, or reservation transport was added.
+
+Remaining integration caveat:
+
+- Schedule render state is now resolver-backed, but it is still fed by the compatibility BaselineData bridge. Future Phase 8 work should replace fixture transport with live POS closed-shift history feeding the same 60-day historical context, not introduce vendor-provided forecast values.
+
+Verification recorded on 2026-04-10:
+
+- `flutter analyze` passed.
+- `flutter test test/schedule_forecast_demand_resolver_test.dart test/labor_model_boh_sales_test.dart test/target_consistency_opz_test.dart` passed with 63 tests.
+- Full `flutter test` passed with 541 tests.
+- `git diff --check` reported no whitespace errors; only expected CRLF warnings.
+
+### Phase 7.55 In-Progress Stabilization Notes
+
+Phase 7.55 remains in progress. The following hotfix/stabilization work has landed or is currently being carried inside the 7.55 lane, but the phase should not be treated as complete until final verification and tracker review are done.
+
+Dashboard layout restructure:
+
+- Reordered the Shift dashboard flow from OPZ -> Variance -> Inputs -> Hours -> Driver to Sales -> Labor% -> Inputs -> Productivity -> Driver.
+- Added a new Sales vs Forecast card with a fill-toward-goal progress bar.
+- Placed Sales and Labor% side by side in a consolidated output row.
+- Moved Covers and Blended Wage into the new SHIFT OUTPUTS section.
+- Moved FOH HRS and BOH HRS into SHIFT INPUTS alongside PPA, CPLH, and SPLH.
+
+Card standardization:
+
+- Standardized card anatomy across metric cards: label -> value -> target reference -> delta pill.
+- Standardized card padding, border accents, and label color treatment.
+- Removed progress bars from Labor% and Hours while keeping the Sales progress bar.
+- Renamed visible "Model" references to "Target" for blended wage and hours contexts.
+
+OPZ / productivity simplification:
+
+- Removed sub-label text from `ZoneStatusCard`.
+- Repositioned CPLH value and OPZ status onto one row with right-justified status.
+- Added `FittedBox` overflow safety for the OPZ label.
+- Renamed the section label to FOH PRODUCTIVITY.
+
+Section labels:
+
+- Added SHIFT OUTPUTS section header.
+- Added SHIFT INPUTS section header.
+- Added PRIMARY DRIVER section header with a lightbulb icon.
+
+Visual design overhaul:
+
+- Warm palette and readability improvements are represented in commit `c7baced`.
+
+Hours lever logic:
+
+- Added four new lever types: `foh_hours_over`, `foh_hours_under`, `boh_hours_over`, and `boh_hours_under`.
+- Added +/-10% threshold handling in `LaborModel.determineLever()` with lowest priority.
+- Added four new `LeverCardData` cards with manager-speak narratives.
+- Wired the new lever family through dashboard, WTD, historical, and shift-close call sites.
+- Updated `LaborModel.isFavorableLever()` for the new hour levers.
+
+Schedule demand-source alignment:
+
+- Clarified Schedule presentation so COVERS and SALES are distinct columns.
+- Preserved FOH required hours as forecast-covers driven.
+- Moved Schedule BOH required hours onto a forecast-sales-first formula seam.
+- Kept forecast sales derived from forecast covers * target PPA.
+- Added focused coverage proving the sales-first BOH helper and existing covers/PPA helper stay numerically aligned.
+- Planned and implemented the first app-side forecast-demand source model so POS-history forecast covers, derived forecast sales, historical weekly-average fallback, demo fallback, and provenance can be handled explicitly.
+
+Removed / cleaned up:
+
+- Removed `_LaborOverviewCard`.
+- Removed `_LaborOverviewPanel`.
+- Removed `_HoursSection`.
+- Removed `_SideSummaryCard`.
+- Removed `_VarianceBannerDelegate`.
+- Removed the variance banner import from the Shift dashboard.
+
+### Phase 7.56a Summary
+
+Phase 7.56a is complete on the app-side demo path. It does not implement live OpenTable or reservation-platform transport; official live integration remains Phase 8R.
+
+Key outcomes:
+
+- Added `ReservationBookSnapshot` as the app-owned aggregate for one restaurant, business date, and daypart.
+- Added repository, SQLite DAO, and SQLite repository boundaries for reservation-book snapshots.
+- Bumped SQLite schema to v11 and added the `reservation_book_snapshots` table.
+- Seeded the demo Friday dinner open shift with `72` unseated covers and `18` unseated parties.
+- Wired the Shift dashboard notifier/service to fetch reservation snapshots by `restaurantId`, `businessDate`, and `daypart`.
+- Added optional `inTheBooksCovers` to the Shift dashboard read model.
+- Rendered `In the books 72` under the COVERS card forecast line when a reservation snapshot exists.
+- Kept the support line hidden when no reservation snapshot exists.
+- Kept reservation-book data out of actual covers, forecast covers, labor math, OPZ math, and lever math.
+- Added repository, notifier, and widget coverage for the reservation signal.
+
+Verification:
+
+- `flutter analyze` passed.
+- `flutter test test/reservation_book_snapshot_repository_test.dart` passed.
+- `flutter test test/shift_dashboard_notifier_test.dart` passed.
+- `flutter test test/shift_visual_widget_test.dart` passed.
+- `flutter test test/target_consistency_opz_test.dart` passed after stale 7.55 OPZ sub-label expectation was aligned with the current `ZoneStatusCard` contract.
+- Full `flutter test` passed with 525 tests.
+- `git diff --check` reported no whitespace errors; only expected CRLF warnings.
+
+Commit hygiene note:
+
+- The working tree currently mixes Phase 7.55 stabilization edits, the `7.55b` Schedule BOH sales-first seam/test, Phase 7.56 reservation signal work, tracker/docs updates, and the stale OPZ test-contract cleanup.
+- Before committing or opening review, prefer separate commits by phase and purpose:
+  - 7.55 dashboard/readability/hours-lever stabilization
+  - 7.55b Schedule demand-source alignment
+  - 7.56 reservation book signal demo
+  - tracker/docs updates
+  - OPZ stale-test cleanup
+- If the work is committed together, the commit message should explicitly name the mixed scope so future archaeology does not treat the whole diff as only `7.56a` or only `7.55b`.
+
 ### Superseded Phase 9 Barrio Requirements
 
 The earlier tracker-only Barrio auth notes have now been superseded by the full Phase 9 auth contract in `docs/phase_9_auth_plan.md`.
@@ -132,6 +285,10 @@ The important carry-forward points were:
 | Prompt 7.54a | Barrio thermal/render-cost pass | Done | Repaint boundaries, lifecycle animation gating, merged animation listeners, cache-sized image decode paths on hottest Barrio surfaces |
 | Prompt 7.54b | Release-size and asset-compression pass | Done | Dynamic IconData blockers replaced with constant icon mappings; heavy PNGs converted to JPEG; handbook_icon recompressed; release split APK builds without --no-tree-shake-icons; 47 focused tests passing |
 | Prompt 7.54c | Flavor asset-bundle containment + space hygiene | Done | handbook_icon.png moved to Barrio-private dir; branding/inspiration confirmed not bundled; Flutter flavor-conditional limitation documented with real APK evidence; README updated with build-size/cleanup/containment docs; 47 focused tests passing |
+| Prompt 7.55a | Font size / readability / accessibility pass | Done | Theme floor raised, Manager Override button enlarged, Barrio inline sizes fixed, layout overflow fixes landed, El Podio full-width, tests passing; Phase 7.55 remains open as a stabilization lane |
+| Prompt 7.55b | Schedule FOH/BOH demand-source clarity | Done | Schedule now presents COVERS and SALES separately; FOH required hours remain cover-driven; BOH required hours use the new sales-first `LaborModel.modelBohHoursFromSales` seam; compatibility wrapper preserved; analyzer and full 533-test suite pass |
+| Prompt 7.55c | Schedule forecast demand-source model | Done | Covers always from POS 60-day history; sales always derived as covers × PPA. Removed vendor forecast inputs, manager editing, and sales-to-covers derivation. Enum simplified to 5 values. Resolver waterfall: historical avg → demo → unavailable. Schedule is read-only with provenance display. Manager influence is Baseline target profile override only. Analyzer clean, 541 tests pass. |
+| Prompt 7.56a | Reservation Book Signal Demo | Done | App-side `ReservationBookSnapshot` model/repository/SQLite cache added, demo Friday dinner seeded with 72 unseated covers, Shift read model and COVERS card render optional `In the books`; no live vendor transport; analyzer and full 525-test suite pass |
 | Prompt 6.1 | Baseline context + benchmark-range alignment | Done | Historical context metrics are separated, best/worst cards removed, and Baseline range-quality messaging now uses benchmark-range states |
 | Prompt 6.2 | Baseline historical-range honesty pass | Done | Baseline graph now keeps historical outer anchors, renders the benchmark range inside that context, and displays total covers as a count |
 | Prompt 7 | Learn layer | Done | Variance now includes a Learn tab that combines recurring history patterns with active Baseline benchmark truth |
@@ -161,6 +318,11 @@ Use one line per meaningful session.
 
 | Date | Phase | What changed | Result | Next |
 | --- | --- | --- | --- | --- |
+| 2026-04-10 | Phase 7.55c.2 | Schedule forecast demand-source model implemented and Codex-verified | `ScheduleForecastDemand` + resolver now seed Schedule from POS-history weekly average covers; forecast sales derives as covers * target PPA; source provenance displays in Schedule; analyzer, focused run, full 541-test suite, and diff check pass | Preserve commit hygiene; Phase 8 should replace fixture transport with live POS closed-shift history feeding this same derivation |
+| 2026-04-09 | Phase 7.55b | Schedule demand-source presentation and BOH architecture seam implemented and Codex-verified | Schedule table now separates COVERS from SALES; BOH required hours flow through forecast sales while forecast sales derives from covers * PPA; analyzer, focused tests, full 533-test suite, and diff check pass | Preserve commit hygiene, visually spot-check the denser Schedule table on device, then continue toward `9a.1` when 7.55 closeout is acceptable |
+| 2026-04-09 | Phase 7.55c planning | Schedule forecast demand-source model documented | Captured the original forecast-source gap and led to the corrected 7.55c.2 rule: forecast covers come from POS 60-day history, forecast sales derives as covers * target PPA, Schedule is read-only, and manager influence stays in Baseline target profile override | Implemented and superseded by 7.55c.2 |
+| 2026-04-09 | Phase 7.56a | Reservation Book Signal Demo implemented and Codex-verified | App-side reservation snapshot cache feeds `In the books` on the Shift COVERS card; no live vendor transport; analyzer and full 525-test suite pass | Preserve commit hygiene, then move toward `9a.1` after remaining 7.55 stabilization review |
+| 2026-04-09 | Phase 7.55 / 7.56 hygiene | Dirty tree reviewed after Claude work | Worktree currently mixes 7.55 stabilization, 7.56 reservation demo, docs/tracker edits, and one stale OPZ test-contract cleanup | Split commits by phase/purpose where practical, or explicitly label mixed scope in commit message |
 | 2026-03-28 | Planning | Software plan completed | Prompt order revised around integration foundation | Run Prompt 1 |
 | 2026-03-28 | Phase 1 | Canonical domain foundation added | ClosedShiftInput, TargetSnapshot, ShiftFact, and builders landed without UI rewiring | Run Prompt 2 |
 | 2026-03-28 | Phase 2 | History teaching pipeline rewired to stored closed shifts | Runtime History summary now reads pattern records through the data layer instead of seeded manual pattern records | Run Prompt 3 |
@@ -308,12 +470,64 @@ All four destination screens now use premium 5-layer photo-backed composition ma
 ### Dependencies Added (7.53c)
 - `shared_preferences: ^2.3.0` — streak persistence
 
+### Phase 7.55d Closeout
+
+Phase 7.55d is closed through `7.55d.3c`.
+
+Final outcomes:
+
+- `7.55d.1` created the SchedulePlan/ScheduleDayPlan planning contract and moved Schedule planning math through the resolver path.
+- `7.55d.1a` through `7.55d.1c` made unavailable demand honest, derived forecast sales from current target PPA, added immutable day rows, and reconciled day cover/FOH/BOH totals exactly to weekly totals.
+- `7.55d.2` made Shift compare whole-business-day actuals against the matching SchedulePlan day row.
+- `7.55d.2b` moved Shift LABOR % to the whole-day read model and removed the WTD dependency from that card.
+- `7.55d.3` added Manager Override downstream plan impact and Data Alignment Audit proof.
+- `7.55d.3a` corrected WTD, WeekRecord, and ShiftFact BOH model hours to use actual sales instead of target PPA.
+- `7.55d.3b` corrected closed Variance detail to use locked actual-volume model-hour getters.
+- `7.55d.3c` backfilled static/demo closed shifts with stable locked target defaults from `MeridianConfig`, preserving strict locked-target getters while preventing static/demo Variance expansion crashes.
+
+Reported verification:
+
+- `flutter analyze` clean.
+- `flutter test test/wtd_variance_logic_test.dart` passed with 37 tests after `7.55d.3c`.
+- Full `flutter test` passed with 622 tests after `7.55d.3c`.
+
+Residual work intentionally moved out of 7.55d:
+
+- 7.55e owns data-driven day/daypart distribution.
+- 7.55f owns true `business_date` persistence and 60-day date-window querying.
+- 7.55i owns canonical Demand Forecast Context, shared SchedulePlan read-service authority, WTD target semantics, and Learn migration off `BaselineData` benchmark context.
+
+### Phase 7.55e Progress Note
+
+Phase 7.55e is active, not closed.
+
+Verified sub-prompts:
+
+- `7.55e.1` added immutable `ScheduleDistributionWeights` and pure `DistributionWeightBuilder` from closed `ShiftRecord`s.
+- `7.55e.2` made `SchedulePlanResolver` accept optional day distribution weights while preserving weekly-level planning math and fallback defaults.
+- `7.55e.3` made Schedule daypart subrows consume day x daypart weights with largest-remainder reconciliation and fallback behavior.
+- `7.55e.4` added `ScheduleDistributionWeightsNotifier`, wired it into `ForgeFlowScope`, and passed runtime closed-shift-derived weights into Schedule.
+
+Reported verification:
+
+- `flutter analyze` clean after `7.55e.4`.
+- `flutter test test/schedule_distribution_weights_notifier_test.dart` passed with 8 tests after `7.55e.4`.
+- `flutter test test/distribution_weight_builder_test.dart` passed with 16 tests after `7.55e.4`.
+- `flutter test test/schedule_plan_resolver_test.dart` passed with 33 tests after `7.55e.4`.
+- Full `flutter test` passed with 554 tests after `7.55e.4`.
+
+Remaining before closeout:
+
+- `7.55e.5` should replace hardcoded historical/current operational seed rows with deterministic mock POS/labor integration replay into SQLite.
+- `7.55e.6` should make app runtime prove it reads mock-imported SQLite operational data instead of `DemoData` fixture lists, leaving fixtures only as tests, previews, or explicitly documented compatibility.
+
 ## Archived Decision Log
 
 Record only decisions that affect future implementation.
 
 | Date | Decision | Why it matters |
 | --- | --- | --- |
+| 2026-04-10 | Keep 7.55e open until mock integration replay replaces hardcoded operational seed truth | Distribution weights are wired, but the app should prove the Phase 8 shape by replaying mock POS/labor facts into SQLite instead of copying `DemoData` operational lists into runtime state |
 | 2026-03-28 | Build canonical domain layer before more History/Learn work | Avoid rework when live POS/labor integrations arrive |
 | 2026-03-28 | This Week stays decision-forward; History/Learn stay educator-forward | Keeps product roles clear |
 | 2026-03-28 | For Prompts 5 to 7, let Claude lead visual direction while Codex focuses on logic, structure, and review | Keeps visual quality strong without loosening architectural discipline |
@@ -352,3 +566,7 @@ Record only decisions that affect future implementation.
 | 2026-04-02 | Keep permission keys fixed and app-defined while allowing editable seeded roles and custom roles | Preserves flexibility for admins without turning runtime role data into an unbounded permission-schema system |
 | 2026-04-02 | Treat Forge & Flow as the commercial baseline app and Barrio as the internal superset shell | Keeps permission design aligned with the current dependency boundary: Forge & Flow stays independent, Barrio adds on top |
 | 2026-04-02 | Split Phase 9 into `9a` through `9e` plus `9.5` and require explicit Firebase setup checkpoints | Makes auth prompt-sized, forces honest Firebase/backend prerequisites, and separates learning El Podio identity from later operational ranking |
+| 2026-04-09 | Keep Phase 7.56 as an app-owned reservation-book cache and Shift read-model surface | Lets demo/local reservation signals ship now while keeping official OpenTable/reservation transport, status mapping, and vendor capability work in Phase 8R |
+| 2026-04-09 | Treat 7.55 stabilization and 7.56 reservation work as separate commit scopes even when they coexist in the working tree | Prevents future reviewers from mistaking dashboard/hours-lever stabilization, reservation signal plumbing, tracker docs, and test-contract cleanup as one undifferentiated phase |
+| 2026-04-09 | Treat BOH Schedule demand as forecast-sales-first, with forecast sales derived from forecast covers * target PPA | Keeps the UI and code aligned with the labor model while preserving the current rule that POS history supplies covers and the app derives sales |
+| 2026-04-09 | Treat forecast covers as POS-history-derived and forecast sales as app-derived | Aligns Schedule with the decision that Phase 8 supplies raw closed-shift history, not vendor-provided forecast values |

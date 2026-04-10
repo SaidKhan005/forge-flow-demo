@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../utils/formatters.dart';
+
 class ScheduleDayRow extends StatelessWidget {
   final String day;
   final int forecastCovers;
+  final double forecastSales;
   final int requiredFohHours;
   final int requiredBohHours;
   final bool isHeader;
@@ -14,6 +17,7 @@ class ScheduleDayRow extends StatelessWidget {
     super.key,
     required this.day,
     required this.forecastCovers,
+    required this.forecastSales,
     required this.requiredFohHours,
     required this.requiredBohHours,
     this.isHeader = false,
@@ -26,6 +30,7 @@ class ScheduleDayRow extends StatelessWidget {
     return const ScheduleDayRow(
       day: 'DAY',
       forecastCovers: 0,
+      forecastSales: 0,
       requiredFohHours: 0,
       requiredBohHours: 0,
       isHeader: true,
@@ -39,7 +44,7 @@ class ScheduleDayRow extends StatelessWidget {
 
     if (isHeader) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -50,21 +55,26 @@ class ScheduleDayRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-                flex: 2,
+                flex: 3,
                 child: Text('DAY', style: AppTextStyles.mono7())),
             Expanded(
-                flex: 3,
+                flex: 2,
                 child: Text('COVERS',
                     style: AppTextStyles.mono7(),
                     textAlign: TextAlign.right)),
             Expanded(
                 flex: 3,
-                child: Text('FOH HRS',
+                child: Text('SALES',
                     style: AppTextStyles.mono7(),
                     textAlign: TextAlign.right)),
             Expanded(
-                flex: 3,
-                child: Text('BOH HRS',
+                flex: 2,
+                child: Text('FOH',
+                    style: AppTextStyles.mono7(),
+                    textAlign: TextAlign.right)),
+            Expanded(
+                flex: 2,
+                child: Text('BOH',
                     style: AppTextStyles.mono7(),
                     textAlign: TextAlign.right)),
           ],
@@ -75,7 +85,7 @@ class ScheduleDayRow extends StatelessWidget {
     final labelColor = isSubrow ? AppColors.textMuted : textColor;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       decoration: BoxDecoration(
         color: isTotal
             ? AppColors.rule.withValues(alpha: 0.5)
@@ -84,7 +94,7 @@ class ScheduleDayRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            flex: 2,
+            flex: 3,
             child: Row(
               children: [
                 if (isSubrow) const SizedBox(width: 16),
@@ -102,7 +112,7 @@ class ScheduleDayRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Text(
               forecastCovers.toString(),
               style: AppTextStyles.mono12(color: textColor),
@@ -112,6 +122,14 @@ class ScheduleDayRow extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Text(
+              '\$${Fmt.dollars(forecastSales)}',
+              style: AppTextStyles.mono12(color: textColor),
+              textAlign: TextAlign.right,
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
               requiredFohHours.toString(),
               style: AppTextStyles.mono12(
                   color: isTotal ? AppColors.sunsetDark : AppColors.secondaryText),
@@ -119,7 +137,7 @@ class ScheduleDayRow extends StatelessWidget {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Text(
               requiredBohHours.toString(),
               style: AppTextStyles.mono12(

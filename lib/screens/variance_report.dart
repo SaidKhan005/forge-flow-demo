@@ -14,7 +14,6 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import '../models/learn_teaching_summary.dart';
 import '../services/history_teaching_analyzer.dart';
-import '../services/labor_model.dart';
 import '../services/learn_teaching_analyzer.dart';
 import '../utils/formatters.dart';
 import '../widgets/lever_card.dart';
@@ -967,9 +966,9 @@ class _ClosedShiftDetail extends StatelessWidget {
     final cplhDelta = s.cplh - lockedCPLH;
     final splhDelta = s.splh - lockedSPLH;
 
-    // Model hours from locked targets (Jim Taylor Ch. 10)
-    final theoFoh = LaborModel.modelFohHours(s.forecastCovers, lockedCPLH);
-    final theoBoh = LaborModel.modelBohHours(s.forecastCovers, lockedPPA, lockedSPLH);
+    // Actual-volume model hours from locked targets (Jim Taylor Ch. 10)
+    final theoFoh = s.modelFohHours;
+    final theoBoh = s.modelBohHours;
 
     // Blended-wage target from locked shift truth
     final totalModelHours = theoFoh + theoBoh;

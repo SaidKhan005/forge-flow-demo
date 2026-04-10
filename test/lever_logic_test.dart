@@ -1,4 +1,4 @@
-// â”€â”€â”€ Lever Logic Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— Lever Logic Tests ——————————————————————————————————————————————————————
 // Verifies LaborModel.determineLever for all 12 Chapter 10 lever scenarios,
 // edge cases, tie-breaking priority, and the demo weekHistory round-trip.
 
@@ -8,14 +8,13 @@ import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/models/week_record.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— Helpers ————————————————————————————————————————————————————————————————
 
-// Derived targets (computed once)
-final _tCPLH = BaselineData.derivedTargetCPLH;   // â‰ˆ 4.58
-final _tSPLH = BaselineData.derivedTargetSPLH;   // â‰ˆ 180.07
-final _tPPA  = BaselineData.derivedTargetPPA;    // â‰ˆ 41.79
-const _fohWage = MeridianConfig.fohWage;         // 16.50
-const _bohWage = MeridianConfig.bohWage;         // 21.35
+final _tCPLH = BaselineData.derivedTargetCPLH;
+final _tSPLH = BaselineData.derivedTargetSPLH;
+final _tPPA  = BaselineData.derivedTargetPPA;
+const _fohWage = MeridianConfig.fohWage;
+const _bohWage = MeridianConfig.bohWage;
 
 String _lever({
   int actualCovers    = 1200,
@@ -42,304 +41,175 @@ String _lever({
   );
 }
 
-// â”€â”€â”€ Tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ——— Tests ——————————————————————————————————————————————————————————————————
 
 void main() {
-  group('12 Chapter 10 lever scenarios', () {
-    // Scenario 1 â€” covers_down (âˆ’4%)
-    test('covers_down: actual âˆ’4% vs forecast', () {
-      expect(
-        _lever(actualCovers: 1152, forecastCovers: 1200,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'covers_down',
-      );
-    });
+  group('12 Chapter 10 lever scenarios — table-driven', () {
+    final scenarios = <String, Map<String, dynamic>>{
+      'covers_down': {'actualCovers': 1152, 'forecastCovers': 1200},
+      'covers_up':   {'actualCovers': 1260, 'forecastCovers': 1200},
+      'ppa_down':    {'avgPPA': _tPPA * 0.95},
+      'ppa_up':      {'avgPPA': _tPPA * 1.08},
+      'cplh_down':   {'avgCPLH': _tCPLH * 0.90},
+      'cplh_up':     {'avgCPLH': _tCPLH * 1.10},
+      'splh_down':   {'avgSPLH': _tSPLH * 0.90},
+      'splh_up':     {'avgSPLH': _tSPLH * 1.10},
+      'foh_wage_up':   {'avgSPLH': _tSPLH, 'avgFohWage': _fohWage * 1.09, 'avgBohWage': _bohWage},
+      'foh_wage_down': {'avgSPLH': _tSPLH, 'avgFohWage': _fohWage * 0.90, 'avgBohWage': _bohWage},
+      'boh_wage_up':   {'avgSPLH': _tSPLH, 'avgFohWage': _fohWage, 'avgBohWage': _bohWage * 1.13},
+      'boh_wage_down': {'avgSPLH': _tSPLH, 'avgFohWage': _fohWage, 'avgBohWage': _bohWage * 0.87},
+    };
 
-    // Scenario 2 â€” covers_up (+5%)
-    test('covers_up: actual +5% vs forecast', () {
-      expect(
-        _lever(actualCovers: 1260, forecastCovers: 1200,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'covers_up',
-      );
-    });
-
-    // Scenario 3 â€” ppa_down (âˆ’5%)
-    test('ppa_down: avgPPA âˆ’5% vs target', () {
-      expect(
-        _lever(avgPPA: _tPPA * 0.95,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'ppa_down',
-      );
-    });
-
-    // Scenario 4 â€” ppa_up (+8%)
-    test('ppa_up: avgPPA +8% vs target', () {
-      expect(
-        _lever(avgPPA: _tPPA * 1.08,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'ppa_up',
-      );
-    });
-
-    // Scenario 5 â€” cplh_down (âˆ’10%)
-    test('cplh_down: avgCPLH âˆ’10% vs target', () {
-      expect(
-        _lever(avgCPLH: _tCPLH * 0.90,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'cplh_down',
-      );
-    });
-
-    // Scenario 6 â€” cplh_up (+10%)
-    test('cplh_up: avgCPLH +10% vs target', () {
-      expect(
-        _lever(avgCPLH: _tCPLH * 1.10,
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'cplh_up',
-      );
-    });
-
-    // Scenario 7 â€” splh_down (âˆ’10%)
-    test('splh_down: avgSPLH âˆ’10% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH * 0.90,
-            avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'splh_down',
-      );
-    });
-
-    // Scenario 8 â€” splh_up (+10%)
-    test('splh_up: avgSPLH +10% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH * 1.10,
-            avgFohWage: _fohWage, avgBohWage: _bohWage),
-        'splh_up',
-      );
-    });
-
-    // Scenario 9 â€” foh_wage_up (+9%)
-    test('foh_wage_up: blended FOH wage +9% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH,
-            avgFohWage: _fohWage * 1.09, avgBohWage: _bohWage),
-        'foh_wage_up',
-      );
-    });
-
-    // Scenario 10 â€” foh_wage_down (âˆ’10%)
-    test('foh_wage_down: blended FOH wage âˆ’10% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH,
-            avgFohWage: _fohWage * 0.90, avgBohWage: _bohWage),
-        'foh_wage_down',
-      );
-    });
-
-    // Scenario 11 â€” boh_wage_up (+13%)
-    test('boh_wage_up: blended BOH wage +13% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH,
-            avgFohWage: _fohWage, avgBohWage: _bohWage * 1.13),
-        'boh_wage_up',
-      );
-    });
-
-    // Scenario 12 â€” boh_wage_down (âˆ’13%)
-    test('boh_wage_down: blended BOH wage âˆ’13% vs target', () {
-      expect(
-        _lever(avgSPLH: _tSPLH,
-            avgFohWage: _fohWage, avgBohWage: _bohWage * 0.87),
-        'boh_wage_down',
-      );
-    });
+    for (final entry in scenarios.entries) {
+      test('${entry.key} fires correctly', () {
+        // All scenarios include full wage/SPLH args for consistent lever detection
+        final args = {
+          'avgSPLH': _tSPLH,
+          'avgFohWage': _fohWage.toDouble(),
+          'avgBohWage': _bohWage.toDouble(),
+          ...entry.value,
+        };
+        expect(
+          _lever(
+            actualCovers: (args['actualCovers'] as int?) ?? 1200,
+            forecastCovers: (args['forecastCovers'] as int?) ?? 1200,
+            avgCPLH: args['avgCPLH'] as double?,
+            avgPPA: args['avgPPA'] as double?,
+            avgSPLH: args['avgSPLH'] as double?,
+            avgFohWage: args['avgFohWage'] as double?,
+            avgBohWage: args['avgBohWage'] as double?,
+          ),
+          entry.key,
+          reason: 'Expected lever ${entry.key}',
+        );
+      });
+    }
   });
 
-  group('determineLever â€” threshold edge cases', () {
-    test('covers delta exactly âˆ’2.0%: does NOT fire (strict <)', () {
-      final result = _lever(
-        actualCovers: (1200 * 0.98).round(),  // exactly âˆ’2%
-        forecastCovers: 1200,
-        avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage,
-      );
-      // Covers delta = âˆ’2.0%, threshold is strictly < âˆ’2% â†’ should not fire covers_down
-      // Defaults to covers_down since no other candidates
-      // Check that it doesn't fire due to threshold; if forecastCovers > 0 and delta = -2%
-      // it won't enter the candidates map â†’ returns default 'covers_down' (fallback)
-      expect(result, 'covers_down');
-    });
-
-    test('covers delta just below âˆ’2.0% (âˆ’2.1%): DOES fire', () {
+  group('determineLever — threshold edge cases', () {
+    test('exact -2% covers does not fire; just below does; all-at-target returns default', () {
+      // Exact −2%
       expect(
-        _lever(actualCovers: 1174, forecastCovers: 1200,  // âˆ’2.17%
-            avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
+        _lever(
+          actualCovers: (1200 * 0.98).round(),
+          forecastCovers: 1200,
+          avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage,
+        ),
+        'covers_down', // default fallback, not fired
+      );
+      // Just below −2%
+      expect(
+        _lever(
+          actualCovers: 1174, forecastCovers: 1200,
+          avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage,
+        ),
         'covers_down',
       );
-    });
-
-    test('all metrics at target: returns default covers_down', () {
+      // All at target
       expect(
         _lever(avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage),
         'covers_down',
       );
     });
 
-    test('SPLH not provided: SPLH levers never fire', () {
-      // Without SPLH args, a 20% SPLH deviation should not fire
-      // (we don't pass avgSPLH/targetSPLH â†’ those args are null)
-      final result = LaborModel.determineLever(
+    test('optional parameters: SPLH and wage levers disabled when not provided', () {
+      final noSPLH = LaborModel.determineLever(
         actualCovers: 1200, forecastCovers: 1200,
         avgCPLH: _tCPLH, avgPPA: _tPPA,
         targetCPLH: _tCPLH, targetPPA: _tPPA,
-        // avgSPLH not provided â†’ SPLH levers disabled
       );
-      expect(result, 'covers_down'); // fallback, no candidates
-    });
+      expect(noSPLH, 'covers_down');
 
-    test('wage not provided: wage levers never fire', () {
-      final result = LaborModel.determineLever(
+      final noWage = LaborModel.determineLever(
         actualCovers: 1200, forecastCovers: 1200,
         avgCPLH: _tCPLH, avgPPA: _tPPA,
         targetCPLH: _tCPLH, targetPPA: _tPPA,
         avgSPLH: _tSPLH, targetSPLH: _tSPLH,
-        // wage args not provided â†’ wage levers disabled
       );
-      expect(result, 'covers_down');
+      expect(noWage, 'covers_down');
     });
 
-    test('zero forecastCovers: no divide-by-zero, no covers lever fires', () {
-      final result = LaborModel.determineLever(
-        actualCovers: 100, forecastCovers: 0,
-        avgCPLH: _tCPLH, avgPPA: _tPPA,
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-      );
-      // coversDelta = 0.0 when forecastCovers = 0 â†’ no covers lever
-      expect(result, 'covers_down'); // default fallback
-    });
-
-    test('zero targetCPLH: no cplh lever fires', () {
-      final result = LaborModel.determineLever(
-        actualCovers: 1200, forecastCovers: 1200,
-        avgCPLH: 4.0, avgPPA: _tPPA,
-        targetCPLH: 0.0, targetPPA: _tPPA,
-      );
-      // cplhDelta = 0 when targetCPLH = 0 â†’ no cplh lever
-      expect(result, 'covers_down');
-    });
-  });
-
-  group('determineLever â€” largest deviation wins', () {
-    test('covers (âˆ’6%) beats cplh (âˆ’5.5%) when covers is larger', () {
-      // covers delta = âˆ’6% > cplh delta âˆ’5.5%, both above thresholds
-      final result = LaborModel.determineLever(
-        actualCovers: (1200 * 0.94).round(),   // âˆ’6% covers
-        forecastCovers: 1200,
-        avgCPLH: _tCPLH * 0.945,              // âˆ’5.5% CPLH (smaller)
-        avgPPA: _tPPA,
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-      );
-      expect(result, 'covers_down');
-    });
-
-    test('cplh (âˆ’8%) beats covers (âˆ’4%) when cplh deviation is larger', () {
-      final result = LaborModel.determineLever(
-        actualCovers: (1200 * 0.96).round(),   // âˆ’4% covers
-        forecastCovers: 1200,
-        avgCPLH: _tCPLH * 0.92,               // âˆ’8% CPLH (larger)
-        avgPPA: _tPPA,
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-      );
-      expect(result, 'cplh_down');
-    });
-
-    test('ppa (âˆ’7%) beats cplh (âˆ’6%) when ppa deviation is larger', () {
-      final result = LaborModel.determineLever(
-        actualCovers: 1200, forecastCovers: 1200,
-        avgCPLH: _tCPLH * 0.94,  // âˆ’6%
-        avgPPA: _tPPA * 0.93,    // âˆ’7%
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-      );
-      expect(result, 'ppa_down');
-    });
-
-    test('splh (âˆ’9%) beats foh_wage (+6%) when splh deviation is larger', () {
-      final result = LaborModel.determineLever(
-        actualCovers: 1200, forecastCovers: 1200,
-        avgCPLH: _tCPLH, avgPPA: _tPPA,
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-        avgSPLH: _tSPLH * 0.91, targetSPLH: _tSPLH,    // âˆ’9% SPLH
-        avgFohBlendedWage: _fohWage * 1.06, targetFohWage: _fohWage, // +6% FOH wage
-      );
-      // SPLH |9%| > FOH wage |6%| â†’ splh_down wins
-      expect(result, 'splh_down');
-    });
-
-    test('priority ordering: when covers and ppa are both around 4-5%, ppa vs covers depends on magnitude', () {
-      // covers âˆ’4.1%, ppa âˆ’4.5%: ppa is slightly larger â†’ ppa_down
-      final result = LaborModel.determineLever(
-        actualCovers: (1200 * 0.959).round(),  // âˆ’4.1%
-        forecastCovers: 1200,
-        avgCPLH: _tCPLH, avgPPA: _tPPA * 0.955,  // âˆ’4.5%
-        targetCPLH: _tCPLH, targetPPA: _tPPA,
-      );
-      expect(result, 'ppa_down');
-    });
-  });
-
-  group('determineLever â€” favorable levers fire correctly', () {
-    test('covers_up fires with positive delta', () {
-      expect(_lever(actualCovers: 1300, forecastCovers: 1200), 'covers_up');
-    });
-
-    test('cplh_up fires with positive delta', () {
-      expect(_lever(avgCPLH: _tCPLH * 1.20), 'cplh_up');
-    });
-
-    test('ppa_up fires with positive delta', () {
-      expect(_lever(avgPPA: _tPPA * 1.10), 'ppa_up');
-    });
-
-    test('splh_up fires with positive delta', () {
-      expect(_lever(avgSPLH: _tSPLH * 1.10), 'splh_up');
-    });
-
-    test('foh_wage_down fires when blended wage below target', () {
+    test('zero inputs: no divide-by-zero', () {
       expect(
-        _lever(avgSPLH: _tSPLH, avgFohWage: _fohWage * 0.90, avgBohWage: _bohWage),
-        'foh_wage_down',
+        LaborModel.determineLever(
+          actualCovers: 100, forecastCovers: 0,
+          avgCPLH: _tCPLH, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+        ),
+        'covers_down',
       );
-    });
-
-    test('boh_wage_down fires when blended wage below target', () {
       expect(
-        _lever(avgSPLH: _tSPLH, avgFohWage: _fohWage, avgBohWage: _bohWage * 0.87),
-        'boh_wage_down',
+        LaborModel.determineLever(
+          actualCovers: 1200, forecastCovers: 1200,
+          avgCPLH: 4.0, avgPPA: _tPPA,
+          targetCPLH: 0.0, targetPPA: _tPPA,
+        ),
+        'covers_down',
       );
     });
   });
 
-  group('WeekRecord â€” model formula targets', () {
-    test('targetFohHours uses modelFohHours(totalCovers, derivedTargetCPLH)', () {
-      final record = WeekRecord(
-        weekId: 't', weekLabel: 't',
-        totalCovers: 1200, forecastCovers: 1200,
-        totalFohHours: 291, totalBohHours: 279,
-        avgPPA: 41.79, avgCPLH: 4.12,
-        theoreticalLaborPct: 20.48, actualLaborPct: 21.45,
-        dollarGap: 478.50, primaryLeverId: 'cplh_down',
-        targetSourceType: 'system_baseline',
-        targetCPLH: _tCPLH,
-        targetSPLH: _tSPLH,
-        targetPPA: _tPPA,
-        targetFohWage: _fohWage,
-        targetBohWage: _bohWage,
+  group('determineLever — largest deviation wins', () {
+    test('covers (-6%) beats cplh (-5.5%)', () {
+      expect(
+        LaborModel.determineLever(
+          actualCovers: (1200 * 0.94).round(), forecastCovers: 1200,
+          avgCPLH: _tCPLH * 0.945, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+        ),
+        'covers_down',
       );
-      final expected = LaborModel.modelFohHours(
-          1200, BaselineData.derivedTargetCPLH);
-      expect(record.targetFohHours, expected);
     });
 
-    test('targetBohHours uses modelBohHours(totalCovers, avgPPA, derivedTargetSPLH)', () {
+    test('cplh (-8%) beats covers (-4%)', () {
+      expect(
+        LaborModel.determineLever(
+          actualCovers: (1200 * 0.96).round(), forecastCovers: 1200,
+          avgCPLH: _tCPLH * 0.92, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+        ),
+        'cplh_down',
+      );
+    });
+
+    test('ppa (-7%) beats cplh (-6%)', () {
+      expect(
+        LaborModel.determineLever(
+          actualCovers: 1200, forecastCovers: 1200,
+          avgCPLH: _tCPLH * 0.94, avgPPA: _tPPA * 0.93,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+        ),
+        'ppa_down',
+      );
+    });
+
+    test('splh (-9%) beats foh_wage (+6%)', () {
+      expect(
+        LaborModel.determineLever(
+          actualCovers: 1200, forecastCovers: 1200,
+          avgCPLH: _tCPLH, avgPPA: _tPPA,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+          avgSPLH: _tSPLH * 0.91, targetSPLH: _tSPLH,
+          avgFohBlendedWage: _fohWage * 1.06, targetFohWage: _fohWage,
+        ),
+        'splh_down',
+      );
+    });
+
+    test('priority ordering: ppa beats covers at similar magnitude', () {
+      expect(
+        LaborModel.determineLever(
+          actualCovers: (1200 * 0.959).round(), forecastCovers: 1200,
+          avgCPLH: _tCPLH, avgPPA: _tPPA * 0.955,
+          targetCPLH: _tCPLH, targetPPA: _tPPA,
+        ),
+        'ppa_down',
+      );
+    });
+  });
+
+  group('WeekRecord — model formula targets and computed fields', () {
+    test('targetFohHours, targetBohHours, avgSPLH, and wage defaults correct', () {
       final record = WeekRecord(
         weekId: 't', weekLabel: 't',
         totalCovers: 1200, forecastCovers: 1200,
@@ -348,32 +218,16 @@ void main() {
         theoreticalLaborPct: 20.48, actualLaborPct: 21.82,
         dollarGap: 661.85, primaryLeverId: 'splh_down',
         targetSourceType: 'system_baseline',
-        targetCPLH: _tCPLH,
-        targetSPLH: _tSPLH,
+        targetCPLH: _tCPLH, targetSPLH: _tSPLH,
         targetPPA: _tPPA,
-        targetFohWage: _fohWage,
-        targetBohWage: _bohWage,
+        targetFohWage: _fohWage, targetBohWage: _bohWage,
       );
-      final expected = LaborModel.modelBohHours(
-          1200, 41.79, BaselineData.derivedTargetSPLH);
-      expect(record.targetBohHours, expected);
-    });
+      expect(record.targetFohHours, LaborModel.modelFohHours(1200, _tCPLH));
+      expect(record.targetBohHours, LaborModel.modelBohHours(1200, 41.79, _tSPLH));
+      expect(record.avgSPLH, closeTo((41.79 * 1200) / 310, 0.01));
 
-    test('avgSPLH computed correctly from stored fields', () {
-      const record = WeekRecord(
-        weekId: 't', weekLabel: 't',
-        totalCovers: 1200, forecastCovers: 1200,
-        totalFohHours: 262, totalBohHours: 310,
-        avgPPA: 41.79, avgCPLH: 4.58,
-        theoreticalLaborPct: 20.48, actualLaborPct: 21.82,
-        dollarGap: 661.85, primaryLeverId: 'splh_down',
-      );
-      final expected = (41.79 * 1200) / 310; // â‰ˆ 161.8
-      expect(record.avgSPLH, closeTo(expected, 0.01));
-    });
-
-    test('avgSPLH = 0 when totalBohHours = 0', () {
-      const record = WeekRecord(
+      // Zero BOH hours
+      const zeroBoh = WeekRecord(
         weekId: 't', weekLabel: 't',
         totalCovers: 100, forecastCovers: 100,
         totalFohHours: 22, totalBohHours: 0,
@@ -381,11 +235,10 @@ void main() {
         theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
         dollarGap: 0.0, primaryLeverId: 'covers_down',
       );
-      expect(record.avgSPLH, 0.0);
-    });
+      expect(zeroBoh.avgSPLH, 0.0);
 
-    test('blendedFohWage defaults to MeridianConfig.fohWage', () {
-      const record = WeekRecord(
+      // Wage defaults
+      const defaultWage = WeekRecord(
         weekId: 't', weekLabel: 't',
         totalCovers: 1200, forecastCovers: 1200,
         totalFohHours: 262, totalBohHours: 279,
@@ -393,82 +246,61 @@ void main() {
         theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
         dollarGap: 0.0, primaryLeverId: 'covers_down',
       );
-      expect(record.blendedFohWage, MeridianConfig.fohWage);
+      expect(defaultWage.blendedFohWage, MeridianConfig.fohWage);
     });
   });
 
-  group('LaborModel.theoreticalLaborPct â€” zero safety', () {
-    test('zero targetCPLH returns 0', () {
+  group('LaborModel.theoreticalLaborPct — zero safety', () {
+    test('zero CPLH/SPLH/PPA returns 0; known values produce ≈20.5%', () {
       expect(LaborModel.theoreticalLaborPct(0, _tSPLH, _tPPA, _fohWage, _bohWage), 0.0);
-    });
-
-    test('zero targetSPLH returns 0', () {
       expect(LaborModel.theoreticalLaborPct(_tCPLH, 0, _tPPA, _fohWage, _bohWage), 0.0);
-    });
-
-    test('zero targetPPA returns 0', () {
       expect(LaborModel.theoreticalLaborPct(_tCPLH, _tSPLH, 0, _fohWage, _bohWage), 0.0);
-    });
-
-    test('known values: â‰ˆ 20.48% for derived targets', () {
-      final result = LaborModel.theoreticalLaborPct(
-        _tCPLH, _tSPLH, _tPPA, _fohWage, _bohWage,
+      expect(
+        LaborModel.theoreticalLaborPct(_tCPLH, _tSPLH, _tPPA, _fohWage, _bohWage),
+        closeTo(20.48, 0.5),
       );
-      expect(result, closeTo(20.48, 0.5));
     });
   });
 
   group('Demo weekHistory round-trip', () {
-    // Each demo record's stored lever must match what determineLever computes
-    // from the stored fields. This guards against the W12/W07 gap (H4) recurring.
     test('all 12 demo records: determineLever reproduces stored primaryLeverId', () {
       for (final record in DemoData.weekHistory) {
         final computed = LaborModel.determineLever(
-          actualCovers:      record.totalCovers,
-          forecastCovers:    record.forecastCovers,
-          avgCPLH:           record.avgCPLH,
-          avgPPA:            record.avgPPA,
-          targetCPLH:        BaselineData.derivedTargetCPLH,
-          targetPPA:         BaselineData.derivedTargetPPA,
-          avgSPLH:           record.avgSPLH,
-          targetSPLH:        BaselineData.derivedTargetSPLH,
+          actualCovers: record.totalCovers,
+          forecastCovers: record.forecastCovers,
+          avgCPLH: record.avgCPLH,
+          avgPPA: record.avgPPA,
+          targetCPLH: BaselineData.derivedTargetCPLH,
+          targetPPA: BaselineData.derivedTargetPPA,
+          avgSPLH: record.avgSPLH,
+          targetSPLH: BaselineData.derivedTargetSPLH,
           avgFohBlendedWage: record.blendedFohWage,
-          targetFohWage:     MeridianConfig.fohWage,
+          targetFohWage: MeridianConfig.fohWage,
           avgBohBlendedWage: record.blendedBohWage,
-          targetBohWage:     MeridianConfig.bohWage,
+          targetBohWage: MeridianConfig.bohWage,
         );
-        expect(
-          computed,
-          record.primaryLeverId,
-          reason: '${record.weekId}: determineLever returned "$computed" '
-              'but stored lever is "${record.primaryLeverId}"',
-        );
+        expect(computed, record.primaryLeverId,
+            reason: '${record.weekId}: got "$computed" expected "${record.primaryLeverId}"');
       }
     });
 
     test('12 records cover all 12 lever types', () {
       final leverIds = DemoData.weekHistory.map((r) => r.primaryLeverId).toSet();
-      const expected = {
-        'covers_down', 'covers_up',
-        'ppa_down',    'ppa_up',
-        'cplh_down',   'cplh_up',
-        'splh_down',   'splh_up',
-        'foh_wage_up', 'foh_wage_down',
-        'boh_wage_up', 'boh_wage_down',
-      };
-      expect(leverIds, expected);
+      expect(leverIds, {
+        'covers_down', 'covers_up', 'ppa_down', 'ppa_up',
+        'cplh_down', 'cplh_up', 'splh_down', 'splh_up',
+        'foh_wage_up', 'foh_wage_down', 'boh_wage_up', 'boh_wage_down',
+      });
     });
 
     test('stale lever detection: record with wrong lever can be caught', () {
-      // Construct a record that claims covers_down but inputs resolve to cplh_down
       const stale = WeekRecord(
         weekId: 'stale', weekLabel: 'Stale',
-        totalCovers: 1155, forecastCovers: 1200,  // âˆ’3.75% covers (fires)
-        totalFohHours: 305, totalBohHours: 280,   // avgCPLH = 1155/305 = 3.79 â†’ âˆ’17.3% (fires, bigger)
+        totalCovers: 1155, forecastCovers: 1200,
+        totalFohHours: 305, totalBohHours: 280,
         avgPPA: 41.79, avgCPLH: 3.79,
         theoreticalLaborPct: 20.48, actualLaborPct: 22.1,
-        dollarGap: 900.0,
-        primaryLeverId: 'covers_down',  // â† WRONG (stale)
+        dollarGap: 900.0, primaryLeverId: 'covers_down',
       );
       final computed = LaborModel.determineLever(
         actualCovers: stale.totalCovers, forecastCovers: stale.forecastCovers,
@@ -476,48 +308,29 @@ void main() {
         targetCPLH: BaselineData.derivedTargetCPLH,
         targetPPA: BaselineData.derivedTargetPPA,
       );
-      // cplh delta = (3.79 - 4.58)/4.58 = âˆ’17.3% > covers delta âˆ’3.75%
       expect(computed, 'cplh_down');
       expect(computed, isNot(stale.primaryLeverId));
     });
   });
 
   group('LeverCards completeness', () {
-    test('all 12 lever IDs have a matching LeverCardData in LeverCards.all', () {
+    test('all 12 lever IDs have matching LeverCardData; wage direction correct', () {
       const allLeverIds = [
-        'covers_down', 'covers_up',
-        'ppa_down',    'ppa_up',
-        'cplh_down',   'cplh_up',
-        'splh_down',   'splh_up',
-        'foh_wage_up', 'foh_wage_down',
-        'boh_wage_up', 'boh_wage_down',
+        'covers_down', 'covers_up', 'ppa_down', 'ppa_up',
+        'cplh_down', 'cplh_up', 'splh_down', 'splh_up',
+        'foh_wage_up', 'foh_wage_down', 'boh_wage_up', 'boh_wage_down',
       ];
       for (final id in allLeverIds) {
         final card = LeverCards.all.where((c) => c.id == id).toList();
-        expect(card, hasLength(1), reason: 'Missing LeverCardData for lever "$id"');
+        expect(card, hasLength(1), reason: 'Missing LeverCardData for "$id"');
       }
-    });
 
-    test('foh_wage_down is favorable', () {
-      final card = LeverCards.all.firstWhere((c) => c.id == 'foh_wage_down');
-      expect(card.isFavorable, isTrue);
-      expect(card.direction, LeverDirection.favorable);
-    });
-
-    test('boh_wage_down is favorable', () {
-      final card = LeverCards.all.firstWhere((c) => c.id == 'boh_wage_down');
-      expect(card.isFavorable, isTrue);
-      expect(card.direction, LeverDirection.favorable);
-    });
-
-    test('foh_wage_up is unfavorable', () {
-      final card = LeverCards.all.firstWhere((c) => c.id == 'foh_wage_up');
-      expect(card.isFavorable, isFalse);
-    });
-
-    test('boh_wage_up is unfavorable', () {
-      final card = LeverCards.all.firstWhere((c) => c.id == 'boh_wage_up');
-      expect(card.isFavorable, isFalse);
+      // Wage direction checks
+      expect(LeverCards.all.firstWhere((c) => c.id == 'foh_wage_down').isFavorable, isTrue);
+      expect(LeverCards.all.firstWhere((c) => c.id == 'foh_wage_down').direction, LeverDirection.favorable);
+      expect(LeverCards.all.firstWhere((c) => c.id == 'boh_wage_down').isFavorable, isTrue);
+      expect(LeverCards.all.firstWhere((c) => c.id == 'foh_wage_up').isFavorable, isFalse);
+      expect(LeverCards.all.firstWhere((c) => c.id == 'boh_wage_up').isFavorable, isFalse);
     });
   });
 }

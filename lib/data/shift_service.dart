@@ -7,9 +7,12 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
+import '../domain/services/schedule_forecast_demand_resolver.dart';
+import '../domain/services/schedule_plan_resolver.dart';
 import '../domain/services/shift_fact_builder.dart';
 import '../domain/services/target_snapshot_builder.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
@@ -24,6 +27,7 @@ import '../models/week_record.dart';
 import '../services/history_pattern_builder.dart';
 import '../services/labor_model.dart';
 import 'legacy_fixture_data.dart'; // MeridianConfig for blended-wage zero-hour fallback only
+import 'mock_integration_replay_seed.dart';
 
 class ShiftService {
   ShiftService._();
@@ -78,6 +82,9 @@ class ShiftService {
     final avgCPLH = totalFoh    > 0 ? totalCovers / totalFoh   : 0.0;
     final avgSPLH = totalBoh    > 0 ? totalSales  / totalBoh   : 0.0;
 
+    final wtdModelFoh = LaborModel.modelFohHours(totalCovers, profile.targetCPLH);
+    final wtdModelBoh = LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
+
     final primaryLeverId = LaborModel.determineLever(
       actualCovers:      totalCovers,
       forecastCovers:    wtdForecastCovers,
@@ -91,6 +98,10 @@ class ShiftService {
       targetFohWage:     profile.fohWage,
       avgBohBlendedWage: blendedBohWage,
       targetBohWage:     profile.bohWage,
+      scheduledFohHours: totalFoh,
+      modelFohHours:     wtdModelFoh,
+      scheduledBohHours: totalBoh,
+      modelBohHours:     wtdModelBoh,
     );
 
     const dayOrder = {'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7};
@@ -212,12 +223,16 @@ class ShiftService {
 
   ShiftRecord _shiftRecordFromFact(ShiftFact fact) {
     final ts = fact.targetSnapshot;
+    final bd = fact.businessDate;
+    final businessDateStr =
+        '${bd.year}-${bd.month.toString().padLeft(2, '0')}-${bd.day.toString().padLeft(2, '0')}';
     return ShiftRecord(
       restaurantId: fact.restaurantId,
       status: 'closed',
       weekId: fact.weekId,
       dayLabel: fact.dayLabel,
       daypart: fact.daypart,
+      businessDate: businessDateStr,
       covers: fact.covers,
       forecastCovers: fact.forecastCovers,
       ppa: fact.ppa,
@@ -330,6 +345,9 @@ class ShiftService {
     final dollarGap = totalLaborDollar - summedTheoreticalLaborDollar;
 
     // Primary lever from locked targets
+    final wkModelFoh = LaborModel.modelFohHours(totalCovers, wkTargetCPLH);
+    final wkModelBoh = LaborModel.modelBohHoursFromSales(totalSales, wkTargetSPLH);
+
     final primaryLeverId = LaborModel.determineLever(
       actualCovers:      totalCovers,
       forecastCovers:    forecastCovers,
@@ -343,6 +361,10 @@ class ShiftService {
       targetFohWage:     wkTargetFohWage,
       avgBohBlendedWage: blendedBohWage,
       targetBohWage:     wkTargetBohWage,
+      scheduledFohHours: totalFohHours,
+      modelFohHours:     wkModelFoh,
+      scheduledBohHours: totalBohHours,
+      modelBohHours:     wkModelBoh,
     );
 
     // Source type: use the first shift's source type as representative
@@ -418,12 +440,53 @@ class ShiftService {
 
   // ── Shift dashboard read model ────────────────────────────────────────────
 
+  /// Builds the whole-day Shift dashboard from SchedulePlan + aggregated
+  /// snapshots. Returns null when no open shift or no plan is available.
   Future<ShiftDashboardReadModel?> getShiftDashboard() async {
     final restaurantId = await _activeRestaurantId();
     final profile = await _loadActiveProfile(restaurantId);
-    final snapshot = await _openShiftRepo.getCurrentOpenShift(restaurantId);
-    if (snapshot == null) return null;
-    return ShiftDashboardReadModel.build(snapshot, profile);
+
+    // Find the business date with an open shift
+    final businessDate =
+        await _openShiftRepo.getCurrentBusinessDate(restaurantId);
+    if (businessDate == null) return null;
+
+    // Load ALL daypart snapshots for this business day
+    final snapshots =
+        await _openShiftRepo.getSnapshotsForDay(restaurantId, businessDate);
+    if (snapshots.isEmpty) return null;
+
+    // Resolve whole-day SchedulePlan
+    final demand = ScheduleForecastDemandResolver.resolve(
+      targetPPA: profile.targetPPA,
+      historicalWeeklyAvgCovers: BaselineData.historicalWeeklyAvgCovers,
+    );
+    final plan = SchedulePlanResolver.resolve(demand: demand, profile: profile);
+
+    // Pick the day row matching the open shift
+    final openSnap = snapshots
+        .where((s) => s.status == 'open')
+        .firstOrNull ?? snapshots.first;
+    final dayPlan = plan?.dayPlans
+        .where((d) => d.day == openSnap.dayLabel)
+        .firstOrNull;
+    if (dayPlan == null) return null;
+
+    // Aggregate reservation unseated covers for the whole day
+    final resSnapshots = await SqliteReservationBookSnapshotRepository.instance
+        .getForDay(restaurantId, businessDate);
+    final totalUnseated =
+        resSnapshots.fold<int>(0, (s, r) => s + r.unseatedCovers);
+
+    return ShiftDashboardReadModel.buildWholeDay(
+      snapshots: snapshots,
+      profile: profile,
+      forecastCovers: dayPlan.forecastCovers,
+      forecastSales: dayPlan.forecastSales,
+      planFohHours: dayPlan.requiredFohHours,
+      planBohHours: dayPlan.requiredBohHours,
+      inTheBooksCovers: totalUnseated > 0 ? totalUnseated : null,
+    );
   }
 
   // ── Full-week shifts for Variance Full Week ──────────────────────────────
@@ -479,5 +542,36 @@ class ShiftService {
 
   Future<void> clearAllData() async {
     await SqliteDatabase.instance.clearAllData();
+  }
+
+  // ── Mock replay scenario controls ──────────────────────────────────────
+
+  /// Returns the persisted mock replay business date, or null if unset.
+  Future<String?> getMockReplayBusinessDate() async {
+    final restaurantId = await _activeRestaurantId();
+    return SqliteDatabase.instance.getMockReplayBusinessDate(restaurantId);
+  }
+
+  /// Reseeds all operational tables for a specific mock replay business date.
+  Future<void> reseedMockReplayForDate(String isoDate) async {
+    await SqliteDatabase.instance.reseedMockReplayForBusinessDate(isoDate);
+  }
+
+  /// Advances the mock replay by one calendar day and reseeds coherently.
+  Future<void> advanceMockReplayDay() async {
+    final restaurantId = await _activeRestaurantId();
+    final currentDate = await SqliteDatabase.instance
+        .getMockReplayBusinessDate(restaurantId);
+    final base = currentDate ?? MockIntegrationReplaySeed.defaultBusinessDate;
+
+    final parts = base.split('-');
+    final dt = DateTime(
+        int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    final next = DateTime(dt.year, dt.month, dt.day + 1);
+    final nextDate =
+        '${next.year}-${next.month.toString().padLeft(2, '0')}'
+        '-${next.day.toString().padLeft(2, '0')}';
+
+    await SqliteDatabase.instance.reseedMockReplayForBusinessDate(nextDate);
   }
 }

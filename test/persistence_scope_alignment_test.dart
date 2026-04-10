@@ -154,7 +154,7 @@ void main() {
         whereArgs: ['demo_restaurant_001'],
       );
       expect(rows, isNotEmpty);
-      expect(rows.first['mode'], 'fixture_replay');
+      expect(rows.first['mode'], 'mock_pos_labor_replay');
       expect(rows.first['status'], 'completed');
     });
 
@@ -175,7 +175,7 @@ void main() {
         whereArgs: [runId],
       );
       expect(records, isNotEmpty);
-      expect(records.first['source_type'], 'fixture');
+      expect(records.first['source_type'], 'mock_pos_labor_replay');
       expect(records.first['status'], 'applied');
     });
 

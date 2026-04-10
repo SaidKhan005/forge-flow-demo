@@ -3,9 +3,13 @@ import 'package:provider/provider.dart';
 
 import 'data/active_target_profile_notifier.dart';
 import 'data/restaurant_scope_notifier.dart';
+import 'data/schedule_distribution_weights_notifier.dart';
 import 'data/shift_dashboard_notifier.dart';
 import 'data/shift_data_source.dart';
 import 'data/week_data_notifier.dart';
+import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import 'infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
 import 'screens/baseline_tracker.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings_screen.dart';
@@ -64,6 +68,19 @@ class ForgeFlowScope extends StatelessWidget {
           update: (ctx, targetNotifier, previous) {
             previous!.refresh();
             return previous;
+          },
+        ),
+        // Phase 7.55e.4 — runtime distribution weights from closed shifts.
+        // Loads on creation; Schedule reads .weights when building its notifier.
+        ChangeNotifierProvider<ScheduleDistributionWeightsNotifier>(
+          create: (_) {
+            final notifier = ScheduleDistributionWeightsNotifier(
+              scopeRepo: SqliteRestaurantScopeRepository.instance,
+              weekRepo: SqliteWeekRecordRepository.instance,
+              shiftRepo: SqliteShiftRecordRepository.instance,
+            );
+            notifier.load(); // fire-and-forget; Schedule uses fallback until ready
+            return notifier;
           },
         ),
       ],

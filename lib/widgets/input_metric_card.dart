@@ -78,42 +78,50 @@ class InputMetricCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           // Current value
-          Text(metric.currentFormatted, style: AppTextStyles.mono28()),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(metric.currentFormatted, style: AppTextStyles.mono28()),
+          ),
           const SizedBox(height: 3),
           // Target
           Text(metric.targetFormatted,
               style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          if (metric.targetSupportFormatted != null) ...[
+            const SizedBox(height: 2),
+            Text(metric.targetSupportFormatted!,
+                style: AppTextStyles.mono10(color: AppColors.textMuted)),
+          ],
           const SizedBox(height: 8),
-          // Delta + status row
+          // Delta row
+          if (!isDashDelta)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: deltaColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(2),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(arrowIcon, size: 14, color: deltaColor),
+                  const SizedBox(width: 2),
+                  Text(
+                    metric.deltaFormatted,
+                    style: AppTextStyles.mono12(
+                        color: deltaColor, weight: FontWeight.w700),
+                  ),
+                ],
+              ),
+            )
+          else
+            Text('\u2014',
+                style: AppTextStyles.mono12(color: AppColors.neutral)),
+          const SizedBox(height: 4),
+          // Status dot + text
           Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              if (!isDashDelta)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: deltaColor.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(arrowIcon, size: 14, color: deltaColor),
-                      const SizedBox(width: 2),
-                      Text(
-                        metric.deltaFormatted,
-                        style: AppTextStyles.mono12(
-                            color: deltaColor, weight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                Text('\u2014',
-                    style: AppTextStyles.mono12(color: AppColors.neutral)),
-              const Spacer(),
-              // Status dot + text
               Container(
                 width: 5,
                 height: 5,

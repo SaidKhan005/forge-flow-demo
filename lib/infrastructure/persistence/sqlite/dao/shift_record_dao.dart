@@ -29,6 +29,34 @@ class ShiftRecordDao {
     return rows.map(ShiftRecord.fromMap).toList();
   }
 
+  /// Returns closed shifts whose business_date falls within [startDate, endDate].
+  /// Rows with null business_date are excluded naturally by the WHERE clause.
+  /// Results ordered by business_date DESC.
+  Future<List<ShiftRecord>> getClosedShiftsInDateRange(
+      String restaurantId, String startDate, String endDate) async {
+    final rows = await _db.rawQuery(
+      'SELECT * FROM shift_records '
+      "WHERE restaurant_id = ? AND status = 'closed' "
+      'AND business_date >= ? AND business_date <= ? '
+      'ORDER BY business_date DESC',
+      [restaurantId, startDate, endDate],
+    );
+    return rows.map(ShiftRecord.fromMap).toList();
+  }
+
+  /// Returns the latest non-null business_date among closed shifts for this
+  /// restaurant, or null if no closed shifts have a business_date.
+  Future<String?> getLatestClosedBusinessDate(String restaurantId) async {
+    final rows = await _db.rawQuery(
+      'SELECT MAX(business_date) AS latest_date FROM shift_records '
+      "WHERE restaurant_id = ? AND status = 'closed' "
+      'AND business_date IS NOT NULL',
+      [restaurantId],
+    );
+    if (rows.isEmpty) return null;
+    return rows.first['latest_date'] as String?;
+  }
+
   Future<int> replaceShiftForSlot(ShiftRecord record) async {
     return _db.transaction<int>((txn) async {
       await txn.delete(

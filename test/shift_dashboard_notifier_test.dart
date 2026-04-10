@@ -22,6 +22,17 @@ void main() {
     notifier.dispose();
   });
 
+  test('notifier read model includes inTheBooksCovers after reseed',
+      () async {
+    final notifier = ShiftDashboardNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.readModel, isNotNull);
+    expect(notifier.readModel!.inTheBooksCovers, 72);
+
+    notifier.dispose();
+  });
+
   test('notifier finishes loading with null readModel when no snapshot exists',
       () async {
     // Clear open snapshots so there's no current shift

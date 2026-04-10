@@ -47,6 +47,9 @@ class ShiftFactBuilder {
         : null;
 
     // ── Determine primary lever ───────────────────────────────────────────
+    final modelFoh = LaborModel.modelFohHours(input.covers, targetSnapshot.targetCPLH);
+    final modelBoh = LaborModel.modelBohHoursFromSales(input.actualSales, targetSnapshot.targetSPLH);
+
     final primaryLeverId = LaborModel.determineLever(
       actualCovers: input.covers,
       forecastCovers: input.forecastCovers,
@@ -60,6 +63,10 @@ class ShiftFactBuilder {
       targetFohWage: targetSnapshot.fohWage,
       avgBohBlendedWage: avgBohBlendedWage,
       targetBohWage: targetSnapshot.bohWage,
+      scheduledFohHours: input.scheduledFohHours,
+      modelFohHours: modelFoh,
+      scheduledBohHours: input.scheduledBohHours,
+      modelBohHours: modelBoh,
     );
 
     return ShiftFact(

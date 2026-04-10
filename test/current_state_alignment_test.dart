@@ -66,8 +66,8 @@ void main() {
 
     test('read model has non-empty context fields', () async {
       final rm = await ShiftService.instance.getShiftDashboard();
-      expect(rm!.daypart, isNotEmpty);
-      expect(rm.day, isNotEmpty);
+      // daypart may be empty for whole-day views
+      expect(rm!.day, isNotEmpty);
       expect(rm.timeLabel, isNotEmpty);
       expect(rm.serviceElapsedLabel, isNotEmpty);
     });
