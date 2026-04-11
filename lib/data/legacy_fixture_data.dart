@@ -1365,12 +1365,12 @@ class BaselineData {
       activeRangeStartPosition:  activeStartPos,
       activeRangeEndPosition:    activeEndPos,
       targetPosition:            targetPos,
-      title:                   'RECOMMENDED TARGET',
+      title:                   'CPLH TARGET',
       startLabel:              'LOWEST CPLH LAST 60 DAYS',
       endLabel:                'HIGHEST CPLH LAST 60 DAYS',
       rangeLabel:              rangeLabel,
       recommendedExplanation:  baselineRangeValidation.message,
-      overrideLabel:           'MANAGER OVERRIDE BASED ON STAR SHIFTS',
+      overrideLabel:           'CHOOSE STAR SHIFTS',
     );
   }
 }

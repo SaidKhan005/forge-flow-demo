@@ -241,6 +241,28 @@ void main() {
           find.text('CPLH', skipOffstage: false), findsAtLeastNWidgets(1));
     });
 
+    testWidgets('CPLH metric card renders at 2dp (7.55h)', (tester) async {
+      final rm = _fixtureReadModel();
+      await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
+      await tester.pump();
+      await tester.pump();
+
+      final cplhCard = rm.metricCards.firstWhere((c) => c.name == 'CPLH');
+      // Current value must be 2dp
+      expect(cplhCard.currentFormatted, contains('.'));
+      expect(cplhCard.currentFormatted.split('.').last.length, 2);
+      expect(
+        find.text(cplhCard.currentFormatted, skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+      // Target line must be 2dp
+      expect(cplhCard.targetFormatted, contains('.'));
+      expect(
+        find.text(cplhCard.targetFormatted, skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+    });
+
     testWidgets('SPLH card exists', (tester) async {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();

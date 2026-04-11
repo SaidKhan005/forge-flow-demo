@@ -269,8 +269,7 @@ void main() {
         targetSPLH: 180.0,
         fohWage: 15.0,
         bohWage: 18.0,
-        theoreticalLaborPct: 25.0,
-        initialCovers: initialCovers,
+        historicalWeeklyAvgCovers: initialCovers,
         distributionWeights: distributionWeights,
       );
     }

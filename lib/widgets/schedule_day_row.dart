@@ -44,7 +44,7 @@ class ScheduleDayRow extends StatelessWidget {
 
     if (isHeader) {
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             begin: Alignment.topCenter,
@@ -69,14 +69,24 @@ class ScheduleDayRow extends StatelessWidget {
                     textAlign: TextAlign.right)),
             Expanded(
                 flex: 2,
-                child: Text('FOH',
-                    style: AppTextStyles.mono7(),
-                    textAlign: TextAlign.right)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('FOH', style: AppTextStyles.mono7()),
+                    Text('HRS', style: AppTextStyles.mono7()),
+                  ],
+                )),
             Expanded(
                 flex: 2,
-                child: Text('BOH',
-                    style: AppTextStyles.mono7(),
-                    textAlign: TextAlign.right)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('BOH', style: AppTextStyles.mono7()),
+                    Text('HRS', style: AppTextStyles.mono7()),
+                  ],
+                )),
           ],
         ),
       );

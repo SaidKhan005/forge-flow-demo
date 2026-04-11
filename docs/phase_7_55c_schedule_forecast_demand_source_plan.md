@@ -1,230 +1,97 @@
 # Phase 7.55c - Schedule Forecast Demand Source Model
 
-Updated: 2026-04-09
+Updated: 2026-04-11
 Owner: Codex planning / tracker truth
-Status: 7.55c.1 planning complete; 7.55c.2 app-side model and Schedule wiring complete; live POS transport not implemented
+Status: Historical, partially superseded by newer cycle/week architecture
 
 ## Purpose
 
-Clarify and then implement the Schedule demand-source architecture before live integrations arrive.
+Phase `7.55c` was the earlier demand-source cleanup phase for Schedule.
 
-Phase 7.55b corrected the visible Schedule table so FOH is cover-driven and BOH is forecast-sales-driven. Phase 7.55c goes one layer deeper and defines where the forecast demand numbers come from.
+It was useful because it separated:
 
-## Key Product Truth
+- demand inputs
+- target standards
+- plan math
 
-```text
-POS (60-day closed shifts) → total covers → ÷ (60/7) → weekly avg covers (FORECAST)
-weekly avg covers × target PPA → forecasted sales (ALWAYS DERIVED)
-```
+That separation still matters.
 
-```text
-Baseline supplies standards (targets).
-POS 60-day history supplies forecast demand (covers).
-Sales is always derived from covers × PPA.
-LaborModel combines standards and demand.
-```
+## What 7.55c Got Right
 
-## Architecture
+`7.55c` correctly pushed the app away from treating vendor forecast values as
+the main planning truth.
 
-Schedule needs two kinds of input:
+It also helped establish these still-valid ideas:
 
-```text
-1. Demand forecast (covers and sales)
-2. Active target profile (CPLH, SPLH, PPA, wages)
-```
+- demand and standards are different concepts
+- forecast sales can be derived inside the app
+- plan math should not live in widgets
+- the app should own planning logic rather than mirror vendor UI concepts
 
-Demand forecast answers: "How much business do we expect?"
-Active target profile answers: "What standards should we plan against?"
+## What Has Changed Since 7.55c
 
-### Demand Forecast Flow
+The newer architecture is now:
 
 ```text
-POS / labor system (60-day closed shifts)
-→ total covers tracked
-→ ÷ (60/7 weeks)
-→ weekly average covers = FORECASTED COVERS
-
-forecasted covers × target PPA = FORECASTED SALES (always derived, never direct input)
+Canonical Operational Facts
+-> 60-Day Benchmark Snapshot
+-> TargetCycle
+-> ActiveTargetProfile + rolling DemandForecastContext
+-> SchedulePlan
+-> WeeklyPlanSnapshot
+-> Shift
+-> Variance
+-> History
+-> Learn
 ```
 
-### Formula Layer
+That means `7.55c` is no longer the full planning truth by itself.
+
+## What Is Now Partially Superseded
+
+The older `7.55c` assumptions are no longer the active end state:
+
+- forecast demand is no longer just "60-day average covers"
+- manager forecast input is no longer assumed to be permanently absent
+- distribution should no longer be treated as a separate live rolling runtime
+  lookup
+- benchmark/standards and rolling demand are no longer described as one
+  combined baseline-owned package
+
+## Current Correct Rule
+
+Use this split now:
 
 ```text
-FOH required hours = forecasted covers ÷ target CPLH
-BOH required hours = forecasted sales ÷ target SPLH
+60-Day Benchmark Snapshot = calibration evidence
+TargetCycle = locked 60-day standards
+DemandForecastContext = rolling forecast demand
+SchedulePlan = standards + demand + distribution
+WeeklyPlanSnapshot = locked weekly operating plan
 ```
 
-### Source Map
+## Relationship To Newer Docs
 
-```text
-POS closed shifts (60 days)
-→ historicalWeeklyAvgCovers
-→ ScheduleForecastDemand.forecastCovers
-→ ScheduleForecastDemand.forecastSales (= covers × targetPPA)
+`7.55c` should now be read together with:
 
-Closed historical shifts
-→ Baseline selection
-→ ActiveTargetProfile (CPLH, SPLH, PPA, wages, labor %)
+- `docs/phase_7_55_target_cycle_weekly_plan_rules.md`
+- `docs/phase_7_55j_gate_integration_readiness_pressure_test.md`
+- `docs/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 
-ScheduleForecastDemand + ActiveTargetProfile
-→ LaborModel
-→ required FOH hours and required BOH hours
-```
+Those newer docs own the current architecture direction.
 
-## What Changed From Original 7.55c Plan
+## What Still Carries Forward
 
-The original plan assumed vendors would provide forecast sales or forecast covers as direct inputs. This was wrong. The correct architecture:
+The spirit of `7.55c` still matters:
 
-1. **Covers always come from POS 60-day history** — your own operation averaged across 60 days of real trading
-2. **Sales are always derived** as covers × target PPA — never a direct vendor input
-3. **No vendor forecast inputs** for covers or sales
-4. **No manager editing** of forecast values on Schedule
-5. **Manager influence is limited to Baseline target profile override** — adjusting standards (CPLH, SPLH, PPA, wages), not demand
+- keep demand separate from standards
+- keep formulas out of widgets
+- keep the app as the planning authority
+- keep forecast math explainable
 
-### Removed Concepts
+## Handoff Note
 
-- `ForecastDemandSource.vendorForecast` — removed. POS provides raw shift data, the app derives the forecast.
-- `ForecastDemandSource.appDerivedFromSalesAndPpa` — removed. Covers are never derived from sales. Sales is always derived from covers.
-- Explicit `forecastSales` / `forecastCovers` resolver parameters — removed. The resolver only accepts `historicalWeeklyAvgCovers`.
-- Manager-entered forecast covers/sales — removed. Manager influence is Baseline only.
+If a future prompt references `7.55c`, treat it as historical context for the
+early demand-source cleanup only.
 
-## Current Implementation
-
-### Domain Model
-
-```dart
-enum ForecastDemandSource {
-  appDerivedFromHistoricalAverage,        // POS 60-day weekly avg (primary)
-  appDerivedFromCoversAndPpa,             // sales = covers × PPA (always)
-  appDerivedFromReservationAndWalkInModel, // Phase 8R future
-  demoFallback,                           // demo mode only
-  unavailable,                            // no data available
-}
-```
-
-```dart
-class ScheduleForecastDemand {
-  final double? forecastSales;
-  final int? forecastCovers;
-  final ForecastDemandSource salesSource;
-  final ForecastDemandSource coversSource;
-}
-```
-
-### Resolver Waterfall
-
-```dart
-ScheduleForecastDemandResolver.resolve(
-  targetPPA: profile.targetPPA,
-  historicalWeeklyAvgCovers: baselineData.historicalWeeklyAvgCovers,
-  demoMode: isDemoMode,
-)
-```
-
-1. If `historicalWeeklyAvgCovers` exists and > 0:
-   - covers = historicalWeeklyAvgCovers
-   - sales = covers × targetPPA
-   - coversSource = `appDerivedFromHistoricalAverage`
-   - salesSource = `appDerivedFromCoversAndPpa`
-
-2. If demo mode and no historical data:
-   - covers = 1200 (demo fallback constant)
-   - sales = covers × targetPPA
-   - coversSource = `demoFallback`
-
-3. Otherwise: unavailable
-
-### Schedule Display
-
-Schedule forecast is read-only. No editable input. Displays:
-
-```text
-Forecast source: 60-day weekly average
-```
-
-The Schedule table shows:
-
-```text
-DAY | COVERS | SALES | FOH | BOH
-```
-
-All values are system-resolved from the demand forecast + target profile.
-
-## Integration Guardrails
-
-Allowed:
-- POS / labor system supplies historical closed shifts
-- App derives forecast covers from 60-day POS history
-- App derives forecast sales from covers × target PPA
-- Manager influences standards via Baseline target profile override
-
-Not allowed:
-- Vendor directly supplies forecast covers or forecast sales
-- Manager edits forecast covers or sales on Schedule
-- Baseline silently overwrites a live forecast
-- Reservation `in the books` covers become forecast covers
-- Demo `1200` remains the invisible default in non-demo/live contexts
-
-## Relationship To Baseline
-
-Baseline provides:
-- target CPLH, target SPLH, target PPA
-- wage targets (FOH, BOH)
-- OPZ range
-- historical weekly average covers as the forecast source
-
-Baseline is the owner of both standards AND the 60-day historical context that produces the forecast. This is correct: the forecast IS the 60-day average of your own POS data.
-
-## Implementation Files
-
-- `lib/domain/models/schedule_forecast_demand.dart` — model + enum
-- `lib/domain/services/schedule_forecast_demand_resolver.dart` — resolver
-- `lib/screens/schedule_builder.dart` — notifier + display
-- `test/schedule_forecast_demand_resolver_test.dart` — 8 focused tests
-
-## Example Calculation (Jim Taylor)
-
-Your FOH inputs:
-```text
-Forecasted Covers  →  1,200  (10,286 total ÷ 8.57 weeks)
-Target CPLH        →  4.5    (from your best sustainable daypart range)
-PPA                →  $42    (your 60-day average spend per guest)
-FOH Wage           →  $16.50/hr
-```
-
-Your BOH inputs:
-```text
-Target SPLH        →  $180   (from your best sustainable daypart range)
-BOH Wage           →  $21.35/hr
-```
-
-```text
-Step 1: Required FOH Hours = Forecasted Covers ÷ Target CPLH
-        1,200 ÷ 4.5 = 267 FOH hours
-
-Step 2: Required BOH Hours = Forecasted Sales ÷ Target SPLH
-        Forecasted Sales = 1,200 × $42 = $50,400
-        $50,400 ÷ $180 = 280 BOH hours
-```
-
-## Non-Goals
-
-Do not implement in this phase:
-- live POS integration
-- live labor integration
-- live reservation integration
-- vendor-provided forecast transport
-- cross-device forecast sync
-- advanced reservation plus walk-in forecast modeling
-- machine-learning forecasts
-- new target math
-- UI redesign beyond small forecast-source clarity
-
-## Tracker Truth
-
-Phase 7.55c makes the app-side demand-source architecture explicit:
-- Covers always from POS 60-day history
-- Sales always derived from covers × PPA
-- No vendor forecast inputs, no manager editing on Schedule
-- Manager influence limited to Baseline target profile override
-- Phase 8 replaces the transport (fixture → live POS) but not the derivation logic
+Do not use it by itself as the active runtime architecture contract.

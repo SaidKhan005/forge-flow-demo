@@ -1,3 +1,4 @@
+import '../models/demand_forecast_context.dart';
 import '../models/schedule_forecast_demand.dart';
 
 /// Resolves a [ScheduleForecastDemand] from POS historical data.
@@ -58,5 +59,23 @@ class ScheduleForecastDemandResolver {
 
     // ── Case 3: Unavailable ──────────────────────────────────────────────
     return ScheduleForecastDemand.unavailable;
+  }
+
+  /// Resolve forecast demand from a [DemandForecastContext].
+  ///
+  /// Delegates to [resolve] using the context's weekly average covers.
+  /// Keeps the resolver pure — context building is the service's concern.
+  static ScheduleForecastDemand resolveFromContext({
+    required double targetPPA,
+    required DemandForecastContext context,
+    bool demoMode = false,
+    int demoFallbackCovers = 1200,
+  }) {
+    return resolve(
+      targetPPA: targetPPA,
+      historicalWeeklyAvgCovers: context.historicalWeeklyAvgCovers,
+      demoMode: demoMode,
+      demoFallbackCovers: demoFallbackCovers,
+    );
   }
 }

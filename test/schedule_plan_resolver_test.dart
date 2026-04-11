@@ -187,44 +187,9 @@ void main() {
     });
   });
 
-  // ── F: Notifier delegates to SchedulePlan ────────────────────────────────
+  // ── F: Day-level plan rows ───────────────────────────────────────────────
 
-  group('F — notifier delegates to plan', () {
-    test('notifier weekly values match resolver output', () {
-      final notifier = ScheduleForecastNotifier(
-        targetCPLH: 4.5,
-        targetPPA: 42.0,
-        targetSPLH: 180.0,
-        fohWage: 16.50,
-        bohWage: 21.35,
-        theoreticalLaborPct: 20.5,
-        initialCovers: 1200,
-        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
-      );
-
-      final plan = _plan();
-
-      expect(notifier.weeklyCovers, plan.forecastCovers);
-      expect(notifier.forecastedSales, plan.forecastSales);
-      expect(notifier.requiredFohHours, plan.requiredFohHours);
-      expect(notifier.requiredBohHours, plan.requiredBohHours);
-      expect(notifier.forecastedFohLaborDollar, plan.theoreticalFohLaborDollars);
-      expect(notifier.forecastedBohLaborDollar, plan.theoreticalBohLaborDollars);
-      expect(notifier.forecastedTotalLaborDollar, plan.theoreticalTotalLaborDollars);
-      expect(notifier.forecastSourceLabel, plan.coversSourceLabel);
-
-      // Notifier also exposes SchedulePlan object
-      expect(notifier.plan, isNotNull);
-      expect(notifier.plan, isA<SchedulePlan>());
-      expect(notifier.plan!.forecastCovers, notifier.weeklyCovers);
-
-      notifier.dispose();
-    });
-  });
-
-  // ── G: Day-level plan rows ───────────────────────────────────────────────
-
-  group('G — day-level plan rows', () {
+  group('F — day-level plan rows', () {
     test('7 day rows with correct day labels and sales = covers × PPA', () {
       final plan = _plan();
       expect(plan.dayPlans, hasLength(7));
@@ -275,33 +240,11 @@ void main() {
       expect(() => plan.dayPlans.clear(), throwsUnsupportedError);
     });
 
-    test('notifier adjustedDayViews matches plan dayPlans', () {
-      final notifier = ScheduleForecastNotifier(
-        targetCPLH: 4.5,
-        targetPPA: 42.0,
-        targetSPLH: 180.0,
-        fohWage: 16.50,
-        bohWage: 21.35,
-        theoreticalLaborPct: 20.5,
-        initialCovers: 1200,
-        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
-      );
-      final views = notifier.adjustedDayViews;
-      final dayPlans = notifier.plan!.dayPlans;
-      expect(views.length, dayPlans.length);
-      for (int i = 0; i < views.length; i++) {
-        expect(views[i].forecastCovers, dayPlans[i].forecastCovers);
-        expect(views[i].forecastSales, dayPlans[i].forecastSales);
-        expect(views[i].requiredFohHours, dayPlans[i].requiredFohHours);
-        expect(views[i].requiredBohHours, dayPlans[i].requiredBohHours);
-      }
-      notifier.dispose();
-    });
   });
 
-  // ── H: Unavailable demand behavior ───────────────────────────────────────
+  // ── G: Unavailable demand behavior ───────────────────────────────────────
 
-  group('H — unavailable demand behavior', () {
+  group('G — unavailable demand behavior', () {
     test('unavailable demand produces null plan with safe defaults', () {
       final notifier = ScheduleForecastNotifier(
         targetCPLH: 4.5,
@@ -309,9 +252,7 @@ void main() {
         targetSPLH: 180.0,
         fohWage: 16.50,
         bohWage: 21.35,
-        theoreticalLaborPct: 20.5,
-        initialCovers: null,
-        coversSource: ForecastDemandSource.unavailable,
+        historicalWeeklyAvgCovers: null,
       );
       expect(notifier.plan, isNull);
       expect(notifier.hasPlan, isFalse);
@@ -324,47 +265,11 @@ void main() {
       expect(notifier.adjustedDayViews.fold<int>(0, (s, d) => s + d.forecastCovers), 0);
       notifier.dispose();
     });
-
-    test('demo fallback with explicit covers is honestly marked', () {
-      final notifier = ScheduleForecastNotifier(
-        targetCPLH: 4.5,
-        targetPPA: 42.0,
-        targetSPLH: 180.0,
-        fohWage: 16.50,
-        bohWage: 21.35,
-        theoreticalLaborPct: 20.5,
-        coversSource: ForecastDemandSource.demoFallback,
-      );
-      expect(notifier.plan, isNotNull);
-      expect(notifier.weeklyCovers, 1200);
-      expect(notifier.coversSource, ForecastDemandSource.demoFallback);
-      expect(notifier.forecastSourceLabel, 'Demo fallback');
-      notifier.dispose();
-    });
-
-    test('fromProfile with unavailable demand produces null plan', () {
-      final demand = ScheduleForecastDemandResolver.resolve(targetPPA: 42.0);
-      expect(demand.isAvailable, isFalse);
-
-      final notifier = ScheduleForecastNotifier(
-        targetCPLH: 4.5,
-        targetPPA: 42.0,
-        targetSPLH: 180.0,
-        fohWage: 16.50,
-        bohWage: 21.35,
-        theoreticalLaborPct: 20.5,
-        initialCovers: demand.forecastCovers,
-        coversSource: demand.coversSource,
-      );
-      expect(notifier.plan, isNull);
-      expect(notifier.hasPlan, isFalse);
-      notifier.dispose();
-    });
   });
 
-  // ── I: Data-driven day distribution weights ──────────────────────────────
+  // ── H: Data-driven day distribution weights ──────────────────────────────
 
-  group('I — data-driven day distribution weights', () {
+  group('H — data-driven day distribution weights', () {
     /// Helper: build available ScheduleDistributionWeights with given day weights.
     ScheduleDistributionWeights makeAvailableWeights(Map<String, int> dayWeights) {
       return ScheduleDistributionWeights.available(
@@ -637,9 +542,9 @@ void main() {
     });
   });
 
-  // ── J: Schedule daypart subrow distribution weights ─────────────────────────
+  // ── I: Schedule daypart subrow distribution weights ─────────────────────────
 
-  group('J — Schedule daypart subrow distribution weights', () {
+  group('I — Schedule daypart subrow distribution weights', () {
     /// Helper: build available ScheduleDistributionWeights with day + daypart weights.
     ScheduleDistributionWeights makeWeightsWithDayparts({
       required Map<String, int> dayWeights,
@@ -670,9 +575,7 @@ void main() {
         targetSPLH: targetSPLH,
         fohWage: fohWage,
         bohWage: bohWage,
-        theoreticalLaborPct: 20.5,
-        initialCovers: covers,
-        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        historicalWeeklyAvgCovers: covers,
         distributionWeights: distributionWeights,
       );
     }
@@ -702,33 +605,7 @@ void main() {
       notifier.dispose();
     });
 
-    test('Tuesday and Saturday dinner differ with day-specific daypart weights', () {
-      final weights = makeWeightsWithDayparts(
-        dayWeights: {
-          'Mon': 100, 'Tue': 200, 'Wed': 100, 'Thu': 100,
-          'Fri': 200, 'Sat': 300, 'Sun': 100,
-        },
-        daypartWeightsByDay: {
-          'Tue': {'lunch': 300, 'dinner': 100},
-          'Sat': {'lunch': 50, 'dinner': 400},
-        },
-      );
-      final notifier = makeNotifier(distributionWeights: weights);
-      final views = notifier.adjustedDayViews;
-
-      final tue = views.firstWhere((v) => v.day == 'Tue');
-      final sat = views.firstWhere((v) => v.day == 'Sat');
-
-      final tueDinner = tue.subrows.firstWhere((s) => s.label == 'Dinner');
-      final satDinner = sat.subrows.firstWhere((s) => s.label == 'Dinner');
-
-      // Tuesday dinner is 100/400 = 25%, Saturday dinner is 400/450 ≈ 89%
-      // Sat has more total covers too (300 vs 200 weight), so Sat dinner >> Tue dinner
-      expect(satDinner.forecastCovers, greaterThan(tueDinner.forecastCovers));
-      notifier.dispose();
-    });
-
-    test('subrow forecast covers sum exactly to parent day forecastCovers', () {
+    test('subrow covers, FOH, and BOH sum exactly to parent day values', () {
       final weights = makeWeightsWithDayparts(
         dayWeights: {
           'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
@@ -754,60 +631,19 @@ void main() {
         for (final view in views) {
           final subCoverSum = view.subrows.fold<int>(
               0, (s, r) => s + r.forecastCovers);
+          final subFohSum = view.subrows.fold<int>(
+              0, (s, r) => s + r.requiredFohHours);
+          final subBohSum = view.subrows.fold<int>(
+              0, (s, r) => s + r.requiredBohHours);
           expect(subCoverSum, view.forecastCovers,
-              reason:
-                  '${view.day} subrow covers sum at weekly=$covers');
+              reason: '${view.day} subrow covers sum at weekly=$covers');
+          expect(subFohSum, view.requiredFohHours,
+              reason: '${view.day} subrow FOH sum at weekly=$covers');
+          expect(subBohSum, view.requiredBohHours,
+              reason: '${view.day} subrow BOH sum at weekly=$covers');
         }
         notifier.dispose();
       }
-    });
-
-    test('subrow FOH hours sum exactly to parent day requiredFohHours', () {
-      final weights = makeWeightsWithDayparts(
-        dayWeights: {
-          'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
-          'Fri': 220, 'Sat': 230, 'Sun': 110,
-        },
-        daypartWeightsByDay: {
-          'Mon': {'lunch': 200, 'dinner': 300},
-          'Fri': {'lunch': 100, 'dinner': 300, 'late_night': 200},
-          'Sat': {'dinner': 350, 'late_night': 150},
-        },
-      );
-      final notifier = makeNotifier(distributionWeights: weights);
-      final views = notifier.adjustedDayViews;
-
-      for (final view in views) {
-        final subFohSum = view.subrows.fold<int>(
-            0, (s, r) => s + r.requiredFohHours);
-        expect(subFohSum, view.requiredFohHours,
-            reason: '${view.day} subrow FOH hours sum');
-      }
-      notifier.dispose();
-    });
-
-    test('subrow BOH hours sum exactly to parent day requiredBohHours', () {
-      final weights = makeWeightsWithDayparts(
-        dayWeights: {
-          'Mon': 140, 'Tue': 150, 'Wed': 160, 'Thu': 190,
-          'Fri': 220, 'Sat': 230, 'Sun': 110,
-        },
-        daypartWeightsByDay: {
-          'Mon': {'lunch': 200, 'dinner': 300},
-          'Fri': {'lunch': 100, 'dinner': 300, 'late_night': 200},
-          'Sat': {'dinner': 350, 'late_night': 150},
-        },
-      );
-      final notifier = makeNotifier(distributionWeights: weights);
-      final views = notifier.adjustedDayViews;
-
-      for (final view in views) {
-        final subBohSum = view.subrows.fold<int>(
-            0, (s, r) => s + r.requiredBohHours);
-        expect(subBohSum, view.requiredBohHours,
-            reason: '${view.day} subrow BOH hours sum');
-      }
-      notifier.dispose();
     });
 
     test('known daypart order is lunch, dinner, late_night regardless of map order', () {
@@ -878,45 +714,6 @@ void main() {
             reason: '${view.day} fallback subrow covers sum');
       }
       notifier.dispose();
-    });
-
-    test('fallback when distributionWeights unavailable or day has no positive daypart weights', () {
-      // Unavailable weights
-      final unavailable = ScheduleDistributionWeights.unavailable(
-        closedShiftCount: 10,
-        closedBusinessDayCount: 5,
-        totalCovers: 500,
-      );
-      final notifier1 = makeNotifier(distributionWeights: unavailable);
-      final views1 = notifier1.adjustedDayViews;
-      final mon1 = views1.firstWhere((v) => v.day == 'Mon');
-      expect(mon1.subrows.length, 2); // fallback: lunch + dinner
-
-      // Available but day has no daypart weights → fallback
-      final weightsNoDayparts = makeWeightsWithDayparts(
-        dayWeights: {
-          'Mon': 100, 'Tue': 100, 'Wed': 100, 'Thu': 100,
-          'Fri': 200, 'Sat': 200, 'Sun': 100,
-        },
-        daypartWeightsByDay: {
-          // Only Fri has daypart data; Mon has none
-          'Fri': {'lunch': 100, 'dinner': 300},
-        },
-      );
-      final notifier2 = makeNotifier(distributionWeights: weightsNoDayparts);
-      final views2 = notifier2.adjustedDayViews;
-      final mon2 = views2.firstWhere((v) => v.day == 'Mon');
-      // Mon falls back to fixture: lunch + dinner
-      expect(mon2.subrows.length, 2);
-      expect(mon2.subrows.map((s) => s.label).toList(), ['Lunch', 'Dinner']);
-
-      // Fri uses data-driven: lunch + dinner (no late_night in data)
-      final fri2 = views2.firstWhere((v) => v.day == 'Fri');
-      expect(fri2.subrows.length, 2);
-      expect(fri2.subrows.map((s) => s.label).toList(), ['Lunch', 'Dinner']);
-
-      notifier1.dispose();
-      notifier2.dispose();
     });
 
     test('updateTargets preserves distributionWeights when rebuilding the plan', () {

@@ -94,7 +94,7 @@ void main() {
       await BaselineManagerService.instance.saveSelection({});
 
       final m = BaselineData.rangeGraphModel;
-      expect(m.title, equals('RECOMMENDED TARGET'));
+      expect(m.title, equals('CPLH TARGET'));
       expect(m.startLabel, equals('LOWEST CPLH LAST 60 DAYS'));
       expect(m.endLabel, equals('HIGHEST CPLH LAST 60 DAYS'));
       expect(m.rangeLabel, equals('BENCHMARK RANGE'));
@@ -112,16 +112,16 @@ void main() {
       expect(m.rangeLabel, equals('STAR SHIFT RANGE'));
     });
 
-    test('title remains RECOMMENDED TARGET in both states', () async {
+    test('title remains CPLH TARGET in both states', () async {
       // No override
-      expect(BaselineData.rangeGraphModel.title, equals('RECOMMENDED TARGET'));
+      expect(BaselineData.rangeGraphModel.title, equals('CPLH TARGET'));
 
       // With override
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       final pick = candidates.take(3).map((c) => c.recordKey).toSet();
       await BaselineManagerService.instance.saveSelection(pick);
-      expect(BaselineData.rangeGraphModel.title, equals('RECOMMENDED TARGET'));
+      expect(BaselineData.rangeGraphModel.title, equals('CPLH TARGET'));
     });
   });
 

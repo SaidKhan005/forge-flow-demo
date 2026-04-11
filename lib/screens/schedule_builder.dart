@@ -3,14 +3,14 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
+import '../data/demand_forecast_context_notifier.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/schedule_distribution_weights_notifier.dart';
+import '../data/schedule_plan_read_service.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
 import '../domain/models/schedule_forecast_demand.dart';
 import '../domain/models/schedule_plan.dart';
-import '../domain/services/schedule_forecast_demand_resolver.dart';
-import '../domain/services/schedule_plan_resolver.dart';
 import '../utils/formatters.dart';
 import '../widgets/schedule_day_row.dart';
 
@@ -24,12 +24,15 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   double _fohWage;
   double _bohWage;
 
+  /// Canonical demand covers from [DemandForecastContext].
+  int? _historicalWeeklyAvgCovers;
+
   /// Optional data-driven distribution weights from closed ShiftRecords.
-  /// When available, used for both day-level allocation (via SchedulePlanResolver)
+  /// When available, used for both day-level allocation (via the shared plan)
   /// and daypart subrow splits (via adjustedDayViews).
   ScheduleDistributionWeights? _distributionWeights;
 
-  /// The shared weekly plan built by [SchedulePlanResolver].
+  /// The shared weekly plan resolved through [SchedulePlanReadService].
   /// Null when demand is unavailable.
   SchedulePlan? _plan;
 
@@ -39,57 +42,40 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     required double targetSPLH,
     required double fohWage,
     required double bohWage,
-    required double theoreticalLaborPct,
-    int? initialCovers,
-    ForecastDemandSource coversSource = ForecastDemandSource.demoFallback,
-    ForecastDemandSource salesSource = ForecastDemandSource.appDerivedFromCoversAndPpa,
+    int? historicalWeeklyAvgCovers,
     ScheduleDistributionWeights? distributionWeights,
   })  : _targetCPLH = targetCPLH,
         _targetPPA = targetPPA,
         _targetSPLH = targetSPLH,
         _fohWage = fohWage,
         _bohWage = bohWage,
+        _historicalWeeklyAvgCovers = historicalWeeklyAvgCovers,
         _distributionWeights = distributionWeights {
-    // Guard: do not fabricate a plan when demand is truly unavailable.
-    if (initialCovers == null && coversSource == ForecastDemandSource.unavailable) {
-      _plan = null;
-    } else {
-      _plan = SchedulePlanResolver.resolveFromValues(
-        forecastCovers: initialCovers ?? ScheduleForecastDefaults.defaultWeeklyCovers,
-        targetPPA: targetPPA,
-        targetCPLH: targetCPLH,
-        targetSPLH: targetSPLH,
-        fohWage: fohWage,
-        bohWage: bohWage,
-        coversSource: coversSource,
-        salesSource: salesSource,
-        distributionWeights: distributionWeights,
-      );
-    }
+    _plan = SchedulePlanReadService.resolveFromInputs(
+      targetCPLH: targetCPLH,
+      targetPPA: targetPPA,
+      targetSPLH: targetSPLH,
+      fohWage: fohWage,
+      bohWage: bohWage,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+      distributionWeights: distributionWeights,
+    );
   }
 
-  /// Builds from an ActiveTargetProfile, resolving demand through the resolver.
+  /// Builds from an ActiveTargetProfile, resolving demand through the
+  /// shared [SchedulePlanReadService] authority.
   factory ScheduleForecastNotifier.fromProfile(
     ActiveTargetProfile profile, {
     int? historicalWeeklyAvgCovers,
-    bool demoMode = false,
     ScheduleDistributionWeights? distributionWeights,
   }) {
-    final demand = ScheduleForecastDemandResolver.resolve(
-      targetPPA: profile.targetPPA,
-      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
-      demoMode: demoMode,
-    );
     return ScheduleForecastNotifier(
       targetCPLH: profile.targetCPLH,
       targetPPA: profile.targetPPA,
       targetSPLH: profile.targetSPLH,
       fohWage: profile.fohWage,
       bohWage: profile.bohWage,
-      theoreticalLaborPct: profile.theoreticalLaborPct,
-      initialCovers: demand.forecastCovers,
-      coversSource: demand.coversSource,
-      salesSource: demand.salesSource,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
       distributionWeights: distributionWeights,
     );
   }
@@ -136,17 +122,43 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _rebuildPlan() {
-    if (_plan == null) return; // no plan to rebuild
-    _plan = SchedulePlanResolver.resolveFromValues(
-      forecastCovers: _plan!.forecastCovers,
-      targetPPA: _targetPPA,
+  /// Updates demand covers from the canonical demand context and rebuilds the plan.
+  ///
+  /// Unlike [_rebuildPlan], this can create a plan from null when demand
+  /// becomes available after initial construction.
+  void updateDemandCovers(int? historicalWeeklyAvgCovers) {
+    _historicalWeeklyAvgCovers = historicalWeeklyAvgCovers;
+    final newPlan = SchedulePlanReadService.resolveFromInputs(
       targetCPLH: _targetCPLH,
+      targetPPA: _targetPPA,
       targetSPLH: _targetSPLH,
       fohWage: _fohWage,
       bohWage: _bohWage,
-      coversSource: _plan!.coversSource,
-      salesSource: _plan!.salesSource,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+      distributionWeights: _distributionWeights,
+    );
+
+    final newCovers = newPlan?.forecastCovers;
+    final currentCovers = _plan?.forecastCovers;
+
+    // Skip if resolved covers match and plan state is the same
+    if (newCovers == currentCovers && (newPlan != null) == (_plan != null)) {
+      return;
+    }
+
+    _plan = newPlan;
+    notifyListeners();
+  }
+
+  void _rebuildPlan() {
+    if (_plan == null) return; // no plan to rebuild when demand is unavailable
+    _plan = SchedulePlanReadService.resolveFromInputs(
+      targetCPLH: _targetCPLH,
+      targetPPA: _targetPPA,
+      targetSPLH: _targetSPLH,
+      fohWage: _fohWage,
+      bohWage: _bohWage,
+      historicalWeeklyAvgCovers: _historicalWeeklyAvgCovers,
       distributionWeights: _distributionWeights,
     );
   }
@@ -345,12 +357,16 @@ class ScheduleBuilder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProxyProvider2<ActiveTargetProfileNotifier,
-        ScheduleDistributionWeightsNotifier, ScheduleForecastNotifier>(
+    return ChangeNotifierProxyProvider3<ActiveTargetProfileNotifier,
+        ScheduleDistributionWeightsNotifier,
+        DemandForecastContextNotifier,
+        ScheduleForecastNotifier>(
       create: (ctx) {
         final profile =
             ctx.read<ActiveTargetProfileNotifier>().profile;
-        final histCovers = BaselineData.historicalWeeklyAvgCovers;
+        final demandCtx =
+            ctx.read<DemandForecastContextNotifier>().context;
+        final histCovers = demandCtx.historicalWeeklyAvgCovers;
         final weights =
             ctx.read<ScheduleDistributionWeightsNotifier>().weights;
         if (profile != null) {
@@ -360,31 +376,25 @@ class ScheduleBuilder extends StatelessWidget {
             distributionWeights: weights,
           );
         }
-        // Fallback during initial load — resolve demand through resolver
-        final demand = ScheduleForecastDemandResolver.resolve(
-          targetPPA: BaselineData.derivedTargetPPA,
-          historicalWeeklyAvgCovers: histCovers,
-        );
+        // Fallback during initial load — route through shared plan authority
         return ScheduleForecastNotifier(
           targetCPLH: BaselineData.derivedTargetCPLH,
           targetPPA: BaselineData.derivedTargetPPA,
           targetSPLH: BaselineData.derivedTargetSPLH,
           fohWage: MeridianConfig.fohWage,
           bohWage: MeridianConfig.bohWage,
-          theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
-          initialCovers: demand.forecastCovers,
-          coversSource: demand.coversSource,
-          salesSource: demand.salesSource,
+          historicalWeeklyAvgCovers: histCovers,
           distributionWeights: weights,
         );
       },
-      update: (ctx, targetNotifier, weightsNotifier, previous) {
+      update: (ctx, targetNotifier, weightsNotifier, demandNotifier, previous) {
         if (previous != null) {
           final profile = targetNotifier.profile;
           if (profile != null) {
             previous.updateTargets(profile);
           }
           previous.updateDistributionWeights(weightsNotifier.weights);
+          previous.updateDemandCovers(demandNotifier.historicalWeeklyAvgCovers);
         }
         return previous!;
       },
@@ -413,19 +423,12 @@ class _ScheduleBuilderContentState
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
             child: Text(
-              'Next Week',
+              'Weekly Operating Plan',
               style: AppTextStyles.display20(),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-            child: Text(
-              'Schedule to Covers',
-              style: AppTextStyles.mono10(),
-            ),
-          ),
-          // Forecast display (read-only, system-resolved)
-          const _ForecastDisplay(),
+          // Forecast cards (read-only, system-resolved)
+          const _ForecastCardsRow(),
 
           const SizedBox(height: 8),
 
@@ -458,38 +461,78 @@ class _ScheduleBuilderContentState
   }
 }
 
-class _ForecastDisplay extends StatelessWidget {
-  const _ForecastDisplay();
+class _ForecastCardsRow extends StatelessWidget {
+  const _ForecastCardsRow();
 
   @override
   Widget build(BuildContext context) {
     final notifier = context.watch<ScheduleForecastNotifier>();
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.rule, width: 1),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'FORECASTED COVERS - NEXT WEEK',
-            style: AppTextStyles.mono7(),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            notifier.weeklyCovers.toString(),
-            style: AppTextStyles.mono22(),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Forecast source: ${notifier.forecastSourceLabel}',
-            style: AppTextStyles.mono7(color: AppColors.textMuted),
-          ),
-        ],
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Forecasted Covers
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.rule, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FORECASTED COVERS - NEXT WEEK',
+                      style: AppTextStyles.mono7(),
+                    ),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        notifier.weeklyCovers.toString(),
+                        style: AppTextStyles.mono22(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            // Forecasted Sales
+            Expanded(
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.rule, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FORECASTED SALES - NEXT WEEK',
+                      style: AppTextStyles.mono7(),
+                    ),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        '\$${Fmt.dollars(notifier.forecastedSales)}',
+                        style: AppTextStyles.mono22(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -610,7 +653,7 @@ class _CoverBarChart extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(left: 8, bottom: 12),
-            child: Text('COVER FORECAST BY DAY', style: AppTextStyles.mono7()),
+            child: Text('COVER FORECAST DISTRIBUTED BY DAY', style: AppTextStyles.mono7()),
           ),
           SizedBox(
             height: 160,
@@ -632,10 +675,13 @@ class _CoverBarChart extends StatelessWidget {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 36,
-                      getTitlesWidget: (val, meta) => Text(
-                        val.toInt().toString(),
-                        style: AppTextStyles.mono7(),
-                      ),
+                      getTitlesWidget: (val, meta) {
+                        if (val >= meta.max) return const SizedBox.shrink();
+                        return Text(
+                          val.toInt().toString(),
+                          style: AppTextStyles.mono7(),
+                        );
+                      },
                     ),
                   ),
                   bottomTitles: AxisTitles(
@@ -771,13 +817,6 @@ class _DayTableState extends State<_DayTable> {
             requiredFohHours: totalFoh,
             requiredBohHours: totalBoh,
             isTotal: true,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-            child: Text(
-              'FOH plans from covers. BOH plans from forecast sales.',
-              style: AppTextStyles.mono7(color: AppColors.textMuted),
-            ),
           ),
         ],
       ),

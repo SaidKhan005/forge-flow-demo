@@ -23,6 +23,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../models/baseline_candidate_shift.dart';
 import 'legacy_fixture_data.dart';
+import 'wage_standard_context_service.dart';
 
 /// Callback type for active-target profile change events.
 typedef ActiveTargetChangedCallback = Future<void> Function();
@@ -204,8 +205,17 @@ class BaselineManagerService {
 
   Future<void> _persistActiveTargetProfile() async {
     final restaurantId = await _activeRestaurantId();
-    final profile =
-        SqliteDatabase.buildActiveTargetProfileFromBaseline(restaurantId);
+
+    // Resolve wage authority before building profile so the persisted
+    // profile carries resolved wages instead of MeridianConfig defaults.
+    final wageCtx =
+        await WageStandardContextService.instance.resolve(restaurantId);
+
+    final profile = SqliteDatabase.buildActiveTargetProfileFromBaseline(
+      restaurantId,
+      fohWageOverride: wageCtx.fohWage,
+      bohWageOverride: wageCtx.bohWage,
+    );
     await _profileRepo.upsertActiveTargetProfile(profile);
 
     // Notify the persisted active-target authority path

@@ -6,6 +6,8 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/services/schedule_forecast_demand_resolver.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
@@ -85,9 +87,7 @@ void main() {
         targetSPLH: BaselineData.derivedTargetSPLH,
         fohWage: MeridianConfig.fohWage,
         bohWage: MeridianConfig.bohWage,
-        theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
-        initialCovers: histCovers,
-        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        historicalWeeklyAvgCovers: histCovers,
       );
       expect(notifier.weeklyCovers, histCovers);
       expect(notifier.coversSource,
@@ -96,17 +96,126 @@ void main() {
       notifier.dispose();
     });
 
-    test('forecastSourceLabel reflects demo fallback when used', () {
+  });
+
+  // ── B2. resolveFromContext ─────────────────────────────────────────────────
+
+  group('B2. resolveFromContext delegates to resolve correctly', () {
+    test('available context produces same result as direct resolve', () {
+      const ctx = DemandForecastContext(
+        restaurantId: 'test',
+        anchorBusinessDate: '2026-03-15',
+        historicalTotalCovers: 9000,
+        historicalWeeklyAvgCovers: 1050,
+        weeksRepresented: 60 / 7,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-03-15T12:00:00',
+      );
+
+      final fromContext = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: ctx,
+      );
+      final direct = ScheduleForecastDemandResolver.resolve(
+        targetPPA: testPPA,
+        historicalWeeklyAvgCovers: 1050,
+      );
+
+      expect(fromContext.forecastCovers, equals(direct.forecastCovers));
+      expect(fromContext.forecastSales, equals(direct.forecastSales));
+      expect(fromContext.coversSource, equals(direct.coversSource));
+    });
+
+    test('unavailable context produces unavailable demand', () {
+      final fromContext = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: DemandForecastContext.unavailable,
+      );
+      expect(fromContext.isAvailable, isFalse);
+      expect(fromContext.coversSource, ForecastDemandSource.unavailable);
+    });
+
+    test('unavailable context with demoMode uses demo fallback', () {
+      final fromContext = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: DemandForecastContext.unavailable,
+        demoMode: true,
+      );
+      expect(fromContext.isAvailable, isTrue);
+      expect(fromContext.coversSource, ForecastDemandSource.demoFallback);
+      expect(fromContext.forecastCovers, 1200);
+    });
+  });
+
+  // ── B3. updateDemandCovers — Schedule rebuild on demand changes ────────────
+
+  group('B3. ScheduleForecastNotifier.updateDemandCovers', () {
+    test('updates covers when demand context changes', () {
       final notifier = ScheduleForecastNotifier(
         targetCPLH: 4.5,
         targetPPA: testPPA,
         targetSPLH: 180.0,
         fohWage: 16.50,
         bohWage: 21.35,
-        theoreticalLaborPct: 20.6,
-        coversSource: ForecastDemandSource.demoFallback,
+        historicalWeeklyAvgCovers: 1000,
       );
-      expect(notifier.forecastSourceLabel, 'Demo fallback');
+      expect(notifier.weeklyCovers, 1000);
+
+      notifier.updateDemandCovers(1200);
+      expect(notifier.weeklyCovers, 1200);
+      expect(notifier.forecastedSales, closeTo(1200 * testPPA, 0.01));
+      notifier.dispose();
+    });
+
+    test('skips rebuild when covers unchanged', () {
+      int changeCount = 0;
+      final notifier = ScheduleForecastNotifier(
+        targetCPLH: 4.5,
+        targetPPA: testPPA,
+        targetSPLH: 180.0,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        historicalWeeklyAvgCovers: 1000,
+      );
+      notifier.addListener(() => changeCount++);
+
+      notifier.updateDemandCovers(1000);
+      expect(changeCount, 0); // no notification — same value
+      notifier.dispose();
+    });
+
+    test('target updates still work alongside demand updates', () {
+      final notifier = ScheduleForecastNotifier(
+        targetCPLH: 4.5,
+        targetPPA: testPPA,
+        targetSPLH: 180.0,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        historicalWeeklyAvgCovers: null,
+      );
+
+      // Demand becomes available
+      notifier.updateDemandCovers(1000);
+      final fohBefore = notifier.requiredFohHours;
+
+      // Target update changes FOH hours
+      notifier.updateTargets(const ActiveTargetProfile(
+        targetProfileId: 'test',
+        restaurantId: 'test',
+        sourceType: 'test',
+        targetCPLH: 5.0,
+        targetSPLH: 180.0,
+        targetPPA: testPPA,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        opzFloorCPLH: 4.0,
+        opzCeilingCPLH: 5.5,
+        theoreticalFohLaborPct: 12.0,
+        theoreticalBohLaborPct: 9.0,
+        theoreticalLaborPct: 21.0,
+        builtAt: '2026-01-01',
+      ));
+      expect(notifier.requiredFohHours, isNot(equals(fohBefore)));
       notifier.dispose();
     });
   });

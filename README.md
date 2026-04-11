@@ -17,9 +17,10 @@ The current product flow is:
 ## Repo Guide
 
 - [PROJECT_TRACKER.md](PROJECT_TRACKER.md): active roadmap, current prompt, and next execution block
-- [PROJECT_TRACKER_ARCHIVE.md](PROJECT_TRACKER_ARCHIVE.md): completed prompt history and archived progress notes
-- [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md): trusted vs mixed-surface notes and data-alignment watchpoints
-- [docs/REFACTOR_AND_DECOUPLING.MD](docs/REFACTOR_AND_DECOUPLING.MD): Phase 7.5 alignment contract
+- [PROJECT_TRACKER_ARCHIVE.md](PROJECT_TRACKER_ARCHIVE.md): top-level pointer to the tracker archive
+- [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md): active alignment notes and current source-of-truth watchpoints
+- [docs/archive/README.md](docs/archive/README.md): archived trackers, completed phase docs, and background reference material
+- [docs/archive/reference/REFACTOR_AND_DECOUPLING.MD](docs/archive/reference/REFACTOR_AND_DECOUPLING.MD): archived Phase 7.5 alignment contract
 - [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
 - [docs/phase_7_52_execution_plan.md](docs/phase_7_52_execution_plan.md): Phase 7.52 cleanup, private-build, and Barrio shell contract
 - [docs/phase_8_gate/](docs/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)

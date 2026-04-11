@@ -39,9 +39,9 @@ class DaypartTable extends StatelessWidget {
                   cells: [
                     stat.label,
                     stat.avgCovers.toString(),
-                    stat.avgCPLH.toStringAsFixed(1),
+                    stat.avgCPLH.toStringAsFixed(2),
                     '\$${stat.avgSPLH.toStringAsFixed(0)}',
-                    '\$${stat.avgPPA.toStringAsFixed(0)}',
+                    '\$${stat.avgPPA.toStringAsFixed(2)}',
                   ],
                   isHeader: false,
                 ),

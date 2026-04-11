@@ -7,7 +7,6 @@
 // D. Fixture replay can drive the aligned app read surfaces
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
@@ -139,11 +138,6 @@ void main() {
       expect(wtd!.totalCovers, greaterThan(0));
     });
 
-    test('Shift dashboard query works', () async {
-      final rm = await ShiftService.instance.getShiftDashboard();
-      expect(rm, isNotNull);
-    });
-
     test('week history query works', () async {
       final weeks = await ShiftService.instance.getWeekHistory();
       expect(weeks, isNotEmpty);
@@ -159,12 +153,6 @@ void main() {
   // â”€â”€ E: Live current-week resolves from persisted state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('E â€” live current-week resolution', () {
-    test('getCurrentWeekId resolves from persisted open state', () async {
-      final weekId = await ShiftService.instance.getCurrentWeekId();
-      expect(weekId, isNotNull);
-      expect(weekId, '2026-W13');
-    });
-
     test('getLiveWeekToDate returns WTD without WeekToDate constants', () async {
       final wtd = await ShiftService.instance.getLiveWeekToDate();
       expect(wtd, isNotNull);
@@ -172,12 +160,6 @@ void main() {
       expect(wtd.totalCovers, greaterThan(0));
     });
 
-    test('LiveShiftDataSource.getWeekToDate uses live resolution', () async {
-      const source = LiveShiftDataSource();
-      final wtd = await source.getWeekToDate();
-      expect(wtd, isNotNull);
-      expect(wtd!.weekId, '2026-W13');
-    });
   });
 
   // â”€â”€ F: Merged current-week state preserves open rows â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€

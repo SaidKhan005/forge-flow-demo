@@ -1,6 +1,6 @@
 # Phase 7.56 - Reservation Book Signal Demo
 
-Updated: 2026-04-09
+Updated: 2026-04-11
 Owner: Codex planning / tracker truth
 Status: Planned
 
@@ -28,6 +28,12 @@ This phase is a demo/local app-side foundation. Official OpenTable or other rese
 - It is not Phase 8 because it does not connect to a live reservation platform.
 - It is not Phase 9.75 because it does not build the full Staff Daily Companion reservations, VIPs, daily board, or pre-shift briefing surfaces.
 - It creates the app-owned model, persistence path, read-model field, and UI contract that later phases can reuse.
+- Under the newer planning architecture:
+  - reservation data remains contextual by default
+  - if reservations later feed forecast demand, they should feed
+    `DemandForecastContext`
+  - published weekly plan truth should still flow through
+    `WeeklyPlanSnapshot`, not around it
 
 ## Current Codebase Fit
 

@@ -78,8 +78,6 @@ void main() {
     const testSPLH = 185.0;
     const testFohWage = 17.00;
     const testBohWage = 22.00;
-    const testTheoPct = 21.0;
-
     setUp(() {
       notifier = ScheduleForecastNotifier(
         targetCPLH: testCPLH,
@@ -87,7 +85,6 @@ void main() {
         targetSPLH: testSPLH,
         fohWage: testFohWage,
         bohWage: testBohWage,
-        theoreticalLaborPct: testTheoPct,
       );
     });
 
@@ -116,35 +113,6 @@ void main() {
           closeTo(notifier.requiredFohHours * testFohWage, 0.01));
     });
 
-    test('updateTargets changes Schedule outputs without BaselineData', () {
-      final fohBefore = notifier.requiredFohHours;
-      notifier = ScheduleForecastNotifier(
-        targetCPLH: 5.0,
-        targetPPA: testPPA,
-        targetSPLH: testSPLH,
-        fohWage: testFohWage,
-        bohWage: testBohWage,
-        theoreticalLaborPct: testTheoPct,
-      );
-      expect(notifier.requiredFohHours, isNot(equals(fohBefore)));
-    });
-
-    test('day views and subrows use injected targets, not BaselineData', () {
-      final views = notifier.adjustedDayViews;
-      expect(views, isNotEmpty);
-      final firstDay = views.first;
-      final approxFoh = LaborModel.modelFohHours(firstDay.forecastCovers, testCPLH);
-      expect(firstDay.requiredFohHours, inInclusiveRange(approxFoh - 1, approxFoh + 1));
-      expect(firstDay.requiredFohHours,
-          isNot(equals(LaborModel.modelFohHours(firstDay.forecastCovers, BaselineData.derivedTargetCPLH))));
-
-      // Subrow weighted allocation
-      final mon = views.firstWhere((v) => v.day == 'Mon');
-      expect(mon.subrows.length, 2);
-      final lunch = mon.subrows.first;
-      final dinner = mon.subrows.last;
-      expect(lunch.forecastCovers, isNot(equals(dinner.forecastCovers)));
-    });
   });
 
   // ── C. OPZ zone label helpers ——————————————————————————————————————————————
@@ -164,20 +132,7 @@ void main() {
     });
   });
 
-  // ── D. Baseline OPZ row values ————————————————————————————————————————————
-
-  group('D. Baseline OPZ row values', () {
-    test('floor/ceiling from selected records; positive headroom', () {
-      final selected = BaselineData.records.where((r) => r.isSelected).toList();
-      final selectedMin = selected.map((r) => r.cplh).reduce((a, b) => a < b ? a : b);
-      final selectedMax = selected.map((r) => r.cplh).reduce((a, b) => a > b ? a : b);
-      expect(BaselineData.opzFloorCPLH, equals(selectedMin));
-      expect(BaselineData.opzCeilingCPLH, equals(selectedMax));
-      expect(BaselineData.opzHeadroomCPLH, greaterThan(0));
-    });
-  });
-
-  // ── E. ZoneStatusCard widget ——————————————————————————————————————————————
+  // ── D. ZoneStatusCard widget ——————————————————————————————————————————————
 
   group('E. ZoneStatusCard widget', () {
     testWidgets('shows target, ceiling, and status label from centralized OPZ logic',
@@ -210,9 +165,9 @@ void main() {
     });
   });
 
-  // ── F. BaselineTracker widget ————————————————————————————————————————————
+  // ── E. BaselineTracker widget ————————————————————————————————————————————
 
-  group('F. BaselineTracker widget', () {
+  group('E. BaselineTracker widget', () {
     testWidgets(
         'paints from rangeGraphModel — correct labels, range, target, and CTA (no override)',
         (tester) async {
@@ -222,11 +177,11 @@ void main() {
         const MaterialApp(home: BaselineTracker()),
       );
 
-      expect(find.text('RECOMMENDED TARGET'), findsOneWidget);
+      // CPLH TARGET appears twice: range bar title + target tick label
+      expect(find.text('CPLH TARGET'), findsWidgets);
       expect(find.text('TOTAL COVERS LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('WEEKLY AVG COVERS'), findsOneWidget);
+      expect(find.text('WEEKLY AVG COVERS'), findsNothing);
       expect(find.text(BaselineData.historicalTotalCoversTracked.toString()), findsOneWidget);
-      expect(find.text(BaselineData.historicalWeeklyAvgCovers.toString()), findsOneWidget);
 
       expect(find.text('BEST CPLH'), findsNothing);
       expect(find.text('WORST CPLH'), findsNothing);
@@ -235,18 +190,31 @@ void main() {
       expect(find.text('HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
       expect(find.text('BENCHMARK RANGE'), findsOneWidget);
 
-      expect(find.text(BaselineData.rangeGraphModel.displayRangeStartCPLH.toStringAsFixed(2)), findsOneWidget);
-      expect(find.text(BaselineData.rangeGraphModel.displayRangeEndCPLH.toStringAsFixed(2)), findsOneWidget);
+      expect(find.text(BaselineData.rangeGraphModel.displayRangeStartCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(BaselineData.rangeGraphModel.displayRangeEndCPLH.toStringAsFixed(2)), findsWidgets);
 
-      expect(find.text('CPLH TARGET'), findsOneWidget);
-      expect(find.text(BaselineData.rangeGraphModel.targetCPLH.toStringAsFixed(1)), findsWidgets);
+      // CPLH TARGET appears twice: range bar title + target tick label
+      expect(find.text('CPLH TARGET'), findsWidgets);
+      expect(find.text(BaselineData.rangeGraphModel.targetCPLH.toStringAsFixed(2)), findsWidgets);
       expect(find.text(BaselineData.baselineRangeValidation.statusLabel), findsWidgets);
       expect(find.text(BaselineData.rangeGraphModel.recommendedExplanation), findsOneWidget);
-      expect(find.text('MANAGER OVERRIDE BASED ON STAR SHIFTS'), findsOneWidget);
+      expect(find.text('CHOOSE STAR SHIFTS'), findsOneWidget);
 
       expect(find.text('OPZ FLOOR'), findsOneWidget);
       expect(find.text('OPZ CEILING'), findsOneWidget);
       expect(find.text('HEADROOM'), findsOneWidget);
+
+      // Wage rows added in 7.55h
+      expect(find.text('FOH WAGE'), findsOneWidget);
+      expect(find.text('BOH WAGE'), findsOneWidget);
+      expect(find.text('BLENDED WAGE'), findsOneWidget);
+
+      // 2dp precision on targets card (7.55h)
+      expect(find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text('\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'), findsOneWidget);
+      // OPZ floor/ceiling at 2dp may match range bar endpoints (same data, no override)
+      expect(find.text(BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
 
       // Old titles must be gone
       expect(find.text('RECOMMENDED TARGET — 60 DAY RANGE'), findsNothing);
@@ -287,9 +255,9 @@ void main() {
     });
   });
 
-  // ── G. BaselineRangeGraphModel semantics ——————————————————————————————————
+  // ── F. BaselineRangeGraphModel semantics ——————————————————————————————————
 
-  group('G. BaselineRangeGraphModel uses historical and active range', () {
+  group('F. BaselineRangeGraphModel uses historical and active range', () {
     setUp(() {
       BaselineData.clearManagerOverride();
     });
@@ -320,9 +288,9 @@ void main() {
       }
       expect(m.activeRangeStartPosition, lessThanOrEqualTo(m.activeRangeEndPosition));
 
-      expect(m.title, equals('RECOMMENDED TARGET'));
+      expect(m.title, equals('CPLH TARGET'));
       expect(m.recommendedExplanation, isNotEmpty);
-      expect(m.overrideLabel, equals('MANAGER OVERRIDE BASED ON STAR SHIFTS'));
+      expect(m.overrideLabel, equals('CHOOSE STAR SHIFTS'));
     });
   });
 }

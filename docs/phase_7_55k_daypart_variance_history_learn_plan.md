@@ -1,6 +1,6 @@
 # Phase 7.55k - Daypart Separation, Variance, History, and Learn
 
-Updated: 2026-04-10
+Updated: 2026-04-11
 Owner: Codex planning / tracker truth
 Status: Planned, not implemented
 
@@ -28,6 +28,10 @@ Remaining baseline/date cleanup is owned by 7.55f and 7.55i:
 
 - 7.55f persists `business_date` and replaces week-id approximations with real 60-day windows.
 - 7.55i creates canonical demand and shared SchedulePlan authority so downstream surfaces stop reading compatibility globals.
+- Active planning rule for downstream semantics now lives in:
+  - `docs/phase_7_55_target_cycle_weekly_plan_rules.md`
+  - `TargetCycle` locks standards for 60 days
+  - `WeeklyPlanSnapshot` locks the week for Variance and History comparison
 
 ### Schedule
 
@@ -61,11 +65,22 @@ Variance has mixed scope today:
 
 - This Week / WTD is aggregate week-to-date.
 - Full Week Projection renders day rows and expandable daypart rows.
-- Closed daypart detail uses locked target fields and actual-volume model hours.
+- Closed daypart detail should use the weekly plan and target-cycle context that
+  was in force for that week, together with actual-volume model hours.
 - Open/projected daypart rows are converted from `OpenShiftSnapshot`.
 - The screen still describes projected rows generically, and the weekly projection semantics are not yet centrally documented.
 
 This is mostly correct structurally, but it needs a stronger read-model contract and clearer labels so managers understand whether they are seeing closed truth, live open truth, or projected plan context.
+
+For future 7.55k work, use this semantics rule:
+
+- Variance compares actuals against the locked weekly plan in force for that
+  week
+- History preserves which target cycle and weekly plan each week belonged to
+- Learn studies repeated outcomes from completed weeks, not from a forecast
+  that kept moving after week start
+- prefer read-model and evidence improvements over visible manager workflow
+  changes unless a later explicit product decision says otherwise
 
 ### History
 
@@ -117,6 +132,22 @@ Closed daypart ShiftRecord
 
 This keeps Shift whole-day while letting Variance, History, and Learn use closed daypart truth more honestly.
 
+## Sequencing Note
+
+- 7.55k should not finalize its daypart-separation assumptions in isolation.
+- The focused pre-`7.55i.3` checkpoint is now complete:
+  - `docs/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
+- The newer cycle/week rule is now the higher-level planning authority:
+  - `docs/phase_7_55_target_cycle_weekly_plan_rules.md`
+- The missing runtime implementation lane now lives in:
+  - `docs/phase_7_55l_target_cycle_weekly_plan_implementation.md`
+- 7.55k should inherit those confirmed seams:
+  - app-owned configurable service periods
+  - support for `morning` as well as `lunch`, `dinner`, and `late_night`
+  - timestamp bucketing instead of depending on vendor-native dayparts
+  - Shift remaining whole-day until Phase 10.5
+- 7.55k should begin only after `7.55l` lands the cycle/week runtime model.
+
 ## Full Daypart Separation - Long-Term Plan
 
 Full daypart separation means every operational surface can answer two questions without guessing:
@@ -150,7 +181,9 @@ Official POS / labor / reservation APIs
 
 The app should eventually have three separate service-period fact shapes:
 
-- closed service-period fact: final truth from POS/labor, locked target snapshot, eligible for Baseline, Variance, History, and Learn
+- closed service-period fact: final truth from POS/labor, tagged to the target
+  cycle and weekly plan that were in force, eligible for Baseline, Variance,
+  History, and Learn
 - open service-period fact: live in-progress truth for the current business day, not eligible for history
 - planned service-period fact: schedule/forecast placeholder, not actual performance
 
@@ -187,9 +220,11 @@ Long-term target:
 
 - one app-owned daypart definition source per restaurant
 - daypart id, label, sort order, start/end rules, and late-night rollover semantics
+- support a configurable service-period set such as `morning`, `lunch`, `dinner`, and `late_night`
+- do not require every restaurant to actively use every daypart, but the model should support `morning` cleanly across all days when configured
 - adapters do not own daypart rules unless a vendor provides an official service-period field and the app explicitly maps it
 
-This avoids hardcoding assumptions like `lunch -> dinner -> late_night` across screen helpers.
+This avoids hardcoding assumptions like `lunch -> dinner -> late_night` across screen helpers and leaves room for restaurants that need `morning` service periods or different operating windows.
 
 ### 3. Move Mixed Screen Logic Into Read Services
 
@@ -261,6 +296,7 @@ Do not wait for integration details to build app-owned abstractions. Do wait bef
 The following is safe to implement with mock replay and current closed facts:
 
 - service-period scope audit and labels
+- app-owned service-period configuration in Settings, including `morning` support
 - `DaypartPatternSummary` derived from closed `ShiftRecord`s
 - sample-size gating for benchmark dayparts
 - closed-only rule for History and Learn
@@ -270,6 +306,25 @@ The following is safe to implement with mock replay and current closed facts:
 - integration capability placeholders in 7.55j
 
 These do not require live vendor transport because they are app-side interpretation and presentation rules.
+
+The app can also safely own daypart bucketing rules before live integrations:
+
+- configurable daypart definitions in Settings
+- app-owned daypart labels, ordering, and time windows
+- app-owned bucketing from timestamped source facts into `morning`, `lunch`, `dinner`, `late_night`, or future service periods
+
+This is preferred over depending on vendors to support "dayparts" as a first-class concept.
+
+Important guardrail:
+
+- if official APIs provide timestamped sales, checks, covers, or labor punches, the app can classify those facts into service periods itself
+- if an API only provides full-day aggregates with no usable timestamps, the app cannot honestly reconstruct closed daypart truth from math alone
+
+In that weaker API case:
+
+- whole-day Shift can still work
+- Schedule can still use planned daypart distribution
+- but closed daypart truth for Variance, History, Benchmark, and Learn must stay limited or clearly labeled as estimated until timestamped facts exist
 
 ## What Should Stay Hidden Or Soft-Labeled For Now
 
@@ -296,12 +351,14 @@ Preferred labels:
 ## Guardrails
 
 - Do not make Shift daypart-live in 7.55k. That remains Phase 10.5.
-- Do not create new labor formulas. Route calculations through `LaborModel` and locked target fields where applicable.
+- Do not create new labor formulas. Route calculations through `LaborModel`
+  and the weekly-plan / target-cycle comparison context where applicable.
 - Do not let target PPA substitute for actual sales in closed actual analysis.
 - Do not let reservation `In the books` become actual covers or forecast covers.
-- Do not rely on `BaselineData` for production-facing History/Learn benchmark context; that retirement is coordinated with 7.55i.
+- Do not rely on `BaselineData` for production-facing History/Learn benchmark context long-term; that retirement is no longer owned by `7.55i` and should be handled explicitly in later Variance/Learn work.
 - Keep projected/open rows clearly labeled as non-final.
-- Closed Variance detail must continue using locked target truth from the closed shift.
+- Closed Variance detail must continue using the locked weekly-plan truth that
+  was in force for that week.
 - Daypart benchmarks should require enough closed history to avoid treating one lucky shift as a repeatable win.
 - Any UI copy must name the scope: closed truth, live/open, projected, WTD, full week, or benchmark history.
 
@@ -398,7 +455,8 @@ Implementation should consider a dedicated read model instead of leaving this mi
 
 Acceptance:
 
-- closed daypart detail still uses actual covers and actual sales with locked target standards
+- closed daypart detail still uses actual covers and actual sales with the
+  weekly-plan and target-cycle standards that were in force
 - open/projected rows show status/provenance clearly
 - day row totals reconcile to expanded daypart rows
 - WTD aggregate and Full Week rows do not silently use different target semantics without labels
@@ -486,6 +544,8 @@ Daypart-native History/Learn require official integrations to provide or support
 - source ids for closed shift, labor shift, punch, and schedule rows
 - correction/update feeds after close
 - enough timestamp detail for app-owned daypart mapping
+- vendor-native daypart support is optional; timestamped source facts are the important requirement
+- if only full-day rolled-up aggregates are available with no timestamps, any daypart breakdown becomes modeled allocation rather than closed-truth evidence
 
 Reservation data remains optional explanatory context for these surfaces unless a later product decision promotes it into demand forecasting.
 
@@ -497,11 +557,16 @@ Reservation data remains optional explanatory context for these surfaces unless 
 
 ### 7.55i
 
-7.55i supplies canonical demand and shared SchedulePlan authority. 7.55k should not duplicate that work. It should consume the canonical plan/target context where needed.
+7.55i delivered canonical demand, shared SchedulePlan authority, and wage-source authority before being retired at `7.55i.3a`. 7.55k should consume those delivered seams where needed and should not quietly revive the dropped `7.55i.4` work inside daypart changes.
 
 ### 7.55j
 
 7.55j inventories integration requirements. 7.55k should add daypart-history and repeatable-win requirements back into that inventory.
+
+### 7.55l
+
+7.55l implements the runtime cycle/week architecture. 7.55k should build on
+that foundation rather than recreate its own planning truth.
 
 ### Phase 10.5
 

@@ -284,6 +284,8 @@ Important:
 
 - external identity links are not the auth source of truth
 - this is a mapping bridge only
+- later `TargetCycle` early unlock / replace actions should be permissioned
+  through this same auth/role model as admin-only controls
 
 ## Firestore Storage Model
 
@@ -383,6 +385,7 @@ Keep permissions grouped by product and capability.
 - `admin.roles.edit_seeded`
 - `admin.roles.create_custom`
 - `admin.roles.assign`
+- `admin.target_cycle.unlock`
 
 These keys are examples of the right shape. The exact final key list should be frozen during implementation, not invented ad hoc inside the database.
 

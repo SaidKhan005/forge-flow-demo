@@ -421,9 +421,9 @@ class ShiftDashboardReadModel {
       ),
       InputMetric(
         name: 'CPLH',
-        currentFormatted: actualCPLH.toStringAsFixed(1),
-        targetFormatted: 'Target ${profile.targetCPLH.toStringAsFixed(1)}',
-        deltaFormatted: '${cplhDelta >= 0 ? '+' : ''}${cplhDelta.toStringAsFixed(1)}',
+        currentFormatted: actualCPLH.toStringAsFixed(2),
+        targetFormatted: 'Target ${profile.targetCPLH.toStringAsFixed(2)}',
+        deltaFormatted: '${cplhDelta >= 0 ? '+' : ''}${cplhDelta.toStringAsFixed(2)}',
         deltaUnfavorable: cplhUnfavorable,
         statusFavorable: cplhStatusFavorable,
         isHero: heroName == 'CPLH',

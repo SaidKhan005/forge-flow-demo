@@ -9,9 +9,9 @@
 
 import 'package:flutter/material.dart';
 import '../data/baseline_manager_service.dart';
+import '../data/demand_forecast_context_service.dart';
 import '../data/legacy_fixture_data.dart';
-import '../domain/services/schedule_forecast_demand_resolver.dart';
-import '../domain/services/schedule_plan_resolver.dart';
+import '../data/schedule_plan_read_service.dart';
 import '../models/baseline_candidate_shift.dart';
 import '../theme/app_theme.dart';
 
@@ -76,8 +76,8 @@ String _leverLabel(String leverId) {
 }
 
 // ─── Plan impact preview model ───────────────────────────────────────────────
-// Computed from the draft selected shifts using SchedulePlanResolver.
-// All planning math flows through the resolver — no duplicate formulas.
+// Computed from the draft selected shifts through SchedulePlanReadService.
+// All planning math flows through the shared plan authority — no duplicate formulas.
 
 class ManagerOverridePlanPreview {
   final int forecastCovers;
@@ -99,10 +99,19 @@ class ManagerOverridePlanPreview {
   });
 
   /// Build from the current draft selected shifts.
-  /// Returns null when no shifts are selected.
+  ///
+  /// [historicalWeeklyAvgCovers] must come from the canonical
+  /// [DemandForecastContext], not from `BaselineData`. The caller loads
+  /// it once during init and passes it here for synchronous preview.
+  ///
+  /// Routes through [SchedulePlanReadService.resolveFromInputs] so all
+  /// plan consumers share the same resolver pipeline.
+  ///
+  /// Returns null when no shifts are selected or demand is unavailable.
   static ManagerOverridePlanPreview? fromDraftSelection(
-    List<BaselineCandidateShift> selected,
-  ) {
+    List<BaselineCandidateShift> selected, {
+    required int? historicalWeeklyAvgCovers,
+  }) {
     if (selected.isEmpty) return null;
 
     final count = selected.length;
@@ -110,26 +119,17 @@ class ManagerOverridePlanPreview {
     final draftSPLH = selected.fold(0.0, (s, c) => s + c.splh) / count;
     final draftPPA = selected.fold(0.0, (s, c) => s + c.ppa) / count;
 
-    // Resolve demand — covers from 60-day history, sales derived from PPA.
-    final demand = ScheduleForecastDemandResolver.resolve(
-      targetPPA: draftPPA,
-      historicalWeeklyAvgCovers: BaselineData.historicalWeeklyAvgCovers,
-    );
-
-    if (!demand.isAvailable || demand.forecastCovers == null) return null;
-
-    // Build the plan through the canonical resolveFromValues entry point.
-    // This avoids constructing a full ActiveTargetProfile.
-    final plan = SchedulePlanResolver.resolveFromValues(
-      forecastCovers: demand.forecastCovers!,
-      targetPPA: draftPPA,
+    // Resolve through the shared plan authority.
+    final plan = SchedulePlanReadService.resolveFromInputs(
       targetCPLH: draftCPLH,
+      targetPPA: draftPPA,
       targetSPLH: draftSPLH,
       fohWage: MeridianConfig.fohWage,
       bohWage: MeridianConfig.bohWage,
-      coversSource: demand.coversSource,
-      salesSource: demand.salesSource,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
     );
+
+    if (plan == null) return null;
 
     return ManagerOverridePlanPreview(
       forecastCovers: plan.forecastCovers,
@@ -145,16 +145,21 @@ class ManagerOverridePlanPreview {
 
 class BaselineManagerScreen extends StatefulWidget {
   /// Production constructor — loads candidates from DB on init.
-  const BaselineManagerScreen({super.key}) : initialCandidates = null;
+  const BaselineManagerScreen({super.key})
+      : initialCandidates = null,
+        initialDemandCovers = null;
 
   /// Test-only constructor: skips async DB load and uses the supplied list.
+  /// [initialDemandCovers] bypasses the async demand context load for tests.
   @visibleForTesting
   const BaselineManagerScreen.withCandidates(
     List<BaselineCandidateShift> candidates, {
     super.key,
+    this.initialDemandCovers,
   }) : initialCandidates = candidates;
 
   final List<BaselineCandidateShift>? initialCandidates;
+  final int? initialDemandCovers;
 
   @override
   State<BaselineManagerScreen> createState() => _BaselineManagerScreenState();
@@ -166,6 +171,7 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   bool _loading = true;
   List<BaselineCandidateShift> _candidates = [];
   late Set<String> _draftKeys;
+  int? _demandWeeklyAvgCovers; // from canonical demand context
   String? _selectedDate; // null = calendar grid, non-null = day detail
   Map<String, List<BaselineCandidateShift>> _shiftsByDate = {};
   List<String> _windowDates = [];
@@ -183,6 +189,11 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
           .toSet();
       _loading = false;
       _buildCalendarData();
+      if (widget.initialDemandCovers != null) {
+        _demandWeeklyAvgCovers = widget.initialDemandCovers;
+      } else {
+        _loadDemandContext();
+      }
     } else {
       _loadCandidates();
     }
@@ -198,6 +209,16 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
           candidates.where((c) => c.isSelected).map((c) => c.recordKey).toSet();
       _loading = false;
       _buildCalendarData();
+    });
+    await _loadDemandContext();
+  }
+
+  Future<void> _loadDemandContext() async {
+    final ctx =
+        await DemandForecastContextService.instance.getCurrentContext();
+    if (!mounted) return;
+    setState(() {
+      _demandWeeklyAvgCovers = ctx.historicalWeeklyAvgCovers;
     });
   }
 
@@ -292,7 +313,10 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
               child: CircularProgressIndicator(color: AppColors.sunset))
           : Column(
               children: [
-                _PreviewPanel(selected: _draftSelected),
+                _PreviewPanel(
+                  selected: _draftSelected,
+                  historicalWeeklyAvgCovers: _demandWeeklyAvgCovers,
+                ),
                 if (_draftKeys.isNotEmpty)
                   _ClearAllBar(onClearAll: _clearAll),
                 Expanded(
@@ -328,8 +352,12 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
 
 class _PreviewPanel extends StatelessWidget {
   final List<BaselineCandidateShift> selected;
+  final int? historicalWeeklyAvgCovers;
 
-  const _PreviewPanel({required this.selected});
+  const _PreviewPanel({
+    required this.selected,
+    required this.historicalWeeklyAvgCovers,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -421,7 +449,10 @@ class _PreviewPanel extends StatelessWidget {
             ],
           ),
           // ── PLAN IMPACT ──────────────────────────────────────────────
-          _PlanImpactSection(selected: selected),
+          _PlanImpactSection(
+            selected: selected,
+            historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+          ),
         ],
       ),
     );
@@ -432,12 +463,19 @@ class _PreviewPanel extends StatelessWidget {
 /// When no shifts are selected all cells show "--".
 class _PlanImpactSection extends StatelessWidget {
   final List<BaselineCandidateShift> selected;
+  final int? historicalWeeklyAvgCovers;
 
-  const _PlanImpactSection({required this.selected});
+  const _PlanImpactSection({
+    required this.selected,
+    required this.historicalWeeklyAvgCovers,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final preview = ManagerOverridePlanPreview.fromDraftSelection(selected);
+    final preview = ManagerOverridePlanPreview.fromDraftSelection(
+      selected,
+      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+    );
     final hasData = preview != null;
 
     final fcCovers = hasData ? '${preview.forecastCovers}' : '--';
@@ -452,8 +490,6 @@ class _PlanImpactSection extends StatelessWidget {
     final wage = hasData
         ? '\$${preview.targetBlendedWage.toStringAsFixed(2)}'
         : '--';
-    final sourceLabel = hasData ? 'Covers source: ${preview.coversSourceLabel}' : '';
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -502,11 +538,6 @@ class _PlanImpactSection extends StatelessWidget {
             ),
           ],
         ),
-        if (sourceLabel.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          Text(sourceLabel,
-              style: AppTextStyles.mono7(color: AppColors.textMuted)),
-        ],
       ],
     );
   }

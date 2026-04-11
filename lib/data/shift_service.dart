@@ -7,8 +7,7 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
-import '../domain/services/schedule_forecast_demand_resolver.dart';
-import '../domain/services/schedule_plan_resolver.dart';
+import 'schedule_plan_read_service.dart';
 import '../domain/services/shift_fact_builder.dart';
 import '../domain/services/target_snapshot_builder.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
@@ -17,7 +16,6 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scop
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../models/current_week_state.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_dashboard_read_model.dart';
@@ -26,8 +24,10 @@ import '../models/week_data.dart';
 import '../models/week_record.dart';
 import '../services/history_pattern_builder.dart';
 import '../services/labor_model.dart';
+import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'legacy_fixture_data.dart'; // MeridianConfig for blended-wage zero-hour fallback only
 import 'mock_integration_replay_seed.dart';
+import 'wage_standard_context_service.dart';
 
 class ShiftService {
   ShiftService._();
@@ -45,14 +45,11 @@ class ShiftService {
 
   Future<String> _activeRestaurantId() => _scopeRepo.getActiveRestaurantId();
 
-  /// Loads the active target profile, bootstrapping from BaselineData if missing.
+  /// Loads the active target profile, bootstrapping with wage authority
+  /// if no persisted profile exists.
   Future<ActiveTargetProfile> _loadActiveProfile(String restaurantId) async {
-    final existing = await _profileRepo.getActiveTargetProfile(restaurantId);
-    if (existing != null) return existing;
-    final profile =
-        SqliteDatabase.buildActiveTargetProfileFromBaseline(restaurantId);
-    await _profileRepo.upsertActiveTargetProfile(profile);
-    return profile;
+    return WageStandardContextService.instance
+        .loadOrBootstrapProfile(restaurantId);
   }
 
   // ── Week-to-date rollup from closed shift_records ────────────────────────────
@@ -283,10 +280,14 @@ class ShiftService {
     final avgPPA  = totalCovers > 0 ? totalSales / totalCovers : 0.0;
     final avgCPLH = totalFohHours > 0 ? totalCovers / totalFohHours : 0.0;
 
+    // Zero-hour fallback uses the locked target wages from the shifts
+    // instead of MeridianConfig, preserving closed-truth provenance.
+    final fallbackFohWage = closedShifts.first.targetFohWage ?? MeridianConfig.fohWage;
+    final fallbackBohWage = closedShifts.first.targetBohWage ?? MeridianConfig.bohWage;
     final blendedFohWage = totalFohHours > 0
-        ? totalFohLaborDollar / totalFohHours : MeridianConfig.fohWage;
+        ? totalFohLaborDollar / totalFohHours : fallbackFohWage;
     final blendedBohWage = totalBohHours > 0
-        ? totalBohLaborDollar / totalBohHours : MeridianConfig.bohWage;
+        ? totalBohLaborDollar / totalBohHours : fallbackBohWage;
 
     final actualLaborPct = totalSales > 0
         ? totalLaborDollar / totalSales * 100 : 0.0;
@@ -456,12 +457,9 @@ class ShiftService {
         await _openShiftRepo.getSnapshotsForDay(restaurantId, businessDate);
     if (snapshots.isEmpty) return null;
 
-    // Resolve whole-day SchedulePlan
-    final demand = ScheduleForecastDemandResolver.resolve(
-      targetPPA: profile.targetPPA,
-      historicalWeeklyAvgCovers: BaselineData.historicalWeeklyAvgCovers,
-    );
-    final plan = SchedulePlanResolver.resolve(demand: demand, profile: profile);
+    // Resolve plan from shared authority (includes distribution weights)
+    final plan = await SchedulePlanReadService.instance
+        .getCurrentWeeklyPlan();
 
     // Pick the day row matching the open shift
     final openSnap = snapshots

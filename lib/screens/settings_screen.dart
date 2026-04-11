@@ -3,12 +3,18 @@ import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
 import '../data/app_data_status_service.dart';
+import '../data/demand_forecast_context_notifier.dart';
 import '../data/mock_integration_replay_seed.dart';
 import '../data/restaurant_scope_notifier.dart';
 import '../data/schedule_distribution_weights_notifier.dart';
 import '../data/shift_dashboard_notifier.dart';
 import '../data/shift_service.dart';
+import '../data/wage_standard_context_service.dart';
 import '../data/week_data_notifier.dart';
+import '../domain/models/wage_role_row.dart';
+import '../domain/models/wage_standard_context.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import '../models/app_data_status.dart';
 import '../widgets/data_alignment_audit_panel.dart';
 
@@ -63,6 +69,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context.read<ShiftDashboardNotifier>().refresh();
     } catch (_) {
       // Providers may not be available in test injection mode
+    }
+    try {
+      context.read<DemandForecastContextNotifier>().load();
+    } catch (_) {
+      // DemandForecastContextNotifier may not be in scope
     }
     try {
       context.read<ScheduleDistributionWeightsNotifier>().load();
@@ -258,6 +269,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const SizedBox(height: 16),
 
+          // Wage authority section
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Text('WAGE AUTHORITY',
+                style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          ),
+          _WageAuthoritySection(onChanged: _refreshAppState),
+
+          const SizedBox(height: 16),
+
           // Audit section
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
@@ -390,6 +411,352 @@ class _SettingsTile extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Wage authority section ────────────────────────────────────────────────
+
+class _WageAuthoritySection extends StatefulWidget {
+  final VoidCallback onChanged;
+  const _WageAuthoritySection({required this.onChanged});
+
+  @override
+  State<_WageAuthoritySection> createState() => _WageAuthoritySectionState();
+}
+
+class _WageAuthoritySectionState extends State<_WageAuthoritySection> {
+  WageStandardContext? _wageCtx;
+  List<WageRoleRow> _rows = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _isLoading = true);
+    try {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      _wageCtx =
+          await WageStandardContextService.instance.resolve(restaurantId);
+      _rows =
+          await SqliteWageRoleRowRepository.instance.getRows(restaurantId);
+    } catch (_) {}
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _saveRow(WageRoleRow row) async {
+    await SqliteWageRoleRowRepository.instance.upsertRow(row);
+    await WageStandardContextService.instance.syncWagesToActiveProfile();
+    await _load();
+    widget.onChanged();
+  }
+
+  Future<void> _deleteRow(int id) async {
+    await SqliteWageRoleRowRepository.instance.deleteRow(id);
+    await WageStandardContextService.instance.syncWagesToActiveProfile();
+    await _load();
+    widget.onChanged();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        color: AppColors.backgroundMid,
+        child: Text('Loading...',
+            style: AppTextStyles.mono11(color: AppColors.textMuted)),
+      );
+    }
+
+    final w = _wageCtx;
+    return Container(
+      color: AppColors.backgroundMid,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Resolved wage summary
+          _wageRow('SOURCE', w?.source.displayLabel ?? '—'),
+          _wageRow('FOH WAGE',
+              w?.fohWage != null ? '\$${w!.fohWage!.toStringAsFixed(2)}' : '—'),
+          _wageRow('BOH WAGE',
+              w?.bohWage != null ? '\$${w!.bohWage!.toStringAsFixed(2)}' : '—'),
+          _wageRow(
+              'REF BLENDED',
+              w?.referenceBlendedWage != null
+                  ? '\$${w!.referenceBlendedWage!.toStringAsFixed(2)}'
+                  : '—'),
+
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            color: AppColors.borderSubtle,
+          ),
+
+          // Role rows
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 4),
+            child: Text('FALLBACK ROLES',
+                style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          ),
+
+          if (_rows.isEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              child: Text('No roles configured — using config defaults.',
+                  style: AppTextStyles.body13(color: AppColors.textMuted)),
+            ),
+
+          ..._rows.map((r) => _RoleRowTile(
+                row: r,
+                onEdit: () => _showRoleDialog(existing: r),
+                onDelete: () => _deleteRow(r.id!),
+              )),
+
+          // Add role button
+          InkWell(
+            onTap: () => _showRoleDialog(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Icon(Icons.add, size: 16, color: AppColors.sunset),
+                  const SizedBox(width: 8),
+                  Text('Add Role',
+                      style: AppTextStyles.mono12(color: AppColors.sunset)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _wageRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(label,
+                style: AppTextStyles.mono11(color: AppColors.textSecondary)),
+          ),
+          Text(value,
+              style: AppTextStyles.mono12(color: AppColors.textPrimary)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showRoleDialog({WageRoleRow? existing}) async {
+    final restaurantId = await SqliteRestaurantScopeRepository.instance
+        .getActiveRestaurantId();
+
+    if (!mounted) return;
+
+    final result = await showDialog<WageRoleRow>(
+      context: context,
+      builder: (ctx) => _RoleEditDialog(
+        restaurantId: restaurantId,
+        existing: existing,
+      ),
+    );
+    if (result != null) {
+      await _saveRow(result);
+    }
+  }
+}
+
+// ─── Role row tile ─────────────────────────────────────────────────────────
+
+class _RoleRowTile extends StatelessWidget {
+  final WageRoleRow row;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _RoleRowTile({
+    required this.row,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onEdit,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundDeep,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(row.bucketLabel,
+                  style: AppTextStyles.mono8(color: AppColors.textMuted)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(row.roleName,
+                  style:
+                      AppTextStyles.mono11(color: AppColors.textPrimary)),
+            ),
+            Text('\$${row.hourlyRate.toStringAsFixed(2)}',
+                style: AppTextStyles.mono12(color: AppColors.textPrimary)),
+            const SizedBox(width: 8),
+            Text('${row.weightedHours.toStringAsFixed(0)}h',
+                style: AppTextStyles.mono11(color: AppColors.textSecondary)),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: onDelete,
+              child:
+                  Icon(Icons.close, size: 14, color: AppColors.textMuted),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Role edit dialog ──────────────────────────────────────────────────────
+
+class _RoleEditDialog extends StatefulWidget {
+  final String restaurantId;
+  final WageRoleRow? existing;
+
+  const _RoleEditDialog({required this.restaurantId, this.existing});
+
+  @override
+  State<_RoleEditDialog> createState() => _RoleEditDialogState();
+}
+
+class _RoleEditDialogState extends State<_RoleEditDialog> {
+  late TextEditingController _nameCtrl;
+  late TextEditingController _rateCtrl;
+  late TextEditingController _hoursCtrl;
+  String _bucket = 'foh';
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _nameCtrl = TextEditingController(text: e?.roleName ?? '');
+    _rateCtrl =
+        TextEditingController(text: e?.hourlyRate.toStringAsFixed(2) ?? '');
+    _hoursCtrl =
+        TextEditingController(text: e?.weightedHours.toStringAsFixed(0) ?? '');
+    _bucket = e?.laborBucket ?? 'foh';
+  }
+
+  @override
+  void dispose() {
+    _nameCtrl.dispose();
+    _rateCtrl.dispose();
+    _hoursCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.backgroundMid,
+      title: Text(
+        widget.existing != null ? 'Edit Role' : 'Add Role',
+        style: AppTextStyles.mono14(color: AppColors.textPrimary),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _nameCtrl,
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                labelText: 'Role Name',
+                labelStyle:
+                    AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              initialValue: _bucket,
+              dropdownColor: AppColors.backgroundMid,
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                labelText: 'Labor Bucket',
+                labelStyle:
+                    AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'foh', child: Text('FOH')),
+                DropdownMenuItem(value: 'boh', child: Text('BOH')),
+                DropdownMenuItem(value: 'manager', child: Text('Manager')),
+              ],
+              onChanged: (v) => setState(() => _bucket = v ?? 'foh'),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _rateCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                labelText: 'Hourly Rate (\$)',
+                labelStyle:
+                    AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _hoursCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              style: AppTextStyles.mono12(color: AppColors.textPrimary),
+              decoration: InputDecoration(
+                labelText: 'Weekly Hours',
+                labelStyle:
+                    AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('Cancel',
+              style: AppTextStyles.mono11(color: AppColors.textSecondary)),
+        ),
+        TextButton(
+          onPressed: () {
+            final name = _nameCtrl.text.trim();
+            final rate = double.tryParse(_rateCtrl.text);
+            final hours = double.tryParse(_hoursCtrl.text);
+            if (name.isEmpty || rate == null || hours == null) return;
+
+            final row = WageRoleRow(
+              id: widget.existing?.id,
+              restaurantId: widget.restaurantId,
+              roleName: name,
+              laborBucket: _bucket,
+              hourlyRate: rate,
+              weightedHours: hours,
+            );
+            Navigator.of(context).pop(row);
+          },
+          child: Text('Save',
+              style: AppTextStyles.mono11(color: AppColors.sunset)),
+        ),
+      ],
     );
   }
 }

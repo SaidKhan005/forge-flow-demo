@@ -31,7 +31,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 13;
+  static const int schemaVersion = 14;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -344,6 +344,20 @@ class SqliteDatabase {
         current_business_date TEXT NOT NULL
       )
     ''');
+
+    // ── Wage generator layer ───────────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE wage_role_rows (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        restaurant_id   TEXT NOT NULL,
+        role_name       TEXT NOT NULL,
+        labor_bucket    TEXT NOT NULL,
+        hourly_rate     REAL NOT NULL,
+        weighted_hours  REAL NOT NULL,
+        UNIQUE(restaurant_id, role_name)
+      )
+    ''');
+
   }
 
   /// Backfills locked-target columns on shift_records and week_records
@@ -621,33 +635,89 @@ class SqliteDatabase {
     });
   }
 
-  /// Builds and persists an active target profile from current BaselineData.
+  /// Builds and persists an active target profile from current BaselineData,
+  /// resolving wages from any existing wage_role_rows in the same [db].
   Future<void> _seedDemoActiveTargetProfile(Database db) async {
-    final profile = buildActiveTargetProfileFromBaseline(DemoScope.restaurantId);
+    // Resolve wages from generator rows already in this database (if any).
+    // This keeps reseed aligned with the wage-authority path.
+    final wageRows = await db.query('wage_role_rows',
+        where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+    double? fohOverride;
+    double? bohOverride;
+    if (wageRows.isNotEmpty) {
+      fohOverride = _weightedAvgFromRows(wageRows, 'foh');
+      bohOverride = _weightedAvgFromRows(wageRows, 'boh');
+      // Require both FOH and BOH for a complete generator override
+      if (fohOverride == null || bohOverride == null) {
+        fohOverride = null;
+        bohOverride = null;
+      }
+    }
+    final profile = buildActiveTargetProfileFromBaseline(
+      DemoScope.restaurantId,
+      fohWageOverride: fohOverride,
+      bohWageOverride: bohOverride,
+    );
     await db.insert('active_target_profiles', profile.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
-  /// Builds an ActiveTargetProfile from current BaselineData + MeridianConfig.
+  /// Weighted average hourly rate from raw DB rows for a given labor bucket.
+  static double? _weightedAvgFromRows(
+      List<Map<String, dynamic>> rows, String bucket) {
+    final filtered =
+        rows.where((r) => r['labor_bucket'] == bucket).toList();
+    if (filtered.isEmpty) return null;
+    final totalHours =
+        filtered.fold<double>(0, (s, r) => s + (r['weighted_hours'] as num).toDouble());
+    if (totalHours <= 0) return null;
+    final totalDollars = filtered.fold<double>(
+        0, (s, r) => s + (r['hourly_rate'] as num).toDouble() * (r['weighted_hours'] as num).toDouble());
+    return totalDollars / totalHours;
+  }
+
+  /// Builds an ActiveTargetProfile from current BaselineData.
+  ///
+  /// When [fohWageOverride] or [bohWageOverride] are provided, they replace
+  /// the MeridianConfig defaults and theoretical labor % is recomputed from
+  /// the resolved wages. This is the integration point for wage authority.
   static ActiveTargetProfile buildActiveTargetProfileFromBaseline(
-      String restaurantId) {
+    String restaurantId, {
+    double? fohWageOverride,
+    double? bohWageOverride,
+  }) {
     final sourceType = BaselineData.hasManagerOverride
         ? 'manager_override'
         : 'system_baseline';
+
+    final fohWage = fohWageOverride ?? MeridianConfig.fohWage;
+    final bohWage = bohWageOverride ?? MeridianConfig.bohWage;
+
+    final targetCPLH = BaselineData.derivedTargetCPLH;
+    final targetSPLH = BaselineData.derivedTargetSPLH;
+    final targetPPA = BaselineData.derivedTargetPPA;
+
+    // Recompute theoretical labor % using resolved wages.
+    // Same formula as LaborModel.theoreticalLaborPct, split into FOH/BOH.
+    final fohPct = (targetCPLH > 0 && targetPPA > 0)
+        ? fohWage / (targetCPLH * targetPPA) * 100
+        : 0.0;
+    final bohPct = targetSPLH > 0 ? bohWage / targetSPLH * 100 : 0.0;
+
     return ActiveTargetProfile(
       targetProfileId: '${restaurantId}_active',
       restaurantId: restaurantId,
       sourceType: sourceType,
-      targetCPLH: BaselineData.derivedTargetCPLH,
-      targetSPLH: BaselineData.derivedTargetSPLH,
-      targetPPA: BaselineData.derivedTargetPPA,
-      fohWage: MeridianConfig.fohWage,
-      bohWage: MeridianConfig.bohWage,
+      targetCPLH: targetCPLH,
+      targetSPLH: targetSPLH,
+      targetPPA: targetPPA,
+      fohWage: fohWage,
+      bohWage: bohWage,
       opzFloorCPLH: BaselineData.opzFloorCPLH,
       opzCeilingCPLH: BaselineData.opzCeilingCPLH,
-      theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
-      theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
-      theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+      theoreticalFohLaborPct: fohPct,
+      theoreticalBohLaborPct: bohPct,
+      theoreticalLaborPct: fohPct + bohPct,
       builtAt: DateTime.now().toIso8601String(),
     );
   }
@@ -769,6 +839,9 @@ class SqliteDatabase {
     if (oldV < 13) {
       await _migrateToV13(db);
     }
+    if (oldV < 14) {
+      await _migrateToV14(db);
+    }
   }
 
   Future<void> _migrateToV10(Database db) async {
@@ -838,6 +911,20 @@ class SqliteDatabase {
       'restaurant_id': DemoScope.restaurantId,
       'current_business_date': MockIntegrationReplaySeed.defaultBusinessDate,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> _migrateToV14(Database db) async {
+    await _createTableIfNotExists(db, 'wage_role_rows', '''
+      CREATE TABLE wage_role_rows (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        restaurant_id   TEXT NOT NULL,
+        role_name       TEXT NOT NULL,
+        labor_bucket    TEXT NOT NULL,
+        hourly_rate     REAL NOT NULL,
+        weighted_hours  REAL NOT NULL,
+        UNIQUE(restaurant_id, role_name)
+      )
+    ''');
   }
 
   Future<void> _migrateToV9(Database db) async {

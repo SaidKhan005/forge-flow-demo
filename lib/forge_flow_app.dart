@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'data/active_target_profile_notifier.dart';
+import 'data/demand_forecast_context_notifier.dart';
 import 'data/restaurant_scope_notifier.dart';
 import 'data/schedule_distribution_weights_notifier.dart';
 import 'data/shift_dashboard_notifier.dart';
@@ -69,6 +70,11 @@ class ForgeFlowScope extends StatelessWidget {
             previous!.refresh();
             return previous;
           },
+        ),
+        // Phase 7.55i.1 — canonical demand forecast context from closed shifts.
+        // Loads on creation; Schedule/Shift/Audit read .context for demand.
+        ChangeNotifierProvider<DemandForecastContextNotifier>(
+          create: (_) => DemandForecastContextNotifier(),
         ),
         // Phase 7.55e.4 — runtime distribution weights from closed shifts.
         // Loads on creation; Schedule reads .weights when building its notifier.
@@ -240,11 +246,11 @@ class _AppBottomNav extends StatelessWidget {
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.calendar_today, size: 22),
-            label: 'Schedule',
+            label: 'Plan',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.history, size: 22),
-            label: 'Baseline',
+            label: 'Benchmark',
           ),
         ],
       ),

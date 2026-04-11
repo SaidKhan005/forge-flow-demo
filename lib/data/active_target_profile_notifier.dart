@@ -9,9 +9,8 @@ library;
 import 'package:flutter/foundation.dart';
 import '../domain/models/active_target_profile.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'baseline_manager_service.dart';
+import 'wage_standard_context_service.dart';
 
 class ActiveTargetProfileNotifier extends ChangeNotifier {
   ActiveTargetProfile? _profile;
@@ -43,11 +42,8 @@ class ActiveTargetProfileNotifier extends ChangeNotifier {
   Future<void> _load() async {
     final restaurantId =
         await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
-    _profile =
-        await SqliteTargetProfileRepository.instance
-            .getActiveTargetProfile(restaurantId);
-    _profile ??=
-        SqliteDatabase.buildActiveTargetProfileFromBaseline(restaurantId);
+    _profile = await WageStandardContextService.instance
+        .loadOrBootstrapProfile(restaurantId);
     _isLoading = false;
     notifyListeners();
   }

@@ -1,7 +1,10 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../data/active_target_profile_notifier.dart';
 import '../data/legacy_fixture_data.dart';
+import '../services/labor_model.dart';
 import '../widgets/daypart_table.dart';
 import 'baseline_manager_screen.dart';
 
@@ -20,9 +23,7 @@ class BaselineTracker extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Your Baseline', style: AppTextStyles.display20()),
-                const SizedBox(height: 2),
-                Text('Last 60 Days', style: AppTextStyles.mono11()),
+                Text('60 Day Benchmark', style: AppTextStyles.display20()),
               ],
             ),
           ),
@@ -45,7 +46,7 @@ class BaselineTracker extends StatelessWidget {
           DaypartTable(dayparts: BaselineData.daypartRanges),
 
           // Baseline targets
-          _SectionLabel('TARGETS DERIVED FROM BASELINE'),
+          _SectionLabel('TARGETS DERIVED FROM BENCHMARK'),
           _BaselineTargetsCard(),
 
           const SizedBox(height: 24),
@@ -151,45 +152,26 @@ class _SummaryCards extends StatelessWidget {
   Widget build(BuildContext context) {
     final cards = [
       ('TOTAL COVERS LAST 60 DAYS', BaselineData.historicalTotalCoversTracked.toString()),
-      ('WEEKLY AVG COVERS', '${BaselineData.historicalWeeklyAvgCovers}'),
     ];
 
+    final card = cards.first;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: cards.asMap().entries.map((entry) {
-            final i = entry.key;
-            final card = entry.value;
-            return Expanded(
-              child: Container(
-                margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppColors.backgroundMid,
-                  border: Border.all(color: AppColors.borderSubtle, width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    SizedBox(
-                      height: 28,
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(card.$1, style: AppTextStyles.mono7()),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(card.$2,
-                        style:
-                            AppTextStyles.mono16(color: AppColors.textPrimary)),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundMid,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(card.$1, style: AppTextStyles.mono7()),
+            const SizedBox(height: 6),
+            Text(card.$2,
+                style: AppTextStyles.mono16(color: AppColors.textPrimary)),
+          ],
         ),
       ),
     );
@@ -434,32 +416,35 @@ class _CplhRangeBar extends StatelessWidget {
                 builder: (_) => const BaselineManagerScreen(),
               ),
             ),
-            child: SizedBox(
+            child: Container(
               width: double.infinity,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppColors.sunsetDark.withValues(alpha: 0.08),
-                  border: Border.all(
-                    color: AppColors.sunsetDark.withValues(alpha: 0.6),
-                    width: 1,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              decoration: BoxDecoration(
+                color: AppColors.sunset,
+                border: Border.all(color: AppColors.sunsetDark, width: 1),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.star_rounded,
+                    size: 18,
+                    color: AppColors.backgroundDeep,
                   ),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        graph.overrideLabel,
-                        style: AppTextStyles.mono12(color: AppColors.sunsetDark),
-                      ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      graph.overrideLabel,
+                      style: AppTextStyles.mono12(
+                          color: AppColors.backgroundDeep,
+                          weight: FontWeight.w700),
                     ),
-                    const Icon(
-                      Icons.chevron_right,
-                      size: 20,
-                      color: AppColors.sunsetDark,
-                    ),
-                  ],
-                ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: AppColors.backgroundDeep,
+                  ),
+                ],
               ),
             ),
           ),
@@ -472,17 +457,29 @@ class _CplhRangeBar extends StatelessWidget {
 class _BaselineTargetsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    // Resolve wage rates from the persisted profile. The profile now carries
+    // wages synced from wage authority (via WageStandardContextService).
+    // The MeridianConfig guard only fires if the profile hasn't loaded yet.
+    final profile =
+        context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    final fohWage = profile?.fohWage ?? MeridianConfig.fohWage;
+    final bohWage = profile?.bohWage ?? MeridianConfig.bohWage;
+    final blendedWage = _targetBlendedWage(fohWage, bohWage);
+
     final targets = [
-      ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(1)),
+      ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
       ('SPLH', '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}'),
-      ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(0)}'),
+      ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'),
       (
         'THEORETICAL LABOR %',
         '${BaselineData.derivedTheoreticalLaborPct.toStringAsFixed(1)}%'
       ),
-      ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(1)),
-      ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(1)),
+      ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(2)),
+      ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
       ('HEADROOM', BaselineData.opzHeadroomCPLH.toStringAsFixed(2)),
+      ('FOH WAGE', '\$${fohWage.toStringAsFixed(2)}'),
+      ('BOH WAGE', '\$${bohWage.toStringAsFixed(2)}'),
+      ('BLENDED WAGE', '\$${blendedWage.toStringAsFixed(2)}'),
     ];
 
     return Container(
@@ -515,4 +512,21 @@ class _BaselineTargetsCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Derives the target blended wage from current baseline demand and target
+/// standards. Not stored — always computed from the FOH/BOH model-hour mix.
+double _targetBlendedWage(double fohWage, double bohWage) {
+  final fohHours = LaborModel.modelFohHours(
+    BaselineData.historicalWeeklyAvgCovers,
+    BaselineData.derivedTargetCPLH,
+  );
+  final bohHours = LaborModel.modelBohHoursFromSales(
+    BaselineData.historicalWeeklyAvgCovers * BaselineData.derivedTargetPPA,
+    BaselineData.derivedTargetSPLH,
+  );
+  final total = fohHours + bohHours;
+  return total > 0
+      ? (fohHours * fohWage + bohHours * bohWage) / total
+      : 0.0;
 }

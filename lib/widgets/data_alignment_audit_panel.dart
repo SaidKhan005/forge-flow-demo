@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
+import '../data/demand_forecast_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/mock_integration_replay_seed.dart';
+import '../data/schedule_plan_read_service.dart';
 import '../data/shift_service.dart';
+import '../data/wage_standard_context_service.dart';
 import '../domain/models/active_target_profile.dart';
-import '../domain/models/schedule_forecast_demand.dart';
+import '../domain/models/demand_forecast_context.dart';
 import '../domain/models/schedule_plan.dart';
-import '../domain/services/schedule_forecast_demand_resolver.dart';
-import '../domain/services/schedule_plan_resolver.dart';
+import '../domain/models/wage_standard_context.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../models/shift_dashboard_read_model.dart';
@@ -32,10 +34,11 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
 
   // Loaded data
   ActiveTargetProfile? _profile;
-  ScheduleForecastDemand? _demand;
+  DemandForecastContext? _demandContext;
   SchedulePlan? _plan;
   ShiftDashboardReadModel? _shiftReadModel;
   WeekData? _weekData;
+  WageStandardContext? _wageContext;
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
@@ -45,21 +48,17 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _profile = await SqliteTargetProfileRepository.instance
           .getActiveTargetProfile(restaurantId);
 
-      if (_profile != null) {
-        _demand = ScheduleForecastDemandResolver.resolve(
-          targetPPA: _profile!.targetPPA,
-          historicalWeeklyAvgCovers: BaselineData.historicalWeeklyAvgCovers,
-        );
-        if (_demand != null) {
-          _plan = SchedulePlanResolver.resolve(
-            demand: _demand!,
-            profile: _profile!,
-          );
-        }
-      }
+      // Load canonical demand context from repository
+      _demandContext =
+          await DemandForecastContextService.instance.getCurrentContext();
+
+      // Resolve plan from shared authority (includes distribution weights)
+      _plan = await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
 
       _shiftReadModel = await ShiftService.instance.getShiftDashboard();
       _weekData = await ShiftService.instance.getLiveWeekToDate();
+      _wageContext =
+          await WageStandardContextService.instance.resolve(restaurantId);
     } catch (_) {
       // Gracefully handle missing data
     }
@@ -121,6 +120,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
               _sectionDivider(),
               _buildVarianceSection(),
               _sectionDivider(),
+              _buildWageAuthoritySection(),
+              _sectionDivider(),
               _buildDemoSeedSection(),
               const SizedBox(height: 8),
             ],
@@ -149,6 +150,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildBaselineSection() {
+    final dc = _demandContext;
     return _section('BASELINE CONTEXT (60-DAY)', [
       _row('DERIVED CPLH',
           BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
@@ -161,21 +163,23 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _row('OPZ CEILING',
           BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
       _row('TOTAL COVERS',
-          BaselineData.historicalTotalCoversTracked.toString()),
+          dc?.historicalTotalCovers?.toString() ?? '—'),
       _row('WEEKLY AVG COVERS',
-          BaselineData.historicalWeeklyAvgCovers.toString()),
+          dc?.historicalWeeklyAvgCovers?.toString() ?? '—'),
+      _row('DEMAND SOURCE',
+          dc?.coversSource.name ?? 'unavailable'),
+      _row('ANCHOR DATE',
+          dc?.anchorBusinessDate ?? '—'),
     ]);
   }
 
   Widget _buildScheduleSection() {
-    final d = _demand;
-    if (d == null) return _emptySection('SCHEDULE FORECAST', 'Not resolved');
+    final p = _plan;
+    if (p == null) return _emptySection('SCHEDULE FORECAST', 'Not resolved');
     return _section('SCHEDULE FORECAST (RESOLVED)', [
-      _row('COVERS', d.forecastCovers?.toString() ?? '—'),
-      _row('SALES', d.forecastSales != null
-          ? '\$${Fmt.dollars(d.forecastSales!)}'
-          : '—'),
-      _row('COVERS SOURCE', d.coversSourceLabel),
+      _row('COVERS', p.forecastCovers.toString()),
+      _row('SALES', '\$${Fmt.dollars(p.forecastSales)}'),
+      _row('COVERS SOURCE', p.coversSourceLabel),
     ]);
   }
 
@@ -239,6 +243,23 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     ]);
   }
 
+  Widget _buildWageAuthoritySection() {
+    final w = _wageContext;
+    if (w == null) return _emptySection('WAGE AUTHORITY', 'Not loaded');
+    return _section('WAGE AUTHORITY', [
+      _row('SOURCE', w.source.displayLabel),
+      _row('FOH WAGE',
+          w.fohWage != null ? '\$${w.fohWage!.toStringAsFixed(2)}' : '—'),
+      _row('BOH WAGE',
+          w.bohWage != null ? '\$${w.bohWage!.toStringAsFixed(2)}' : '—'),
+      _row(
+          'REF BLENDED',
+          w.referenceBlendedWage != null
+              ? '\$${w.referenceBlendedWage!.toStringAsFixed(2)}'
+              : '—'),
+    ]);
+  }
+
   Widget _buildDemoSeedSection() {
     return _section('DEMO SEED REFERENCE', [
       _row('MERIDIAN COVERS', MeridianConfig.weeklyCovers.toString()),
@@ -246,8 +267,10 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _row('MERIDIAN PPA', '\$${MeridianConfig.targetPPA.toStringAsFixed(2)}'),
       _row('MERIDIAN SPLH',
           '\$${MeridianConfig.targetSPLH.toStringAsFixed(2)}'),
-      _row('FOH WAGE', '\$${MeridianConfig.fohWage.toStringAsFixed(2)}'),
-      _row('BOH WAGE', '\$${MeridianConfig.bohWage.toStringAsFixed(2)}'),
+      _row('CONFIG FOH WAGE',
+          '\$${MeridianConfig.fohWage.toStringAsFixed(2)}'),
+      _row('CONFIG BOH WAGE',
+          '\$${MeridianConfig.bohWage.toStringAsFixed(2)}'),
       _row('MOCK REPLAY SHIFTS',
           MockIntegrationReplaySeed.output.currentWeekShifts.length.toString()),
     ]);

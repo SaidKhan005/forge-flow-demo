@@ -1,16 +1,13 @@
 import 'package:flutter/foundation.dart';
 import '../domain/models/active_target_profile.dart';
-import '../domain/services/schedule_forecast_demand_resolver.dart';
-import '../domain/services/schedule_plan_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../models/app_data_status.dart';
 import '../models/shift_dashboard_read_model.dart';
 import 'app_data_status_service.dart';
-import 'legacy_fixture_data.dart';
+import 'schedule_plan_read_service.dart';
+import 'wage_standard_context_service.dart';
 
 class ShiftDashboardNotifier extends ChangeNotifier {
   ShiftDashboardReadModel? _readModel;
@@ -50,12 +47,10 @@ class ShiftDashboardNotifier extends ChangeNotifier {
     final restaurantId =
         await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
 
-    // Load active target profile
-    ActiveTargetProfile? profile =
-        await SqliteTargetProfileRepository.instance
-            .getActiveTargetProfile(restaurantId);
-    profile ??=
-        SqliteDatabase.buildActiveTargetProfileFromBaseline(restaurantId);
+    // Load active target profile via wage-aware bootstrap
+    final ActiveTargetProfile profile = await WageStandardContextService
+        .instance
+        .loadOrBootstrapProfile(restaurantId);
 
     // Find the business date with an open shift
     final businessDate = await SqliteOpenShiftSnapshotRepository.instance
@@ -67,15 +62,9 @@ class ShiftDashboardNotifier extends ChangeNotifier {
           .getSnapshotsForDay(restaurantId, businessDate);
 
       if (snapshots.isNotEmpty) {
-        // Resolve the whole-day SchedulePlan from the same inputs as Schedule
-        final demand = ScheduleForecastDemandResolver.resolve(
-          targetPPA: profile.targetPPA,
-          historicalWeeklyAvgCovers: BaselineData.historicalWeeklyAvgCovers,
-        );
-        final plan = SchedulePlanResolver.resolve(
-          demand: demand,
-          profile: profile,
-        );
+        // Resolve plan from shared authority (includes distribution weights)
+        final plan = await SchedulePlanReadService.instance
+            .getCurrentWeeklyPlan();
 
         // Find the open snapshot's day label to pick the right day row
         final openSnap = snapshots

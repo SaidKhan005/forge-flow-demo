@@ -48,8 +48,8 @@ const _overrideRecords = [
   ),
 ];
 
-// avgCPLH = (4.8 + 5.4) / 2 = 5.1 â†’ toStringAsFixed(1) = '5.1'
-// OPZ floor = 4.8 â†’ '4.8', ceiling = 5.4 â†’ '5.4'  (all distinct)
+// avgCPLH = (4.8 + 5.4) / 2 = 5.1 â†’ toStringAsFixed(2) = ‘5.10’ (Baseline 2dp)
+// ZoneStatusCard still uses 1dp: ‘5.1’, floor ‘4.8’, ceiling ‘5.4’
 
 // â”€â”€ Test shell â€” mirrors the ValueListenableBuilder + KeyedSubtree path â”€â”€â”€â”€â”€â”€â”€
 
@@ -112,14 +112,14 @@ void main() {
   group('B â€” baseline derived target reflects override selection', () {
     testWidgets('BaselineTracker shows override CPLH after rebuild',
         (tester) async {
-      // Capture seed target text before override
+      // Capture seed target text before override (2dp — 7.55h)
       final seedTargetText =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
 
       // Verify override target is distinct from seed
       BaselineData.applyManagerOverride(_overrideRecords);
       final overrideTargetText =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(1); // '5.1'
+          BaselineData.derivedTargetCPLH.toStringAsFixed(2); // '5.10'
       BaselineData.clearManagerOverride();
 
       expect(overrideTargetText, isNot(equals(seedTargetText)),
