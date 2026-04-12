@@ -140,6 +140,51 @@ class BaselineManagerService {
     });
   }
 
+  // ── Date-anchored baseline context priming ─────────────────────────────────
+  // Transitional bridge for TargetCycleService: ensures BaselineData reflects
+  // the correct 60-day benchmark context for an explicit business date before
+  // buildActiveTargetProfileFromBaseline() runs. Does not persist the active
+  // target profile — the caller builds a TargetCycle from the primed state.
+
+  /// Primes in-memory BaselineData for the 60-day window ending at
+  /// [businessDate]. Loads closed shifts from DB, applies them as historical
+  /// context, and re-applies manager override state from the persisted
+  /// selection.
+  Future<void> primeBaselineContextForDate(
+      String restaurantId, String businessDate) async {
+    final endDate = businessDate;
+    final startDate = _subtractDays(businessDate, 59);
+
+    final candidates =
+        await getCandidateShiftsForDateRange(startDate, endDate);
+
+    if (candidates.isEmpty) {
+      BaselineData.clearHistoricalContext();
+      BaselineData.clearManagerOverride();
+      return;
+    }
+
+    final context = candidates
+        .map((c) => DaypartBaseline(
+              daypart: c.daypart,
+              cplh: c.cplh,
+              splh: c.splh,
+              ppa: c.ppa,
+              covers: c.covers,
+              isSelected: c.isSelected,
+            ))
+        .toList();
+
+    BaselineData.applyHistoricalContext(context);
+
+    final selected = candidates.where((c) => c.isSelected).toList();
+    if (selected.isEmpty) {
+      BaselineData.clearManagerOverride();
+    } else {
+      BaselineData.applyManagerOverride(context);
+    }
+  }
+
   // ── Apply persisted selection to BaselineData ──────────────────────────────
   // Compatibility bridge: BaselineData is still updated in-memory for Baseline,
   // Schedule, and Learn surfaces that have not yet migrated to the persisted

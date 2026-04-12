@@ -1,14 +1,13 @@
 // Phase 7.14 — Learn Teaching Analyzer
-// Combines History pattern analysis with active Baseline truth to produce
+// Combines History pattern analysis with benchmark context to produce
 // deterministic coaching guidance grounded in Jim Taylor Chapters 9–12.
 //
-// Compatibility bridge: still reads BaselineData for benchmark context
-// (selectedRecordCount, rangeValidation, hasManagerOverride, derived targets).
-// Not canonical authority — persisted ActiveTargetProfile is canonical.
-// Pending later retirement when Learn migrates to repository-backed state.
+// Phase 7.55l.8a: migrated off direct BaselineData reads. Benchmark
+// source label and target metrics now come from injected
+// LearnBenchmarkContext, resolved by LearnBenchmarkContextService.
 
-import '../data/legacy_fixture_data.dart';
 import '../models/history_pattern_record.dart';
+import '../models/learn_benchmark_context.dart';
 import '../models/learn_teaching_summary.dart';
 import 'history_teaching_analyzer.dart';
 
@@ -18,22 +17,19 @@ class LearnTeachingAnalyzer {
   static LearnTeachingSummary summarize({
     required List<HistoryPatternRecord> patternRecords,
     required int weekCount,
+    required LearnBenchmarkContext benchmarkContext,
   }) {
     final historySummary = patternRecords.isEmpty
         ? null
         : HistoryTeachingAnalyzer.summarize(patternRecords);
 
-    final selectedShiftCount = BaselineData.selectedRecordCount;
-    final targetCPLH = BaselineData.derivedTargetCPLH;
-    final targetSPLH = BaselineData.derivedTargetSPLH;
-    final targetPPA = BaselineData.derivedTargetPPA;
-    final rangeQualityLabel =
-        BaselineData.baselineRangeValidation.statusLabel;
-    final rangeQualityMessage =
-        BaselineData.baselineRangeValidation.message;
-    final benchmarkSourceLabel = BaselineData.hasManagerOverride
-        ? 'MANAGER STAR SHIFTS'
-        : 'SYSTEM BENCHMARK SET';
+    final selectedShiftCount = benchmarkContext.selectedShiftCount;
+    final targetCPLH = benchmarkContext.targetCPLH;
+    final targetSPLH = benchmarkContext.targetSPLH;
+    final targetPPA = benchmarkContext.targetPPA;
+    final rangeQualityLabel = benchmarkContext.rangeQualityLabel;
+    final rangeQualityMessage = benchmarkContext.rangeQualityMessage;
+    final benchmarkSourceLabel = benchmarkContext.benchmarkSourceLabel;
 
     String primaryLeakId;
     String primaryLeakSideLabel;

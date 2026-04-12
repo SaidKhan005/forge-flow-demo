@@ -1,6 +1,7 @@
-// Shift dashboard notifier tests â€” empty-state behavior.
+// Shift dashboard notifier tests — empty-state behavior + locked plan (7.55l.7a).
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
@@ -60,6 +61,30 @@ void main() {
     expect(notifier.isLoading, isFalse);
     expect(notifier.readModel, isNull);
     expect(notifier.status!.type, AppDataStatusType.noData);
+
+    notifier.dispose();
+  });
+
+  // ── Locked weekly plan tests (7.55l.7a) ──────────────────────────────────
+
+  test('notifier read model uses locked weekly plan day values', () async {
+    // Get the locked plan to know expected day values
+    final lockedPlan = await SchedulePlanReadService.instance
+        .getCurrentLockedWeeklyPlan();
+    expect(lockedPlan, isNotNull);
+
+    final notifier = ShiftDashboardNotifier();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+
+    expect(notifier.readModel, isNotNull);
+
+    // Dashboard forecast must match a day from the locked plan
+    final matchingDay = lockedPlan!.dayPlans
+        .where((d) => d.forecastCovers == notifier.readModel!.forecastCovers)
+        .firstOrNull;
+    expect(matchingDay, isNotNull,
+        reason:
+            'Notifier forecast covers must match a locked plan day row');
 
     notifier.dispose();
   });

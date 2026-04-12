@@ -17,10 +17,31 @@ The persisted `ActiveTargetProfile` is the canonical active-target authority. It
 
 ### LearnTeachingAnalyzer
 
-- **Classification**: Temporary compatibility bridge
-- **Reads**: `BaselineData.selectedRecordCount`, `BaselineData.derivedTarget*`, `BaselineData.baselineRangeValidation`, `BaselineData.hasManagerOverride`
-- **Rationale**: Learn coaching summaries need benchmark context that is currently only computed inside `BaselineData`. Migrating this requires extracting baseline-range analytics into a separate query/read model.
-- **Retirement plan**: Migrate to a baseline-analytics query service that reads persisted state. Pending future pass.
+- **Classification**: Retired — no longer a bridge (7.55l.8a)
+- **Reads**: Injected `LearnBenchmarkContext` only. No `BaselineData` imports.
+- **Rationale**: As of 7.55l.8a, `LearnTeachingAnalyzer` accepts an immutable
+  `LearnBenchmarkContext` parameter resolved by `LearnBenchmarkContextService`.
+  Source label, targets, selection count, and range quality all come from
+  persisted cycle/profile/summary authority. The analyzer no longer reads
+  `BaselineData` directly.
+- **Retirement plan**: Complete. See `docs/phase_7_55l_8_learn_bridge_closeout.md`.
+
+### LearnBenchmarkContextService
+
+- **Classification**: Narrow compatibility bridge (two paths only)
+- **Reads**: Persisted `ActiveTargetProfile`, `TargetCycle`, and
+  `BenchmarkSelectionSummary` in the canonical path. `BaselineData` only
+  in two intentionally narrow fallback paths:
+  1. Explicit bridge-only mode (`enableBridgeOnly()`) for widget tests
+     without SQLite
+  2. Genuine no-profile bootstrap (first launch before any cycle/profile)
+- **Rationale**: The canonical production path is fully persisted. The two
+  remaining bridge surfaces are intentional and limited to non-production
+  runtime scenarios.
+- **Retirement plan**: Bridge-only mode retires when widget tests migrate to
+  repository-backed test harnesses. No-profile bootstrap retires when the
+  app guarantees a cycle/profile exists before Learn loads. Non-blocking
+  for Phase 8.
 
 ### StaticShiftDataSource
 
@@ -54,6 +75,7 @@ The persisted `ActiveTargetProfile` is the canonical active-target authority. It
 
 These production surfaces now read from persisted or injected state, not from `BaselineData`:
 
+- `LearnTeachingAnalyzer` — reads injected `LearnBenchmarkContext` (resolved from persisted cycle/profile/summary)
 - `ShiftDashboard` — reads `ShiftDashboardNotifier` (repository-backed)
 - `ZoneStatusCard` — reads constructor params from the read model
 - `VarianceReport` This Week — reads `WeekDataNotifier` (repository-backed)

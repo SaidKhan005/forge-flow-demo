@@ -3,10 +3,16 @@
 // Verifies that the Learn tab renders all required sections, labels, and
 // fields using the same StaticShiftDataSource pattern as the existing
 // Variance widget tests.
+//
+// Phase 7.55l.8a: Learn tab now loads benchmark context via
+// LearnBenchmarkContextService. In widget tests without SQLite, the
+// service falls back to the BaselineData bridge path, so existing
+// assertions remain valid.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:forge_and_flow/data/learn_benchmark_context_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/shift_data_source.dart';
 import 'package:forge_and_flow/data/week_data_notifier.dart';
@@ -42,11 +48,14 @@ void main() {
   setUp(() {
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
+    LearnBenchmarkContextService.enableBridgeOnly();
   });
 
   tearDown(() {
     BaselineData.clearManagerOverride();
     BaselineData.clearHistoricalContext();
+    LearnBenchmarkContextService.disableBridgeOnly();
+    LearnBenchmarkContextService.testCanonicalOverride = null;
   });
 
   // ── A: Learn tab exists ──────────────────────────────────────────────────
@@ -205,6 +214,17 @@ void main() {
       await _openLearnTab(tester);
       // WHAT TO STUDY appears in both Recurring Leak and Repeatable Wins
       expect(find.text('WHAT TO STUDY'), findsAtLeastNWidgets(2));
+    });
+  });
+
+  // ── H: Learn benchmark renders after service-backed refactor ─────────────
+
+  group('H — post-refactor benchmark rendering', () {
+    testWidgets('SYSTEM BENCHMARK SET renders in default state',
+        (tester) async {
+      await _openLearnTab(tester);
+      expect(
+          find.text('SYSTEM BENCHMARK SET'), findsAtLeastNWidgets(1));
     });
   });
 }

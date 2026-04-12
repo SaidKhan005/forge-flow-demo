@@ -1,0 +1,551 @@
+// Phase 7.55l.6b+6b1+6b2+6b3 — WeeklyPlanSnapshot persistence + auto-lock spine tests.
+//
+// Covers:
+// A. Generates and persists a snapshot when missing
+// B. Returns existing current-week snapshot unchanged on subsequent reads
+// C. Snapshot stores the active targetCycleId
+// D. Snapshot stores weekly totals and day rows matching the generated SchedulePlan
+// E. Mock replay business date is preferred over latest closed date
+// F. Existing snapshot remains in force even if current cycle truth would differ
+// G. Returns null cleanly when current-week plan cannot be resolved
+// H. DAO/repository round-trip preserves all fields
+// I. Mock replay advance within same week preserves locked snapshot (7.55l.6b1)
+// J. Same-week replay advance preserves snapshot->cycle linkage (7.55l.6b2)
+// K. Same-week replay preserves cycle-projected active profile (7.55l.6b3)
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/data/target_cycle_service.dart';
+import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
+
+void main() {
+  sqfliteFfiInit();
+  databaseFactory = databaseFactoryFfi;
+
+  const restaurantId = DemoScope.restaurantId;
+
+  // Default seeded business date: 2026-03-27 (Friday).
+  // Monday-start week: 2026-03-23 to 2026-03-29.
+  const businessDate = '2026-03-27';
+  final weekStart =
+      WeeklyPlanSnapshotPolicy.weekStartForDate(businessDate); // 2026-03-23
+  final weekEnd =
+      WeeklyPlanSnapshotPolicy.weekEndForDate(businessDate); // 2026-03-29
+  final weekKey =
+      WeeklyPlanSnapshotPolicy.weekKeyFromSpan(weekStart, weekEnd);
+
+  setUp(() async {
+    await SqliteDatabase.instance.reseedDemo();
+  });
+
+  // ── A: Generates and persists a snapshot when missing ───────────────────
+
+  group('A — generates snapshot when missing', () {
+    test('returns non-null snapshot from seeded data', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(snapshot, isNotNull);
+      expect(snapshot!.restaurantId, restaurantId);
+      expect(snapshot.weekStartDate, weekStart);
+      expect(snapshot.weekEndDate, weekEnd);
+      expect(snapshot.weekKey, weekKey);
+      expect(snapshot.forecastCovers, greaterThan(0));
+      expect(snapshot.forecastSales, greaterThan(0));
+    });
+
+    test('snapshot is persisted to repository', () async {
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      final loaded = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForWeekKey(restaurantId, weekKey);
+      expect(loaded, isNotNull);
+      expect(loaded!.weekKey, weekKey);
+    });
+
+    test('snapshot is findable by business date', () async {
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      final loaded = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForBusinessDate(restaurantId, businessDate);
+      expect(loaded, isNotNull);
+      expect(loaded!.weekKey, weekKey);
+    });
+  });
+
+  // ── B: Returns existing snapshot unchanged on subsequent reads ──────────
+
+  group('B — returns existing snapshot unchanged', () {
+    test('second call returns same snapshot without regeneration', () async {
+      final first =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final second =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(first, isNotNull);
+      expect(second, isNotNull);
+      expect(second!.snapshotId, first!.snapshotId);
+      expect(second.generatedAt, first.generatedAt);
+      expect(second.lockedAt, first.lockedAt);
+    });
+  });
+
+  // ── C: Snapshot stores the active targetCycleId ─────────────────────────
+
+  group('C — stores active targetCycleId', () {
+    test('snapshot targetCycleId matches the active cycle', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, businessDate);
+
+      expect(snapshot, isNotNull);
+      expect(snapshot!.targetCycleId, cycle.cycleId);
+    });
+  });
+
+  // ── D: Snapshot stores weekly totals and day rows matching SchedulePlan ──
+
+  group('D — snapshot matches generated SchedulePlan', () {
+    test('weekly totals match SchedulePlan', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final plan =
+          await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+
+      expect(snapshot, isNotNull);
+      expect(plan, isNotNull);
+      expect(snapshot!.forecastCovers, plan!.forecastCovers);
+      expect(snapshot.forecastSales, plan.forecastSales);
+      expect(snapshot.requiredFohHours, plan.requiredFohHours);
+      expect(snapshot.requiredBohHours, plan.requiredBohHours);
+      expect(snapshot.theoreticalFohLaborDollars,
+          plan.theoreticalFohLaborDollars);
+      expect(snapshot.theoreticalBohLaborDollars,
+          plan.theoreticalBohLaborDollars);
+      expect(snapshot.theoreticalLaborPct, plan.theoreticalLaborPct);
+      expect(snapshot.targetBlendedWage, plan.targetBlendedWage);
+      expect(snapshot.coversSource, plan.coversSource);
+      expect(snapshot.salesSource, plan.salesSource);
+    });
+
+    test('day rows match SchedulePlan dayPlans', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final plan =
+          await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+
+      expect(snapshot, isNotNull);
+      expect(plan, isNotNull);
+      expect(snapshot!.dayRows.length, plan!.dayPlans.length);
+
+      for (var i = 0; i < snapshot.dayRows.length; i++) {
+        final dayRow = snapshot.dayRows[i];
+        final dayPlan = plan.dayPlans[i];
+        expect(dayRow.day, dayPlan.day);
+        expect(dayRow.forecastCovers, dayPlan.forecastCovers);
+        expect(dayRow.forecastSales, dayPlan.forecastSales);
+        expect(dayRow.requiredFohHours, dayPlan.requiredFohHours);
+        expect(dayRow.requiredBohHours, dayPlan.requiredBohHours);
+      }
+    });
+
+    test('day rows have sequential business dates starting from week start',
+        () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(snapshot, isNotNull);
+      expect(snapshot!.dayRows.isNotEmpty, isTrue);
+      expect(snapshot.dayRows.first.businessDate, weekStart);
+
+      // Verify dates are sequential
+      for (var i = 1; i < snapshot.dayRows.length; i++) {
+        final prevDate = snapshot.dayRows[i - 1].businessDate;
+        final currDate = snapshot.dayRows[i].businessDate;
+        expect(currDate.compareTo(prevDate), greaterThan(0));
+      }
+    });
+  });
+
+  // ── E: Mock replay business date preferred over latest closed ───────────
+
+  group('E — mock replay date preferred', () {
+    test('uses mock replay date as current-week anchor', () async {
+      // Default seeded mock replay date is 2026-03-27.
+      // Snapshot should be for the week containing that date.
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(snapshot, isNotNull);
+      expect(snapshot!.weekStartDate, weekStart);
+      expect(snapshot.weekEndDate, weekEnd);
+    });
+
+    test('changing mock replay date changes the snapshot week', () async {
+      // Generate snapshot for default week first
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      // Advance mock replay date to a different week
+      const newDate = '2026-04-06'; // Monday of next-next week
+      await SqliteDatabase.instance
+          .setMockReplayBusinessDate(restaurantId, newDate);
+
+      final newWeekStart =
+          WeeklyPlanSnapshotPolicy.weekStartForDate(newDate);
+      final newWeekEnd =
+          WeeklyPlanSnapshotPolicy.weekEndForDate(newDate);
+
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(snapshot, isNotNull);
+      expect(snapshot!.weekStartDate, newWeekStart);
+      expect(snapshot.weekEndDate, newWeekEnd);
+    });
+
+    test('falls back to latest closed date when mock replay cleared',
+        () async {
+      // Clear mock replay state
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('mock_replay_state');
+
+      // Should still produce a snapshot using latest closed shift date
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      // May or may not be null depending on closed shift data;
+      // at minimum, should not throw
+      if (snapshot != null) {
+        expect(snapshot.weekStartDate, isNotEmpty);
+        expect(snapshot.weekEndDate, isNotEmpty);
+      }
+    });
+  });
+
+  // ── F: Existing snapshot remains in force despite cycle change ──────────
+
+  group('F — locked snapshot stability', () {
+    test('existing snapshot unchanged even if cycle would now differ',
+        () async {
+      // Generate and lock the current week's snapshot
+      final original =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(original, isNotNull);
+
+      final originalCycleId = original!.targetCycleId;
+      final originalCovers = original.forecastCovers;
+
+      // Force a new cycle by admin replacement (changes the active cycle)
+      await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, businessDate);
+
+      // The snapshot should still be the original, locked one
+      final afterRefresh =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(afterRefresh, isNotNull);
+      expect(afterRefresh!.snapshotId, original.snapshotId);
+      expect(afterRefresh.targetCycleId, originalCycleId);
+      expect(afterRefresh.forecastCovers, originalCovers);
+    });
+  });
+
+  // ── G: Returns null when plan cannot be resolved ────────────────────────
+
+  group('G — null when plan unresolvable', () {
+    test('returns null when no business date can be determined', () async {
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('mock_replay_state');
+      await db.delete('shift_records');
+
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNull);
+    });
+  });
+
+  // ── H: DAO/repository round-trip ────────────────────────────────────────
+
+  group('H — persistence round-trip', () {
+    test('persisted snapshot preserves all fields on read-back', () async {
+      final original =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(original, isNotNull);
+
+      // Read back from repository
+      final loaded = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForWeekKey(restaurantId, original!.weekKey);
+
+      expect(loaded, isNotNull);
+      expect(loaded!.snapshotId, original.snapshotId);
+      expect(loaded.restaurantId, original.restaurantId);
+      expect(loaded.weekKey, original.weekKey);
+      expect(loaded.weekStartDate, original.weekStartDate);
+      expect(loaded.weekEndDate, original.weekEndDate);
+      expect(loaded.targetCycleId, original.targetCycleId);
+      expect(loaded.forecastCovers, original.forecastCovers);
+      expect(loaded.forecastSales, original.forecastSales);
+      expect(loaded.requiredFohHours, original.requiredFohHours);
+      expect(loaded.requiredBohHours, original.requiredBohHours);
+      expect(loaded.theoreticalFohLaborDollars,
+          original.theoreticalFohLaborDollars);
+      expect(loaded.theoreticalBohLaborDollars,
+          original.theoreticalBohLaborDollars);
+      expect(loaded.theoreticalLaborPct, original.theoreticalLaborPct);
+      expect(loaded.targetBlendedWage, original.targetBlendedWage);
+      expect(loaded.coversSource, original.coversSource);
+      expect(loaded.salesSource, original.salesSource);
+      expect(loaded.generatedAt, original.generatedAt);
+      expect(loaded.lockedAt, original.lockedAt);
+
+      // Day rows
+      expect(loaded.dayRows.length, original.dayRows.length);
+      for (var i = 0; i < loaded.dayRows.length; i++) {
+        expect(loaded.dayRows[i].day, original.dayRows[i].day);
+        expect(loaded.dayRows[i].businessDate,
+            original.dayRows[i].businessDate);
+        expect(loaded.dayRows[i].forecastCovers,
+            original.dayRows[i].forecastCovers);
+        expect(loaded.dayRows[i].forecastSales,
+            original.dayRows[i].forecastSales);
+        expect(loaded.dayRows[i].requiredFohHours,
+            original.dayRows[i].requiredFohHours);
+        expect(loaded.dayRows[i].requiredBohHours,
+            original.dayRows[i].requiredBohHours);
+      }
+    });
+  });
+
+  // ── I: Mock replay advance preserves locked snapshot (7.55l.6b1) ────────
+
+  group('I — mock replay same-week advance preserves locked snapshot', () {
+    test('advanceMockReplayDay within same week keeps same snapshot', () async {
+      // Generate and lock the current week's snapshot.
+      // Default business date is 2026-03-27 (Friday), week Mon 2026-03-23.
+      final original =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(original, isNotNull);
+
+      // Advance mock replay by one day (Friday → Saturday) via the real
+      // ShiftService.advanceMockReplayDay path, which exercises
+      // reseedMockReplayForBusinessDate under the hood.
+      await ShiftService.instance.advanceMockReplayDay();
+
+      // The snapshot for the same week should still be the original.
+      final afterAdvance =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(afterAdvance, isNotNull);
+      expect(afterAdvance!.snapshotId, original!.snapshotId);
+      expect(afterAdvance.generatedAt, original.generatedAt);
+      expect(afterAdvance.forecastCovers, original.forecastCovers);
+      expect(afterAdvance.targetCycleId, original.targetCycleId);
+    });
+
+    test('advance into new week can generate a new snapshot', () async {
+      // Generate and lock snapshot for the default week (Mon 2026-03-23).
+      final originalWeek =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(originalWeek, isNotNull);
+
+      // Jump mock replay date to the next Monday (new business week).
+      const nextWeekDate = '2026-03-30';
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate(nextWeekDate);
+
+      final nextWeekStart =
+          WeeklyPlanSnapshotPolicy.weekStartForDate(nextWeekDate);
+
+      final newWeekSnapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(newWeekSnapshot, isNotNull);
+      expect(newWeekSnapshot!.weekStartDate, nextWeekStart);
+      // Different week, so different snapshot id.
+      expect(newWeekSnapshot.snapshotId, isNot(originalWeek!.snapshotId));
+    });
+
+    test('multiple same-week advances all preserve the original snapshot',
+        () async {
+      // Lock snapshot on Friday (default 2026-03-27).
+      final original =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(original, isNotNull);
+
+      // Advance twice: Friday → Saturday → Sunday. Both still same week.
+      await ShiftService.instance.advanceMockReplayDay();
+      await ShiftService.instance.advanceMockReplayDay();
+
+      final afterTwoAdvances =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      expect(afterTwoAdvances, isNotNull);
+      expect(afterTwoAdvances!.snapshotId, original!.snapshotId);
+      expect(afterTwoAdvances.generatedAt, original.generatedAt);
+    });
+  });
+
+  // ── J: Same-week replay preserves snapshot->cycle linkage (7.55l.6b2) ──
+
+  group('J — snapshot->cycle linkage preserved across same-week replay', () {
+    test('preserved snapshot targetCycleId resolves to existing cycle row',
+        () async {
+      // Generate and lock the current week's snapshot.
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+      final originalCycleId = snapshot!.targetCycleId;
+
+      // Advance mock replay by one day within the same week.
+      await ShiftService.instance.advanceMockReplayDay();
+
+      // The cycle referenced by the locked snapshot must still exist.
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle(restaurantId);
+      expect(cycle, isNotNull);
+      expect(cycle!.cycleId, originalCycleId);
+    });
+
+    test('same-week replay advance does not mutate the preserved snapshot row',
+        () async {
+      final original =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(original, isNotNull);
+
+      await ShiftService.instance.advanceMockReplayDay();
+
+      // Re-read from repository to confirm the persisted row is unchanged.
+      final loaded = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForWeekKey(restaurantId, original!.weekKey);
+      expect(loaded, isNotNull);
+      expect(loaded!.snapshotId, original.snapshotId);
+      expect(loaded.targetCycleId, original.targetCycleId);
+      expect(loaded.forecastCovers, original.forecastCovers);
+      expect(loaded.forecastSales, original.forecastSales);
+      expect(loaded.generatedAt, original.generatedAt);
+      expect(loaded.lockedAt, original.lockedAt);
+      expect(loaded.dayRows.length, original.dayRows.length);
+    });
+
+    test('new-week replay advance can still move forward normally', () async {
+      // Lock snapshot for the default week.
+      final originalWeek =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(originalWeek, isNotNull);
+
+      // Jump to the next Monday (new business week).
+      const nextWeekDate = '2026-03-30';
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate(nextWeekDate);
+
+      // A new cycle and snapshot should be generated for the new week.
+      final newSnapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(newSnapshot, isNotNull);
+      expect(newSnapshot!.snapshotId, isNot(originalWeek!.snapshotId));
+
+      // The new snapshot's cycle must also resolve.
+      final newCycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle(restaurantId);
+      expect(newCycle, isNotNull);
+      expect(newCycle!.cycleId, newSnapshot.targetCycleId);
+    });
+  });
+
+  // ── K: Same-week replay preserves cycle-projected active profile (7.55l.6b3) ──
+
+  group('K — active profile preserved across same-week replay', () {
+    test('preserved active profile matches preserved cycle after same-week advance',
+        () async {
+      // Generate snapshot (which creates the cycle and projects the profile).
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final cycleBefore = await SqliteTargetCycleRepository.instance
+          .getActiveCycle(restaurantId);
+      expect(cycleBefore, isNotNull);
+
+      final profileBefore = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profileBefore, isNotNull);
+      expect(profileBefore!.targetCPLH, cycleBefore!.targetCPLH);
+
+      // Advance mock replay by one day within the same week.
+      await ShiftService.instance.advanceMockReplayDay();
+
+      // Active profile must still match the preserved cycle.
+      final profileAfter = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profileAfter, isNotNull);
+      expect(profileAfter!.targetCPLH, cycleBefore.targetCPLH);
+      expect(profileAfter.targetSPLH, cycleBefore.targetSPLH);
+      expect(profileAfter.targetPPA, cycleBefore.targetPPA);
+      expect(profileAfter.fohWage, cycleBefore.fohWage);
+      expect(profileAfter.bohWage, cycleBefore.bohWage);
+      expect(profileAfter.opzFloorCPLH, cycleBefore.opzFloorCPLH);
+      expect(profileAfter.opzCeilingCPLH, cycleBefore.opzCeilingCPLH);
+    });
+
+    test('active profile survives after admin replacement + same-week advance',
+        () async {
+      // Generate snapshot to lock the week.
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      // Admin replacement creates a new cycle with a fresh projection.
+      final replaced = await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, businessDate);
+
+      // Advance mock replay within the same week.
+      await ShiftService.instance.advanceMockReplayDay();
+
+      // Active profile must still match the replaced cycle.
+      final profileAfter = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profileAfter, isNotNull);
+      expect(profileAfter!.targetCPLH, replaced.targetCPLH);
+      expect(profileAfter.targetSPLH, replaced.targetSPLH);
+      expect(profileAfter.targetPPA, replaced.targetPPA);
+      expect(profileAfter.fohWage, replaced.fohWage);
+      expect(profileAfter.bohWage, replaced.bohWage);
+    });
+
+    test('new-week replay advance still seeds active profile correctly',
+        () async {
+      // Lock snapshot and cycle for the default week.
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      // Jump to the next Monday (new business week).
+      const nextWeekDate = '2026-03-30';
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate(nextWeekDate);
+
+      // Generate a new snapshot for the new week (triggers cycle lookup).
+      final newSnapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(newSnapshot, isNotNull);
+
+      // The active profile must be valid and aligned to the active cycle.
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle(restaurantId);
+      expect(cycle, isNotNull);
+
+      final profile = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profile, isNotNull);
+      expect(profile!.targetCPLH, cycle!.targetCPLH);
+      expect(profile.targetSPLH, cycle.targetSPLH);
+      expect(profile.targetPPA, cycle.targetPPA);
+      expect(profile.fohWage, cycle.fohWage);
+      expect(profile.bohWage, cycle.bohWage);
+    });
+  });
+}

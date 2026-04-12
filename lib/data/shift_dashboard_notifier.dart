@@ -62,9 +62,10 @@ class ShiftDashboardNotifier extends ChangeNotifier {
           .getSnapshotsForDay(restaurantId, businessDate);
 
       if (snapshots.isNotEmpty) {
-        // Resolve plan from shared authority (includes distribution weights)
+        // Resolve plan from locked weekly truth, falling back to live resolution
         final plan = await SchedulePlanReadService.instance
-            .getCurrentWeeklyPlan();
+                .getCurrentLockedWeeklyPlan() ??
+            await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
 
         // Find the open snapshot's day label to pick the right day row
         final openSnap = snapshots

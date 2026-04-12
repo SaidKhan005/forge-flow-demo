@@ -31,7 +31,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 14;
+  static const int schemaVersion = 17;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -355,6 +355,72 @@ class SqliteDatabase {
         hourly_rate     REAL NOT NULL,
         weighted_hours  REAL NOT NULL,
         UNIQUE(restaurant_id, role_name)
+      )
+    ''');
+
+    // ── Target cycle layer ────────────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE target_cycles (
+        cycle_id                 TEXT PRIMARY KEY NOT NULL,
+        restaurant_id            TEXT NOT NULL,
+        source                   TEXT NOT NULL,
+        effective_start          TEXT NOT NULL,
+        effective_end            TEXT NOT NULL,
+        calibration_window_start TEXT NOT NULL,
+        calibration_window_end   TEXT NOT NULL,
+        target_cplh              REAL NOT NULL,
+        target_splh              REAL NOT NULL,
+        target_ppa               REAL NOT NULL,
+        foh_wage                 REAL NOT NULL,
+        boh_wage                 REAL NOT NULL,
+        opz_floor_cplh           REAL NOT NULL,
+        opz_ceiling_cplh         REAL NOT NULL,
+        manager_override_used    INTEGER NOT NULL DEFAULT 0,
+        manager_override_at      TEXT,
+        admin_replaced_at        TEXT,
+        created_at               TEXT NOT NULL,
+        deactivated_at           TEXT
+      )
+    ''');
+
+    // ── Weekly plan snapshot layer ────────────────────────────────────────
+    await db.execute('''
+      CREATE TABLE weekly_plan_snapshots (
+        snapshot_id                    TEXT PRIMARY KEY NOT NULL,
+        restaurant_id                  TEXT NOT NULL,
+        week_key                       TEXT NOT NULL,
+        week_start_date                TEXT NOT NULL,
+        week_end_date                  TEXT NOT NULL,
+        target_cycle_id                TEXT NOT NULL,
+        forecast_covers                INTEGER NOT NULL,
+        forecast_sales                 REAL NOT NULL,
+        required_foh_hours             INTEGER NOT NULL,
+        required_boh_hours             INTEGER NOT NULL,
+        theoretical_foh_labor_dollars  REAL NOT NULL,
+        theoretical_boh_labor_dollars  REAL NOT NULL,
+        theoretical_labor_pct          REAL NOT NULL,
+        target_blended_wage            REAL NOT NULL,
+        covers_source                  TEXT NOT NULL,
+        sales_source                   TEXT NOT NULL,
+        generated_at                   TEXT NOT NULL,
+        locked_at                      TEXT NOT NULL,
+        day_rows_json                  TEXT NOT NULL,
+        UNIQUE(restaurant_id, week_key)
+      )
+    ''');
+
+    // ── Benchmark selection summary layer (7.55l.8c) ─────────────────────
+    await db.execute('''
+      CREATE TABLE benchmark_selection_summaries (
+        summary_id           TEXT PRIMARY KEY NOT NULL,
+        restaurant_id        TEXT NOT NULL,
+        target_cycle_id      TEXT NOT NULL,
+        source_type          TEXT NOT NULL,
+        selected_shift_count INTEGER NOT NULL,
+        range_quality_label  TEXT NOT NULL,
+        range_quality_message TEXT NOT NULL,
+        created_at           TEXT NOT NULL,
+        UNIQUE(target_cycle_id)
       )
     ''');
 
@@ -842,6 +908,15 @@ class SqliteDatabase {
     if (oldV < 14) {
       await _migrateToV14(db);
     }
+    if (oldV < 15) {
+      await _migrateToV15(db);
+    }
+    if (oldV < 16) {
+      await _migrateToV16(db);
+    }
+    if (oldV < 17) {
+      await _migrateToV17(db);
+    }
   }
 
   Future<void> _migrateToV10(Database db) async {
@@ -923,6 +998,75 @@ class SqliteDatabase {
         hourly_rate     REAL NOT NULL,
         weighted_hours  REAL NOT NULL,
         UNIQUE(restaurant_id, role_name)
+      )
+    ''');
+  }
+
+  Future<void> _migrateToV15(Database db) async {
+    await _createTableIfNotExists(db, 'target_cycles', '''
+      CREATE TABLE target_cycles (
+        cycle_id                 TEXT PRIMARY KEY NOT NULL,
+        restaurant_id            TEXT NOT NULL,
+        source                   TEXT NOT NULL,
+        effective_start          TEXT NOT NULL,
+        effective_end            TEXT NOT NULL,
+        calibration_window_start TEXT NOT NULL,
+        calibration_window_end   TEXT NOT NULL,
+        target_cplh              REAL NOT NULL,
+        target_splh              REAL NOT NULL,
+        target_ppa               REAL NOT NULL,
+        foh_wage                 REAL NOT NULL,
+        boh_wage                 REAL NOT NULL,
+        opz_floor_cplh           REAL NOT NULL,
+        opz_ceiling_cplh         REAL NOT NULL,
+        manager_override_used    INTEGER NOT NULL DEFAULT 0,
+        manager_override_at      TEXT,
+        admin_replaced_at        TEXT,
+        created_at               TEXT NOT NULL,
+        deactivated_at           TEXT
+      )
+    ''');
+  }
+
+  Future<void> _migrateToV16(Database db) async {
+    await _createTableIfNotExists(db, 'weekly_plan_snapshots', '''
+      CREATE TABLE weekly_plan_snapshots (
+        snapshot_id                    TEXT PRIMARY KEY NOT NULL,
+        restaurant_id                  TEXT NOT NULL,
+        week_key                       TEXT NOT NULL,
+        week_start_date                TEXT NOT NULL,
+        week_end_date                  TEXT NOT NULL,
+        target_cycle_id                TEXT NOT NULL,
+        forecast_covers                INTEGER NOT NULL,
+        forecast_sales                 REAL NOT NULL,
+        required_foh_hours             INTEGER NOT NULL,
+        required_boh_hours             INTEGER NOT NULL,
+        theoretical_foh_labor_dollars  REAL NOT NULL,
+        theoretical_boh_labor_dollars  REAL NOT NULL,
+        theoretical_labor_pct          REAL NOT NULL,
+        target_blended_wage            REAL NOT NULL,
+        covers_source                  TEXT NOT NULL,
+        sales_source                   TEXT NOT NULL,
+        generated_at                   TEXT NOT NULL,
+        locked_at                      TEXT NOT NULL,
+        day_rows_json                  TEXT NOT NULL,
+        UNIQUE(restaurant_id, week_key)
+      )
+    ''');
+  }
+
+  Future<void> _migrateToV17(Database db) async {
+    await _createTableIfNotExists(db, 'benchmark_selection_summaries', '''
+      CREATE TABLE benchmark_selection_summaries (
+        summary_id           TEXT PRIMARY KEY NOT NULL,
+        restaurant_id        TEXT NOT NULL,
+        target_cycle_id      TEXT NOT NULL,
+        source_type          TEXT NOT NULL,
+        selected_shift_count INTEGER NOT NULL,
+        range_quality_label  TEXT NOT NULL,
+        range_quality_message TEXT NOT NULL,
+        created_at           TEXT NOT NULL,
+        UNIQUE(target_cycle_id)
       )
     ''');
   }
@@ -1316,7 +1460,17 @@ class SqliteDatabase {
   // ── Reseed ──────────────────────────────────────────────────────────────
 
   /// Resets to the default mock replay scenario (2026-03-27 Friday dinner).
+  ///
+  /// Unlike [reseedMockReplayForBusinessDate], this is a full demo reset
+  /// and clears weekly_plan_snapshots and target_cycles too. The
+  /// replay-advance path preserves the locked snapshot, its referenced
+  /// target cycle, and the cycle-projected active profile for the week
+  /// already in force.
   Future<void> reseedDemo() async {
+    final db = await database;
+    await db.delete('weekly_plan_snapshots');
+    await db.delete('benchmark_selection_summaries');
+    await db.delete('target_cycles');
     await reseedMockReplayForBusinessDate(
         MockIntegrationReplaySeed.defaultBusinessDate);
   }
@@ -1339,6 +1493,15 @@ class SqliteDatabase {
     await db.delete('target_profile_versions');
     await db.delete('open_shift_snapshots');
     await db.delete('reservation_book_snapshots');
+    // target_cycles intentionally NOT cleared here — the locked weekly
+    // snapshot references its generating cycle, and that linkage must
+    // survive same-week replay advance. (7.55l.6b2)
+    // weekly_plan_snapshots intentionally NOT cleared here — the locked
+    // snapshot for the week in force must survive same-week replay
+    // advance. Full-reset callers (reseedDemo, clearAllData) handle it.
+    // active_target_profiles conditionally preserved below — when a
+    // preserved active cycle exists, its projected profile must not be
+    // overwritten with baseline-seeded truth. (7.55l.6b3)
 
     // Ensure restaurant exists
     final existing = await db.query('restaurant_locations',
@@ -1353,7 +1516,17 @@ class SqliteDatabase {
     // Generate scenario-specific replay output
     final replay = MockIntegrationReplaySeed.generateForDate(isoDate);
 
-    await _seedDemoActiveTargetProfile(db);
+    // When a preserved active cycle exists, its projected
+    // ActiveTargetProfile is already correct and must not be overwritten
+    // with baseline-seeded truth. Only seed from baseline when no cycle
+    // is preserved (e.g., after reseedDemo clears target_cycles).
+    // (7.55l.6b3)
+    final preservedCycles = await db.query('target_cycles',
+        where: 'restaurant_id = ? AND deactivated_at IS NULL',
+        whereArgs: [DemoScope.restaurantId]);
+    if (preservedCycles.isEmpty) {
+      await _seedDemoActiveTargetProfile(db);
+    }
     await _seedDemoDataFromReplay(db, replay);
     await _backfillLockedTargets(db);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
@@ -1374,6 +1547,8 @@ class SqliteDatabase {
     await db.delete('open_shift_snapshots');
     await db.delete('reservation_book_snapshots');
     await db.delete('active_target_profiles');
+    await db.delete('target_cycles');
+    await db.delete('weekly_plan_snapshots');
 
     // Reset in-memory compatibility bridge
     BaselineData.clearHistoricalContext();

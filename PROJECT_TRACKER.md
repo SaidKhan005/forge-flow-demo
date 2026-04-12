@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-11
+Updated: 2026-04-12
 Owner: You
 Execution model: We think, Claude codes
 Active authority:
@@ -39,9 +39,9 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 ## Active Focus
 
-- Current phase: Phase 7.55 release stabilization / alignment planning remains active, with verified `7.55a` through `7.55h` and `7.55i` intentionally stopped after verified `7.55i.3a`.
-- Current prompt: `7.55j.1` - codebase feature inventory
-- Current goal: map official POS, labor, and reservation capabilities cleanly before more downstream Variance, History, Learn, and daypart semantics work.
+- Current phase: Phase 7.55 alignment remains active through post-`7.55l` runtime-truth stabilization, with verified `7.55a` through `7.55h`, `7.55i` intentionally stopped after verified `7.55i.3a`, `7.55l` complete, and `7.55m` now opening as the cleanup lane before deeper daypart semantics.
+- Current prompt: `7.55m.0` - runtime truth + surface cleanup planning / handoff
+- Current goal: organize and sequence runtime-truth, time/date authority, mock-replay drift, driver, OPZ, and surface-cleanup fixes across Shift, Variance, Benchmark, Plan, and Settings without leaking `7.55k` or `10.5` work forward.
 - Current live-integration scope: one restaurant or location, not multi-location org management.
 - Naming guardrail: keep internal `Baseline` / `Schedule` code and model names unchanged during this alignment pass, even though user-facing copy now says `Benchmark`, `Plan`, and `Weekly Operating Plan`.
 
@@ -69,6 +69,19 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - `docs/phase_7_55j_integration_feature_endpoint_inventory.md`
 - `docs/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - `docs/phase_7_55l_target_cycle_weekly_plan_implementation.md`
+- `docs/phase_7_55m_runtime_truth_surface_cleanup_plan.md`
+- `docs/phase_7_55l_1_target_cycle_contract.md`
+- `docs/phase_7_55l_2a_target_cycle_persistence_autorefresh.md`
+- `docs/phase_7_55l_3a_target_cycle_override_write_path.md`
+- `docs/phase_7_55l_4a_active_target_profile_projection.md`
+- `docs/phase_7_55l_5a_rolling_demand_context_v2.md`
+- `docs/phase_7_55l_5d_weekly_day_allocation_smoothing.md`
+- `docs/phase_7_55l_5f_demand_audit_truth_cleanup.md`
+- `docs/phase_7_55l_6a_weekly_plan_snapshot_contract.md`
+- `docs/phase_7_55l_6b_weekly_plan_snapshot_persistence_autolock.md`
+- `docs/phase_7_55l_7a_first_consumer_migration_slice.md`
+- `docs/phase_7_55l_8a_learn_source_target_migration.md`
+- `docs/phase_7_55l_8b_learn_selection_analytics_migration.md`
 - `docs/phase_7_55k_daypart_variance_history_learn_plan.md`
 - `docs/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phase_9_auth_plan.md`
@@ -118,23 +131,54 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - `7.55i` is intentionally stopped after `7.55i.3a`:
   - keep the verified delivered pieces: canonical demand context, shared SchedulePlan authority, and wage-source authority
   - do not revive `7.55i.4` as an active prompt
-- `7.55j` remains next and now breaks into:
-  - `7.55j.1` codebase feature inventory
-  - `7.55j.2` required capability matrix
-  - `7.55j.gate` integration readiness pressure test
-- `7.55l` is the missing implementation lane between integration inventory and downstream semantics:
-  - `TargetCycle`
-  - rolling `DemandForecastContext`
-  - weekly demand/day allocation logic
-  - `WeeklyPlanSnapshot`
-  - consumer migration
-  - Learn bridge cleanup
+- `7.55j` inventory/gate work is complete for now:
+  - `7.55j.1` codebase feature inventory - complete
+  - `7.55j.2` required capability matrix - complete
+  - `7.55j.gate` integration readiness pressure test - complete, verdict: not simple-swap ready yet
+- `7.55j.3` / `7.55j.4` are parked temporarily while runtime truth stabilization lands:
+  - `7.55j.3` vendor endpoint checklist template - parked behind `7.55m`
+  - `7.55j.4` gap report - parked behind `7.55m` and `7.55k`
+- `7.55l` is now complete as the implementation lane between integration inventory and downstream semantics:
+  - complete: `7.55l.0` planning cleanup / handoff
+  - complete: `7.55l.1` / `7.55l.1a` `TargetCycle` contract + policy cleanup
+  - complete: `7.55l.2a` / `7.55l.2b` / `7.55l.2c` `TargetCycle` persistence + auto-refresh spine + correctness cleanup
+  - complete: `7.55l.3a` / `7.55l.3b` override/replacement write path + provenance/history cleanup
+  - complete: `7.55l.4a` `ActiveTargetProfile` projection from `TargetCycle`
+  - complete: `7.55l.5a` / `7.55l.5b` / `7.55l.5c` rolling `DemandForecastContext` v2 + zero-demand truth propagation
+  - complete: `7.55l.5d` / `7.55l.5e` weekly day-allocation smoothing + anchor-alignment cleanup
+  - complete: `7.55l.5f` / `7.55l.5g` demand-audit truth cleanup + empty-state label alignment
+  - complete: `7.55l.6a` / `7.55l.6a1` `WeeklyPlanSnapshot` contract + week-key invariant cleanup
+  - complete: `7.55l.6b` / `7.55l.6b1` / `7.55l.6b2` / `7.55l.6b3` `WeeklyPlanSnapshot` persistence + auto-lock spine + same-week replay integrity cleanup
+  - complete: `7.55l.7a` first consumer migration slice (`WeeklyPlanSnapshot -> SchedulePlan` locked read seam plus Shift dashboard / audit adoption)
+  - complete: `7.55l.7b` / `7.55l.7b1` current-week Variance / WeekData migration onto locked weekly truth + locked WTD forecast completion
+  - complete: `7.55l.7c` / `7.55l.7c1` current-week Full Week / `CurrentWeekState` migration onto locked weekly truth + current-week-only scoping cleanup
+  - complete: `7.55l.7d` / `7.55l.7d1` historical week provenance migration for History / Week Detail + cycle-era provenance label completion
+  - complete: `7.55l.8a` / `7.55l.8a1` Learn source/target migration off production `BaselineData` + fallback-tightening cleanup
+  - complete: `7.55l.8b` / `7.55l.8b1` Learn selection-analytics migration off production `BaselineData` + default-benchmark semantics fix
+  - complete: `7.55l.8c` / `7.55l.8c1` persisted benchmark-selection summary for Learn default benchmark truth + missing-summary recovery tightening
+  - complete: `7.55l.8d` / `7.55l.8d1` Learn active-profile-without-cycle recovery cleanup + post-recovery canonical-profile enforcement
+  - complete: `7.55l.8` Learn bridge cleanup + closeout
+- `7.55m` is the new runtime-truth + surface-cleanup lane:
+  - current: `7.55m.0` planning / handoff
+  - next: `7.55m.1` date/business-date authority seam
+  - then: `7.55m.2` mock replay drift contract
+  - then: `7.55m.3` Shift time truthfulness cleanup
+  - then: `7.55m.4` driver parity audit / cleanup
+  - then: `7.55m.5` Benchmark OPZ truth audit / cleanup
+  - then: `7.55m.6` Plan / Benchmark / Settings surface cleanup
+  - then: `7.55m.7` closeout + handoff into `7.55k` / `10.5`
+- after `7.55m`:
+  - `7.55k` downstream daypart, History, Learn, and Variance semantics hardening
+  - resume `7.55j.3`, then `7.55j.4`
 - `7.55j`, `7.55l`, and `7.55k` should all follow the active `TargetCycle + WeeklyPlanSnapshot` rules:
   - 60-day benchmark snapshot calibrates the next cycle
   - `TargetCycle` locks standards for 60 days
   - demand can roll from level 1 baseline + fixed 3-week recent trend
   - `WeeklyPlanSnapshot` auto-generates and locks the week for Variance and History comparison
-- `7.55j.gate` is expected to record a "not passed yet" readiness answer until both bridge/demo blockers and cycle/week runtime architecture gaps are closed.
+- `7.55j.gate` is now complete:
+  - verdict remains "not passed yet" for simple-swap readiness
+  - yellow blockers remain around replay/demo transport and bridge-era dependencies
+  - the red cycle/week runtime architecture blockers were implemented through `7.55l`
 - Forecasting guardrail for the new architecture:
   - keep the demand stack explicit
   - no manager forecast adjustments in the first architecture cut
@@ -147,7 +191,13 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
   - no draft/publish state in the UI
   - no intended UX change to Benchmark, Schedule, History, or Learn
   - use passive notifications/visibility for important automation only
-- `7.55k` should harden downstream daypart semantics and later Variance/History/Learn evidence work using app-owned service-period definitions plus timestamp bucketing rather than assuming vendor-native dayparts.
+- `7.55m` should stabilize runtime truth first:
+  - shared date/business-date authority
+  - mock replay drift boundaries
+  - truthful Shift time behavior
+  - driver/OPZ audits
+  - immediate Plan / Benchmark / Settings surface cleanup
+- `7.55k` should then harden downstream daypart semantics and later Variance/History/Learn evidence work using app-owned service-period definitions plus timestamp bucketing rather than assuming vendor-native dayparts.
 - `7.56` is app-side only and must not be described as live OpenTable/reservation integration.
 - Barrio auth-dependent gaps, role enforcement, and El Podio identity work remain under `docs/phase_9_auth_plan.md`.
 - Shift clock is still static; live ticking remains Phase 8 work.
@@ -155,19 +205,35 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 ## Working Prompt Tracker
 
-- Current: `7.55j.1` - codebase feature inventory
-- Then:
-  - `7.55j.2` - required capability matrix
-  - `7.55j.gate` - integration readiness pressure test
+- Current: `7.55m.0` - runtime truth + surface cleanup planning / handoff
+- Complete:
   - `7.55l.0` - planning cleanup / handoff
-  - `7.55l.1` - TargetCycle contract
-  - `7.55l.2` - TargetCycle persistence + auto-refresh rules
-  - `7.55l.3` - weekly demand/day allocation rules
-  - `7.55l.4` - ActiveTargetProfile as TargetCycle projection
-  - `7.55l.5` - rolling DemandForecastContext v2
-  - `7.55l.6` - WeeklyPlanSnapshot contract + auto-lock persistence
-  - `7.55l.7` - consumer migration
-  - `7.55l.8` - Learn migration + bridge retirement
+  - `7.55l.1` / `7.55l.1a` - TargetCycle contract + policy cleanup
+  - `7.55l.2a` / `7.55l.2b` / `7.55l.2c` - TargetCycle persistence + auto-refresh spine + correctness cleanup
+  - `7.55l.3a` / `7.55l.3b` - TargetCycle override write path + provenance/history cleanup
+  - `7.55l.4a` - ActiveTargetProfile as TargetCycle projection
+  - `7.55l.5a` / `7.55l.5b` / `7.55l.5c` - rolling DemandForecastContext v2 + zero-demand truth propagation
+  - `7.55l.5d` / `7.55l.5e` - weekly day-allocation smoothing + anchor alignment
+  - `7.55l.5f` / `7.55l.5g` - demand audit truth cleanup + label alignment
+  - `7.55l.6a` / `7.55l.6a1` - WeeklyPlanSnapshot contract + week-key invariant cleanup
+  - `7.55l.6b` / `7.55l.6b1` / `7.55l.6b2` / `7.55l.6b3` - WeeklyPlanSnapshot persistence + auto-lock spine + same-week replay integrity cleanup
+  - `7.55l.7a` - first consumer migration slice (locked weekly plan read seam + Shift dashboard / audit adoption)
+  - `7.55l.7b` / `7.55l.7b1` - current-week Variance / WeekData migration onto locked weekly truth + locked WTD forecast completion
+  - `7.55l.7c` / `7.55l.7c1` - current-week Full Week / CurrentWeekState migration onto locked weekly truth + current-week-only scoping cleanup
+  - `7.55l.7d` / `7.55l.7d1` - historical week provenance migration for History / Week Detail + cycle-era provenance label completion
+  - `7.55l.8a` / `7.55l.8a1` - Learn source/target migration off production `BaselineData` + fallback-tightening cleanup
+  - `7.55l.8b` / `7.55l.8b1` - Learn selection-analytics migration off production `BaselineData` + default-benchmark semantics fix
+  - `7.55l.8c` / `7.55l.8c1` - persisted benchmark-selection summary for Learn default benchmark truth + missing-summary recovery tightening
+  - `7.55l.8d` / `7.55l.8d1` - Learn active-profile-without-cycle recovery cleanup + post-recovery canonical-profile enforcement
+  - `7.55l.8` - Learn bridge cleanup + closeout
+- Then:
+  - `7.55m.1` - date / business-date authority seam
+  - `7.55m.2` - mock replay drift contract
+  - `7.55m.3` - Shift time truthfulness cleanup
+  - `7.55m.4` - driver parity audit / cleanup
+  - `7.55m.5` - Benchmark OPZ truth audit / cleanup
+  - `7.55m.6` - Plan / Benchmark / Settings surface cleanup
+  - `7.55m.7` - closeout + handoff into `7.55k` / `10.5`
+  - `7.55k` - downstream daypart semantics and evidence-backed coaching
   - `7.55j.3` - vendor endpoint checklist template
   - `7.55j.4` - gap report
-  - `7.55k` - downstream daypart semantics and evidence-backed coaching

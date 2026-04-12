@@ -40,15 +40,22 @@ class WeekDetailScreen extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
               child: Text(
                 '${week.shiftsCompleted} shifts · Closed',
                 style: AppTextStyles.body13(color: AppColors.textMuted),
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Text(
+                'Targets: ${week.provenanceLabel}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ),
 
             // ── Grouped Summary Table ───────────────────────────────────
-            _SectionLabel('WEEKLY SUMMARY vs BASELINE'),
+            _SectionLabel('WEEKLY SUMMARY vs LOCKED TARGETS'),
             _GroupedSummaryTable(week: week),
 
             const SizedBox(height: 20),

@@ -1,19 +1,25 @@
-// Phase 7.55i.2 — Shared SchedulePlan read service.
+// Phase 7.55i.2 + 7.55l.5d + 7.55l.7a — Shared SchedulePlan read service.
 //
 // Centralizes SchedulePlan resolution so Schedule, Shift, Audit, and
 // Manager Override preview consume one authority path instead of
 // independently calling SchedulePlanResolver.
 //
-// Inputs:
-//   - DemandForecastContext (canonical demand)
-//   - ActiveTargetProfile (standards)
-//   - ScheduleDistributionWeights (day-level allocation)
-//
-// Output:
-//   - SchedulePlan (immutable weekly plan)
+// Two read paths:
+//   - getCurrentWeeklyPlan(): live-resolved from demand + profile + weights
+//     (used by generation bridge and Schedule Builder preview)
+//   - getCurrentLockedWeeklyPlan(): projected from the locked
+//     WeeklyPlanSnapshot (used by Shift, Audit, and other downstream
+//     readers that should consume locked weekly truth)
 //
 // Formulas remain in SchedulePlanResolver. This service only centralizes
 // the input tuple.
+//
+// 7.55l.5d: loadDistributionWeights now uses business-date-anchored windows
+// (60-day baseline + 21-day recent) with day-of-week smoothing instead of
+// the old 8-weekId approximation.
+//
+// 7.55l.7a: added getCurrentLockedWeeklyPlan() for downstream consumers
+// that should read from the locked weekly snapshot instead of live-resolving.
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
@@ -23,9 +29,11 @@ import '../domain/services/schedule_forecast_demand_resolver.dart';
 import '../domain/services/schedule_plan_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
+import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import '../domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import 'demand_forecast_context_service.dart';
 import 'wage_standard_context_service.dart';
+import 'weekly_plan_snapshot_service.dart';
 
 class SchedulePlanReadService {
   SchedulePlanReadService._();
@@ -54,6 +62,25 @@ class SchedulePlanReadService {
       profile: profile,
       distributionWeights: weights,
     );
+  }
+
+  /// Returns the current-week [SchedulePlan] projected from the locked
+  /// [WeeklyPlanSnapshot].
+  ///
+  /// Uses [WeeklyPlanSnapshotService] to load (or auto-generate) the
+  /// current-week snapshot, then projects it to [SchedulePlan] shape.
+  ///
+  /// Returns null when no current-week snapshot can be determined.
+  ///
+  /// This path is for downstream readers (Shift, Audit) that should
+  /// consume locked weekly truth. It does NOT create a recursion path:
+  /// [WeeklyPlanSnapshotService] auto-generates from [getCurrentWeeklyPlan]
+  /// (the live path), which never calls back here.
+  Future<SchedulePlan?> getCurrentLockedWeeklyPlan() async {
+    final snapshot =
+        await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    if (snapshot == null) return null;
+    return WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
   }
 
   /// Resolves a preview [SchedulePlan] from explicit target values and the
@@ -136,26 +163,44 @@ class SchedulePlanReadService {
         .loadOrBootstrapProfile(restaurantId);
   }
 
-  /// Loads data-driven distribution weights from the most recent 8 completed
-  /// weeks of closed shifts. Returns null when no history is available.
+  /// Loads data-driven distribution weights using business-date-anchored
+  /// windows with day-of-week smoothing.
   ///
-  /// Extracted from [ScheduleDistributionWeightsNotifier.load] so both the
-  /// reactive notifier and this service use the same weight-loading logic.
+  /// Anchor precedence: mock replay date → latest closed business date.
+  /// Windows: 60-day baseline + 21-day recent trend.
+  ///
+  /// Returns null when no anchor date or no closed shift history exists.
   static Future<ScheduleDistributionWeights?> loadDistributionWeights(
     String restaurantId,
   ) async {
     try {
-      final weekHistory = await SqliteWeekRecordRepository.instance
-          .getWeekHistory(restaurantId);
+      // Anchor preference: mock replay date → latest closed date.
+      final mockDate = await SqliteDatabase.instance
+          .getMockReplayBusinessDate(restaurantId);
+      final anchorDate = mockDate ??
+          await SqliteShiftRecordRepository.instance
+              .getLatestClosedBusinessDate(restaurantId);
 
-      if (weekHistory.isEmpty) return null;
+      if (anchorDate == null) return null;
 
-      final recentWeekIds =
-          weekHistory.take(8).map((w) => w.weekId).toList();
-      final closedShifts = await SqliteShiftRecordRepository.instance
-          .getClosedShiftsForWeeks(restaurantId, recentWeekIds);
+      // 60-day baseline window (inclusive).
+      final baselineStart = DemandForecastContextService.subtractDays(
+          anchorDate, 59);
+      final baselineShifts = await SqliteShiftRecordRepository.instance
+          .getClosedShiftsInDateRange(
+              restaurantId, baselineStart, anchorDate);
 
-      return DistributionWeightBuilder.fromClosedShifts(closedShifts);
+      // 21-day recent window (inclusive).
+      final recentStart = DemandForecastContextService.subtractDays(
+          anchorDate, 20);
+      final recentShifts = await SqliteShiftRecordRepository.instance
+          .getClosedShiftsInDateRange(
+              restaurantId, recentStart, anchorDate);
+
+      return DistributionWeightBuilder.fromDateWindowShifts(
+        baselineShifts: baselineShifts,
+        recentShifts: recentShifts,
+      );
     } catch (_) {
       return null;
     }

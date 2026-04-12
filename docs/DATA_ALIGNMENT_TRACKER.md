@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-04-11
+Updated: 2026-04-12
 Owner: You
 Purpose: Keep the app aligned for live POS, labor, and later official reservation integrations before Phase 8 / Phase 8R begins.
 
@@ -77,16 +77,59 @@ Active planning rule:
   - rolling forecast demand stays separate from standards
   - Variance and History should compare against a locked weekly plan, not a forecast that kept moving after the week started
 - Current next steps:
-  - `7.55j.1` and `7.55j.2` inventory official POS, labor, and reservation capabilities and downstream requirements
-  - `7.55j.gate` records the honest readiness answer before implementation moves on
-  - `7.55l` implements the missing runtime architecture:
-    - `TargetCycle`
-    - rolling `DemandForecastContext`
-    - weekly demand/day allocation logic
-    - `WeeklyPlanSnapshot`
-    - consumer migration
-    - Learn bridge cleanup
-  - `7.55k` then hardens downstream daypart, History, Learn, and Variance semantics on top of that cycle/week model without reviving a dropped `7.55i.4`
+  - `7.55j.1` and `7.55j.2` are complete:
+    - codebase feature inventory complete
+    - required capability matrix complete
+  - `7.55j.gate` is complete:
+    - honest readiness answer recorded
+    - simple-swap verdict still not passed
+  - `7.55l` is now complete and implements the missing runtime architecture:
+    - complete: `7.55l.1` / `7.55l.1a` `TargetCycle` contract + policy cleanup
+    - complete: `7.55l.2a` / `7.55l.2b` / `7.55l.2c` persistence + auto-refresh spine + correctness cleanup
+    - complete: `7.55l.3a` / `7.55l.3b` override/replacement write path + provenance/history cleanup
+    - complete: `7.55l.4a` `ActiveTargetProfile` projection from `TargetCycle`
+    - complete: `7.55l.5a` / `7.55l.5b` / `7.55l.5c` rolling `DemandForecastContext` v2 + zero-demand truth propagation
+    - complete: `7.55l.5d` / `7.55l.5e` weekly day-allocation smoothing + anchor-alignment cleanup
+    - complete: `7.55l.5f` / `7.55l.5g` demand-audit truth cleanup + label alignment
+    - complete: `7.55l.6a` / `7.55l.6a1` `WeeklyPlanSnapshot` contract + week-key invariant cleanup
+    - complete: `7.55l.6b` / `7.55l.6b1` / `7.55l.6b2` / `7.55l.6b3` persistence + auto-lock spine + same-week replay integrity cleanup
+    - complete: `7.55l.7a` first consumer migration slice (locked-week read seam + Shift dashboard / audit adoption)
+    - complete: `7.55l.7b` / `7.55l.7b1` current-week Variance / WeekData migration onto locked weekly truth + locked WTD forecast completion
+    - complete: `7.55l.7c` / `7.55l.7c1` current-week Full Week / `CurrentWeekState` migration onto locked weekly truth + current-week-only scoping cleanup
+    - complete: `7.55l.7d` / `7.55l.7d1` historical week provenance migration for History / Week Detail + cycle-era provenance label completion
+    - complete: `7.55l.8a` / `7.55l.8a1` Learn source/target migration off production `BaselineData` + fallback-tightening cleanup
+    - complete: `7.55l.8b` / `7.55l.8b1` Learn selection-analytics migration off production `BaselineData` + default-benchmark semantics fix
+    - complete: `7.55l.8c` / `7.55l.8c1` persisted benchmark-selection summary for Learn default benchmark truth + missing-summary recovery tightening
+    - complete: `7.55l.8d` / `7.55l.8d1` Learn active-profile-without-cycle recovery cleanup + post-recovery canonical-profile enforcement
+    - complete: `7.55l.8` Learn bridge cleanup + closeout
+  - next: `7.55m.0` runtime truth + surface cleanup planning / handoff
+  - then: `7.55m.1` shared date/business-date authority seam
+  - then: `7.55m.2` mock replay drift contract
+  - then: `7.55m.3` Shift time truthfulness cleanup
+  - then: `7.55m.4` driver parity audit / cleanup
+  - then: `7.55m.5` Benchmark OPZ truth audit / cleanup
+  - then: `7.55m.6` Plan / Benchmark / Settings surface cleanup
+  - then: `7.55m.7` closeout + handoff into `7.55k` / `10.5`
+  - then: `7.55k` downstream daypart, History, Learn, and Variance semantics hardening
+  - then resume: `7.55j.3` vendor endpoint checklist template and `7.55j.4` gap report
+
+## Current Runtime-Truth Cleanup Scope
+
+`7.55m` owns the current-product cleanup that should land before deeper
+daypart semantics:
+
+- shared date / business-date authority
+- mock replay drift boundaries
+- truthful Shift clock / time behavior
+- driver parity checks across Shift and Variance
+- Benchmark OPZ truth audit
+- Plan / Benchmark / Settings surface cleanup
+
+`7.55k` remains the downstream semantics lane for:
+
+- Full Week row-scope semantics
+- History / Learn daypart evidence honesty
+- longer-term `restaurantId + businessDate + daypart` hardening
 
 ## Current Source Ownership Guardrails
 
@@ -109,7 +152,7 @@ Active planning rule:
 - App owns:
   - rolling 60-day benchmark snapshot
   - current `TargetCycle`
-  - active target profile
+  - cycle-projected active target profile (with transitional bridge writes still coexisting elsewhere)
   - rolling forecast demand context
   - weekly demand/day allocation logic
   - weekly plan snapshot
@@ -128,6 +171,17 @@ Active planning rule:
 - `docs/phase_7_55j_integration_feature_endpoint_inventory.md`
 - `docs/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - `docs/phase_7_55l_target_cycle_weekly_plan_implementation.md`
+- `docs/phase_7_55m_runtime_truth_surface_cleanup_plan.md`
+- `docs/phase_7_55l_1_target_cycle_contract.md`
+- `docs/phase_7_55l_2a_target_cycle_persistence_autorefresh.md`
+- `docs/phase_7_55l_3a_target_cycle_override_write_path.md`
+- `docs/phase_7_55l_4a_active_target_profile_projection.md`
+- `docs/phase_7_55l_5a_rolling_demand_context_v2.md`
+- `docs/phase_7_55l_5d_weekly_day_allocation_smoothing.md`
+- `docs/phase_7_55l_5f_demand_audit_truth_cleanup.md`
+- `docs/phase_7_55l_6a_weekly_plan_snapshot_contract.md`
+- `docs/phase_7_55l_6b_weekly_plan_snapshot_persistence_autolock.md`
+- `docs/phase_7_55l_7a_first_consumer_migration_slice.md`
 - `docs/phase_7_55k_daypart_variance_history_learn_plan.md`
 - `docs/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phase_9_auth_plan.md`
@@ -152,4 +206,4 @@ Active planning rule:
 - Keep top-level docs focused on active authority.
 - Treat `docs/archive/**` as historical/reference material unless a prompt explicitly points there.
 - Preserve live-integration realism: future vendor work should replace transport, not create a second UI-facing truth path.
-- Treat `7.55j.gate` as the explicit readiness gate before `7.55l` implementation begins.
+- Treat `7.55j.gate` as complete and use its blocker list as the handoff into `7.55l`.

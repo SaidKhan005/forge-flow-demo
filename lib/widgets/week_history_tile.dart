@@ -71,6 +71,12 @@ class WeekHistoryTile extends StatelessWidget {
                       '${week.shiftsCompleted} shifts',
                       style: AppTextStyles.mono10(color: AppColors.textMuted),
                     ),
+                    const SizedBox(height: 2),
+                    Text(
+                      week.provenanceLabel,
+                      style: AppTextStyles.mono8(color: AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),

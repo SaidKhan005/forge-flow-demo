@@ -1,8 +1,9 @@
 // ─── Schedule Forecast Demand Resolver Tests ─────────────────────────────────
-// Phase 7.55c verification:
-//   - Resolver waterfall: POS 60-day historical avg → demo fallback → unavailable
-//   - Covers always from POS history; sales always derived as covers × PPA
+// Phase 7.55c + 7.55l.5a verification:
+//   - Resolver waterfall: rolling v2 demand → demo fallback → unavailable
+//   - Covers from resolved rolling weekly forecast; sales always derived as covers × PPA
 //   - ScheduleForecastNotifier initializes from historical context, not hardcoded 1200
+//   - resolveFromContext reads v2 resolved weekly forecast covers
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
@@ -54,14 +55,17 @@ void main() {
       expect(d.isAvailable, isTrue);
     });
 
-    test('zero historical covers — falls through to demo or unavailable', () {
+    test('zero historical covers — valid available demand, not unavailable', () {
       final d = ScheduleForecastDemandResolver.resolve(
         targetPPA: testPPA,
         historicalWeeklyAvgCovers: 0,
         demoMode: false,
       );
-      expect(d.isAvailable, isFalse);
-      expect(d.coversSource, ForecastDemandSource.unavailable);
+      expect(d.isAvailable, isTrue);
+      expect(d.forecastCovers, equals(0));
+      expect(d.forecastSales, equals(0));
+      expect(d.coversSource, ForecastDemandSource.appDerivedFromHistoricalAverage);
+      expect(d.salesSource, ForecastDemandSource.appDerivedFromCoversAndPpa);
     });
 
     test('sales is always covers × PPA (never independent)', () {
@@ -105,9 +109,13 @@ void main() {
       const ctx = DemandForecastContext(
         restaurantId: 'test',
         anchorBusinessDate: '2026-03-15',
-        historicalTotalCovers: 9000,
-        historicalWeeklyAvgCovers: 1050,
-        weeksRepresented: 60 / 7,
+        baselineTotalCovers: 9000,
+        baselineWeeklyAvgCovers: 1000,
+        baselineWeeksRepresented: 60 / 7,
+        recentThreeWeekTotalCovers: 3300,
+        recentThreeWeekWeeklyAvgCovers: 1100,
+        recentTrendDeltaCovers: 100,
+        resolvedWeeklyForecastCovers: 1050,
         coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
         builtAt: '2026-03-15T12:00:00',
       );
@@ -233,6 +241,110 @@ void main() {
         );
         expect(demand.coversSourceLabel, isNotEmpty);
       }
+    });
+  });
+
+  // ── D. resolveFromContext uses v2 resolved weekly forecast covers ──────────
+
+  group('D. resolveFromContext uses v2 resolved weekly forecast covers', () {
+    test('uses resolvedWeeklyForecastCovers, not raw baseline', () {
+      // Baseline weekly avg = 1000, but resolved = 1050 (blended).
+      // resolveFromContext should use 1050, not 1000.
+      const ctx = DemandForecastContext(
+        restaurantId: 'test',
+        anchorBusinessDate: '2026-03-15',
+        baselineTotalCovers: 8571,
+        baselineWeeklyAvgCovers: 1000,
+        baselineWeeksRepresented: 60 / 7,
+        recentThreeWeekTotalCovers: 3300,
+        recentThreeWeekWeeklyAvgCovers: 1100,
+        recentTrendDeltaCovers: 100,
+        resolvedWeeklyForecastCovers: 1050,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-03-15T12:00:00',
+      );
+
+      final demand = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: ctx,
+      );
+
+      // Must use 1050 (resolved), not 1000 (baseline)
+      expect(demand.forecastCovers, 1050);
+      expect(demand.forecastSales, 1050 * testPPA);
+    });
+
+    test('compatibility: historicalWeeklyAvgCovers returns resolved value',
+        () {
+      const ctx = DemandForecastContext(
+        restaurantId: 'test',
+        anchorBusinessDate: '2026-03-15',
+        baselineTotalCovers: 8571,
+        baselineWeeklyAvgCovers: 1000,
+        baselineWeeksRepresented: 60 / 7,
+        resolvedWeeklyForecastCovers: 1050,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-03-15T12:00:00',
+      );
+
+      // Compatibility getter returns resolved, not baseline
+      expect(ctx.historicalWeeklyAvgCovers, 1050);
+      expect(ctx.historicalTotalCovers, 8571);
+      expect(ctx.weeksRepresented, closeTo(60 / 7, 0.001));
+    });
+
+    test('resolveFromContext preserves zero-cover demand from context', () {
+      const ctx = DemandForecastContext(
+        restaurantId: 'test',
+        anchorBusinessDate: '2026-03-15',
+        baselineTotalCovers: 0,
+        baselineWeeklyAvgCovers: 0,
+        baselineWeeksRepresented: 60 / 7,
+        recentThreeWeekTotalCovers: 0,
+        recentThreeWeekWeeklyAvgCovers: 0,
+        recentTrendDeltaCovers: 0,
+        resolvedWeeklyForecastCovers: 0,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-03-15T12:00:00',
+      );
+
+      expect(ctx.isAvailable, isTrue);
+
+      final demand = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: ctx,
+      );
+
+      expect(demand.isAvailable, isTrue);
+      expect(demand.forecastCovers, equals(0));
+      expect(demand.forecastSales, equals(0));
+      expect(demand.coversSource,
+          ForecastDemandSource.appDerivedFromHistoricalAverage);
+    });
+
+    test('demo fallback does not override valid zero-cover demand', () {
+      const ctx = DemandForecastContext(
+        restaurantId: 'test',
+        anchorBusinessDate: '2026-03-15',
+        baselineTotalCovers: 0,
+        baselineWeeklyAvgCovers: 0,
+        baselineWeeksRepresented: 60 / 7,
+        resolvedWeeklyForecastCovers: 0,
+        coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
+        builtAt: '2026-03-15T12:00:00',
+      );
+
+      final demand = ScheduleForecastDemandResolver.resolveFromContext(
+        targetPPA: testPPA,
+        context: ctx,
+        demoMode: true,
+      );
+
+      // Zero-cover demand is real — demo fallback must NOT override it.
+      expect(demand.forecastCovers, equals(0));
+      expect(demand.coversSource,
+          ForecastDemandSource.appDerivedFromHistoricalAverage);
+      expect(demand.coversSource, isNot(ForecastDemandSource.demoFallback));
     });
   });
 }

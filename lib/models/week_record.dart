@@ -68,6 +68,24 @@ class WeekRecord {
 
   double get dollarGapAnnualized => dollarGap.abs() * 52;
 
+  // ── Target provenance — readable label from stored source type ──────────
+  // Handles both legacy pre-cycle and cycle-era source types.
+  String get provenanceLabel {
+    switch (targetSourceType) {
+      case 'system_baseline':
+      case 'cycle_recommended':
+        return '60-Day Benchmark';
+      case 'manager_override':
+      case 'cycle_manager_override':
+        return 'Manager Override';
+      case 'admin_replacement':
+      case 'cycle_admin_replacement':
+        return 'Admin Override';
+      default:
+        return 'Baseline';
+    }
+  }
+
   // ── Locked target getters — strict, no current-global fallback ─────────
   double get storedTargetCPLH => _requireLocked(targetCPLH, 'targetCPLH');
   double get storedTargetSPLH => _requireLocked(targetSPLH, 'targetSPLH');

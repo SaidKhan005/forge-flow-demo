@@ -1,5 +1,7 @@
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/closed_shift_input.dart';
+import '../domain/models/target_cycle.dart';
+import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/models/shift_fact.dart';
 import '../domain/models/target_profile_version.dart';
 import '../domain/repositories/open_shift_snapshot_repository.dart';
@@ -8,7 +10,10 @@ import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
 import 'schedule_plan_read_service.dart';
+import 'weekly_plan_snapshot_service.dart';
 import '../domain/services/shift_fact_builder.dart';
+import '../domain/services/target_cycle_active_target_profile_projector.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../domain/services/target_snapshot_builder.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
@@ -432,11 +437,138 @@ class ShiftService {
   }
 
   /// WTD query that resolves the current week from persisted state.
+  ///
+  /// Uses the locked [WeeklyPlanSnapshot] for weekly forecast truth and
+  /// the snapshot-linked [TargetCycle] for target standards when available.
+  /// Falls back to live profile + shift-summed forecast when no snapshot
+  /// or linked cycle exists.
   Future<WeekData?> getLiveWeekToDate() async {
     final weekId = await getCurrentWeekId();
     if (weekId == null) return null;
     final weekLabel = _weekLabelFromWeekId(weekId);
+
+    // Try locked weekly snapshot for current-week comparison truth.
+    final snapshot =
+        await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    if (snapshot != null) {
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot.targetCycleId);
+      if (cycle != null) {
+        return _buildLockedWeekToDate(weekId, weekLabel, snapshot, cycle);
+      }
+    }
+
+    // No snapshot or cycle — fall back to live behavior.
     return getWeekToDate(weekId, weekLabel);
+  }
+
+  /// Builds current-week WTD from locked snapshot + cycle truth.
+  ///
+  /// Actual closed-shift aggregation is identical to [getWeekToDate].
+  /// Forecast fields come from the locked snapshot day rows.
+  /// Target fields come from the snapshot-linked cycle.
+  Future<WeekData?> _buildLockedWeekToDate(
+    String weekId,
+    String weekLabel,
+    WeeklyPlanSnapshot snapshot,
+    TargetCycle cycle,
+  ) async {
+    final restaurantId = await _activeRestaurantId();
+    final profile = TargetCycleActiveTargetProfileProjector.project(cycle);
+    final shifts = await _shiftRepo.getShiftsForWeek(restaurantId, weekId);
+    final closed = shifts.where((s) => s.isClosed).toList();
+    if (closed.isEmpty) return null;
+
+    // ── Day ordering (needed for locked forecast boundary) ────────────
+    const dayOrder = {
+      'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4,
+      'Fri': 5, 'Sat': 6, 'Sun': 7,
+    };
+    const dayFull = {
+      1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday',
+      5: 'Friday', 6: 'Saturday', 7: 'Sunday',
+    };
+    final lastDayLabel = closed
+        .map((s) => s.dayLabel)
+        .reduce((a, b) => (dayOrder[a] ?? 0) >= (dayOrder[b] ?? 0) ? a : b);
+    final closedDayNum = dayOrder[lastDayLabel] ?? 1;
+    final lastClosedDay = dayFull[closedDayNum] ?? 'Monday';
+
+    // ── Actual aggregation (unchanged from getWeekToDate) ─────────────
+    final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
+    final totalFoh = closed.fold<int>(0, (s, r) => s + r.fohHours);
+    final totalBoh = closed.fold<int>(0, (s, r) => s + r.bohHours);
+    final totalSales = closed.fold<double>(0, (s, r) => s + r.actualSales);
+
+    // ── Locked WTD forecast from snapshot day rows ────────────────────
+    // Sum snapshot day-row forecast covers through the last closed day.
+    final wtdForecastCovers = snapshot.dayRows
+        .where((d) => (dayOrder[d.day] ?? 0) <= closedDayNum)
+        .fold<int>(0, (s, d) => s + d.forecastCovers);
+
+    final totalFohLaborDollar =
+        closed.fold<double>(0, (s, r) => s + r.fohLaborDollar);
+    final totalBohLaborDollar =
+        closed.fold<double>(0, (s, r) => s + r.bohLaborDollar);
+    final blendedFohWage =
+        totalFoh > 0 ? totalFohLaborDollar / totalFoh : profile.fohWage;
+    final blendedBohWage =
+        totalBoh > 0 ? totalBohLaborDollar / totalBoh : profile.bohWage;
+
+    final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
+    final avgCPLH = totalFoh > 0 ? totalCovers / totalFoh : 0.0;
+    final avgSPLH = totalBoh > 0 ? totalSales / totalBoh : 0.0;
+
+    final wtdModelFoh =
+        LaborModel.modelFohHours(totalCovers, profile.targetCPLH);
+    final wtdModelBoh =
+        LaborModel.modelBohHoursFromSales(totalSales, profile.targetSPLH);
+
+    final primaryLeverId = LaborModel.determineLever(
+      actualCovers: totalCovers,
+      forecastCovers: wtdForecastCovers,
+      avgCPLH: avgCPLH,
+      avgPPA: avgPPA,
+      targetCPLH: profile.targetCPLH,
+      targetPPA: profile.targetPPA,
+      avgSPLH: avgSPLH,
+      targetSPLH: profile.targetSPLH,
+      avgFohBlendedWage: blendedFohWage,
+      targetFohWage: profile.fohWage,
+      avgBohBlendedWage: blendedBohWage,
+      targetBohWage: profile.bohWage,
+      scheduledFohHours: totalFoh,
+      modelFohHours: wtdModelFoh,
+      scheduledBohHours: totalBoh,
+      modelBohHours: wtdModelBoh,
+    );
+
+    // ── Locked forecast from snapshot; targets from cycle ─────────────
+    return WeekData(
+      weekId: weekId,
+      weekLabel: weekLabel,
+      totalCovers: totalCovers,
+      totalSales: totalSales,
+      totalFohHours: totalFoh,
+      totalBohHours: totalBoh,
+      shiftsCompleted: closed.length,
+      shiftsTotal: 14,
+      wtdForecastCovers: wtdForecastCovers,
+      totalWeekForecastCovers: snapshot.forecastCovers,
+      primaryLeverId: primaryLeverId,
+      lastClosedDay: lastClosedDay,
+      closedDayNumber: closedDayNum,
+      storedTotalFohLaborDollar: totalFohLaborDollar,
+      storedTotalBohLaborDollar: totalBohLaborDollar,
+      targetCPLH: profile.targetCPLH,
+      targetSPLH: profile.targetSPLH,
+      targetPPA: profile.targetPPA,
+      targetFohWage: profile.fohWage,
+      targetBohWage: profile.bohWage,
+      theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
+      theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+      theoreticalLaborPct: profile.theoreticalLaborPct,
+    );
   }
 
   // ── Shift dashboard read model ────────────────────────────────────────────
@@ -457,9 +589,10 @@ class ShiftService {
         await _openShiftRepo.getSnapshotsForDay(restaurantId, businessDate);
     if (snapshots.isEmpty) return null;
 
-    // Resolve plan from shared authority (includes distribution weights)
+    // Resolve plan from locked weekly truth, falling back to live resolution
     final plan = await SchedulePlanReadService.instance
-        .getCurrentWeeklyPlan();
+            .getCurrentLockedWeeklyPlan() ??
+        await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
 
     // Pick the day row matching the open shift
     final openSnap = snapshots
@@ -507,13 +640,14 @@ class ShiftService {
             s.isClosed || !snapshotKeys.contains('${s.dayLabel}|${s.daypart}'))
         .toList();
 
-    // Convert open/projected snapshots to ShiftRecord shape
+    // Convert open/projected snapshots to ShiftRecord shape.
+    // For the current locked week, use the snapshot-linked cycle's projected
+    // profile for target fields. Fall back to live active profile otherwise.
     final closedKeys = kept
         .where((s) => s.isClosed)
         .map((s) => '${s.dayLabel}|${s.daypart}')
         .toSet();
-    // Load active profile once for snapshot conversion
-    final profile = await _loadActiveProfile(restaurantId);
+    final profile = await _resolveProfileForFullWeek(restaurantId, weekId);
     final openAsRecords = openSnapshots
         .where((s) => !closedKeys.contains('${s.dayLabel}|${s.daypart}'))
         .map((s) => CurrentWeekState.shiftRecordFromSnapshot(s, profile))
@@ -522,11 +656,39 @@ class ShiftService {
     return [...kept, ...openAsRecords];
   }
 
+  /// Resolves the target profile for Full Week open/projected row conversion.
+  ///
+  /// Only consults the locked [WeeklyPlanSnapshot] when [weekId] matches
+  /// the current week. Non-current/historical reads stay on the live
+  /// active-profile path and never trigger snapshot generation side effects.
+  Future<ActiveTargetProfile> _resolveProfileForFullWeek(
+      String restaurantId, String weekId) async {
+    final currentWeekId = await getCurrentWeekId();
+    if (weekId == currentWeekId) {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      if (snapshot != null) {
+        final cycle = await SqliteTargetCycleRepository.instance
+            .getCycleById(snapshot.targetCycleId);
+        if (cycle != null) {
+          return TargetCycleActiveTargetProfileProjector.project(cycle);
+        }
+      }
+    }
+    return _loadActiveProfile(restaurantId);
+  }
+
   // ── Current week state ───────────────────────────────────────────────────
 
+  /// Builds [CurrentWeekState] for the current week using locked truth.
+  ///
+  /// Uses [getLiveWeekToDate] for locked WTD and [getFullWeekShifts] for
+  /// the full-week shift list. Falls back gracefully when no locked
+  /// snapshot exists.
   Future<CurrentWeekState?> getCurrentWeekState(
       String weekId, String weekLabel) async {
-    final weekData = await getWeekToDate(weekId, weekLabel);
+    // Use the locked current-week WTD path (7.55l.7b/7b1).
+    final weekData = await getLiveWeekToDate();
     if (weekData == null) return null;
     final shifts = await getFullWeekShifts(weekId);
     return CurrentWeekState(weekData: weekData, fullWeekShifts: shifts);

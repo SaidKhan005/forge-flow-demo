@@ -1,6 +1,6 @@
 # Phase 7.55k - Daypart Separation, Variance, History, and Learn
 
-Updated: 2026-04-11
+Updated: 2026-04-12
 Owner: Codex planning / tracker truth
 Status: Planned, not implemented
 
@@ -133,6 +133,17 @@ Closed daypart ShiftRecord
 This keeps Shift whole-day while letting Variance, History, and Learn use closed daypart truth more honestly.
 
 ## Sequencing Note
+
+Before `7.55k` begins, `7.55m` now owns the runtime-truth cleanup that should
+not be forced into downstream semantics work:
+
+- shared date / business-date authority
+- mock replay drift boundaries
+- truthful Shift clock / time behavior
+- driver parity and Benchmark OPZ audits
+- Plan / Benchmark / Settings surface cleanup
+
+`7.55k` should start after that stabilization lane closes.
 
 - 7.55k should not finalize its daypart-separation assumptions in isolation.
 - The focused pre-`7.55i.3` checkpoint is now complete:

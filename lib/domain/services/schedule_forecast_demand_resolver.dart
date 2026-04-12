@@ -1,21 +1,23 @@
 import '../models/demand_forecast_context.dart';
 import '../models/schedule_forecast_demand.dart';
 
-/// Resolves a [ScheduleForecastDemand] from POS historical data.
+/// Resolves a [ScheduleForecastDemand] from demand context.
 ///
-/// Architecture:
-///   POS (60-day closed shifts) → total covers → ÷ (60/7) → weekly avg covers
-///   weekly avg covers × target PPA → forecasted sales
+/// Architecture (v2):
+///   POS closed shifts → 60-day baseline + 3-week recent trend
+///   → smoothed resolved weekly forecast covers
+///   → covers × target PPA → forecasted sales
 ///
-/// Covers always come from POS 60-day history.
+/// Covers come from the rolling v2 demand context.
 /// Sales is always derived as covers × target PPA.
 /// No vendor-provided forecast inputs. No manager editing.
 /// Manager influence is limited to Baseline target profile override.
 ///
 /// Waterfall:
-///   1. Historical weekly average covers (POS 60-day context).
-///   2. Demo fallback (only when [demoMode] is true).
-///   3. Unavailable.
+///   1. Resolved rolling weekly forecast covers (v2 demand context).
+///   2. Historical weekly average covers (direct input, compatibility).
+///   3. Demo fallback (only when [demoMode] is true).
+///   4. Unavailable.
 ///
 /// This resolver is pure — no database, no side effects.
 class ScheduleForecastDemandResolver {
@@ -34,7 +36,9 @@ class ScheduleForecastDemandResolver {
     int demoFallbackCovers = 1200,
   }) {
     // ── Case 1: Historical weekly average covers from POS ────────────────
-    if (historicalWeeklyAvgCovers != null && historicalWeeklyAvgCovers > 0) {
+    // Zero is valid available demand (real closed-history with zero covers).
+    // Only null means missing data.
+    if (historicalWeeklyAvgCovers != null) {
       final covers = historicalWeeklyAvgCovers;
       final sales = covers * targetPPA;
       return ScheduleForecastDemand(
@@ -63,7 +67,7 @@ class ScheduleForecastDemandResolver {
 
   /// Resolve forecast demand from a [DemandForecastContext].
   ///
-  /// Delegates to [resolve] using the context's weekly average covers.
+  /// Uses the context's resolved rolling weekly forecast covers (v2).
   /// Keeps the resolver pure — context building is the service's concern.
   static ScheduleForecastDemand resolveFromContext({
     required double targetPPA,
@@ -73,7 +77,7 @@ class ScheduleForecastDemandResolver {
   }) {
     return resolve(
       targetPPA: targetPPA,
-      historicalWeeklyAvgCovers: context.historicalWeeklyAvgCovers,
+      historicalWeeklyAvgCovers: context.resolvedWeeklyForecastCovers,
       demoMode: demoMode,
       demoFallbackCovers: demoFallbackCovers,
     );

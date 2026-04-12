@@ -5,10 +5,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../data/learn_benchmark_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/shift_data_source.dart';
 import '../data/week_data_notifier.dart';
 import '../models/history_pattern_record.dart';
+import '../models/learn_benchmark_context.dart';
 import '../models/shift_record.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
@@ -147,7 +149,7 @@ class _ThisWeekContent extends StatelessWidget {
           ),
 
           // ── WTD Variance Table ────────────────────────────────────────
-          _SectionLabel('WEEK-TO-DATE vs BASELINE'),
+          _SectionLabel('WEEK-TO-DATE vs LOCKED PLAN'),
           _WtdTable(data: weekData),
 
           const SizedBox(height: 20),
@@ -1746,12 +1748,15 @@ class _LearnTabState extends State<_LearnTab>
     _future = Future.wait([
       source.getWeekHistory(),
       source.getHistoryPatternRecords(),
+      LearnBenchmarkContextService.instance.resolve(),
     ]).then((results) {
       final weeks = results[0] as List<WeekRecord>;
       final patternRecords = results[1] as List<HistoryPatternRecord>;
+      final benchmarkContext = results[2] as LearnBenchmarkContext;
       final summary = LearnTeachingAnalyzer.summarize(
         patternRecords: patternRecords,
         weekCount: weeks.length,
+        benchmarkContext: benchmarkContext,
       );
       return _LearnData(summary: summary);
     });

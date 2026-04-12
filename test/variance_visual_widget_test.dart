@@ -67,11 +67,11 @@ void main() {
   // ── B: This Week tab — section labels ────────────────────────────────────
 
   group('B — This Week section labels', () {
-    testWidgets('WEEK-TO-DATE vs BASELINE section is present', (tester) async {
+    testWidgets('WEEK-TO-DATE vs LOCKED PLAN section is present', (tester) async {
       await tester.pumpWidget(_buildVarianceReport());
       await tester.pump(); // first frame
       await tester.pump(); // WeekDataNotifier resolves
-      expect(find.text('WEEK-TO-DATE vs BASELINE'), findsOneWidget);
+      expect(find.text('WEEK-TO-DATE vs LOCKED PLAN'), findsOneWidget);
     });
 
     testWidgets('FULL WEEK PROJECTION section is present', (tester) async {

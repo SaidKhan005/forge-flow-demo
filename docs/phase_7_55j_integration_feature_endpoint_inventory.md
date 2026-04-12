@@ -71,7 +71,7 @@ planning rule:
 - No direct mobile calls that expose vendor API secrets.
 - Vendor DTOs stop at the adapter layer.
 - UI reads app repositories, query services, notifiers, and read models.
-- Forecast demand remains app-owned. POS history is the baseline evidence, and later app-side trend or manager adjustments may refine the weekly forecast.
+- Forecast demand remains app-owned. POS history is the baseline evidence, and the current architecture refines the weekly forecast with fixed recent-trend logic rather than manager forecast adjustments.
 - Vendor forecast fields, if available, should be documented as optional context until the app intentionally adopts them.
 - Reservation data remains contextual unless a later phase explicitly promotes reservation signal into the rolling app-owned demand forecast.
 
@@ -245,47 +245,55 @@ Implementation that can proceed before live integrations:
 
 ## 7.55j Work Breakdown
 
-### 7.55j.1 - Codebase Feature Inventory
+### 7.55j.1 - Codebase Feature Inventory — COMPLETE
 
-Walk the repo and list every feature/screen/read model that consumes operational truth.
+**Output**: `docs/phase_7_55j_1_codebase_feature_inventory.md`
 
-Minimum areas:
+Covers 11 product surfaces: Benchmark/Manager Override, Schedule, Shift,
+Variance WTD, Variance History, History Pattern Analysis, Learn, Data
+Alignment Audit, Settings/App Data Status, Reservation "In the Books", and
+Bootstrap/Transport/Replay/Fixture truth path.
 
-- Baseline Manager
-- Schedule Builder
-- Shift Dashboard
-- Variance This Week
-- Variance History
-- Learn
-- Data Alignment Audit
-- Settings / data status
-- Reservation `In the books`
+Each surface documents: files, current truth consumed, freshness needs, future
+source ownership, target architecture destination, current bridge/demo
+dependencies, and owning phase for unresolved migrations.
 
-### 7.55j.2 - Required Capability Matrix
+Also includes summary tables: BaselineData bridge reads (~61 reads across 9
+files), MeridianConfig bridge reads (~41 reads across 11 files), demo/replay
+dependencies (6 components), and architecture destination cross-reference map.
 
-For every feature, list:
+### 7.55j.2 - Required Capability Matrix — COMPLETE
 
-- required source system
-- required fields
-- freshness requirement: backfill, daily close, near-real-time, or live
-- source ownership
-- fallback behavior if missing
-- whether the feature is blocked without the field or can degrade gracefully
+**Output**: `docs/phase_7_55j_2_required_capability_matrix.md`
 
-### 7.55j.gate - Integration Readiness Pressure Test
+Covers all 11 product surfaces from 7.55j.1 with per-surface capability
+tables documenting: source system needed, required fields, freshness
+requirement (backfill / daily close / near-real-time / live), source
+ownership, fallback behavior, and blocked-vs-degrade judgment.
 
-Document the explicit answer to:
+Also includes cross-cutting summaries: freshness priority for Phase 8,
+blocked-vs-degrade summary tables, wage authority decision tree, daypart
+capability check (7.55k dependency), TargetCycle/WeeklyPlanSnapshot
+dependency map, and minimum viable integration capability lists for POS,
+Labor, and Reservation.
 
-- are we fully aligned through real SQL simulation?
-- are we truly ready for simple-swap live integrations?
-- does the earlier checkpoint still hold under the newer
-  `TargetCycle + WeeklyPlanSnapshot` model?
+### 7.55j.gate - Integration Readiness Pressure Test — COMPLETE
 
-Required output:
+**Output**: `docs/phase_7_55j_gate_integration_readiness_pressure_test.md`
 
-- green / yellow / red blocker grouping
-- honest simple-swap readiness verdict
-- unambiguous handoff into `7.55l`
+Gate verdict: **simple-swap integration ready: NO**.
+
+The app is integration-shaped but not integration-finished. The internal
+SQLite/repository/notifier/UI data flow is correct, but the runtime
+architecture that makes live data behave correctly is not yet in place:
+no `TargetCycle`, no `WeeklyPlanSnapshot`, `DemandForecastContext` v1 only,
+`BaselineData` bridge still load-bearing (88 refs / 13 files), and
+`MeridianConfig` fallback still embedded (58 refs / 12 files).
+
+Blocker grouping: 10 green, 12 yellow, 8 red.
+Handoff: all 8 red blockers are owned by `7.55l.0` through `7.55l.8`.
+Earlier checkpoint (`phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`)
+still holds as seam guidance under the newer cycle/week architecture.
 
 ### 7.55j.3 - Vendor Endpoint Checklist Template
 

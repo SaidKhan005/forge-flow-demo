@@ -36,6 +36,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   ActiveTargetProfile? _profile;
   DemandForecastContext? _demandContext;
   SchedulePlan? _plan;
+  bool _isLockedPlan = false;
   ShiftDashboardReadModel? _shiftReadModel;
   WeekData? _weekData;
   WageStandardContext? _wageContext;
@@ -52,8 +53,16 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _demandContext =
           await DemandForecastContextService.instance.getCurrentContext();
 
-      // Resolve plan from shared authority (includes distribution weights)
-      _plan = await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+      // Resolve plan from locked weekly truth, falling back to live resolution
+      final lockedPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      if (lockedPlan != null) {
+        _plan = lockedPlan;
+        _isLockedPlan = true;
+      } else {
+        _plan = await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+        _isLockedPlan = false;
+      }
 
       _shiftReadModel = await ShiftService.instance.getShiftDashboard();
       _weekData = await ShiftService.instance.getLiveWeekToDate();
@@ -110,7 +119,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
             else ...[
               _buildProfileSection(),
               _sectionDivider(),
-              _buildBaselineSection(),
+              _buildDemandContextSection(),
               _sectionDivider(),
               _buildScheduleSection(),
               _sectionDivider(),
@@ -149,34 +158,36 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     ]);
   }
 
-  Widget _buildBaselineSection() {
+  Widget _buildDemandContextSection() {
     final dc = _demandContext;
-    return _section('BASELINE CONTEXT (60-DAY)', [
-      _row('DERIVED CPLH',
-          BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
-      _row('DERIVED SPLH',
-          BaselineData.derivedTargetSPLH.toStringAsFixed(2)),
-      _row('DERIVED PPA',
-          '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'),
-      _row('OPZ FLOOR',
-          BaselineData.opzFloorCPLH.toStringAsFixed(2)),
-      _row('OPZ CEILING',
-          BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
-      _row('TOTAL COVERS',
-          dc?.historicalTotalCovers?.toString() ?? '—'),
-      _row('WEEKLY AVG COVERS',
-          dc?.historicalWeeklyAvgCovers?.toString() ?? '—'),
+    if (dc == null) {
+      return _emptySection('DEMAND CONTEXT (ROLLING)', 'Not loaded');
+    }
+    return _section('DEMAND CONTEXT (ROLLING)', [
+      _row('BASELINE TOTAL COVERS (60-DAY)',
+          dc.baselineTotalCovers?.toString() ?? '—'),
+      _row('BASELINE WEEKLY AVG (60-DAY)',
+          dc.baselineWeeklyAvgCovers?.toString() ?? '—'),
+      _row('RECENT TOTAL COVERS (3-WEEK)',
+          dc.recentThreeWeekTotalCovers?.toString() ?? '—'),
+      _row('RECENT WEEKLY AVG (3-WEEK)',
+          dc.recentThreeWeekWeeklyAvgCovers?.toString() ?? '—'),
+      _row('TREND DELTA',
+          dc.recentTrendDeltaCovers?.toString() ?? '—'),
+      _row('RESOLVED WEEKLY FORECAST',
+          dc.resolvedWeeklyForecastCovers?.toString() ?? '—'),
       _row('DEMAND SOURCE',
-          dc?.coversSource.name ?? 'unavailable'),
+          dc.coversSource.name),
       _row('ANCHOR DATE',
-          dc?.anchorBusinessDate ?? '—'),
+          dc.anchorBusinessDate ?? '—'),
     ]);
   }
 
   Widget _buildScheduleSection() {
     final p = _plan;
     if (p == null) return _emptySection('SCHEDULE FORECAST', 'Not resolved');
-    return _section('SCHEDULE FORECAST (RESOLVED)', [
+    final sourceLabel = _isLockedPlan ? 'LOCKED WEEKLY' : 'LIVE RESOLVED';
+    return _section('SCHEDULE FORECAST ($sourceLabel)', [
       _row('COVERS', p.forecastCovers.toString()),
       _row('SALES', '\$${Fmt.dollars(p.forecastSales)}'),
       _row('COVERS SOURCE', p.coversSourceLabel),
@@ -186,7 +197,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   Widget _buildSchedulePlanSection() {
     final p = _plan;
     if (p == null) return _emptySection('SCHEDULE PLAN', 'Not resolved');
-    return _section('SCHEDULE PLAN (RESOLVED)', [
+    final sourceLabel = _isLockedPlan ? 'LOCKED WEEKLY' : 'LIVE RESOLVED';
+    return _section('SCHEDULE PLAN ($sourceLabel)', [
       _row('FORECAST COVERS', p.forecastCovers.toString()),
       _row('FORECAST SALES', '\$${Fmt.dollars(p.forecastSales)}'),
       _row('REQUIRED FOH HRS', p.requiredFohHours.toString()),

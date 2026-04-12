@@ -4,14 +4,19 @@ import 'demand_forecast_context_service.dart';
 
 /// App-wide notifier for the canonical [DemandForecastContext].
 ///
-/// Loads on creation and exposes the current context. Schedule, Shift, and
+/// Loads on creation and exposes the current v2 context. Schedule, Shift, and
 /// Audit consumers read [context] instead of `BaselineData.historicalWeeklyAvgCovers`.
 class DemandForecastContextNotifier extends ChangeNotifier {
   DemandForecastContext _context = DemandForecastContext.unavailable;
 
   DemandForecastContext get context => _context;
 
-  /// The weekly average covers from the canonical context, or null if unavailable.
+  /// The resolved rolling weekly forecast covers from the v2 context,
+  /// or null if unavailable.
+  int? get resolvedWeeklyForecastCovers =>
+      _context.resolvedWeeklyForecastCovers;
+
+  /// Transitional compatibility getter — returns [resolvedWeeklyForecastCovers].
   int? get historicalWeeklyAvgCovers => _context.historicalWeeklyAvgCovers;
 
   DemandForecastContextNotifier() {

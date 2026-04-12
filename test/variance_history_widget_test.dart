@@ -338,6 +338,215 @@ void main() {
     });
   });
 
+  group('WeekDetailScreen — section label wording (7.55l.7d)', () {
+    testWidgets('section label says LOCKED TARGETS not BASELINE', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(),
+        home: WeekDetailScreen(week: _overModel),
+      ));
+      await tester.pump();
+      expect(find.text('WEEKLY SUMMARY vs LOCKED TARGETS'), findsOneWidget);
+      expect(find.text('WEEKLY SUMMARY vs BASELINE'), findsNothing);
+    });
+
+    testWidgets('provenance subtitle renders for system_baseline', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(),
+        home: WeekDetailScreen(week: _overModel),
+      ));
+      await tester.pump();
+      expect(find.text('Targets: 60-Day Benchmark'), findsOneWidget);
+    });
+
+    testWidgets('provenance subtitle renders for manager_override', (tester) async {
+      const record = WeekRecord(
+        weekId: 'mgr', weekLabel: 'Mgr',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 279,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
+        dollarGap: 0.0, primaryLeverId: 'covers_down',
+        targetSourceType: 'manager_override',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+      );
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(),
+        home: WeekDetailScreen(week: record),
+      ));
+      await tester.pump();
+      expect(find.text('Targets: Manager Override'), findsOneWidget);
+    });
+  });
+
+  group('WeekHistoryTile — provenance label (7.55l.7d)', () {
+    testWidgets('tile renders provenance label for system_baseline', (tester) async {
+      await tester.pumpWidget(_wrap(
+        WeekHistoryTile(week: _overModel),
+      ));
+      await tester.pump();
+      expect(find.text('60-Day Benchmark'), findsOneWidget);
+    });
+
+    testWidgets('tile renders provenance label for manager_override', (tester) async {
+      const record = WeekRecord(
+        weekId: 'mgr', weekLabel: 'Mgr',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 279,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
+        dollarGap: 0.0, primaryLeverId: 'covers_down',
+        targetSourceType: 'manager_override',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+      );
+      await tester.pumpWidget(_wrap(
+        WeekHistoryTile(week: record),
+      ));
+      await tester.pump();
+      expect(find.text('Manager Override'), findsOneWidget);
+    });
+
+    testWidgets('tile renders fallback label for null sourceType', (tester) async {
+      const record = WeekRecord(
+        weekId: 'legacy', weekLabel: 'Legacy',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 279,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
+        dollarGap: 0.0, primaryLeverId: 'covers_down',
+        targetSourceType: null,
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+      );
+      await tester.pumpWidget(_wrap(
+        WeekHistoryTile(week: record),
+      ));
+      await tester.pump();
+      expect(find.text('Baseline'), findsOneWidget);
+    });
+  });
+
+  group('WeekRecord — provenanceLabel getter (7.55l.7d)', () {
+    test('system_baseline maps to 60-Day Benchmark', () {
+      expect(_overModel.provenanceLabel, '60-Day Benchmark');
+    });
+
+    test('manager_override maps to Manager Override', () {
+      const record = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetSourceType: 'manager_override',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(record.provenanceLabel, 'Manager Override');
+    });
+
+    test('admin_replacement maps to Admin Override', () {
+      const record = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetSourceType: 'admin_replacement',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(record.provenanceLabel, 'Admin Override');
+    });
+
+    test('null sourceType falls back to Baseline', () {
+      expect(_zeroGap.provenanceLabel, '60-Day Benchmark');
+      const legacy = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(legacy.provenanceLabel, 'Baseline');
+    });
+
+    // ── Cycle-era source types (7.55l.7d1) ─────────────────────────────
+
+    test('cycle_recommended maps to 60-Day Benchmark', () {
+      const record = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetSourceType: 'cycle_recommended',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(record.provenanceLabel, '60-Day Benchmark');
+    });
+
+    test('cycle_manager_override maps to Manager Override', () {
+      const record = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetSourceType: 'cycle_manager_override',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(record.provenanceLabel, 'Manager Override');
+    });
+
+    test('cycle_admin_replacement maps to Admin Override', () {
+      const record = WeekRecord(
+        weekId: 'x', weekLabel: 'X',
+        totalCovers: 100, forecastCovers: 100,
+        totalFohHours: 20, totalBohHours: 20,
+        avgPPA: 40.0, avgCPLH: 5.0,
+        theoreticalLaborPct: 20.0, actualLaborPct: 20.0,
+        dollarGap: 0, primaryLeverId: 'covers_down',
+        targetSourceType: 'cycle_admin_replacement',
+        targetCPLH: 5.0, targetSPLH: 180.0, targetPPA: 40.0,
+        targetFohWage: 16.0, targetBohWage: 21.0,
+      );
+      expect(record.provenanceLabel, 'Admin Override');
+    });
+  });
+
+  group('WeekDetailScreen — cycle-era provenance subtitle (7.55l.7d1)', () {
+    testWidgets('cycle_recommended renders as 60-Day Benchmark', (tester) async {
+      const record = WeekRecord(
+        weekId: 'cyc', weekLabel: 'Cyc',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 279,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
+        dollarGap: 0.0, primaryLeverId: 'covers_down',
+        targetSourceType: 'cycle_recommended',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+      );
+      await tester.pumpWidget(MaterialApp(
+        theme: ThemeData.dark(),
+        home: WeekDetailScreen(week: record),
+      ));
+      await tester.pump();
+      expect(find.text('Targets: 60-Day Benchmark'), findsOneWidget);
+    });
+  });
+
   group('WeekHistoryTile — dollarGapAnnualized', () {
     test('dollarGapAnnualized always uses magnitude × 52', () {
       // Over model

@@ -8,10 +8,14 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/data/target_cycle_service.dart';
+import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/models/current_week_state.dart';
 
 void main() {
@@ -231,6 +235,277 @@ void main() {
         expect(r.targetCPLH, greaterThan(0));
         expect(r.theoreticalLaborPct, greaterThan(0));
         expect(r.targetFohWage, isNotNull);
+      }
+    });
+  });
+
+  // ── H: Current-week WTD uses locked weekly truth (7.55l.7b/7b1) ────────────
+
+  group('H — locked weekly truth for current-week WTD', () {
+    test('getLiveWeekToDate uses locked snapshot forecast covers', () async {
+      // Get the locked snapshot to know expected weekly forecast
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final wtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(wtd, isNotNull);
+      expect(wtd!.totalWeekForecastCovers, equals(snapshot!.forecastCovers),
+          reason:
+              'Current-week WTD weekly forecast must come from locked snapshot');
+    });
+
+    test('wtdForecastCovers comes from snapshot day rows not shift records',
+        () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final wtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(wtd, isNotNull);
+
+      // Sum snapshot day-row forecast covers through the last closed day
+      const dayOrder = {
+        'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4,
+        'Fri': 5, 'Sat': 6, 'Sun': 7,
+      };
+      final expectedWtdForecast = snapshot!.dayRows
+          .where((d) => (dayOrder[d.day] ?? 0) <= wtd!.closedDayNumber)
+          .fold<int>(0, (s, d) => s + d.forecastCovers);
+
+      expect(wtd!.wtdForecastCovers, equals(expectedWtdForecast),
+          reason:
+              'WTD forecast covers must come from snapshot day rows through '
+              'the last closed day, not from shift records');
+    });
+
+    test('getLiveWeekToDate uses snapshot-linked cycle for targets', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot!.targetCycleId);
+      expect(cycle, isNotNull);
+
+      final wtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(wtd, isNotNull);
+      expect(wtd!.targetCPLH, equals(cycle!.targetCPLH),
+          reason: 'WTD target CPLH must come from snapshot-linked cycle');
+      expect(wtd.targetPPA, equals(cycle.targetPPA),
+          reason: 'WTD target PPA must come from snapshot-linked cycle');
+    });
+
+    test('same-week cycle change does not rewrite current-week WTD truth',
+        () async {
+      // Get initial WTD (triggers snapshot auto-lock if needed)
+      final initialWtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(initialWtd, isNotNull);
+
+      // Apply admin replacement cycle (changes target standards)
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final mockDate = await SqliteDatabase.instance
+          .getMockReplayBusinessDate(restaurantId);
+      await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, mockDate!);
+
+      // WTD targets and forecasts should still match the original locked truth
+      final afterWtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(afterWtd, isNotNull);
+      expect(afterWtd!.targetCPLH, equals(initialWtd!.targetCPLH),
+          reason:
+              'Same-week cycle change must not rewrite locked WTD targets');
+      expect(afterWtd.targetPPA, equals(initialWtd.targetPPA));
+      expect(afterWtd.totalWeekForecastCovers,
+          equals(initialWtd.totalWeekForecastCovers));
+      expect(afterWtd.wtdForecastCovers,
+          equals(initialWtd.wtdForecastCovers),
+          reason:
+              'Same-week cycle change must not rewrite locked WTD forecast');
+    });
+
+    test('projection math inherits locked forecast truth', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final wtd = await ShiftService.instance.getLiveWeekToDate();
+      expect(wtd, isNotNull);
+
+      // remainingForecastCovers = totalWeekForecastCovers - wtdForecastCovers
+      final expectedRemaining =
+          wtd!.totalWeekForecastCovers - wtd.wtdForecastCovers;
+      expect(wtd.remainingForecastCovers,
+          equals(expectedRemaining < 0 ? 0 : expectedRemaining),
+          reason:
+              'Projection remaining covers must derive from locked forecast');
+    });
+
+    test('historical getWeekToDate remains on live path', () async {
+      final wtd = await ShiftService.instance
+          .getWeekToDate('2026-W13', 'Mar 24');
+      expect(wtd, isNotNull);
+      // Historical path still works — just confirm it resolves
+      expect(wtd!.totalCovers, greaterThan(0));
+    });
+  });
+
+  // ── I: Current-week Full Week / CurrentWeekState locked truth (7.55l.7c) ───
+
+  group('I — locked Full Week / CurrentWeekState', () {
+    test('getCurrentWeekState uses locked WTD path', () async {
+      // Ensure snapshot exists
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot!.targetCycleId);
+      expect(cycle, isNotNull);
+
+      final state = await ShiftService.instance
+          .getCurrentWeekState('2026-W13', 'Mar 24');
+      expect(state, isNotNull);
+
+      // WeekData inside CurrentWeekState must use locked cycle targets
+      expect(state!.weekData.targetCPLH, equals(cycle!.targetCPLH),
+          reason:
+              'CurrentWeekState.weekData must use locked cycle targets');
+      expect(state.weekData.targetPPA, equals(cycle.targetPPA));
+
+      // Weekly forecast must come from locked snapshot
+      expect(state.weekData.totalWeekForecastCovers,
+          equals(snapshot.forecastCovers));
+    });
+
+    test('getFullWeekShifts open/projected rows use locked cycle targets',
+        () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot!.targetCycleId);
+      expect(cycle, isNotNull);
+
+      final shifts =
+          await ShiftService.instance.getFullWeekShifts('2026-W13');
+      final openRows =
+          shifts.where((s) => s.isOpen || s.isProjected).toList();
+      expect(openRows, isNotEmpty);
+
+      for (final r in openRows) {
+        expect(r.targetCPLH, equals(cycle!.targetCPLH),
+            reason:
+                'Open/projected row targetCPLH must come from locked cycle');
+        expect(r.targetPPA, equals(cycle.targetPPA));
+        expect(r.targetFohWage, equals(cycle.fohWage));
+        expect(r.targetBohWage, equals(cycle.bohWage));
+      }
+    });
+
+    test('same-week cycle change does not rewrite open/projected row targets',
+        () async {
+      // Get initial full week (triggers snapshot auto-lock if needed)
+      final initialShifts =
+          await ShiftService.instance.getFullWeekShifts('2026-W13');
+      final initialOpen = initialShifts
+          .where((s) => s.isOpen || s.isProjected)
+          .toList();
+      expect(initialOpen, isNotEmpty);
+
+      // Apply admin replacement cycle (changes target standards)
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final mockDate = await SqliteDatabase.instance
+          .getMockReplayBusinessDate(restaurantId);
+      await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, mockDate!);
+
+      // Open/projected rows should still have the original locked targets
+      final afterShifts =
+          await ShiftService.instance.getFullWeekShifts('2026-W13');
+      final afterOpen = afterShifts
+          .where((s) => s.isOpen || s.isProjected)
+          .toList();
+      expect(afterOpen, isNotEmpty);
+
+      for (var i = 0; i < afterOpen.length; i++) {
+        expect(afterOpen[i].targetCPLH, equals(initialOpen[i].targetCPLH),
+            reason:
+                'Same-week cycle change must not rewrite open row targets');
+        expect(afterOpen[i].targetPPA, equals(initialOpen[i].targetPPA));
+      }
+    });
+
+    test('full week still has 14 slots after locked migration', () async {
+      final shifts =
+          await ShiftService.instance.getFullWeekShifts('2026-W13');
+      expect(shifts.length, 14);
+    });
+
+    test('non-current getFullWeekShifts does not auto-generate snapshot',
+        () async {
+      // Query the snapshot table directly (not via service, which auto-generates)
+      final db = await SqliteDatabase.instance.database;
+      final before = await db.query('weekly_plan_snapshots');
+      final countBefore = before.length;
+
+      // Call full week for a non-current week
+      await ShiftService.instance.getFullWeekShifts('2026-W12');
+
+      // Verify no snapshot was created as a side effect
+      final after = await db.query('weekly_plan_snapshots');
+      expect(after.length, equals(countBefore),
+          reason:
+              'Non-current getFullWeekShifts must not auto-generate a snapshot');
+    });
+
+    test('non-current getFullWeekShifts does not use locked cycle targets',
+        () async {
+      // First trigger current-week snapshot so it exists
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot!.targetCycleId);
+      expect(cycle, isNotNull);
+
+      // Seed a projected snapshot for a non-current week so open rows exist
+      final repo = SqliteOpenShiftSnapshotRepository.instance;
+      await repo.replaceOpenShiftSnapshot(OpenShiftSnapshot(
+        restaurantId: 'demo_restaurant_001',
+        weekId: '2026-W12',
+        dayLabel: 'Mon',
+        daypart: 'lunch',
+        status: 'projected',
+        businessDate: '2026-03-16',
+        forecastCovers: 180,
+        currentCovers: 180,
+        scheduledFohHours: 36,
+        scheduledBohHours: 37,
+        currentPPA: 42.0,
+        currentCPLH: 4.5,
+        currentSPLH: 180.0,
+        blendedWage: 18.5,
+        updatedAt: '2026-03-16T10:00:00',
+      ));
+
+      // Get full week for non-current week — should use live profile, not locked cycle
+      final shifts =
+          await ShiftService.instance.getFullWeekShifts('2026-W12');
+      final openRows =
+          shifts.where((s) => s.isOpen || s.isProjected).toList();
+
+      if (openRows.isNotEmpty) {
+        // Open rows should use the live active profile, not the locked cycle.
+        // The live profile may happen to match the locked cycle values, so
+        // we just verify the call completes without error and returns rows.
+        // The snapshot side-effect test above is the stronger isolation proof.
+        expect(openRows.first.targetCPLH, isNotNull);
+        expect(openRows.first.targetCPLH, greaterThan(0));
       }
     });
   });

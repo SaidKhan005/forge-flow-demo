@@ -1,4 +1,4 @@
-// Phase 7.55i.2 / 7.55i.2a — Shared SchedulePlan read service tests.
+// Phase 7.55i.2 / 7.55i.2a / 7.55l.7a — Shared SchedulePlan read service tests.
 //
 // Validates:
 // A. getCurrentWeeklyPlan resolves a non-null plan from seeded data
@@ -7,11 +7,16 @@
 // D. Preview plan with different PPA produces different sales but same covers
 // E. All plan consumers agree on the same covers/sales/hours
 // F. resolveFromInputs matches async path and handles null/PPA guardrails
+// G. Projector: WeeklyPlanSnapshot -> SchedulePlan
+// H. getCurrentLockedWeeklyPlan locked-week read path
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/data/target_cycle_service.dart';
+import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
@@ -185,5 +190,144 @@ void main() {
       expect(syncPlan.requiredBohHours, equals(asyncPlan.requiredBohHours));
     });
 
+  });
+
+  // ── G. Projector: WeeklyPlanSnapshot → SchedulePlan (7.55l.7a) ─────────
+
+  group('G — snapshot to schedule plan projector', () {
+    test('projector produces SchedulePlan matching snapshot values', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+
+      final projected =
+          WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot!);
+      expect(projected.forecastCovers, equals(snapshot.forecastCovers));
+      expect(projected.forecastSales, equals(snapshot.forecastSales));
+      expect(projected.requiredFohHours, equals(snapshot.requiredFohHours));
+      expect(projected.requiredBohHours, equals(snapshot.requiredBohHours));
+      expect(projected.theoreticalFohLaborDollars,
+          equals(snapshot.theoreticalFohLaborDollars));
+      expect(projected.theoreticalBohLaborDollars,
+          equals(snapshot.theoreticalBohLaborDollars));
+      expect(projected.theoreticalLaborPct,
+          equals(snapshot.theoreticalLaborPct));
+      expect(projected.targetBlendedWage, equals(snapshot.targetBlendedWage));
+      expect(projected.coversSource, equals(snapshot.coversSource));
+      expect(projected.salesSource, equals(snapshot.salesSource));
+    });
+
+    test('projector maps day rows correctly', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+      expect(snapshot!.dayRows, isNotEmpty);
+
+      final projected =
+          WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
+      expect(projected.dayPlans.length, equals(snapshot.dayRows.length));
+
+      for (var i = 0; i < snapshot.dayRows.length; i++) {
+        final snapDay = snapshot.dayRows[i];
+        final planDay = projected.dayPlans[i];
+        expect(planDay.day, equals(snapDay.day));
+        expect(planDay.forecastCovers, equals(snapDay.forecastCovers));
+        expect(planDay.forecastSales, equals(snapDay.forecastSales));
+        expect(planDay.requiredFohHours, equals(snapDay.requiredFohHours));
+        expect(planDay.requiredBohHours, equals(snapDay.requiredBohHours));
+      }
+    });
+  });
+
+  // ── H. getCurrentLockedWeeklyPlan (7.55l.7a) ──────────────────────────
+
+  group('H — getCurrentLockedWeeklyPlan', () {
+    test('returns projected plan from current-week snapshot', () async {
+      final lockedPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      expect(lockedPlan, isNotNull);
+      expect(lockedPlan!.forecastCovers, greaterThan(0));
+      expect(lockedPlan.forecastSales, greaterThan(0));
+      expect(lockedPlan.requiredFohHours, greaterThan(0));
+      expect(lockedPlan.requiredBohHours, greaterThan(0));
+      expect(lockedPlan.dayPlans, isNotEmpty);
+    });
+
+    test('locked plan matches snapshot values exactly', () async {
+      final snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final lockedPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+
+      expect(snapshot, isNotNull);
+      expect(lockedPlan, isNotNull);
+      expect(lockedPlan!.forecastCovers, equals(snapshot!.forecastCovers));
+      expect(lockedPlan.forecastSales, equals(snapshot.forecastSales));
+      expect(lockedPlan.requiredFohHours, equals(snapshot.requiredFohHours));
+      expect(lockedPlan.requiredBohHours, equals(snapshot.requiredBohHours));
+    });
+
+    test('same-week cycle change does not rewrite locked plan', () async {
+      // Get initial locked plan (auto-generates snapshot if needed)
+      final initialPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      expect(initialPlan, isNotNull);
+
+      // Apply admin replacement cycle (changes target standards)
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final mockDate = await SqliteDatabase.instance
+          .getMockReplayBusinessDate(restaurantId);
+      await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, mockDate!);
+
+      // Locked plan should still be the same
+      final afterPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      expect(afterPlan, isNotNull);
+      expect(afterPlan!.forecastCovers, equals(initialPlan!.forecastCovers));
+      expect(afterPlan.forecastSales, equals(initialPlan.forecastSales));
+      expect(afterPlan.requiredFohHours, equals(initialPlan.requiredFohHours));
+      expect(afterPlan.requiredBohHours, equals(initialPlan.requiredBohHours));
+    });
+
+    test('live preview/input APIs remain unchanged', () async {
+      // resolveFromInputs still works without touching snapshots
+      final demandCtx =
+          await DemandForecastContextService.instance.getCurrentContext();
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final profile = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+
+      final syncPlan = SchedulePlanReadService.resolveFromInputs(
+        targetCPLH: profile!.targetCPLH,
+        targetPPA: profile.targetPPA,
+        targetSPLH: profile.targetSPLH,
+        fohWage: profile.fohWage,
+        bohWage: profile.bohWage,
+        historicalWeeklyAvgCovers: demandCtx.historicalWeeklyAvgCovers,
+      );
+      expect(syncPlan, isNotNull);
+      expect(syncPlan!.forecastCovers, greaterThan(0));
+    });
+
+    test('ShiftService.getShiftDashboard uses locked day values', () async {
+      // Get locked plan to know expected day values
+      final lockedPlan = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      expect(lockedPlan, isNotNull);
+
+      final dashboard = await ShiftService.instance.getShiftDashboard();
+      expect(dashboard, isNotNull);
+
+      // Dashboard forecast must match a day row from the locked plan
+      final matchingDay = lockedPlan!.dayPlans
+          .where((d) => d.forecastCovers == dashboard!.forecastCovers)
+          .firstOrNull;
+      expect(matchingDay, isNotNull,
+          reason:
+              'Shift dashboard forecast covers must match a locked plan day');
+    });
   });
 }
