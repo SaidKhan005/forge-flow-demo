@@ -1,5 +1,6 @@
 // Phase 7.55l.5a — DemandForecastContext v2 builder.
 //
+//
 // Builds rolling demand context from two explicit layers:
 //   level 1 = 60-day baseline (inclusive anchor window)
 //   level 2 = fixed 3-week recent trend (21-day inclusive anchor window)
