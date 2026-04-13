@@ -52,8 +52,7 @@ void main() {
           selectedShiftCount: 0,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
-              'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-              'Add more star shifts that felt right so the team has usable flex.',
+              'Star shifts too tightly clustered. Add more for a teachable range.',
         );
       };
 
@@ -70,8 +69,7 @@ void main() {
           selectedShiftCount: 1,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
-              'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-              'Add more star shifts that felt right so the team has usable flex.',
+              'Star shifts too tightly clustered. Add more for a teachable range.',
         );
       };
 
@@ -92,8 +90,7 @@ void main() {
           selectedShiftCount: 5,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Recommended target sits inside a usable benchmark range. '
-              'This gives the team room to flex up or down while still holding a teachable standard.',
+              'Target sits in a usable range with room to flex.',
         );
       };
 
@@ -114,8 +111,7 @@ void main() {
           selectedShiftCount: 8,
           rangeQualityLabel: 'OPZ RANGE TOO WIDE',
           rangeQualityMessage:
-              'Selected star shifts span too much of the operating range to teach one clean standard. '
-              'Tighten the set around the shifts that felt consistently right.',
+              'Star shifts too widely spread. Tighten to one clean standard.',
         );
       };
 
@@ -191,8 +187,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Recommended target sits inside a usable benchmark range. '
-              'This gives the team room to flex up or down while still holding a teachable standard.',
+              'Target sits in a usable range with room to flex.',
         );
       };
 
@@ -298,8 +293,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-          'Add more star shifts that felt right so the team has usable flex.',
+          'Star shifts too tightly clustered. Add more for a teachable range.',
         ),
       );
     });
@@ -310,8 +304,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Recommended target sits inside a usable benchmark range. '
-          'This gives the team room to flex up or down while still holding a teachable standard.',
+          'Target sits in a usable range with room to flex.',
         ),
       );
     });
@@ -322,8 +315,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Selected star shifts span too much of the operating range to teach one clean standard. '
-          'Tighten the set around the shifts that felt consistently right.',
+          'Star shifts too widely spread. Tighten to one clean standard.',
         ),
       );
     });
@@ -433,8 +425,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Recommended target sits inside a usable benchmark range. '
-              'This gives the team room to flex up or down while still holding a teachable standard.',
+              'Target sits in a usable range with room to flex.',
         );
       };
 
@@ -483,8 +474,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Recommended target sits inside a usable benchmark range. '
-              'This gives the team room to flex up or down while still holding a teachable standard.',
+              'Target sits in a usable range with room to flex.',
         );
       };
 

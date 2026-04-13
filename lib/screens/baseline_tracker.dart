@@ -466,20 +466,29 @@ class _BaselineTargetsCard extends StatelessWidget {
     final bohWage = profile?.bohWage ?? MeridianConfig.bohWage;
     final blendedWage = _targetBlendedWage(fohWage, bohWage);
 
-    final targets = [
-      ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
-      ('SPLH', '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}'),
-      ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'),
-      (
-        'THEORETICAL LABOR %',
-        '${BaselineData.derivedTheoreticalLaborPct.toStringAsFixed(1)}%'
-      ),
-      ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(2)),
-      ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
-      ('HEADROOM', BaselineData.opzHeadroomCPLH.toStringAsFixed(2)),
-      ('FOH WAGE', '\$${fohWage.toStringAsFixed(2)}'),
-      ('BOH WAGE', '\$${bohWage.toStringAsFixed(2)}'),
-      ('BLENDED WAGE', '\$${blendedWage.toStringAsFixed(2)}'),
+    // Grouped in preferred product order: wage → OPZ → inputs → output
+    final groups = <(String, List<(String, String)>)>[
+      ('WAGE', [
+        ('FOH WAGE', '\$${fohWage.toStringAsFixed(2)}'),
+        ('BOH WAGE', '\$${bohWage.toStringAsFixed(2)}'),
+        ('BLENDED WAGE', '\$${blendedWage.toStringAsFixed(2)}'),
+      ]),
+      ('OPZ RANGE', [
+        ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(2)),
+        ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
+        ('HEADROOM', BaselineData.opzHeadroomCPLH.toStringAsFixed(2)),
+      ]),
+      ('TARGET INPUTS', [
+        ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
+        ('SPLH', '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}'),
+        ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'),
+      ]),
+      ('THEORETICAL OUTPUT', [
+        (
+          'THEORETICAL LABOR %',
+          '${BaselineData.derivedTheoreticalLaborPct.toStringAsFixed(1)}%'
+        ),
+      ]),
     ];
 
     return Container(
@@ -492,22 +501,32 @@ class _BaselineTargetsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ...targets.map((t) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(t.$1,
-                        style:
-                            AppTextStyles.mono10(color: AppColors.textMuted)),
-                    Text(
-                      t.$2,
-                      style: AppTextStyles.mono14(
-                          color: AppColors.textPrimary),
-                    ),
-                  ],
-                ),
-              )),
+          for (var gi = 0; gi < groups.length; gi++) ...[
+            if (gi > 0) const SizedBox(height: 12),
+            // Group header
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(groups[gi].$1,
+                  style: AppTextStyles.mono8(color: AppColors.textSecondary)),
+            ),
+            // Group rows
+            ...groups[gi].$2.map((t) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(t.$1,
+                          style: AppTextStyles.mono10(
+                              color: AppColors.textMuted)),
+                      Text(
+                        t.$2,
+                        style: AppTextStyles.mono14(
+                            color: AppColors.textPrimary),
+                      ),
+                    ],
+                  ),
+                )),
+          ],
         ],
       ),
     );

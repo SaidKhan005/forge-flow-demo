@@ -1483,7 +1483,9 @@ class SqliteDatabase {
   Future<void> reseedMockReplayForBusinessDate(String isoDate) async {
     final db = await database;
 
-    // Clear operational tables
+    // ── Replay-regenerated scenario data (cleared and rebuilt) ────────
+    // These tables are re-simulated from MockIntegrationReplaySeed for
+    // the new date. They are scenario data, not locked truth.
     await db.delete('shift_records');
     await db.delete('week_records');
     await db.delete('baseline_selected_records');
@@ -1493,15 +1495,17 @@ class SqliteDatabase {
     await db.delete('target_profile_versions');
     await db.delete('open_shift_snapshots');
     await db.delete('reservation_book_snapshots');
-    // target_cycles intentionally NOT cleared here — the locked weekly
-    // snapshot references its generating cycle, and that linkage must
-    // survive same-week replay advance. (7.55l.6b2)
-    // weekly_plan_snapshots intentionally NOT cleared here — the locked
-    // snapshot for the week in force must survive same-week replay
-    // advance. Full-reset callers (reseedDemo, clearAllData) handle it.
-    // active_target_profiles conditionally preserved below — when a
+    // ── Replay-stable locked artifacts (NOT cleared) ─────────────────
+    // target_cycles: the locked weekly snapshot references its generating
+    // cycle, and that linkage must survive replay advance. (7.55l.6b2)
+    // weekly_plan_snapshots: the locked snapshot for the week in force
+    // must survive same-week replay advance. (7.55l.6b1)
+    // active_target_profiles: conditionally preserved below — when a
     // preserved active cycle exists, its projected profile must not be
     // overwritten with baseline-seeded truth. (7.55l.6b3)
+    // benchmark_selection_summaries: tied to the active cycle.
+    // See docs/phase_7_55m_2_mock_replay_drift_contract.md for the
+    // full two-category classification.
 
     // Ensure restaurant exists
     final existing = await db.query('restaurant_locations',

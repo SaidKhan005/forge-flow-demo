@@ -11,6 +11,12 @@ class ShiftDashboardReadModel {
   // ── Header context ──────────────────────────────────────────────────────
   final String daypart;
   final String day;
+
+  // Phase 7.55m.3: timeLabel and serviceElapsedLabel are no longer the
+  // primary header time source. The Shift header now uses a live wall-clock
+  // widget. These fields remain on the model to avoid broad churn across
+  // test fixtures and the read-model builder. They may be removed when the
+  // snapshot/read-model shape is next revised.
   final String timeLabel;
   final String serviceElapsedLabel;
 
@@ -195,7 +201,11 @@ class ShiftDashboardReadModel {
         forecastSales > 0 ? computedTargetLaborDollars / forecastSales * 100 : 0.0;
     final computedLaborVariancePts = computedActualLaborPct - computedTargetLaborPct;
 
-    // Primary lever — uses actual-to-date productivity, full-day staffing
+    // Primary lever — whole-day current-state scope.
+    // Uses actual-to-date productivity from closed + open snapshots, and
+    // full-day scheduled hours vs plan hours. This can legitimately differ
+    // from the Variance WTD lever (different aggregation window).
+    // See phase_7_55m_4 audit doc.
     final leverId = LaborModel.determineLever(
       actualCovers: totalCovers,
       forecastCovers: forecastCovers,

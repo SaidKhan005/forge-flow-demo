@@ -1,13 +1,13 @@
 // Phase 7.55i.2a — Schedule Builder notifier shared-plan authority test.
+// Phase 7.55m.6a — Real ScheduleBuilder widget regression coverage for
+// section labels added in 7.55m.6.
 //
 // Validates:
 // A. ScheduleForecastNotifier delegates plan resolution to SchedulePlanReadService
-//
-// Mirror-widget tests (Groups A–D from the original file) were removed because
-// they reimplemented simplified copies of production UI and duplicated notifier
-// value assertions already covered by schedule_plan_resolver_test (Groups F, D)
-// and schedule_forecast_demand_resolver_test (Group B).
+// B. Real ScheduleBuilder content renders the three section labels and does
+//    not render the old in-card chart caption
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
@@ -50,6 +50,67 @@ void main() {
       expect(notifier.plan!.requiredBohHours, equals(servicePlan.requiredBohHours));
       expect(notifier.plan!.theoreticalLaborPct,
           equals(servicePlan.theoreticalLaborPct));
+
+      notifier.dispose();
+    });
+  });
+
+  // ── B: Plan section labels — real widget (7.55m.6a) ─────────────────────
+
+  group('B — Plan section labels (7.55m.6a)', () {
+    testWidgets('real ScheduleBuilder content renders section labels',
+        (tester) async {
+      final notifier = ScheduleForecastNotifier(
+        targetCPLH: testCPLH,
+        targetPPA: testPPA,
+        targetSPLH: testSPLH,
+        fohWage: testFohWage,
+        bohWage: testBohWage,
+        historicalWeeklyAvgCovers: testCovers,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ScheduleBuilder.testContent(notifier),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('WEEKLY PLAN SUMMARY'), findsOneWidget);
+      expect(find.text('COVER FORECAST BY DAY'), findsOneWidget);
+      expect(find.text('DAY-BY-DAY PLAN'), findsOneWidget);
+
+      notifier.dispose();
+    });
+
+    testWidgets('old in-card chart caption is absent from real widget tree',
+        (tester) async {
+      final notifier = ScheduleForecastNotifier(
+        targetCPLH: testCPLH,
+        targetPPA: testPPA,
+        targetSPLH: testSPLH,
+        fohWage: testFohWage,
+        bohWage: testBohWage,
+        historicalWeeklyAvgCovers: testCovers,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ScheduleBuilder.testContent(notifier),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // The old caption was removed in 7.55m.6 and replaced by the
+      // COVER FORECAST BY DAY section label.
+      expect(
+        find.text('COVER FORECAST DISTRIBUTED BY DAY', skipOffstage: false),
+        findsNothing,
+      );
 
       notifier.dispose();
     });

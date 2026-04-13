@@ -1,5 +1,10 @@
 // One daypart-level signal record extracted from weekly history.
 // Used by HistoryTeachingAnalyzer to surface recurring patterns.
+//
+// Phase 7.55k.3: DaypartPatternSummary now exists as a richer aggregate
+// alternative carrying counts, averages, and exemplar IDs. This model
+// remains the active path for HistoryTeachingAnalyzer and
+// LearnTeachingAnalyzer until 7.55k.5 / 7.55k.6 migrate them.
 
 class HistoryPatternRecord {
   final String weekId;

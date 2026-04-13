@@ -18,6 +18,9 @@
 // Window availability is determined by the presence of eligible closed shifts,
 // not by whether cover totals are positive. A window with real closed shifts
 // that happen to have zero covers is valid demand data, not missing data.
+//
+// Phase 7.55m.1: Planning-anchor resolution now delegates to
+// BusinessDateAuthorityService. Date arithmetic uses the shared helper.
 
 import 'dart:math' show max;
 
@@ -27,7 +30,7 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'business_date_authority_service.dart';
 
 /// Repository-backed service that builds [DemandForecastContext] v2 from
 /// eligible closed shifts.
@@ -54,14 +57,13 @@ class DemandForecastContextService {
   static const double _weeksIn21DayWindow = 3;
 
   /// Builds the current demand context for the active restaurant.
+  ///
+  /// Planning-anchor resolution delegates to [BusinessDateAuthorityService].
   Future<DemandForecastContext> getCurrentContext() async {
     final restaurantId = await _scopeRepo.getActiveRestaurantId();
 
-    // Anchor preference: mock replay date → latest closed date
-    final mockDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
-    final anchorDate =
-        mockDate ?? await _shiftRepo.getLatestClosedBusinessDate(restaurantId);
+    final anchorDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
 
     if (anchorDate == null) {
       return DemandForecastContext(
@@ -156,17 +158,9 @@ class DemandForecastContextService {
 
   /// Subtracts [days] from an ISO date string.
   ///
-  /// Public so sibling services (e.g. SchedulePlanReadService) can reuse the
-  /// same date arithmetic without duplicating it.
-  static String subtractDays(String isoDate, int days) {
-    final parts = isoDate.split('-');
-    final dt = DateTime(
-      int.parse(parts[0]),
-      int.parse(parts[1]),
-      int.parse(parts[2]),
-    );
-    final result = dt.subtract(Duration(days: days));
-    return '${result.year}-${result.month.toString().padLeft(2, '0')}'
-        '-${result.day.toString().padLeft(2, '0')}';
-  }
+  /// Delegates to [BusinessDateAuthorityService.subtractDays] — the canonical
+  /// date-arithmetic helper. Kept as a pass-through so existing callers
+  /// (e.g. SchedulePlanReadService) do not need a simultaneous migration.
+  static String subtractDays(String isoDate, int days) =>
+      BusinessDateAuthorityService.subtractDays(isoDate, days);
 }

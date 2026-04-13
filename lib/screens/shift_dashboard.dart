@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
@@ -11,6 +13,11 @@ import '../widgets/sales_forecast_card.dart';
 
 class ShiftDashboard extends StatelessWidget {
   final VoidCallback? onVarianceTap;
+
+  /// Test seam: when non-null, used instead of [DateTime.now] for the
+  /// header clock display. Set in tests, clear in tearDown.
+  @visibleForTesting
+  static DateTime Function()? clockOverride;
 
   const ShiftDashboard({super.key, this.onVarianceTap});
 
@@ -67,8 +74,12 @@ class ShiftDashboard extends StatelessWidget {
                 ),
               ),
             ),
-            // PRIMARY DRIVER section hidden — lever detection needs
-            // whole-day actuals vs daypart targets alignment (Phase 10.5).
+            // PRIMARY DRIVER teaching section hidden (Phase 10.5).
+            // The lever IS computed in the read model (drives the DRIVER
+            // badge on metric cards), but the full teaching takeaway is
+            // deferred until Shift is daypart-live. Showing a whole-day
+            // aggregate lever as a current-service-period teaching signal
+            // would be misleading. See phase_7_55m_4 audit doc.
             // SliverToBoxAdapter(
             //   child: Padding(
             //     padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -167,14 +178,65 @@ class _ShiftHeader extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(
-                '${readModel.timeLabel} \u00b7 ${readModel.serviceElapsedLabel}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
-              ),
+              // Phase 7.55m.3: header time is now a live wall clock,
+              // not static snapshot text. serviceElapsedLabel removed —
+              // real service-period tracking is Phase 10.5.
+              const _LiveClock(),
             ],
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Live clock ─────────────────────────────────────────────────────────────
+
+/// Ticking wall-clock display for the Shift header.
+///
+/// Shows the current time formatted as `h:mm AM/PM`. Ticks every 30 seconds.
+/// Uses [ShiftDashboard.clockOverride] when set (test seam), otherwise
+/// [DateTime.now].
+///
+/// This is display-only — it does not determine business date, shift status,
+/// or daypart. Those remain snapshot-driven through the read model.
+class _LiveClock extends StatefulWidget {
+  const _LiveClock();
+
+  @override
+  State<_LiveClock> createState() => _LiveClockState();
+}
+
+class _LiveClockState extends State<_LiveClock> {
+  late DateTime _now;
+  Timer? _timer;
+
+  DateTime _currentTime() =>
+      (ShiftDashboard.clockOverride ?? DateTime.now)();
+
+  @override
+  void initState() {
+    super.initState();
+    _now = _currentTime();
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      setState(() => _now = _currentTime());
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = _now.hour % 12 == 0 ? 12 : _now.hour % 12;
+    final minute = _now.minute.toString().padLeft(2, '0');
+    final amPm = _now.hour >= 12 ? 'PM' : 'AM';
+    return Text(
+      '$hour:$minute $amPm',
+      style: AppTextStyles.mono10(color: AppColors.textMuted),
     );
   }
 }

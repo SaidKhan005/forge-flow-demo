@@ -1,4 +1,4 @@
-// Phase 7.55l.6b+6b1+6b2+6b3 — WeeklyPlanSnapshot persistence + auto-lock spine tests.
+// Phase 7.55l.6b+6b1+6b2+6b3 + 7.55m.2 — WeeklyPlanSnapshot persistence + auto-lock spine tests.
 //
 // Covers:
 // A. Generates and persists a snapshot when missing
@@ -12,6 +12,7 @@
 // I. Mock replay advance within same week preserves locked snapshot (7.55l.6b1)
 // J. Same-week replay advance preserves snapshot->cycle linkage (7.55l.6b2)
 // K. Same-week replay preserves cycle-projected active profile (7.55l.6b3)
+// L. Cross-week replay advance preserves prior week's locked snapshot (7.55m.2)
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -546,6 +547,68 @@ void main() {
       expect(profile.targetPPA, cycle.targetPPA);
       expect(profile.fohWage, cycle.fohWage);
       expect(profile.bohWage, cycle.bohWage);
+    });
+  });
+
+  // ── L: Cross-week replay preserves prior week snapshot (7.55m.2) ───────
+
+  group('L — cross-week replay preserves prior week locked snapshot', () {
+    test('W13 snapshot row survives after advancing to W14', () async {
+      // Lock snapshot for W13.
+      final w13Snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(w13Snapshot, isNotNull);
+
+      // Advance to W14 Monday.
+      const nextWeekDate = '2026-03-30';
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate(nextWeekDate);
+
+      // Generate W14 snapshot.
+      final w14Snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(w14Snapshot, isNotNull);
+      expect(w14Snapshot!.snapshotId, isNot(w13Snapshot!.snapshotId));
+
+      // W13 snapshot must still be readable from the repository.
+      final rereadW13 = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForWeekKey(restaurantId, w13Snapshot.weekKey);
+      expect(rereadW13, isNotNull);
+      expect(rereadW13!.snapshotId, w13Snapshot.snapshotId);
+      expect(rereadW13.forecastCovers, w13Snapshot.forecastCovers);
+      expect(rereadW13.forecastSales, w13Snapshot.forecastSales);
+      expect(rereadW13.targetCycleId, w13Snapshot.targetCycleId);
+      expect(rereadW13.generatedAt, w13Snapshot.generatedAt);
+      expect(rereadW13.lockedAt, w13Snapshot.lockedAt);
+    });
+
+    test('W13 snapshot day rows survive after advancing to W14', () async {
+      final w13Snapshot =
+          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      expect(w13Snapshot, isNotNull);
+      final originalDayRows = w13Snapshot!.dayRows;
+
+      // Advance to W14 and trigger new snapshot generation.
+      const nextWeekDate = '2026-03-30';
+      await SqliteDatabase.instance
+          .reseedMockReplayForBusinessDate(nextWeekDate);
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+
+      // Re-read W13 and verify day rows are intact.
+      final rereadW13 = await SqliteWeeklyPlanSnapshotRepository.instance
+          .getSnapshotForWeekKey(restaurantId, w13Snapshot.weekKey);
+      expect(rereadW13, isNotNull);
+      expect(rereadW13!.dayRows.length, originalDayRows.length);
+
+      for (var i = 0; i < originalDayRows.length; i++) {
+        expect(rereadW13.dayRows[i].day, originalDayRows[i].day);
+        expect(rereadW13.dayRows[i].businessDate,
+            originalDayRows[i].businessDate);
+        expect(rereadW13.dayRows[i].forecastCovers,
+            originalDayRows[i].forecastCovers);
+        expect(rereadW13.dayRows[i].forecastSales,
+            originalDayRows[i].forecastSales);
+      }
     });
   });
 }

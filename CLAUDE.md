@@ -4,148 +4,89 @@ Short repo guidance for Claude Code.
 
 ## Read First
 
-Use these as active authority:
+Use these as authority:
 
 - `PROJECT_TRACKER.md`
 - `docs/DATA_ALIGNMENT_TRACKER.md`
-- any explicitly referenced active phase doc
+- `docs/contracts/**`
+- any active phase doc explicitly referenced in the prompt, usually under
+  `docs/phases/**`
 
-Treat `docs/archive/**` as historical/reference material unless the prompt explicitly points there.
+Treat `docs/archive/**` as history unless the prompt points there.
+
+## Docs Layout
+
+- `docs/contracts/` = active architecture rules
+- `docs/phases/` = live planning lanes
+- `docs/archive/` = completed / historical docs
 
 ## Workflow
 
-- Codex plans, verifies, and updates tracker truth.
-- Claude implements scoped prompts, runs focused tests, and reports back.
+- Codex plans, reviews, and updates tracker truth.
+- Claude implements the scoped prompt, runs focused tests, and reports back.
 - Do not broaden scope.
-- Do not mark phases complete or update tracker truth during implementation runs unless the active handoff loop below says to.
+- Do not update trackers during implementation runs unless the handoff
+  explicitly asks for it.
+- If docs move or docs are touched materially, update touched links and report
+  `Links updated: yes/no`.
 
-### Implementation Review Loop
+## Review Loop
 
-When the user pastes an `Execution Report` after a Claude implementation run:
+When the user pastes an `Execution Report`:
 
 1. Treat it as a review handoff.
-2. Do a codebase check unless the user explicitly asks for tests to be rerun.
-3. Review the changed files and the nearby runtime seams, not just the files named in the report.
-4. If issues are found:
-   - return findings first
-   - then generate the follow-up prompt for the same slice
-5. If no issues are found:
-   - update tracker truth:
-     - `PROJECT_TRACKER.md`
-     - `docs/DATA_ALIGNMENT_TRACKER.md`
-     - the active phase implementation doc
-   - then generate the next prompt
-6. Ignore stale pasted findings when the current code no longer matches them.
-7. Keep the loop mechanical:
-   - Claude implements and reports
-   - Codex reviews
-   - if clean, Codex advances trackers and prompts
-   - if not clean, Codex supplies the next follow-up prompt
+2. Review the changed files plus nearby runtime seams.
+3. If issues exist, return findings first and keep the same slice active.
+4. If clean, Codex advances trackers and the next prompt.
+5. Ignore stale pasted findings if the current code no longer matches them.
+6. If the user pivots into architecture, workflow, or docs cleanup, stop the
+   prompt loop and consolidate instead of auto-advancing execution slices.
 
-## Architecture Rules
+## Architecture Guardrails
 
-- `LaborModel` is the single formula source.
-- `ActiveTargetProfile` is the runtime standards projection of the current `TargetCycle`.
-- `TargetCycle` locks standards for 60 days.
-- `WeeklyPlanSnapshot` locks the current week for comparison surfaces.
-- `MeridianConfig` is a compatibility/default bridge, not runtime authority.
-- Do not mix source facts with derived metrics.
-- Keep vendor DTOs/adapters out of UI code.
+- `LaborModel` is the formula source.
+- `TargetCycle` locks 60-day standards.
+- `ActiveTargetProfile` is the runtime projection of the active cycle.
+- `DemandForecastContext` is rolling demand, not standards.
+- `WeeklyPlanSnapshot` is the locked week-in-force comparison plan.
+- Keep source facts, derived metrics, and teaching summaries separate.
+- Widgets should not own source-truth or service-period bucketing rules.
+- Shift stays whole-day until Phase 10.5.
 
-## Current Architecture Direction
+## Time Guardrails
 
-### North Star Flow
+- Restaurant-local timing rules win.
+- Business date is the anchor.
+- Week start, business-day rollover, and service periods are restaurant-owned
+  settings.
+- Closed truth does not get rewritten by later cycles or later weekly plans.
 
-```text
-Canonical Operational Facts
--> 60-Day Benchmark Snapshot
--> TargetCycle
--> ActiveTargetProfile + rolling DemandForecastContext
--> SchedulePlan
--> WeeklyPlanSnapshot
--> Shift
--> Variance
--> History
--> Learn
-```
+See:
 
-### Ownership
-
-- `TargetCycle` = locked 60-day standards
-- `ActiveTargetProfile` = runtime standards projection of `TargetCycle`
-- `DemandForecastContext` = rolling forecast demand
-- `SchedulePlan` = standards + demand + weekly day-allocation logic
-- `WeeklyPlanSnapshot` = locked weekly operating plan
-
-### Locked vs Rolling
-
-- Standards lock on a 60-day `TargetCycle`.
-- Demand rolls from:
-  - 60-day baseline
-  - fixed 3-week recent trend
-- No manager forecast adjustments in this architecture cut.
-- Weekly plan auto-generates and auto-locks at week start.
-- Variance and History compare against the locked `WeeklyPlanSnapshot`.
-
-### Day-Allocation Guardrail
-
-- Start from the 60-day day-of-week baseline share.
-- Lightly blend in the fixed 3-week recent trend.
-- Keep weekly spread stable; do not let it feel random.
-- Reconcile daily rows exactly back to the weekly total.
-
-### UX Guardrails
-
-- No intended manager-facing UX change in Benchmark, Schedule, History, or Learn.
-- Keep Benchmark as the target override surface.
-- Keep Schedule as the current week's plan surface.
-- No draft/publish workflow in the UI.
-- Use passive visibility only when important automation needs surfacing.
-
-### Restaurant Logic Authority
-
-- Business week defaults to Monday-Sunday, but restaurant can change it in Settings.
-- Business-date authority should come from restaurant settings:
-  - timezone
-  - opening/closing times
-  - rollover behavior
+- `docs/contracts/phase_7_55_architecture_contract.md`
+- `docs/contracts/phase_7_55_time_boundary_contract.md`
+- `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 
 ## Testing
 
-- Prefer focused test runs over `flutter test`.
-- Run the smallest set of tests that proves the requested seam.
-- If the prompt says not to rerun tests, do a codebase check instead.
+- Prefer focused test runs over broad suites.
+- Run the smallest set that proves the seam.
+- Always run `dart analyze` when the prompt requires verification.
+- If the prompt says not to rerun tests, do a code review instead.
 
-### Core Test Suite
+## Session Handoff
 
-When the prompt requires a full verification pass, run:
+Before ending a session or when the user says to wrap up, update:
 
-```
-flutter test test/schedule_plan_resolver_test.dart test/schedule_plan_read_service_test.dart test/baseline_manager_screen_test.dart test/current_state_alignment_test.dart test/target_consistency_opz_test.dart
-```
+- `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md`
 
-Always also run `dart analyze` before reporting back.
+Keep it short:
 
-## Session Context
-
-- Memory index: `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/MEMORY.md`
-- Knowledge graph: `graphify-out/graph.json` — entity/relationship data (auto-updated on commits via post-commit hook)
-- Graph report: `graphify-out/GRAPH_REPORT.md` — community clusters, key concepts, audit trail
-
-## Post-Phase Compact Rule
-
-After delivering each Execution Report for a completed sub-phase (e.g., 7.55l.7a, 7.55l.7b), run `/compact` to free context for the next prompt. Do not ask permission — just compact after the report is delivered.
-
-## Session Handoff Rule
-
-Before ending any session (or when the user says "wrap up", "done", "that's it", etc.), update `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md` with:
-- **Last Updated**: today's date + what phase/prompt was worked on
-- **What Completed This Session**: files changed, key decisions, tests that passed
-- **Current Test Count**: total passing tests from the required test runs
-- **What Comes Next**: next prompt or pending work
-- **Key Files Reference**: any files the next session should read first
-
-Do not ask permission — just update it as part of wrapping up.
+- what finished
+- files changed
+- tests run
+- what comes next
+- current doc locations if they changed
 
 ## Flavors
 

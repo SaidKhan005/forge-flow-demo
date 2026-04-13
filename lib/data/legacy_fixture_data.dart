@@ -1029,9 +1029,11 @@ class BaselineData {
   static List<DaypartBaseline> get _selected =>
       records.where((r) => r.isSelected).toList();
 
-  // OPZ source set — same selected benchmark/star-shift proxy records that
-  // drive the target. Falls back to all records only if nothing is selected.
-  // Manager override (Phase 5) will later supply a refined selection.
+  // OPZ source set — selected records when any exist, all records as
+  // fallback when nothing is selected. The fallback ensures Shift always
+  // has OPZ bounds even when the selection is empty. Note: this fallback
+  // means OPZ bounds and baselineRangeValidation can use different source
+  // sets — see phase_7_55m_5 audit doc "Source-Set Fallback Split."
   static List<DaypartBaseline> get _opzSourceRecords =>
       _selected.isNotEmpty ? _selected : records;
 
@@ -1086,11 +1088,18 @@ class BaselineData {
           ? 0
           : MeridianConfig.bohWage / derivedTargetSPLH * 100;
 
-  // ── OPZ helpers (Jim Taylor Ch. 11) ──────────────────────────────────────
-  // OPZ is now historically derived from the same selected benchmark/star-shift
-  // proxy records that drive derivedTargetCPLH (Ch. 9 → Ch. 11 chain).
-  // MeridianConfig.opzFloorCPLH / opzCeilingCPLH remain as legacy demo
-  // constants but are no longer the primary runtime OPZ source.
+  // ── OPZ definition (Jim Taylor Ch. 11) ───────────────────────────────────
+  // OPZ floor and ceiling = min/max CPLH of the selected benchmark or
+  // star-shift records. This is the **OPZ definition** — the band within
+  // which current CPLH is considered healthy.
+  //
+  // This is a different concept from:
+  // - **range quality** (baselineRangeValidation) — whether the selection
+  //   spread is too narrow, appropriate, or too wide for coaching
+  // - **zone status** (opzStatusForCplh) — where live CPLH sits relative
+  //   to these bounds
+  //
+  // See phase_7_55m_5 audit doc for the full three-concept separation.
 
   static double get opzFloorCPLH =>
       _opzSourceRecords.map((r) => r.cplh).reduce(math.min);
@@ -1155,7 +1164,9 @@ class BaselineData {
     );
   }
 
-  /// OPZ zone for a live CPLH reading: 'below' | 'in' | 'above'.
+  /// OPZ zone status for a live CPLH reading: 'below' | 'in' | 'above'.
+  /// This is about **current position** within the OPZ band — independent
+  /// of whether the benchmark selection quality is narrow, good, or wide.
   static String opzStatusForCplh(double currentCplh) {
     if (currentCplh < opzFloorCPLH) return 'below';
     if (currentCplh > opzCeilingCPLH) return 'above';
@@ -1183,7 +1194,11 @@ class BaselineData {
     }
   }
 
-  // ── Baseline range validation (Ch. 11 — benchmark selection quality) ──────
+  // ── Benchmark range-quality assessment (Ch. 11) ──────────────────────────
+  // Evaluates whether the selected benchmark CPLH spread is usable for
+  // coaching. This is about **selection quality**, not live CPLH position.
+  // Thresholds must stay aligned with BaselineSelectionAnalyticsService.
+  // See phase_7_55m_5 audit doc for the full three-concept separation.
 
   static BaselineRangeValidation get baselineRangeValidation {
     final selected = records.where((r) => r.isSelected).toList();
@@ -1196,8 +1211,7 @@ class BaselineData {
         status: 'too_narrow',
         statusLabel: 'OPZ RANGE TOO NARROW',
         message:
-            'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-            'Add more star shifts that felt right so the team has usable flex.',
+            'Star shifts too tightly clustered. Add more for a teachable range.',
         showWarning: true,
       );
     }
@@ -1215,22 +1229,19 @@ class BaselineData {
       status = 'too_narrow';
       statusLabel = 'OPZ RANGE TOO NARROW';
       message =
-          'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-          'Add more star shifts that felt right so the team has usable flex.';
+          'Star shifts too tightly clustered. Add more for a teachable range.';
       showWarning = true;
     } else if (rangeWidth > 1.25) {
       status = 'too_wide';
       statusLabel = 'OPZ RANGE TOO WIDE';
       message =
-          'Selected star shifts span too much of the operating range to teach one clean standard. '
-          'Tighten the set around the shifts that felt consistently right.';
+          'Star shifts too widely spread. Tighten to one clean standard.';
       showWarning = true;
     } else {
       status = 'healthy';
       statusLabel = 'GOOD OPZ RANGE';
       message =
-          'Recommended target sits inside a usable benchmark range. '
-          'This gives the team room to flex up or down while still holding a teachable standard.';
+          'Target sits in a usable range with room to flex.';
       showWarning = false;
     }
 
@@ -1308,9 +1319,15 @@ class BaselineData {
       );
 
   // ── Graph model (Jim Taylor Ch. 9–12) ─────────────────────────────────────
-  // Historical context = full 60-day lived range (Ch. 9) — always the outer scale.
-  // Active range = selected benchmark/star-shift range (Ch. 11–12) — inner highlight.
-  // Display range is always the historical context so the 60-day truth stays visible.
+  // The graph shows two layered ranges:
+  //   Outer line  = full 60-day historical CPLH range (Ch. 9 lived range)
+  //   Inner box   = selected benchmark/star-shift CPLH range (Ch. 11–12)
+  // Display endpoints are always the historical context so the 60-day truth
+  // stays visible. Position normalization is against the historical scale.
+  //
+  // If the inner box fills most of the bar, it means the selected shifts
+  // genuinely span most of the historical range — this is true data, not a
+  // distortion. See phase_7_55m_5 audit doc.
 
   static BaselineRangeGraphModel get rangeGraphModel {
     // A. Historical context — always the outer display range

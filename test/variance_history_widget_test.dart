@@ -8,7 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/fixture_seed_data.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
+import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/week_record.dart';
+import 'package:forge_and_flow/services/daypart_evidence_visibility_policy.dart';
+import 'package:forge_and_flow/services/history_benchmark_daypart_read_service.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/widgets/lever_card.dart';
 import 'package:forge_and_flow/widgets/week_history_tile.dart';
@@ -557,6 +561,161 @@ void main() {
 
     test('dollarGapAnnualized = 0 when dollarGap = 0', () {
       expect(_zeroGap.dollarGapAnnualized, 0.0);
+    });
+  });
+
+  // ── History benchmark dayparts — evidence-backed (7.55k.5) ──────────────
+
+  group('History benchmark dayparts — evidence-backed', () {
+    test('canonical seed produces evidence-backed benchmark summaries', () {
+      const service = HistoryBenchmarkDaypartReadService();
+      final results = service.build(
+          MockIntegrationReplaySeed.output.historicalClosedShifts);
+      expect(results, isNotEmpty);
+      for (final b in results) {
+        expect(b.benchmarkCount, greaterThan(0));
+        expect(b.avgCPLH, greaterThan(0));
+        expect(b.avgSPLH, greaterThan(0));
+        expect(b.label, isNotEmpty);
+      }
+    });
+
+    test('benchmark summaries are no longer plain joined labels', () {
+      const service = HistoryBenchmarkDaypartReadService();
+      final results = service.build(
+          MockIntegrationReplaySeed.output.historicalClosedShifts);
+      // Each summary carries metric proof, not just a label string.
+      for (final b in results) {
+        expect(b.closedShiftCount, greaterThanOrEqualTo(b.benchmarkCount));
+        expect(b.avgCPLH, isNot(0));
+      }
+    });
+
+    test('compact benchmark row format includes total sample depth', () {
+      const service = HistoryBenchmarkDaypartReadService();
+      final results = service.build(
+          MockIntegrationReplaySeed.output.historicalClosedShifts);
+      // Verify the rendering shape: "X/Y wins" (not just "X wins").
+      for (final b in results) {
+        final rendered =
+            '${b.label} · ${b.benchmarkCount}/${b.closedShiftCount} wins · '
+            '${b.avgCPLH.toStringAsFixed(2)} CPLH · '
+            '\$${b.avgSPLH.toStringAsFixed(0)} SPLH';
+        // Must contain the "N/M wins" pattern showing both favorable and total.
+        expect(rendered, contains('/${b.closedShiftCount} wins'));
+        // Total should always be >= favorable.
+        expect(b.closedShiftCount, greaterThanOrEqualTo(b.benchmarkCount));
+      }
+    });
+  });
+
+  // ── Tier-aware truncation — strong first (7.55k.7a) ─────────────────────
+
+  group('Tier-aware truncation — strong first', () {
+    test('strong benchmark evidence is prioritized over early signals', () {
+      const service = HistoryBenchmarkDaypartReadService();
+      // Thin bucket (2/2) has higher benchmarkCount than strong bucket (1/3).
+      final shifts = <ShiftRecord>[
+        // Wed Lunch: 2 favorable, 2 total → earlySignal
+        ShiftRecord(weekId: 'w', dayLabel: 'Wed', daypart: 'lunch',
+            status: 'closed', covers: 120, forecastCovers: 120,
+            ppa: 42, cplh: 4.5, splh: 180, fohHours: 28, bohHours: 29,
+            primaryLever: 'PPA_UP'),
+        ShiftRecord(weekId: 'w', dayLabel: 'Wed', daypart: 'lunch',
+            status: 'closed', covers: 120, forecastCovers: 120,
+            ppa: 42, cplh: 4.5, splh: 180, fohHours: 28, bohHours: 29,
+            primaryLever: 'PPA_UP', businessDate: '2026-03-12'),
+        // Sat Dinner: 1 favorable, 3 total → strong
+        ShiftRecord(weekId: 'w', dayLabel: 'Sat', daypart: 'dinner',
+            status: 'closed', covers: 120, forecastCovers: 120,
+            ppa: 42, cplh: 4.5, splh: 180, fohHours: 28, bohHours: 29,
+            primaryLever: 'PPA_UP'),
+        ShiftRecord(weekId: 'w', dayLabel: 'Sat', daypart: 'dinner',
+            status: 'closed', covers: 120, forecastCovers: 120,
+            ppa: 42, cplh: 4.5, splh: 180, fohHours: 28, bohHours: 29,
+            primaryLever: 'CPLH_DOWN', businessDate: '2026-03-08'),
+        ShiftRecord(weekId: 'w', dayLabel: 'Sat', daypart: 'dinner',
+            status: 'closed', covers: 120, forecastCovers: 120,
+            ppa: 42, cplh: 4.5, splh: 180, fohHours: 28, bohHours: 29,
+            primaryLever: 'CPLH_DOWN', businessDate: '2026-03-15'),
+      ];
+      final results = service.build(shifts);
+      // Strong (Sat Dinner) must appear before earlySignal (Wed Lunch)
+      // even though Wed Lunch has higher benchmarkCount.
+      expect(results.first.label, 'Sat Dinner');
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: results.first.benchmarkCount,
+            closedShiftCount: results.first.closedShiftCount),
+        EvidenceTier.strong,
+      );
+    });
+  });
+
+  // ── Visibility policy — interim evidence tiers (7.55k.7) ────────────────
+
+  group('Visibility policy — benchmark evidence tiers', () {
+    test('strong benchmark requires >= 3 closed shifts', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: 2, closedShiftCount: 3),
+        EvidenceTier.strong,
+      );
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: 1, closedShiftCount: 3),
+        EvidenceTier.strong,
+      );
+    });
+
+    test('thin sample is early signal', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: 1, closedShiftCount: 2),
+        EvidenceTier.earlySignal,
+      );
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: 1, closedShiftCount: 1),
+        EvidenceTier.earlySignal,
+      );
+    });
+
+    test('zero favorable is hidden', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+            benchmarkCount: 0, closedShiftCount: 5),
+        EvidenceTier.hidden,
+      );
+    });
+
+    test('repeatable win requires >= 2 favorable shifts', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 2),
+        EvidenceTier.strong,
+      );
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 5),
+        EvidenceTier.strong,
+      );
+    });
+
+    test('single favorable shift is not a repeatable win', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 1),
+        EvidenceTier.hidden,
+      );
+    });
+
+    test('zero favorable is hidden for repeatable wins', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 0),
+        EvidenceTier.hidden,
+      );
     });
   });
 }

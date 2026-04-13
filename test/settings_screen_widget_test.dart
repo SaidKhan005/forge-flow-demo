@@ -84,6 +84,34 @@ void main() {
     });
   });
 
+  // ── Section organization (7.55m.6) ──────────────────────────────────
+
+  group('Settings section labels (7.55m.6)', () {
+    testWidgets('shows MOCK REPLAY section label', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('MOCK REPLAY'), findsOneWidget);
+    });
+
+    testWidgets('shows DATA MANAGEMENT section label', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await tester.pump();
+
+      expect(find.text('DATA MANAGEMENT'), findsOneWidget);
+    });
+  });
+
   // ── Mock replay controls ──────────────────────────────────────────────
 
   group('Settings mock replay controls', () {

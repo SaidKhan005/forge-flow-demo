@@ -1,8 +1,9 @@
-// Prompt 7.12 â€” Shift Visual Widget Tests
+// Prompt 7.12 + 7.55m.3 â€” Shift Visual Widget Tests
 //
 // Verifies that the polished Shift screen still exposes the required
 // structure and key visible labels after the visual pass.
 // Now proves rendering from provider-backed read model, not demo constants.
+// 7.55m.3: header time is now a live clock, not static snapshot text.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -121,6 +122,11 @@ Widget _buildShiftDashboard({String? restaurantName, ShiftDashboardReadModel? re
 }
 
 void main() {
+  // Clear clock override between tests.
+  tearDown(() {
+    ShiftDashboard.clockOverride = null;
+  });
+
   // â”€â”€ A: core sections render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('A â€” core sections', () {
@@ -154,15 +160,36 @@ void main() {
           findsOneWidget);
     });
 
-    testWidgets('time and service elapsed are present', (tester) async {
+    // 7.55m.3: header time is now a live wall clock, not static snapshot text.
+    testWidgets('header renders live clock via test seam', (tester) async {
+      // Inject a deterministic time: 8:30 PM
+      ShiftDashboard.clockOverride = () => DateTime(2026, 3, 27, 20, 30);
+
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
+      expect(find.text('8:30 PM', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('header does NOT render old service-elapsed text', (tester) async {
+      await tester.pumpWidget(_buildShiftDashboard());
+      await tester.pump();
+      await tester.pump();
+      // The old static “into service” text must not appear.
+      expect(find.textContaining('into service', skipOffstage: false),
+          findsNothing);
+    });
+
+    testWidgets('header does NOT render old static time text', (tester) async {
+      await tester.pumpWidget(_buildShiftDashboard());
+      await tester.pump();
+      await tester.pump();
+      // The old combined “timeLabel · serviceElapsedLabel” must not appear.
       expect(
           find.text(
               '${ShiftSnapshot.time} \u00b7 ${ShiftSnapshot.serviceElapsed}',
               skipOffstage: false),
-          findsOneWidget);
+          findsNothing);
     });
 
     testWidgets('LABOR % label is present', (tester) async {
@@ -284,9 +311,14 @@ void main() {
 
   // Teaching section hidden on Shift screen — Phase 10.5.
   group('D â€” teaching container', () {
-    testWidgets('active lever whatHappened text is present', (tester) async {
-      // PRIMARY DRIVER section hidden on Shift screen — Phase 10.5.
-      // Read model still computes the lever; UI just doesn't render it.
+    testWidgets('PRIMARY DRIVER section label is NOT rendered (Phase 10.5)',
+        (tester) async {
+      await tester.pumpWidget(_buildShiftDashboard());
+      await tester.pump();
+      await tester.pump();
+      // The full teaching section is commented out — deferred until Shift
+      // is daypart-live in Phase 10.5. The section label must not appear.
+      expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsNothing);
     });
   });
 

@@ -17,6 +17,13 @@ class CurrentWeekState {
 
   /// Converts an OpenShiftSnapshot to a ShiftRecord-compatible shape
   /// for use in Full Week views. Target fields come from the active profile.
+  ///
+  /// `primaryLever` is hardcoded to `'ON_MODEL'` — a neutral placeholder,
+  /// not a claim about actual-vs-target position. Open rows may carry
+  /// live partial actuals that deviate from target, but row-scope driver
+  /// detection is not yet modeled. Projected rows have no actuals at all.
+  /// See phase_7_55m_4 audit doc; `7.55k` owns the honest row-scope
+  /// driver contract.
   static ShiftRecord shiftRecordFromSnapshot(
     OpenShiftSnapshot s,
     ActiveTargetProfile profile,
@@ -47,6 +54,7 @@ class CurrentWeekState {
       opzCeilingCPLH: profile.opzCeilingCPLH,
       theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
       theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+      businessDate: s.businessDate,
       sourceSystem: s.sourceSystem,
       sourceShiftId: s.sourceShiftId,
     );

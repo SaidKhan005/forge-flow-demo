@@ -17,6 +17,7 @@ abstract class ShiftDataSource {
   Future<List<WeekRecord>> getWeekHistory();
   Future<List<HistoryPatternRecord>> getHistoryPatternRecords();
   Future<List<ShiftRecord>> getFullWeekShifts(String weekId);
+  Future<List<ShiftRecord>> getHistoricalClosedShifts();
 }
 
 // ── Live — reads from SQLite via ShiftService ─────────────────────────────────
@@ -39,6 +40,10 @@ class LiveShiftDataSource implements ShiftDataSource {
   @override
   Future<List<ShiftRecord>> getFullWeekShifts(String weekId) =>
       ShiftService.instance.getFullWeekShifts(weekId);
+
+  @override
+  Future<List<ShiftRecord>> getHistoricalClosedShifts() =>
+      ShiftService.instance.getHistoricalClosedShifts();
 }
 
 // ── Static — test/preview compatibility using mock replay ────────────────────
@@ -115,6 +120,10 @@ class StaticShiftDataSource implements ShiftDataSource {
     return HistoryPatternBuilder.fromClosedShifts(
         replay.historicalClosedShifts, weekLabelsById);
   }
+
+  @override
+  Future<List<ShiftRecord>> getHistoricalClosedShifts() async =>
+      MockIntegrationReplaySeed.output.historicalClosedShifts;
 
   @override
   Future<List<ShiftRecord>> getFullWeekShifts(String weekId) async =>

@@ -209,4 +209,224 @@ void main() {
       expect(v.showWarning, isTrue);
     });
   });
+
+  // ── F: graph active range always sits within historical context ────────────
+
+  group('F — graph active range within historical context (7.55m.5)', () {
+    // These tests use controlled data to verify graph normalization.
+    // In the bridge era, primeManagerOverride() with no selections can
+    // leave historicalContextRecords and records from different sources
+    // (SQLite vs seed data). That is not a distortion — it is the
+    // compatibility bridge working as designed. See phase_7_55m_5 doc.
+
+    test('active range positions are normalized within [0, 1]', () {
+      // Controlled data: historical context is wider than selection
+      BaselineData.applyHistoricalContext([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 3.0, splh: 160, ppa: 38, covers: 130),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 6.0, splh: 195, ppa: 48, covers: 280),
+      ]);
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 3.0, splh: 160, ppa: 38, covers: 130,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.5, splh: 180, ppa: 43, covers: 220,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 5.0, splh: 185, ppa: 45, covers: 240,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 6.0, splh: 195, ppa: 48, covers: 280),
+      ]);
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.activeRangeStartPosition, greaterThanOrEqualTo(0.0));
+      expect(m.activeRangeStartPosition, lessThanOrEqualTo(1.0));
+      expect(m.activeRangeEndPosition, greaterThanOrEqualTo(0.0));
+      expect(m.activeRangeEndPosition, lessThanOrEqualTo(1.0));
+      expect(m.targetPosition, greaterThanOrEqualTo(0.0));
+      expect(m.targetPosition, lessThanOrEqualTo(1.0));
+    });
+
+    test('active range with override stays within historical range',
+        () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      final pick = candidates.take(3).map((c) => c.recordKey).toSet();
+      await BaselineManagerService.instance.saveSelection(pick);
+
+      // After saveSelection with non-empty keys, primeManagerOverride
+      // is called again and both sources are consistent.
+      final m = BaselineData.rangeGraphModel;
+      expect(m.activeRangeStartCPLH,
+          greaterThanOrEqualTo(m.historicalRangeStartCPLH));
+      expect(m.activeRangeEndCPLH,
+          lessThanOrEqualTo(m.historicalRangeEndCPLH));
+      expect(m.activeRangeStartPosition, greaterThanOrEqualTo(0.0));
+      expect(m.activeRangeEndPosition, lessThanOrEqualTo(1.0));
+    });
+  });
+
+  // ── H: no-selection fallback split (7.55m.5a) ──────────────────────────────
+
+  group('H — no-selection fallback split (7.55m.5a)', () {
+    test('no selected records: range-quality is too_narrow but OPZ bounds still resolve',
+        () {
+      // All records, none selected — simulates the no-selection fallback
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 3.8, splh: 170, ppa: 40, covers: 150),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.5, splh: 180, ppa: 43, covers: 220),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 5.2, splh: 188, ppa: 46, covers: 260),
+      ]);
+
+      // Range-quality sees 0 selected → too_narrow
+      final v = BaselineData.baselineRangeValidation;
+      expect(v.status, equals('too_narrow'));
+      expect(v.statusLabel, equals('OPZ RANGE TOO NARROW'));
+
+      // OPZ bounds fall back to all records → still resolve
+      expect(BaselineData.opzFloorCPLH, equals(3.8));
+      expect(BaselineData.opzCeilingCPLH, equals(5.2));
+
+      // Shift zone status still works against these fallback bounds
+      expect(BaselineData.opzStatusForCplh(4.5), equals('in'));
+      expect(BaselineData.opzStatusForCplh(3.0), equals('below'));
+    });
+  });
+
+  // ── G: Shift zone status is independent of benchmark range quality ────────
+
+  group('G — zone status independent of range quality (7.55m.5)', () {
+    test('live CPLH below floor produces "below" even with healthy range',
+        () {
+      // Set up a healthy selection (CPLH width ~0.7 — within thresholds)
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.2, splh: 176, ppa: 41, covers: 160,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.6, splh: 181, ppa: 44, covers: 240,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.9, splh: 183, ppa: 45, covers: 250,
+            isSelected: true),
+      ]);
+
+      // Confirm range quality is healthy
+      final v = BaselineData.baselineRangeValidation;
+      expect(v.status, equals('healthy'));
+
+      // A live CPLH below the OPZ floor should produce 'below'
+      // regardless of selection quality
+      final zoneStatus = BaselineData.opzStatusForCplh(3.0);
+      expect(zoneStatus, equals('below'));
+    });
+
+    test('live CPLH inside OPZ produces "in" even with too-wide range', () {
+      // Set up a too-wide selection (CPLH width > 1.25)
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 3.2, splh: 168, ppa: 38, covers: 140,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 5.0, splh: 183, ppa: 37, covers: 92,
+            isSelected: true),
+      ]);
+
+      // Confirm range quality is too_wide
+      final v = BaselineData.baselineRangeValidation;
+      expect(v.status, equals('too_wide'));
+
+      // A live CPLH inside the OPZ should produce 'in'
+      // regardless of selection quality
+      final zoneStatus = BaselineData.opzStatusForCplh(4.0);
+      expect(zoneStatus, equals('in'));
+    });
+  });
+
+  // ── I: OPZ range-quality message alignment (7.55m.6a) ─────────────────────
+
+  group('I — OPZ range-quality message alignment (7.55m.6a)', () {
+    tearDown(() {
+      BaselineData.clearManagerOverride();
+      BaselineData.clearHistoricalContext();
+    });
+
+    test('rangeWidth < 0.15 branch uses shortened narrow copy', () {
+      // Two selected shifts with width 0.01 (< 0.15 threshold)
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.50, splh: 180, ppa: 42, covers: 170,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.51, splh: 180, ppa: 42, covers: 170,
+            isSelected: true),
+      ]);
+
+      final v = BaselineData.baselineRangeValidation;
+      expect(v.status, equals('too_narrow'));
+      expect(v.message,
+          equals('Star shifts too tightly clustered. Add more for a teachable range.'));
+    });
+
+    test('fewer-than-2 branch uses same shortened narrow copy', () {
+      // One selected shift — hits the < 2 guard
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.50, splh: 180, ppa: 42, covers: 170,
+            isSelected: true),
+      ]);
+
+      final v = BaselineData.baselineRangeValidation;
+      expect(v.status, equals('too_narrow'));
+      expect(v.message,
+          equals('Star shifts too tightly clustered. Add more for a teachable range.'));
+    });
+
+    test('all three messages are shortened (no old long copy remains)', () {
+      // Narrow
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.50, splh: 180, ppa: 42, covers: 170,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.51, splh: 180, ppa: 42, covers: 170,
+            isSelected: true),
+      ]);
+      expect(BaselineData.baselineRangeValidation.message,
+          isNot(contains('repeatable standard')));
+
+      // Healthy
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.2, splh: 176, ppa: 41, covers: 160,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.6, splh: 181, ppa: 44, covers: 240,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.9, splh: 183, ppa: 45, covers: 250,
+            isSelected: true),
+      ]);
+      expect(BaselineData.baselineRangeValidation.message,
+          isNot(contains('Recommended target')));
+
+      // Wide
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 3.2, splh: 168, ppa: 38, covers: 140,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 5.0, splh: 183, ppa: 37, covers: 92,
+            isSelected: true),
+      ]);
+      expect(BaselineData.baselineRangeValidation.message,
+          isNot(contains('operating range')));
+    });
+  });
 }

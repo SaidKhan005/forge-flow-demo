@@ -590,7 +590,7 @@ Front-loaded checkpoint before `7.55i.3`:
 
 Persistent planning artifact:
 
-- `docs/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
 
 Reason this exists:
 
@@ -630,7 +630,7 @@ Dependency note:
 
 Planning artifact:
 
-- `docs/phase_7_55k_daypart_variance_history_learn_plan.md`
+- `docs/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
 
 Reason this exists:
 
@@ -1525,7 +1525,7 @@ Disallowed 7.52 drift:
   - Phase 9 owns login, permissions, and real access control
   - Phase 10 owns cross-device shared state
 - lock the execution contract in:
-  - `docs/phase_7_52_execution_plan.md`
+  - `docs/archive/phases/phase_7_52_execution_plan.md`
 - once that contract is written and accepted, advance the active execution block to `7.52b`
 
 ### 7.52b. Product Identity + Naming Cleanup

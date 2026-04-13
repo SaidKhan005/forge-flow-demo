@@ -88,7 +88,7 @@ class AppDataStatusService {
   /// Checks whether closed shift_records exist for the actual current week
   /// (derived from [effectiveNow]) that are not yet in completed week_records.
   Future<bool> _hasCurrentWeekShifts(
-      String restaurantId, List weekRecords, DateTime effectiveNow) async {
+      String restaurantId, List<dynamic> weekRecords, DateTime effectiveNow) async {
     final currentWeekId = _isoWeekId(effectiveNow);
     final completedWeekIds =
         weekRecords.map((w) => w.weekId as String).toSet();

@@ -4,6 +4,11 @@
 // The ingest path (Phase 3) will close shifts into SQLite; this builder
 // reads those records back and produces the pattern signal that
 // HistoryTeachingAnalyzer summarizes.
+//
+// Phase 7.55k.3: DaypartPatternSummaryBuilder now exists as a richer
+// aggregate builder. This builder remains the active path for
+// HistoryTeachingAnalyzer and LearnTeachingAnalyzer until 7.55k.5 /
+// 7.55k.6 migrate them.
 
 import '../data/legacy_fixture_data.dart';
 import '../models/history_pattern_record.dart';

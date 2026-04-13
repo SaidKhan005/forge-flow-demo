@@ -1,3 +1,10 @@
+// Phase 7.55m.1 note: ShiftService uses operational current-shift authority
+// (OpenShiftSnapshotRepository) for business-date resolution, NOT the
+// planning-anchor seam in BusinessDateAuthorityService. This separation is
+// intentional — the planning anchor resolves from mock replay state and
+// closed-shift history, while operational authority resolves from
+// open/projected shift snapshots reflecting "what business day is it now."
+
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/closed_shift_input.dart';
 import '../domain/models/target_cycle.dart';
@@ -9,6 +16,7 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
+import 'business_date_authority_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'weekly_plan_snapshot_service.dart';
 import '../domain/services/shift_fact_builder.dart';
@@ -106,14 +114,15 @@ class ShiftService {
       modelBohHours:     wtdModelBoh,
     );
 
-    const dayOrder = {'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7};
-    const dayFull  = {1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday',
-                      5: 'Friday', 6: 'Saturday', 7: 'Sunday'};
-    final lastDayLabel   = closed
+    final lastDayLabel = closed
         .map((s) => s.dayLabel)
-        .reduce((a, b) => (dayOrder[a] ?? 0) >= (dayOrder[b] ?? 0) ? a : b);
-    final closedDayNum   = dayOrder[lastDayLabel] ?? 1;
-    final lastClosedDay  = dayFull[closedDayNum] ?? 'Monday';
+        .reduce((a, b) =>
+            (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
+                    (BusinessDateAuthorityService.dayNumber(b) ?? 0)
+                ? a
+                : b);
+    final closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
+    final lastClosedDay = BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
 
     return WeekData(
       weekId:             weekId,
@@ -160,6 +169,16 @@ class ShiftService {
     final closedShifts =
         await _shiftRepo.getClosedShiftsForWeeks(restaurantId, weekIds);
     return HistoryPatternBuilder.fromClosedShifts(closedShifts, weekLabelsById);
+  }
+
+  // ── Historical closed shifts (for benchmark daypart evidence) ────────────────
+
+  Future<List<ShiftRecord>> getHistoricalClosedShifts() async {
+    final weeks = await getWeekHistory();
+    if (weeks.isEmpty) return [];
+    final weekIds = weeks.map((w) => w.weekId).toList();
+    final restaurantId = await _activeRestaurantId();
+    return _shiftRepo.getClosedShiftsForWeeks(restaurantId, weekIds);
   }
 
   // ── Close a shift ─────────────────────────────────────────────────────────────
@@ -479,20 +498,16 @@ class ShiftService {
     final closed = shifts.where((s) => s.isClosed).toList();
     if (closed.isEmpty) return null;
 
-    // ── Day ordering (needed for locked forecast boundary) ────────────
-    const dayOrder = {
-      'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4,
-      'Fri': 5, 'Sat': 6, 'Sun': 7,
-    };
-    const dayFull = {
-      1: 'Monday', 2: 'Tuesday', 3: 'Wednesday', 4: 'Thursday',
-      5: 'Friday', 6: 'Saturday', 7: 'Sunday',
-    };
+    // ── Day ordering (canonical source from BusinessDateAuthorityService) ──
     final lastDayLabel = closed
         .map((s) => s.dayLabel)
-        .reduce((a, b) => (dayOrder[a] ?? 0) >= (dayOrder[b] ?? 0) ? a : b);
-    final closedDayNum = dayOrder[lastDayLabel] ?? 1;
-    final lastClosedDay = dayFull[closedDayNum] ?? 'Monday';
+        .reduce((a, b) =>
+            (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
+                    (BusinessDateAuthorityService.dayNumber(b) ?? 0)
+                ? a
+                : b);
+    final closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
+    final lastClosedDay = BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
 
     // ── Actual aggregation (unchanged from getWeekToDate) ─────────────
     final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
@@ -503,7 +518,7 @@ class ShiftService {
     // ── Locked WTD forecast from snapshot day rows ────────────────────
     // Sum snapshot day-row forecast covers through the last closed day.
     final wtdForecastCovers = snapshot.dayRows
-        .where((d) => (dayOrder[d.day] ?? 0) <= closedDayNum)
+        .where((d) => (BusinessDateAuthorityService.dayNumber(d.day) ?? 0) <= closedDayNum)
         .fold<int>(0, (s, d) => s + d.forecastCovers);
 
     final totalFohLaborDollar =

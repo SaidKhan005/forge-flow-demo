@@ -133,10 +133,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           Container(height: 1, color: AppColors.borderSubtle),
           const SizedBox(height: 16),
 
-          // Demo data section
+          // Mock replay section
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-            child: Text('DEMO',
+            child: Text('MOCK REPLAY',
                 style: AppTextStyles.mono8(color: AppColors.textMuted)),
           ),
 
@@ -209,7 +209,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
-          Container(height: 1, color: AppColors.borderSubtle),
+          const SizedBox(height: 16),
+
+          // Data management section
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+            child: Text('DATA MANAGEMENT',
+                style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          ),
 
           _SettingsTile(
             label: 'Clear All Data',

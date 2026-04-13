@@ -14,6 +14,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:forge_and_flow/data/learn_benchmark_context_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/services/daypart_evidence_visibility_policy.dart';
 import 'package:forge_and_flow/data/shift_data_source.dart';
 import 'package:forge_and_flow/data/week_data_notifier.dart';
 import 'package:forge_and_flow/screens/variance_report.dart';
@@ -139,9 +140,9 @@ void main() {
       expect(find.text('REPEATS IN'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('BENCHMARK DAYPARTS label is present', (tester) async {
+    testWidgets('WIN REPEATS label is present', (tester) async {
       await _openLearnTab(tester);
-      expect(find.text('BENCHMARK DAYPARTS'), findsAtLeastNWidgets(1));
+      expect(find.text('WIN REPEATS'), findsAtLeastNWidgets(1));
     });
   });
 
@@ -193,10 +194,12 @@ void main() {
       expect(find.text('WIN REPEATS'), findsAtLeastNWidgets(1));
     });
 
-    testWidgets('BENCHMARK DAYPARTS label is present in Wins card',
+    testWidgets('evidence-backed win rows render in Wins card (7.55k.6)',
         (tester) async {
       await _openLearnTab(tester);
-      expect(find.text('BENCHMARK DAYPARTS'), findsAtLeastNWidgets(1));
+      // Evidence rows show N/M wins format instead of joined labels.
+      final winsFinder = find.textContaining(RegExp(r'\d+/\d+ wins'));
+      expect(winsFinder, findsAtLeastNWidgets(1));
     });
 
     testWidgets('WHAT HELD section is present', (tester) async {
@@ -225,6 +228,119 @@ void main() {
       await _openLearnTab(tester);
       expect(
           find.text('SYSTEM BENCHMARK SET'), findsAtLeastNWidgets(1));
+    });
+  });
+
+  // ── I: Repeatable Wins evidence-backed rendering (7.55k.6) ─────────────
+
+  group('I — Repeatable Wins evidence-backed', () {
+    testWidgets('WIN REPEATS section renders evidence rows',
+        (tester) async {
+      await _openLearnTab(tester);
+      // WIN REPEATS label should be present as a section header.
+      expect(find.text('WIN REPEATS'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('evidence rows show N/M wins format with metric proof',
+        (tester) async {
+      await _openLearnTab(tester);
+      // Find text containing the "wins" keyword with the N/M format.
+      // The mock replay seed should produce at least one evidence row.
+      final winsFinder = find.textContaining(RegExp(r'\d+/\d+ wins'));
+      expect(winsFinder, findsAtLeastNWidgets(1),
+          reason: 'evidence rows should show N/M wins format');
+    });
+
+    testWidgets('evidence rows include CPLH and SPLH proof',
+        (tester) async {
+      await _openLearnTab(tester);
+      // Evidence rows should contain metric proof text.
+      final cplhFinder = find.textContaining('CPLH');
+      final splhFinder = find.textContaining('SPLH');
+      expect(cplhFinder, findsAtLeastNWidgets(1));
+      expect(splhFinder, findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('WHAT HELD teaching section still renders',
+        (tester) async {
+      await _openLearnTab(tester);
+      expect(find.text('WHAT HELD'), findsAtLeastNWidgets(1));
+    });
+
+    testWidgets('WHAT TO PROTECT teaching section still renders',
+        (tester) async {
+      await _openLearnTab(tester);
+      expect(find.text('WHAT TO PROTECT'), findsAtLeastNWidgets(1));
+    });
+  });
+
+  // ── J: Repeatable Wins teaching-scope honesty (7.55k.6a) ──────────────
+
+  group('J — Repeatable Wins teaching-scope honesty', () {
+    testWidgets('teaching block is scoped to top-ranked win label',
+        (tester) async {
+      await _openLearnTab(tester);
+      // The COACHING header should contain the top win's label to scope it.
+      final coachingFinder = find.textContaining(RegExp(r'COACHING \u2014'));
+      expect(coachingFinder, findsAtLeastNWidgets(1),
+          reason: 'teaching block should be scoped with COACHING — <label>');
+    });
+
+    testWidgets('each evidence row has a per-row lever chip',
+        (tester) async {
+      await _openLearnTab(tester);
+      // Per-row lever chips should render lever shortLabels (PPA, CPLH, etc.)
+      // alongside the evidence rows. At least one chip should be visible.
+      final leverChipFinder = find.textContaining(
+          RegExp(r'^(PPA|CPLH|SPLH|COVERS|WAGE|HOURS)$'));
+      expect(leverChipFinder, findsAtLeastNWidgets(1),
+          reason: 'per-row lever chips should be visible');
+    });
+  });
+
+  // ── K: Repeatable Wins visibility policy (7.55k.7) ─────────────────────
+
+  group('K — Repeatable Wins empty state honesty (7.55k.7a)', () {
+    testWidgets('Wins card does not render legacy BENCHMARK DAYPARTS label',
+        (tester) async {
+      // The Learn tab should not contain BENCHMARK DAYPARTS anywhere —
+      // that label belongs only in the History tab. The Repeatable Wins
+      // card (empty or non-empty) must not fall back to legacy labels.
+      await _openLearnTab(tester);
+      expect(find.text('BENCHMARK DAYPARTS'), findsNothing);
+    });
+
+    testWidgets('evidence path renders WIN REPEATS instead of legacy labels',
+        (tester) async {
+      // Mock replay data produces wins that pass the policy, so we
+      // verify the evidence path renders WIN REPEATS (not legacy labels).
+      await _openLearnTab(tester);
+      expect(find.text('WIN REPEATS'), findsAtLeastNWidgets(1));
+    });
+  });
+
+  group('K — Repeatable Wins visibility policy (unit)', () {
+    test('single favorable shift is not a repeatable win', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 1),
+        EvidenceTier.hidden,
+      );
+    });
+
+    test('repeated favorable shifts qualify as repeatable wins', () {
+      expect(
+        DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+            benchmarkCount: 2),
+        EvidenceTier.strong,
+      );
+    });
+
+    testWidgets('Repeatable Wins card still renders for mock replay data',
+        (tester) async {
+      // Mock replay seed should have enough repeated wins to pass the policy.
+      await _openLearnTab(tester);
+      expect(find.text('WIN REPEATS'), findsAtLeastNWidgets(1));
     });
   });
 }

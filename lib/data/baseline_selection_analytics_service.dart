@@ -94,8 +94,7 @@ class BaselineSelectionAnalyticsService {
         selectedShiftCount: selectedCount,
         rangeQualityLabel: 'OPZ RANGE TOO NARROW',
         rangeQualityMessage:
-            'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-            'Add more star shifts that felt right so the team has usable flex.',
+            'Star shifts too tightly clustered. Add more for a teachable range.',
       );
     }
 
@@ -108,8 +107,7 @@ class BaselineSelectionAnalyticsService {
         selectedShiftCount: selectedCount,
         rangeQualityLabel: 'OPZ RANGE TOO NARROW',
         rangeQualityMessage:
-            'Selected star shifts are clustered too tightly to teach a repeatable standard. '
-            'Add more star shifts that felt right so the team has usable flex.',
+            'Star shifts too tightly clustered. Add more for a teachable range.',
       );
     }
 
@@ -118,8 +116,7 @@ class BaselineSelectionAnalyticsService {
         selectedShiftCount: selectedCount,
         rangeQualityLabel: 'OPZ RANGE TOO WIDE',
         rangeQualityMessage:
-            'Selected star shifts span too much of the operating range to teach one clean standard. '
-            'Tighten the set around the shifts that felt consistently right.',
+            'Star shifts too widely spread. Tighten to one clean standard.',
       );
     }
 
@@ -127,8 +124,7 @@ class BaselineSelectionAnalyticsService {
       selectedShiftCount: selectedCount,
       rangeQualityLabel: 'GOOD OPZ RANGE',
       rangeQualityMessage:
-          'Recommended target sits inside a usable benchmark range. '
-          'This gives the team room to flex up or down while still holding a teachable standard.',
+          'Target sits in a usable range with room to flex.',
     );
   }
 

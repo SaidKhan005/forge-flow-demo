@@ -11,7 +11,7 @@ The active roadmap, watchlist, and next prompts now live in [PROJECT_TRACKER.md]
 
 ## Archived 7.52 Detail
 
-Detailed `7.52` scope, destination contracts, completion notes, and the post-`7.52` handoff context now live in [phase_7_52_execution_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phase_7_52_execution_plan.md).
+Detailed `7.52` scope, destination contracts, completion notes, and the post-`7.52` handoff context now live in [phase_7_52_execution_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_7_52_execution_plan.md).
 
 Use this archive plus that execution-plan doc together when you need to revisit how the private Barrio shell and content phase was delivered.
 
@@ -21,7 +21,7 @@ These summaries previously lived in the active tracker and were moved here to ke
 
 ### Phase 9 Planning Baseline
 
-Detailed Phase 9 execution planning now lives in [phase_9_auth_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phase_9_auth_plan.md).
+Detailed Phase 9 execution planning now lives in [phase_9_auth_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_9/phase_9_auth_plan.md).
 
 The active tracker should only carry:
 
@@ -243,7 +243,7 @@ Commit hygiene note:
 
 ### Superseded Phase 9 Barrio Requirements
 
-The earlier tracker-only Barrio auth notes have now been superseded by the full Phase 9 auth contract in `docs/phase_9_auth_plan.md`.
+The earlier tracker-only Barrio auth notes have now been superseded by the full Phase 9 auth contract in `docs/phases/phase_9/phase_9_auth_plan.md`.
 
 The important carry-forward points were:
 
@@ -362,7 +362,7 @@ Use one line per meaningful session.
 | 2026-03-30 | Audit | Final code-side Phase 8 readiness pass completed | Connector-config persistence is safe, visible restaurant identity is scope-backed, Shift empty-state is truthful, and the repo is structurally ready for connector work; the remaining gate work is vendor selection plus rerunning the current 28-file corpus from the checked-in manifest | Run Prompt 7.51e |
 | 2026-03-30 | Planning | Shift from 7.51e to 7.52 cleanup and private-build prep | 7.51e is complete on the app side; while Phase 8 waits on vendor selection, the next useful work is repo cleanup, product identity clarification, and a private Barrio layer inside the same repo | Run Prompt 7.52 |
 | 2026-03-30 | Planning | Expanded 7.52 into an execution sequence for Barrio shell and private content | 7.52 is now broken into tracker lock, product identity cleanup, private boundary creation, dual-build prep, Barrio shell work, structured interactive content, and a clean Phase 9 handoff | Run Prompt 7.52a |
-| 2026-03-30 | Planning | 7.52a execution contract locked | Added `docs/phase_7_52_execution_plan.md` so the Barrio shell vision, pre-auth role-aware structure, structured-content rule, and handoff into 7.52b-h are frozen in one place | Run Prompt 7.52b |
+| 2026-03-30 | Planning | 7.52a execution contract locked | Added `docs/archive/phases/phase_7_52_execution_plan.md` so the Barrio shell vision, pre-auth role-aware structure, structured-content rule, and handoff into 7.52b-h are frozen in one place | Run Prompt 7.52b |
 | 2026-03-30 | Phase 7.52b | Public product identity cleanup completed | Forge & Flow now appears as the public product across package/module naming, README, Android, iOS, and Windows visible app strings; the app title no longer reads restaurant scope as product identity; stale `Forge & Flow Demo` restaurant scope rows now normalize back to the demo restaurant name | Run Prompt 7.52c |
 | 2026-03-30 | Phase 7.52c | Legacy naming cleanup and private root file relocation completed | `meridian_data.dart` renamed to `legacy_fixture_data.dart`, `demo_data.dart` renamed to `fixture_seed_data.dart`, private Barrio root files (`Barrio Legado Business Plan.pdf`, `jim_taylor_labor_model_deep_dive.html`, `Logo.png`) moved into `docs/internal/barrio/` and `assets/internal/barrio/branding/`; all imports and doc references updated | Run Prompt 7.52d |
 | 2026-03-31 | Planning | Barrio shell vision reorganized for clean execution | The private Barrio app is now framed as a hospitality-driven operating shell with a living-system-map home hub; 7.52f-h were split into shell IA, handbook experience, manager-learning surfaces, and a Phase 9 handoff so execution stays narrow | Run Prompt 7.52f |

@@ -355,6 +355,16 @@ class ScheduleDaySubrow {
 class ScheduleBuilder extends StatelessWidget {
   const ScheduleBuilder({super.key});
 
+  /// Test-only: wraps the real [_ScheduleBuilderContent] with a direct
+  /// notifier provider, bypassing the upstream 3-provider tree.
+  @visibleForTesting
+  static Widget testContent(ScheduleForecastNotifier notifier) {
+    return ChangeNotifierProvider<ScheduleForecastNotifier>.value(
+      value: notifier,
+      child: const _ScheduleBuilderContent(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProxyProvider3<ActiveTargetProfileNotifier,
@@ -427,6 +437,10 @@ class _ScheduleBuilderContentState
               style: AppTextStyles.display20(),
             ),
           ),
+
+          // ── WEEKLY PLAN SUMMARY ─────────────────────────────────────────
+          const _PlanSectionLabel('WEEKLY PLAN SUMMARY'),
+
           // Forecast cards (read-only, system-resolved)
           const _ForecastCardsRow(),
 
@@ -438,7 +452,8 @@ class _ScheduleBuilderContentState
                 _DerivedSummaryCards(notifier: notifier),
           ),
 
-          const SizedBox(height: 8),
+          // ── COVER FORECAST BY DAY ──────────────────────────────────────
+          const _PlanSectionLabel('COVER FORECAST BY DAY'),
 
           // Bar chart
           Consumer<ScheduleForecastNotifier>(
@@ -446,7 +461,8 @@ class _ScheduleBuilderContentState
                 _CoverBarChart(notifier: notifier),
           ),
 
-          const SizedBox(height: 8),
+          // ── DAY-BY-DAY PLAN ────────────────────────────────────────────
+          const _PlanSectionLabel('DAY-BY-DAY PLAN'),
 
           // Day-by-day table
           Consumer<ScheduleForecastNotifier>(
@@ -643,7 +659,7 @@ class _CoverBarChart extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.fromLTRB(8, 16, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.rule, width: 1),
@@ -651,10 +667,6 @@ class _CoverBarChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 12),
-            child: Text('COVER FORECAST DISTRIBUTED BY DAY', style: AppTextStyles.mono7()),
-          ),
           SizedBox(
             height: 160,
             child: BarChart(
@@ -720,6 +732,22 @@ class _CoverBarChart extends StatelessWidget {
       ),
     );
   }
+}
+
+// ─── Plan section label ──────────────────────────────────────────────────────
+
+class _PlanSectionLabel extends StatelessWidget {
+  final String text;
+  const _PlanSectionLabel(this.text);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        child: Text(
+          text,
+          style: AppTextStyles.mono10(color: AppColors.textSecondary),
+        ),
+      );
 }
 
 class _DayTable extends StatefulWidget {

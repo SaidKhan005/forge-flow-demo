@@ -77,10 +77,14 @@ Required tests
 [specific test files or "core test suite" per CLAUDE.md]
 
 Acceptance criteria
-[explicit, checkable items]
+- [ ] [explicit, checkable item]
+- [ ] [explicit, checkable item]
 
 When finished, report using the standard report format below.
 ```
+
+`Hard constraints` should always appear near the top of Message 2, before file
+lists or implementation detail.
 
 ## Execution Cycle
 
@@ -95,6 +99,12 @@ This is the full cycle — Codex steps marked (C), Claude steps marked (CL).
 7. **(CL)** Report back using the standard report format
 8. **(C)** Verify against repo (not just Claude's summary)
 9. **(C)** Update trackers after verification
+
+If the user pivots into architecture, docs structure, or workflow cleanup:
+
+- stop automatic next-prompt generation
+- consolidate the active authority/docs first
+- resume prompt sequencing only after the workflow/docs state is clear again
 
 ### When to skip steps 5–6
 
@@ -125,6 +135,7 @@ Claude should report in this exact structure:
 - No tracker changes: [yes/no]
 - No other-phase work: [yes/no]
 - No unauthorized commits: [yes/no]
+- Links updated: [yes/no] (only if docs moved or doc links changed)
 
 ### Blockers
 - [any blockers, or "none"]
@@ -144,6 +155,9 @@ After Claude reports, Codex verifies by:
 - Checking tracker truth still matches repo truth
 
 Verdicts: **ACCEPT** / **FOLLOW-UP NEEDED** / **REJECT**
+
+For accepted slices, prefer recording acceptance in the active phase doc or
+parent plan doc status line when that doc is touched anyway.
 
 ## Planning Standard
 

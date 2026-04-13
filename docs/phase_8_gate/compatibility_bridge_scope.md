@@ -24,7 +24,7 @@ The persisted `ActiveTargetProfile` is the canonical active-target authority. It
   Source label, targets, selection count, and range quality all come from
   persisted cycle/profile/summary authority. The analyzer no longer reads
   `BaselineData` directly.
-- **Retirement plan**: Complete. See `docs/phase_7_55l_8_learn_bridge_closeout.md`.
+- **Retirement plan**: Complete. See `docs/archive/phases/7_55l/phase_7_55l_8_learn_bridge_closeout.md`.
 
 ### LearnBenchmarkContextService
 

@@ -1,6 +1,6 @@
 // Phase 7.13 — Variance Coaching Layout Cleanup
-// Grouping, wording, and readability improved for coaching clarity.
-// No logic, data sources, formulas, or navigation behavior changed.
+// Phase 7.55k.4 — Full Week Projection semantics: read service, honest
+// row provenance, day-total reconciliation, projected-row copy fix.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -9,14 +9,21 @@ import '../data/learn_benchmark_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/shift_data_source.dart';
 import '../data/week_data_notifier.dart';
+import '../models/history_benchmark_daypart_summary.dart';
 import '../models/history_pattern_record.dart';
 import '../models/learn_benchmark_context.dart';
 import '../models/shift_record.dart';
+import '../models/variance_week_projection_row.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
+import '../models/learn_repeatable_win_summary.dart';
 import '../models/learn_teaching_summary.dart';
+import '../services/daypart_evidence_visibility_policy.dart';
+import '../services/history_benchmark_daypart_read_service.dart';
+import '../services/learn_repeatable_wins_read_service.dart';
 import '../services/history_teaching_analyzer.dart';
 import '../services/learn_teaching_analyzer.dart';
+import '../services/variance_week_projection_read_service.dart';
 import '../utils/formatters.dart';
 import '../widgets/lever_card.dart';
 import '../widgets/week_history_tile.dart';
@@ -645,24 +652,13 @@ class _FullWeekSection extends StatefulWidget {
 }
 
 class _FullWeekSectionState extends State<_FullWeekSection> {
+  static const _readService = VarianceWeekProjectionReadService();
   final Set<String> _expanded = {};
-
-  List<_DayGroup> _buildGroups() {
-    final shifts = widget.shifts;
-    return WeekDayOrder.dayLabels.map((day) {
-      final order = WeekDayOrder.daypartsFor(day);
-      final dayShifts = shifts
-          .where((s) => s.dayLabel == day)
-          .toList()
-        ..sort((a, b) =>
-            order.indexOf(a.daypart).compareTo(order.indexOf(b.daypart)));
-      return _DayGroup(dayLabel: day, shifts: dayShifts);
-    }).where((g) => g.shifts.isNotEmpty).toList();
-  }
 
   @override
   Widget build(BuildContext context) {
-    final groups = _buildGroups();
+    final projection = _readService.build(widget.shifts);
+    final groups = projection.dayRows;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
       clipBehavior: Clip.antiAlias,
@@ -679,7 +675,7 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
         children: [
           for (int i = 0; i < groups.length; i++) ...[
             _DayRow(
-              group: groups[i],
+              row: groups[i],
               theoreticalBlendedWage: widget.theoreticalBlendedWage,
               isExpanded: _expanded.contains(groups[i].dayLabel),
               onTap: () => setState(() {
@@ -706,48 +702,13 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
   }
 }
 
-// ─── Day group data model ──────────────────────────────────────────────────────
-
-class _DayGroup {
-  final String dayLabel;
-  final List<ShiftRecord> shifts;
-
-  _DayGroup({required this.dayLabel, required this.shifts});
-
-  int get totalCovers => shifts.fold(0, (s, r) => s + r.covers);
-
-  double get laborPct {
-    final totalSales = shifts.fold(0.0, (s, r) => s + r.actualSales);
-    final totalLabor = shifts.fold(0.0, (s, r) => s + r.totalLaborDollar);
-    return totalSales > 0 ? totalLabor / totalSales * 100 : theoreticalLaborPct;
-  }
-
-  double get theoreticalLaborPct {
-    if (shifts.isEmpty) return 0.0;
-    final totalSales = shifts.fold(0.0, (s, r) => s + r.actualSales);
-    if (totalSales > 0) {
-      // Sales-weighted average
-      final weighted = shifts.fold(
-          0.0, (s, r) => s + r.theoreticalLaborPct * r.actualSales);
-      return weighted / totalSales;
-    }
-    // Arithmetic mean when no sales
-    return shifts.fold(0.0, (s, r) => s + r.theoreticalLaborPct) /
-        shifts.length;
-  }
-
-  double get variancePts => laborPct - theoreticalLaborPct;
-
-  bool get allClosed => shifts.every((s) => s.isClosed);
-  bool get allProjected => shifts.every((s) => s.isProjected);
-  bool get hasOpen => shifts.any((s) => s.isOpen);
-}
+// ─── _DayGroup removed in 7.55k.4 — replaced by ProjectionDayRow read model ─
 
 // ─── Daypart status chips (L✓ D→ LN→) ────────────────────────────────────────
 
 class _DaypartChips extends StatelessWidget {
-  final List<ShiftRecord> shifts;
-  const _DaypartChips({required this.shifts});
+  final List<ProjectionDaypartRow> children;
+  const _DaypartChips({required this.children});
 
   static String _abbr(String daypart) {
     switch (daypart) {
@@ -768,14 +729,14 @@ class _DaypartChips extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (int i = 0; i < shifts.length; i++) ...[
+          for (int i = 0; i < children.length; i++) ...[
             if (i > 0) const SizedBox(width: 4),
             Text(
-              '${_abbr(shifts[i].daypart)}${shifts[i].isClosed ? '✓' : shifts[i].isOpen ? '●' : '→'}',
+              '${_abbr(children[i].daypart)}${children[i].status == RowStatus.closed ? '✓' : children[i].status == RowStatus.open ? '●' : '→'}',
               style: AppTextStyles.mono7(
-                color: shifts[i].isClosed
+                color: children[i].status == RowStatus.closed
                     ? AppColors.positive
-                    : shifts[i].isOpen
+                    : children[i].status == RowStatus.open
                         ? AppColors.sunsetDark
                         : AppColors.textMuted,
               ),
@@ -790,13 +751,13 @@ class _DaypartChips extends StatelessWidget {
 // ─── Collapsed day row ────────────────────────────────────────────────────────
 
 class _DayRow extends StatelessWidget {
-  final _DayGroup group;
+  final ProjectionDayRow row;
   final double theoreticalBlendedWage;
   final bool isExpanded;
   final VoidCallback onTap;
 
   const _DayRow({
-    required this.group,
+    required this.row,
     required this.theoreticalBlendedWage,
     required this.isExpanded,
     required this.onTap,
@@ -804,8 +765,8 @@ class _DayRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final laborPct = group.laborPct;
-    final varPts = group.variancePts;
+    final laborPct = row.laborPct;
+    final varPts = row.variancePts;
     final isOver = varPts > 0;
     final varColor = isOver ? AppColors.negative : AppColors.positive;
 
@@ -826,22 +787,28 @@ class _DayRow extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             child: Row(
               children: [
-                // Day label + per-daypart status chips
+                // Day label + per-daypart status chips + mixed summary
                 SizedBox(
                   width: 64,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(group.dayLabel,
+                      Text(row.dayLabel,
                           style: AppTextStyles.mono14(
-                              color: group.allProjected
+                              color: row.allProjected
                                   ? AppColors.textMuted
-                                  : group.hasOpen
+                                  : (row.hasOpen || row.status == RowStatus.mixed)
                                       ? AppColors.sunsetDark
                                       : AppColors.textPrimary,
                               weight: FontWeight.w600)),
                       const SizedBox(height: 2),
-                      _DaypartChips(shifts: group.shifts),
+                      _DaypartChips(children: row.children),
+                      if (row.statusSummary.isNotEmpty) ...[
+                        const SizedBox(height: 1),
+                        Text(row.statusSummary,
+                            style: AppTextStyles.mono7(
+                                color: AppColors.textMuted)),
+                      ],
                     ],
                   ),
                 ),
@@ -849,11 +816,11 @@ class _DayRow extends StatelessWidget {
                 // Covers
                 Expanded(
                   child: Text(
-                    '${group.totalCovers} cvr',
+                    '${row.totalCovers} cvr',
                     style: AppTextStyles.mono11(
-                        color: group.allProjected
+                        color: row.allProjected
                             ? AppColors.textMuted
-                            : group.hasOpen
+                            : (row.hasOpen || row.status == RowStatus.mixed)
                                 ? AppColors.sunsetDark
                                 : AppColors.textSecondary),
                   ),
@@ -892,7 +859,7 @@ class _DayRow extends StatelessWidget {
         // Expanded daypart detail
         if (isExpanded)
           _DayExpanded(
-            group: group,
+            row: row,
             theoreticalBlendedWage: theoreticalBlendedWage,
           ),
       ],
@@ -904,10 +871,10 @@ class _DayRow extends StatelessWidget {
 // ─── Expanded day content ─────────────────────────────────────────────────────
 
 class _DayExpanded extends StatelessWidget {
-  final _DayGroup group;
+  final ProjectionDayRow row;
   final double theoreticalBlendedWage;
   const _DayExpanded(
-      {required this.group, required this.theoreticalBlendedWage});
+      {required this.row, required this.theoreticalBlendedWage});
 
   @override
   Widget build(BuildContext context) {
@@ -919,7 +886,7 @@ class _DayExpanded extends StatelessWidget {
       ),
       child: Column(
         children: [
-          for (int i = 0; i < group.shifts.length; i++) ...[
+          for (int i = 0; i < row.children.length; i++) ...[
             if (i > 0)
               Container(
                 height: 6,
@@ -931,11 +898,11 @@ class _DayExpanded extends StatelessWidget {
                   color: AppColors.shimmer,
                 ),
               ),
-            group.shifts[i].isClosed
-                ? _ClosedShiftDetail(shift: group.shifts[i])
+            row.children[i].status == RowStatus.closed
+                ? _ClosedShiftDetail(shift: row.children[i].shift)
                 : _ProjectedShiftDetail(
-                    shift: group.shifts[i],
-                    isOpen: group.shifts[i].isOpen,
+                    shift: row.children[i].shift,
+                    isOpen: row.children[i].status == RowStatus.open,
                   ),
           ],
         ],
@@ -1121,7 +1088,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusLabel = isOpen ? 'OPEN' : 'PROJ';
-    final headerLabel = isOpen ? 'CURRENT' : 'PROJECTED';
+    final headerLabel = isOpen ? 'PLAN CONTEXT' : 'PROJECTED';
     final statusColor = isOpen ? AppColors.sunsetDark : AppColors.textMuted;
 
     return Padding(
@@ -1173,7 +1140,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
             Expanded(
               flex: 6,
               child: Text(
-                '${shift.forecastCovers}  (baseline)',
+                '${shift.forecastCovers}  (plan)',
                 style: AppTextStyles.mono12(
                     color: AppColors.sunsetDark),
                 textAlign: TextAlign.right,
@@ -1233,7 +1200,7 @@ class _ProjectedShiftDetail extends StatelessWidget {
           Text(
             isOpen
                 ? 'Live shift in progress. Finalizes on close.'
-                : 'Projected from 60-day baseline. Actuals populate when shift closes.',
+                : 'Projected from weekly plan. Actuals populate when shift closes.',
             style: AppTextStyles.mono8(color: isOpen ? AppColors.sunsetDark : AppColors.textMuted),
           ),
         ],
@@ -1475,17 +1442,18 @@ class _TeachingSummaryCard extends StatelessWidget {
   final HistoryTeachingSummary summary;
   final LeverCardData leakCard;
   final int weekCount;
+  final List<HistoryBenchmarkDaypartSummary> benchmarkDayparts;
 
   const _TeachingSummaryCard({
     required this.summary,
     required this.leakCard,
     required this.weekCount,
+    required this.benchmarkDayparts,
   });
 
   @override
   Widget build(BuildContext context) {
     final topLeaks = summary.topLeakDayparts.join(' / ');
-    final benchmarks = summary.benchmarkDayparts.join(' / ');
 
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -1526,17 +1494,90 @@ class _TeachingSummaryCard extends StatelessWidget {
           ),
           Container(height: 1, color: AppColors.borderSubtle),
 
-          // BENCHMARK DAYPARTS
-          _TeachRow(
-            title: 'BENCHMARK DAYPARTS',
-            value: benchmarks.isEmpty ? '—' : benchmarks,
-            valueColor: AppColors.positive,
-            isLast: true,
-          ),
+          // BENCHMARK DAYPARTS — evidence-backed with visibility policy (7.55k.7)
+          ..._buildBenchmarkDaypartRows(benchmarkDayparts),
         ],
       ),
     );
   }
+}
+
+/// Builds the benchmark daypart rows with visibility policy (7.55k.7).
+/// Strong evidence renders as benchmark truth; thin evidence renders as
+/// early signal; empty renders as a dash.
+List<Widget> _buildBenchmarkDaypartRows(
+    List<HistoryBenchmarkDaypartSummary> benchmarkDayparts) {
+  if (benchmarkDayparts.isEmpty) {
+    return [
+      const _TeachRow(
+        title: 'BENCHMARK DAYPARTS',
+        value: '\u2014',
+        valueColor: AppColors.positive,
+        isLast: true,
+      ),
+    ];
+  }
+
+  final strong = <HistoryBenchmarkDaypartSummary>[];
+  final earlySignal = <HistoryBenchmarkDaypartSummary>[];
+  for (final b in benchmarkDayparts) {
+    final tier = DaypartEvidenceVisibilityPolicy.classifyBenchmark(
+      benchmarkCount: b.benchmarkCount,
+      closedShiftCount: b.closedShiftCount,
+    );
+    if (tier == EvidenceTier.strong) {
+      strong.add(b);
+    } else if (tier == EvidenceTier.earlySignal) {
+      earlySignal.add(b);
+    }
+  }
+
+  return [
+    Padding(
+      padding: const EdgeInsets.fromLTRB(16, 13, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (strong.isNotEmpty) ...[
+            Text('BENCHMARK DAYPARTS',
+                style: AppTextStyles.mono10(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            for (final b in strong) ...[
+              Text(
+                '${b.label} \u00b7 ${b.benchmarkCount}/${b.closedShiftCount} wins \u00b7 '
+                '${b.avgCPLH.toStringAsFixed(2)} CPLH \u00b7 '
+                '\$${b.avgSPLH.toStringAsFixed(0)} SPLH',
+                style: AppTextStyles.mono12(color: AppColors.positive),
+              ),
+              const SizedBox(height: 4),
+            ],
+          ],
+          if (earlySignal.isNotEmpty) ...[
+            if (strong.isNotEmpty) const SizedBox(height: 8),
+            Text('EARLY SIGNALS',
+                style: AppTextStyles.mono10(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            for (final b in earlySignal) ...[
+              Text(
+                '${b.label} \u00b7 ${b.benchmarkCount}/${b.closedShiftCount} wins \u00b7 '
+                '${b.avgCPLH.toStringAsFixed(2)} CPLH \u00b7 '
+                '\$${b.avgSPLH.toStringAsFixed(0)} SPLH',
+                style: AppTextStyles.mono12(color: AppColors.warning),
+              ),
+              const SizedBox(height: 4),
+            ],
+          ],
+          if (strong.isEmpty && earlySignal.isEmpty) ...[
+            Text('BENCHMARK DAYPARTS',
+                style: AppTextStyles.mono10(color: AppColors.textMuted)),
+            const SizedBox(height: 8),
+            Text('\u2014',
+                style: AppTextStyles.mono14(color: AppColors.positive)),
+          ],
+        ],
+      ),
+    ),
+  ];
 }
 
 class _TeachRow extends StatelessWidget {
@@ -1595,11 +1636,16 @@ class _TeachRow extends StatelessWidget {
 
 // ─── History tab ──────────────────────────────────────────────────────────────
 
-/// Holds both data sets loaded for the History tab.
+/// Holds data sets loaded for the History tab.
 class _HistoryData {
   final List<WeekRecord> weeks;
   final List<HistoryPatternRecord> patternRecords;
-  const _HistoryData({required this.weeks, required this.patternRecords});
+  final List<ShiftRecord> historicalClosedShifts;
+  const _HistoryData({
+    required this.weeks,
+    required this.patternRecords,
+    required this.historicalClosedShifts,
+  });
 }
 
 class _HistoryTab extends StatefulWidget {
@@ -1621,9 +1667,11 @@ class _HistoryTabState extends State<_HistoryTab>
     _future = Future.wait([
       source.getWeekHistory(),
       source.getHistoryPatternRecords(),
+      source.getHistoricalClosedShifts(),
     ]).then((results) => _HistoryData(
           weeks: results[0] as List<WeekRecord>,
           patternRecords: results[1] as List<HistoryPatternRecord>,
+          historicalClosedShifts: results[2] as List<ShiftRecord>,
         ));
   }
 
@@ -1645,7 +1693,8 @@ class _HistoryTabState extends State<_HistoryTab>
           );
         }
         final data = snapshot.data ??
-            const _HistoryData(weeks: [], patternRecords: []);
+            const _HistoryData(
+                weeks: [], patternRecords: [], historicalClosedShifts: []);
         final weeks = data.weeks;
         final patternRecords = data.patternRecords;
 
@@ -1660,6 +1709,11 @@ class _HistoryTabState extends State<_HistoryTab>
             orElse: () => LeverCards.coversDown,
           );
         }
+
+        // Benchmark daypart evidence (7.55k.5).
+        const benchmarkService = HistoryBenchmarkDaypartReadService();
+        final benchmarkDayparts =
+            benchmarkService.build(data.historicalClosedShifts);
 
         return CustomScrollView(
           slivers: [
@@ -1693,6 +1747,7 @@ class _HistoryTabState extends State<_HistoryTab>
                   summary: teachingSummary,
                   leakCard: leakCard,
                   weekCount: weeks.length,
+                  benchmarkDayparts: benchmarkDayparts,
                 ),
               ),
             ],
@@ -1749,16 +1804,27 @@ class _LearnTabState extends State<_LearnTab>
       source.getWeekHistory(),
       source.getHistoryPatternRecords(),
       LearnBenchmarkContextService.instance.resolve(),
+      source.getHistoricalClosedShifts(),
     ]).then((results) {
       final weeks = results[0] as List<WeekRecord>;
       final patternRecords = results[1] as List<HistoryPatternRecord>;
       final benchmarkContext = results[2] as LearnBenchmarkContext;
+      final closedShifts = results[3] as List<ShiftRecord>;
       final summary = LearnTeachingAnalyzer.summarize(
         patternRecords: patternRecords,
         weekCount: weeks.length,
         benchmarkContext: benchmarkContext,
       );
-      return _LearnData(summary: summary);
+      const winsService = LearnRepeatableWinsReadService();
+      final allWins = winsService.build(closedShifts);
+      // Apply visibility policy: only truly repeated wins pass (7.55k.7).
+      final repeatableWins = allWins
+          .where((w) =>
+              DaypartEvidenceVisibilityPolicy.classifyRepeatableWin(
+                  benchmarkCount: w.benchmarkCount) ==
+              EvidenceTier.strong)
+          .toList();
+      return _LearnData(summary: summary, repeatableWins: repeatableWins);
     });
   }
 
@@ -1786,7 +1852,10 @@ class _LearnTabState extends State<_LearnTab>
                 style: AppTextStyles.body13(color: AppColors.textMuted)),
           );
         }
-        return _LearnContent(summary: data.summary);
+        return _LearnContent(
+          summary: data.summary,
+          repeatableWins: data.repeatableWins,
+        );
       },
     );
   }
@@ -1794,12 +1863,14 @@ class _LearnTabState extends State<_LearnTab>
 
 class _LearnData {
   final LearnTeachingSummary summary;
-  const _LearnData({required this.summary});
+  final List<LearnRepeatableWinSummary> repeatableWins;
+  const _LearnData({required this.summary, required this.repeatableWins});
 }
 
 class _LearnContent extends StatelessWidget {
   final LearnTeachingSummary summary;
-  const _LearnContent({required this.summary});
+  final List<LearnRepeatableWinSummary> repeatableWins;
+  const _LearnContent({required this.summary, required this.repeatableWins});
 
   @override
   Widget build(BuildContext context) {
@@ -1828,7 +1899,10 @@ class _LearnContent extends StatelessWidget {
 
           // ── Repeatable Wins ─────────────────────────────────────────
           _LearnSectionLabel(label: 'REPEATABLE WINS'),
-          _RepeatableWinsCard(summary: summary),
+          _RepeatableWinsCard(
+            summary: summary,
+            repeatableWins: repeatableWins,
+          ),
 
           // ── Coach Next Week ─────────────────────────────────────────
           _LearnSectionLabel(label: 'COACH NEXT WEEK'),
@@ -2119,11 +2193,17 @@ class _RecurringLeakCard extends StatelessWidget {
 
 class _RepeatableWinsCard extends StatelessWidget {
   final LearnTeachingSummary summary;
-  const _RepeatableWinsCard({required this.summary});
+  final List<LearnRepeatableWinSummary> repeatableWins;
+  const _RepeatableWinsCard({
+    required this.summary,
+    required this.repeatableWins,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (!summary.hasBenchmarkPatterns) {
+    // No evidence at all — intentional empty state (7.55k.7a).
+    // Does not fall back to legacy frequency-only benchmark-daypart labels.
+    if (repeatableWins.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -2138,13 +2218,8 @@ class _RepeatableWinsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _LearnMetricRow(
-              label: 'BENCHMARK DAYPARTS',
-              value: summary.benchmarkDayparts.isEmpty
-                  ? '\u2014'
-                  : summary.benchmarkDayparts.join(' / '),
-              valueColor: AppColors.positive,
-            ),
+            Text('No repeatable wins yet',
+                style: AppTextStyles.mono14(color: AppColors.textMuted)),
             const SizedBox(height: 14),
             Container(height: 1, color: AppColors.borderSubtle),
             const SizedBox(height: 14),
@@ -2155,8 +2230,10 @@ class _RepeatableWinsCard extends StatelessWidget {
       );
     }
 
+    // Use the dominant lever from the top-ranked win for teaching copy.
+    final topWin = repeatableWins.first;
     final benchmarkCard = LeverCards.all.firstWhere(
-      (l) => l.id == summary.primaryBenchmarkId,
+      (l) => l.id == topWin.dominantLeverId,
       orElse: () => LeverCards.ppaUp,
     );
 
@@ -2174,7 +2251,7 @@ class _RepeatableWinsCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Top accent bar with benchmark identity
+          // Top accent bar with dominant lever identity
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2212,34 +2289,42 @@ class _RepeatableWinsCard extends StatelessWidget {
             ),
           ),
 
-          // Frequency and daypart info
+          // Evidence-backed win rows with per-row lever identity (7.55k.6a)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: _LearnMetricRow(
-                    label: 'WIN REPEATS',
-                    value: summary.primaryBenchmarkCount.toString(),
-                    valueColor: AppColors.positive,
+                Text('WIN REPEATS',
+                    style: AppTextStyles.mono10(color: AppColors.textMuted)),
+                const SizedBox(height: 8),
+                for (final w in repeatableWins) ...[
+                  Row(
+                    children: [
+                      _LearnChip(
+                        label: _leverShortLabel(w.dominantLeverId),
+                        color: AppColors.positive,
+                      ),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          '${w.label} \u00b7 ${w.benchmarkCount}/${w.closedShiftCount} wins \u00b7 '
+                          '${w.avgCPLH.toStringAsFixed(2)} CPLH \u00b7 '
+                          '\$${w.avgSPLH.toStringAsFixed(0)} SPLH',
+                          style: AppTextStyles.mono12(color: AppColors.positive),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-                Expanded(
-                  child: _LearnMetricRow(
-                    label: 'BENCHMARK DAYPARTS',
-                    value: summary.benchmarkDayparts.isEmpty
-                        ? '\u2014'
-                        : summary.benchmarkDayparts.join(' / '),
-                    valueColor: AppColors.positive,
-                  ),
-                ),
+                  const SizedBox(height: 4),
+                ],
               ],
             ),
           ),
 
           // Context chips
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
             child: Row(
               children: [
                 _LearnChip(
@@ -2257,13 +2342,18 @@ class _RepeatableWinsCard extends StatelessWidget {
             ),
           ),
 
-          // Teaching content from benchmark lever card
+          // Teaching content scoped to top-ranked win (7.55k.6a)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 0),
             child: Container(height: 1, color: AppColors.borderSubtle),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('COACHING \u2014 ${topWin.label}',
+                style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
             child: Text('WHAT HELD',
                 style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
           ),
@@ -2304,6 +2394,15 @@ class _RepeatableWinsCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Resolves a lever ID to its compact short label for per-row identity chips.
+String _leverShortLabel(String leverId) {
+  final card = LeverCards.all.firstWhere(
+    (l) => l.id == leverId,
+    orElse: () => LeverCards.ppaUp,
+  );
+  return card.shortLabel;
 }
 
 // ── Coach Next Week card ─────────────────────────────────────────────────────

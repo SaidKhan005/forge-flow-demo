@@ -20,6 +20,9 @@
 //
 // 7.55l.7a: added getCurrentLockedWeeklyPlan() for downstream consumers
 // that should read from the locked weekly snapshot instead of live-resolving.
+//
+// 7.55m.1: Planning-anchor resolution in loadDistributionWeights now
+// delegates to BusinessDateAuthorityService.
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
@@ -29,8 +32,8 @@ import '../domain/services/schedule_forecast_demand_resolver.dart';
 import '../domain/services/schedule_plan_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
+import 'business_date_authority_service.dart';
 import 'demand_forecast_context_service.dart';
 import 'wage_standard_context_service.dart';
 import 'weekly_plan_snapshot_service.dart';
@@ -166,7 +169,7 @@ class SchedulePlanReadService {
   /// Loads data-driven distribution weights using business-date-anchored
   /// windows with day-of-week smoothing.
   ///
-  /// Anchor precedence: mock replay date → latest closed business date.
+  /// Planning-anchor resolution delegates to [BusinessDateAuthorityService].
   /// Windows: 60-day baseline + 21-day recent trend.
   ///
   /// Returns null when no anchor date or no closed shift history exists.
@@ -174,12 +177,8 @@ class SchedulePlanReadService {
     String restaurantId,
   ) async {
     try {
-      // Anchor preference: mock replay date → latest closed date.
-      final mockDate = await SqliteDatabase.instance
-          .getMockReplayBusinessDate(restaurantId);
-      final anchorDate = mockDate ??
-          await SqliteShiftRecordRepository.instance
-              .getLatestClosedBusinessDate(restaurantId);
+      final anchorDate = await BusinessDateAuthorityService.instance
+          .resolvePlanningAnchorDate(restaurantId);
 
       if (anchorDate == null) return null;
 

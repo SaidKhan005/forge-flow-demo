@@ -3,18 +3,17 @@
 // Holds raw cover totals by dayLabel and dayLabel+daypart.
 // Weights are integer cover sums, not percentages — downstream allocation
 // (7.55e.2) will use largest-remainder logic for deterministic rounding.
+//
+// Phase 7.55m.1a: canonicalDayOrder now delegates to the shared
+// CanonicalDayOrder source in lib/domain/canonical_day_order.dart.
+
+import '../canonical_day_order.dart';
 
 class ScheduleDistributionWeights {
   /// Canonical day ordering used throughout the schedule domain.
-  static const canonicalDayOrder = [
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
+  ///
+  /// Delegates to [CanonicalDayOrder.labels] — the single shared source.
+  static const canonicalDayOrder = CanonicalDayOrder.labels;
 
   /// Total closed covers per dayLabel (e.g. {'Mon': 840, 'Tue': 920, ...}).
   /// Only includes positive-cover closed shifts. Unmodifiable.

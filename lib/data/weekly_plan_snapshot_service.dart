@@ -1,8 +1,8 @@
 // Phase 7.55l.6b — WeeklyPlanSnapshot persistence + auto-lock spine.
 //
 // Narrow runtime seam for current-week snapshot access:
-// - determines current business date (mock replay first, latest closed
-//   fallback — same anchor precedence as the planning stack)
+// - determines current business date via BusinessDateAuthorityService
+//   (shared planning-anchor precedence)
 // - reads existing current-week snapshot if present
 // - generates, persists, and returns a locked snapshot when missing
 // - returns the existing locked snapshot unchanged on subsequent reads
@@ -10,15 +10,18 @@
 // Generation bridge: maps TargetCycleService + SchedulePlanReadService
 // into a persisted WeeklyPlanSnapshot. Current-week only — no arbitrary
 // historical regeneration.
+//
+// Phase 7.55m.1: Planning-anchor resolution now delegates to
+// BusinessDateAuthorityService instead of duplicating the mock-replay →
+// latest-closed precedence locally.
 
 import '../domain/models/schedule_plan.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
 import '../domain/services/weekly_plan_snapshot_policy.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'business_date_authority_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'target_cycle_service.dart';
 
@@ -41,8 +44,9 @@ class WeeklyPlanSnapshotService {
     final restaurantId = await SqliteRestaurantScopeRepository.instance
         .getActiveRestaurantId();
 
-    // Anchor precedence: mock replay date → latest closed business date.
-    final businessDate = await _resolveCurrentBusinessDate(restaurantId);
+    // Planning-anchor resolution via shared authority service.
+    final businessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
     if (businessDate == null) return null;
 
     // Derive the current week span.
@@ -65,20 +69,6 @@ class WeeklyPlanSnapshotService {
       weekStart: weekStart,
       weekEnd: weekEnd,
     );
-  }
-
-  // ── Business date resolution ────────────────────────────────────────────
-
-  /// Same anchor precedence as the planning stack:
-  /// 1. Mock replay business date (when available)
-  /// 2. Latest closed business date (fallback)
-  Future<String?> _resolveCurrentBusinessDate(String restaurantId) async {
-    final mockDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
-    if (mockDate != null) return mockDate;
-
-    return SqliteShiftRecordRepository.instance
-        .getLatestClosedBusinessDate(restaurantId);
   }
 
   // ── Snapshot generation ─────────────────────────────────────────────────

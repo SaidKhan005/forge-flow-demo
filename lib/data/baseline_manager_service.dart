@@ -9,6 +9,11 @@
 // Phase 7.55f.4: Anchor prefers the mock replay current business date
 // when available, falling back to the latest closed business_date.
 //
+// Phase 7.55m.1: Planning-anchor resolution now delegates to
+// BusinessDateAuthorityService instead of duplicating the mock-replay →
+// latest-closed precedence locally. Day-order maps now use the canonical
+// source from BusinessDateAuthorityService.
+//
 // After persisting the active target profile, notifies any registered
 // active-target listener so the app-wide notifier path can refresh.
 
@@ -22,6 +27,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_re
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
 import '../models/baseline_candidate_shift.dart';
+import 'business_date_authority_service.dart';
 import 'legacy_fixture_data.dart';
 import 'wage_standard_context_service.dart';
 
@@ -51,19 +57,15 @@ class BaselineManagerService {
 
   /// Loads candidates inside the true rolling 60-calendar-day window.
   ///
-  /// Anchor preference:
-  /// 1. Mock replay current business date (when available)
-  /// 2. Latest closed business date (fallback)
+  /// Planning-anchor resolution delegates to [BusinessDateAuthorityService].
   Future<List<BaselineCandidateShift>> getCandidateShifts() async {
     final restaurantId = await _activeRestaurantId();
-    final mockDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
-    final anchorDate =
-        mockDate ?? await _shiftRepo.getLatestClosedBusinessDate(restaurantId);
+    final anchorDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
     if (anchorDate == null) return [];
 
     final endDate = anchorDate;
-    final startDate = _subtractDays(anchorDate, 59);
+    final startDate = BusinessDateAuthorityService.subtractDays(anchorDate, 59);
 
     return getCandidateShiftsForDateRange(startDate, endDate);
   }
@@ -102,26 +104,12 @@ class BaselineManagerService {
     return candidates;
   }
 
-  /// Subtracts [days] from an ISO date string, returning an ISO date string.
-  static String _subtractDays(String isoDate, int days) {
-    final parts = isoDate.split('-');
-    final dt = DateTime(
-      int.parse(parts[0]),
-      int.parse(parts[1]),
-      int.parse(parts[2]),
-    );
-    final result = dt.subtract(Duration(days: days));
-    return '${result.year}-${result.month.toString().padLeft(2, '0')}'
-        '-${result.day.toString().padLeft(2, '0')}';
-  }
-
   static void _sortCandidates(List<BaselineCandidateShift> candidates) {
     const daypartOrder = <String, int>{
       'lunch': 0, 'dinner': 1, 'late_night': 2,
     };
-    const dayOrder = <String, int>{
-      'Mon': 0, 'Tue': 1, 'Wed': 2, 'Thu': 3, 'Fri': 4, 'Sat': 5, 'Sun': 6,
-    };
+    // Canonical day ordering from BusinessDateAuthorityService.
+    const dayOrder = BusinessDateAuthorityService.canonicalDayOrder;
 
     candidates.sort((a, b) {
       final dp = (daypartOrder[a.daypart] ?? 99)
@@ -153,7 +141,7 @@ class BaselineManagerService {
   Future<void> primeBaselineContextForDate(
       String restaurantId, String businessDate) async {
     final endDate = businessDate;
-    final startDate = _subtractDays(businessDate, 59);
+    final startDate = BusinessDateAuthorityService.subtractDays(businessDate, 59);
 
     final candidates =
         await getCandidateShiftsForDateRange(startDate, endDate);

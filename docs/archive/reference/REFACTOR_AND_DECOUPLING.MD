@@ -1183,7 +1183,7 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
   - Phase 9 owns login, roles, and permissions
   - Phase 10 owns shared multi-device state
 - lock the execution contract in:
-  - `docs/phase_7_52_execution_plan.md`
+  - `docs/archive/phases/phase_7_52_execution_plan.md`
 - after that contract is written, move the active execution step to `7.52b`
 
 ##### 7.52b. Product Identity + Naming Cleanup
