@@ -75,7 +75,7 @@ WeeklyPlanSnapshot = locked weekly operating plan
 `7.55c` should now be read together with:
 
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+- `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 
 Those newer docs own the current architecture direction.

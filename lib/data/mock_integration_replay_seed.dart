@@ -195,11 +195,15 @@ class MockIntegrationReplaySeed {
     final weekRecords = <WeekRecord>[];
 
     // Generate oldest first so week indices map to variation arrays.
+    // After each week's shifts are added to `allHistorical`, derive its
+    // WeekRecord against the cumulative pool so the frozen month + 60-day
+    // dollar-impact windows (Phase 7.55q.10) reflect what would have been
+    // on the live Variance card the moment that week closed.
     for (int wi = 0; wi < histWeekIds.length; wi++) {
       final wid = histWeekIds[histWeekIds.length - 1 - wi];
       final shifts = _generateClosedWeek(wid, wi);
       allHistorical.addAll(shifts);
-      weekRecords.add(_deriveWeekRecord(wid, shifts));
+      weekRecords.add(_deriveWeekRecord(wid, shifts, allHistorical));
     }
     weekRecords.sort((a, b) => b.weekId.compareTo(a.weekId));
 
@@ -368,9 +372,17 @@ class MockIntegrationReplaySeed {
   ///
   /// All aggregate metrics are computed from the shift-level data.
   /// Target fields are left null — the backfill pass stamps them.
+  ///
+  /// Phase 7.55q.10: also captures `closedAt` (last business date of the
+  /// week) and the frozen month + 60-day dollar-impact windows by filtering
+  /// [historicalPool] (all historical shifts seeded so far, including this
+  /// week's). Mirrors the runtime `_buildWeekRecord` capture in
+  /// `lib/data/shift_service.dart` so demo history shows the same
+  /// 4-row Dollar Impact view the live Variance card would have shown.
   static WeekRecord _deriveWeekRecord(
     String weekId,
     List<ShiftRecord> shifts,
+    List<ShiftRecord> historicalPool,
   ) {
     final totalCovers = shifts.fold<int>(0, (s, r) => s + r.covers);
     final forecastCovers = shifts.fold<int>(0, (s, r) => s + r.forecastCovers);
@@ -406,6 +418,41 @@ class MockIntegrationReplaySeed {
       targetSPLH: _targetSPLH,
     );
 
+    // ── Frozen Dollar Impact windows (7.55q.10) ────────────────────────
+    // Compute the month + 60-day dollar-impact windows that the live
+    // Variance card would have shown the moment this week closed, plus
+    // the close timestamp itself. Reuses the same window math the
+    // runtime path uses; see `_buildWeekRecord` and
+    // `_accumulateDollarImpact` in `lib/data/shift_service.dart`.
+    final closedAt = shifts
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .fold<String?>(null,
+            (max, d) => max == null || d.compareTo(max) > 0 ? d : max);
+    double? monthDollarImpact;
+    double? sixtyDayDollarImpact;
+    if (closedAt != null) {
+      final closedDt = _parseDate(closedAt);
+      final monthStart =
+          _formatDate(DateTime.utc(closedDt.year, closedDt.month, 1));
+      final monthShifts = historicalPool.where((s) {
+        final bd = s.businessDate;
+        return bd != null &&
+            bd.compareTo(monthStart) >= 0 &&
+            bd.compareTo(closedAt) <= 0;
+      }).toList();
+      monthDollarImpact = _accumulateDollarImpactSeed(monthShifts);
+      final sixtyDayStart =
+          _formatDate(closedDt.subtract(const Duration(days: 59)));
+      final sixtyDayShifts = historicalPool.where((s) {
+        final bd = s.businessDate;
+        return bd != null &&
+            bd.compareTo(sixtyDayStart) >= 0 &&
+            bd.compareTo(closedAt) <= 0;
+      }).toList();
+      sixtyDayDollarImpact = _accumulateDollarImpactSeed(sixtyDayShifts);
+    }
+
     return WeekRecord(
       weekId: weekId,
       weekLabel: _weekLabel(weekId),
@@ -422,8 +469,38 @@ class MockIntegrationReplaySeed {
       shiftsCompleted: shifts.length,
       blendedFohWage: _fohWage,
       blendedBohWage: _bohWage,
+      monthDollarImpact: monthDollarImpact,
+      sixtyDayDollarImpact: sixtyDayDollarImpact,
+      closedAt: closedAt,
     );
   }
+
+  /// Seed-side mirror of `ShiftService._accumulateDollarImpact`. Uses the
+  /// seed's own target standards instead of per-shift locked targets,
+  /// because seed shifts don't carry `targetCPLH` / `targetSPLH` /
+  /// `targetFohWage` / `targetBohWage` (those come from the per-shift
+  /// backfill that runs after seed insertion). Same formula otherwise:
+  /// actualLabor − (modelFoh × fohWage + modelBoh × bohWage).
+  static double _accumulateDollarImpactSeed(List<ShiftRecord> shifts) {
+    return shifts.fold<double>(0, (sum, s) {
+      final actualLabor = s.fohLaborDollar + s.bohLaborDollar;
+      final modelFoh = LaborModel.modelFohHours(s.covers, _targetCPLH);
+      final modelBoh =
+          LaborModel.modelBohHoursFromSales(s.actualSales, _targetSPLH);
+      final theoreticalLabor = modelFoh * _fohWage + modelBoh * _bohWage;
+      return sum + (actualLabor - theoreticalLabor);
+    });
+  }
+
+  // ── Date helpers (local to seed; mirror shift_service helpers) ─────────
+
+  static DateTime _parseDate(String iso) {
+    final p = iso.split('-');
+    return DateTime.utc(int.parse(p[0]), int.parse(p[1]), int.parse(p[2]));
+  }
+
+  static String _formatDate(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
   /// Generate current week with status derived from the business date.
   ///

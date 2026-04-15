@@ -103,13 +103,13 @@ Verified through `7.55i.2` and `7.55i.2a`:
 ## Sequencing Note
 
 - The focused pre-`7.55i.3` capability checkpoint is now complete:
-  - `docs/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
+  - `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 - Use that checkpoint as the architecture input for:
   - `7.55i.3` wage-source authority
   - later `7.55k` service-period and daypart separation work
 - The newer planning authority now lives in:
   - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-  - `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+  - `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
   - `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 - Remaining work that `7.55i` did not finish now belongs to:
   - `7.55j.gate`

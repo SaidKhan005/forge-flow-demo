@@ -2,6 +2,14 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
+/// Schedule day-by-day table row.
+///
+/// 7.55q.6: the per-row PLANNED LABOR % column has been removed
+/// alongside the planned labor package. There is no honest same-scope
+/// theoretical labor % at day or daypart granularity in the repo
+/// today, so backfilling that column with a whole-week benchmark
+/// value would mislead. The row now renders Plan-owned columns only:
+/// day / covers / sales / FOH HRS / BOH HRS.
 class ScheduleDayRow extends StatelessWidget {
   final String day;
   final int forecastCovers;

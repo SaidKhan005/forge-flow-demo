@@ -6,6 +6,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 
+import '../domain/canonical_day_order.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../services/labor_model.dart';
 
 // ─── ISO week-id helper ───────────────────────────────────────────────────────
@@ -958,6 +960,39 @@ class BaselineData {
     revision.value++;
   }
 
+  // ── Recommendation honesty signals (7.55p.5h) ────────────────────────────
+  //
+  // Tiny compatibility seam so the Benchmark graph model can tell an honest
+  // story when the app-owned recommendation service (7.55p.5g) concludes the
+  // 60-day cohort is insufficient, weak, or has a union band too wide to
+  // teach at cross-daypart scope. Populated by
+  // `TargetCycleService._persistSelectionSummary` after a recommendation-
+  // backed cycle write. Cleared for manager-override writes so the existing
+  // `baselineRangeValidation`-driven copy remains unchanged there.
+  //
+  // The widget still reads through `rangeGraphModel`; this seam only lets
+  // that model branch on recommendation-quality truth when present. Source
+  // ownership: the recommendation service owns the tier; this bridge only
+  // forwards what was already computed.
+
+  static BaselineRecommendationSignals? _runtimeRecommendationSignals;
+
+  /// Recommendation-path signals, or null when the graph should fall back to
+  /// the existing `baselineRangeValidation` + selected-record derivation
+  /// (manager override / tests / pre-cycle legacy).
+  static BaselineRecommendationSignals? get recommendationSignals =>
+      _runtimeRecommendationSignals;
+
+  static void applyRecommendationSignals(BaselineRecommendationSignals s) {
+    _runtimeRecommendationSignals = s;
+    revision.value++;
+  }
+
+  static void clearRecommendationSignals() {
+    _runtimeRecommendationSignals = null;
+    revision.value++;
+  }
+
   // ── 55 daypart records: 20 lunch · 25 dinner · 10 late_night ─────────────
   // isSelected = true on 14 records that represent high-performing shifts
   // (5 lunch + 6 dinner + 3 late_night).
@@ -1335,22 +1370,43 @@ class BaselineData {
     final histMin = histCplh.reduce(math.min);
     final histMax = histCplh.reduce(math.max);
 
-    // B. Active selected range — inner highlighted range
-    final selected = records.where((r) => r.isSelected).toList();
-    final activeMin = selected.map((r) => r.cplh).reduce(math.min);
-    final activeMax = selected.map((r) => r.cplh).reduce(math.max);
+    // B. Inner active range + target.
+    //
+    // 7.55p.5h-review-fix: when recommendation signals are present and
+    // no manager override is active, the inner band + target come from
+    // the persisted cycle/profile (the same source the honest copy is
+    // talking about) instead of `BaselineData.records.where(isSelected)`.
+    // Otherwise the graph could still draw a confident seed-selected
+    // band while the copy said "Config Default placeholder".
+    //
+    // Manager override keeps the star-shift / seed-selected geometry
+    // unchanged so its existing behavior is preserved bit-for-bit.
+    final signals = _runtimeRecommendationSignals;
+    final useSignalGeometry = signals != null && !hasManagerOverride;
 
-    // C. Target
-    final target = derivedTargetCPLH;
+    double activeMin;
+    double activeMax;
+    double target;
+    if (useSignalGeometry) {
+      activeMin = signals.rangeFloorCPLH;
+      activeMax = signals.rangeCeilingCPLH;
+      target = signals.targetCPLH;
+    } else {
+      final selected = records.where((r) => r.isSelected).toList();
+      activeMin = selected.map((r) => r.cplh).reduce(math.min);
+      activeMax = selected.map((r) => r.cplh).reduce(math.max);
+      target = derivedTargetCPLH;
+    }
 
-    // D. Display range is always historical
+    // C. Display range is always historical
     final displayMin = histMin;
     final displayMax = histMax;
 
-    // E. Inner range label depends on override state
-    final rangeLabel = hasManagerOverride ? 'STAR SHIFT RANGE' : 'BENCHMARK RANGE';
+    // D. Inner range label depends on override state
+    final rangeLabel =
+        hasManagerOverride ? 'STAR SHIFT RANGE' : 'BENCHMARK RANGE';
 
-    // F. Position normalization — always against the historical scale
+    // E. Position normalization — always against the historical scale
     var scaleMin = displayMin;
     var scaleMax = displayMax;
     if (scaleMax <= scaleMin) {
@@ -1369,6 +1425,18 @@ class BaselineData {
         ? ((target - scaleMin) / scaleRange).clamp(0.0, 1.0)
         : 0.5;
 
+    // F. Honest fallback state for the recommendation path (7.55p.5h).
+    //
+    // Three-way branch:
+    //   - Manager override → existing `baselineRangeValidation` drives the
+    //     badge/copy; the graph shows selected star-shift truth unchanged.
+    //   - Recommendation signals present → quality/width come from the
+    //     recommendation service; the graph shows an honest fallback when
+    //     the cohort is insufficient or weak/wide.
+    //   - Neither (tests / legacy) → current `baselineRangeValidation`
+    //     behavior preserved bit-for-bit.
+    final honesty = _resolveGraphHonesty();
+
     return BaselineRangeGraphModel(
       historicalRangeStartCPLH: histMin,
       historicalRangeEndCPLH:   histMax,
@@ -1382,14 +1450,178 @@ class BaselineData {
       activeRangeStartPosition:  activeStartPos,
       activeRangeEndPosition:    activeEndPos,
       targetPosition:            targetPos,
-      title:                   'CPLH TARGET',
+      title:                   'CPLH RANGE & TARGET',
       startLabel:              'LOWEST CPLH LAST 60 DAYS',
       endLabel:                'HIGHEST CPLH LAST 60 DAYS',
       rangeLabel:              rangeLabel,
-      recommendedExplanation:  baselineRangeValidation.message,
+      recommendedExplanation:  honesty.explanation,
       overrideLabel:           'CHOOSE STAR SHIFTS',
+      qualityTier:             honesty.tier,
+      isDegenerate:            honesty.isDegenerate,
+      degenerateFallbackMessage: honesty.fallbackMessage,
+      statusBadgeLabel:        honesty.badgeLabel,
     );
   }
+
+  /// Resolves the Benchmark graph's honest explainer state.
+  ///
+  /// Manager-override branch always defers to the existing
+  /// `baselineRangeValidation` derivation so manager-selected behavior is
+  /// bit-for-bit preserved.
+  static _BaselineGraphHonesty _resolveGraphHonesty() {
+    // 1. Manager override → existing derivation wins.
+    if (hasManagerOverride) {
+      final v = baselineRangeValidation;
+      return _BaselineGraphHonesty(
+        tier: v.status,
+        isDegenerate: v.showWarning,
+        badgeLabel: v.statusLabel,
+        explanation: v.message,
+        fallbackMessage: null,
+      );
+    }
+
+    // 2. Recommendation signals drive honest recommendation-path copy.
+    final signals = _runtimeRecommendationSignals;
+    if (signals != null) {
+      switch (signals.overallQuality) {
+        case 'insufficient':
+          return const _BaselineGraphHonesty(
+            tier: 'insufficient',
+            isDegenerate: true,
+            badgeLabel: 'RANGE UNCONFIRMED',
+            explanation:
+                'Not enough recent 60-day evidence to recommend a '
+                'benchmark range yet. Close more shifts before treating '
+                'this as a target.',
+            fallbackMessage:
+                'The graph is showing the Config Default range as a '
+                'placeholder, not a recommendation.',
+          );
+        case 'weak':
+          if (signals.unionBandWidth > _unionBandWideThresholdCPLH) {
+            return const _BaselineGraphHonesty(
+              tier: 'weak',
+              isDegenerate: true,
+              badgeLabel: 'RANGE TOO WIDE TO TEACH',
+              explanation:
+                  'Dayparts (lunch, dinner, late night) have very '
+                  'different CPLH levels. The combined cross-daypart '
+                  'range is too wide to teach one standard.',
+              fallbackMessage:
+                  'Per-daypart benchmarks are coming. Until then, treat '
+                  'this union band as context only.',
+            );
+          }
+          return const _BaselineGraphHonesty(
+            tier: 'weak',
+            isDegenerate: true,
+            badgeLabel: 'RANGE UNCERTAIN',
+            explanation:
+                'Recent cohorts did not meet the quality bar. Target may '
+                'not be teachable yet.',
+            fallbackMessage:
+                'Give the 60-day window more closed shifts — the '
+                'recommendation improves as evidence builds.',
+          );
+        case 'adequate':
+        case 'strong':
+        default:
+          return const _BaselineGraphHonesty(
+            tier: 'good',
+            isDegenerate: false,
+            badgeLabel: 'GOOD OPZ RANGE',
+            explanation:
+                'Target sits in a usable range with room to flex.',
+            fallbackMessage: null,
+          );
+      }
+    }
+
+    // 3. No override + no signals → current behavior (tests / legacy).
+    final v = baselineRangeValidation;
+    return _BaselineGraphHonesty(
+      tier: v.status,
+      isDegenerate: v.showWarning,
+      badgeLabel: v.statusLabel,
+      explanation: v.message,
+      fallbackMessage: null,
+    );
+  }
+
+  /// Matches the 7.55p.5f / 7.55p.5g "union full-width adequate cap" so
+  /// the graph cue stays consistent with the recommendation-service threshold
+  /// (see `RecommendedSelectionConfig.unionAdequateCap` and the per-daypart
+  /// TOO WIDE threshold from `baselineRangeValidation`).
+  static const double _unionBandWideThresholdCPLH = 1.25;
+}
+
+/// Internal honest-explainer state for the Benchmark graph (7.55p.5h).
+class _BaselineGraphHonesty {
+  final String tier;
+  final bool isDegenerate;
+  final String badgeLabel;
+  final String explanation;
+  final String? fallbackMessage;
+  const _BaselineGraphHonesty({
+    required this.tier,
+    required this.isDegenerate,
+    required this.badgeLabel,
+    required this.explanation,
+    required this.fallbackMessage,
+  });
+}
+
+/// Recommendation-quality signals projected from the persisted
+/// `TargetCycle` + `RecommendedBenchmarkSelection` output into
+/// `BaselineData` so the Benchmark graph can both (a) branch its copy
+/// on real cohort-quality truth and (b) draw geometry from the same
+/// source of truth as the copy (7.55p.5h + 7.55p.5h-review-fix).
+///
+/// Owned by `TargetCycleService` — populated inline during
+/// `_persistSelectionSummary` on cycle write AND rehydrated during
+/// `hydrateBenchmarkHonestyFromActiveCycle` at bootstrap so honesty
+/// survives fresh launches. The graph only consumes.
+class BaselineRecommendationSignals {
+  /// Cycle source label, e.g. `cycle_recommended`,
+  /// `cycle_recommended_insufficient`, `cycle_manager_override`.
+  final String sourceType;
+
+  /// `'strong' | 'adequate' | 'weak' | 'insufficient'`.
+  final String overallQuality;
+
+  /// Full-width cross-daypart union band (max − min) of the selected
+  /// cohort's CPLH values.
+  final double unionBandWidth;
+
+  /// Total shifts in the selected cohort across all dayparts.
+  final int selectedShiftCount;
+
+  /// Floor of the inner range the graph should draw. Sourced from the
+  /// persisted cycle's `opzFloorCPLH` — matches the recommendation for
+  /// recommended writes and `MeridianConfig.opzFloorCPLH` for
+  /// insufficient fallback writes. The graph uses this instead of
+  /// `BaselineData.records.where(isSelected)` so the drawn range
+  /// matches the claim the copy makes.
+  final double rangeFloorCPLH;
+
+  /// Ceiling of the inner range the graph should draw.
+  final double rangeCeilingCPLH;
+
+  /// Target tick position the graph should draw. Sourced from the
+  /// persisted cycle's `targetCPLH` — matches recommendation or
+  /// Config Default as appropriate.
+  final double targetCPLH;
+
+  const BaselineRecommendationSignals({
+    required this.sourceType,
+    required this.overallQuality,
+    required this.unionBandWidth,
+    required this.selectedShiftCount,
+    required this.rangeFloorCPLH,
+    required this.rangeCeilingCPLH,
+    required this.targetCPLH,
+  });
 }
 
 // ─── Baseline range graph model (Jim Taylor Ch. 9–12) ────────────────────────
@@ -1420,6 +1652,35 @@ class BaselineRangeGraphModel {
   final String recommendedExplanation;
   final String overrideLabel;
 
+  // ── 7.55p.5h honesty fields ─────────────────────────────────────────────
+  // Drive the Benchmark graph's degenerate-state UI: dimmed inner box,
+  // honest badge label, and an explicit fallback message that tells the
+  // user the range is not teachable yet rather than pretending it is.
+  //
+  // Source of truth:
+  //   - Manager override → `baselineRangeValidation`
+  //   - Recommendation signals present → `RecommendedBenchmarkSelection`
+  //   - Neither → existing `baselineRangeValidation`
+
+  /// Normalized quality tier:
+  /// `'strong' | 'adequate' | 'weak' | 'insufficient' | 'good' |
+  /// 'too_narrow' | 'too_wide' | 'healthy'`.
+  final String qualityTier;
+
+  /// When true, the graph should NOT teach precision. UI should mute the
+  /// inner highlight and lead with `degenerateFallbackMessage`.
+  final bool isDegenerate;
+
+  /// Optional secondary line rendered below the primary explainer when
+  /// the graph is in a degenerate state. Null when no fallback copy is
+  /// needed.
+  final String? degenerateFallbackMessage;
+
+  /// Label to show in the status badge. Replaces the legacy hard-coded
+  /// mapping from `baselineRangeValidation.statusLabel` when recommendation
+  /// signals are active.
+  final String statusBadgeLabel;
+
   const BaselineRangeGraphModel({
     required this.historicalRangeStartCPLH,
     required this.historicalRangeEndCPLH,
@@ -1439,6 +1700,10 @@ class BaselineRangeGraphModel {
     required this.rangeLabel,
     required this.recommendedExplanation,
     required this.overrideLabel,
+    required this.qualityTier,
+    required this.isDegenerate,
+    required this.degenerateFallbackMessage,
+    required this.statusBadgeLabel,
   });
 }
 
@@ -1497,28 +1762,25 @@ class ScheduleForecastDefaults {
 }
 
 // ─── Day-order constants for Full Week section ────────────────────────────────
-// Specifies the canonical Mon→Sun order and which dayparts each day has.
+// Thin bridge: delegates to CanonicalDayOrder and
+// ServicePeriodDefinitionResolver with demo definitions.
+// Retained for callers not yet wired to the persisted timing config.
 
 class WeekDayOrder {
-  static const List<String> dayLabels = [
-    'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun',
-  ];
+  /// Canonical Mon–Sun day-label list.
+  ///
+  /// Thin bridge: delegates to [CanonicalDayOrder.labels].
+  static const List<String> dayLabels = CanonicalDayOrder.labels;
 
+  /// Returns service-period IDs applicable to [dayLabel] in canonical order.
+  ///
+  /// Thin bridge: delegates to [ServicePeriodDefinitionResolver] with
+  /// demo definitions. Will be retired when callers wire to the
+  /// persisted timing config.
   static List<String> daypartsFor(String dayLabel) {
-    switch (dayLabel) {
-      case 'Mon':
-      case 'Tue':
-      case 'Wed':
-      case 'Thu':
-        return ['lunch', 'dinner'];
-      case 'Fri':
-        return ['lunch', 'dinner', 'late_night'];
-      case 'Sat':
-        return ['dinner', 'late_night'];
-      case 'Sun':
-        return ['dinner'];
-      default:
-        return [];
-    }
+    return ServicePeriodDefinitionResolver.idsForDayLabel(
+      ServicePeriodDefinitionResolver.demoDefinitions,
+      dayLabel,
+    );
   }
 }

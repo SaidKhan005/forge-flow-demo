@@ -1,13 +1,13 @@
 /// The current effective target profile for a restaurant.
 ///
-/// Built from either the system baseline or a manager override.
+/// Canonical runtime profile projected from the active TargetCycle.
 /// One active profile exists per restaurant at any time.
 library;
 
 class ActiveTargetProfile {
   final String targetProfileId;
   final String restaurantId;
-  final String sourceType; // 'system_baseline' or 'manager_override'
+  final String sourceType; // e.g. cycle_recommended / cycle_manager_override
   final double targetCPLH;
   final double targetSPLH;
   final double targetPPA;
@@ -36,6 +36,48 @@ class ActiveTargetProfile {
     required this.theoreticalLaborPct,
     required this.builtAt,
   });
+
+  /// Builds an [ActiveTargetProfile] from explicit source-of-truth inputs.
+  ///
+  /// This is the canonical constructor for live standards-authoring paths:
+  /// callers supply benchmark rates, wages, OPZ bounds, and provenance
+  /// explicitly, and this helper computes the split/theoretical labor
+  /// percentages without touching bridge-era BaselineData.
+  static ActiveTargetProfile build({
+    required String restaurantId,
+    required String sourceType,
+    required double targetCPLH,
+    required double targetSPLH,
+    required double targetPPA,
+    required double fohWage,
+    required double bohWage,
+    required double opzFloorCPLH,
+    required double opzCeilingCPLH,
+    String? targetProfileId,
+    String? builtAt,
+  }) {
+    final fohPct = (targetCPLH > 0 && targetPPA > 0)
+        ? fohWage / (targetCPLH * targetPPA) * 100
+        : 0.0;
+    final bohPct = targetSPLH > 0 ? bohWage / targetSPLH * 100 : 0.0;
+
+    return ActiveTargetProfile(
+      targetProfileId: targetProfileId ?? '${restaurantId}_active',
+      restaurantId: restaurantId,
+      sourceType: sourceType,
+      targetCPLH: targetCPLH,
+      targetSPLH: targetSPLH,
+      targetPPA: targetPPA,
+      fohWage: fohWage,
+      bohWage: bohWage,
+      opzFloorCPLH: opzFloorCPLH,
+      opzCeilingCPLH: opzCeilingCPLH,
+      theoreticalFohLaborPct: fohPct,
+      theoreticalBohLaborPct: bohPct,
+      theoreticalLaborPct: fohPct + bohPct,
+      builtAt: builtAt ?? DateTime.now().toIso8601String(),
+    );
+  }
 
   Map<String, dynamic> toMap() => {
         'target_profile_id': targetProfileId,
@@ -73,4 +115,60 @@ class ActiveTargetProfile {
         theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
         builtAt: m['built_at'] as String,
       );
+
+  // ── 7.55q.3: shared benchmark-target blended-wage seam ─────────────────
+  //
+  // Conformance Rule 2 (per `7.55q.1`): blended wage is a Benchmark-owned
+  // target metric and must be derived from one shared seam, not
+  // recomputed per surface. Both Benchmark (`_BaselineTargetsCard`) and
+  // Variance WTD (`WeekData.theoreticalBlendedWage`) now read the same
+  // formula from this class so they cannot drift.
+
+  /// 7.55q.3: the canonical benchmark-target blended wage for the
+  /// current active target state.
+  ///
+  /// Pure derived getter — wraps [computeTargetBlendedWage] with the
+  /// profile's own rate inputs. Independent of demand volume
+  /// (covers cancel out in the model-hour ratio).
+  double get targetBlendedWage => computeTargetBlendedWage(
+        targetCPLH: targetCPLH,
+        targetSPLH: targetSPLH,
+        targetPPA: targetPPA,
+        fohWage: fohWage,
+        bohWage: bohWage,
+      );
+
+  /// 7.55q.3: cover-independent benchmark-target blended wage formula.
+  ///
+  /// Substituting the model-hour expressions
+  ///   `fohHours = covers / targetCPLH`
+  ///   `bohHours = covers × targetPPA / targetSPLH`
+  /// into the hour-weighted blended-wage formula
+  ///   `(fohHours × fohWage + bohHours × bohWage) / (fohHours + bohHours)`
+  /// makes `covers` cancel exactly. The result is purely a function
+  /// of the rate inputs and wages — exactly the fields on
+  /// `ActiveTargetProfile`.
+  ///
+  /// Returns 0.0 when [targetCPLH] or [targetSPLH] is non-positive
+  /// (honest "no targets yet" boundary, no NaN / divide-by-zero).
+  ///
+  /// Static so consumers that do not have a profile in scope (e.g.
+  /// `WeekData`, which has the target fields injected by
+  /// `ShiftService` from the active profile) can call it directly
+  /// without the seam diverging.
+  static double computeTargetBlendedWage({
+    required double targetCPLH,
+    required double targetSPLH,
+    required double targetPPA,
+    required double fohWage,
+    required double bohWage,
+  }) {
+    if (targetCPLH <= 0 || targetSPLH <= 0) return 0.0;
+    final fohHourBasis = 1.0 / targetCPLH;
+    final bohHourBasis = targetPPA / targetSPLH;
+    final totalHourBasis = fohHourBasis + bohHourBasis;
+    if (totalHourBasis <= 0) return 0.0;
+    return (fohHourBasis * fohWage + bohHourBasis * bohWage) /
+        totalHourBasis;
+  }
 }

@@ -18,10 +18,12 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:forge_and_flow/data/baseline_manager_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/target_cycle_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -36,9 +38,20 @@ void main() {
     await SqliteDatabase.instance.reseedDemo();
   });
 
+  Future<void> clearCycleBackedState() async {
+    final db = await SqliteDatabase.instance.database;
+    await db.delete('benchmark_selection_summaries');
+    await db.delete('active_target_profiles');
+    await db.delete('target_cycles');
+  }
+
   // ── A: Initial recommended cycle creation ───────────────────────────────
 
   group('A — initial recommended cycle creation', () {
+    setUp(() async {
+      await clearCycleBackedState();
+    });
+
     test('creates recommended cycle when none exists', () async {
       final cycle = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
@@ -85,6 +98,34 @@ void main() {
       expect(cycle.managerOverrideUsed, isFalse);
       expect(cycle.managerOverrideAt, isNull);
       expect(cycle.adminReplacedAt, isNull);
+    });
+
+    test(
+        'persisted manager-selected keys do not taint recommended-cycle provenance',
+        () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      expect(candidates, isNotEmpty);
+
+      final db = await SqliteDatabase.instance.database;
+      await db.insert('baseline_selected_records', {
+        'restaurant_id': restaurantId,
+        'record_key': candidates.first.recordKey,
+      });
+
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      expect(cycle.source, TargetCycleSource.recommended);
+
+      final profile = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profile, isNotNull);
+      expect(profile!.sourceType, 'cycle_recommended');
+
+      final summary = await SqliteBenchmarkSelectionSummaryRepository.instance
+          .getByTargetCycleId(cycle.cycleId);
+      expect(summary, isNotNull);
+      expect(summary!.sourceType, 'cycle_recommended');
     });
 
     test('cycle is persisted to repository', () async {
@@ -253,7 +294,7 @@ void main() {
   // ── F: Refresh derives fresh recommendation ────────────────────────────
 
   group('F — refresh derives fresh recommendation, not stale profile', () {
-    test('refreshed cycle uses baseline build path, not persisted profile', () async {
+    test('refreshed cycle uses explicit authority inputs, not persisted profile', () async {
       await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
 
@@ -284,19 +325,20 @@ void main() {
           .getOrCreateActiveCycle(restaurantId, '2026-05-26');
 
       // The refreshed cycle must NOT have the sentinel value.
-      // It should have rebuilt from BaselineData + resolved wages.
+      // It should have rebuilt from explicit recommendation inputs
+      // plus resolved wage authority.
       expect(refreshed.targetCPLH, isNot(999.0),
           reason: 'refreshed cycle must not clone stale persisted profile');
       expect(refreshed.targetSPLH, isNot(999.0));
       expect(refreshed.targetPPA, isNot(999.0));
 
-      // And it should have real positive values from the baseline build.
+      // And it should have real positive values from the rebuilt authority path.
       expect(refreshed.targetCPLH, greaterThan(0));
       expect(refreshed.targetSPLH, greaterThan(0));
       expect(refreshed.targetPPA, greaterThan(0));
     });
 
-    test('initial creation also uses baseline build path', () async {
+    test('initial creation also uses explicit authority inputs', () async {
       // Mutate persisted profile before any cycle exists
       final staleProfile = ActiveTargetProfile(
         targetProfileId: '${restaurantId}_active',
@@ -355,6 +397,8 @@ void main() {
     });
 
     test('read returns latest cycle when multiple active rows exist', () async {
+      await clearCycleBackedState();
+
       // Manually insert two active rows to simulate a race/corruption scenario
       final db = await SqliteDatabase.instance.database;
 
@@ -403,6 +447,8 @@ void main() {
     });
 
     test('creating a new cycle deactivates all prior active rows', () async {
+      await clearCycleBackedState();
+
       // Manually insert two active rows
       final db = await SqliteDatabase.instance.database;
       await db.insert('target_cycles', {
@@ -459,6 +505,10 @@ void main() {
   // ── H: Benchmark context re-anchoring (7.55l.2c) ─────────────────────────
 
   group('H — benchmark context re-anchored to requested business date', () {
+    setUp(() async {
+      await clearCycleBackedState();
+    });
+
     test('cycle creation re-primes BaselineData from DB, not stale in-memory state', () async {
       // Poison BaselineData with extreme sentinel values. If the service
       // does not re-prime from DB, buildActiveTargetProfileFromBaseline
@@ -1003,6 +1053,10 @@ void main() {
   // ── N: BenchmarkSelectionSummary persistence (7.55l.8c) ────────────────
 
   group('N — benchmark selection summary persisted on cycle write', () {
+    setUp(() async {
+      await clearCycleBackedState();
+    });
+
     test('recommended cycle write persists benchmark-selection summary', () async {
       final cycle = await TargetCycleService.instance
           .getOrCreateActiveCycle(restaurantId, '2026-03-27');
@@ -1071,6 +1125,154 @@ void main() {
       final ids = allRows.map((r) => r['target_cycle_id']).toSet();
       expect(ids, contains(first.cycleId));
       expect(ids, contains(refreshed.cycleId));
+    });
+  });
+
+  // ── O: Explicit restaurant-scope routing (7.55p.5g-review-fix) ──────────
+
+  group('O — explicit restaurant scope in recommendation path', () {
+    test(
+        'resolveRecommendedSelection honors the explicit restaurantId, not '
+        'the active-scope restaurant', () async {
+      // Demo restaurant has a full seeded candidate pool. An invented
+      // ghost restaurant has zero closed shifts. Before the
+      // 7.55p.5g-review-fix, the inner candidate loader resolved the
+      // active-scope restaurant (demo) even when the caller passed a
+      // different id — so both calls returned identical results.
+      final demo = await BaselineManagerService.instance
+          .resolveRecommendedSelection(restaurantId, '2026-03-27');
+      // Sanity: demo has enough evidence for a non-insufficient result.
+      expect(demo.overallQuality, isNot('insufficient'),
+          reason: 'demo restaurant should have enough 60-day evidence');
+      expect(demo.selectedRecordIds, isNotEmpty);
+
+      final ghost = await BaselineManagerService.instance
+          .resolveRecommendedSelection(
+              'ghost_restaurant_with_no_data', '2026-03-27');
+      // Ghost restaurant has zero shifts — the recommendation MUST be
+      // insufficient. If the bug were still present, this call would
+      // silently fall back to the active (demo) restaurant and mirror
+      // demo's non-insufficient result.
+      expect(ghost.overallQuality, 'insufficient');
+      expect(ghost.selectedRecordIds, isEmpty);
+      expect(ghost.perDaypartStats, isEmpty);
+    });
+
+    test(
+        'getOrCreateActiveCycle routes the explicit restaurantId all the '
+        'way through the recommendation pipeline to the persisted summary',
+        () async {
+      // End-to-end proof: TargetCycleService is the public entry and it
+      // calls the recommendation path internally. Creating a cycle for
+      // the ghost restaurant must persist a summary whose selected
+      // shift count reflects the ghost's empty pool, not the demo's.
+      final cycle = await TargetCycleService.instance.getOrCreateActiveCycle(
+          'ghost_restaurant_with_no_data', '2026-03-27');
+      expect(cycle.restaurantId, 'ghost_restaurant_with_no_data');
+
+      final summary = await SqliteBenchmarkSelectionSummaryRepository.instance
+          .getByTargetCycleId(cycle.cycleId);
+      expect(summary, isNotNull);
+      expect(summary!.selectedShiftCount, 0,
+          reason:
+              'ghost restaurant has no candidate shifts, so the service-'
+              'backed recommendation must produce an empty cohort. '
+              'Before 7.55p.5g-review-fix, the active (demo) restaurant '
+              'was silently used instead.');
+
+      // And the cycle itself should carry the insufficient-fallback
+      // source label, not the demo's cycle_recommended summary source.
+      expect(summary.sourceType, 'cycle_recommended_insufficient');
+    });
+  });
+
+  // ── P: Benchmark graph honesty hydration (7.55p.5h-review-fix) ─────────
+  //
+  // Proves that recommendation-honesty signals survive a simulated
+  // fresh app launch: the in-memory signals can be cleared (as happens
+  // when a process restarts) and then recovered from the persisted
+  // active cycle via TargetCycleService.hydrateBenchmarkHonestyFromActiveCycle.
+
+  group('P — honesty hydration from persisted cycle (7.55p.5h-review-fix)',
+      () {
+    test('rehydrates recommendation signals after in-memory clear',
+        () async {
+      // 1. Write a recommended cycle (this sets in-memory signals).
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      expect(BaselineData.recommendationSignals, isNotNull,
+          reason: 'cycle write should set signals inline');
+
+      // 2. Simulate a fresh app launch: clear the in-memory signals.
+      BaselineData.clearRecommendationSignals();
+      expect(BaselineData.recommendationSignals, isNull);
+
+      // 3. Rehydrate from the persisted active cycle.
+      await TargetCycleService.instance
+          .hydrateBenchmarkHonestyFromActiveCycle(restaurantId);
+
+      // 4. Signals are recovered and match the persisted cycle's geometry.
+      final s = BaselineData.recommendationSignals;
+      expect(s, isNotNull);
+      expect(s!.rangeFloorCPLH, closeTo(cycle.opzFloorCPLH, 0.001));
+      expect(s.rangeCeilingCPLH, closeTo(cycle.opzCeilingCPLH, 0.001));
+      expect(s.targetCPLH, closeTo(cycle.targetCPLH, 0.001));
+      // Demo restaurant has enough evidence → quality is not insufficient.
+      expect(s.overallQuality, isNot('insufficient'));
+    });
+
+    test('hydration for an unknown restaurant (no cycle) clears signals',
+        () async {
+      // Seed some signals so we can observe the clear.
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'strong',
+          unionBandWidth: 0.60,
+          selectedShiftCount: 10,
+          rangeFloorCPLH: 4.30,
+          rangeCeilingCPLH: 4.90,
+          targetCPLH: 4.58,
+        ),
+      );
+      expect(BaselineData.recommendationSignals, isNotNull);
+
+      // An unknown restaurant has no active cycle — hydration must
+      // explicitly clear the lingering signals rather than leaving
+      // stale truth on the bridge.
+      await TargetCycleService.instance
+          .hydrateBenchmarkHonestyFromActiveCycle(
+              'unknown_restaurant_no_cycle');
+
+      expect(BaselineData.recommendationSignals, isNull);
+    });
+
+    test('hydration for a ghost restaurant produces insufficient signals '
+        'with Config Default geometry', () async {
+      // Creating the cycle is the only way to populate the ghost's
+      // active-cycle row. That's also what would exist on disk before
+      // a hypothetical restart.
+      await TargetCycleService.instance.getOrCreateActiveCycle(
+          'ghost_restaurant_hydration', '2026-03-27');
+
+      // Simulate process restart.
+      BaselineData.clearRecommendationSignals();
+
+      // Rehydrate for the ghost restaurant.
+      await TargetCycleService.instance
+          .hydrateBenchmarkHonestyFromActiveCycle(
+              'ghost_restaurant_hydration');
+
+      final s = BaselineData.recommendationSignals;
+      expect(s, isNotNull);
+      expect(s!.overallQuality, 'insufficient');
+      expect(s.sourceType, 'cycle_recommended_insufficient');
+      // Geometry comes from MeridianConfig placeholder (what the
+      // insufficient-fallback cycle writes).
+      expect(s.targetCPLH, closeTo(MeridianConfig.targetCPLH, 0.001));
+      expect(s.rangeFloorCPLH, closeTo(MeridianConfig.opzFloorCPLH, 0.001));
+      expect(s.rangeCeilingCPLH,
+          closeTo(MeridianConfig.opzCeilingCPLH, 0.001));
     });
   });
 }

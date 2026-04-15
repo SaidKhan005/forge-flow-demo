@@ -1,24 +1,37 @@
-// Phase 7.5c â€” Current state alignment tests.
+// Current-state alignment tests.
 //
 // Validates:
 // A. Fixture replay seeds current/open state
-// B. Shift dashboard read model comes from persisted current state
-// C. Variance Full Week state comes from merged current-week state
+// B. Shift whole-day read model requires persisted current state plus an
+//    existing locked weekly plan
+// C. Variance Full Week state comes from merged current-week state using
+//    locked-plan truth plus current active-profile benchmark targets
 // D. Fixture replay can drive the aligned app read surfaces
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
 import 'package:forge_and_flow/data/target_cycle_service.dart';
+import 'package:forge_and_flow/data/wage_standard_context_service.dart';
 import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
-import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/models/current_week_state.dart';
 
 void main() {
+  Future<void> ensureCurrentWeekSnapshot() async {
+    final snapshot =
+        await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    expect(snapshot, isNotNull);
+  }
+
+  Future<ActiveTargetProfile> loadActiveProfile() {
+    return WageStandardContextService.instance
+        .loadOrBootstrapProfile('demo_restaurant_001');
+  }
+
   setUp(() async {
     await SqliteDatabase.instance.reseedDemo();
   });
@@ -62,12 +75,14 @@ void main() {
   // â”€â”€ B: Shift dashboard read model from persisted current state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('B â€” shift dashboard read model', () {
-    test('getShiftDashboard returns non-null read model', () async {
+    test('getShiftDashboard returns null when no locked weekly plan exists',
+        () async {
       final rm = await ShiftService.instance.getShiftDashboard();
-      expect(rm, isNotNull);
+      expect(rm, isNull);
     });
 
     test('read model has non-empty context fields', () async {
+      await ensureCurrentWeekSnapshot();
       final rm = await ShiftService.instance.getShiftDashboard();
       // daypart may be empty for whole-day views
       expect(rm!.day, isNotEmpty);
@@ -76,6 +91,7 @@ void main() {
     });
 
     test('read model has current metrics', () async {
+      await ensureCurrentWeekSnapshot();
       final rm = await ShiftService.instance.getShiftDashboard();
       expect(rm!.actualCovers, greaterThan(0));
       expect(rm.forecastCovers, greaterThan(0));
@@ -83,12 +99,14 @@ void main() {
     });
 
     test('read model has active lever', () async {
+      await ensureCurrentWeekSnapshot();
       final rm = await ShiftService.instance.getShiftDashboard();
       expect(rm!.primaryLeverId, isNotEmpty);
       expect(rm.primaryLeverCard.whatHappened, isNotEmpty);
     });
 
     test('read model has metric cards', () async {
+      await ensureCurrentWeekSnapshot();
       final rm = await ShiftService.instance.getShiftDashboard();
       expect(rm!.metricCards, isNotEmpty);
       final heroes = rm.metricCards.where((c) => c.isHero);
@@ -96,6 +114,7 @@ void main() {
     });
 
     test('read model OPZ status is valid', () async {
+      await ensureCurrentWeekSnapshot();
       final rm = await ShiftService.instance.getShiftDashboard();
       expect(['below', 'in', 'above'], contains(rm!.opzStatus));
       expect(rm.opzLabel, isNotEmpty);
@@ -124,6 +143,7 @@ void main() {
     });
 
     test('getCurrentWeekState returns valid state', () async {
+      await ensureCurrentWeekSnapshot();
       final state = await ShiftService.instance
           .getCurrentWeekState('2026-W13', 'Mar 24');
       expect(state, isNotNull);
@@ -279,24 +299,20 @@ void main() {
               'the last closed day, not from shift records');
     });
 
-    test('getLiveWeekToDate uses snapshot-linked cycle for targets', () async {
-      final snapshot =
-          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
-      expect(snapshot, isNotNull);
-
-      final cycle = await SqliteTargetCycleRepository.instance
-          .getCycleById(snapshot!.targetCycleId);
-      expect(cycle, isNotNull);
-
+    test('getLiveWeekToDate uses current active profile for benchmark targets',
+        () async {
+      await ensureCurrentWeekSnapshot();
+      final profile = await loadActiveProfile();
       final wtd = await ShiftService.instance.getLiveWeekToDate();
       expect(wtd, isNotNull);
-      expect(wtd!.targetCPLH, equals(cycle!.targetCPLH),
-          reason: 'WTD target CPLH must come from snapshot-linked cycle');
-      expect(wtd.targetPPA, equals(cycle.targetPPA),
-          reason: 'WTD target PPA must come from snapshot-linked cycle');
+      expect(wtd!.targetCPLH, equals(profile.targetCPLH),
+          reason: 'WTD target CPLH must come from the current active profile');
+      expect(wtd.targetPPA, equals(profile.targetPPA),
+          reason: 'WTD target PPA must come from the current active profile');
     });
 
-    test('same-week cycle change does not rewrite current-week WTD truth',
+    test('same-week cycle change rewrites benchmark targets but preserves '
+        'locked forecast truth',
         () async {
       // Get initial WTD (triggers snapshot auto-lock if needed)
       final initialWtd = await ShiftService.instance.getLiveWeekToDate();
@@ -310,15 +326,15 @@ void main() {
       await TargetCycleService.instance
           .applyAdminReplacementCycle(restaurantId, mockDate!);
 
-      // WTD targets and forecasts should still match the original locked truth
+      final activeProfile = await loadActiveProfile();
       final afterWtd = await ShiftService.instance.getLiveWeekToDate();
       expect(afterWtd, isNotNull);
-      expect(afterWtd!.targetCPLH, equals(initialWtd!.targetCPLH),
+      expect(afterWtd!.targetCPLH, equals(activeProfile.targetCPLH),
           reason:
-              'Same-week cycle change must not rewrite locked WTD targets');
-      expect(afterWtd.targetPPA, equals(initialWtd.targetPPA));
+              'Non-closed WTD benchmark targets must follow the current active profile');
+      expect(afterWtd.targetPPA, equals(activeProfile.targetPPA));
       expect(afterWtd.totalWeekForecastCovers,
-          equals(initialWtd.totalWeekForecastCovers));
+          equals(initialWtd!.totalWeekForecastCovers));
       expect(afterWtd.wtdForecastCovers,
           equals(initialWtd.wtdForecastCovers),
           reason:
@@ -359,35 +375,28 @@ void main() {
       final snapshot =
           await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       expect(snapshot, isNotNull);
-
-      final cycle = await SqliteTargetCycleRepository.instance
-          .getCycleById(snapshot!.targetCycleId);
-      expect(cycle, isNotNull);
+      final profile = await loadActiveProfile();
 
       final state = await ShiftService.instance
           .getCurrentWeekState('2026-W13', 'Mar 24');
       expect(state, isNotNull);
 
-      // WeekData inside CurrentWeekState must use locked cycle targets
-      expect(state!.weekData.targetCPLH, equals(cycle!.targetCPLH),
+      // WeekData inside CurrentWeekState must use current active-profile
+      // targets for Benchmark-owned metrics.
+      expect(state!.weekData.targetCPLH, equals(profile.targetCPLH),
           reason:
-              'CurrentWeekState.weekData must use locked cycle targets');
-      expect(state.weekData.targetPPA, equals(cycle.targetPPA));
+              'CurrentWeekState.weekData must use current active-profile targets');
+      expect(state.weekData.targetPPA, equals(profile.targetPPA));
 
       // Weekly forecast must come from locked snapshot
       expect(state.weekData.totalWeekForecastCovers,
-          equals(snapshot.forecastCovers));
+          equals(snapshot!.forecastCovers));
     });
 
-    test('getFullWeekShifts open/projected rows use locked cycle targets',
+    test('getFullWeekShifts open/projected rows use current active profile targets',
         () async {
-      final snapshot =
-          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
-      expect(snapshot, isNotNull);
-
-      final cycle = await SqliteTargetCycleRepository.instance
-          .getCycleById(snapshot!.targetCycleId);
-      expect(cycle, isNotNull);
+      await ensureCurrentWeekSnapshot();
+      final profile = await loadActiveProfile();
 
       final shifts =
           await ShiftService.instance.getFullWeekShifts('2026-W13');
@@ -396,16 +405,16 @@ void main() {
       expect(openRows, isNotEmpty);
 
       for (final r in openRows) {
-        expect(r.targetCPLH, equals(cycle!.targetCPLH),
+        expect(r.targetCPLH, equals(profile.targetCPLH),
             reason:
-                'Open/projected row targetCPLH must come from locked cycle');
-        expect(r.targetPPA, equals(cycle.targetPPA));
-        expect(r.targetFohWage, equals(cycle.fohWage));
-        expect(r.targetBohWage, equals(cycle.bohWage));
+                'Open/projected row targetCPLH must come from the current active profile');
+        expect(r.targetPPA, equals(profile.targetPPA));
+        expect(r.targetFohWage, equals(profile.fohWage));
+        expect(r.targetBohWage, equals(profile.bohWage));
       }
     });
 
-    test('same-week cycle change does not rewrite open/projected row targets',
+    test('same-week cycle change rewrites open/projected benchmark targets',
         () async {
       // Get initial full week (triggers snapshot auto-lock if needed)
       final initialShifts =
@@ -423,7 +432,7 @@ void main() {
       await TargetCycleService.instance
           .applyAdminReplacementCycle(restaurantId, mockDate!);
 
-      // Open/projected rows should still have the original locked targets
+      final activeProfile = await loadActiveProfile();
       final afterShifts =
           await ShiftService.instance.getFullWeekShifts('2026-W13');
       final afterOpen = afterShifts
@@ -431,11 +440,11 @@ void main() {
           .toList();
       expect(afterOpen, isNotEmpty);
 
-      for (var i = 0; i < afterOpen.length; i++) {
-        expect(afterOpen[i].targetCPLH, equals(initialOpen[i].targetCPLH),
+      for (final row in afterOpen) {
+        expect(row.targetCPLH, equals(activeProfile.targetCPLH),
             reason:
-                'Same-week cycle change must not rewrite open row targets');
-        expect(afterOpen[i].targetPPA, equals(initialOpen[i].targetPPA));
+                'Same-week cycle change should rewrite non-closed benchmark targets to the active profile');
+        expect(row.targetPPA, equals(activeProfile.targetPPA));
       }
     });
 
@@ -468,10 +477,6 @@ void main() {
       final snapshot =
           await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       expect(snapshot, isNotNull);
-
-      final cycle = await SqliteTargetCycleRepository.instance
-          .getCycleById(snapshot!.targetCycleId);
-      expect(cycle, isNotNull);
 
       // Seed a projected snapshot for a non-current week so open rows exist
       final repo = SqliteOpenShiftSnapshotRepository.instance;

@@ -9,9 +9,11 @@
 // F. Operational Shift/open-snapshot authority is NOT collapsed into
 //    the planning-anchor seam
 // G. Date arithmetic helper behaves correctly
+// H. Business-date resolution from timing config (7.55n.2)
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/canonical_day_order.dart';
+import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';
 import 'package:forge_and_flow/data/business_date_authority_service.dart';
 import 'package:forge_and_flow/data/baseline_manager_service.dart';
@@ -21,6 +23,7 @@ import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_timing_config_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 
 void main() {
@@ -368,6 +371,101 @@ void main() {
         DemandForecastContextService.subtractDays('2026-03-27', 59),
         equals(BusinessDateAuthorityService.subtractDays('2026-03-27', 59)),
       );
+    });
+  });
+
+  // ── H. Business-date resolution from timing config (7.55n.2) ──────────────
+
+  group('H — resolveBusinessDate from timing config', () {
+    test('resolves through active timing config', () async {
+      final result = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 14, 0));
+
+      // Demo config has businessDayStartLocalTime = '04:00'.
+      // 14:00 is after cutoff → same calendar date.
+      expect(result, '2026-04-13');
+    });
+
+    test('before-cutoff resolves to previous date through timing config',
+        () async {
+      final result = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 3, 0));
+
+      // 03:00 is before 04:00 cutoff → previous calendar date.
+      expect(result, '2026-04-12');
+    });
+
+    test('exact cutoff resolves to same date through timing config', () async {
+      final result = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 4, 0));
+
+      // 04:00 is at 04:00 cutoff → same calendar date.
+      expect(result, '2026-04-13');
+    });
+
+    test('planning-anchor behavior is unchanged after adding resolver',
+        () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+
+      final anchorDate = await BusinessDateAuthorityService.instance
+          .resolvePlanningAnchorDate(restaurantId);
+
+      // Planning anchor should still resolve from mock replay / latest closed.
+      expect(anchorDate, isNotNull);
+    });
+
+    test('resolveBusinessDateFromConfig uses explicit config', () {
+      const config = RestaurantTimingConfig(
+        restaurantId: 'test',
+        businessTimezone: 'America/New_York',
+        businessDayStartLocalTime: '06:00',
+        weekStartDay: 1,
+        servicePeriodDefinitions: [],
+        shiftCloseAuthority: ShiftCloseAuthority.appLocalCutoffFallback,
+        createdAt: '2026-04-13T00:00:00Z',
+        updatedAt: '2026-04-13T00:00:00Z',
+      );
+
+      // 05:59 is before 06:00 cutoff → previous date.
+      final before = BusinessDateAuthorityService.resolveBusinessDateFromConfig(
+        localTimestamp: DateTime(2026, 4, 13, 5, 59),
+        config: config,
+      );
+      expect(before, '2026-04-12');
+
+      // 06:00 is at cutoff → same date.
+      final at = BusinessDateAuthorityService.resolveBusinessDateFromConfig(
+        localTimestamp: DateTime(2026, 4, 13, 6, 0),
+        config: config,
+      );
+      expect(at, '2026-04-13');
+    });
+
+    test('no hidden DateTime.now() dependency', () async {
+      // Calling resolveBusinessDate with a fixed timestamp should always
+      // return the same result regardless of device wall clock.
+      final r1 = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 14, 0));
+      final r2 = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 14, 0));
+
+      expect(r1, equals(r2));
+      expect(r1, '2026-04-13');
+    });
+
+    // Destructive test — must be last in this group because reseedDemo()
+    // does not re-insert restaurant_timing_configs when the restaurant
+    // location already exists.
+    test('returns null when timing config is unavailable', () async {
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('restaurant_timing_configs');
+      SqliteRestaurantTimingConfigRepository.instance.resetDao();
+
+      final result = await BusinessDateAuthorityService.instance
+          .resolveBusinessDate(DateTime(2026, 4, 13, 14, 0));
+
+      expect(result, isNull);
     });
   });
 }

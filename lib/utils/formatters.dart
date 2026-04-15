@@ -50,6 +50,22 @@ abstract class Fmt {
   // Metrics where a LOWER actual vs target is unfavorable (positive direction = good).
   static const _higherIsBetter = {'Covers', 'PPA', 'CPLH', 'SPLH'};
 
+  // ── Time-ago ────────────────────────────────────────────────────────────
+
+  /// Formats a [Duration] as a human-readable age string.
+  ///
+  /// Returns strings like:
+  ///   'just now'   — age < 1 minute
+  ///   '1 min ago'  — 1 minute
+  ///   '3 min ago'  — 2–59 minutes
+  ///   '1 hr ago'   — 60–119 minutes
+  ///   '2 hr ago'   — 120+ minutes
+  static String timeAgo(Duration age) {
+    if (age.inMinutes < 1) return 'just now';
+    if (age.inMinutes < 60) return '${age.inMinutes} min ago';
+    return '${age.inHours} hr ago';
+  }
+
   /// Returns negative (red) or positive (green) based on metric and delta sign.
   /// Metrics in _higherIsBetter: delta < 0 → negative.
   /// All other metrics (cost/hours/labor %): delta > 0 → negative.

@@ -29,7 +29,7 @@ Important now:
 - it delivered the demand, plan, and wage authority seams
 - the newer runtime architecture now continues under:
   - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-  - `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+  - `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
   - `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 
 ## The Problem Today

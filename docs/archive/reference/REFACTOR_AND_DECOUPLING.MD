@@ -1099,7 +1099,7 @@ The post-`7.5` audit found that the repo is close to Phase 8, but not fully hone
 - a fresh repo-wide audit verified that the codebase is structurally ready for Phase 8 connector work
 - the tracked Flutter corpus is now 28 test files
 - the checked-in rerun artifacts are:
-  - docs/phase_8_gate/test_execution_manifest.md
+  - docs/phases/phase_8_gate/test_execution_manifest.md
   - scripts/run_phase8_gate_tests.ps1
 - 7.51e complete: 28-file Flutter corpus rerun passed (all 28/28). Gate blocked on vendor selection only
 - Phase 8 remains blocked on vendor selection only

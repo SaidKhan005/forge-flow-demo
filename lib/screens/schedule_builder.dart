@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
@@ -6,36 +8,84 @@ import '../data/active_target_profile_notifier.dart';
 import '../data/demand_forecast_context_notifier.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/schedule_distribution_weights_notifier.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../data/schedule_plan_read_service.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
 import '../domain/models/schedule_forecast_demand.dart';
 import '../domain/models/schedule_plan.dart';
+import '../services/labor_model.dart';
 import '../utils/formatters.dart';
+import '../widgets/app_screen_header.dart';
 import '../widgets/schedule_day_row.dart';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
+/// 7.55q.2: Schedule's plan authority mode.
+///
+/// Codifies the rule from 7.55q.1 that the in-force current week has
+/// ONE locked plan authority. The Schedule production runtime must
+/// read from the locked WeeklyPlanSnapshot projection (locked mode).
+/// The live `resolveFromInputs` path is preserved for tests and for
+/// preview-from-draft-targets flows (e.g. Manager Override preview),
+/// but is NOT the production current-week authority.
+enum _ScheduleAuthorityMode { live, locked }
+
+/// 7.55q.2: load state of the locked weekly plan.
+///
+/// Surfaces honest degradation. When the locked snapshot truly cannot
+/// be loaded, the notifier exposes [unavailable] rather than silently
+/// falling back to the live `resolveFromInputs` path. UI surfaces can
+/// branch on this to render an explicit message.
+enum ScheduleLockedPlanLoadState { idle, loading, available, unavailable }
+
 class ScheduleForecastNotifier extends ChangeNotifier {
-  // Target values — injected from persisted authority
-  double _targetCPLH;
-  double _targetPPA;
-  double _targetSPLH;
+  // Wages + PPA — used by planned-package math + daypart subrow sales
+  // presentation. Updatable in BOTH modes via [updateTargets].
   double _fohWage;
   double _bohWage;
+  double _targetPPA;
+  double _theoreticalLaborPct;
+  bool _hasResolvedBenchmarkTarget;
 
-  /// Canonical demand covers from [DemandForecastContext].
+  // Live-mode-only inputs. Required for `resolveFromInputs`; unused
+  // in locked mode (the locked snapshot supplies the plan directly).
+  double? _targetCPLH;
+  double? _targetSPLH;
   int? _historicalWeeklyAvgCovers;
 
   /// Optional data-driven distribution weights from closed ShiftRecords.
-  /// When available, used for both day-level allocation (via the shared plan)
-  /// and daypart subrow splits (via adjustedDayViews).
+  /// In live mode: drives both day-level allocation (via the resolver)
+  /// and daypart subrow splits. In locked mode: drives only daypart
+  /// subrow splits (presentation) — the locked plan's day allocation
+  /// is fixed.
   ScheduleDistributionWeights? _distributionWeights;
 
-  /// The shared weekly plan resolved through [SchedulePlanReadService].
-  /// Null when demand is unavailable.
+  /// The shared weekly plan.
+  ///
+  /// In live mode: from [SchedulePlanReadService.resolveFromInputs].
+  /// In locked mode: from
+  /// [SchedulePlanReadService.getExistingCurrentLockedWeeklyPlan].
+  /// Null when:
+  /// - live mode: demand is unavailable.
+  /// - locked mode: snapshot is unavailable, OR not yet loaded.
   SchedulePlan? _plan;
 
+  /// 7.55q.2: authority mode is fixed at construction time.
+  final _ScheduleAuthorityMode _mode;
+
+  /// 7.55q.2: load state of the locked plan. Idle in live mode.
+  ScheduleLockedPlanLoadState _lockedPlanLoadState =
+      ScheduleLockedPlanLoadState.idle;
+
+  /// Test/preview constructor — builds the plan via
+  /// [SchedulePlanReadService.resolveFromInputs] (the live path).
+  ///
+  /// 7.55q.2: this is NOT the production current-week authority.
+  /// Production code must use [ScheduleForecastNotifier.lockedAuthority]
+  /// + [loadLockedPlan]. The live path remains valid for tests and for
+  /// preview-from-draft-targets flows (e.g. Manager Override preview),
+  /// but does not represent the in-force current-week plan.
   ScheduleForecastNotifier({
     required double targetCPLH,
     required double targetPPA,
@@ -49,8 +99,17 @@ class ScheduleForecastNotifier extends ChangeNotifier {
         _targetSPLH = targetSPLH,
         _fohWage = fohWage,
         _bohWage = bohWage,
+        _theoreticalLaborPct = LaborModel.theoreticalLaborPct(
+          targetCPLH,
+          targetSPLH,
+          targetPPA,
+          fohWage,
+          bohWage,
+        ),
+        _hasResolvedBenchmarkTarget = true,
         _historicalWeeklyAvgCovers = historicalWeeklyAvgCovers,
-        _distributionWeights = distributionWeights {
+        _distributionWeights = distributionWeights,
+        _mode = _ScheduleAuthorityMode.live {
     _plan = SchedulePlanReadService.resolveFromInputs(
       targetCPLH: targetCPLH,
       targetPPA: targetPPA,
@@ -62,25 +121,110 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     );
   }
 
-  /// Builds from an ActiveTargetProfile, resolving demand through the
-  /// shared [SchedulePlanReadService] authority.
-  factory ScheduleForecastNotifier.fromProfile(
-    ActiveTargetProfile profile, {
-    int? historicalWeeklyAvgCovers,
+  /// 7.55q.2 + 7.55q.2-review-fix: production constructor — the
+  /// in-force current-week plan authority is the locked
+  /// [WeeklyPlanSnapshot] projected via the **read-only**
+  /// [SchedulePlanReadService.getExistingCurrentLockedWeeklyPlan]
+  /// path.
+  ///
+  /// Wages and PPA from [profile] are used for planned-package math
+  /// and daypart subrow sales presentation. The plan itself is NOT
+  /// recomputed from those inputs — the locked snapshot is the
+  /// singular in-force week truth (7.55q.1 conformance Rule 1).
+  ///
+  /// Call [loadLockedPlan] after construction to populate the plan
+  /// asynchronously. When no snapshot is persisted for the current
+  /// week, [_plan] stays null and [lockedPlanLoadState] becomes
+  /// [ScheduleLockedPlanLoadState.unavailable]. The read path MUST
+  /// NOT auto-generate a snapshot from the live plan — that hidden
+  /// second authority is exactly what the review-fix removes.
+  ScheduleForecastNotifier.lockedAuthority({
+    required ActiveTargetProfile profile,
     ScheduleDistributionWeights? distributionWeights,
-  }) {
-    return ScheduleForecastNotifier(
-      targetCPLH: profile.targetCPLH,
-      targetPPA: profile.targetPPA,
-      targetSPLH: profile.targetSPLH,
-      fohWage: profile.fohWage,
-      bohWage: profile.bohWage,
-      historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
-      distributionWeights: distributionWeights,
-    );
+    bool benchmarkResolved = true,
+  })  : _fohWage = profile.fohWage,
+        _bohWage = profile.bohWage,
+        _targetPPA = profile.targetPPA,
+        _theoreticalLaborPct = profile.theoreticalLaborPct,
+        _hasResolvedBenchmarkTarget = benchmarkResolved,
+        _distributionWeights = distributionWeights,
+        _mode = _ScheduleAuthorityMode.locked;
+
+  /// 7.55q.2 + 7.55q.2-review-fix: loads the locked weekly snapshot
+  /// projection (READ-ONLY) and updates [_plan]. Honest degradation:
+  /// if no snapshot is persisted for the current week, [_plan] stays
+  /// null and [lockedPlanLoadState] becomes
+  /// [ScheduleLockedPlanLoadState.unavailable]. No live fallback, no
+  /// hidden snapshot generation.
+  ///
+  /// Routes through
+  /// [SchedulePlanReadService.getExistingCurrentLockedWeeklyPlan] —
+  /// the read-only sibling of `getCurrentLockedWeeklyPlan`. The
+  /// generate-on-miss path was the hidden second authority the
+  /// review-fix removed: when the snapshot was missing it would
+  /// silently re-run the live plan and persist a fresh snapshot from
+  /// it, defeating Rule 1's "one in-force current-week plan authority"
+  /// guarantee.
+  ///
+  /// In live mode this is a no-op.
+  Future<void> loadLockedPlan() async {
+    if (_mode != _ScheduleAuthorityMode.locked) return;
+    _lockedPlanLoadState = ScheduleLockedPlanLoadState.loading;
+    notifyListeners();
+    try {
+      final plan = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
+      _plan = plan;
+      _lockedPlanLoadState = plan != null
+          ? ScheduleLockedPlanLoadState.available
+          : ScheduleLockedPlanLoadState.unavailable;
+    } catch (_) {
+      _plan = null;
+      _lockedPlanLoadState = ScheduleLockedPlanLoadState.unavailable;
+    }
+    notifyListeners();
   }
 
-  /// The current weekly [SchedulePlan]. Null when demand is unavailable.
+  /// 7.55q.2: true when this notifier is in locked-authority
+  /// (production) mode.
+  bool get isLockedAuthority => _mode == _ScheduleAuthorityMode.locked;
+
+  /// 7.55q.2: load state of the locked plan. Idle in live mode.
+  ScheduleLockedPlanLoadState get lockedPlanLoadState =>
+      _lockedPlanLoadState;
+
+  /// True once the benchmark-owned target seam has been resolved.
+  ///
+  /// Locked mode starts false only during the brief bootstrap window before
+  /// the real active profile loads, so the UI can degrade honestly instead of
+  /// flashing a config-default benchmark percentage.
+  bool get hasResolvedBenchmarkTarget => _hasResolvedBenchmarkTarget;
+
+  /// 7.55q.2: test-only seam — inject a pre-built [SchedulePlan] into a
+  /// locked-authority notifier without going through SQLite. Lets unit
+  /// tests prove the locked-mode no-recompute conformance properties
+  /// (updateTargets / updateDemandCovers / updateDistributionWeights)
+  /// without standing up a real database.
+  ///
+  /// Throws when called on a live-mode notifier — that path constructs
+  /// its plan eagerly from inputs and has no need for injection.
+  @visibleForTesting
+  void setLockedPlanForTest(
+    SchedulePlan? plan, {
+    ScheduleLockedPlanLoadState state = ScheduleLockedPlanLoadState.available,
+  }) {
+    if (_mode != _ScheduleAuthorityMode.locked) {
+      throw StateError(
+          'setLockedPlanForTest is only valid in locked-authority mode');
+    }
+    _plan = plan;
+    _lockedPlanLoadState = state;
+    notifyListeners();
+  }
+
+  /// The current weekly [SchedulePlan]. Null when demand is unavailable
+  /// (live mode) or when the locked snapshot is unavailable / not yet
+  /// loaded (locked mode).
   SchedulePlan? get plan => _plan;
 
   /// Whether a valid plan exists.
@@ -100,38 +244,59 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   String get forecastSourceLabel =>
       _plan?.coversSourceLabel ?? 'Unavailable';
 
-  /// Updates distribution weights and rebuilds the plan.
+  /// Updates distribution weights.
   ///
-  /// Preserves current covers, provenance, and targets. Does not reset
-  /// manager-entered covers — only the day/daypart allocation changes.
+  /// In LIVE mode this rebuilds the plan (weights influence both day
+  /// allocation and daypart subrow splits via the resolver).
+  ///
+  /// In LOCKED mode the plan stays locked. Distribution weights only
+  /// affect the daypart subrow presentation in [adjustedDayViews] —
+  /// the locked snapshot's day allocation is fixed.
   void updateDistributionWeights(ScheduleDistributionWeights? distributionWeights) {
     if (identical(_distributionWeights, distributionWeights)) return;
     _distributionWeights = distributionWeights;
-    _rebuildPlan();
+    if (_mode == _ScheduleAuthorityMode.live) {
+      _rebuildPlan();
+    }
     notifyListeners();
   }
 
-  /// Updates target values from the current active profile and rebuilds the plan.
+  /// Updates wages + PPA from the current active profile.
+  ///
+  /// In LIVE mode this also updates CPLH/SPLH and rebuilds the plan
+  /// via [SchedulePlanReadService.resolveFromInputs].
+  ///
+  /// In LOCKED mode this only updates wages + PPA — the locked plan
+  /// itself does NOT recompute (per 7.55q.1 conformance Rule 1, the
+  /// locked snapshot is the singular in-force current-week authority).
   void updateTargets(ActiveTargetProfile profile) {
-    _targetCPLH = profile.targetCPLH;
     _targetPPA = profile.targetPPA;
-    _targetSPLH = profile.targetSPLH;
     _fohWage = profile.fohWage;
     _bohWage = profile.bohWage;
-    _rebuildPlan();
+    _theoreticalLaborPct = profile.theoreticalLaborPct;
+    _hasResolvedBenchmarkTarget = true;
+    if (_mode == _ScheduleAuthorityMode.live) {
+      _targetCPLH = profile.targetCPLH;
+      _targetSPLH = profile.targetSPLH;
+      _rebuildPlan();
+    }
     notifyListeners();
   }
 
-  /// Updates demand covers from the canonical demand context and rebuilds the plan.
+  /// Updates demand covers and rebuilds the plan in LIVE mode.
   ///
-  /// Unlike [_rebuildPlan], this can create a plan from null when demand
-  /// becomes available after initial construction.
+  /// In LOCKED mode this is a NO-OP — the locked snapshot is the
+  /// in-force week authority and does NOT recompute when demand
+  /// changes. (Demand changes flow into the next week's snapshot at
+  /// week roll, not into the in-force locked plan.)
   void updateDemandCovers(int? historicalWeeklyAvgCovers) {
+    if (_mode == _ScheduleAuthorityMode.locked) return;
+
     _historicalWeeklyAvgCovers = historicalWeeklyAvgCovers;
     final newPlan = SchedulePlanReadService.resolveFromInputs(
-      targetCPLH: _targetCPLH,
+      targetCPLH: _targetCPLH!,
       targetPPA: _targetPPA,
-      targetSPLH: _targetSPLH,
+      targetSPLH: _targetSPLH!,
       fohWage: _fohWage,
       bohWage: _bohWage,
       historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
@@ -151,11 +316,13 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   }
 
   void _rebuildPlan() {
+    // 7.55q.2: defensive — locked mode never recomputes the plan.
+    if (_mode != _ScheduleAuthorityMode.live) return;
     if (_plan == null) return; // no plan to rebuild when demand is unavailable
     _plan = SchedulePlanReadService.resolveFromInputs(
-      targetCPLH: _targetCPLH,
+      targetCPLH: _targetCPLH!,
       targetPPA: _targetPPA,
-      targetSPLH: _targetSPLH,
+      targetSPLH: _targetSPLH!,
       fohWage: _fohWage,
       bohWage: _bohWage,
       historicalWeeklyAvgCovers: _historicalWeeklyAvgCovers,
@@ -171,7 +338,18 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   double get forecastedFohLaborDollar => _plan?.theoreticalFohLaborDollars ?? 0;
   double get forecastedBohLaborDollar => _plan?.theoreticalBohLaborDollars ?? 0;
   double get forecastedTotalLaborDollar => _plan?.theoreticalTotalLaborDollars ?? 0;
-  double get theoreticalLaborPct => _plan?.theoreticalLaborPct ?? 0;
+
+  /// 7.55q.6 + follow-up alignment fix: theoretical labor % is a
+  /// Benchmark-owned target metric, so Schedule's weekly summary reads
+  /// the current benchmark target seam rather than the locked plan
+  /// projection.
+  ///
+  /// In locked mode this comes from the current [ActiveTargetProfile].
+  /// In live/preview mode it is derived from the same explicit target
+  /// inputs that built the preview plan. The card only renders the
+  /// value when [hasPlan] is true, so a missing locked plan still
+  /// degrades honestly.
+  double get theoreticalLaborPct => _theoreticalLaborPct;
 
   /// Day views from the shared [SchedulePlan] day rows.
   /// Daypart sub-rows are a presentation concern — built from plan day covers.
@@ -179,6 +357,12 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// When [_distributionWeights] has day-specific daypart weights for a given
   /// day, those weights drive the subrow split. Otherwise falls back to
   /// [WeekDayOrder.daypartsFor] + [_daypartCoverWeight].
+  ///
+  /// 7.55q.6: per-day and per-daypart planned labor packages are gone
+  /// (planned labor package killed). Day rows and daypart subrows
+  /// carry only Plan-owned values (covers / sales / FOH / BOH hours).
+  /// There is no honest same-scope theoretical labor % at day or
+  /// daypart granularity in the repo today.
   List<ScheduleDayView> get adjustedDayViews {
     if (_plan == null) return [];
     return _plan!.dayPlans.map((dp) {
@@ -190,8 +374,10 @@ class ScheduleForecastNotifier extends ChangeNotifier {
       // Allocate covers across dayparts using largest-remainder.
       final subCovers = _allocateLargestRemainder(dp.forecastCovers, intWeights);
 
-      // Derive per-subrow sales from covers × PPA.
-      final subSales = subCovers.map((c) => c * _targetPPA).toList();
+      // Split the locked day-row sales total across dayparts instead of
+      // rebuilding sales from the current benchmark PPA.
+      final subSales =
+          _allocateProportionalDoubles(dp.forecastSales, subCovers);
 
       // Allocate FOH hours proportional to subrow covers.
       final subFoh = _allocateLargestRemainder(dp.requiredFohHours, subCovers);
@@ -202,7 +388,8 @@ class ScheduleForecastNotifier extends ChangeNotifier {
 
       final subrows = List.generate(ids.length, (i) {
         return ScheduleDaySubrow(
-          label: _daypartLabel(ids[i]),
+          label: ServicePeriodDefinitionResolver.labelForId(
+              ServicePeriodDefinitionResolver.demoDefinitions, ids[i]),
           forecastCovers: subCovers[i],
           forecastSales: subSales[i],
           requiredFohHours: subFoh[i],
@@ -225,23 +412,25 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   ///
   /// Prefers data-driven weights from [_distributionWeights] when available
   /// and containing at least one positive value for the day. Falls back to
-  /// [WeekDayOrder.daypartsFor] + [_daypartCoverWeight].
+  /// [ServicePeriodDefinitionResolver.idsForDayLabel] + [_daypartCoverWeight].
   ///
-  /// Returns entries in canonical daypart order: lunch, dinner, late_night,
-  /// then any unknown IDs sorted alphabetically.
+  /// Returns entries in canonical service-period order, then any unknown
+  /// IDs sorted alphabetically.
   List<(String, int)> _resolveDaypartWeights(String day) {
+    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
     if (_distributionWeights != null && _distributionWeights!.isAvailable) {
       final daypartMap = _distributionWeights!.daypartWeightsFor(day);
       if (daypartMap.isNotEmpty && daypartMap.values.any((v) => v > 0)) {
         final entries = daypartMap.entries.toList();
-        entries.sort((a, b) => _daypartSortKey(a.key)
-            .compareTo(_daypartSortKey(b.key)));
+        entries.sort((a, b) => ServicePeriodDefinitionResolver.sortKey(
+                defs, a.key)
+            .compareTo(ServicePeriodDefinitionResolver.sortKey(defs, b.key)));
         return entries.map((e) => (e.key, e.value)).toList();
       }
     }
-    // Fallback: fixture-based daypart IDs with proportional weights
+    // Fallback: definition-based daypart IDs with proportional weights
     // converted to integer basis (multiply by 100 to preserve precision).
-    final ids = WeekDayOrder.daypartsFor(day);
+    final ids = ServicePeriodDefinitionResolver.idsForDayLabel(defs, day);
     return ids.map((id) {
       final w = _daypartCoverWeight[id] ?? 1.0;
       return (id, (w * 100).round());
@@ -258,30 +447,6 @@ const _daypartCoverWeight = <String, double>{
   'late_night': 0.15,
 };
 
-String _daypartLabel(String id) {
-  switch (id) {
-    case 'lunch':      return 'Lunch';
-    case 'dinner':     return 'Dinner';
-    case 'late_night': return 'Late Night';
-    default:           return id;
-  }
-}
-
-/// Known daypart sort indices — ensures canonical lunch → dinner → late_night
-/// ordering. Unknown IDs sort after known ones, alphabetically.
-const _knownDaypartOrder = <String, int>{
-  'lunch': 0,
-  'dinner': 1,
-  'late_night': 2,
-};
-
-/// Sort key for daypart ordering: known IDs get low indices, unknown IDs
-/// get a high base plus their alphabetical position.
-String _daypartSortKey(String id) {
-  final idx = _knownDaypartOrder[id];
-  if (idx != null) return '0_$idx';
-  return '1_$id';
-}
 
 /// Largest-remainder allocation of [total] across integer [weights].
 /// Guarantees sum(result) == total. Returns zeros when all weights are zero.
@@ -300,6 +465,28 @@ List<int> _allocateLargestRemainderByDouble(int total, List<double> shares) {
   return _largestRemainderCore(total, fractional);
 }
 
+/// Proportional allocation of [total] across integer [weights].
+///
+/// Returns doubles that sum exactly to [total] (subject to floating-point
+/// precision) by assigning the rounding remainder to the final slot.
+List<double> _allocateProportionalDoubles(double total, List<int> weights) {
+  final weightSum = weights.fold<int>(0, (s, v) => s + v);
+  if (weightSum == 0 || total == 0) return List.filled(weights.length, 0.0);
+
+  final values = List<double>.filled(weights.length, 0.0);
+  double assigned = 0;
+  for (var i = 0; i < weights.length; i++) {
+    if (i == weights.length - 1) {
+      values[i] = total - assigned;
+    } else {
+      final share = total * weights[i] / weightSum;
+      values[i] = share;
+      assigned += share;
+    }
+  }
+  return values;
+}
+
 /// Core largest-remainder: floor each fractional value, then distribute
 /// the remaining units to the slots with the largest fractional parts.
 List<int> _largestRemainderCore(int total, List<double> fractional) {
@@ -316,7 +503,11 @@ List<int> _largestRemainderCore(int total, List<double> fractional) {
   return floors;
 }
 
-/// Pre-computed Schedule day row — model hours from injected target values.
+/// Pre-computed Schedule day row — Plan-owned values only.
+///
+/// 7.55q.6: per-day planned labor package field removed. There is no
+/// honest same-scope theoretical labor % at day granularity in the
+/// repo today; the row carries Plan-owned values only.
 class ScheduleDayView {
   final String day;
   final int forecastCovers;
@@ -324,6 +515,7 @@ class ScheduleDayView {
   final int requiredFohHours;
   final int requiredBohHours;
   final List<ScheduleDaySubrow> subrows;
+
   const ScheduleDayView({
     required this.day,
     required this.forecastCovers,
@@ -334,13 +526,18 @@ class ScheduleDayView {
   });
 }
 
-/// Pre-computed daypart sub-row.
+/// Pre-computed daypart sub-row — Plan-owned values only.
+///
+/// 7.55q.6: per-daypart planned labor package field removed. Same
+/// reasoning as [ScheduleDayView] — no honest same-scope theoretical
+/// labor % at daypart granularity exists today.
 class ScheduleDaySubrow {
   final String label;
   final int forecastCovers;
   final double forecastSales;
   final int requiredFohHours;
   final int requiredBohHours;
+
   const ScheduleDaySubrow({
     required this.label,
     required this.forecastCovers,
@@ -374,36 +571,42 @@ class ScheduleBuilder extends StatelessWidget {
       create: (ctx) {
         final profile =
             ctx.read<ActiveTargetProfileNotifier>().profile;
-        final demandCtx =
-            ctx.read<DemandForecastContextNotifier>().context;
-        final histCovers = demandCtx.historicalWeeklyAvgCovers;
         final weights =
             ctx.read<ScheduleDistributionWeightsNotifier>().weights;
-        if (profile != null) {
-          return ScheduleForecastNotifier.fromProfile(
-            profile,
-            historicalWeeklyAvgCovers: histCovers,
-            distributionWeights: weights,
-          );
-        }
-        // Fallback during initial load — route through shared plan authority
-        return ScheduleForecastNotifier(
-          targetCPLH: BaselineData.derivedTargetCPLH,
-          targetPPA: BaselineData.derivedTargetPPA,
-          targetSPLH: BaselineData.derivedTargetSPLH,
-          fohWage: MeridianConfig.fohWage,
-          bohWage: MeridianConfig.bohWage,
-          historicalWeeklyAvgCovers: histCovers,
+        // 7.55q.2: production current-week plan authority is the
+        // locked WeeklyPlanSnapshot projection (conformance Rule 1).
+        // Both branches construct a locked-authority notifier — the
+        // only difference is whether the real profile or the
+        // bootstrap fallback profile supplies wages/PPA during the
+        // brief window before ActiveTargetProfileNotifier finishes
+        // loading. The locked-plan load runs identically and is
+        // independent of which profile was passed in.
+        final notifier = ScheduleForecastNotifier.lockedAuthority(
+          profile: profile ?? _bootstrapFallbackProfile(),
           distributionWeights: weights,
+          benchmarkResolved: profile != null,
         );
+        // Fire the locked-plan load. The notifier surfaces honest
+        // degradation (state == unavailable) when the snapshot
+        // cannot be loaded — it must NOT silently fall back to the
+        // live `resolveFromInputs` path.
+        unawaited(notifier.loadLockedPlan());
+        return notifier;
       },
       update: (ctx, targetNotifier, weightsNotifier, demandNotifier, previous) {
         if (previous != null) {
           final profile = targetNotifier.profile;
           if (profile != null) {
+            // 7.55q.2: in locked mode this only refreshes wages + PPA
+            // used by planned-package math; the locked plan stays in
+            // force.
             previous.updateTargets(profile);
           }
           previous.updateDistributionWeights(weightsNotifier.weights);
+          // 7.55q.2: in locked mode this is a no-op — the locked
+          // plan does NOT recompute from demand changes. Kept for
+          // symmetry and as a defense against future live-mode
+          // reintroduction.
           previous.updateDemandCovers(demandNotifier.historicalWeeklyAvgCovers);
         }
         return previous!;
@@ -411,6 +614,31 @@ class ScheduleBuilder extends StatelessWidget {
       child: const _ScheduleBuilderContent(),
     );
   }
+}
+
+/// 7.55q.2: bootstrap fallback profile used by [ScheduleBuilder]'s
+/// proxy provider during the brief window before
+/// [ActiveTargetProfileNotifier] finishes loading. The locked-plan
+/// load is unaffected — it reads the snapshot directly from SQLite.
+/// These config-default wages / PPA are replaced by [updateTargets]
+/// when the real profile arrives.
+ActiveTargetProfile _bootstrapFallbackProfile() {
+  return ActiveTargetProfile(
+    targetProfileId: 'schedule-bootstrap-fallback',
+    restaurantId: '',
+    sourceType: 'system_baseline',
+    targetCPLH: 0, // unused on locked path
+    targetSPLH: 0, // unused on locked path
+    targetPPA: BaselineData.derivedTargetPPA,
+    fohWage: MeridianConfig.fohWage,
+    bohWage: MeridianConfig.bohWage,
+    opzFloorCPLH: 0,
+    opzCeilingCPLH: 0,
+    theoreticalFohLaborPct: 0,
+    theoreticalBohLaborPct: 0,
+    theoreticalLaborPct: 0,
+    builtAt: '',
+  );
 }
 
 class _ScheduleBuilderContent extends StatefulWidget {
@@ -425,134 +653,70 @@ class _ScheduleBuilderContentState
     extends State<_ScheduleBuilderContent> {
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
-            child: Text(
-              'Weekly Operating Plan',
-              style: AppTextStyles.display20(),
+    return FadingHeaderShell(
+      header: Consumer<ScheduleForecastNotifier>(
+        builder: (context, notifier, _) => AppScreenHeader(
+          title: 'Weekly Operating Plan',
+          bottom: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                AppHeaderStat(
+                  label: 'COVERS',
+                  value: notifier.weeklyCovers.toString(),
+                ),
+                const SizedBox(width: 8),
+                AppHeaderStat(
+                  label: 'SALES',
+                  value: '\$${Fmt.dollars(notifier.forecastedSales)}',
+                ),
+              ],
             ),
           ),
-
-          // ── WEEKLY PLAN SUMMARY ─────────────────────────────────────────
-          const _PlanSectionLabel('WEEKLY PLAN SUMMARY'),
-
-          // Forecast cards (read-only, system-resolved)
-          const _ForecastCardsRow(),
-
-          const SizedBox(height: 8),
-
-          // Derived summary cards
-          Consumer<ScheduleForecastNotifier>(
-            builder: (context, notifier, _) =>
-                _DerivedSummaryCards(notifier: notifier),
-          ),
-
-          // ── COVER FORECAST BY DAY ──────────────────────────────────────
-          const _PlanSectionLabel('COVER FORECAST BY DAY'),
-
-          // Bar chart
-          Consumer<ScheduleForecastNotifier>(
-            builder: (context, notifier, _) =>
-                _CoverBarChart(notifier: notifier),
-          ),
-
-          // ── DAY-BY-DAY PLAN ────────────────────────────────────────────
-          const _PlanSectionLabel('DAY-BY-DAY PLAN'),
-
-          // Day-by-day table
-          Consumer<ScheduleForecastNotifier>(
-            builder: (context, notifier, _) =>
-                _DayTable(notifier: notifier),
-          ),
-
-          const SizedBox(height: 24),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _ForecastCardsRow extends StatelessWidget {
-  const _ForecastCardsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final notifier = context.watch<ScheduleForecastNotifier>();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Forecasted Covers
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.rule, width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FORECASTED COVERS - NEXT WEEK',
-                      style: AppTextStyles.mono7(),
-                    ),
-                    const SizedBox(height: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        notifier.weeklyCovers.toString(),
-                        style: AppTextStyles.mono22(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+            // ── LABOR PLAN ──────────────────────────────────────────────
+            const _PlanSectionLabel('LABOR PLAN'),
+
+            // Derived summary cards (FOH/BOH hrs, labor %, labor $)
+            Consumer<ScheduleForecastNotifier>(
+              builder: (context, notifier, _) =>
+                  _DerivedSummaryCards(notifier: notifier),
             ),
-            const SizedBox(width: 6),
-            // Forecasted Sales
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.rule, width: 1),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'FORECASTED SALES - NEXT WEEK',
-                      style: AppTextStyles.mono7(),
-                    ),
-                    const SizedBox(height: 8),
-                    FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        '\$${Fmt.dollars(notifier.forecastedSales)}',
-                        style: AppTextStyles.mono22(),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+
+            // ── COVER FORECAST BY DAY ──────────────────────────────────
+            const _PlanSectionLabel('COVER FORECAST BY DAY'),
+
+            // Bar chart
+            Consumer<ScheduleForecastNotifier>(
+              builder: (context, notifier, _) =>
+                  _CoverBarChart(notifier: notifier),
             ),
+
+            // ── DAY-BY-DAY PLAN ────────────────────────────────────────
+            const _PlanSectionLabel('DAY-BY-DAY PLAN'),
+
+            // Day-by-day table
+            Consumer<ScheduleForecastNotifier>(
+              builder: (context, notifier, _) =>
+                  _DayTable(notifier: notifier),
+            ),
+
+            const SizedBox(height: 24),
           ],
         ),
       ),
     );
   }
 }
+
+// _ForecastCardsRow removed — FORECAST COVERS and FORECAST SALES moved
+// to the screen header bottom slot via AppHeaderStat. The Plan body
+// keeps only the labor-driven derived cards and the day-by-day breakdown.
 
 class _DerivedSummaryCards extends StatelessWidget {
   final ScheduleForecastNotifier notifier;
@@ -561,10 +725,25 @@ class _DerivedSummaryCards extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 7.55q.6 + follow-up alignment fix: the planned labor package is
+    // dead, and the weekly summary's LABOR % card now reads the
+    // benchmark-owned theoretical target seam via
+    // [ScheduleForecastNotifier.theoreticalLaborPct]. The UI label may
+    // stay generic, but there is no separate "planned labor %" concept
+    // in the app anymore.
+    final weekPct = notifier.theoreticalLaborPct;
+    final hasPlan = notifier.hasPlan;
+    final hasBenchmarkTarget = notifier.hasResolvedBenchmarkTarget;
+    // Card labels are shortened so they fit a 4-up grid without truncating.
+    // When the locked plan or benchmark seam is unavailable, render an
+    // honest placeholder instead of a fake numeric zero.
+    String labor() => hasPlan && hasBenchmarkTarget
+        ? '${weekPct.toStringAsFixed(1)}%'
+        : '--';
     final cards = [
-      ('REQ FOH HRS', notifier.requiredFohHours.toString()),
-      ('REQ BOH HRS', notifier.requiredBohHours.toString()),
-      ('LABOR %', '${notifier.theoreticalLaborPct.toStringAsFixed(1)}%'),
+      ('FOH HRS', notifier.requiredFohHours.toString()),
+      ('BOH HRS', notifier.requiredBohHours.toString()),
+      ('LABOR %', labor()),
       ('LABOR \$', '\$${Fmt.dollars(notifier.forecastedTotalLaborDollar)}'),
     ];
 
@@ -578,23 +757,28 @@ class _DerivedSummaryCards extends StatelessWidget {
             final card = entry.value;
             return Expanded(
               child: Container(
-                margin: EdgeInsets.only(left: i == 0 ? 0 : 4),
-                padding: const EdgeInsets.all(10),
+                margin: EdgeInsets.only(left: i == 0 ? 0 : 6),
+                padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.rule, width: 1),
+                  gradient: const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.backgroundMid,
+                      AppColors.cardGlow,
+                    ],
+                  ),
+                  border: Border.all(
+                      color: AppColors.borderSubtle, width: 1),
+                  borderRadius: BorderRadius.circular(3),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      height: 28,
-                      child: Align(
-                        alignment: Alignment.topLeft,
-                        child: Text(card.$1, style: AppTextStyles.mono7()),
-                      ),
-                    ),
+                    Text(card.$1,
+                        style: AppTextStyles.mono8(
+                            color: AppColors.textMuted)),
                     const SizedBox(height: 6),
                     FittedBox(
                       fit: BoxFit.scaleDown,
@@ -735,6 +919,10 @@ class _CoverBarChart extends StatelessWidget {
 }
 
 // ─── Plan section label ──────────────────────────────────────────────────────
+// Premium variance-style section divider: teal accent stripe on the left,
+// title text, and a sunset gradient underline. Matches the section labels
+// used on Variance, Week Detail, and Benchmark so every screen reads as
+// part of one design system.
 
 class _PlanSectionLabel extends StatelessWidget {
   final String text;
@@ -742,10 +930,42 @@ class _PlanSectionLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-        child: Text(
-          text,
-          style: AppTextStyles.mono10(color: AppColors.textSecondary),
+        padding: const EdgeInsets.fromLTRB(16, 28, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [AppColors.sunset, AppColors.sunsetDark],
+                    ),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  text,
+                  style: AppTextStyles.mono14(
+                      color: AppColors.textPrimary, weight: FontWeight.w700),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Container(
+              height: 2,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [AppColors.sunset, AppColors.sunsetDark],
+                ),
+              ),
+            ),
+          ],
         ),
       );
 }
@@ -783,6 +1003,12 @@ class _DayTableState extends State<_DayTable> {
     final totalSales  = days.fold<double>(0, (s, d) => s + d.forecastSales);
     final totalFoh    = days.fold<int>(0, (s, d) => s + d.requiredFohHours);
     final totalBoh    = days.fold<int>(0, (s, d) => s + d.requiredBohHours);
+
+    // 7.55q.6: planned labor package killed. The day-by-day table now
+    // renders Plan-owned columns only (covers / sales / FOH / BOH
+    // hours). Day-level / daypart-level theoretical labor % would
+    // require honest same-scope theoretical truth, which the repo
+    // does not have today (Phase 10.5 daypart work).
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),

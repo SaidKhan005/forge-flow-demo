@@ -183,7 +183,9 @@ void main() {
   // ── C+K: Target PPA guardrail ──────────────────────────────────────────
 
   group('C — target PPA does not rewrite actuals', () {
-    test('changing target PPA changes plan sales and targetLaborPct but not actuals', () {
+    test('changing target PPA changes plan sales but does NOT rewrite actuals; '
+        '7.55q.6: targetLaborPct comes from profile.theoreticalLaborPct, '
+        'so PPA-only change does NOT move it', () {
       final modifiedProfile = ActiveTargetProfile(
         targetProfileId: 'test_modified',
         restaurantId: 'demo_restaurant_001',
@@ -224,8 +226,15 @@ void main() {
       expect(modifiedRm.actualCovers, equals(rm.actualCovers));
       expect(modifiedRm.actualLaborPct, closeTo(rm.actualLaborPct, 0.001));
       expect(modifiedRm.actualLaborDollars, closeTo(rm.actualLaborDollars, 0.01));
-      // Target labor % changed
-      expect(modifiedRm.targetLaborPct, isNot(closeTo(rm.targetLaborPct, 0.1)));
+      // 7.55q.6: targetLaborPct = profile.theoreticalLaborPct. The
+      // modifiedProfile carries the same theoreticalLaborPct as the
+      // baseline profile (only PPA changed), so the read-model's
+      // targetLaborPct does NOT move. The previous assertion that
+      // PPA changes drove targetLaborPct was a planned-package
+      // artifact — that lane is dead.
+      expect(modifiedRm.targetLaborPct, equals(rm.targetLaborPct));
+      expect(modifiedRm.targetLaborPct,
+          equals(modifiedProfile.theoreticalLaborPct));
     });
   });
 
@@ -275,7 +284,9 @@ void main() {
   // ── J: Whole-day labor % from read model ───────────────────────────────
 
   group('J — whole-day labor % from read model', () {
-    test('labor dollars, percentages, and variance all consistent', () {
+    test('labor dollars, percentages, and variance all consistent '
+        '(7.55q.6: target side is theoretical truth, not planned-package)',
+        () {
       final lunchWageDollars = 18.74 * (29 + 30);
       final dinnerWageDollars = ShiftSnapshot.blendedWage * (20 + 21);
       final actualLaborDollars = lunchWageDollars + dinnerWageDollars;
@@ -293,15 +304,20 @@ void main() {
           (actualSales + projectedSales) * 100;
       expect(rm.actualLaborPct, isNot(closeTo(withProjected, 0.5)));
 
-      // Target labor dollars and %
-      final targetDollars =
-          fridayPlan.requiredFohHours * MeridianConfig.fohWage +
-          fridayPlan.requiredBohHours * MeridianConfig.bohWage;
-      expect(rm.targetLaborDollars, closeTo(targetDollars, 0.01));
-      expect(rm.targetLaborPct,
-          closeTo(targetDollars / fridayPlan.forecastSales * 100, 0.01));
+      // 7.55q.6: targetLaborPct sources from profile.theoreticalLaborPct
+      // (the killed planned-package formula
+      //   `(planFohHours × fohWage + planBohHours × bohWage) / forecastSales`
+      // is gone). `targetLaborDollars` field was removed entirely.
+      expect(rm.targetLaborPct, equals(profile.theoreticalLaborPct));
 
-      // Variance
+      final wageCard =
+          rm.metricCards.firstWhere((m) => m.name == 'BLENDED WAGE');
+      expect(
+        wageCard.targetFormatted,
+        equals('Target \$${profile.targetBlendedWage.toStringAsFixed(2)}'),
+      );
+
+      // Variance still holds: actual − target.
       expect(rm.laborVariancePts,
           closeTo(rm.actualLaborPct - rm.targetLaborPct, 0.001));
     });

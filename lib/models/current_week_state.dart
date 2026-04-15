@@ -54,6 +54,7 @@ class CurrentWeekState {
       opzCeilingCPLH: profile.opzCeilingCPLH,
       theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
       theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+      snapshotBlendedWage: s.blendedWage,
       businessDate: s.businessDate,
       sourceSystem: s.sourceSystem,
       sourceShiftId: s.sourceShiftId,

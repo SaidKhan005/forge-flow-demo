@@ -19,6 +19,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/data/benchmark_tracker_read_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/screens/baseline_tracker.dart';
 import 'package:forge_and_flow/widgets/zone_status_card.dart';
@@ -67,7 +68,15 @@ Widget _baselineRevisionShell() => MaterialApp(
     );
 
 void main() {
-  setUp(() => BaselineData.clearManagerOverride());
+  setUp(() {
+    BenchmarkTrackerReadService.enableBridgeOnly();
+    BaselineData.clearManagerOverride();
+  });
+
+  tearDown(() {
+    BenchmarkTrackerReadService.disableBridgeOnly();
+    BaselineData.clearManagerOverride();
+  });
 
   // â”€â”€ A: override banner appears via ValueListenableBuilder rebuild â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -155,7 +164,7 @@ void main() {
       BaselineData.applyManagerOverride(_overrideRecords);
 
       final expectedValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
 
       await tester.pumpWidget(
           MaterialApp(home: Scaffold(body: ZoneStatusCard(
@@ -177,12 +186,12 @@ void main() {
         (tester) async {
       // Capture the seed target value before any override
       final seedTargetValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
 
       BaselineData.applyManagerOverride(_overrideRecords);
 
       final overrideTargetValue =
-          BaselineData.derivedTargetCPLH.toStringAsFixed(1);
+          BaselineData.derivedTargetCPLH.toStringAsFixed(2);
 
       // Verify values differ (test is only meaningful when they do)
       expect(overrideTargetValue, isNot(equals(seedTargetValue)));

@@ -208,8 +208,12 @@ void main() {
     });
   });
 
-  group('WeekRecord — model formula targets and computed fields', () {
-    test('targetFohHours, targetBohHours, avgSPLH, and wage defaults correct', () {
+  group('WeekRecord — preserved locked plan hours (7.55q.5) and computed fields', () {
+    test('targetFohHours / targetBohHours read preserved plan hours; avgSPLH / wage defaults correct', () {
+      // 7.55q.5: target hours now read the preserved locked plan
+      // hours captured at close from the WeeklyPlanSnapshot, not
+      // LaborModel.modelFohHours(totalCovers, ...) re-modeled from
+      // actuals (Drift 6).
       final record = WeekRecord(
         weekId: 't', weekLabel: 't',
         totalCovers: 1200, forecastCovers: 1200,
@@ -221,9 +225,11 @@ void main() {
         targetCPLH: _tCPLH, targetSPLH: _tSPLH,
         targetPPA: _tPPA,
         targetFohWage: _fohWage, targetBohWage: _bohWage,
+        lockedRequiredFohHours: 262,
+        lockedRequiredBohHours: 278,
       );
-      expect(record.targetFohHours, LaborModel.modelFohHours(1200, _tCPLH));
-      expect(record.targetBohHours, LaborModel.modelBohHours(1200, 41.79, _tSPLH));
+      expect(record.targetFohHours, 262);
+      expect(record.targetBohHours, 278);
       expect(record.avgSPLH, closeTo((41.79 * 1200) / 310, 0.01));
 
       // Zero BOH hours

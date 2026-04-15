@@ -1,4 +1,4 @@
-# Temporary Alignment Findings — 2026-04-12
+# Temporary Alignment Findings â€” 2026-04-12
 
 Status: temporary working note  
 Owner: Codex synthesis pass  
@@ -97,7 +97,7 @@ Assessment:
 Recommended owner:
 
 - new follow-up lane after `7.55n`, before `7.55o`
-- suggested slice: `7.55p.1` — Shift + Variance driver freshness audit
+- suggested slice: `7.55p.1` â€” Shift + Variance driver freshness audit
 
 ### 1.2 Header clock is already fixed
 
@@ -153,7 +153,7 @@ Assessment:
 
 Current surface:
 
-- Variance shows text like `Mar 24 · Friday · Day 5 of 7`
+- Variance shows text like `Mar 24 Â· Friday Â· Day 5 of 7`
 
 Current backing truth:
 
@@ -224,7 +224,7 @@ Assessment:
 
 ## 3. History
 
-### 3.1 History is not just “Variance after seven days”
+### 3.1 History is not just â€œVariance after seven daysâ€
 
 Current truth:
 
@@ -296,7 +296,7 @@ The likely issue is not the raw validation rule. It is the presentation:
 - the graph intentionally shows the full historical outer range
 - the selected benchmark/star-shift range is shown inside it
 - if the selected range spans nearly all available history, the UI can look
-  like the benchmark range “covers the whole scale”
+  like the benchmark range â€œcovers the whole scaleâ€
 
 So there are two separate questions:
 
@@ -314,7 +314,7 @@ Assessment:
 
 Recommended owner:
 
-- `7.55p.3` — Benchmark OPZ range + graph honesty audit
+- `7.55p.3` â€” Benchmark OPZ range + graph honesty audit
 
 ### 4.2 Quick external benchmark note
 
@@ -370,7 +370,7 @@ Assessment:
 
 Recommended owner:
 
-- `7.55p.2` — mock replay day advance / locked-week integrity audit
+- `7.55p.2` â€” mock replay day advance / locked-week integrity audit
 
 ## 6. Plan Surface / Labels
 
@@ -489,7 +489,7 @@ Short answer:
 
 The active gate doc is explicit:
 
-- `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+- `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - current verdict: **simple-swap readiness = NO**
 
 Why the answer is still no:
@@ -588,7 +588,7 @@ feel more "assembled over phases" than "one language system."
 Candidates to revisit:
 
 - Variance dollar-impact context line:
-  - `Through Friday · 798 covers WTD · run rate.`
+  - `Through Friday Â· 798 covers WTD Â· run rate.`
 - Week detail footer:
   - `At $3M annual sales. One location.`
 - some Full Week row text that still says more than the icons/status need
@@ -950,7 +950,7 @@ The cleaner mental model is:
 
 Suggested family: `7.55p`
 
-### `7.55p.1` — Shift + Variance driver freshness audit
+### `7.55p.1` â€” Shift + Variance driver freshness audit
 
 Scope:
 
@@ -959,7 +959,7 @@ Scope:
 - scope distinction between them
 - stale-feeling vs genuinely stale behavior
 
-### `7.55p.2` — Mock replay day advance / locked-week integrity audit
+### `7.55p.2` â€” Mock replay day advance / locked-week integrity audit
 
 Scope:
 
@@ -968,7 +968,7 @@ Scope:
 - same-week snapshot integrity
 - downstream forecast movement vs rewrite bugs
 
-### `7.55p.3` — Benchmark OPZ range + graph honesty audit
+### `7.55p.3` â€” Benchmark OPZ range + graph honesty audit
 
 Scope:
 
@@ -976,7 +976,7 @@ Scope:
 - graph explanation of historical range vs selected range
 - whether current benchmark surface visually overstates the range
 
-### `7.55p.4` — small surface copy polish
+### `7.55p.4` â€” small surface copy polish
 
 Scope:
 
@@ -993,7 +993,7 @@ Scope:
 Use this note together with:
 
 - current roadmap / trackers
-- `docs/phases/7_55n/phase_7_55n_restaurant_timing_service_period_runtime_foundation.md`
+- `docs/archive/phases/7_55n/phase_7_55n_restaurant_timing_service_period_runtime_foundation.md`
 - `docs/phases/7_55o/phase_7_55o_file_extraction_analysis.md`
 - `docs/archive/reference/REFACTOR_AND_DECOUPLING.MD`
 

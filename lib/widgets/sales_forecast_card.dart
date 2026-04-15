@@ -64,23 +64,14 @@ class SalesForecastCard extends StatelessWidget {
                   : 'No forecast available',
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
-            // Progress bar
+            // Progress bar — taller, with a clear track outline so the
+            // filling edge is visible against the background, plus a
+            // brighter leading edge on the filled portion. Uses
+            // FractionallySizedBox (no LayoutBuilder) so it stays
+            // intrinsic-safe inside IntrinsicHeight parents.
             if (hasForecast) ...[
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(2),
-                child: SizedBox(
-                  height: 6,
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    backgroundColor:
-                        AppColors.borderSubtle.withValues(alpha: 0.3),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      isAhead ? AppColors.positive : AppColors.sunset,
-                    ),
-                  ),
-                ),
-              ),
+              const SizedBox(height: 10),
+              _SalesProgressBar(progress: progress, isAhead: isAhead),
             ],
             const SizedBox(height: 8),
             // Delta pill
@@ -107,6 +98,51 @@ class SalesForecastCard extends StatelessWidget {
               ),
           ],
         ),
+    );
+  }
+}
+
+class _SalesProgressBar extends StatelessWidget {
+  final double progress;
+  final bool isAhead;
+  const _SalesProgressBar({required this.progress, required this.isAhead});
+
+  @override
+  Widget build(BuildContext context) {
+    final fillColor = isAhead ? AppColors.positive : AppColors.sunset;
+    return Container(
+      height: 10,
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(
+            color: AppColors.borderStrong.withValues(alpha: 0.7),
+            width: 1),
+        borderRadius: BorderRadius.circular(3),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: FractionallySizedBox(
+          widthFactor: progress.clamp(0.0, 1.0),
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.centerLeft,
+                end: Alignment.centerRight,
+                colors: [
+                  fillColor.withValues(alpha: 0.7),
+                  fillColor,
+                ],
+              ),
+              border: progress > 0.0 && progress < 1.0
+                  ? Border(
+                      right: BorderSide(color: fillColor, width: 2),
+                    )
+                  : null,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

@@ -1,12 +1,13 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-12
+Updated: 2026-04-14
 Owner: You
 Execution model: We think, Claude codes
 
-Active authority:
+## Active Authority
+
 - `PROJECT_TRACKER.md`
-- `docs/DATA_ALIGNMENT_TRACKER.md`
+- `docs/DATA_ALIGNMENT_TRACKER.md` when the slice is alignment-heavy
 - explicitly referenced active phase docs
 
 Archive:
@@ -18,160 +19,107 @@ Archive:
 
 POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Benchmark Snapshot -> TargetCycle + DemandForecastContext -> SchedulePlan -> WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn
 
-## Product Split
-
-- This Week = diagnose what lever matters first right now
-- History = teach what leaks repeat over time
-- Learn = summarize recurring leaks, benchmarks, and repeatable wins
-
 ## Active Focus
 
-- Current phase: Phase 7.55 restaurant timing + service-period runtime foundation
-- Current prompt: `7.55n.1` - restaurant timing config persistence seam
-- Current goal: persist the minimum restaurant-owned timing settings so business-date, week-start, service-period, and shift-close runtime rules can read one app-owned config seam
+- Current phase: `7.55o` refactor / extraction lane resumed after `7.55q.1` through `7.55q.9`
+- Current prompt: `7.55o.1` - shared surface primitives extraction
+- Current goal: resume extraction without reopening the landed single-plan / single-benchmark-target / whole-day-Shift source-truth contracts
 - Current live-integration scope: one restaurant/location, not multi-location org management
 - Naming guardrail: keep internal `Baseline` / `Schedule` names unchanged during this alignment pass
 
-## Current Lane Status
+## Phase Summary
 
-- `7.55l` complete:
-  - delivered `TargetCycle` + `WeeklyPlanSnapshot` runtime architecture
-- `7.55m` complete:
-  - delivered runtime-truth cleanup
-  - closeout: `docs/archive/phases/7_55m/phase_7_55m_7_runtime_truth_closeout_handoff.md`
-- `7.55k.1` complete:
-  - daypart scope audit
-- `7.55k.2` complete:
-  - service-period decoupling plan
-- `7.55k.3` complete:
-  - daypart pattern summary model
-  - `7.55k.3a` evidence-contract cleanup landed:
-    - unknown lever IDs excluded from benchmark/leak evidence
-    - exemplar fallback IDs made deterministic
-- `7.55k.4` complete:
-  - Variance Full Week projection semantics landed
-  - `7.55k.4a` honesty cleanup landed:
-    - mixed-status day rows now visibly indicate non-final composition
-    - open-row detail header now reads as plan context instead of current actuals
-- `7.55k.5` complete:
-  - History benchmark dayparts upgraded to evidence-backed closed-truth summaries
-  - `7.55k.5a` honesty cleanup landed:
-    - compact History rows now show favorable wins against total sample depth
-    - ranking ties now resolve explicitly by canonical day / service-period order
-- `7.55k.6` complete:
-  - Learn Repeatable Wins upgraded to evidence-backed closed-truth summaries
-  - `7.55k.6a` honesty cleanup landed:
-    - per-row lever chips now distinguish rows with different dominant win levers
-    - coaching copy is explicitly scoped to the top-ranked win
-- `7.55k.7` complete:
-  - interim visibility rules landed
-  - `7.55k.7a` honesty cleanup landed:
-    - Repeatable Wins empty state no longer falls back to legacy benchmark-daypart labels
-    - strong History benchmark evidence is now prioritized ahead of early signals when slots are limited
-- `7.55k.8` complete:
-  - integration implications documented and fed back into `7.55j`
-  - `7.55k.8a` truth cleanup landed:
-    - active `7.55j` docs no longer describe `TargetCycle` / `WeeklyPlanSnapshot` as hypothetical future models
-    - gate sequencing now treats `7.55k` as landed input into `7.55j.3` / `7.55j.4`
+| Phase | Status | Summary |
+| --- | --- | --- |
+| `7.55l` | complete | `TargetCycle` + `WeeklyPlanSnapshot` runtime architecture landed |
+| `7.55m` | complete | runtime-truth cleanup landed |
+| `7.55k` | complete | daypart / Variance / History / Learn plan landed through `7.55k.8a` |
+| `7.55n` | complete | restaurant timing + service-period runtime foundation landed through `7.55n.6a`; freshness / live-data extension landed through `7.55n.13` |
+| `7.55p.1` | complete | Shift driver trust audit landed against Chapter 10 |
+| `7.55p.2` | complete | Variance WTD target alignment and Full Week target-package / carry-forward cleanup landed through `7.55p.2a` |
+| `7.55p.3` | complete | Dollar Impact accumulation model landed through `7.55p.3a` |
+| `7.55p.4a` | complete | app-owned refresh / invalidation policy landed through `7.55p.4a1` |
+| `7.55p.4b` | complete | connector-fed live freshness propagation landed through `7.55p.4b1` |
+| `7.55p.4c` | complete | replay integrity / mock-to-live transition audit landed through `7.55p.4c1` |
+| `7.55p.4d` | complete | persisted passive notifications landed through `7.55p.4d1` |
+| `7.55p.5` | complete | Benchmark OPZ / graph honesty audit, OPZ-width research, target-labor package contract, Variance theoretical-package verification, blended-wage audit, recommendation-statistics contract cleanup, wage-mix setup UX, the app-owned recommended benchmark selection service, its restaurant-scope runtime fix, the Benchmark graph fallback/explainer cleanup, and the scope-aware planned labor package contract + wiring landed through `7.55p.5j` |
+| `7.55q` | complete | architecture-conformance lane landed through `7.55q.9`: single-plan / single-benchmark-target contract codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment formalized, post-q authority/test hygiene synced, and cycle-backed Benchmark override wiring landed |
+| `7.55o` | active | shared-surface extraction / shell split lane resumed now that the q-lane source-truth contracts are landed |
+
+## Current And Next
+
 - Current:
-  - `7.55n.1` restaurant timing config persistence seam
-- Next:
-  - `7.55n.2` through `7.55n.6` timing/runtime foundation follow-through
-  - `7.55p.1` Shift driver trust audit
-  - `7.55p.2` Variance WTD / Full Week alignment
-  - `7.55p.3` Dollar Impact accumulation model
-  - `7.55p.4` refresh / replay integrity / notifications
-  - `7.55p.5` Benchmark OPZ and graph honesty audit
-  - `7.55o.1` shared widget extraction / variance shell slimming
-  - then `7.55o.2` through `7.55o.6`
-  - then resume `7.55j.3` and `7.55j.4`
-- Queued future lane:
-  - `7.55n` restaurant timing + service-period runtime foundation
-    - owns the implementation gaps named in the time boundary contract
-    - lands after `7.55k`, before `10.5`
-  - `7.55p` post-`7.55n` product/alignment lane
-    - owns driver trust, WTD / Full Week alignment, Dollar Impact, refresh / notification trust, and OPZ graph honesty
-    - lands after `7.55n`, before `7.55o`
-  - `7.55o` file extraction / engineering hygiene
-    - implements the queued extraction work captured in:
-      - `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
-    - lands after `7.55p`, before resuming `7.55j.3` / `7.55j.4`
-
-## Global Watchlist
-
-- Phase 8 is still blocked on vendor selection only
-- `7.55j.gate` is complete; simple-swap readiness is still not passed
-- `7.55i` stays stopped after `7.55i.3a`; do not revive `7.55i.4`
-- `7.56` is app-side only and must not be described as live reservation integration
-- `10.5` still owns live Shift service-period behavior, live time-into-service, and daypart-live driver teaching
+  - `7.55o.1` shared surface primitives extraction
+- Then:
+  - `7.55o.2` Variance shell split
+  - `7.55o.3` Schedule planning surface separation
+  - `7.55o.4` Settings surface split
+  - `7.55o.5` Baseline Manager decomposition plus remaining candidate-truth / bridge cleanup
+  - `7.55o.6` SQLite bootstrap breakup only if still justified
+  - revisit canonical live-facts contract planning after the extraction lane
+  - `7.55j.3` vendor endpoint checklist template
+  - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before `7.55j.4` / the pre-Phase-8 readiness answer
+  - `7.55j.4` gap report
 
 ## Active Guardrails
 
 - standards lock on a 60-day `TargetCycle`
 - demand can roll from level 1 baseline + fixed 3-week recent trend
 - the operating week should auto-generate one locked `WeeklyPlanSnapshot`
+- the locked weekly plan is the current-week plan authority; do not carry a second competing live plan for the in-force week
+- Benchmark sets the standard, Plan decides the week, Shift manages right now, Variance compares plan vs actual, History preserves what closed, and Learn teaches from repeated closed results
+- non-closed Variance rows should read one shared benchmark target object plus one shared locked-plan object 1:1, row by row, value by value
+- closed Full Week rows stay locked historical truth
+- blended wage should be a shared benchmark target value, not recomputed separately by screen/model helpers
+- whole-day Shift target alignment landed through `7.55q.7`; `10.5` still owns live service-period/daypart-aware Shift behavior and driver teaching
 - no new manager workflow
 - no draft/publish state in the UI
-- no intended manager-facing UX change in Benchmark, Schedule, History, or Learn
 - widgets should not own source-truth decisions
 - widgets should not own service-period bucketing rules
 - Full Week projection semantics should come from a read service / read model, not mixed screen helpers
 - we are not fully integration-ready yet; do not describe SQL-backed internal simulation as simple-swap readiness
+- current runtime freshness is reload-driven today; `7.55p.4a` through `7.55p.4d` own the connector-fed live freshness / invalidation policy
+- intended manager behavior is stronger than reload-driven freshness:
+  - show live floor data when current-state is fresh enough to be treated as live
+  - otherwise show explicit freshness age such as `Updated 7 min ago`
+  - Shift is the highest-priority live surface
+- stale current-state must not masquerade as live
 - Learn is partially migrated today:
   - Repeatable Wins is evidence-backed
   - Benchmark Set / Recurring Leak / Coach Next Week still use compatibility seams
-- fixed `14 shifts` debt is broader than one runtime condition:
-  - runtime
-  - replay seeding
-  - tests
-  - UI copy
-  - active integration docs
-- Baseline Manager is not extraction-only:
-  - its first future touch must also fix wage-authority alignment in the preview path
+- fixed `14 shifts` debt spans runtime, replay seeding, tests, UI copy, and active integration docs
+- Baseline Manager is not extraction-only; its first future touch should focus on the remaining candidate-truth / bridge cleanup rather than reopening the already-landed wage-authority fix
+- use `docs/internal/status_ledger_post_7_55p_deep_check.md` as the reference sheet for:
+  - which older user asks are already done vs partial vs still open
+  - the later `7.55o.*` naming/polish lane
+  - the later `7.55j.4` readiness-check conversation
+- `10.5` still owns live Shift service-period behavior, live time-into-service, and daypart-live driver teaching
 
 ## Active Planning Docs
 
-- `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 - `docs/contracts/phase_7_55_architecture_contract.md`
+- `docs/contracts/phase_7_55_current_state_freshness_contract.md`
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
-- `docs/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
-- `docs/phases/7_55k/phase_7_55k_1_daypart_scope_audit.md`
-- `docs/phases/7_55k/phase_7_55k_2_service_period_decoupling_plan.md`
-- `docs/phases/7_55k/phase_7_55k_3_daypart_pattern_summary_model.md`
-- `docs/phases/7_55k/phase_7_55k_4_variance_full_week_projection_semantics.md`
-- `docs/phases/7_55n/phase_7_55n_restaurant_timing_service_period_runtime_foundation.md`
+- `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`
+- `docs/phases/7_55q/phase_7_55q_2_plan_authority_cleanup.md`
+- `docs/phases/7_55q/phase_7_55q_3_benchmark_target_object_cleanup.md`
+- `docs/phases/7_55q/phase_7_55q_4_variance_linearity_rewiring.md`
+- `docs/phases/7_55q/phase_7_55q_5_history_conformance_cleanup.md`
+- `docs/phases/7_55q/phase_7_55q_6_kill_planned_labor_package.md`
+- `docs/phases/7_55q/phase_7_55q_7_shift_whole_day_target_alignment.md`
+- `docs/phases/7_55q/phase_7_55q_8_authority_sync_and_test_hygiene_cleanup.md`
+- `docs/phases/7_55q/phase_7_55q_9_benchmark_override_cycle_wiring.md`
+- `docs/internal/status_ledger_post_7_55p_deep_check.md`
 - `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
-
-## Working Prompt Queue
-
-- Current:
-  - `7.55n.1` - restaurant timing config persistence seam
-- Then:
-  - `7.55n.2` - BusinessDateResolver
-  - `7.55n.3` - ServicePeriodDefinitionResolver
-  - `7.55n.4` - week-start wiring
-  - `7.55n.5` - service-period close vs shift finalization
-  - `7.55n.6` - metadata timestamp normalization
-  - `7.55p.1` - Shift driver trust audit
-  - `7.55p.2` - Variance WTD / Full Week alignment
-  - `7.55p.3` - Dollar Impact accumulation model
-  - `7.55p.4` - refresh / replay integrity / notifications
-  - `7.55p.5` - Benchmark OPZ and graph honesty audit
-  - `7.55o.1` - shared widget extraction / variance shell slimming
-  - `7.55o.2` - Variance shell split
-  - `7.55o.3` - Schedule planning surface separation
-  - `7.55o.4` - Settings surface split
-  - `7.55o.5` - Baseline Manager decomposition plus wage-authority alignment
-  - `7.55o.6` - SQLite bootstrap breakup only if still justified
-  - `7.55j.3` - vendor endpoint checklist template
-  - `7.55j.4` - gap report
+- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
+- `docs/phases/phase_9/phase_9_auth_plan.md`
 
 ## Notes
 
 - Detailed slice-by-slice history was archived to `docs/archive/trackers/PROJECT_TRACKER_FULL_2026-04-12_PRE_TRIM.md`.
-- Completed `7.55l` and `7.55m` phase docs now live under `docs/archive/phases/7_55l/` and `docs/archive/phases/7_55m/`.
+- Completed `7.55l` and `7.55m` docs now live under `docs/archive/phases/7_55l/` and `docs/archive/phases/7_55m/`.
+- Completed `7.55i`, `7.55k`, `7.55n`, `7.55p`, and the completed `7.55j.1` / `7.55j.2` / `7.55j.gate` docs now live under `docs/archive/phases/`.
 - Active architecture authority docs now live under `docs/contracts/`.
-- Use `docs/archive/**` only when a prompt explicitly needs historical detail.

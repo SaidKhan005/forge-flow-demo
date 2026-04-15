@@ -56,6 +56,10 @@ Labor tells us things like:
 - worked hours
 - labor dollars
 
+In the real world, some labor systems do not give clean labor dollars right at
+close time. When that happens, the app is allowed to use the sanctioned wage
+setup the restaurant has chosen so operations can keep moving.
+
 ### Reservation system
 
 Reservations tell us things like:
@@ -106,6 +110,18 @@ That means:
   boundary
 - a new cycle changes future comparison context
 - a new cycle does not rewrite old history
+
+Wages have one extra practical rule:
+
+- if labor integration provides usable wage truth, use that
+- if it does not, the admin wage mix in Settings is the sanctioned
+  manual fallback
+- that manual wage setup is supposed to have the same downstream effect
+  as integrated wage truth on Benchmark / Schedule / Shift / Variance
+- if a vendor later sends richer finalized labor truth after close, we may need
+  explicit sync/reconciliation handlers around close and other boundary events
+  instead of assuming the first close-time ingest is the last word forever
+  targets
 
 ## Demand: Estimating Volume
 

@@ -82,7 +82,7 @@ canonical persisted authority.
 
 - Architecture rules: `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - Implementation plan: `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
-- Compatibility bridge scope: `docs/phase_8_gate/compatibility_bridge_scope.md`
+- Compatibility bridge scope: `docs/phases/phase_8_gate/compatibility_bridge_scope.md`
 - Prior slice: `docs/archive/phases/7_55l/phase_7_55l_8c_benchmark_selection_summary_persistence.md`
 - LearnBenchmarkContextService: `lib/data/learn_benchmark_context_service.dart`
 - TargetCycleService: `lib/data/target_cycle_service.dart`

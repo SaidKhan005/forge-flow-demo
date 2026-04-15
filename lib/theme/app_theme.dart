@@ -49,155 +49,167 @@ class AppColors {
 }
 
 class AppTextStyles {
+  static bool get _isWidgetTestBinding =>
+      WidgetsBinding.instance.runtimeType.toString().contains('Test');
+
+  static TextStyle _playfair(TextStyle style) => _isWidgetTestBinding
+      ? style
+      : GoogleFonts.playfairDisplay(textStyle: style);
+
+  static TextStyle _mono(TextStyle style) =>
+      _isWidgetTestBinding ? style : GoogleFonts.ibmPlexMono(textStyle: style);
+
+  static TextStyle _sans(TextStyle style) =>
+      _isWidgetTestBinding ? style : GoogleFonts.ibmPlexSans(textStyle: style);
   // ── Display — Playfair Display ────────────────────────────────────────────
-  static TextStyle display36({Color? color}) => GoogleFonts.playfairDisplay(
+  static TextStyle display36({Color? color}) => _playfair(TextStyle(
         fontSize: 36,
         fontWeight: FontWeight.w700,
         color: color ?? AppColors.textPrimary,
         height: 1.1,
-      );
+      ));
 
-  static TextStyle display28({Color? color}) => GoogleFonts.playfairDisplay(
+  static TextStyle display28({Color? color}) => _playfair(TextStyle(
         fontSize: 28,
         fontWeight: FontWeight.w600,
         color: color ?? AppColors.textPrimary,
         height: 1.2,
-      );
+      ));
 
-  static TextStyle display20({Color? color}) => GoogleFonts.playfairDisplay(
+  static TextStyle display20({Color? color}) => _playfair(TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
         color: color ?? AppColors.textPrimary,
         height: 1.3,
-      );
+      ));
 
-  static TextStyle display16({Color? color}) => GoogleFonts.playfairDisplay(
+  static TextStyle display16({Color? color}) => _playfair(TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
         color: color ?? AppColors.textPrimary,
-      );
+      ));
 
   // ── Mono — IBM Plex Mono ──────────────────────────────────────────────────
   static TextStyle mono28({Color? color, FontWeight? weight}) =>
-      GoogleFonts.ibmPlexMono(
+      _mono(TextStyle(
         fontSize: 28,
         fontWeight: weight ?? FontWeight.w700,
         color: color ?? AppColors.textPrimary,
         height: 1.1,
-      );
+      ));
 
-  static TextStyle mono22({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono22({Color? color}) => _mono(TextStyle(
         fontSize: 22,
         fontWeight: FontWeight.w500,
         color: color ?? AppColors.textPrimary,
-      );
+      ));
 
   static TextStyle mono20({Color? color, FontWeight? weight}) =>
-      GoogleFonts.ibmPlexMono(
+      _mono(TextStyle(
         fontSize: 20,
         fontWeight: weight ?? FontWeight.w700,
         color: color ?? AppColors.textPrimary,
-      );
+      ));
 
-  static TextStyle mono16({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono16({Color? color}) => _mono(TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w500,
         color: color ?? AppColors.textPrimary,
-      );
+      ));
 
   static TextStyle mono15({Color? color, FontWeight? weight}) =>
-      GoogleFonts.ibmPlexMono(
+      _mono(TextStyle(
         fontSize: 15,
         fontWeight: weight ?? FontWeight.w500,
         color: color ?? AppColors.textPrimary,
-      );
+      ));
 
   static TextStyle mono14({Color? color, FontWeight? weight}) =>
-      GoogleFonts.ibmPlexMono(
+      _mono(TextStyle(
         fontSize: 14,
         fontWeight: weight ?? FontWeight.w400,
         color: color ?? AppColors.textPrimary,
         height: 1.4,
-      );
+      ));
 
   static TextStyle mono12({Color? color, FontWeight? weight}) =>
-      GoogleFonts.ibmPlexMono(
+      _mono(TextStyle(
         fontSize: 12,
         fontWeight: weight ?? FontWeight.w400,
         color: color ?? AppColors.textPrimary,
         height: 1.4,
-      );
+      ));
 
-  static TextStyle mono11({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono11({Color? color}) => _mono(TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.6,
         color: color ?? AppColors.textMuted,
-      );
+      ));
 
-  static TextStyle mono10({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono10({Color? color}) => _mono(TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
         height: 1.4,
-      );
+      ));
 
-  static TextStyle mono8({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono8({Color? color}) => _mono(TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 1.0,
         color: color ?? AppColors.textSecondary,
-      );
+      ));
 
-  static TextStyle mono7({Color? color}) => GoogleFonts.ibmPlexMono(
+  static TextStyle mono7({Color? color}) => _mono(TextStyle(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.6,
         color: color ?? AppColors.textSecondary,
-      );
+      ));
 
   // ── Body — IBM Plex Sans ──────────────────────────────────────────────────
   static TextStyle body15({Color? color, FontStyle? style}) =>
-      GoogleFonts.ibmPlexSans(
+      _sans(TextStyle(
         fontSize: 15,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textPrimary,
         height: 1.5,
         fontStyle: style,
-      );
+      ));
 
   static TextStyle body14({Color? color, FontStyle? style}) =>
-      GoogleFonts.ibmPlexSans(
+      _sans(TextStyle(
         fontSize: 14,
         fontWeight: FontWeight.w600,
         color: color ?? AppColors.textPrimary,
         fontStyle: style,
-      );
+      ));
 
   static TextStyle body13({Color? color, FontStyle? style}) =>
-      GoogleFonts.ibmPlexSans(
+      _sans(TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textPrimary,
         height: 1.6,
         fontStyle: style,
-      );
+      ));
 
   static TextStyle body12({Color? color, FontStyle? style}) =>
-      GoogleFonts.ibmPlexSans(
+      _sans(TextStyle(
         fontSize: 13,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
         fontStyle: style ?? FontStyle.italic,
-      );
+      ));
 
   static TextStyle body11({Color? color, FontStyle? style}) =>
-      GoogleFonts.ibmPlexSans(
+      _sans(TextStyle(
         fontSize: 12,
         fontWeight: FontWeight.w400,
         color: color ?? AppColors.textSecondary,
         fontStyle: style ?? FontStyle.italic,
-      );
+      ));
 }
 
 class AppTheme {
@@ -225,12 +237,17 @@ class AppTheme {
         ),
         dividerColor: AppColors.borderSubtle,
         cardColor: AppColors.backgroundSurface,
-        textTheme: GoogleFonts.ibmPlexSansTextTheme(
-          const TextTheme(
-            bodyMedium: TextStyle(color: AppColors.textPrimary),
-            bodySmall: TextStyle(color: AppColors.textSecondary),
-          ),
-        ),
+        textTheme: AppTextStyles._isWidgetTestBinding
+            ? const TextTheme(
+                bodyMedium: TextStyle(color: AppColors.textPrimary),
+                bodySmall: TextStyle(color: AppColors.textSecondary),
+              )
+            : GoogleFonts.ibmPlexSansTextTheme(
+                const TextTheme(
+                  bodyMedium: TextStyle(color: AppColors.textPrimary),
+                  bodySmall: TextStyle(color: AppColors.textSecondary),
+                ),
+              ),
         useMaterial3: true,
       );
 }

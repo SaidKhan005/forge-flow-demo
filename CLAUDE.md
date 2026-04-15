@@ -29,6 +29,9 @@ Treat `docs/archive/**` as history unless the prompt points there.
   explicitly asks for it.
 - If docs move or docs are touched materially, update touched links and report
   `Links updated: yes/no`.
+- Do not use TodoWrite. It is not available in this workflow and generates
+  system-reminder noise. Track implementation tasks inline from the prompt's
+  task list only.
 
 ## Review Loop
 
@@ -87,6 +90,10 @@ Keep it short:
 - tests run
 - what comes next
 - current doc locations if they changed
+
+Hard cap: the file must stay under **40 lines total**. "What Completed" =
+last accepted slice only. Prior slices are tracker truth in
+`PROJECT_TRACKER.md`, not handoff truth — do not duplicate them here.
 
 ## Flavors
 

@@ -111,7 +111,7 @@ still read from `BaselineData`. This bridge is:
 
 - Architecture rules: `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - Implementation plan: `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
-- Compatibility bridge scope: `docs/phase_8_gate/compatibility_bridge_scope.md`
+- Compatibility bridge scope: `docs/phases/phase_8_gate/compatibility_bridge_scope.md`
 - LearnBenchmarkContext: `lib/models/learn_benchmark_context.dart`
 - LearnBenchmarkContextService: `lib/data/learn_benchmark_context_service.dart`
 - LearnTeachingAnalyzer: `lib/services/learn_teaching_analyzer.dart`

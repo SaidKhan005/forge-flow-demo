@@ -51,8 +51,8 @@ Examples of the remaining gap:
 `7.55l` should follow these docs:
 
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
-- `docs/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
+- `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+- `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 
 Important:
 

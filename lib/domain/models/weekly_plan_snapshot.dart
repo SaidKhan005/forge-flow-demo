@@ -70,10 +70,12 @@ class WeeklyPlanSnapshot {
   final double forecastSales;
   final int requiredFohHours;
   final int requiredBohHours;
+  // Plan-derived labor dollars remain on the locked snapshot because they are
+  // part of the locked week package. Benchmark-owned total labor % and blended
+  // wage are no longer carried as public snapshot fields; non-closed surfaces
+  // must read those from the active benchmark seam instead.
   final double theoreticalFohLaborDollars;
   final double theoreticalBohLaborDollars;
-  final double theoreticalLaborPct;
-  final double targetBlendedWage;
   final ForecastDemandSource coversSource;
   final ForecastDemandSource salesSource;
 
@@ -96,8 +98,6 @@ class WeeklyPlanSnapshot {
     required this.requiredBohHours,
     required this.theoreticalFohLaborDollars,
     required this.theoreticalBohLaborDollars,
-    required this.theoreticalLaborPct,
-    required this.targetBlendedWage,
     required this.coversSource,
     required this.salesSource,
     required this.generatedAt,
@@ -127,8 +127,15 @@ class WeeklyPlanSnapshot {
         'required_boh_hours': requiredBohHours,
         'theoretical_foh_labor_dollars': theoreticalFohLaborDollars,
         'theoretical_boh_labor_dollars': theoreticalBohLaborDollars,
-        'theoretical_labor_pct': theoreticalLaborPct,
-        'target_blended_wage': targetBlendedWage,
+        // Compatibility persistence copies retained in SQLite so old rows and
+        // bridge-era tooling still round-trip, but no longer exposed as
+        // canonical fields on the public snapshot model.
+        'theoretical_labor_pct': forecastSales > 0
+            ? theoreticalTotalLaborDollars / forecastSales * 100
+            : 0.0,
+        'target_blended_wage': totalRequiredHours > 0
+            ? theoreticalTotalLaborDollars / totalRequiredHours
+            : 0.0,
         'covers_source': coversSource.name,
         'sales_source': salesSource.name,
         'generated_at': generatedAt,
@@ -170,8 +177,6 @@ class WeeklyPlanSnapshot {
           (m['theoretical_foh_labor_dollars'] as num).toDouble(),
       theoreticalBohLaborDollars:
           (m['theoretical_boh_labor_dollars'] as num).toDouble(),
-      theoreticalLaborPct: (m['theoretical_labor_pct'] as num).toDouble(),
-      targetBlendedWage: (m['target_blended_wage'] as num).toDouble(),
       coversSource:
           ForecastDemandSource.values.byName(m['covers_source'] as String),
       salesSource:

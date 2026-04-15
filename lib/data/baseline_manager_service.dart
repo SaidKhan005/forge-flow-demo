@@ -1,6 +1,7 @@
 // Phase 5 — Baseline Manager Service
 // Loads historical closed shifts as selectable baseline candidates,
-// persists the manager's selection, and applies it to BaselineData.
+// persists the manager's selection, and keeps the remaining
+// bridge-era Benchmark context in sync for compatibility surfaces.
 //
 // Phase 7.55f.2: Candidate loading now uses a true 60-calendar-day date
 // window anchored to the latest closed business_date, replacing the old
@@ -14,22 +15,24 @@
 // latest-closed precedence locally. Day-order maps now use the canonical
 // source from BusinessDateAuthorityService.
 //
-// After persisting the active target profile, notifies any registered
-// active-target listener so the app-wide notifier path can refresh.
+// After changing active target authority through the canonical cycle path,
+// notifies any registered active-target listener so the app-wide notifier
+// path can refresh.
 
+import '../domain/models/recommended_benchmark_selection.dart';
 import '../domain/repositories/baseline_selection_repository.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
-import '../domain/repositories/target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../models/baseline_candidate_shift.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import 'business_date_authority_service.dart';
 import 'legacy_fixture_data.dart';
-import 'wage_standard_context_service.dart';
+import 'recommended_benchmark_selection_service.dart';
+import 'target_cycle_service.dart';
 
 /// Callback type for active-target profile change events.
 typedef ActiveTargetChangedCallback = Future<void> Function();
@@ -44,10 +47,7 @@ class BaselineManagerService {
       SqliteBaselineSelectionRepository.instance;
   final RestaurantScopeRepository _scopeRepo =
       SqliteRestaurantScopeRepository.instance;
-  final TargetProfileRepository _profileRepo =
-      SqliteTargetProfileRepository.instance;
-
-  /// Optional callback invoked after the active target profile is persisted.
+  /// Optional callback invoked after active target authority changes.
   /// Set by the app-wide ActiveTargetProfileNotifier to receive change events.
   ActiveTargetChangedCallback? onActiveTargetChanged;
 
@@ -70,15 +70,27 @@ class BaselineManagerService {
     return getCandidateShiftsForDateRange(startDate, endDate);
   }
 
-  /// Loads candidates for an explicit date range. Useful for testability and
-  /// future calendar navigation (7.55f.3).
+  /// Loads candidates for an explicit date range. Useful for testability
+  /// and future calendar navigation (7.55f.3).
+  ///
+  /// 7.55p.5g-review-fix: accepts an optional [restaurantId] so callers
+  /// with explicit scope (recommendation path, cross-restaurant admin
+  /// work) route through the passed id instead of silently resolving
+  /// the active restaurant. When [restaurantId] is omitted, the active
+  /// scope is used — that preserves the long-standing convenience
+  /// behavior for [getCandidateShifts] and other active-scope consumers.
+  ///
+  /// Selected-key lookup is scoped to the same id so
+  /// `candidate.isSelected` reflects the requested restaurant's
+  /// persisted manager selection, not the active restaurant's.
   Future<List<BaselineCandidateShift>> getCandidateShiftsForDateRange(
-      String startDate, String endDate) async {
-    final restaurantId = await _activeRestaurantId();
+      String startDate, String endDate,
+      {String? restaurantId}) async {
+    final scopedId = restaurantId ?? await _activeRestaurantId();
     final closedShifts = await _shiftRepo.getClosedShiftsInDateRange(
-        restaurantId, startDate, endDate);
+        scopedId, startDate, endDate);
     final selectedKeys =
-        await _baselineRepo.getSelectedRecordKeys(restaurantId);
+        await _baselineRepo.getSelectedRecordKeys(scopedId);
 
     final candidates = closedShifts.map((shift) {
       final recordKey =
@@ -97,6 +109,7 @@ class BaselineManagerService {
         isSelected:     selectedKeys.contains(recordKey),
         businessDate:   shift.businessDate,
         actualLaborPct: shift.totalLaborPct,
+        hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
       );
     }).toList();
 
@@ -105,15 +118,13 @@ class BaselineManagerService {
   }
 
   static void _sortCandidates(List<BaselineCandidateShift> candidates) {
-    const daypartOrder = <String, int>{
-      'lunch': 0, 'dinner': 1, 'late_night': 2,
-    };
+    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
     // Canonical day ordering from BusinessDateAuthorityService.
     const dayOrder = BusinessDateAuthorityService.canonicalDayOrder;
 
     candidates.sort((a, b) {
-      final dp = (daypartOrder[a.daypart] ?? 99)
-          .compareTo(daypartOrder[b.daypart] ?? 99);
+      final dp = ServicePeriodDefinitionResolver.sortIndex(defs, a.daypart)
+          .compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart));
       if (dp != 0) return dp;
       final cplh = b.cplh.compareTo(a.cplh);
       if (cplh != 0) return cplh;
@@ -128,23 +139,73 @@ class BaselineManagerService {
     });
   }
 
+  // ── Recommended benchmark selection (7.55p.5g) ─────────────────────────────
+  //
+  // Resolves the app-owned recommendation for the default recommended/system
+  // source path. Does NOT read manager-selected keys and does NOT write
+  // fake selection keys — callers should keep manager override precedence
+  // separate (see hasPersistedManagerOverride).
+
+  /// Returns true when the restaurant has any persisted manager-selected
+  /// benchmark record keys. Used by `TargetCycleService` to route between
+  /// the manager-override path and the app-owned recommendation path
+  /// without creating fake override rows.
+  Future<bool> hasPersistedManagerOverride(String restaurantId) async {
+    final keys = await _baselineRepo.getSelectedRecordKeys(restaurantId);
+    return keys.isNotEmpty;
+  }
+
+  /// Runs the 7.55p.5g recommendation pipeline over the 60-day closed-shift
+  /// window ending at [businessDate] for the explicit [restaurantId].
+  ///
+  /// Pure data path: loads eligible candidates scoped to [restaurantId],
+  /// passes them to [RecommendedBenchmarkSelectionService], returns the
+  /// result. No writes to the baseline-selection table, no
+  /// manager-override key fabrication, no `BaselineData` mutation.
+  ///
+  /// 7.55p.5g-review-fix: the inner candidate loader now honors the
+  /// passed [restaurantId] instead of silently falling back to the
+  /// active-scope restaurant.
+  Future<RecommendedBenchmarkSelection> resolveRecommendedSelection(
+      String restaurantId, String businessDate,
+      {RecommendedSelectionConfig config =
+          const RecommendedSelectionConfig()}) async {
+    final endDate = businessDate;
+    final startDate =
+        BusinessDateAuthorityService.subtractDays(businessDate, 59);
+    final candidates = await getCandidateShiftsForDateRange(
+      startDate,
+      endDate,
+      restaurantId: restaurantId,
+    );
+    return RecommendedBenchmarkSelectionService.instance
+        .select(candidates, config: config);
+  }
+
   // ── Date-anchored baseline context priming ─────────────────────────────────
   // Transitional bridge for TargetCycleService: ensures BaselineData reflects
   // the correct 60-day benchmark context for an explicit business date before
-  // buildActiveTargetProfileFromBaseline() runs. Does not persist the active
+  // the canonical cycle/profile writer runs. Does not persist the active
   // target profile — the caller builds a TargetCycle from the primed state.
 
   /// Primes in-memory BaselineData for the 60-day window ending at
-  /// [businessDate]. Loads closed shifts from DB, applies them as historical
-  /// context, and re-applies manager override state from the persisted
-  /// selection.
+  /// [businessDate] for the explicit [restaurantId]. Loads closed shifts
+  /// from DB, applies them as historical context, and re-applies manager
+  /// override state from the persisted selection.
+  ///
+  /// 7.55p.5g-review-fix: the inner candidate loader now honors the
+  /// passed [restaurantId] instead of silently falling back to the
+  /// active-scope restaurant.
   Future<void> primeBaselineContextForDate(
       String restaurantId, String businessDate) async {
     final endDate = businessDate;
     final startDate = BusinessDateAuthorityService.subtractDays(businessDate, 59);
 
-    final candidates =
-        await getCandidateShiftsForDateRange(startDate, endDate);
+    final candidates = await getCandidateShiftsForDateRange(
+      startDate,
+      endDate,
+      restaurantId: restaurantId,
+    );
 
     if (candidates.isEmpty) {
       BaselineData.clearHistoricalContext();
@@ -174,10 +235,10 @@ class BaselineManagerService {
   }
 
   // ── Apply persisted selection to BaselineData ──────────────────────────────
-  // Compatibility bridge: BaselineData is still updated in-memory for Baseline,
-  // Schedule, and Learn surfaces that have not yet migrated to the persisted
-  // active-target authority. This is temporary bridge behavior — the persisted
-  // ActiveTargetProfile is the canonical authority.
+  // Compatibility bridge: BaselineData is still updated in-memory for
+  // Benchmark/Learn helper paths that have not fully migrated yet.
+  // This bridge must not rewrite the persisted ActiveTargetProfile —
+  // the active cycle remains the canonical profile authority.
 
   Future<void> primeManagerOverride() async {
     final candidates = await getCandidateShifts();
@@ -186,7 +247,6 @@ class BaselineManagerService {
       // Compatibility bridge: clear in-memory BaselineData state
       BaselineData.clearHistoricalContext();
       BaselineData.clearManagerOverride();
-      await _persistActiveTargetProfile();
       return;
     }
 
@@ -210,51 +270,122 @@ class BaselineManagerService {
     if (selected.isEmpty) {
       // Compatibility bridge: clear in-memory override
       BaselineData.clearManagerOverride();
-      await _persistActiveTargetProfile();
       return;
     }
 
     // Compatibility bridge: apply in-memory override
     BaselineData.applyManagerOverride(context);
-    await _persistActiveTargetProfile();
   }
 
   // ── Commit draft selection ─────────────────────────────────────────────────
+  //
+  // 7.55q.9+: selections route through the canonical cycle path so
+  // `target_cycles` and `active_target_profiles` stay in lockstep and
+  // the once-per-60-day `managerOverrideUsed` rule is actually enforced.
+  // Clearing the selection now restores recommended-cycle authority
+  // through the same replacement-cycle seam instead of mutating the
+  // active profile directly.
+  //
+  // Throws [ManagerOverrideDeniedException] when the active cycle has
+  // already consumed its manager override and the caller tries to
+  // land a new non-empty selection. Callers (the Baseline Manager
+  // form) should catch and surface this to the user.
 
   Future<void> saveSelection(Set<String> selectedKeys) async {
     final restaurantId = await _activeRestaurantId();
     await _baselineRepo.replaceSelectedRecordKeys(
         restaurantId, selectedKeys);
     if (selectedKeys.isEmpty) {
-      // Compatibility bridge: clear in-memory override
       BaselineData.clearManagerOverride();
-      await _persistActiveTargetProfile();
-    } else {
-      await primeManagerOverride();
+      final businessDate = await BusinessDateAuthorityService.instance
+          .resolvePlanningAnchorDate(restaurantId);
+      if (businessDate == null) {
+        throw StateError(
+          'BaselineManagerService.saveSelection: cannot resolve planning '
+          'anchor date for restaurant $restaurantId while clearing the '
+          'manager override.',
+        );
+      }
+      await TargetCycleService.instance
+          .restoreRecommendedCycle(restaurantId, businessDate);
+      final callback = onActiveTargetChanged;
+      if (callback != null) {
+        await callback();
+      }
+      return;
     }
-  }
 
-  // ── Persist active target profile and notify authority path ────────────────
+    // 7.55q.9: route through the canonical cycle path. This writes a
+    // replacement `TargetCycle` with source `managerOverride`,
+    // projects the profile via `_syncActiveTargetProfile`, and
+    // enforces `canManagerOverride` (throws if already used). The
+    // `primeBaselineContextForDate` and `_persistActiveTargetProfile`
+    // side-effects previously run by `primeManagerOverride` now
+    // happen inside `_writeReplacementCycle`.
+    final businessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
+    if (businessDate == null) {
+      throw StateError(
+        'BaselineManagerService.saveSelection: cannot resolve planning '
+        'anchor date for restaurant $restaurantId — cycle override '
+        'cannot proceed without a business date anchor.',
+      );
+    }
+    await TargetCycleService.instance
+        .applyManagerOverrideCycle(restaurantId, businessDate);
 
-  Future<void> _persistActiveTargetProfile() async {
-    final restaurantId = await _activeRestaurantId();
-
-    // Resolve wage authority before building profile so the persisted
-    // profile carries resolved wages instead of MeridianConfig defaults.
-    final wageCtx =
-        await WageStandardContextService.instance.resolve(restaurantId);
-
-    final profile = SqliteDatabase.buildActiveTargetProfileFromBaseline(
-      restaurantId,
-      fohWageOverride: wageCtx.fohWage,
-      bohWageOverride: wageCtx.bohWage,
-    );
-    await _profileRepo.upsertActiveTargetProfile(profile);
-
-    // Notify the persisted active-target authority path
+    // The cycle path writes the profile via the projector but does
+    // not fire the active-target-changed callback. Fire it here so
+    // `ActiveTargetProfileNotifier` refreshes downstream surfaces.
     final callback = onActiveTargetChanged;
     if (callback != null) {
       await callback();
     }
   }
+
+  // ── Admin reset seam (7.55q.9) ─────────────────────────────────────────────
+  //
+  // Testing/admin affordance. Clears the persisted manager selection,
+  // the in-memory BaselineData bridge, and deactivates the active
+  // `TargetCycle`, then creates a fresh recommended cycle (which syncs
+  // the profile via the projector). Lets manual validation loop
+  // through the once-per-cycle override flow repeatedly without
+  // waiting for a real 60-day rollover.
+  //
+  // Surfaced by the Settings "Reset Target Cycle (Admin)" tile. Not
+  // a public manager-facing action.
+  Future<void> resetForAdminTest() async {
+    final restaurantId = await _activeRestaurantId();
+    final businessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
+    if (businessDate == null) {
+      throw StateError(
+        'BaselineManagerService.resetForAdminTest: cannot resolve '
+        'planning anchor date for restaurant $restaurantId.',
+      );
+    }
+
+    // Clear persisted selection keys + in-memory bridge.
+    await _baselineRepo.replaceSelectedRecordKeys(restaurantId, const {});
+    BaselineData.clearManagerOverride();
+    BaselineData.clearHistoricalContext();
+
+    // Deactivate any active cycle so the next read builds a fresh
+    // recommended one with `managerOverrideUsed: false`.
+    await SqliteTargetCycleRepository.instance
+        .deactivateAllForRestaurant(restaurantId);
+
+    // Build the fresh recommended cycle (also syncs the profile).
+    await TargetCycleService.instance
+        .getOrCreateActiveCycle(restaurantId, businessDate);
+
+    // Notify downstream surfaces that the active target changed.
+    final callback = onActiveTargetChanged;
+    if (callback != null) {
+      await callback();
+    }
+  }
+
+  // ── Persist active target profile and notify authority path ────────────────
+
 }

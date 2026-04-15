@@ -155,10 +155,10 @@ Recommended starting rule:
   - job or role assignments
   - labor dollars when exposed
 - App derives forecast demand from POS history:
-  - forecast covers = 60-day total covers ÷ (60/7) weeks
-  - forecast sales = forecast covers × target PPA (always derived, never direct input)
+  - forecast covers = 60-day total covers Ã· (60/7) weeks
+  - forecast sales = forecast covers Ã— target PPA (always derived, never direct input)
   - no vendor-provided forecast covers or sales
-  - no manager editing of forecast on Schedule — manager influence is Baseline target profile override only
+  - no manager editing of forecast on Schedule â€” manager influence is Baseline target profile override only
 - Reservation platform owns:
   - reservation party size
   - reservation time
@@ -630,7 +630,7 @@ Dependency note:
 
 Planning artifact:
 
-- `docs/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
+- `docs/archive/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
 
 Reason this exists:
 
@@ -720,28 +720,28 @@ Planning and implementation artifact:
 
 Current implementation:
 
-Architecture: covers always from POS 60-day history; sales always derived as covers × target PPA.
+Architecture: covers always from POS 60-day history; sales always derived as covers Ã— target PPA.
 
 - `ForecastDemandSource` enum: `appDerivedFromHistoricalAverage` (primary), `appDerivedFromCoversAndPpa` (sales derivation), `appDerivedFromReservationAndWalkInModel` (Phase 8R future), `demoFallback`, `unavailable`.
 - `ScheduleForecastDemand` carries resolved weekly forecast sales, forecast covers, and source provenance.
-- `ScheduleForecastDemandResolver` waterfall: POS 60-day historical avg → demo fallback → unavailable.
-- Schedule is read-only — no manager editing. Manager influence is Baseline target profile override only.
+- `ScheduleForecastDemandResolver` waterfall: POS 60-day historical avg â†’ demo fallback â†’ unavailable.
+- Schedule is read-only â€” no manager editing. Manager influence is Baseline target profile override only.
 - Schedule displays `Forecast source: 60-day weekly average` as provenance.
-- `LaborModel` remains the formula source: FOH hours = forecast covers ÷ target CPLH; BOH hours = forecast sales ÷ target SPLH.
+- `LaborModel` remains the formula source: FOH hours = forecast covers Ã· target CPLH; BOH hours = forecast sales Ã· target SPLH.
 
 Forecast derivation chain:
 
 ```text
-POS closed shifts (60 days) → total covers → ÷ (60/7) → weekly avg covers
-weekly avg covers × target PPA → forecasted sales
-forecasted covers ÷ target CPLH → FOH hours
-forecasted sales ÷ target SPLH → BOH hours
+POS closed shifts (60 days) â†’ total covers â†’ Ã· (60/7) â†’ weekly avg covers
+weekly avg covers Ã— target PPA â†’ forecasted sales
+forecasted covers Ã· target CPLH â†’ FOH hours
+forecasted sales Ã· target SPLH â†’ BOH hours
 ```
 
 Guardrails:
 
 - Covers always from POS history, never vendor-provided or manager-entered.
-- Sales always derived from covers × PPA, never a direct input.
+- Sales always derived from covers Ã— PPA, never a direct input.
 - Do not let reservation `in the books` become forecast covers.
 - Do not let BOH required hours become cover-driven.
 - Do not let widgets decide forecast source precedence.
@@ -750,8 +750,8 @@ Guardrails:
 Remaining future integration work:
 
 - No live POS, labor, OpenTable, or reservation transport exists yet.
-- Phase 8 replaces the transport (fixture → live POS) but not the derivation logic.
-- The app derives forecast from its own historical data — vendors provide raw shift data, not forecasts.
+- Phase 8 replaces the transport (fixture â†’ live POS) but not the derivation logic.
+- The app derives forecast from its own historical data â€” vendors provide raw shift data, not forecasts.
 
 Verification recorded on 2026-04-10:
 
@@ -1443,7 +1443,7 @@ The verification pass after 7.51a-e found:
 - repo-wide code and architecture audit says the app is structurally ready for Phase 8 transport work.
 - the tracked test corpus is now 28 test files.
 - the checked-in rerun artifacts are:
-  - docs/phase_8_gate/test_execution_manifest.md
+  - docs/phases/phase_8_gate/test_execution_manifest.md
   - scripts/run_phase8_gate_tests.ps1
 - 7.51e complete: 28-file Flutter corpus rerun passed (all 28/28, re-verified post-7.52c). Gate blocked on vendor selection only.
 - Phase 8 is blocked on vendor selection only.
@@ -1479,7 +1479,7 @@ The verification pass after 7.51a-e found:
 - Select the first labor vendor.
 - Replace TBD entries in both capability profiles with real vendor-specific details.
 - Run the current 28-file Flutter test corpus one file at a time in a supported environment.
-  - use docs/phase_8_gate/test_execution_manifest.md
+  - use docs/phases/phase_8_gate/test_execution_manifest.md
   - use scripts/run_phase8_gate_tests.ps1
   - record exact pass or fail results without reusing older file counts
 - Only after the above is done should the final sign-off change from blocked to passed.

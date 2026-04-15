@@ -1,0 +1,13 @@
+# Build artifacts
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Graphify temp files (output dir is kept)
+.graphify_*.json
+.graphify_*.txt
+.graphify_python
+
+# Archive — only load when explicitly referenced in a prompt
+docs/archive/

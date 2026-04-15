@@ -36,8 +36,6 @@ WeeklyPlanSnapshot _makeSnapshot({
       requiredBohHours: 117,
       theoreticalFohLaborDollars: 1942.50,
       theoreticalBohLaborDollars: 2632.50,
-      theoreticalLaborPct: 21.79,
-      targetBlendedWage: 20.11,
       coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
       salesSource: ForecastDemandSource.appDerivedFromCoversAndPpa,
       generatedAt: '2026-04-06T00:00:00Z',
@@ -313,8 +311,6 @@ void main() {
           snapshot.theoreticalFohLaborDollars);
       expect(restored.theoreticalBohLaborDollars,
           snapshot.theoreticalBohLaborDollars);
-      expect(restored.theoreticalLaborPct, snapshot.theoreticalLaborPct);
-      expect(restored.targetBlendedWage, snapshot.targetBlendedWage);
       expect(restored.coversSource, snapshot.coversSource);
       expect(restored.salesSource, snapshot.salesSource);
       expect(restored.generatedAt, snapshot.generatedAt);

@@ -155,8 +155,10 @@ void main() {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
+      // Shift header trailing slot now renders day · daypart on a single
+      // line under the live clock, matching the variance-style header.
       expect(
-          find.text('Dinner \u00b7 Friday', skipOffstage: false),
+          find.text('Friday \u00b7 Dinner', skipOffstage: false),
           findsOneWidget);
     });
 
@@ -168,7 +170,10 @@ void main() {
       await tester.pumpWidget(_buildShiftDashboard());
       await tester.pump();
       await tester.pump();
-      expect(find.text('8:30 PM', skipOffstage: false), findsOneWidget);
+      // Clock now splits the time and AM/PM into separate Text widgets so
+      // the digits can be larger than the meridiem suffix.
+      expect(find.text('8:30', skipOffstage: false), findsOneWidget);
+      expect(find.text('PM', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('header does NOT render old service-elapsed text', (tester) async {
@@ -226,7 +231,7 @@ void main() {
       await tester.pump();
       final rm = _fixtureReadModel();
       expect(
-          find.text(rm.targetCPLH.toStringAsFixed(1), skipOffstage: false),
+          find.text(rm.targetCPLH.toStringAsFixed(2), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
 
@@ -236,7 +241,7 @@ void main() {
       await tester.pump();
       final rm = _fixtureReadModel();
       expect(
-          find.text(rm.opzCeilingCPLH.toStringAsFixed(1), skipOffstage: false),
+          find.text(rm.opzCeilingCPLH.toStringAsFixed(2), skipOffstage: false),
           findsAtLeastNWidgets(1));
     });
   });
@@ -358,16 +363,67 @@ void main() {
           findsAtLeastNWidgets(1));
     });
 
-    testWidgets('LABOR % card shows read-model targetLaborPct',
+    testWidgets('LABOR % card shows read-model theoretical target',
         (tester) async {
       final rm = _fixtureReadModel();
       await tester.pumpWidget(_buildShiftDashboard(readModel: rm));
       await tester.pump();
       await tester.pump();
 
-      final expectedTarget = 'Target ${rm.targetLaborPct.toStringAsFixed(1)}%';
+      final expectedTarget =
+          'Theoretical ${rm.targetLaborPct.toStringAsFixed(1)}%';
       expect(find.text(expectedTarget, skipOffstage: false),
           findsAtLeastNWidgets(1));
+    });
+
+    test('7.55q.6: ShiftDashboardReadModel.targetLaborPct sources from '
+        'profile.theoreticalLaborPct, NOT from the killed planned-labor '
+        'package formula', () {
+      // Build a read model with a profile whose theoreticalLaborPct is
+      // intentionally distinct from what the old planned-package formula
+      // (planFohHours × fohWage + planBohHours × bohWage) / forecastSales
+      // would have produced.
+      const distinctTheoreticalPct = 33.3;
+      final profile = ActiveTargetProfile(
+        targetProfileId: 'q6-test',
+        restaurantId: 'demo_restaurant_001',
+        sourceType: 'system_baseline',
+        targetCPLH: BaselineData.derivedTargetCPLH,
+        targetSPLH: BaselineData.derivedTargetSPLH,
+        targetPPA: BaselineData.derivedTargetPPA,
+        fohWage: MeridianConfig.fohWage,
+        bohWage: MeridianConfig.bohWage,
+        opzFloorCPLH: BaselineData.opzFloorCPLH,
+        opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+        theoreticalFohLaborPct: 13.3,
+        theoreticalBohLaborPct: 20.0,
+        theoreticalLaborPct: distinctTheoreticalPct,
+        builtAt: '2026-04-14T00:00:00',
+      );
+      final snapshot = OpenShiftSnapshot(
+        restaurantId: 'demo_restaurant_001',
+        weekId: '2026-W13',
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        status: 'open',
+        businessDate: '2026-03-27',
+        forecastCovers: 100,
+        currentCovers: 50,
+        scheduledFohHours: 20,
+        scheduledBohHours: 22,
+        currentPPA: 42.0,
+        currentCPLH: 5.0,
+        currentSPLH: 200.0,
+        blendedWage: 18.0,
+        updatedAt: '2026-03-27T19:42:00',
+      );
+      final rm = ShiftDashboardReadModel.build(snapshot, profile);
+
+      // 7.55q.6 contract: targetLaborPct equals the profile's
+      // theoreticalLaborPct exactly. The old planned-package formula
+      // would have produced a different number derived from
+      // (planFohHours × fohWage + planBohHours × bohWage) / forecastSales.
+      expect(rm.targetLaborPct, equals(distinctTheoreticalPct));
     });
   });
 

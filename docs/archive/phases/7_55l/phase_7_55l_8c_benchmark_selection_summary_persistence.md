@@ -117,7 +117,7 @@ runs, the recovery path is not re-entered for that cycle.
 
 - Architecture rules: `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - Implementation plan: `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
-- Compatibility bridge scope: `docs/phase_8_gate/compatibility_bridge_scope.md`
+- Compatibility bridge scope: `docs/phases/phase_8_gate/compatibility_bridge_scope.md`
 - Prior slice: `docs/archive/phases/7_55l/phase_7_55l_8b_learn_selection_analytics_migration.md`
 - BenchmarkSelectionSummary: `lib/domain/models/benchmark_selection_summary.dart`
 - BenchmarkSelectionSummaryRepository: `lib/domain/repositories/benchmark_selection_summary_repository.dart`

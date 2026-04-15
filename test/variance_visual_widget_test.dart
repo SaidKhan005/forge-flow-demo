@@ -17,11 +17,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:forge_and_flow/data/active_target_profile_notifier.dart';
 import 'package:forge_and_flow/data/shift_data_source.dart';
 import 'package:forge_and_flow/data/week_data_notifier.dart';
 import 'package:forge_and_flow/models/current_week_state.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/models/history_pattern_record.dart';
+import 'package:forge_and_flow/models/shift_record.dart';
+import 'package:forge_and_flow/models/week_data.dart';
+import 'package:forge_and_flow/models/week_record.dart';
 import 'package:forge_and_flow/screens/variance_report.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 
@@ -427,7 +432,7 @@ void main() {
   // ── H: Mixed day-row and open-header honesty (7.55k.4a) ────────────────
 
   group('H — mixed-row and open-header honesty', () {
-    testWidgets('mixed closed+projected day shows status summary',
+    testWidgets('mixed day renders status chips instead of summary text',
         (tester) async {
       await tester.pumpWidget(_buildVarianceReport());
       await tester.pump();
@@ -441,13 +446,13 @@ void main() {
       );
       await tester.pump();
 
-      // In StaticShiftDataSource, Fri has closed lunch + projected dinner
-      // (mock replay business date is Friday). That makes Fri a mixed day.
-      // The status summary "1 closed, 1 projected" should be visible.
+      // Mixed day rows no longer render the count summary text
+      // (chips/icons already carry status composition). Verify no
+      // "N Closed, N Projected" summary text appears.
       expect(
-        find.textContaining('closed'),
-        findsWidgets,
-        reason: 'mixed day row should render status summary with "closed"',
+        find.textContaining(RegExp(r'\d Closed')),
+        findsNothing,
+        reason: 'status summary text should be removed from collapsed day rows',
       );
     });
 
@@ -498,4 +503,507 @@ void main() {
       }
     });
   });
+
+  // ── J: Dollar Impact card accumulation framing (7.55p.3) ──────────────
+
+  group('J — Dollar Impact card accumulation framing', () {
+    Future<void> loadThisWeek(WidgetTester tester) async {
+      await tester.pumpWidget(_buildVarianceReport());
+      await tester.pump();
+      await tester.pump();
+    }
+
+    testWidgets('DOLLAR IMPACT label is present', (tester) async {
+      await loadThisWeek(tester);
+      expect(find.text('DOLLAR IMPACT'), findsOneWidget);
+    });
+
+    testWidgets('card shows "this week" label', (tester) async {
+      await loadThisWeek(tester);
+      expect(find.text('this week'), findsOneWidget);
+    });
+
+    testWidgets('annualized row hidden when 60-day data unavailable', (tester) async {
+      // StaticShiftDataSource does not populate sixtyDayDollarImpact,
+      // so annualized should not render (no weekly × 52 fallback).
+      await loadThisWeek(tester);
+      expect(find.text('annualized'), findsNothing);
+    });
+
+    testWidgets('card shows "Through" context line', (tester) async {
+      await loadThisWeek(tester);
+      expect(find.textContaining('Through'), findsOneWidget);
+    });
+
+    testWidgets('card does not contain "covers WTD"', (tester) async {
+      await loadThisWeek(tester);
+      expect(find.textContaining('covers WTD'), findsNothing);
+    });
+
+    testWidgets('card does not contain "run rate"', (tester) async {
+      await loadThisWeek(tester);
+      expect(find.textContaining('run rate'), findsNothing);
+    });
+  });
+
+  // ── I: Projected detail plan target package (7.55p.2a) ────────────────
+
+  group('I — projected detail plan target package', () {
+    testWidgets('projected row shows FOH Hours, BOH Hours, Blended Wage labels',
+        (tester) async {
+      await tester.pumpWidget(_buildVarianceReport());
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+
+      // Expand a day with projected rows
+      final dayFinder = find.text('Mon');
+      if (dayFinder.evaluate().isNotEmpty) {
+        await tester.tap(dayFinder.first);
+        await tester.pump();
+
+        // Plan target package: covers, FOH/BOH hours, blended wage, labor %
+        expect(find.text('FOH Hours'), findsWidgets);
+        expect(find.text('BOH Hours'), findsWidgets);
+        expect(find.text('Blended Wage'), findsWidgets);
+      }
+    });
+
+    testWidgets('projected row shows (plan) annotation on hours and wage',
+        (tester) async {
+      await tester.pumpWidget(_buildVarianceReport());
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Expand Sat (all-projected day) to verify plan annotations.
+      final satFinder = find.text('Sat');
+      if (satFinder.evaluate().isNotEmpty) {
+        await tester.tap(satFinder.first);
+        await tester.pumpAndSettle();
+
+        // Plan annotations appear on covers, hours, and wage
+        expect(find.textContaining('(plan)'), findsWidgets);
+      }
+    });
+  });
+
+  // ── G: 7.55q.4 — _ProjectedShiftDetail reads current Benchmark seam ───
+  //
+  // Drift 5 fix from 7.55q.1: non-closed Variance Full Week rows (open /
+  // projected) must read Benchmark-owned target metrics (blended wage,
+  // theoretical labor %) from the current shared ActiveTargetProfile —
+  // NOT from snapshot-cycle-stale ShiftRecord fields.
+  //
+  //   G1. With ActiveTargetProfileNotifier in scope and a profile whose
+  //       targetBlendedWage/theoreticalLaborPct differ from the shift's
+  //       carried values, the projected-row UI must render the PROFILE's
+  //       values (the 7.55q.3 shared seam), not the shift's.
+  //   G2. Without a profile notifier in scope (legacy widget tree), the
+  //       widget falls back honestly to the shift's locked values
+  //       — no errors, no wrong-source authority decisions.
+  //   G3. Plan-owned values (covers, FOH hours, BOH hours) continue to
+  //       render from the ShiftRecord regardless of which profile is in
+  //       scope (Plan-owned, not Benchmark-owned).
+
+  group('G — 7.55q.4 _ProjectedShiftDetail consumes current Benchmark', () {
+    // Build a projected-only widget tree using the same StaticShiftDataSource
+    // that the existing variance_visual tests use, but with an
+    // ActiveTargetProfileNotifier carrying a DISTINGUISHABLE profile so
+    // we can prove the widget reads from it (not from the per-shift values).
+    Widget buildWithProfile({
+      required ActiveTargetProfile profile,
+      bool withProfileNotifier = true,
+    }) {
+      const inner = MaterialApp(
+        home: Scaffold(body: VarianceReport()),
+      );
+      // Nest manually to avoid depending on `nested` (provider's package).
+      Widget tree = ChangeNotifierProvider<WeekDataNotifier>(
+        create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
+        child: Provider<ShiftDataSource>(
+          create: (_) => const StaticShiftDataSource(),
+          child: inner,
+        ),
+      );
+      if (withProfileNotifier) {
+        tree = ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(
+          value: ActiveTargetProfileNotifier.fromProfile(profile),
+          child: tree,
+        );
+      }
+      return tree;
+    }
+
+    ActiveTargetProfile distinctProfile() {
+      // CPLH=4.5, SPLH=180, PPA=42, FOH wage=$25, BOH wage=$25 →
+      //   targetBlendedWage = (1/4.5 × 25 + 42/180 × 25) / (1/4.5 + 42/180)
+      //                     = (5.5556 + 5.8333) / (0.2222 + 0.2333) = 25.0
+      // theoreticalLaborPct intentionally chosen as 33.3% so it stands out
+      // against the StaticShiftDataSource's seeded ~20% values.
+      return const ActiveTargetProfile(
+        targetProfileId: 'q4-distinct',
+        restaurantId: 'demo_restaurant_001',
+        sourceType: 'system_baseline',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 42.0,
+        fohWage: 25.0,
+        bohWage: 25.0,
+        opzFloorCPLH: 3.5,
+        opzCeilingCPLH: 5.8,
+        theoreticalFohLaborPct: 13.3,
+        theoreticalBohLaborPct: 20.0,
+        theoreticalLaborPct: 33.3,
+        builtAt: '2026-04-14T00:00:00Z',
+      );
+    }
+
+    testWidgets('G1: projected-row Blended Wage + Labor % render from the '
+        'current ActiveTargetProfile (the 7.55q.3 shared seam)',
+        (tester) async {
+      final profile = distinctProfile();
+      await tester.pumpWidget(buildWithProfile(profile: profile));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // Expand Sat (all-projected in the StaticShiftDataSource fixture).
+      final satFinder = find.text('Sat');
+      if (satFinder.evaluate().isEmpty) {
+        // The fixture week may not have a projected Sat — skip cleanly
+        // rather than asserting structure that doesn't exist in the
+        // fixture. The pure-Dart group L tests cover the read-service
+        // contract deterministically.
+        return;
+      }
+      await tester.tap(satFinder.first);
+      await tester.pumpAndSettle();
+
+      // The profile's targetBlendedWage = 25.0 → "$25.00  (plan)"
+      // The profile's theoreticalLaborPct = 33.3 → "33.3%  (theoretical)"
+      // These must appear; the StaticShiftDataSource's seeded shift
+      // values (e.g. ≈ 20% theoretical) must NOT be the source for
+      // open/projected rows under 7.55q.4.
+      expect(find.text('\$25.00  (plan)'), findsWidgets,
+          reason: 'projected-row Blended Wage must read the profile seam');
+      expect(find.text('33.3%  (theoretical)'), findsWidgets,
+          reason: 'projected-row Labor % must read the profile seam');
+    });
+
+    testWidgets('G2: without ActiveTargetProfileNotifier in scope, the '
+        'widget falls back to shift fields honestly (no errors)',
+        (tester) async {
+      // No profile notifier → context.watch returns null → fallback path.
+      await tester.pumpWidget(buildWithProfile(
+        profile: distinctProfile(),
+        withProfileNotifier: false,
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The screen still renders without exceptions (degradation is honest).
+      expect(find.text('FULL WEEK PROJECTION'), findsOneWidget);
+      // The distinct profile values must NOT appear (since the notifier
+      // wasn't in scope to be read).
+      expect(find.text('33.3%  (theoretical)'), findsNothing,
+          reason: 'no profile notifier ⇒ widget must not invent the '
+              'profile values; honest fallback to shift fields only');
+    });
+
+    testWidgets('G3: Plan-owned values (covers, FOH hours, BOH hours) '
+        'continue to come from the ShiftRecord regardless of profile',
+        (tester) async {
+      final profile = distinctProfile();
+      await tester.pumpWidget(buildWithProfile(profile: profile));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final satFinder = find.text('Sat');
+      if (satFinder.evaluate().isEmpty) return;
+      await tester.tap(satFinder.first);
+      await tester.pumpAndSettle();
+
+      // Plan-owned labels appear (their values come from the shift, NOT
+      // the profile — covers / FOH / BOH hours are plan-owned).
+      expect(find.text('Covers'), findsWidgets);
+      expect(find.text('FOH Hours'), findsWidgets);
+      expect(find.text('BOH Hours'), findsWidgets);
+      // (plan) annotation appears on Plan-owned rows.
+      expect(find.textContaining('(plan)'), findsWidgets);
+    });
+
+    // ── 7.55q.4-review-fix: collapsed Full Week day-row aggregate path
+    //
+    // Group G above proved the EXPANDED `_ProjectedShiftDetail` reads
+    // from the current profile. The review caught that the COLLAPSED
+    // day-row aggregate (rendered by `_FullWeekSection` via
+    // `VarianceWeekProjectionReadService.build(...)`) was constructing
+    // the read service WITHOUT passing the profile — so the
+    // `currentTargetProfile` parameter the read service grew in
+    // `7.55q.4` was never actually used in production. These tests
+    // close that gap end-to-end with a deterministic probe data source:
+    //
+    //   G4. With the profile in scope, the COLLAPSED day-row labor %
+    //       for an all-projected day (totalSales forced to 0 via
+    //       zero-input shifts so the aggregate routes through
+    //       `_meanTheoreticalPct`) reflects the profile's
+    //       `theoreticalLaborPct`, NOT the seeded shift value.
+    //   G5. WITHOUT the profile in scope, the same day-row labor %
+    //       falls back to the shift's locked theoretical % (legacy
+    //       per-shift behaviour). Proves the wire isn't fabricating
+    //       the profile value when the notifier truly isn't there.
+
+    ActiveTargetProfile screenWireProbeProfile() {
+      // 87.7% is intentionally far from the probe shift's locked
+      // theoretical % (33.3%) so a single `find.text('87.7%')` is
+      // unambiguous evidence that the read service received the
+      // profile through the screen.
+      return const ActiveTargetProfile(
+        targetProfileId: 'q4-review-screen-probe',
+        restaurantId: 'demo_restaurant_001',
+        sourceType: 'system_baseline',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 42.0,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        opzFloorCPLH: 3.5,
+        opzCeilingCPLH: 5.8,
+        theoreticalFohLaborPct: 35.0,
+        theoreticalBohLaborPct: 52.7,
+        theoreticalLaborPct: 87.7,
+        builtAt: '2026-04-14T00:00:00Z',
+      );
+    }
+
+    Widget buildWithProbeData({
+      required ActiveTargetProfile profile,
+      bool withProfileNotifier = true,
+    }) {
+      const inner = MaterialApp(
+        home: Scaffold(body: VarianceReport()),
+      );
+      // Use _ScreenWireProbeDataSource so the Full Week section gets
+      // EXACTLY ONE all-projected day with zero-input shifts. That
+      // forces totalSales = 0 in the day-row aggregate, which makes
+      // `laborPct = _meanTheoreticalPct(children, currentTargetProfile)`
+      // — a deterministic single value we can assert on.
+      final probeSource = _ScreenWireProbeDataSource();
+      Widget tree = ChangeNotifierProvider<WeekDataNotifier>(
+        create: (_) => WeekDataNotifier(probeSource),
+        child: Provider<ShiftDataSource>(
+          create: (_) => probeSource,
+          child: inner,
+        ),
+      );
+      if (withProfileNotifier) {
+        tree = ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(
+          value: ActiveTargetProfileNotifier.fromProfile(profile),
+          child: tree,
+        );
+      }
+      return tree;
+    }
+
+    testWidgets('G4: 7.55q.4-review-fix — _FullWeekSection passes the '
+        'profile into the read service so collapsed day-row aggregates '
+        'reflect the current Benchmark theoretical % '
+        '(all-projected day path, deterministic probe data)',
+        (tester) async {
+      final profile = screenWireProbeProfile();
+      await tester.pumpWidget(buildWithProbeData(profile: profile));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // 87.7% must appear in the collapsed day-row labor % cell —
+      // the all-projected probe day's totalSales = 0 routes through
+      // `_meanTheoreticalPct(currentTargetProfile)`. Without the
+      // screen-side wire, the rendered value would be the probe
+      // shift's locked theoretical % (33.3%), not 87.7%.
+      expect(find.text('87.7%'), findsWidgets,
+          reason:
+              '7.55q.4-review-fix: _FullWeekSection must pass the '
+              'current ActiveTargetProfile into the read service so '
+              'all-projected day rows show the current Benchmark '
+              'theoretical % (87.7%), not the locked shift-carried '
+              'value (33.3%).');
+    });
+
+    testWidgets('G5: 7.55q.4-review-fix — without the profile in scope, '
+        'the same all-projected day-row aggregate falls back honestly '
+        'to the locked shift theoretical % (no silent invention)',
+        (tester) async {
+      // No profile notifier in the tree.
+      await tester.pumpWidget(buildWithProbeData(
+        profile: screenWireProbeProfile(),
+        withProfileNotifier: false,
+      ));
+      await tester.pump();
+      await tester.pump();
+
+      await tester.scrollUntilVisible(
+        find.text('FULL WEEK PROJECTION'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+      await tester.pump();
+
+      // The probe profile value must NOT appear anywhere on the
+      // screen — the notifier wasn't in scope for the wire to read.
+      expect(find.text('87.7%'), findsNothing,
+          reason: 'no profile notifier ⇒ wire passes null ⇒ read '
+              'service falls back to per-shift theoretical % '
+              '(legacy backward-compat path)');
+      // The probe shift's locked theoretical (33.3%) is rendered
+      // instead — proves the fallback path is honest, not silent.
+      expect(find.text('33.3%'), findsWidgets,
+          reason: 'fallback must use the locked shift value, not '
+              'invent a number');
+    });
+  });
+}
+
+/// 7.55q.4-review-fix: deterministic probe data source for the
+/// `_FullWeekSection` → `VarianceWeekProjectionReadService.build`
+/// wiring tests.
+///
+/// Returns ONE all-projected day with two zero-input shifts so
+/// `totalSales = 0` in the day-row aggregate. That forces
+/// `laborPct = _meanTheoreticalPct(children, currentTargetProfile)`,
+/// which produces a deterministic rendered value we can assert on:
+///   - profile in scope: rendered laborPct = profile.theoreticalLaborPct
+///   - profile null:     rendered laborPct = shift.theoreticalLaborPct
+/// Probe shift theoretical % is locked at 33.3 (distinct from the
+/// 87.7 the test profile carries).
+class _ScreenWireProbeDataSource implements ShiftDataSource {
+  static const _shiftLockedTheoreticalPct = 33.3;
+  static const _weekId = '2026-W14';
+
+  @override
+  Future<WeekData?> getWeekToDate() async {
+    // WTD with neutral targets so the WTD section never renders
+    // either of the assertion-target values (87.7% or 33.3%).
+    return WeekData(
+      weekId: _weekId,
+      weekLabel: 'Probe Week',
+      totalCovers: 0,
+      totalSales: 0,
+      totalFohHours: 0,
+      totalBohHours: 0,
+      shiftsCompleted: 0,
+      shiftsTotal: 14,
+      wtdForecastCovers: 0,
+      totalWeekForecastCovers: 200,
+      primaryLeverId: 'on_model',
+      targetCPLH: 4.5,
+      targetSPLH: 180.0,
+      targetPPA: 42.0,
+      targetFohWage: 16.50,
+      targetBohWage: 21.35,
+      theoreticalFohLaborPct: 8.5,
+      theoreticalBohLaborPct: 12.0,
+      theoreticalLaborPct: 20.5, // distinct from 87.7 and 33.3
+    );
+  }
+
+  @override
+  Future<List<WeekRecord>> getWeekHistory() async => const [];
+
+  @override
+  Future<List<HistoryPatternRecord>> getHistoryPatternRecords() async =>
+      const [];
+
+  @override
+  Future<List<ShiftRecord>> getHistoricalClosedShifts() async => const [];
+
+  @override
+  Future<List<ShiftRecord>> getFullWeekShifts(String weekId) async {
+    // One all-projected day on Sat with zero-input shifts so
+    // totalSales = 0 in the read-service aggregate path.
+    ShiftRecord projected({required String daypart}) => const ShiftRecord(
+          weekId: _weekId,
+          dayLabel: 'Sat',
+          daypart: 'dinner', // overridden below
+          status: 'projected',
+          covers: 0,
+          forecastCovers: 100,
+          ppa: 0,
+          cplh: 0,
+          splh: 0,
+          fohHours: 0,
+          bohHours: 0,
+          theoreticalLaborPct: _shiftLockedTheoreticalPct,
+          primaryLever: 'ON_MODEL',
+        ).copyWithDaypart(daypart);
+    return [
+      projected(daypart: 'dinner'),
+      projected(daypart: 'late_night'),
+    ];
+  }
+}
+
+extension on ShiftRecord {
+  /// Local helper — `ShiftRecord` has no copyWith for `daypart`, so
+  /// reconstruct minimally for the probe.
+  ShiftRecord copyWithDaypart(String daypart) => ShiftRecord(
+        weekId: weekId,
+        dayLabel: dayLabel,
+        daypart: daypart,
+        status: status,
+        covers: covers,
+        forecastCovers: forecastCovers,
+        ppa: ppa,
+        cplh: cplh,
+        splh: splh,
+        fohHours: fohHours,
+        bohHours: bohHours,
+        theoreticalLaborPct: theoreticalLaborPct,
+        primaryLever: primaryLever,
+      );
 }

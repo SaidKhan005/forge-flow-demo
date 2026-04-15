@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../data/legacy_fixture_data.dart'; // LeverCards
 import '../models/week_record.dart';
 import '../utils/formatters.dart';
+import '../widgets/dollar_impact_card.dart';
 import '../widgets/lever_card.dart';
 
 class WeekDetailScreen extends StatelessWidget {
@@ -61,7 +62,26 @@ class WeekDetailScreen extends StatelessWidget {
             const SizedBox(height: 20),
 
             // ── Dollar Impact Card ─────────────────────────────────────
-            _DollarImpactCard(week: week),
+            // Phase 7.55q.10: now shows the same 4 rows that were on the
+            // live Variance card the moment the 14th shift closed (when
+            // the closing wrote frozen month + 60-day windows). Legacy
+            // rows (closed before V22) fall back to the historical 2-row
+            // + boilerplate-footer view; no silent re-modeling.
+            _SectionLabel('DOLLAR IMPACT'),
+            DollarImpactCard(
+              weekImpact: week.dollarGap,
+              monthImpact: week.monthDollarImpact,
+              sixtyDayImpact: week.sixtyDayDollarImpact,
+              annualizedImpact: week.frozenAnnualizedImpact ??
+                  (week.closedAt == null
+                      ? (week.dollarGap >= 0
+                          ? week.dollarGapAnnualized
+                          : -week.dollarGapAnnualized)
+                      : null),
+              footerText: week.closedAt != null
+                  ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
+                  : 'At \$3M annual sales. One location.',
+            ),
 
             const SizedBox(height: 16),
 
@@ -140,14 +160,42 @@ class _GroupedSummaryTable extends StatelessWidget {
     final ppaVar = week.avgPPA - week.storedTargetPPA;
     final cplhVar = week.avgCPLH - week.storedTargetCPLH;
     final splhVar = week.avgSPLH - week.storedTargetSPLH;
-    final fohVar = week.totalFohHours - week.targetFohHours;
-    final bohVar = week.totalBohHours - week.targetBohHours;
 
-    // Blended wage
-    final actualBlendedWage = (week.blendedFohWage + week.blendedBohWage) / 2;
-    final targetBlendedWage =
-        (week.storedTargetFohWage + week.storedTargetBohWage) / 2;
-    final wageVar = actualBlendedWage - targetBlendedWage;
+    // ── Preserved locked plan hours (7.55q.5) ────────────────────────────
+    // FOH / BOH Hours target rows and the target blended wage both
+    // depend on the preserved locked plan hours. When absent (legacy
+    // row without a locked snapshot captured at close), render "—"
+    // for the target cells instead of re-modeling from actuals.
+    final preservedFohHours = week.preservedTargetFohHours;
+    final preservedBohHours = week.preservedTargetBohHours;
+    final hasPreservedPlanHours =
+        preservedFohHours != null && preservedBohHours != null;
+
+    // ── Weighted blended wage (7.55q.5) ──────────────────────────────────
+    // Actual blended wage is hour-weighted over the closed actual FOH/BOH
+    // hour mix. Target blended wage is hour-weighted over the preserved
+    // locked plan FOH/BOH hours. Replaces the pre-7.55q.5 unweighted
+    // (FOH wage + BOH wage) / 2 shortcut, which was mathematically wrong
+    // as a "blended wage" metric.
+    final totalActualHours = week.totalFohHours + week.totalBohHours;
+    final double? actualBlendedWage =
+        week.hasActualBlendedWageTruth && totalActualHours > 0
+            ? (week.totalFohHours * week.blendedFohWage +
+                    week.totalBohHours * week.blendedBohWage) /
+                totalActualHours
+            : null;
+    final double? targetBlendedWage = hasPreservedPlanHours
+        ? _weightedBlendedWage(
+            preservedFohHours,
+            preservedBohHours,
+            week.storedTargetFohWage,
+            week.storedTargetBohWage,
+          )
+        : null;
+    final double? wageVar = targetBlendedWage != null &&
+            actualBlendedWage != null
+        ? actualBlendedWage - targetBlendedWage
+        : null;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -178,10 +226,16 @@ class _GroupedSummaryTable extends StatelessWidget {
           _divider(),
           _TableRow(
             label: 'Blended Wage',
-            target: '\$${targetBlendedWage.toStringAsFixed(2)}',
-            actual: '\$${actualBlendedWage.toStringAsFixed(2)}',
-            variance: Fmt.varDollars(wageVar),
-            varColor: Fmt.varColor('Blended Wage', wageVar),
+            target: targetBlendedWage != null
+                ? '\$${targetBlendedWage.toStringAsFixed(2)}'
+                : '—',
+            actual: actualBlendedWage != null
+                ? '\$${actualBlendedWage.toStringAsFixed(2)}'
+                : 'â€”',
+            variance: wageVar != null ? Fmt.varDollars(wageVar) : '—',
+            varColor: wageVar != null
+                ? Fmt.varColor('Blended Wage', wageVar)
+                : AppColors.textMuted,
           ),
 
           // ── EXECUTION ───────────────────────────────────────────────
@@ -196,18 +250,32 @@ class _GroupedSummaryTable extends StatelessWidget {
           _divider(),
           _TableRow(
             label: 'FOH Hours',
-            target: week.targetFohHours.toString(),
+            target: preservedFohHours != null
+                ? preservedFohHours.toString()
+                : '—',
             actual: week.totalFohHours.toString(),
-            variance: Fmt.varStr(fohVar),
-            varColor: Fmt.varColor('FOH Hours', fohVar.toDouble()),
+            variance: preservedFohHours != null
+                ? Fmt.varStr(week.totalFohHours - preservedFohHours)
+                : '—',
+            varColor: preservedFohHours != null
+                ? Fmt.varColor('FOH Hours',
+                    (week.totalFohHours - preservedFohHours).toDouble())
+                : AppColors.textMuted,
           ),
           _divider(),
           _TableRow(
             label: 'BOH Hours',
-            target: week.targetBohHours.toString(),
+            target: preservedBohHours != null
+                ? preservedBohHours.toString()
+                : '—',
             actual: week.totalBohHours.toString(),
-            variance: Fmt.varStr(bohVar),
-            varColor: Fmt.varColor('BOH Hours', bohVar.toDouble()),
+            variance: preservedBohHours != null
+                ? Fmt.varStr(week.totalBohHours - preservedBohHours)
+                : '—',
+            varColor: preservedBohHours != null
+                ? Fmt.varColor('BOH Hours',
+                    (week.totalBohHours - preservedBohHours).toDouble())
+                : AppColors.textMuted,
           ),
           _divider(),
           _TableRow(
@@ -236,20 +304,23 @@ class _GroupedSummaryTable extends StatelessWidget {
             varColor: Fmt.varColor('Total Labor %', week.laborPctVariance),
             isBold: true,
           ),
-
-          // ── Partial-week footnote ───────────────────────────────────
-          if (week.shiftsCompleted < 14)
-            Container(
-              color: AppColors.backgroundDeep,
-              padding: const EdgeInsets.fromLTRB(14, 6, 14, 10),
-              child: Text(
-                '* Target prorated for ${week.shiftsCompleted} of 14 shifts completed.',
-                style: AppTextStyles.mono8(color: AppColors.textMuted),
-              ),
-            ),
         ],
       ),
     );
+  }
+
+  /// 7.55q.5 — hour-weighted blended wage.
+  /// `(fohHours × fohWage + bohHours × bohWage) / (fohHours + bohHours)`.
+  /// Returns 0.0 when the hour inputs sum to zero.
+  static double _weightedBlendedWage(
+    int fohHours,
+    int bohHours,
+    double fohWage,
+    double bohWage,
+  ) {
+    final totalHours = fohHours + bohHours;
+    if (totalHours <= 0) return 0.0;
+    return (fohHours * fohWage + bohHours * bohWage) / totalHours;
   }
 
   static Widget _divider() =>
@@ -396,76 +467,20 @@ class _TableRow extends StatelessWidget {
   }
 }
 
-// ─── Dollar Impact Card ──────────────────────────────────────────────────────
+// ─── Closed-at footer formatting ─────────────────────────────────────────────
+// 'YYYY-MM-DD' → 'Mon DD'. Mirrors the month-array style in
+// shift_service._weekLabelFromWeekId rather than introducing a new
+// shared util — keeps scope tight for this slice.
 
-class _DollarImpactCard extends StatelessWidget {
-  final WeekRecord week;
-  const _DollarImpactCard({required this.week});
-
-  @override
-  Widget build(BuildContext context) {
-    final isOver = week.isOverModel;
-    final accentColor = isOver ? AppColors.negative : AppColors.positive;
-    final sign = isOver ? '−' : '+';
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundSurface, AppColors.shimmer, AppColors.cardGlow],
-        ),
-        border: Border(
-          left: const BorderSide(color: AppColors.borderSubtle, width: 4),
-          top: BorderSide(
-              color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
-          right: const BorderSide(color: AppColors.borderSubtle, width: 1),
-          bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('DOLLAR IMPACT',
-              style: AppTextStyles.mono11(color: AppColors.textMuted)),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('$sign\$${Fmt.dollars(week.dollarGap.abs())}',
-                  style: AppTextStyles.display36(color: accentColor)),
-              const SizedBox(width: 10),
-              Text('this week',
-                  style: AppTextStyles.mono12(
-                      color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: 1,
-            color: AppColors.borderSubtle.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('$sign\$${Fmt.dollars(week.dollarGapAnnualized.abs())}',
-                  style: AppTextStyles.display28(color: accentColor)),
-              const SizedBox(width: 10),
-              Text('annualized',
-                  style: AppTextStyles.mono12(
-                      color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text('At \$3M annual sales. One location.',
-              style: AppTextStyles.body13(color: AppColors.textMuted)),
-        ],
-      ),
-    );
-  }
+String _fmtClosedAt(String iso) {
+  final parts = iso.split('-');
+  if (parts.length != 3) return iso;
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (month == null || day == null || month < 1 || month > 12) return iso;
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  return '${months[month - 1]} $day';
 }

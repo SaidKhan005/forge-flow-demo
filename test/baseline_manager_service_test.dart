@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/baseline_manager_service.dart';
 import 'package:forge_and_flow/data/database_helper.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 
 void main() {
   setUp(() async {
@@ -154,6 +155,29 @@ void main() {
       await BaselineManagerService.instance.primeManagerOverride();
       expect(BaselineData.hasManagerOverride, isFalse);
     });
+
+    test('does not rewrite the persisted active profile', () async {
+      const restaurantId = 'demo_restaurant_001';
+      final before = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(before, isNotNull);
+
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      await DatabaseHelper.instance
+          .replaceBaselineSelectedRecordKeys({candidates.first.recordKey});
+
+      BaselineData.clearManagerOverride();
+      await BaselineManagerService.instance.primeManagerOverride();
+
+      final after = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(after, isNotNull);
+      expect(after!.sourceType, equals(before!.sourceType));
+      expect(after.targetCPLH, closeTo(before.targetCPLH, 0.001));
+      expect(after.targetSPLH, closeTo(before.targetSPLH, 0.001));
+      expect(after.targetPPA, closeTo(before.targetPPA, 0.001));
+    });
   });
 
   // â”€â”€ D: derived target reflects selected candidates â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -206,16 +230,18 @@ void main() {
       }
     });
 
-    test('candidates carry actualLaborPct from ShiftRecord.totalLaborPct',
+    test('candidates carry source-backed labor truth when available',
         () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       expect(candidates, isNotEmpty);
 
-      // actualLaborPct should be >= 0 for all candidates (derived from closed shifts)
       for (final c in candidates) {
-        expect(c.actualLaborPct, greaterThanOrEqualTo(0),
-            reason: '${c.recordKey} actualLaborPct should be non-negative');
+        if (c.hasActualLaborPctTruth) {
+          expect(c.actualLaborPct, greaterThanOrEqualTo(0),
+              reason:
+                  '${c.recordKey} source-backed actualLaborPct should be non-negative');
+        }
       }
     });
 

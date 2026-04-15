@@ -81,4 +81,4 @@ These match the architecture rules in `phase_7_55_target_cycle_weekly_plan_rules
 
 - Architecture rules: `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - Implementation plan: `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
-- Gate verdict: `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+- Gate verdict: `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`

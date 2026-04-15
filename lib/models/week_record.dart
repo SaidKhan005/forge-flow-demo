@@ -1,7 +1,6 @@
 // A completed week stored in SQLite. Used for History tab.
 
 import '../data/legacy_fixture_data.dart';
-import '../services/labor_model.dart';
 
 class WeekRecord {
   final int? id;
@@ -21,6 +20,7 @@ class WeekRecord {
   final int shiftsCompleted;
   final double blendedFohWage;
   final double blendedBohWage;
+  final bool hasStoredBlendedWageTruth;
 
   // ── Locked target fields (Phase 7.5b) ──────────────────────────────────
   final String? targetSourceType;
@@ -31,6 +31,26 @@ class WeekRecord {
   final double? targetBohWage;
   final double? theoreticalFohLaborPct;
   final double? theoreticalBohLaborPct;
+
+  // ── Preserved locked plan hours (Phase 7.55q.5) ────────────────────────
+  // Captured at week close from the WeeklyPlanSnapshot in force for the
+  // week's business-date span. When null, the week was closed before this
+  // field existed (legacy) or without a persisted snapshot (honest gap);
+  // Week Detail renders "—" for those rows rather than re-modeling from
+  // actuals.
+  final int? lockedRequiredFohHours;
+  final int? lockedRequiredBohHours;
+
+  // ── Frozen Dollar Impact windows (Phase 7.55q.10) ──────────────────────
+  // Captured at week close from the same closed-truth date-range queries
+  // the current-week Variance card was reading. Locks the 4-row Dollar
+  // Impact view (Week / Month / 60-day / Annualized) at the close moment
+  // so Week Detail mirrors what was on screen the instant the 14th shift
+  // closed. When null, the week was closed before this field existed
+  // (legacy); the UI falls back to the legacy 2-row + boilerplate footer.
+  final double? monthDollarImpact;
+  final double? sixtyDayDollarImpact;
+  final String? closedAt; // 'YYYY-MM-DD' — last shift's businessDate
 
   const WeekRecord({
     this.id,
@@ -50,6 +70,7 @@ class WeekRecord {
     this.shiftsCompleted = 14,
     this.blendedFohWage = MeridianConfig.fohWage,
     this.blendedBohWage = MeridianConfig.bohWage,
+    this.hasStoredBlendedWageTruth = true,
     this.targetSourceType,
     this.targetCPLH,
     this.targetSPLH,
@@ -58,6 +79,11 @@ class WeekRecord {
     this.targetBohWage,
     this.theoreticalFohLaborPct,
     this.theoreticalBohLaborPct,
+    this.lockedRequiredFohHours,
+    this.lockedRequiredBohHours,
+    this.monthDollarImpact,
+    this.sixtyDayDollarImpact,
+    this.closedAt,
   });
 
   double get laborPctVariance => actualLaborPct - theoreticalLaborPct;
@@ -67,6 +93,17 @@ class WeekRecord {
       totalBohHours > 0 ? (avgPPA * totalCovers) / totalBohHours : 0;
 
   double get dollarGapAnnualized => dollarGap.abs() * 52;
+  bool get hasActualBlendedWageTruth => hasStoredBlendedWageTruth;
+
+  // ── Frozen annualized from 60-day window (Phase 7.55q.10) ──────────────
+  // Mirrors `WeekData.annualizedDollarImpact` so the number on Week Detail
+  // equals the number that was on the live Variance card the moment the
+  // 14th shift closed. Null when no 60-day window was captured at close
+  // (legacy rows) — caller falls back to `dollarGapAnnualized` (×52).
+  double? get frozenAnnualizedImpact =>
+      sixtyDayDollarImpact != null
+          ? sixtyDayDollarImpact! * (365.0 / 60)
+          : null;
 
   // ── Target provenance — readable label from stored source type ──────────
   // Handles both legacy pre-cycle and cycle-era source types.
@@ -103,13 +140,40 @@ class WeekRecord {
     return value;
   }
 
-  // ── Targets — model hours for actual volume (Jim Taylor Ch. 10) ─────────
+  // ── Preserved locked plan hours — null-safe accessors (Phase 7.55q.5) ──
+  // UI callers (e.g. Week Detail) use these and render "—" when null,
+  // instead of silently re-modeling from actuals (Drift 6).
+  int? get preservedTargetFohHours => lockedRequiredFohHours;
+  int? get preservedTargetBohHours => lockedRequiredBohHours;
+
+  // ── Targets — preserved locked plan hours (Phase 7.55q.5) ──────────────
+  // These are the week's locked plan hours captured at close time from
+  // the WeeklyPlanSnapshot in force. Throws StateError when the preserved
+  // field is null — strict consumers must either go through the null-safe
+  // `preservedTargetFohHours` / `preservedTargetBohHours` accessors or
+  // display "—".
+  //
+  // Prior to 7.55q.5 these getters re-modeled target hours from the
+  // post-close totalCovers + locked target rates (Jim Taylor Ch. 10),
+  // which was actuals-anchored and violated the Rule 5 "History must
+  // preserve closed truth" conformance rule.
   int get targetCovers =>
       (forecastCovers * shiftsCompleted / 14).round();
   int get targetFohHours =>
-      LaborModel.modelFohHours(totalCovers, storedTargetCPLH);
+      _requireLockedInt(lockedRequiredFohHours, 'lockedRequiredFohHours');
   int get targetBohHours =>
-      LaborModel.modelBohHours(totalCovers, avgPPA, storedTargetSPLH);
+      _requireLockedInt(lockedRequiredBohHours, 'lockedRequiredBohHours');
+
+  static int _requireLockedInt(int? value, String field) {
+    if (value == null) {
+      throw StateError(
+        'WeekRecord.$field is null — preserved locked plan hours were not '
+        'captured at week close. Legacy rows without this field must '
+        'display "—" instead of re-modeling from actuals.',
+      );
+    }
+    return value;
+  }
 
   Map<String, dynamic> toMap() => {
         'id': id,
@@ -137,6 +201,11 @@ class WeekRecord {
         'target_boh_wage': targetBohWage,
         'theoretical_foh_labor_pct': theoreticalFohLaborPct,
         'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+        'locked_required_foh_hours': lockedRequiredFohHours,
+        'locked_required_boh_hours': lockedRequiredBohHours,
+        'month_dollar_impact': monthDollarImpact,
+        'sixty_day_dollar_impact': sixtyDayDollarImpact,
+        'closed_at': closedAt,
       };
 
   factory WeekRecord.fromMap(Map<String, dynamic> m) => WeekRecord(
@@ -155,10 +224,12 @@ class WeekRecord {
         dollarGap: (m['dollar_gap'] as num).toDouble(),
         primaryLeverId: m['primary_lever_id'] as String,
         shiftsCompleted: (m['shifts_completed'] as int?) ?? 14,
-        blendedFohWage: (m['blended_foh_wage'] as num?)?.toDouble() ??
-            MeridianConfig.fohWage,
-        blendedBohWage: (m['blended_boh_wage'] as num?)?.toDouble() ??
-            MeridianConfig.bohWage,
+        blendedFohWage:
+            (m['blended_foh_wage'] as num?)?.toDouble() ?? 0.0,
+        blendedBohWage:
+            (m['blended_boh_wage'] as num?)?.toDouble() ?? 0.0,
+        hasStoredBlendedWageTruth:
+            m['blended_foh_wage'] != null && m['blended_boh_wage'] != null,
         targetSourceType: m['target_source_type'] as String?,
         targetCPLH: (m['target_cplh'] as num?)?.toDouble(),
         targetSPLH: (m['target_splh'] as num?)?.toDouble(),
@@ -167,5 +238,10 @@ class WeekRecord {
         targetBohWage: (m['target_boh_wage'] as num?)?.toDouble(),
         theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num?)?.toDouble(),
         theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num?)?.toDouble(),
+        lockedRequiredFohHours: (m['locked_required_foh_hours'] as num?)?.toInt(),
+        lockedRequiredBohHours: (m['locked_required_boh_hours'] as num?)?.toInt(),
+        monthDollarImpact: (m['month_dollar_impact'] as num?)?.toDouble(),
+        sixtyDayDollarImpact: (m['sixty_day_dollar_impact'] as num?)?.toDouble(),
+        closedAt: m['closed_at'] as String?,
       );
 }

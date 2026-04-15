@@ -4,12 +4,18 @@
 // Manager Override preview consume one authority path instead of
 // independently calling SchedulePlanResolver.
 //
-// Two read paths:
+// Three read paths:
 //   - getCurrentWeeklyPlan(): live-resolved from demand + profile + weights
-//     (used by generation bridge and Schedule Builder preview)
+//     (used by snapshot generation bridge and Manager Override preview)
 //   - getCurrentLockedWeeklyPlan(): projected from the locked
-//     WeeklyPlanSnapshot (used by Shift, Audit, and other downstream
-//     readers that should consume locked weekly truth)
+//     WeeklyPlanSnapshot, AUTO-GENERATING one when missing (used by
+//     Shift / Audit and other readers that legitimately want snapshot
+//     creation as a side effect)
+//   - getExistingCurrentLockedWeeklyPlan() (7.55q.2-review-fix):
+//     READ-ONLY projection of the persisted snapshot — never generates.
+//     Used by the Schedule production runtime so a missing snapshot
+//     degrades honestly instead of silently falling back to the live
+//     plan (7.55q.1 conformance Rule 1).
 //
 // Formulas remain in SchedulePlanResolver. This service only centralizes
 // the input tuple.
@@ -68,20 +74,52 @@ class SchedulePlanReadService {
   }
 
   /// Returns the current-week [SchedulePlan] projected from the locked
-  /// [WeeklyPlanSnapshot].
+  /// [WeeklyPlanSnapshot], **auto-generating** a snapshot when none
+  /// exists.
   ///
-  /// Uses [WeeklyPlanSnapshotService] to load (or auto-generate) the
-  /// current-week snapshot, then projects it to [SchedulePlan] shape.
+  /// Routes through [WeeklyPlanSnapshotService.getCurrentWeekSnapshot],
+  /// which generates from the live [getCurrentWeeklyPlan] path when no
+  /// snapshot is persisted, then projects it to [SchedulePlan] shape.
   ///
-  /// Returns null when no current-week snapshot can be determined.
+  /// Returns null when neither a snapshot nor the inputs needed to
+  /// generate one are available.
   ///
-  /// This path is for downstream readers (Shift, Audit) that should
-  /// consume locked weekly truth. It does NOT create a recursion path:
-  /// [WeeklyPlanSnapshotService] auto-generates from [getCurrentWeeklyPlan]
-  /// (the live path), which never calls back here.
+  /// IMPORTANT (7.55q.2-review-fix): because this path auto-generates
+  /// from the live plan when missing, it is NOT a pure "locked truth"
+  /// reader — a caller that uses this in a read-only context will
+  /// silently fall through to the live plan whenever the snapshot is
+  /// absent. Use [getExistingCurrentLockedWeeklyPlan] from any reader
+  /// that must remain locked-only (e.g. the Schedule production
+  /// runtime, per `7.55q.1` conformance Rule 1).
+  ///
+  /// This auto-generating path is preserved for callers that explicitly
+  /// want snapshot creation as a side effect — week-roll bootstrap,
+  /// Audit/Shift initial generation, and similar.
   Future<SchedulePlan?> getCurrentLockedWeeklyPlan() async {
     final snapshot =
         await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+    if (snapshot == null) return null;
+    return WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
+  }
+
+  /// 7.55q.2-review-fix: read-only access to the current locked weekly
+  /// plan.
+  ///
+  /// Returns the projected locked snapshot if one is already persisted
+  /// for the current business week, or null otherwise. **Never**
+  /// triggers snapshot generation — the call is side-effect-free.
+  ///
+  /// Use this from the Schedule locked-authority read path so that a
+  /// missing snapshot degrades honestly rather than silently re-running
+  /// the live plan and re-introducing the second current-week
+  /// authority that `7.55q.1` Rule 1 forbids.
+  ///
+  /// For paths that legitimately want the auto-generate behaviour
+  /// (week-roll bootstrap, Audit/Shift initial generation), call
+  /// [getCurrentLockedWeeklyPlan] instead.
+  Future<SchedulePlan?> getExistingCurrentLockedWeeklyPlan() async {
+    final snapshot = await WeeklyPlanSnapshotService.instance
+        .getExistingCurrentWeekSnapshot();
     if (snapshot == null) return null;
     return WeeklyPlanSnapshotSchedulePlanProjector.project(snapshot);
   }

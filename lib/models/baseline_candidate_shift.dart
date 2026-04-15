@@ -19,8 +19,14 @@ class BaselineCandidateShift {
   final String? businessDate;
 
   /// Historical actual labor percentage from the closed shift
-  /// (ShiftRecord.totalLaborPct). This is not the target/theoretical value.
+  /// (ShiftRecord.totalLaborPct) when source-backed labor truth exists.
+  /// This is not the target/theoretical value.
   final double actualLaborPct;
+
+  /// Whether [actualLaborPct] comes from source-backed labor truth.
+  /// When false, downstream UI should render an honest unknown state
+  /// instead of treating the numeric fallback as real vendor evidence.
+  final bool hasActualLaborPctTruth;
 
   const BaselineCandidateShift({
     required this.recordKey,
@@ -36,6 +42,7 @@ class BaselineCandidateShift {
     required this.isSelected,
     this.businessDate,
     this.actualLaborPct = 0.0,
+    this.hasActualLaborPctTruth = true,
   });
 
   String get daypartLabel {
@@ -64,6 +71,7 @@ class BaselineCandidateShift {
       isSelected:     isSelected ?? this.isSelected,
       businessDate:   businessDate,
       actualLaborPct: actualLaborPct,
+      hasActualLaborPctTruth: hasActualLaborPctTruth,
     );
   }
 }

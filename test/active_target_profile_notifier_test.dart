@@ -64,12 +64,12 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       expect(notifier.revision, greaterThan(initialRevision));
-      expect(notifier.profile!.sourceType, 'manager_override');
+      expect(notifier.profile!.sourceType, 'cycle_manager_override');
 
       notifier.dispose();
     });
 
-    test('clearing override advances revision and restores system_baseline',
+    test('clearing override advances revision and restores cycle_recommended',
         () async {
       final notifier = ActiveTargetProfileNotifier();
       await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -87,7 +87,7 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 200));
 
       expect(notifier.revision, greaterThan(revAfterOverride));
-      expect(notifier.profile!.sourceType, 'system_baseline');
+      expect(notifier.profile!.sourceType, 'cycle_recommended');
 
       notifier.dispose();
     });

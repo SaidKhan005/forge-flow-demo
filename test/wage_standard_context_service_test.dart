@@ -11,6 +11,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/wage_standard_context_service.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_source.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
@@ -379,12 +380,16 @@ void main() {
   // ── I: Bootstrap uses wage authority ─────────────────────────────────────
 
   group('I — bootstrap uses wage authority', () {
-    test('loadOrBootstrapProfile uses generator wages when rows exist',
+    test('loadOrBootstrapProfile prefers the active cycle projection when a cycle exists',
         () async {
       final restaurantId = await SqliteRestaurantScopeRepository.instance
           .getActiveRestaurantId();
+      final seeded = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(seeded, isNotNull);
 
-      // Add generator rows
+      // Add generator rows with different wages. These should not
+      // override the active cycle when the cycle already exists.
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
       await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
         restaurantId: restaurantId,
@@ -401,15 +406,16 @@ void main() {
         weightedHours: 35,
       ));
 
-      // Delete persisted profile to force bootstrap
+      // Delete the persisted profile row to force a bootstrap read.
       final db = await SqliteDatabase.instance.database;
       await db.delete('active_target_profiles');
 
       final profile = await WageStandardContextService.instance
           .loadOrBootstrapProfile(restaurantId);
 
-      expect(profile.fohWage, closeTo(18.50, 0.01));
-      expect(profile.bohWage, closeTo(22.00, 0.01));
+      expect(profile.sourceType, equals(seeded!.sourceType));
+      expect(profile.fohWage, closeTo(seeded.fohWage, 0.01));
+      expect(profile.bohWage, closeTo(seeded.bohWage, 0.01));
     });
 
     test('loadOrBootstrapProfile returns existing profile when available',
@@ -463,6 +469,287 @@ void main() {
       expect(profile, isNotNull);
       expect(profile!.fohWage, closeTo(19.00, 0.01));
       expect(profile.bohWage, closeTo(24.00, 0.01));
+    });
+  });
+
+  // ── K: WageMixSetupSummary — whole-mix setup helper (7.55p.5f1) ────────
+
+  group('K — summarizeMix (whole-mix setup helper)', () {
+    test('empty rows → isEmpty true, hasCompleteFohBoh false, zero totals', () {
+      final summary = WageStandardContextService.summarizeMix(const []);
+      expect(summary.isEmpty, isTrue);
+      expect(summary.hasCompleteFohBoh, isFalse);
+      expect(summary.fohRows, isEmpty);
+      expect(summary.bohRows, isEmpty);
+      expect(summary.managerRows, isEmpty);
+      expect(summary.totalWeightedHours, 0);
+      expect(summary.totalHourlyCost, 0);
+    });
+
+    test('FOH + BOH rows → hasCompleteFohBoh true', () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.00,
+          weightedHours: 30,
+        ),
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.hasCompleteFohBoh, isTrue);
+      expect(summary.fohRows.length, 1);
+      expect(summary.bohRows.length, 1);
+      expect(summary.managerRows, isEmpty);
+      // totalCost = 16*30 + 20*35 = 480 + 700 = 1180
+      expect(summary.totalHourlyCost, closeTo(1180.0, 0.01));
+      // totalHours = 30 + 35 = 65
+      expect(summary.totalWeightedHours, closeTo(65.0, 0.01));
+    });
+
+    test('FOH only → hasCompleteFohBoh false (mirrors resolve rule)', () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.00,
+          weightedHours: 30,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.hasCompleteFohBoh, isFalse);
+      expect(summary.isEmpty, isFalse);
+    });
+
+    test('BOH only → hasCompleteFohBoh false (mirrors resolve rule)', () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.hasCompleteFohBoh, isFalse);
+      expect(summary.isEmpty, isFalse);
+    });
+
+    test('manager-only → hasCompleteFohBoh false, counted in totals', () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Manager',
+          laborBucket: 'manager',
+          hourlyRate: 28.00,
+          weightedHours: 45,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.hasCompleteFohBoh, isFalse);
+      expect(summary.fohRows, isEmpty);
+      expect(summary.bohRows, isEmpty);
+      expect(summary.managerRows.length, 1);
+      // Manager rows still count toward total cost and hours.
+      expect(summary.totalHourlyCost, closeTo(1260.0, 0.01));
+      expect(summary.totalWeightedHours, closeTo(45.0, 0.01));
+    });
+
+    test('mixed FOH + BOH + manager → complete, manager included in totals',
+        () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 15.00,
+          weightedHours: 30,
+        ),
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Kitchen Manager',
+          laborBucket: 'manager',
+          hourlyRate: 28.00,
+          weightedHours: 45,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.hasCompleteFohBoh, isTrue);
+      expect(summary.fohRows.length, 1);
+      expect(summary.bohRows.length, 1);
+      expect(summary.managerRows.length, 1);
+      // totalCost = 15*30 + 20*35 + 28*45 = 450 + 700 + 1260 = 2410
+      expect(summary.totalHourlyCost, closeTo(2410.0, 0.01));
+      // totalHours = 30 + 35 + 45 = 110
+      expect(summary.totalWeightedHours, closeTo(110.0, 0.01));
+    });
+
+    test('grouping maps rows to the correct bucket list', () {
+      final rows = [
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.00,
+          weightedHours: 30,
+        ),
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Bartender',
+          laborBucket: 'foh',
+          hourlyRate: 18.00,
+          weightedHours: 20,
+        ),
+        const WageRoleRow(
+          restaurantId: 'r1',
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      ];
+      final summary = WageStandardContextService.summarizeMix(rows);
+      expect(summary.fohRows.map((r) => r.roleName),
+          containsAll(['Server', 'Bartender']));
+      expect(summary.bohRows.map((r) => r.roleName), contains('Line Cook'));
+      expect(summary.managerRows, isEmpty);
+    });
+  });
+
+  // ── L: Override trickle — app-configured wages reach the profile (7.55p.5f1)
+
+  group('L — override trickle to downstream consumers', () {
+    test('complete FOH + BOH setup reaches ActiveTargetProfile with the '
+        'same wages downstream consumers will read', () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
+
+      // Persist a complete mix (FOH + BOH).
+      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
+        restaurantId: restaurantId,
+        roleName: 'Server',
+        laborBucket: 'foh',
+        hourlyRate: 17.25,
+        weightedHours: 30,
+      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
+        restaurantId: restaurantId,
+        roleName: 'Line Cook',
+        laborBucket: 'boh',
+        hourlyRate: 22.40,
+        weightedHours: 35,
+      ));
+
+      // Resolve — same authority path the Settings UX uses.
+      final ctx = await WageStandardContextService.instance
+          .resolve(restaurantId);
+      expect(ctx.source, WageStandardSource.appConfiguredGenerator);
+      expect(ctx.fohWage, closeTo(17.25, 0.01));
+      expect(ctx.bohWage, closeTo(22.40, 0.01));
+
+      // Sync — same downstream push the Settings UX triggers.
+      await WageStandardContextService.instance.syncWagesToActiveProfile();
+
+      // Downstream profile that Benchmark, Variance, and Shift read.
+      final profile = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profile, isNotNull);
+      expect(profile!.fohWage, closeTo(17.25, 0.01));
+      expect(profile.bohWage, closeTo(22.40, 0.01));
+
+      // Theoretical labor % on the profile is derived from the same
+      // wages — this is the exact field Benchmark's TOTAL THEORETICAL %
+      // and Variance's theoreticalLaborPct render.
+      final expectedFoh =
+          17.25 / (profile.targetCPLH * profile.targetPPA) * 100;
+      final expectedBoh = 22.40 / profile.targetSPLH * 100;
+      expect(profile.theoreticalFohLaborPct, closeTo(expectedFoh, 0.01));
+      expect(profile.theoreticalBohLaborPct, closeTo(expectedBoh, 0.01));
+      expect(profile.theoreticalLaborPct,
+          closeTo(expectedFoh + expectedBoh, 0.01));
+    });
+
+    test('incomplete setup (manager only) does not override the profile '
+        'with generator wages — authority falls back to config', () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
+
+      // Only a manager row — incomplete mix.
+      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
+        restaurantId: restaurantId,
+        roleName: 'GM',
+        laborBucket: 'manager',
+        hourlyRate: 30.00,
+        weightedHours: 40,
+      ));
+
+      final ctx = await WageStandardContextService.instance
+          .resolve(restaurantId);
+      // Honesty rule: manager-only does not claim a full override.
+      expect(ctx.source, WageStandardSource.configFallback);
+
+      // Sync pushes config-default wages (not $30). The incomplete
+      // setup cannot masquerade as an app-configured override.
+      await WageStandardContextService.instance.syncWagesToActiveProfile();
+      final profile = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(profile, isNotNull);
+      // Wages must NOT be the $30 manager rate.
+      expect(profile!.fohWage, lessThan(30.0));
+      expect(profile.bohWage, lessThan(30.0));
+    });
+  });
+
+  group('M — cycle-backed profile repair', () {
+    test('loadOrBootstrapProfile repairs a stale persisted row from the cycle',
+        () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final seeded = await SqliteTargetProfileRepository.instance
+          .getActiveTargetProfile(restaurantId);
+      expect(seeded, isNotNull);
+
+      final stale = ActiveTargetProfile.build(
+        restaurantId: restaurantId,
+        sourceType: 'manager_override',
+        targetCPLH: seeded!.targetCPLH + 1.25,
+        targetSPLH: seeded.targetSPLH + 10,
+        targetPPA: seeded.targetPPA + 3,
+        fohWage: seeded.fohWage + 2,
+        bohWage: seeded.bohWage + 2,
+        opzFloorCPLH: seeded.opzFloorCPLH + 0.2,
+        opzCeilingCPLH: seeded.opzCeilingCPLH + 0.2,
+      );
+      await SqliteTargetProfileRepository.instance
+          .upsertActiveTargetProfile(stale);
+
+      final repaired = await WageStandardContextService.instance
+          .loadOrBootstrapProfile(restaurantId);
+
+      expect(repaired.sourceType, equals(seeded.sourceType));
+      expect(repaired.targetCPLH, closeTo(seeded.targetCPLH, 0.001));
+      expect(repaired.targetSPLH, closeTo(seeded.targetSPLH, 0.001));
+      expect(repaired.targetPPA, closeTo(seeded.targetPPA, 0.001));
+      expect(repaired.fohWage, closeTo(seeded.fohWage, 0.001));
+      expect(repaired.bohWage, closeTo(seeded.bohWage, 0.001));
     });
   });
 }

@@ -18,6 +18,15 @@ class WeeklyPlanSnapshotSchedulePlanProjector {
   /// Weekly totals are mapped directly. Day rows are mapped from
   /// [WeeklyPlanSnapshotDay] to [ScheduleDayPlan].
   static SchedulePlan project(WeeklyPlanSnapshot snapshot) {
+    final theoreticalTotalLaborDollars = snapshot.theoreticalFohLaborDollars +
+        snapshot.theoreticalBohLaborDollars;
+    final theoreticalLaborPct = snapshot.forecastSales > 0
+        ? theoreticalTotalLaborDollars / snapshot.forecastSales * 100
+        : 0.0;
+    final targetBlendedWage = snapshot.totalRequiredHours > 0
+        ? theoreticalTotalLaborDollars / snapshot.totalRequiredHours
+        : 0.0;
+
     return SchedulePlan(
       forecastCovers: snapshot.forecastCovers,
       forecastSales: snapshot.forecastSales,
@@ -25,8 +34,8 @@ class WeeklyPlanSnapshotSchedulePlanProjector {
       requiredBohHours: snapshot.requiredBohHours,
       theoreticalFohLaborDollars: snapshot.theoreticalFohLaborDollars,
       theoreticalBohLaborDollars: snapshot.theoreticalBohLaborDollars,
-      theoreticalLaborPct: snapshot.theoreticalLaborPct,
-      targetBlendedWage: snapshot.targetBlendedWage,
+      theoreticalLaborPct: theoreticalLaborPct,
+      targetBlendedWage: targetBlendedWage,
       coversSource: snapshot.coversSource,
       salesSource: snapshot.salesSource,
       dayPlans: snapshot.dayRows

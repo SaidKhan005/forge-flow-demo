@@ -1,4 +1,5 @@
 // Phase 7.55i.2 / 7.55i.2a / 7.55l.7a — Shared SchedulePlan read service tests.
+// Phase 7.55q.2-review-fix — Read-only locked plan path.
 //
 // Validates:
 // A. getCurrentWeeklyPlan resolves a non-null plan from seeded data
@@ -8,9 +9,11 @@
 // E. All plan consumers agree on the same covers/sales/hours
 // F. resolveFromInputs matches async path and handles null/PPA guardrails
 // G. Projector: WeeklyPlanSnapshot -> SchedulePlan
-// H. getCurrentLockedWeeklyPlan locked-week read path
+// H. getCurrentLockedWeeklyPlan locked-week read path (auto-generates)
+// I. getExistingCurrentLockedWeeklyPlan read-only path (7.55q.2-review-fix)
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/data/business_date_authority_service.dart';
 import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
@@ -136,6 +139,7 @@ void main() {
         () async {
       final plan =
           await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+      await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
       final shiftDashboard =
           await ShiftService.instance.getShiftDashboard();
 
@@ -210,9 +214,18 @@ void main() {
           equals(snapshot.theoreticalFohLaborDollars));
       expect(projected.theoreticalBohLaborDollars,
           equals(snapshot.theoreticalBohLaborDollars));
-      expect(projected.theoreticalLaborPct,
-          equals(snapshot.theoreticalLaborPct));
-      expect(projected.targetBlendedWage, equals(snapshot.targetBlendedWage));
+      final expectedTheoPct = snapshot.forecastSales > 0
+          ? snapshot.theoreticalTotalLaborDollars /
+              snapshot.forecastSales *
+              100
+          : 0.0;
+      final expectedBlendedWage = snapshot.totalRequiredHours > 0
+          ? snapshot.theoreticalTotalLaborDollars /
+              snapshot.totalRequiredHours
+          : 0.0;
+      expect(projected.theoreticalLaborPct, closeTo(expectedTheoPct, 0.001));
+      expect(projected.targetBlendedWage,
+          closeTo(expectedBlendedWage, 0.001));
       expect(projected.coversSource, equals(snapshot.coversSource));
       expect(projected.salesSource, equals(snapshot.salesSource));
     });
@@ -328,6 +341,131 @@ void main() {
       expect(matchingDay, isNotNull,
           reason:
               'Shift dashboard forecast covers must match a locked plan day');
+    });
+  });
+
+  // ── I. Read-only locked plan path (7.55q.2-review-fix) ────────────────
+  //
+  // The original 7.55q.2 routed Schedule's locked-authority load through
+  // getCurrentLockedWeeklyPlan(), which silently auto-generated a snapshot
+  // from the live plan when none was persisted — keeping the second
+  // current-week authority alive under a "locked" label.
+  //
+  // The review-fix splits the read-only path from the auto-generate path.
+  // These tests prove:
+  //   I1. getExistingCurrentLockedWeeklyPlan returns null when no snapshot
+  //       is persisted, even with anchor + demand still present.
+  //   I2. The read-only call has NO side effects — no snapshot is created.
+  //   I3. The auto-generating getCurrentLockedWeeklyPlan path STILL works
+  //       (preserved for week-roll bootstrap, Audit/Shift initial gen).
+
+  group('I — getExistingCurrentLockedWeeklyPlan (read-only, '
+      '7.55q.2-review-fix)', () {
+    test('I1+I2: returns null when snapshot is missing (anchor + demand '
+        'still present); does NOT auto-generate a replacement', () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+
+      // Ensure a snapshot exists first by triggering the auto-generate
+      // path. (reseedDemo seeds tables but doesn't pre-create the
+      // current-week snapshot — that happens on first request.)
+      final initial = await WeeklyPlanSnapshotService.instance
+          .getCurrentWeekSnapshot();
+      expect(initial, isNotNull,
+          reason: 'sanity: auto-generate must have created a snapshot');
+
+      // Delete ONLY the snapshot — leave anchor + demand intact.
+      // This is the real failure mode the review caught: the original
+      // D3 test cleared everything and so missed this case.
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('weekly_plan_snapshots');
+
+      // Sanity: anchor still resolvable (mock_replay_state intact).
+      final anchorDate = await BusinessDateAuthorityService.instance
+          .resolvePlanningAnchorDate(restaurantId);
+      expect(anchorDate, isNotNull,
+          reason: 'sanity: anchor must still resolve after snapshot delete');
+
+      // Sanity: demand context still available (shift_records intact).
+      final demandCtx = await DemandForecastContextService.instance
+          .getCurrentContext();
+      expect(demandCtx.isAvailable, isTrue,
+          reason: 'sanity: demand must still be available');
+
+      // The read-only path must return null (no auto-generation).
+      final readOnly = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
+      expect(readOnly, isNull,
+          reason:
+              '7.55q.2-review-fix: read-only path MUST NOT generate from '
+              'the live plan when snapshot is missing');
+
+      // No snapshot recreated as a side effect of the read-only call.
+      final stillEmpty = await WeeklyPlanSnapshotService.instance
+          .getExistingCurrentWeekSnapshot();
+      expect(stillEmpty, isNull,
+          reason: 'read-only call MUST NOT create a snapshot');
+
+      // Sanity: the LIVE path WAS available — proves Schedule chose
+      // not to fall back to it. This is the "real risk" check the
+      // review-fix prompt called out.
+      final livePlan = await SchedulePlanReadService.instance
+          .getCurrentWeeklyPlan();
+      expect(livePlan, isNotNull,
+          reason:
+              'sanity: live path WAS available — Schedule chose not to use '
+              'it via the read-only path');
+
+      // Final sanity: the read-only snapshot lookup STILL returns null
+      // even after the live-path call above (the live call is pure;
+      // it does not persist a snapshot itself).
+      final stillEmpty2 = await WeeklyPlanSnapshotService.instance
+          .getExistingCurrentWeekSnapshot();
+      expect(stillEmpty2, isNull,
+          reason:
+              'sanity: getCurrentWeeklyPlan must not persist a snapshot');
+    });
+
+    test('I3: the auto-generating getCurrentLockedWeeklyPlan path is '
+        'preserved unchanged (legitimate generation callers still work)',
+        () async {
+      // Delete the snapshot to force the generate-on-miss branch.
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('weekly_plan_snapshots');
+
+      // Auto-generating path returns a non-null plan and persists a
+      // fresh snapshot from the live plan. This is the legitimate
+      // behaviour for week-roll bootstrap / Audit / Shift initial gen.
+      final autoGen = await SchedulePlanReadService.instance
+          .getCurrentLockedWeeklyPlan();
+      expect(autoGen, isNotNull,
+          reason: 'auto-generate path preserved for legitimate callers');
+
+      // Snapshot now exists — confirms the side effect happened.
+      final created = await WeeklyPlanSnapshotService.instance
+          .getExistingCurrentWeekSnapshot();
+      expect(created, isNotNull,
+          reason:
+              'auto-generate path must have persisted a fresh snapshot');
+
+      // And the read-only path now returns the same thing (because the
+      // snapshot was created out-of-band by the auto-generate call).
+      final readOnlyAfterGen = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
+      expect(readOnlyAfterGen, isNotNull);
+      expect(readOnlyAfterGen!.forecastCovers,
+          equals(autoGen!.forecastCovers));
+    });
+
+    test('returns null when both snapshot and anchor are absent', () async {
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('weekly_plan_snapshots');
+      await db.delete('mock_replay_state');
+      await db.delete('shift_records');
+
+      final readOnly = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
+      expect(readOnly, isNull);
     });
   });
 }

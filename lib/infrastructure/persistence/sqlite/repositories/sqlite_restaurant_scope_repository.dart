@@ -1,5 +1,6 @@
 import '../../../../domain/models/restaurant_location.dart';
 import '../../../../domain/repositories/restaurant_scope_repository.dart';
+import '../../../../domain/services/utc_metadata_timestamp.dart';
 import '../dao/restaurant_scope_dao.dart';
 import '../sqlite_database.dart';
 
@@ -28,7 +29,7 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
           displayName: DemoScope.displayName,
           businessTimezone: existing.businessTimezone,
           createdAt: existing.createdAt,
-          updatedAt: DateTime.now().toIso8601String(),
+          updatedAt: nowIsoUtc(),
         );
         await dao.updateRestaurant(normalized);
         return normalized;
@@ -36,7 +37,7 @@ class SqliteRestaurantScopeRepository implements RestaurantScopeRepository {
       return existing;
     }
 
-    final now = DateTime.now().toIso8601String();
+    final now = nowIsoUtc();
     final location = RestaurantLocation(
       restaurantId: DemoScope.restaurantId,
       displayName: DemoScope.displayName,

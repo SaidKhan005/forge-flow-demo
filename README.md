@@ -23,7 +23,7 @@ The current product flow is:
 - [docs/archive/reference/REFACTOR_AND_DECOUPLING.MD](docs/archive/reference/REFACTOR_AND_DECOUPLING.MD): archived Phase 7.5 alignment contract
 - [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
 - [docs/phase_7_52_execution_plan.md](docs/phase_7_52_execution_plan.md): Phase 7.52 cleanup, private-build, and Barrio shell contract
-- [docs/phase_8_gate/](docs/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
+- [docs/phases/phase_8_gate/](docs/phases/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
 - [jim_taylor_labor_model_deep_dive.html](docs/internal/barrio/jim_taylor_labor_model_deep_dive.html): local teaching/model reference used throughout the app
 
 ## Current Status
@@ -32,7 +32,7 @@ The current product flow is:
 - Phases 7.52, 7.53, and 7.54 are complete
 - Phase 7.55 is the active release-stabilization lane
 - Phase 9 auth planning is locked in `docs/phase_9_auth_plan.md`
-- Phase 8 gate artifacts are checked in at `docs/phase_8_gate/`
+- Phase 8 gate artifacts are checked in at `docs/phases/phase_8_gate/`
 - Phase 8 (live POS + labor adapters) is blocked only on vendor selection
 
 

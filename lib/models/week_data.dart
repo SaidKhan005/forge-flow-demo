@@ -4,7 +4,14 @@
 //
 // All computed getters derive from raw fields — no business logic in the UI.
 // Target/theoretical fields are explicitly injected by the caller.
+//
+// Phase 7.55q.3: `theoreticalBlendedWage` no longer derives a separate
+// hour-weighted value from `targetFohHoursWtd` / `targetBohHoursWtd` —
+// it now reads from the shared
+// `ActiveTargetProfile.computeTargetBlendedWage(...)` seam so WTD and
+// Benchmark cannot drift on the same active target state.
 
+import '../domain/models/active_target_profile.dart';
 import '../services/labor_model.dart';
 
 class WeekData {
@@ -37,6 +44,17 @@ class WeekData {
   final double _theoreticalBohLaborPct;
   final double _theoreticalLaborPct;
 
+  // ── Plan-to-date hours (locked snapshot truth when available) ──────────
+  final int? planFohHoursWtd;
+  final int? planBohHoursWtd;
+
+  // ── Dollar Impact accumulation windows (7.55p.3) ─────────────────────
+  // Closed-truth accumulation through the latest closed business date.
+  // Populated by ShiftService from date-range queries; null when
+  // unavailable (non-locked path or insufficient history).
+  final double? monthDollarImpact;
+  final double? sixtyDayDollarImpact;
+
   WeekData({
     required this.weekId,
     required this.weekLabel,
@@ -53,6 +71,10 @@ class WeekData {
     this.closedDayNumber = 1,
     this.storedTotalFohLaborDollar,
     this.storedTotalBohLaborDollar,
+    this.planFohHoursWtd,
+    this.planBohHoursWtd,
+    this.monthDollarImpact,
+    this.sixtyDayDollarImpact,
     required double targetCPLH,
     required double targetSPLH,
     required double targetPPA,
@@ -71,11 +93,9 @@ class WeekData {
         _theoreticalLaborPct = theoreticalLaborPct;
 
   // ── Aggregate labor dollars ───────────────────────────────────────────────
-  double get totalFohLaborDollar =>
-      storedTotalFohLaborDollar ?? totalFohHours * _targetFohWage;
+  double get totalFohLaborDollar => storedTotalFohLaborDollar ?? 0;
 
-  double get totalBohLaborDollar =>
-      storedTotalBohLaborDollar ?? totalBohHours * _targetBohWage;
+  double get totalBohLaborDollar => storedTotalBohLaborDollar ?? 0;
 
   double get totalLaborDollar => totalFohLaborDollar + totalBohLaborDollar;
 
@@ -114,6 +134,13 @@ class WeekData {
   int get modelBohHoursWtd =>
       LaborModel.modelBohHours(totalCovers, avgPPA, _targetSPLH);
 
+  // ── Target hours for WTD variance (plan-aligned) ─────────────────────────
+  // 7.55q follow-up: for current-week Variance, FOH/BOH target hours must
+  // come from the locked weekly plan only. When plan hours are absent, WTD
+  // should degrade honestly rather than silently falling back to model hours.
+  int? get targetFohHoursWtd => planFohHoursWtd;
+  int? get targetBohHoursWtd => planBohHoursWtd;
+
   // ── Dollar gap ────────────────────────────────────────────────────────────
   double get dollarGap => LaborModel.dollarGap(
         totalLaborDollar,
@@ -126,6 +153,14 @@ class WeekData {
       );
 
   double get dollarGapAnnualized => dollarGap * 52;
+
+  // ── Annualized dollar impact from 60-day accumulation (7.55p.3) ──────
+  // Formula: (60-day impact / 60) × 365.
+  // Null when 60-day data is unavailable — no fallback to weekly × 52.
+  double? get annualizedDollarImpact =>
+      sixtyDayDollarImpact != null
+          ? sixtyDayDollarImpact! * (365.0 / 60)
+          : null;
 
   // ── Projected end-of-week ─────────────────────────────────────────────────
   int get remainingForecastCovers {
@@ -162,12 +197,22 @@ class WeekData {
   }
 
   // ── Theoretical blended wage ──────────────────────────────────────────────
-  double get theoreticalBlendedWage {
-    final theoFoh = modelFohHoursWtd;
-    final theoBoh = modelBohHoursWtd;
-    final totalModelHours = theoFoh + theoBoh;
-    if (totalModelHours == 0) return 0;
-    return (theoFoh * _targetFohWage + theoBoh * _targetBohWage) /
-        totalModelHours;
-  }
+  // 7.55q.3: reads from the shared
+  // `ActiveTargetProfile.computeTargetBlendedWage(...)` seam — the same
+  // formula Benchmark consumes via `profile.targetBlendedWage`. WTD and
+  // Benchmark therefore produce the identical blended-wage number for
+  // the same active target state; per-surface drift is impossible by
+  // construction.
+  //
+  // The previous plan-hour-weighted derivation (using `targetFohHoursWtd`
+  // / `targetBohHoursWtd`) violated `7.55q.1` Rule 2: blended wage is a
+  // Benchmark-owned target metric, not a plan-execution metric.
+  double get theoreticalBlendedWage =>
+      ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: _targetCPLH,
+        targetSPLH: _targetSPLH,
+        targetPPA: _targetPPA,
+        fohWage: _targetFohWage,
+        bohWage: _targetBohWage,
+      );
 }

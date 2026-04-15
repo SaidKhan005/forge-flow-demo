@@ -15,6 +15,10 @@ import '../../../domain/models/import_run.dart';
 import '../../../domain/models/open_shift_snapshot.dart';
 import '../../../domain/models/raw_import_record.dart';
 import '../../../domain/models/reservation_book_snapshot.dart';
+import '../../../domain/models/target_cycle.dart';
+import '../../../domain/models/target_cycle_source.dart';
+import '../../../domain/services/target_cycle_active_target_profile_projector.dart';
+import '../../../domain/services/utc_metadata_timestamp.dart';
 
 /// The demo restaurant scope defaults used across persistence.
 class DemoScope {
@@ -31,7 +35,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 17;
+  static const int schemaVersion = 22;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -86,7 +90,10 @@ class SqliteDatabase {
   Future<void> _onCreate(Database db, int version) async {
     await _createAllTables(db);
     await _seedDemoRestaurant(db);
-    await _seedDemoActiveTargetProfile(db);
+    await _seedDemoActiveTargetProfile(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
 
     // Persist default mock replay business date
     await db.insert('mock_replay_state', {
@@ -96,7 +103,10 @@ class SqliteDatabase {
 
     final replay = MockIntegrationReplaySeed.output;
     await _seedDemoDataFromReplay(db, replay);
-    await _backfillLockedTargets(db);
+    await _backfillLockedTargets(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
   }
@@ -252,7 +262,8 @@ class SqliteDatabase {
         opz_floor_cplh             REAL,
         opz_ceiling_cplh           REAL,
         theoretical_foh_labor_pct  REAL,
-        theoretical_boh_labor_pct  REAL
+        theoretical_boh_labor_pct  REAL,
+        snapshot_blended_wage      REAL
       )
     ''');
 
@@ -283,6 +294,11 @@ class SqliteDatabase {
         target_boh_wage            REAL,
         theoretical_foh_labor_pct  REAL,
         theoretical_boh_labor_pct  REAL,
+        locked_required_foh_hours  INTEGER,
+        locked_required_boh_hours  INTEGER,
+        month_dollar_impact        REAL,
+        sixty_day_dollar_impact    REAL,
+        closed_at                  TEXT,
         UNIQUE(restaurant_id, week_id)
       )
     ''');
@@ -424,13 +440,48 @@ class SqliteDatabase {
       )
     ''');
 
+    // ── Restaurant timing config layer (7.55n.1) ─────────────────────────
+    await db.execute('''
+      CREATE TABLE restaurant_timing_configs (
+        restaurant_id                    TEXT PRIMARY KEY NOT NULL,
+        business_day_start_local_time    TEXT NOT NULL,
+        week_start_day                   INTEGER NOT NULL,
+        service_period_definitions_json  TEXT NOT NULL,
+        shift_close_authority            TEXT NOT NULL,
+        local_close_fallback             TEXT,
+        created_at                       TEXT NOT NULL,
+        updated_at                       TEXT NOT NULL
+      )
+    ''');
+
+    // ── Passive app notifications (7.55p.4d) ─────────────────────────────
+    await db.execute('''
+      CREATE TABLE app_notifications (
+        notification_id  TEXT PRIMARY KEY NOT NULL,
+        restaurant_id    TEXT NOT NULL,
+        type             TEXT NOT NULL,
+        event_key        TEXT NOT NULL,
+        title            TEXT NOT NULL,
+        body             TEXT NOT NULL,
+        business_date    TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        UNIQUE(restaurant_id, event_key)
+      )
+    ''');
+
   }
 
   /// Backfills locked-target columns on shift_records and week_records
   /// that lack them, using the current active target profile.
   /// Also ensures target-profile provenance and a compat version row.
-  Future<void> _backfillLockedTargets(Database db) async {
-    final profile = buildActiveTargetProfileFromBaseline(DemoScope.restaurantId);
+  Future<void> _backfillLockedTargets(
+    Database db, {
+    required String businessDate,
+  }) async {
+    final profile = await _loadSeedAuthorityProfile(
+      db,
+      businessDate: businessDate,
+    );
     final compatVersionId = 'compat_${DemoScope.restaurantId}_v8_backfill';
 
     // Ensure a compat target_profile_versions row exists
@@ -449,7 +500,7 @@ class SqliteDatabase {
       'theoretical_foh_labor_pct': profile.theoreticalFohLaborPct,
       'theoretical_boh_labor_pct': profile.theoreticalBohLaborPct,
       'theoretical_labor_pct': profile.theoreticalLaborPct,
-      'created_at': DateTime.now().toIso8601String(),
+      'created_at': nowIsoUtc(),
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
     await db.execute('''
@@ -529,7 +580,7 @@ class SqliteDatabase {
   /// are derived from the scenario.
   Future<void> _seedOpenShiftSnapshotsFromReplay(
       Database db, MockReplayOutput replay) async {
-    final now = DateTime.now().toIso8601String();
+    final now = nowIsoUtc();
     final scenario = replay.scenario;
     final projectedShifts =
         replay.currentWeekShifts.where((s) => s.isProjected).toList();
@@ -657,7 +708,7 @@ class SqliteDatabase {
   /// Unseated covers scale deterministically with the day's base cover volume.
   Future<void> _seedReservationBookSnapshotsFromReplay(
       Database db, MockReplayOutput replay) async {
-    final now = DateTime.now().toIso8601String();
+    final now = nowIsoUtc();
     final scenario = replay.scenario;
 
     // Scale unseated covers from Friday baseline (72) by day-volume ratio.
@@ -691,7 +742,7 @@ class SqliteDatabase {
   // ── Seed helpers ────────────────────────────────────────────────────────
 
   Future<void> _seedDemoRestaurant(Database db) async {
-    final now = DateTime.now().toIso8601String();
+    final now = nowIsoUtc();
     await db.insert('restaurant_locations', {
       'restaurant_id': DemoScope.restaurantId,
       'display_name': DemoScope.displayName,
@@ -699,33 +750,161 @@ class SqliteDatabase {
       'created_at': now,
       'updated_at': now,
     });
+
+    // Seed demo timing config (7.55n.1).
+    // Defaults preserve the current fixture-era shape from WeekDayOrder.
+    // Guard: table may not exist yet during older upgrade paths.
+    if (await _tableExists(db, 'restaurant_timing_configs')) {
+      await _seedDemoTimingConfig(db, now);
+    }
   }
 
-  /// Builds and persists an active target profile from current BaselineData,
-  /// resolving wages from any existing wage_role_rows in the same [db].
-  Future<void> _seedDemoActiveTargetProfile(Database db) async {
-    // Resolve wages from generator rows already in this database (if any).
-    // This keeps reseed aligned with the wage-authority path.
-    final wageRows = await db.query('wage_role_rows',
-        where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+  Future<void> _seedDemoTimingConfig(Database db, String now) async {
+    final demoServicePeriods = [
+      {
+        'id': 'lunch',
+        'label': 'Lunch',
+        'short_label': 'L',
+        'sort_order': 1,
+        'start_local_time': '11:00',
+        'end_local_time': '15:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5],
+      },
+      {
+        'id': 'dinner',
+        'label': 'Dinner',
+        'short_label': 'D',
+        'sort_order': 2,
+        'start_local_time': '17:00',
+        'end_local_time': '23:00',
+        'rolls_past_midnight': false,
+        'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+      },
+      {
+        'id': 'late_night',
+        'label': 'Late Night',
+        'short_label': 'LN',
+        'sort_order': 3,
+        'start_local_time': '23:00',
+        'end_local_time': '02:00',
+        'rolls_past_midnight': true,
+        'applicable_days': [5, 6],
+      },
+    ];
+    await db.insert(
+      'restaurant_timing_configs',
+      {
+        'restaurant_id': DemoScope.restaurantId,
+        'business_day_start_local_time': '04:00',
+        'week_start_day': DateTime.monday,
+        'service_period_definitions_json': jsonEncode(demoServicePeriods),
+        'shift_close_authority': 'app_local_cutoff_fallback',
+        'local_close_fallback': '04:00',
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+
+
+  /// Seeds the demo active profile from the canonical cycle projection.
+  ///
+  /// The pure `buildActiveTargetProfileFromBaseline(...)` helper remains as a
+  /// bridge-proof utility for tests, but the live demo/bootstrap database now
+  /// persists profile authority through a seeded `TargetCycle` and projects the
+  /// runtime profile from that cycle-backed standard object.
+  Future<void> _seedDemoActiveTargetProfile(
+    Database db, {
+    required String businessDate,
+  }) async {
+    final profile = await _loadSeedAuthorityProfile(
+      db,
+      businessDate: businessDate,
+    );
+    await db.insert('active_target_profiles', profile.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<ActiveTargetProfile> _loadSeedAuthorityProfile(
+    Database db, {
+    required String businessDate,
+  }) async {
+    final cycle = await _ensureDemoSeedCycle(
+      db,
+      businessDate: businessDate,
+    );
+    return TargetCycleActiveTargetProfileProjector.project(cycle);
+  }
+
+  Future<TargetCycle> _ensureDemoSeedCycle(
+    Database db, {
+    required String businessDate,
+  }) async {
+    final existing = await db.query(
+      'target_cycles',
+      where: 'restaurant_id = ? AND deactivated_at IS NULL',
+      whereArgs: [DemoScope.restaurantId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      return TargetCycle.fromMap(existing.first);
+    }
+
+    final wageRows = await db.query(
+      'wage_role_rows',
+      where: 'restaurant_id = ?',
+      whereArgs: [DemoScope.restaurantId],
+    );
     double? fohOverride;
     double? bohOverride;
     if (wageRows.isNotEmpty) {
       fohOverride = _weightedAvgFromRows(wageRows, 'foh');
       bohOverride = _weightedAvgFromRows(wageRows, 'boh');
-      // Require both FOH and BOH for a complete generator override
       if (fohOverride == null || bohOverride == null) {
         fohOverride = null;
         bohOverride = null;
       }
     }
-    final profile = buildActiveTargetProfileFromBaseline(
-      DemoScope.restaurantId,
+
+    final cycle = _buildDemoSeedCycle(
+      businessDate: businessDate,
       fohWageOverride: fohOverride,
       bohWageOverride: bohOverride,
     );
-    await db.insert('active_target_profiles', profile.toMap(),
-        conflictAlgorithm: ConflictAlgorithm.replace);
+    await db.insert(
+      'target_cycles',
+      cycle.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+    return cycle;
+  }
+
+  TargetCycle _buildDemoSeedCycle({
+    required String businessDate,
+    double? fohWageOverride,
+    double? bohWageOverride,
+  }) {
+    return TargetCycle(
+      cycleId: 'demo_cycle_$businessDate',
+      restaurantId: DemoScope.restaurantId,
+      source: TargetCycleSource.recommended,
+      effectiveStart: businessDate,
+      effectiveEnd: _addIsoDays(businessDate, 59),
+      calibrationWindowStart: _addIsoDays(businessDate, -59),
+      calibrationWindowEnd: businessDate,
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetSPLH: BaselineData.derivedTargetSPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      fohWage: fohWageOverride ?? MeridianConfig.fohWage,
+      bohWage: bohWageOverride ?? MeridianConfig.bohWage,
+      opzFloorCPLH: BaselineData.opzFloorCPLH,
+      opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+      createdAt: nowIsoUtc(),
+    );
   }
 
   /// Weighted average hourly rate from raw DB rows for a given labor bucket.
@@ -742,36 +921,61 @@ class SqliteDatabase {
     return totalDollars / totalHours;
   }
 
-  /// Builds an ActiveTargetProfile from current BaselineData.
+  static String _addIsoDays(String isoDate, int days) {
+    final result = DateTime.parse(isoDate).add(Duration(days: days));
+    return '${result.year}-${result.month.toString().padLeft(2, '0')}'
+        '-${result.day.toString().padLeft(2, '0')}';
+  }
+
+  /// Compatibility helper: builds an ActiveTargetProfile from current
+  /// BaselineData.
   ///
   /// When [fohWageOverride] or [bohWageOverride] are provided, they replace
   /// the MeridianConfig defaults and theoretical labor % is recomputed from
-  /// the resolved wages. This is the integration point for wage authority.
+  /// the resolved wages.
+  /// Phase 7.55p.5g — builds an [ActiveTargetProfile] from the current
+  /// baseline state with optional wage and target overrides.
+  ///
+  /// When `targetCPLHOverride` / `targetSPLHOverride` / `targetPPAOverride`
+  /// / `opzFloorOverride` / `opzCeilingOverride` are provided, they
+  /// replace the `BaselineData`-derived values. This is the integration
+  /// point for the recommended-benchmark selection service so the
+  /// default recommended/system cycle can carry app-owned recommendation
+  /// truth without writing fake manager-override selections to the
+  /// baseline-selection table.
+  ///
+  /// Wage overrides already existed (7.55i.3) — their behavior is
+  /// unchanged.
+  ///
+  /// The override seam is additive. Live bootstrap/backfill now route through
+  /// the seeded TargetCycle projection instead; this helper remains for
+  /// compatibility/pure-test coverage.
   static ActiveTargetProfile buildActiveTargetProfileFromBaseline(
     String restaurantId, {
     double? fohWageOverride,
     double? bohWageOverride,
+    double? targetCPLHOverride,
+    double? targetSPLHOverride,
+    double? targetPPAOverride,
+    double? opzFloorOverride,
+    double? opzCeilingOverride,
+    String? sourceTypeOverride,
   }) {
-    final sourceType = BaselineData.hasManagerOverride
-        ? 'manager_override'
-        : 'system_baseline';
+    final sourceType = sourceTypeOverride ??
+        (BaselineData.hasManagerOverride
+            ? 'manager_override'
+            : 'system_baseline');
 
     final fohWage = fohWageOverride ?? MeridianConfig.fohWage;
     final bohWage = bohWageOverride ?? MeridianConfig.bohWage;
 
-    final targetCPLH = BaselineData.derivedTargetCPLH;
-    final targetSPLH = BaselineData.derivedTargetSPLH;
-    final targetPPA = BaselineData.derivedTargetPPA;
+    final targetCPLH = targetCPLHOverride ?? BaselineData.derivedTargetCPLH;
+    final targetSPLH = targetSPLHOverride ?? BaselineData.derivedTargetSPLH;
+    final targetPPA = targetPPAOverride ?? BaselineData.derivedTargetPPA;
+    final opzFloor = opzFloorOverride ?? BaselineData.opzFloorCPLH;
+    final opzCeiling = opzCeilingOverride ?? BaselineData.opzCeilingCPLH;
 
-    // Recompute theoretical labor % using resolved wages.
-    // Same formula as LaborModel.theoreticalLaborPct, split into FOH/BOH.
-    final fohPct = (targetCPLH > 0 && targetPPA > 0)
-        ? fohWage / (targetCPLH * targetPPA) * 100
-        : 0.0;
-    final bohPct = targetSPLH > 0 ? bohWage / targetSPLH * 100 : 0.0;
-
-    return ActiveTargetProfile(
-      targetProfileId: '${restaurantId}_active',
+    return ActiveTargetProfile.build(
       restaurantId: restaurantId,
       sourceType: sourceType,
       targetCPLH: targetCPLH,
@@ -779,12 +983,8 @@ class SqliteDatabase {
       targetPPA: targetPPA,
       fohWage: fohWage,
       bohWage: bohWage,
-      opzFloorCPLH: BaselineData.opzFloorCPLH,
-      opzCeilingCPLH: BaselineData.opzCeilingCPLH,
-      theoreticalFohLaborPct: fohPct,
-      theoreticalBohLaborPct: bohPct,
-      theoreticalLaborPct: fohPct + bohPct,
-      builtAt: DateTime.now().toIso8601String(),
+      opzFloorCPLH: opzFloor,
+      opzCeilingCPLH: opzCeiling,
     );
   }
 
@@ -916,6 +1116,66 @@ class SqliteDatabase {
     }
     if (oldV < 17) {
       await _migrateToV17(db);
+    }
+    if (oldV < 18) {
+      await _migrateToV18(db);
+    }
+    if (oldV < 19) {
+      await _migrateToV19(db);
+    }
+    if (oldV < 20) {
+      await _migrateToV20(db);
+    }
+    if (oldV < 21) {
+      await _migrateToV21(db);
+    }
+    if (oldV < 22) {
+      await _migrateToV22(db);
+    }
+  }
+
+  // Phase 7.55q.5: add preserved locked plan hour columns to week_records.
+  // Captured at week close from the WeeklyPlanSnapshot in force for the
+  // week's business-date span. Additive + nullable — legacy rows stay
+  // null and the Week Detail UI renders "—" honestly for them (no
+  // silent re-modeling from actuals).
+  Future<void> _migrateToV21(Database db) async {
+    if (!await _columnExists(
+        db, 'week_records', 'locked_required_foh_hours')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN locked_required_foh_hours INTEGER',
+      );
+    }
+    if (!await _columnExists(
+        db, 'week_records', 'locked_required_boh_hours')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN locked_required_boh_hours INTEGER',
+      );
+    }
+  }
+
+  // Phase 7.55q.10: add frozen dollar-impact-window columns to week_records.
+  // Captured at week close from the closed-truth date-range queries the
+  // current-week Variance card was reading. Locks the four-row impact view
+  // (Week / Month / 60-day / Annualized) at the close moment so Week Detail
+  // mirrors what was on screen the instant the 14th shift closed.
+  // Additive + nullable — legacy rows stay null and Week Detail falls back
+  // to the existing 2-row + boilerplate-footer view honestly.
+  Future<void> _migrateToV22(Database db) async {
+    if (!await _columnExists(db, 'week_records', 'month_dollar_impact')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN month_dollar_impact REAL',
+      );
+    }
+    if (!await _columnExists(db, 'week_records', 'sixty_day_dollar_impact')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN sixty_day_dollar_impact REAL',
+      );
+    }
+    if (!await _columnExists(db, 'week_records', 'closed_at')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN closed_at TEXT',
+      );
     }
   }
 
@@ -1071,6 +1331,100 @@ class SqliteDatabase {
     ''');
   }
 
+  Future<void> _migrateToV18(Database db) async {
+    await _createTableIfNotExists(db, 'restaurant_timing_configs', '''
+      CREATE TABLE restaurant_timing_configs (
+        restaurant_id                    TEXT PRIMARY KEY NOT NULL,
+        business_day_start_local_time    TEXT NOT NULL,
+        week_start_day                   INTEGER NOT NULL,
+        service_period_definitions_json  TEXT NOT NULL,
+        shift_close_authority            TEXT NOT NULL,
+        local_close_fallback             TEXT,
+        created_at                       TEXT NOT NULL,
+        updated_at                       TEXT NOT NULL
+      )
+    ''');
+    // Backfill demo timing config if restaurant exists but timing row doesn't.
+    final existing = await db.query('restaurant_timing_configs',
+        where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+    if (existing.isEmpty) {
+      final restaurants = await db.query('restaurant_locations',
+          where: 'restaurant_id = ?', whereArgs: [DemoScope.restaurantId]);
+      if (restaurants.isNotEmpty) {
+        final now = nowIsoUtc();
+        final demoServicePeriods = [
+          {
+            'id': 'lunch',
+            'label': 'Lunch',
+            'short_label': 'L',
+            'sort_order': 1,
+            'start_local_time': '11:00',
+            'end_local_time': '15:00',
+            'rolls_past_midnight': false,
+            'applicable_days': [1, 2, 3, 4, 5],
+          },
+          {
+            'id': 'dinner',
+            'label': 'Dinner',
+            'short_label': 'D',
+            'sort_order': 2,
+            'start_local_time': '17:00',
+            'end_local_time': '23:00',
+            'rolls_past_midnight': false,
+            'applicable_days': [1, 2, 3, 4, 5, 6, 7],
+          },
+          {
+            'id': 'late_night',
+            'label': 'Late Night',
+            'short_label': 'LN',
+            'sort_order': 3,
+            'start_local_time': '23:00',
+            'end_local_time': '02:00',
+            'rolls_past_midnight': true,
+            'applicable_days': [5, 6],
+          },
+        ];
+        await db.insert('restaurant_timing_configs', {
+          'restaurant_id': DemoScope.restaurantId,
+          'business_day_start_local_time': '04:00',
+          'week_start_day': DateTime.monday,
+          'service_period_definitions_json': jsonEncode(demoServicePeriods),
+          'shift_close_authority': 'app_local_cutoff_fallback',
+          'local_close_fallback': '04:00',
+          'created_at': now,
+          'updated_at': now,
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      }
+    }
+  }
+
+  Future<void> _migrateToV19(Database db) async {
+    await _createTableIfNotExists(db, 'app_notifications', '''
+      CREATE TABLE app_notifications (
+        notification_id  TEXT PRIMARY KEY NOT NULL,
+        restaurant_id    TEXT NOT NULL,
+        type             TEXT NOT NULL,
+        event_key        TEXT NOT NULL,
+        title            TEXT NOT NULL,
+        body             TEXT NOT NULL,
+        business_date    TEXT NOT NULL,
+        created_at       TEXT NOT NULL,
+        UNIQUE(restaurant_id, event_key)
+      )
+    ''');
+  }
+
+  // Phase 7.55n.13: add snapshot_blended_wage column to shift_records.
+  // Fixes the pre-existing schema gap where ShiftRecord.toMap() writes
+  // snapshot_blended_wage but the table schema did not include it.
+  Future<void> _migrateToV20(Database db) async {
+    if (!await _columnExists(db, 'shift_records', 'snapshot_blended_wage')) {
+      await db.execute(
+        'ALTER TABLE shift_records ADD COLUMN snapshot_blended_wage REAL',
+      );
+    }
+  }
+
   Future<void> _migrateToV9(Database db) async {
     await _createTableIfNotExists(db, 'open_shift_snapshots', '''
       CREATE TABLE open_shift_snapshots (
@@ -1182,10 +1536,16 @@ class SqliteDatabase {
     }
 
     // ── 4. Seed active target profile if missing ──────────────────────────
-    await _seedDemoActiveTargetProfile(db);
+    await _seedDemoActiveTargetProfile(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
 
     // ── 5. Backfill legacy rows with current target state + provenance ─────
-    final profile = buildActiveTargetProfileFromBaseline(DemoScope.restaurantId);
+    final profile = await _loadSeedAuthorityProfile(
+      db,
+      businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+    );
     final compatVersionId = 'compat_${DemoScope.restaurantId}_v8_backfill';
 
     // Ensure a compat target_profile_versions row exists
@@ -1204,7 +1564,7 @@ class SqliteDatabase {
       'theoretical_foh_labor_pct': profile.theoreticalFohLaborPct,
       'theoretical_boh_labor_pct': profile.theoreticalBohLaborPct,
       'theoretical_labor_pct': profile.theoreticalLaborPct,
-      'created_at': DateTime.now().toIso8601String(),
+      'created_at': nowIsoUtc(),
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
     await db.execute('''
@@ -1471,6 +1831,7 @@ class SqliteDatabase {
     await db.delete('weekly_plan_snapshots');
     await db.delete('benchmark_selection_summaries');
     await db.delete('target_cycles');
+    await db.delete('app_notifications');
     await reseedMockReplayForBusinessDate(
         MockIntegrationReplaySeed.defaultBusinessDate);
   }
@@ -1522,17 +1883,17 @@ class SqliteDatabase {
 
     // When a preserved active cycle exists, its projected
     // ActiveTargetProfile is already correct and must not be overwritten
-    // with baseline-seeded truth. Only seed from baseline when no cycle
-    // is preserved (e.g., after reseedDemo clears target_cycles).
+    // with a fresh demo-cycle projection. Only seed a new demo cycle/profile
+    // when no cycle is preserved (e.g., after reseedDemo clears target_cycles).
     // (7.55l.6b3)
     final preservedCycles = await db.query('target_cycles',
         where: 'restaurant_id = ? AND deactivated_at IS NULL',
         whereArgs: [DemoScope.restaurantId]);
     if (preservedCycles.isEmpty) {
-      await _seedDemoActiveTargetProfile(db);
+      await _seedDemoActiveTargetProfile(db, businessDate: isoDate);
     }
     await _seedDemoDataFromReplay(db, replay);
-    await _backfillLockedTargets(db);
+    await _backfillLockedTargets(db, businessDate: isoDate);
     await _seedOpenShiftSnapshotsFromReplay(db, replay);
     await _seedReservationBookSnapshotsFromReplay(db, replay);
   }
@@ -1553,6 +1914,7 @@ class SqliteDatabase {
     await db.delete('active_target_profiles');
     await db.delete('target_cycles');
     await db.delete('weekly_plan_snapshots');
+    await db.delete('app_notifications');
 
     // Reset in-memory compatibility bridge
     BaselineData.clearHistoricalContext();

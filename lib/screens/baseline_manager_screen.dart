@@ -8,11 +8,17 @@
 // the flat daypart list. Tap a date to see that day's closed shifts.
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+import '../data/active_target_profile_notifier.dart';
 import '../data/baseline_manager_service.dart';
 import '../data/demand_forecast_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/schedule_plan_read_service.dart';
+import '../data/target_cycle_service.dart';
+import '../domain/models/active_target_profile.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
+import '../services/labor_model.dart';
 import '../theme/app_theme.dart';
 
 // ─── Date helpers ─────────────────────────────────────────────────────────────
@@ -77,7 +83,10 @@ String _leverLabel(String leverId) {
 
 // ─── Plan impact preview model ───────────────────────────────────────────────
 // Computed from the draft selected shifts through SchedulePlanReadService.
-// All planning math flows through the shared plan authority — no duplicate formulas.
+// Plan-owned values (covers / sales / required hours) flow through the shared
+// plan authority, while benchmark-owned values (theoretical labor % / blended
+// wage) are read from the canonical benchmark seam formulas using the same
+// draft target inputs and wage authority.
 
 class ManagerOverridePlanPreview {
   final int forecastCovers;
@@ -104,6 +113,11 @@ class ManagerOverridePlanPreview {
   /// [DemandForecastContext], not from `BaselineData`. The caller loads
   /// it once during init and passes it here for synchronous preview.
   ///
+  /// Production callers should also pass wage-authority values from the
+  /// current [ActiveTargetProfile]. The config fallback remains as a
+  /// compatibility default for tests and detached preview callers that
+  /// do not have the provider tree in scope.
+  ///
   /// Routes through [SchedulePlanReadService.resolveFromInputs] so all
   /// plan consumers share the same resolver pipeline.
   ///
@@ -111,6 +125,8 @@ class ManagerOverridePlanPreview {
   static ManagerOverridePlanPreview? fromDraftSelection(
     List<BaselineCandidateShift> selected, {
     required int? historicalWeeklyAvgCovers,
+    double fohWage = MeridianConfig.fohWage,
+    double bohWage = MeridianConfig.bohWage,
   }) {
     if (selected.isEmpty) return null;
 
@@ -124,12 +140,27 @@ class ManagerOverridePlanPreview {
       targetCPLH: draftCPLH,
       targetPPA: draftPPA,
       targetSPLH: draftSPLH,
-      fohWage: MeridianConfig.fohWage,
-      bohWage: MeridianConfig.bohWage,
+      fohWage: fohWage,
+      bohWage: bohWage,
       historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
     );
 
     if (plan == null) return null;
+
+    final previewTheoreticalLaborPct = LaborModel.theoreticalLaborPct(
+      draftCPLH,
+      draftSPLH,
+      draftPPA,
+      fohWage,
+      bohWage,
+    );
+    final previewTargetBlendedWage = ActiveTargetProfile.computeTargetBlendedWage(
+      targetCPLH: draftCPLH,
+      targetSPLH: draftSPLH,
+      targetPPA: draftPPA,
+      fohWage: fohWage,
+      bohWage: bohWage,
+    );
 
     return ManagerOverridePlanPreview(
       forecastCovers: plan.forecastCovers,
@@ -137,8 +168,8 @@ class ManagerOverridePlanPreview {
       forecastSales: plan.forecastSales,
       requiredFohHours: plan.requiredFohHours,
       requiredBohHours: plan.requiredBohHours,
-      theoreticalLaborPct: plan.theoreticalLaborPct,
-      targetBlendedWage: plan.targetBlendedWage,
+      theoreticalLaborPct: previewTheoreticalLaborPct,
+      targetBlendedWage: previewTargetBlendedWage,
     );
   }
 }
@@ -250,15 +281,12 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
           DateTime(start.year, start.month, start.day + i));
     });
 
-    // Sort candidates within each date by daypart order
-    const dpOrder = <String, int>{
-      'lunch': 0,
-      'dinner': 1,
-      'late_night': 2,
-    };
+    // Sort candidates within each date by service-period definition order
+    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
     for (final list in _shiftsByDate.values) {
       list.sort((a, b) =>
-          (dpOrder[a.daypart] ?? 99).compareTo(dpOrder[b.daypart] ?? 99));
+          ServicePeriodDefinitionResolver.sortIndex(defs, a.daypart)
+              .compareTo(ServicePeriodDefinitionResolver.sortIndex(defs, b.daypart)));
     }
   }
 
@@ -286,7 +314,30 @@ class _BaselineManagerScreenState extends State<BaselineManagerScreen> {
   void _cancel() => Navigator.of(context).pop();
 
   Future<void> _done() async {
-    await BaselineManagerService.instance.saveSelection(_draftKeys);
+    // 7.55q.9: non-empty selections now route through
+    // `TargetCycleService.applyManagerOverrideCycle` inside
+    // `BaselineManagerService.saveSelection`, which enforces the
+    // once-per-60-day manager override rule. If the cycle has already
+    // consumed its override, a `ManagerOverrideDeniedException` is
+    // thrown — surface it honestly and keep the draft intact so the
+    // user sees why nothing landed.
+    try {
+      await BaselineManagerService.instance.saveSelection(_draftKeys);
+    } on ManagerOverrideDeniedException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Manager override already used for this 60-day cycle. '
+            'Use Settings → Reset Target Cycle (Admin) to test again.',
+            style: AppTextStyles.mono11(color: AppColors.textPrimary),
+          ),
+          backgroundColor: AppColors.backgroundMid,
+          duration: const Duration(seconds: 4),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -472,9 +523,13 @@ class _PlanImpactSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final profile = context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    final hasWageAuthority = profile != null;
     final preview = ManagerOverridePlanPreview.fromDraftSelection(
       selected,
       historicalWeeklyAvgCovers: historicalWeeklyAvgCovers,
+      fohWage: profile?.fohWage ?? MeridianConfig.fohWage,
+      bohWage: profile?.bohWage ?? MeridianConfig.bohWage,
     );
     final hasData = preview != null;
 
@@ -484,10 +539,10 @@ class _PlanImpactSection extends StatelessWidget {
         : '--';
     final fohHrs = hasData ? '${preview.requiredFohHours}' : '--';
     final bohHrs = hasData ? '${preview.requiredBohHours}' : '--';
-    final laborPct = hasData
+    final laborPct = hasData && hasWageAuthority
         ? '${preview.theoreticalLaborPct.toStringAsFixed(1)}%'
         : '--';
-    final wage = hasData
+    final wage = hasData && hasWageAuthority
         ? '\$${preview.targetBlendedWage.toStringAsFixed(2)}'
         : '--';
     return Column(
@@ -861,7 +916,9 @@ class _DayDetail extends StatelessWidget {
       groups.putIfAbsent(c.daypart, () => []).add(c);
     }
 
-    const order = ['lunch', 'dinner', 'late_night'];
+    final order = ServicePeriodDefinitionResolver.ordered(
+      ServicePeriodDefinitionResolver.demoDefinitions,
+    ).map((d) => d.id).toList();
     final items = <Widget>[];
 
     for (final dp in order) {
@@ -1005,7 +1062,9 @@ class _CandidateTile extends StatelessWidget {
                       ),
                       _MetricChip(
                         label: 'LABOR %',
-                        value: '${candidate.actualLaborPct.toStringAsFixed(1)}%',
+                        value: candidate.hasActualLaborPctTruth
+                            ? '${candidate.actualLaborPct.toStringAsFixed(1)}%'
+                            : '--',
                         highlight: false,
                       ),
                       _MetricChip(

@@ -3,54 +3,113 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
+import '../data/benchmark_tracker_read_service.dart';
 import '../data/legacy_fixture_data.dart';
-import '../services/labor_model.dart';
+import '../domain/models/active_target_profile.dart';
+import '../widgets/app_screen_header.dart';
 import '../widgets/daypart_table.dart';
 import 'baseline_manager_screen.dart';
 
-class BaselineTracker extends StatelessWidget {
+class BaselineTracker extends StatefulWidget {
   const BaselineTracker({super.key});
 
   @override
+  State<BaselineTracker> createState() => _BaselineTrackerState();
+}
+
+class _BaselineTrackerState extends State<BaselineTracker> {
+  BenchmarkTrackerView? _view;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final service = BenchmarkTrackerReadService.instance;
+    if (service.isBridgeOnly) {
+      _view = service.bridgeView();
+    } else {
+      _loading = true;
+      _load();
+    }
+  }
+
+  Future<void> _load() async {
+    BenchmarkTrackerView? view;
+    try {
+      view = await BenchmarkTrackerReadService.instance.load();
+    } catch (_) {
+      view = null;
+    }
+    if (!mounted) return;
+    setState(() {
+      _view = view;
+      _loading = false;
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('60 Day Benchmark', style: AppTextStyles.display20()),
-              ],
-            ),
-          ),
-
+    final view = _view;
+    return FadingHeaderShell(
+      header: AppScreenHeader(
+        title: '60 Day Benchmark',
+        bottom: view == null
+            ? null
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: AppHeaderStat(
+                    label: 'TOTAL COVERS LAST 60 DAYS',
+                    value: view.historicalTotalCoversTracked.toString(),
+                  ),
+                ),
+              ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           // Manager override banner — only shown when active
-          if (BaselineData.hasManagerOverride) _OverrideBanner(),
+          if (_loading && view == null)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: LinearProgressIndicator(minHeight: 2),
+            )
+          else if (view == null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: Text(
+                'Benchmark evidence unavailable',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            )
+          else if (view.hasManagerOverride)
+            _OverrideBanner(selectedCount: view.selectedShiftCount),
 
-          // Summary cards — unchanged, readable at a glance
-          _SummaryCards(),
+          // TOTAL COVERS LAST 60 DAYS now lives in the screen header
+          // bottom slot — see AppHeaderStat above. Card removed from the
+          // body to stop duplicating the same number.
 
           const SizedBox(height: 8),
 
           // CPLH range bar — replaces 60-day line chart
-          _CplhRangeBar(),
+          if (view != null) _SectionLabel('CPLH RANGE & TARGET'),
+          if (view != null) _CplhRangeBar(graph: view.rangeGraphModel),
 
           const SizedBox(height: 8),
 
           // Daypart breakdown
-          _SectionLabel('DAYPART BREAKDOWN'),
-          DaypartTable(dayparts: BaselineData.daypartRanges),
+          if (view != null) _SectionLabel('DAYPART BREAKDOWN'),
+          if (view != null) DaypartTable(dayparts: view.daypartRanges),
 
           // Baseline targets
           _SectionLabel('TARGETS DERIVED FROM BENCHMARK'),
           _BaselineTargetsCard(),
 
           const SizedBox(height: 24),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -107,11 +166,11 @@ class _SectionLabel extends StatelessWidget {
 // ─── Override banner ───────────────────────────────────────────────────────────
 
 class _OverrideBanner extends StatelessWidget {
-  const _OverrideBanner();
+  final int selectedCount;
+  const _OverrideBanner({required this.selectedCount});
 
   @override
   Widget build(BuildContext context) {
-    final count = BaselineData.selectedRecordCount;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -134,7 +193,7 @@ class _OverrideBanner extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '$count STAR SHIFTS SELECTED',
+                  '$selectedCount STAR SHIFTS SELECTED',
                   style: AppTextStyles.mono10(
                       color: AppColors.textSecondary),
                 ),
@@ -147,46 +206,29 @@ class _OverrideBanner extends StatelessWidget {
   }
 }
 
-class _SummaryCards extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final cards = [
-      ('TOTAL COVERS LAST 60 DAYS', BaselineData.historicalTotalCoversTracked.toString()),
-    ];
-
-    final card = cards.first;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundMid,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(card.$1, style: AppTextStyles.mono7()),
-            const SizedBox(height: 6),
-            Text(card.$2,
-                style: AppTextStyles.mono16(color: AppColors.textPrimary)),
-          ],
-        ),
-      ),
-    );
-  }
-
-}
+// _SummaryCards removed — TOTAL COVERS LAST 60 DAYS is now surfaced in
+// the screen header bottom slot via AppHeaderStat instead of in a
+// dedicated card. Same data, single source of truth in the UI.
 
 class _CplhRangeBar extends StatelessWidget {
-  const _CplhRangeBar();
+  final BaselineRangeGraphModel graph;
+
+  const _CplhRangeBar({required this.graph});
 
   @override
   Widget build(BuildContext context) {
-    final graph      = BaselineData.rangeGraphModel;
-    final validation = BaselineData.baselineRangeValidation;
-    final badgeColor = validation.showWarning ? AppColors.warning : AppColors.positive;
+    // 7.55p.5h: badge colour and box opacity come from the honest
+    // `isDegenerate` flag + normalized `qualityTier`. `isDegenerate` is
+    // the single truth signal for whether the graph should teach
+    // precision.
+    final badgeColor =
+        graph.isDegenerate ? AppColors.warning : AppColors.positive;
+    final innerBoxColor = graph.isDegenerate
+        ? AppColors.shimmer.withValues(alpha: 0.35)
+        : AppColors.shimmer;
+    final innerBoxBorder = graph.isDegenerate
+        ? AppColors.warning.withValues(alpha: 0.55)
+        : AppColors.borderSubtle;
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -202,10 +244,6 @@ class _CplhRangeBar extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(graph.title,
-              style: AppTextStyles.mono11(color: AppColors.textSecondary)),
-          const SizedBox(height: 18),
-
           // Endpoint labels — full-width row, float above the line endpoints
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -283,7 +321,8 @@ class _CplhRangeBar extends StatelessWidget {
                       ),
                     ),
 
-                    // Highlighted range region — green-bordered box over the line
+                    // Highlighted range region — dimmed in degenerate states
+                    // so it does not read as confident OPZ truth (7.55p.5h).
                     Positioned(
                       left: opzLeft,
                       top: opzBoxTop,
@@ -291,9 +330,9 @@ class _CplhRangeBar extends StatelessWidget {
                         width: opzW,
                         height: opzBoxH,
                         decoration: BoxDecoration(
-                          color: AppColors.shimmer,
+                          color: innerBoxColor,
                           border: Border.all(
-                            color: AppColors.borderSubtle,
+                            color: innerBoxBorder,
                             width: 1,
                           ),
                         ),
@@ -385,7 +424,7 @@ class _CplhRangeBar extends StatelessWidget {
           Container(height: 1, color: AppColors.borderSubtle),
           const SizedBox(height: 16),
 
-          // Explanation block
+          // Explanation block (7.55p.5h honest badge + optional fallback copy)
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -395,14 +434,29 @@ class _CplhRangeBar extends StatelessWidget {
                   color: badgeColor.withValues(alpha: 0.12),
                   border: Border.all(color: badgeColor, width: 1),
                 ),
-                child: Text(validation.statusLabel,
+                child: Text(graph.statusBadgeLabel,
                     style: AppTextStyles.mono8(color: badgeColor)),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: Text(
-                  graph.recommendedExplanation,
-                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      graph.recommendedExplanation,
+                      style:
+                          AppTextStyles.body13(color: AppColors.textSecondary),
+                    ),
+                    if (graph.degenerateFallbackMessage != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        graph.degenerateFallbackMessage!,
+                        style:
+                            AppTextStyles.body13(color: AppColors.textMuted),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ],
@@ -457,14 +511,68 @@ class _CplhRangeBar extends StatelessWidget {
 class _BaselineTargetsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    // Resolve wage rates from the persisted profile. The profile now carries
-    // wages synced from wage authority (via WageStandardContextService).
-    // The MeridianConfig guard only fires if the profile hasn't loaded yet.
-    final profile =
-        context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    // Phase 7.55p.5: Resolve all target-authority fields from the persisted
+    // ActiveTargetProfile wherever available. This is the same runtime target
+    // authority used by Shift, Variance, and downstream surfaces.
+    //
+    // Bridge fallbacks are test-only. In production, missing profile state
+    // degrades honestly above instead of silently reusing BaselineData.
+    // The graph/range-quality source stays separate because it represents
+    // selection-context truth, not runtime target authority.
+    final profile = context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    final useBridgeFallbacks = BenchmarkTrackerReadService.instance.isBridgeOnly;
+
+    if (profile == null && !useBridgeFallbacks) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundMid,
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+        ),
+        child: Text(
+          'Benchmark target profile unavailable',
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      );
+    }
+
+    // Wages
     final fohWage = profile?.fohWage ?? MeridianConfig.fohWage;
     final bohWage = profile?.bohWage ?? MeridianConfig.bohWage;
-    final blendedWage = _targetBlendedWage(fohWage, bohWage);
+
+    // 7.55q.3: blended wage is a Benchmark-owned target metric. Read it
+    // from the shared `ActiveTargetProfile.targetBlendedWage` seam (the
+    // same seam Variance WTD now consumes via
+    // `WeekData.theoreticalBlendedWage`) so Benchmark and WTD cannot
+    // drift on the same active target state. The fallback path is only
+    // exercised in bridge-only tests.
+    final blendedWage = profile?.targetBlendedWage ??
+        ActiveTargetProfile.computeTargetBlendedWage(
+          targetCPLH: BaselineData.derivedTargetCPLH,
+          targetSPLH: BaselineData.derivedTargetSPLH,
+          targetPPA: BaselineData.derivedTargetPPA,
+          fohWage: fohWage,
+          bohWage: bohWage,
+        );
+
+    // OPZ bounds — from persisted profile (locked on TargetCycle)
+    final opzFloor = profile?.opzFloorCPLH ?? BaselineData.opzFloorCPLH;
+    final opzCeiling = profile?.opzCeilingCPLH ?? BaselineData.opzCeilingCPLH;
+    final targetCPLH = profile?.targetCPLH ?? BaselineData.derivedTargetCPLH;
+    final headroom = opzCeiling - targetCPLH;
+
+    // Target inputs — from persisted profile
+    final targetSPLH = profile?.targetSPLH ?? BaselineData.derivedTargetSPLH;
+    final targetPPA = profile?.targetPPA ?? BaselineData.derivedTargetPPA;
+
+    // Theoretical output — FOH, BOH, and total from persisted profile
+    final fohTheoreticalPct = profile?.theoreticalFohLaborPct
+        ?? BaselineData.derivedFohTheoreticalLaborPct;
+    final bohTheoreticalPct = profile?.theoreticalBohLaborPct
+        ?? BaselineData.derivedBohTheoreticalLaborPct;
+    final totalTheoreticalPct = profile?.theoreticalLaborPct
+        ?? BaselineData.derivedTheoreticalLaborPct;
 
     // Grouped in preferred product order: wage → OPZ → inputs → output
     final groups = <(String, List<(String, String)>)>[
@@ -474,20 +582,19 @@ class _BaselineTargetsCard extends StatelessWidget {
         ('BLENDED WAGE', '\$${blendedWage.toStringAsFixed(2)}'),
       ]),
       ('OPZ RANGE', [
-        ('OPZ FLOOR', BaselineData.opzFloorCPLH.toStringAsFixed(2)),
-        ('OPZ CEILING', BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
-        ('HEADROOM', BaselineData.opzHeadroomCPLH.toStringAsFixed(2)),
+        ('OPZ FLOOR', opzFloor.toStringAsFixed(2)),
+        ('OPZ CEILING', opzCeiling.toStringAsFixed(2)),
+        ('HEADROOM', headroom.toStringAsFixed(2)),
       ]),
       ('TARGET INPUTS', [
-        ('CPLH', BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
-        ('SPLH', '\$${BaselineData.derivedTargetSPLH.toStringAsFixed(0)}'),
-        ('PPA', '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'),
+        ('CPLH', targetCPLH.toStringAsFixed(2)),
+        ('SPLH', '\$${targetSPLH.toStringAsFixed(0)}'),
+        ('PPA', '\$${targetPPA.toStringAsFixed(2)}'),
       ]),
       ('THEORETICAL OUTPUT', [
-        (
-          'THEORETICAL LABOR %',
-          '${BaselineData.derivedTheoreticalLaborPct.toStringAsFixed(1)}%'
-        ),
+        ('FOH THEORETICAL %', '${fohTheoreticalPct.toStringAsFixed(1)}%'),
+        ('BOH THEORETICAL %', '${bohTheoreticalPct.toStringAsFixed(1)}%'),
+        ('TOTAL THEORETICAL %', '${totalTheoreticalPct.toStringAsFixed(1)}%'),
       ]),
     ];
 
@@ -533,19 +640,10 @@ class _BaselineTargetsCard extends StatelessWidget {
   }
 }
 
-/// Derives the target blended wage from current baseline demand and target
-/// standards. Not stored — always computed from the FOH/BOH model-hour mix.
-double _targetBlendedWage(double fohWage, double bohWage) {
-  final fohHours = LaborModel.modelFohHours(
-    BaselineData.historicalWeeklyAvgCovers,
-    BaselineData.derivedTargetCPLH,
-  );
-  final bohHours = LaborModel.modelBohHoursFromSales(
-    BaselineData.historicalWeeklyAvgCovers * BaselineData.derivedTargetPPA,
-    BaselineData.derivedTargetSPLH,
-  );
-  final total = fohHours + bohHours;
-  return total > 0
-      ? (fohHours * fohWage + bohHours * bohWage) / total
-      : 0.0;
-}
+// 7.55q.3: the local `_targetBlendedWage(...)` helper that previously
+// derived blended wage from `BaselineData.historicalWeeklyAvgCovers`
+// and the target rate inputs is gone. Benchmark now reads
+// `profile.targetBlendedWage` (or the cover-independent
+// `ActiveTargetProfile.computeTargetBlendedWage(...)` static formula
+// as a config-default fallback) — the same shared seam consumed by
+// Variance WTD so the two surfaces cannot drift.

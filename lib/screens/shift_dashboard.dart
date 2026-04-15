@@ -6,7 +6,10 @@ import '../theme/app_theme.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/restaurant_scope_notifier.dart';
 import '../data/shift_dashboard_notifier.dart';
+import '../models/current_state_freshness.dart';
 import '../models/shift_dashboard_read_model.dart';
+import '../utils/formatters.dart';
+import '../widgets/app_screen_header.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
 import '../widgets/sales_forecast_card.dart';
@@ -32,158 +35,155 @@ class ShiftDashboard extends StatelessWidget {
         }
         final rm = notifier.readModel;
         if (rm == null) {
-          return _ShiftEmptyState(
-            headline: notifier.status?.label ?? 'NO LIVE SHIFT',
-            body: notifier.status?.description ??
-                'No open or projected shift is available.',
-            timestamp: notifier.status?.latestImportTimestamp,
+          return RefreshIndicator(
+            color: AppColors.sunset,
+            onRefresh: () => notifier.refresh(),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  child: _ShiftEmptyState(
+                    headline: notifier.lockedPlanUnavailable
+                        ? 'LOCKED PLAN UNAVAILABLE'
+                        : notifier.status?.label ?? 'NO LIVE SHIFT',
+                    body: notifier.lockedPlanUnavailable
+                        ? 'No locked weekly plan is available for the current week.'
+                        : notifier.status?.description ??
+                            'No open or projected shift is available.',
+                    timestamp: notifier.status?.latestImportTimestamp,
+                  ),
+                ),
+              ],
+            ),
           );
         }
-        return CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(child: _ShiftHeader(readModel: rm)),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: _SectionHeader(label: 'SHIFT OUTPUTS'),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: _OutputsSection(readModel: rm),
-            ),
-            SliverToBoxAdapter(
-              child: _InputsSection(readModel: rm),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _SectionHeader(label: 'FOH PRODUCTIVITY'),
-                    ZoneStatusCard(
-                      currentCPLH: rm.actualCPLH,
-                      opzFloorCPLH: rm.opzFloorCPLH,
-                      opzCeilingCPLH: rm.opzCeilingCPLH,
-                      targetCPLH: rm.targetCPLH,
-                      opzStatus: rm.opzStatus,
-                      opzLabel: rm.opzLabel,
-                      opzSubLabel: rm.opzSubLabel,
-                    ),
-                  ],
+        return FadingHeaderShell(
+          header: _ShiftHeader(
+            readModel: rm,
+            freshness: notifier.freshness,
+          ),
+          child: RefreshIndicator(
+            color: AppColors.sunset,
+            onRefresh: () => notifier.refresh(),
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _SectionHeader(label: 'SHIFT OUTPUTS'),
                 ),
               ),
+              SliverToBoxAdapter(
+                child: _OutputsSection(readModel: rm),
+              ),
+              SliverToBoxAdapter(
+                child: _InputsSection(readModel: rm),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _SectionHeader(label: 'FOH PRODUCTIVITY'),
+                      ZoneStatusCard(
+                        currentCPLH: rm.actualCPLH,
+                        opzFloorCPLH: rm.opzFloorCPLH,
+                        opzCeilingCPLH: rm.opzCeilingCPLH,
+                        targetCPLH: rm.targetCPLH,
+                        opzStatus: rm.opzStatus,
+                        opzLabel: rm.opzLabel,
+                        opzSubLabel: rm.opzSubLabel,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // PRIMARY DRIVER teaching section hidden (Phase 10.5).
+              // The lever IS computed in the read model (drives the DRIVER
+              // badge on metric cards), but the full teaching takeaway is
+              // deferred until Shift is daypart-live. Showing a whole-day
+              // aggregate lever as a current-service-period teaching signal
+              // would be misleading. See phase_7_55m_4 audit doc.
+              const SliverToBoxAdapter(child: SizedBox(height: 48)),
+            ],
             ),
-            // PRIMARY DRIVER teaching section hidden (Phase 10.5).
-            // The lever IS computed in the read model (drives the DRIVER
-            // badge on metric cards), but the full teaching takeaway is
-            // deferred until Shift is daypart-live. Showing a whole-day
-            // aggregate lever as a current-service-period teaching signal
-            // would be misleading. See phase_7_55m_4 audit doc.
-            // SliverToBoxAdapter(
-            //   child: Padding(
-            //     padding: const EdgeInsets.symmetric(horizontal: 16),
-            //     child: Column(
-            //       crossAxisAlignment: CrossAxisAlignment.start,
-            //       children: [
-            //         _SectionHeaderWithIcon(
-            //           label: 'PRIMARY DRIVER',
-            //           icon: Icons.lightbulb_outline,
-            //         ),
-            //         _TeachingTakeaway(lever: rm.primaryLeverCard),
-            //       ],
-            //     ),
-            //   ),
-            // ),
-            const SliverToBoxAdapter(child: SizedBox(height: 48)),
-          ],
+          ),
         );
       },
     );
   }
 }
 
-// ─── Header ──────────────────────────────────────────────────────────────────
+// ─── Header — unified app screen header with day · time meta row ─────────
 
 class _ShiftHeader extends StatelessWidget {
   final ShiftDashboardReadModel readModel;
-  const _ShiftHeader({required this.readModel});
+  final CurrentStateFreshness? freshness;
+  const _ShiftHeader({required this.readModel, this.freshness});
 
   @override
   Widget build(BuildContext context) {
     final restaurantName =
         context.watch<RestaurantScopeNotifier?>()?.restaurant?.displayName ??
             'Restaurant';
-    return Container(
-      padding: const EdgeInsets.fromLTRB(20, 32, 20, 22),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          stops: const [0.0, 0.6, 1.0],
-          colors: [
-            AppColors.backgroundDeep,
-            AppColors.shimmer.withValues(alpha: 0.3),
-            AppColors.backgroundDeep.withValues(alpha: 0.0),
-          ],
-        ),
+    return AppScreenHeader(
+      title: restaurantName,
+      bottom: _ShiftHeaderMeta(
+        day: readModel.day,
+        daypart: readModel.daypart,
+        freshness: freshness,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    );
+  }
+}
+
+/// Bottom-row meta for the Shift header: day · daypart on the left, live
+/// clock + optional freshness chip on the right. Lives in the same slot
+/// where Variance shows its TabBar so all four tabs match in height.
+class _ShiftHeaderMeta extends StatelessWidget {
+  final String day;
+  final String daypart;
+  final CurrentStateFreshness? freshness;
+  const _ShiftHeaderMeta({
+    required this.day,
+    required this.daypart,
+    this.freshness,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            restaurantName,
-            style: AppTextStyles.display36(color: AppColors.textPrimary),
+          // Left — day · daypart with sunset accent dot
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.sunset,
+              shape: BoxShape.circle,
+            ),
           ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.sunset.withValues(alpha: 0.14),
-                      AppColors.sunset.withValues(alpha: 0.06),
-                    ],
-                  ),
-                  border: Border.all(
-                      color: AppColors.sunset.withValues(alpha: 0.25),
-                      width: 1),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 6,
-                      height: 6,
-                      decoration: const BoxDecoration(
-                        color: AppColors.sunset,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      readModel.daypart.isEmpty
-                          ? readModel.day
-                          : '${readModel.daypart} \u00b7 ${readModel.day}',
-                      style:
-                          AppTextStyles.mono11(color: AppColors.sunsetDark),
-                    ),
-                  ],
-                ),
-              ),
-              // Phase 7.55m.3: header time is now a live wall clock,
-              // not static snapshot text. serviceElapsedLabel removed —
-              // real service-period tracking is Phase 10.5.
-              const _LiveClock(),
-            ],
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              daypart.isEmpty ? day : '$day \u00b7 $daypart',
+              style:
+                  AppTextStyles.mono12(color: AppColors.sunsetDark),
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
+          const Spacer(),
+          // Right — live clock + freshness chip
+          const _LiveClock(),
+          if (freshness != null) ...[
+            const SizedBox(width: 10),
+            _FreshnessLabel(freshness: freshness!),
+          ],
         ],
       ),
     );
@@ -234,9 +234,74 @@ class _LiveClockState extends State<_LiveClock> {
     final hour = _now.hour % 12 == 0 ? 12 : _now.hour % 12;
     final minute = _now.minute.toString().padLeft(2, '0');
     final amPm = _now.hour >= 12 ? 'PM' : 'AM';
-    return Text(
-      '$hour:$minute $amPm',
-      style: AppTextStyles.mono10(color: AppColors.textMuted),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$hour:$minute',
+          style: AppTextStyles.mono16(color: AppColors.textPrimary),
+        ),
+        const SizedBox(width: 4),
+        Text(
+          amPm,
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+// ─── Freshness label (7.55n.8) ──────────────────────────────────────────────
+
+/// Compact freshness indicator using the shared [CurrentStateFreshness] seam.
+///
+/// - [FreshnessState.live]: green dot + "Live"
+/// - [FreshnessState.updated]: amber dot + "Updated X min ago"
+/// - [FreshnessState.stale]: muted dot + "Updated X hr ago"
+/// - [FreshnessState.refreshing]: preserves prior age if available
+class _FreshnessLabel extends StatelessWidget {
+  final CurrentStateFreshness freshness;
+  const _FreshnessLabel({required this.freshness});
+
+  @override
+  Widget build(BuildContext context) {
+    final String label;
+    final Color dotColor;
+
+    switch (freshness.state) {
+      case FreshnessState.live:
+        label = 'Live';
+        dotColor = AppColors.positive;
+      case FreshnessState.updated:
+        final age = freshness.age;
+        label = age != null ? 'Updated ${Fmt.timeAgo(age)}' : 'Updated';
+        dotColor = AppColors.sunset;
+      case FreshnessState.stale:
+        final age = freshness.age;
+        label = age != null ? 'Updated ${Fmt.timeAgo(age)}' : 'Stale';
+        dotColor = AppColors.textMuted;
+      case FreshnessState.refreshing:
+        final age = freshness.age;
+        label = age != null ? 'Updated ${Fmt.timeAgo(age)}' : 'Refreshing';
+        dotColor = AppColors.textMuted;
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: dotColor,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+      ],
     );
   }
 }
@@ -599,7 +664,7 @@ class _LaborVarianceSection extends StatelessWidget {
         const SizedBox(height: 3),
         // Target reference
         Text(
-          'Target ${target.toStringAsFixed(1)}%',
+          'Theoretical ${target.toStringAsFixed(1)}%',
           style: AppTextStyles.mono10(color: AppColors.textMuted),
         ),
         const SizedBox(height: 8),

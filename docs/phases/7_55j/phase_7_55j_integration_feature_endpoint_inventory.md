@@ -29,14 +29,14 @@ After that, the next risk is integration underuse: connecting to a vendor but on
 
 - The full 7.55j inventory remains broader than the immediate next step.
 - The narrow checkpoint pulled forward from this phase is now complete:
-  - `docs/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
+  - `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 - It confirmed the preferred architecture for upcoming work:
   - app-owned service-period definitions
   - timestamp bucketing instead of depending on vendor-native dayparts
   - integration-first wage authority with an app-owned fallback generator
 - Continue the broader 7.55j feature-to-endpoint inventory after the retired `7.55i` lane (`7.55i.3a` was the last accepted slice).
 - 7.55j now includes a formal readiness gate:
-  - `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+  - `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - After `7.55j.2`, the sequence is:
   - `7.55j.gate`
   - `7.55l.0` through `7.55l.8`
@@ -200,13 +200,13 @@ Feature use:
 | Learn | closed historical actuals, timestamps for daypart mapping, source IDs | closed historical labor hours by time range, source IDs | optional context | evidence-backed repeatable wins (7.55k.6), visibility policy (7.55k.7) |
 | Data Audit | source ids, payload status | source ids, payload status | source ids, payload status | provenance, alignment proof |
 
-## 7.55k Daypart Evidence Addendum (updated after 7.55k.4–7.55k.7a)
+## 7.55k Daypart Evidence Addendum (updated after 7.55k.4â€“7.55k.7a)
 
 Phase 7.55k has now landed concrete evidence-backed evidence for Variance,
 History, and Learn. The original generic requirements in this section have been
 replaced with the proven downstream integration needs.
 
-Full detail: `docs/phases/7_55k/phase_7_55k_8_integration_implications.md`
+Full detail: `docs/archive/phases/7_55k/phase_7_55k_8_integration_implications.md`
 
 ### What 7.55k proved
 
@@ -263,7 +263,7 @@ If a vendor provides only full-day aggregates with no usable timestamps:
 
 - Whole-day Shift, Schedule, and Variance WTD still work
 - Daypart evidence (History benchmarks, Learn wins, Full Week daypart detail)
-  degrades or stays hidden — the app's interim visibility rules handle this
+  degrades or stays hidden â€” the app's interim visibility rules handle this
   correctly
 - Per-vendor vendor profiles should document whether daypart depth is available
 
@@ -290,9 +290,9 @@ If a vendor provides only full-day aggregates with no usable timestamps:
 
 ## 7.55j Work Breakdown
 
-### 7.55j.1 - Codebase Feature Inventory — COMPLETE
+### 7.55j.1 - Codebase Feature Inventory â€” COMPLETE
 
-**Output**: `docs/phases/7_55j/phase_7_55j_1_codebase_feature_inventory.md`
+**Output**: `docs/archive/phases/7_55j/phase_7_55j_1_codebase_feature_inventory.md`
 
 Covers 11 product surfaces: Benchmark/Manager Override, Schedule, Shift,
 Variance WTD, Variance History, History Pattern Analysis, Learn, Data
@@ -307,9 +307,9 @@ Also includes summary tables: BaselineData bridge reads (~61 reads across 9
 files), MeridianConfig bridge reads (~41 reads across 11 files), demo/replay
 dependencies (6 components), and architecture destination cross-reference map.
 
-### 7.55j.2 - Required Capability Matrix — COMPLETE
+### 7.55j.2 - Required Capability Matrix â€” COMPLETE
 
-**Output**: `docs/phases/7_55j/phase_7_55j_2_required_capability_matrix.md`
+**Output**: `docs/archive/phases/7_55j/phase_7_55j_2_required_capability_matrix.md`
 
 Covers all 11 product surfaces from 7.55j.1 with per-surface capability
 tables documenting: source system needed, required fields, freshness
@@ -322,9 +322,9 @@ capability check (7.55k dependency), TargetCycle/WeeklyPlanSnapshot
 dependency map, and minimum viable integration capability lists for POS,
 Labor, and Reservation.
 
-### 7.55j.gate - Integration Readiness Pressure Test — COMPLETE
+### 7.55j.gate - Integration Readiness Pressure Test â€” COMPLETE
 
-**Output**: `docs/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
+**Output**: `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 
 Gate verdict: **simple-swap integration ready: NO**.
 

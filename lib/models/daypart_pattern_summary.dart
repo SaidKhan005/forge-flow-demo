@@ -53,6 +53,7 @@ class DaypartPatternSummary {
   final double avgFohHours;
   final double avgBohHours;
   final double avgLaborPct;
+  final int avgLaborSampleCount;
   final double avgVariancePts;
 
   // ── Exemplar references ─────────────────────────────────────────────────
@@ -77,6 +78,7 @@ class DaypartPatternSummary {
     required this.avgFohHours,
     required this.avgBohHours,
     required this.avgLaborPct,
+    required this.avgLaborSampleCount,
     required this.avgVariancePts,
     required this.exemplarSourceShiftIds,
   });

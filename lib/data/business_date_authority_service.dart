@@ -15,11 +15,18 @@
 //
 // Phase 7.55m.1a: Day-ordering constants now delegate to the shared
 // CanonicalDayOrder source in lib/domain/canonical_day_order.dart.
+//
+// Phase 7.55n.2: Added resolveBusinessDate() runtime seam that composes
+// the active RestaurantTimingConfig with the shared BusinessDateResolver.
+// Does not collapse operational open-shift authority into the planning seam.
 
 import '../domain/canonical_day_order.dart';
+import '../domain/models/restaurant_timing_config.dart';
 import '../domain/repositories/shift_record_repository.dart';
+import '../domain/services/business_date_resolver.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'restaurant_timing_config_read_service.dart';
 
 class BusinessDateAuthorityService {
   BusinessDateAuthorityService._();
@@ -51,6 +58,49 @@ class BusinessDateAuthorityService {
     if (mockDate != null) return mockDate;
 
     return _shiftRepo.getLatestClosedBusinessDate(restaurantId);
+  }
+
+  // ── Business-date resolution from timing config ─────────────────────────
+
+  /// Resolves the business date for a restaurant-local [localTimestamp]
+  /// using the active restaurant's timing config.
+  ///
+  /// Returns null when the timing config is unavailable (no config seam
+  /// persisted for the active restaurant).
+  ///
+  /// Important: [localTimestamp] must already be expressed in
+  /// restaurant-local time. This method does not perform timezone
+  /// conversion.
+  ///
+  /// This is the shared runtime seam — it does NOT replace or modify the
+  /// planning-anchor resolution above. Planning-anchor and operational
+  /// business-date remain separate concerns.
+  Future<String?> resolveBusinessDate(DateTime localTimestamp) async {
+    final config =
+        await RestaurantTimingConfigReadService.instance.getActiveTimingConfig();
+    if (config == null) return null;
+
+    return BusinessDateResolver.resolve(
+      localTimestamp: localTimestamp,
+      businessDayStartLocalTime: config.businessDayStartLocalTime,
+    );
+  }
+
+  /// Resolves the business date for a restaurant-local [localTimestamp]
+  /// using an explicit [RestaurantTimingConfig].
+  ///
+  /// Use this when you already have the config and do not need to look it
+  /// up from the active restaurant.
+  ///
+  /// [localTimestamp] must already be expressed in restaurant-local time.
+  static String resolveBusinessDateFromConfig({
+    required DateTime localTimestamp,
+    required RestaurantTimingConfig config,
+  }) {
+    return BusinessDateResolver.resolve(
+      localTimestamp: localTimestamp,
+      businessDayStartLocalTime: config.businessDayStartLocalTime,
+    );
   }
 
   // ── Canonical day ordering ──────────────────────────────────────────────

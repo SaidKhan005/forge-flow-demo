@@ -22,7 +22,9 @@ class TargetSnapshot {
   /// The immutable version id locked for this snapshot.
   final String? targetProfileVersionId;
 
-  /// Source type: 'system_baseline' or 'manager_override'.
+  /// Source provenance locked from the active target profile at close time,
+  /// e.g. legacy labels such as 'system_baseline' / 'manager_override' or
+  /// cycle-era labels such as 'cycle_recommended' / 'cycle_manager_override'.
   final String? sourceType;
 
   // ── Rate targets ──────────────────────────────────────────────────────────

@@ -7,6 +7,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/shift_data_source.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/models/week_record.dart';
@@ -32,6 +33,11 @@ WeekData _makeWeekData({
   int wtdForecastCovers      = 0,
   int totalWeekForecastCovers = 0,
   String primaryLeverId = 'covers_down',
+  int? planFohHoursWtd,
+  int? planBohHoursWtd,
+  double? monthDollarImpact,
+  double? sixtyDayDollarImpact,
+  bool omitStoredLaborDollars = false,
   double? targetCPLH,
   double? targetSPLH,
   double? targetPPA,
@@ -53,6 +59,16 @@ WeekData _makeWeekData({
       wtdForecastCovers:       wtdForecastCovers,
       totalWeekForecastCovers: totalWeekForecastCovers,
       primaryLeverId:          primaryLeverId,
+      planFohHoursWtd:         planFohHoursWtd,
+      planBohHoursWtd:         planBohHoursWtd,
+      storedTotalFohLaborDollar: omitStoredLaborDollars
+          ? null
+          : totalFohHours * (targetFohWage ?? _testFohWage),
+      storedTotalBohLaborDollar: omitStoredLaborDollars
+          ? null
+          : totalBohHours * (targetBohWage ?? _testBohWage),
+      monthDollarImpact:       monthDollarImpact,
+      sixtyDayDollarImpact:    sixtyDayDollarImpact,
       targetCPLH:              targetCPLH ?? _testCPLH,
       targetSPLH:              targetSPLH ?? _testSPLH,
       targetPPA:               targetPPA ?? _testPPA,
@@ -184,7 +200,21 @@ void main() {
     test('zero inputs produce safe defaults, not NaN or division errors', () {
       final noSales = _makeWeekData(totalCovers: 0, totalSales: 0);
       expect(noSales.actualLaborPct, 0.0);
-      expect(noSales.theoreticalBlendedWage, 0.0);
+
+      // 7.55q.3: theoreticalBlendedWage now reads the cover-independent
+      // shared seam from ActiveTargetProfile, so zero `totalCovers` does
+      // NOT zero out the blended wage — it is computed from the rate
+      // inputs (CPLH/SPLH/PPA/wages) only. The seam is the same one
+      // Benchmark consumes; both surfaces show the same number.
+      final expectedBlendedWage = ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: _testCPLH,
+        targetSPLH: _testSPLH,
+        targetPPA: _testPPA,
+        fohWage: _testFohWage,
+        bohWage: _testBohWage,
+      );
+      expect(noSales.theoreticalBlendedWage,
+          closeTo(expectedBlendedWage, 0.001));
 
       final withHours = _makeWeekData(
         totalCovers: 0, totalSales: 0,
@@ -195,9 +225,25 @@ void main() {
       expect(_makeWeekData(totalCovers: 100, totalFohHours: 0).avgCPLH, 0.0);
       expect(_makeWeekData(totalCovers: 100, totalSales: 4179, totalBohHours: 0).avgSPLH, 0.0);
     });
+
+    test('7.55q.3: theoreticalBlendedWage returns 0.0 when target rate '
+        'inputs are non-positive (honest unavailable boundary)', () {
+      final noTargets = _makeWeekData(
+        totalCovers: 100, totalSales: 4179,
+        targetCPLH: 0.0,
+        targetSPLH: 0.0,
+      );
+      expect(noTargets.theoreticalBlendedWage, 0.0);
+    });
   });
 
-  group('WeekRecord — model formula replaces naive proration', () {
+  group('WeekRecord — target hours read preserved locked plan hours (7.55q.5)', () {
+    // 7.55q.5: `targetFohHours` / `targetBohHours` now read
+    // `lockedRequiredFohHours` / `lockedRequiredBohHours` — the
+    // preserved plan hours captured at close from the locked
+    // WeeklyPlanSnapshot. No more re-modeling from `totalCovers`
+    // (Drift 6).
+
     final record = WeekRecord(
       weekId: 'test-W12', weekLabel: 'Test',
       totalCovers: 1140, forecastCovers: 1200,
@@ -209,19 +255,36 @@ void main() {
       targetCPLH: derivedCPLH, targetSPLH: derivedSPLH,
       targetPPA: _testPPA,
       targetFohWage: _testFohWage, targetBohWage: _testBohWage,
+      // Preserved values intentionally NOT equal to the old model
+      // formula: `LaborModel.modelFohHours(1140, derivedCPLH)` would
+      // produce ~280 and `modelBohHours(1140, 41.79, derivedSPLH)`
+      // would produce ~265 — the stored fields are independent.
+      lockedRequiredFohHours: 263,
+      lockedRequiredBohHours: 268,
     );
 
-    test('target hours use model formula, not proration; variance/gap correct', () {
-      expect(record.targetFohHours, LaborModel.modelFohHours(1140, derivedCPLH));
-      expect(record.targetFohHours, isNot(MeridianConfig.requiredFohHours * 9 ~/ 14));
-      expect(record.targetBohHours, LaborModel.modelBohHours(1140, 41.79, derivedSPLH));
-      expect(record.targetBohHours, isNot(MeridianConfig.requiredBohHours * 9 ~/ 14));
+    test('target hours return the preserved stored fields exactly', () {
+      expect(record.targetFohHours, 263);
+      expect(record.targetBohHours, 268);
+      // Old drift path would have re-modeled these from totalCovers.
+      expect(record.targetFohHours,
+          isNot(LaborModel.modelFohHours(1140, derivedCPLH)));
+      expect(record.targetBohHours,
+          isNot(LaborModel.modelBohHours(1140, 41.79, derivedSPLH)));
+    });
+
+    test('existing laborPctVariance / dollarGap contract is intact', () {
       expect(record.laborPctVariance, greaterThan(0));
       expect(record.dollarGapAnnualized, record.dollarGap.abs() * 52);
       expect(record.isOverModel, isTrue);
     });
 
-    test('full week: targetFohHours = modelFohHours(totalCovers)', () {
+    test('preservedTargetFohHours / preservedTargetBohHours expose nullable values', () {
+      expect(record.preservedTargetFohHours, 263);
+      expect(record.preservedTargetBohHours, 268);
+    });
+
+    test('full-week record returns its preserved fields, not model formula', () {
       final fullWeek = WeekRecord(
         weekId: 'full', weekLabel: 'Full',
         totalCovers: 1200, forecastCovers: 1200,
@@ -233,8 +296,58 @@ void main() {
         targetCPLH: derivedCPLH, targetSPLH: derivedSPLH,
         targetPPA: _testPPA,
         targetFohWage: _testFohWage, targetBohWage: _testBohWage,
+        lockedRequiredFohHours: 259,
+        lockedRequiredBohHours: 273,
       );
-      expect(fullWeek.targetFohHours, LaborModel.modelFohHours(1200, derivedCPLH));
+      expect(fullWeek.targetFohHours, 259);
+      expect(fullWeek.targetBohHours, 273);
+    });
+
+    test('legacy record without preserved fields: getters throw StateError', () {
+      final legacy = WeekRecord(
+        weekId: 'legacy', weekLabel: 'Legacy',
+        totalCovers: 1200, forecastCovers: 1200,
+        totalFohHours: 262, totalBohHours: 278,
+        avgPPA: 41.79, avgCPLH: 4.58,
+        theoreticalLaborPct: 20.48, actualLaborPct: 20.48,
+        dollarGap: 0.0, primaryLeverId: 'covers_down',
+        targetCPLH: derivedCPLH, targetSPLH: derivedSPLH,
+        targetPPA: _testPPA,
+        targetFohWage: _testFohWage, targetBohWage: _testBohWage,
+        // lockedRequiredFohHours / lockedRequiredBohHours intentionally absent
+      );
+      expect(legacy.preservedTargetFohHours, isNull);
+      expect(legacy.preservedTargetBohHours, isNull);
+      expect(() => legacy.targetFohHours, throwsA(isA<StateError>()));
+      expect(() => legacy.targetBohHours, throwsA(isA<StateError>()));
+    });
+
+    test('legacy rows without stored blended wage truth degrade honestly', () {
+      final legacy = WeekRecord.fromMap({
+        'week_id': 'legacy-wage-gap',
+        'week_label': 'Legacy Wage Gap',
+        'total_covers': 1200,
+        'forecast_covers': 1200,
+        'total_foh_hours': 262,
+        'total_boh_hours': 278,
+        'avg_ppa': 41.79,
+        'avg_cplh': 4.58,
+        'theoretical_labor_pct': 20.48,
+        'actual_labor_pct': 20.48,
+        'dollar_gap': 0.0,
+        'primary_lever_id': 'covers_down',
+        'target_cplh': derivedCPLH,
+        'target_splh': derivedSPLH,
+        'target_ppa': _testPPA,
+        'target_foh_wage': _testFohWage,
+        'target_boh_wage': _testBohWage,
+        'locked_required_foh_hours': 259,
+        'locked_required_boh_hours': 273,
+      });
+
+      expect(legacy.hasActualBlendedWageTruth, isFalse);
+      expect(legacy.blendedFohWage, 0.0);
+      expect(legacy.blendedBohWage, 0.0);
     });
   });
 
@@ -293,6 +406,177 @@ void main() {
         theoreticalFohLaborPct: 10.0, theoreticalBohLaborPct: 10.0,
       );
       expect(makeWithPPA(35.0).modelBohHours, makeWithPPA(55.0).modelBohHours);
+    });
+  });
+
+  // ── Plan-aligned WTD target hours (Phase 7.55p.2) ──────────────────────
+
+  group('WeekData plan-aligned target hours', () {
+    test('targetFohHoursWtd uses plan hours when provided', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 110, totalBohHours: 115,
+        planFohHoursWtd: 100,
+        planBohHoursWtd: 105,
+      );
+      expect(data.targetFohHoursWtd, 100);
+      expect(data.targetBohHoursWtd, 105);
+      // Model hours still compute from actual volume
+      expect(data.modelFohHoursWtd, LaborModel.modelFohHours(500, _testCPLH));
+      expect(data.targetFohHoursWtd, isNot(data.modelFohHoursWtd));
+    });
+
+    test('targetFohHoursWtd degrades honestly when no locked plan exists', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 110, totalBohHours: 115,
+      );
+      expect(data.planFohHoursWtd, isNull);
+      expect(data.planBohHoursWtd, isNull);
+      expect(data.targetFohHoursWtd, isNull);
+      expect(data.targetBohHoursWtd, isNull);
+      expect(data.modelFohHoursWtd, LaborModel.modelFohHours(500, _testCPLH));
+      expect(data.modelBohHoursWtd, LaborModel.modelBohHours(500, 41.79, _testSPLH));
+    });
+
+    test('7.55q.3: theoreticalBlendedWage is INDEPENDENT of plan hours '
+        'WTD — reads the shared benchmark seam, not plan-hour mix', () {
+      // The seam is purely a function of the rate inputs
+      // (CPLH/SPLH/PPA/wages). Plan hours WTD must not move it.
+      const fohWage = 16.50;
+      const bohWage = 21.35;
+      final withPlan = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        planFohHoursWtd: 100,
+        planBohHoursWtd: 50,
+        targetFohWage: fohWage,
+        targetBohWage: bohWage,
+      );
+      final withDifferentPlan = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        planFohHoursWtd: 250, // wildly different mix
+        planBohHoursWtd: 25,
+        targetFohWage: fohWage,
+        targetBohWage: bohWage,
+      );
+      final withoutPlan = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        targetFohWage: fohWage,
+        targetBohWage: bohWage,
+      );
+
+      // All three must equal the canonical shared-seam value.
+      final expected = ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: _testCPLH,
+        targetSPLH: _testSPLH,
+        targetPPA: _testPPA,
+        fohWage: fohWage,
+        bohWage: bohWage,
+      );
+      expect(withPlan.theoreticalBlendedWage, closeTo(expected, 0.001));
+      expect(withDifferentPlan.theoreticalBlendedWage,
+          closeTo(expected, 0.001));
+      expect(withoutPlan.theoreticalBlendedWage,
+          closeTo(expected, 0.001));
+    });
+
+    test('7.55q.3: theoreticalBlendedWage matches the canonical formula '
+        '(equals (fohWage/CPLH + PPA*bohWage/SPLH) / (1/CPLH + PPA/SPLH))',
+        () {
+      const fohWage = 16.50;
+      const bohWage = 21.35;
+      const cplh = 4.5;
+      const splh = 180.0;
+      const ppa = 42.0;
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        targetCPLH: cplh, targetSPLH: splh, targetPPA: ppa,
+        targetFohWage: fohWage,
+        targetBohWage: bohWage,
+      );
+      final fohHourBasis = 1.0 / cplh;
+      final bohHourBasis = ppa / splh;
+      final expected = (fohHourBasis * fohWage + bohHourBasis * bohWage) /
+          (fohHourBasis + bohHourBasis);
+      expect(data.theoreticalBlendedWage, closeTo(expected, 0.001));
+    });
+  });
+
+  // ── Dollar Impact accumulation model (Phase 7.55p.3) ──────────────────
+
+  group('Dollar Impact accumulation model', () {
+    test('week dollar impact uses closed-truth dollarGap, not run-rate', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 120, totalBohHours: 125,
+      );
+      // dollarGap is actual labor − model labor: closed-truth accumulation
+      final expectedGap = LaborModel.dollarGap(
+        data.totalLaborDollar, 500, data.avgPPA,
+        targetCPLH: _testCPLH, targetSPLH: _testSPLH,
+        fohWage: _testFohWage, bohWage: _testBohWage,
+      );
+      expect(data.dollarGap, closeTo(expectedGap, 0.01));
+      // dollarGapAnnualized is still weekly × 52 (old semantics, unchanged)
+      expect(data.dollarGapAnnualized, closeTo(data.dollarGap * 52, 0.01));
+    });
+
+    test('month accumulation is an optional field, null when not provided', () {
+      final data = _makeWeekData(totalCovers: 100, totalSales: 4179);
+      expect(data.monthDollarImpact, isNull);
+    });
+
+    test('month accumulation is passed through when provided', () {
+      final data = _makeWeekData(
+        totalCovers: 100, totalSales: 4179,
+        monthDollarImpact: -2500.0,
+      );
+      expect(data.monthDollarImpact, -2500.0);
+    });
+
+    test('60-day accumulation is an optional field, null when not provided', () {
+      final data = _makeWeekData(totalCovers: 100, totalSales: 4179);
+      expect(data.sixtyDayDollarImpact, isNull);
+    });
+
+    test('60-day accumulation is passed through when provided', () {
+      final data = _makeWeekData(
+        totalCovers: 100, totalSales: 4179,
+        sixtyDayDollarImpact: -5000.0,
+      );
+      expect(data.sixtyDayDollarImpact, -5000.0);
+    });
+
+    test('annualized derives from 60-day accumulation, not weekly × 52', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 120, totalBohHours: 125,
+        sixtyDayDollarImpact: -6000.0,
+      );
+      // Formula: (60-day / 60) × 365
+      final expected = -6000.0 * (365.0 / 60);
+      expect(data.annualizedDollarImpact, closeTo(expected, 0.01));
+      // Must NOT be weekly × 52
+      expect(data.annualizedDollarImpact, isNot(closeTo(data.dollarGap * 52, 0.01)));
+    });
+
+    test('annualized is null when 60-day is unavailable — no weekly × 52 fallback', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 120, totalBohHours: 125,
+      );
+      expect(data.sixtyDayDollarImpact, isNull);
+      expect(data.annualizedDollarImpact, isNull);
+    });
+
+    test('existing dollarGapAnnualized is unchanged (weekly × 52)', () {
+      final data = _makeWeekData(
+        totalCovers: 500, totalSales: 500 * 41.79,
+        totalFohHours: 120, totalBohHours: 125,
+        sixtyDayDollarImpact: -6000.0,
+      );
+      // dollarGapAnnualized stays as weekly × 52 for compatibility
+      expect(data.dollarGapAnnualized, closeTo(data.dollarGap * 52, 0.01));
     });
   });
 

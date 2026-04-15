@@ -31,12 +31,34 @@ class ShiftRecord {
   final int? scheduledBohHours;
 
   /// Actual FOH labor dollars from the labor system.
-  /// When absent, `fohLaborDollar` falls back to `fohHours × MeridianConfig.fohWage`.
+  /// When absent, consumers should prefer persisted percent/blended facts.
+  /// If no source-backed labor fact exists at all, the getters degrade
+  /// honestly to 0 instead of synthesizing config-wage truth.
   final double? storedFohLaborDollar;
 
   /// Actual BOH labor dollars from the labor system.
-  /// When absent, `bohLaborDollar` falls back to `bohHours × MeridianConfig.bohWage`.
+  /// When absent, consumers should prefer persisted percent/blended facts.
+  /// If no source-backed labor fact exists at all, the getters degrade
+  /// honestly to 0 instead of synthesizing config-wage truth.
   final double? storedBohLaborDollar;
+
+  /// Persisted actual FOH labor % from the source row.
+  /// Used when dollar facts are absent so percent-based consumers do not
+  /// silently synthesize config-wage truth.
+  final double? storedFohLaborPct;
+
+  /// Persisted actual BOH labor % from the source row.
+  final double? storedBohLaborPct;
+
+  /// Persisted actual total labor % from the source row.
+  /// Used by Benchmark candidate evidence and similar consumers before
+  /// any config-wage fallback is considered.
+  final double? storedTotalLaborPct;
+
+  /// Persisted blended wage from the source row.
+  /// Used when dollar facts are absent so blended-wage consumers do not
+  /// silently synthesize config-wage truth.
+  final double? storedBlendedWage;
 
   // ── Locked target fields (Phase 7.5b) ──────────────────────────────────
   final String? targetProfileId;
@@ -51,6 +73,12 @@ class ShiftRecord {
   final double? opzCeilingCPLH;
   final double? theoreticalFohLaborPct;
   final double? theoreticalBohLaborPct;
+
+  /// Snapshot-sourced blended wage for open/projected rows.
+  /// Populated from [OpenShiftSnapshot.blendedWage] via
+  /// [CurrentWeekState.shiftRecordFromSnapshot]. Null for closed rows
+  /// (which derive blended wage from actual labor dollars).
+  final double? snapshotBlendedWage;
 
   /// ISO 8601 date string for the business day of this shift (e.g. '2026-03-27').
   /// Nullable for backward compatibility with rows created before 7.55f.
@@ -82,6 +110,10 @@ class ShiftRecord {
     this.scheduledBohHours,
     this.storedFohLaborDollar,
     this.storedBohLaborDollar,
+    this.storedFohLaborPct,
+    this.storedBohLaborPct,
+    this.storedTotalLaborPct,
+    this.storedBlendedWage,
     this.targetProfileId,
     this.targetProfileVersionId,
     this.targetSourceType,
@@ -94,6 +126,7 @@ class ShiftRecord {
     this.opzCeilingCPLH,
     this.theoreticalFohLaborPct,
     this.theoreticalBohLaborPct,
+    this.snapshotBlendedWage,
     this.businessDate,
     this.sourceSystem,
     this.sourceShiftId,
@@ -103,27 +136,71 @@ class ShiftRecord {
 
   double get actualSales       => covers * ppa;
 
-  /// Actual FOH labor dollars: stored value when present, else hours × config wage.
-  double get fohLaborDollar    => storedFohLaborDollar ?? (fohHours * MeridianConfig.fohWage);
+  double? get _sourceBackedFohLaborDollar {
+    if (storedFohLaborDollar != null) return storedFohLaborDollar;
+    if (storedFohLaborPct != null && actualSales > 0) {
+      return actualSales * storedFohLaborPct! / 100;
+    }
+    return null;
+  }
 
-  /// Actual BOH labor dollars: stored value when present, else hours × config wage.
-  double get bohLaborDollar    => storedBohLaborDollar ?? (bohHours * MeridianConfig.bohWage);
+  double? get _sourceBackedBohLaborDollar {
+    if (storedBohLaborDollar != null) return storedBohLaborDollar;
+    if (storedBohLaborPct != null && actualSales > 0) {
+      return actualSales * storedBohLaborPct! / 100;
+    }
+    return null;
+  }
 
-  double get totalLaborDollar  => fohLaborDollar + bohLaborDollar;
+  double? get _sourceBackedTotalLaborDollar {
+    if (storedFohLaborDollar != null || storedBohLaborDollar != null) {
+      return (storedFohLaborDollar ?? 0) + (storedBohLaborDollar ?? 0);
+    }
+    if (storedTotalLaborPct != null && actualSales > 0) {
+      return actualSales * storedTotalLaborPct! / 100;
+    }
+    final totalHours = fohHours + bohHours;
+    if (storedBlendedWage != null && totalHours > 0) {
+      return storedBlendedWage! * totalHours;
+    }
+    final foh = _sourceBackedFohLaborDollar;
+    final boh = _sourceBackedBohLaborDollar;
+    if (foh != null || boh != null) {
+      return (foh ?? 0) + (boh ?? 0);
+    }
+    return null;
+  }
+
+  /// Actual FOH labor dollars: prefer persisted source facts and otherwise
+  /// degrade honestly to 0 rather than reconstructing config-wage truth.
+  double get fohLaborDollar => _sourceBackedFohLaborDollar ?? 0;
+
+  /// Actual BOH labor dollars: prefer persisted source facts and otherwise
+  /// degrade honestly to 0 rather than reconstructing config-wage truth.
+  double get bohLaborDollar => _sourceBackedBohLaborDollar ?? 0;
+
+  double get totalLaborDollar => _sourceBackedTotalLaborDollar ?? 0;
+
+  /// True when this row has source-backed total labor truth that can
+  /// support an actual labor % reading.
+  bool get hasSourceBackedTotalLaborPct =>
+      storedTotalLaborPct != null ||
+      (_sourceBackedTotalLaborDollar != null && actualSales > 0);
 
   // ── Labor % — derived from actual dollars and sales ───────────────────────
-  double get fohLaborPct   => actualSales > 0
-      ? fohLaborDollar  / actualSales * 100 : 0;
-  double get bohLaborPct   => actualSales > 0
-      ? bohLaborDollar  / actualSales * 100 : 0;
-  double get totalLaborPct => actualSales > 0
-      ? totalLaborDollar / actualSales * 100 : 0;
+  double get fohLaborPct => storedFohLaborPct ??
+      (actualSales > 0 ? fohLaborDollar / actualSales * 100 : 0);
+  double get bohLaborPct => storedBohLaborPct ??
+      (actualSales > 0 ? bohLaborDollar / actualSales * 100 : 0);
+  double get totalLaborPct => storedTotalLaborPct ??
+      (actualSales > 0 ? totalLaborDollar / actualSales * 100 : 0);
 
   // ── Variance — actual labor % vs theoretical ─────────────────────────────
   double get variancePts => totalLaborPct - theoreticalLaborPct;
 
   // ── Blended wage — total labor dollars / total hours ─────────────────────
   double get blendedWage {
+    if (storedBlendedWage != null) return storedBlendedWage!;
     final totalHours = fohHours + bohHours;
     return totalHours > 0 ? totalLaborDollar / totalHours : 0;
   }
@@ -202,6 +279,10 @@ class ShiftRecord {
       scheduledBohHours: scheduledBohHours,
       storedFohLaborDollar: storedFohLaborDollar,
       storedBohLaborDollar: storedBohLaborDollar,
+      storedFohLaborPct: storedFohLaborPct,
+      storedBohLaborPct: storedBohLaborPct,
+      storedTotalLaborPct: storedTotalLaborPct,
+      storedBlendedWage: storedBlendedWage,
       targetProfileId: targetProfileId ?? defaultTargetProfileId,
       targetProfileVersionId: targetProfileVersionId ?? defaultTargetProfileVersionId,
       targetSourceType: targetSourceType ?? defaultTargetSourceType,
@@ -214,6 +295,7 @@ class ShiftRecord {
       opzCeilingCPLH: opzCeilingCPLH ?? defaultOpzCeilingCPLH,
       theoreticalFohLaborPct: theoreticalFohLaborPct ?? defaultTheoreticalFohLaborPct,
       theoreticalBohLaborPct: theoreticalBohLaborPct ?? defaultTheoreticalBohLaborPct,
+      snapshotBlendedWage: snapshotBlendedWage,
       businessDate: businessDate,
       sourceSystem: sourceSystem,
       sourceShiftId: sourceShiftId,
@@ -247,12 +329,12 @@ class ShiftRecord {
         'ppa': ppa,
         'cplh': cplh,
         'splh': splh,
-        'blended_wage': blendedWage,
+        'blended_wage': storedBlendedWage ?? blendedWage,
         'foh_hours': fohHours,
         'boh_hours': bohHours,
-        'foh_labor_pct': fohLaborPct,
-        'boh_labor_pct': bohLaborPct,
-        'total_labor_pct': totalLaborPct,
+        'foh_labor_pct': storedFohLaborPct ?? fohLaborPct,
+        'boh_labor_pct': storedBohLaborPct ?? bohLaborPct,
+        'total_labor_pct': storedTotalLaborPct ?? totalLaborPct,
         'theoretical_labor_pct': theoreticalLaborPct,
         'variance_pts': variancePts,
         'primary_lever': primaryLever,
@@ -273,6 +355,7 @@ class ShiftRecord {
         'opz_ceiling_cplh': opzCeilingCPLH,
         'theoretical_foh_labor_pct': theoreticalFohLaborPct,
         'theoretical_boh_labor_pct': theoreticalBohLaborPct,
+        'snapshot_blended_wage': snapshotBlendedWage,
         'business_date': businessDate,
         'source_system': sourceSystem,
         'source_shift_id': sourceShiftId,
@@ -296,6 +379,10 @@ class ShiftRecord {
         primaryLever: m['primary_lever'] as String,
         scheduledFohHours: m['scheduled_foh_hours'] as int?,
         scheduledBohHours: m['scheduled_boh_hours'] as int?,
+        storedBlendedWage: (m['blended_wage'] as num?)?.toDouble(),
+        storedFohLaborPct: (m['foh_labor_pct'] as num?)?.toDouble(),
+        storedBohLaborPct: (m['boh_labor_pct'] as num?)?.toDouble(),
+        storedTotalLaborPct: (m['total_labor_pct'] as num?)?.toDouble(),
         storedFohLaborDollar: (m['foh_labor_dollar'] as num?)?.toDouble(),
         storedBohLaborDollar: (m['boh_labor_dollar'] as num?)?.toDouble(),
         targetProfileId: m['target_profile_id'] as String?,
@@ -310,6 +397,7 @@ class ShiftRecord {
         opzCeilingCPLH: (m['opz_ceiling_cplh'] as num?)?.toDouble(),
         theoreticalFohLaborPct: (m['theoretical_foh_labor_pct'] as num?)?.toDouble(),
         theoreticalBohLaborPct: (m['theoretical_boh_labor_pct'] as num?)?.toDouble(),
+        snapshotBlendedWage: (m['snapshot_blended_wage'] as num?)?.toDouble(),
         businessDate: m['business_date'] as String?,
         sourceSystem: m['source_system'] as String?,
         sourceShiftId: m['source_shift_id'] as String?,

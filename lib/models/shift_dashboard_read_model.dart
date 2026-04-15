@@ -58,8 +58,14 @@ class ShiftDashboardReadModel {
   final String opzSubLabel;
 
   // ── Whole-day labor % ───────────────────────────────────────────────────
+  // Planned labor package removed.
+  // - `targetLaborPct` now sources from `profile.theoreticalLaborPct`
+  //   (the current Benchmark target) via the constructor inputs below,
+  //   not from a planned-package formula.
+  // - `targetLaborDollars` was removed entirely — there is no honest
+  //   theoretical dollar form at whole-day scope, and no consumer
+  //   required it after `targetLaborPct` repointed to theoretical truth.
   final double actualLaborDollars;
-  final double targetLaborDollars;
   final double actualLaborPct;
   final double targetLaborPct;
   final double laborVariancePts;
@@ -103,7 +109,6 @@ class ShiftDashboardReadModel {
     required this.opzLabel,
     required this.opzSubLabel,
     required this.actualLaborDollars,
-    required this.targetLaborDollars,
     required this.actualLaborPct,
     required this.targetLaborPct,
     required this.laborVariancePts,
@@ -190,15 +195,21 @@ class ShiftDashboardReadModel {
     final actualTotalHours = actFoh + actBoh;
     final avgBlendedWage = actualTotalHours > 0 ? actualWageDollars / actualTotalHours : 0.0;
 
-    // Whole-day labor %: actual from closed+open hours × blended wage,
-    // target from SchedulePlan plan hours × profile wages.
+    // Whole-day labor %.
+    //
+    // The target side is now THEORETICAL labor % from the
+    // current Benchmark target object (profile.theoreticalLaborPct) —
+    // the same value Benchmark/Variance non-closed surfaces show.
+    // Previously this was a planned-package formula
+    // `(planFohHours × fohWage + planBohHours × bohWage) / forecastSales`,
+    // which we have killed (planned labor package is dead).
+    //
+    // The actual side stays as before: closed+open hours × blended wage
+    // ÷ closed+open sales × 100.
     final computedActualLaborDollars = actualWageDollars; // already weighted sum of wage × hours
-    final computedTargetLaborDollars =
-        planFohHours * profile.fohWage + planBohHours * profile.bohWage;
     final computedActualLaborPct =
         totalSales > 0 ? computedActualLaborDollars / totalSales * 100 : 0.0;
-    final computedTargetLaborPct =
-        forecastSales > 0 ? computedTargetLaborDollars / forecastSales * 100 : 0.0;
+    final computedTargetLaborPct = profile.theoreticalLaborPct;
     final computedLaborVariancePts = computedActualLaborPct - computedTargetLaborPct;
 
     // Primary lever — whole-day current-state scope.
@@ -285,7 +296,6 @@ class ShiftDashboardReadModel {
       opzLabel: opzLabel,
       opzSubLabel: opzSubLabel,
       actualLaborDollars: computedActualLaborDollars,
-      targetLaborDollars: computedTargetLaborDollars,
       actualLaborPct: computedActualLaborPct,
       targetLaborPct: computedTargetLaborPct,
       laborVariancePts: computedLaborVariancePts,
@@ -393,12 +403,12 @@ class ShiftDashboardReadModel {
         ? 'Below target'
         : (actualSPLH > profile.targetSPLH ? 'Above target' : 'On target');
 
-    // Blended wage target: from plan hour mix weighted by FOH/BOH wages
-    final wageTotalModelHours = planFohHours + planBohHours;
-    final targetBlendedWage = wageTotalModelHours > 0
-        ? (planFohHours * profile.fohWage + planBohHours * profile.bohWage) /
-            wageTotalModelHours
-        : 0.0;
+    // Target blended wage now sources from the shared benchmark seam
+    // benchmark seam (profile.targetBlendedWage) — the same value
+    // Benchmark and Variance show. The old planned-package-style
+    // derivation (`(planFohHours × fohWage + planBohHours × bohWage) /
+    // (planFohHours + planBohHours)`) is gone.
+    final targetBlendedWage = profile.targetBlendedWage;
     final wageDelta = blendedWage - targetBlendedWage;
     final wageUnfavorable = blendedWage > targetBlendedWage;
     final wageStatus = wageUnfavorable

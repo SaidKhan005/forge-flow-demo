@@ -130,6 +130,7 @@ class DaypartPatternSummaryBuilder {
     double sumBohHours = 0;
     double sumLaborPct = 0;
     double sumVariancePts = 0;
+    int laborSampleCount = 0;
 
     for (final s in shifts) {
       sumCovers += s.covers;
@@ -139,7 +140,10 @@ class DaypartPatternSummaryBuilder {
       sumSPLH += s.splh;
       sumFohHours += s.fohHours;
       sumBohHours += s.bohHours;
-      sumLaborPct += s.totalLaborPct;
+      if (s.hasSourceBackedTotalLaborPct) {
+        sumLaborPct += s.totalLaborPct;
+        laborSampleCount++;
+      }
       sumVariancePts += s.variancePts;
     }
 
@@ -205,7 +209,9 @@ class DaypartPatternSummaryBuilder {
       avgSPLH: count > 0 ? sumSPLH / count : 0,
       avgFohHours: count > 0 ? sumFohHours / count : 0,
       avgBohHours: count > 0 ? sumBohHours / count : 0,
-      avgLaborPct: count > 0 ? sumLaborPct / count : 0,
+      avgLaborPct:
+          laborSampleCount > 0 ? sumLaborPct / laborSampleCount : 0,
+      avgLaborSampleCount: laborSampleCount,
       avgVariancePts: count > 0 ? sumVariancePts / count : 0,
       exemplarSourceShiftIds: exemplarIds,
     );

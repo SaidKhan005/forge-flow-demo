@@ -14,13 +14,26 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:forge_and_flow/data/active_target_profile_notifier.dart';
+import 'package:forge_and_flow/data/benchmark_tracker_read_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/screens/baseline_tracker.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/widgets/zone_status_card.dart';
 
 void main() {
+  setUpAll(() {
+    BenchmarkTrackerReadService.enableBridgeOnly();
+  });
+
+  tearDownAll(() {
+    BenchmarkTrackerReadService.disableBridgeOnly();
+  });
+
   // ── A. BaselineData OPZ validation ————————————————————————————————————————
 
   group('A. BaselineData OPZ validation', () {
@@ -73,7 +86,7 @@ void main() {
   group('B. ScheduleForecastNotifier uses injected active-target values', () {
     late ScheduleForecastNotifier notifier;
 
-    const testCPLH = 4.75;
+    const testCPLH = 6.25;
     const testPPA = 43.0;
     const testSPLH = 185.0;
     const testFohWage = 17.00;
@@ -85,6 +98,7 @@ void main() {
         targetSPLH: testSPLH,
         fohWage: testFohWage,
         bohWage: testBohWage,
+        historicalWeeklyAvgCovers: 1200,
       );
     });
 
@@ -105,8 +119,19 @@ void main() {
 
       // Labor %
       expect(notifier.plan, isNotNull);
+      final expectedTheoreticalPct = LaborModel.theoreticalLaborPct(
+        testCPLH,
+        testSPLH,
+        testPPA,
+        testFohWage,
+        testBohWage,
+      );
       expect(notifier.theoreticalLaborPct,
-          closeTo(notifier.plan!.theoreticalLaborPct, 0.0001));
+          closeTo(expectedTheoreticalPct, 0.0001));
+      expect(notifier.theoreticalLaborPct,
+          isNot(closeTo(notifier.plan!.theoreticalLaborPct, 0.0001)),
+          reason: '7.55q.8: weekly theoretical % is benchmark-owned, not '
+              'the rounded plan-carried projection');
 
       // FOH labor dollars
       expect(notifier.forecastedFohLaborDollar,
@@ -154,11 +179,11 @@ void main() {
       );
 
       expect(
-        find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(1)),
+        find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(2)),
         findsAtLeastNWidgets(1),
       );
       expect(
-        find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(1)),
+        find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
         findsAtLeastNWidgets(1),
       );
       expect(find.text(label), findsOneWidget);
@@ -177,8 +202,10 @@ void main() {
         const MaterialApp(home: BaselineTracker()),
       );
 
-      // CPLH TARGET appears twice: range bar title + target tick label
-      expect(find.text('CPLH TARGET'), findsWidgets);
+      // Graph title (7.55p.5: renamed to CPLH RANGE & TARGET)
+      expect(find.text('CPLH RANGE & TARGET'), findsOneWidget);
+      // CPLH TARGET tick label on the graph
+      expect(find.text('CPLH TARGET'), findsOneWidget);
       expect(find.text('TOTAL COVERS LAST 60 DAYS'), findsOneWidget);
       expect(find.text('WEEKLY AVG COVERS'), findsNothing);
       expect(find.text(BaselineData.historicalTotalCoversTracked.toString()), findsOneWidget);
@@ -193,8 +220,6 @@ void main() {
       expect(find.text(BaselineData.rangeGraphModel.displayRangeStartCPLH.toStringAsFixed(2)), findsWidgets);
       expect(find.text(BaselineData.rangeGraphModel.displayRangeEndCPLH.toStringAsFixed(2)), findsWidgets);
 
-      // CPLH TARGET appears twice: range bar title + target tick label
-      expect(find.text('CPLH TARGET'), findsWidgets);
       expect(find.text(BaselineData.rangeGraphModel.targetCPLH.toStringAsFixed(2)), findsWidgets);
       expect(find.text(BaselineData.baselineRangeValidation.statusLabel), findsWidgets);
       expect(find.text(BaselineData.rangeGraphModel.recommendedExplanation), findsOneWidget);
@@ -209,6 +234,12 @@ void main() {
       expect(find.text('BOH WAGE'), findsOneWidget);
       expect(find.text('BLENDED WAGE'), findsOneWidget);
 
+      // 7.55p.5a: theoretical output uses explicit "THEORETICAL" labels
+      // to avoid confusion with Shift's whole-day labor card reference line
+      expect(find.text('FOH THEORETICAL %'), findsOneWidget);
+      expect(find.text('BOH THEORETICAL %'), findsOneWidget);
+      expect(find.text('TOTAL THEORETICAL %'), findsOneWidget);
+
       // 2dp precision on targets card (7.55h)
       expect(find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(2)), findsWidgets);
       expect(find.text('\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'), findsOneWidget);
@@ -220,7 +251,6 @@ void main() {
       expect(find.text('RECOMMENDED TARGET — 60 DAY RANGE'), findsNothing);
       expect(find.text('CPLH RANGE — LAST 60 DAYS'), findsNothing);
       expect(find.text('OPZ BAND — TARGET POSITION'), findsNothing);
-      expect(find.text('OPZ RANGE'), findsNothing);
       expect(find.text('WORST'), findsNothing);
       expect(find.text('BEST'), findsNothing);
       expect(find.text('Below OPZ'), findsNothing);
@@ -288,9 +318,461 @@ void main() {
       }
       expect(m.activeRangeStartPosition, lessThanOrEqualTo(m.activeRangeEndPosition));
 
-      expect(m.title, equals('CPLH TARGET'));
+      expect(m.title, equals('CPLH RANGE & TARGET'));
       expect(m.recommendedExplanation, isNotEmpty);
       expect(m.overrideLabel, equals('CHOOSE STAR SHIFTS'));
+    });
+  });
+
+  // ── G. Profile-precedence on _BaselineTargetsCard (7.55p.5a) ──────────────
+
+  group('G. _BaselineTargetsCard prefers ActiveTargetProfile', () {
+    // Intentionally different from BaselineData values to prove precedence.
+    const testProfile = ActiveTargetProfile(
+      targetProfileId: 'test_profile',
+      restaurantId: 'test',
+      sourceType: 'system_baseline',
+      targetCPLH: 5.55,
+      targetSPLH: 199.0,
+      targetPPA: 38.50,
+      fohWage: 19.00,
+      bohWage: 24.00,
+      opzFloorCPLH: 4.80,
+      opzCeilingCPLH: 6.30,
+      theoreticalFohLaborPct: 9.2,
+      theoreticalBohLaborPct: 12.1,
+      theoreticalLaborPct: 21.3,
+      builtAt: '2026-04-13T00:00:00Z',
+    );
+
+    testWidgets('with profile: targets card shows profile values, not BaselineData',
+        (tester) async {
+      final notifier = ActiveTargetProfileNotifier.fromProfile(testProfile);
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(
+          value: notifier,
+          child: const MaterialApp(home: BaselineTracker()),
+        ),
+      );
+
+      // Profile target CPLH (5.55) should appear; BaselineData's should not
+      // dominate the targets card.
+      expect(find.text('5.55'), findsWidgets,
+          reason: 'profile targetCPLH should be displayed');
+
+      // Profile OPZ bounds
+      expect(find.text('4.80'), findsWidgets,
+          reason: 'profile opzFloorCPLH should be displayed');
+      expect(find.text('6.30'), findsWidgets,
+          reason: 'profile opzCeilingCPLH should be displayed');
+
+      // Profile wages
+      expect(find.text('\$19.00'), findsOneWidget,
+          reason: 'profile fohWage should be displayed');
+      expect(find.text('\$24.00'), findsOneWidget,
+          reason: 'profile bohWage should be displayed');
+
+      // Profile theoretical output — FOH / BOH / total
+      expect(find.text('9.2%'), findsOneWidget,
+          reason: 'profile FOH theoretical % should be displayed');
+      expect(find.text('12.1%'), findsOneWidget,
+          reason: 'profile BOH theoretical % should be displayed');
+      expect(find.text('21.3%'), findsOneWidget,
+          reason: 'profile TOTAL theoretical % should be displayed');
+
+      // Profile target PPA
+      expect(find.text('\$38.50'), findsOneWidget,
+          reason: 'profile targetPPA should be displayed');
+
+      notifier.dispose();
+    });
+
+    testWidgets('without profile: targets card falls back to BaselineData safely',
+        (tester) async {
+      // Mount without any provider — the card uses BaselineData fallbacks.
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      // Card renders without error.
+      expect(find.text('OPZ FLOOR'), findsOneWidget);
+      expect(find.text('OPZ CEILING'), findsOneWidget);
+      expect(find.text('TOTAL THEORETICAL %'), findsOneWidget);
+
+      // Values come from BaselineData fallbacks.
+      expect(find.text(BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
+    });
+  });
+
+  // ── H. Benchmark graph degenerate-state rendering (7.55p.5h) ──────────────
+  //
+  // The `_CplhRangeBar` widget should surface the honest fallback badge
+  // and copy when the recommendation service flags the cohort as
+  // insufficient or weak/wide. Healthy state should keep the existing
+  // GOOD OPZ RANGE badge.
+
+  group('H. Benchmark graph degenerate-state rendering (7.55p.5h)', () {
+    tearDown(() {
+      BaselineData.clearManagerOverride();
+      BaselineData.clearRecommendationSignals();
+    });
+
+    testWidgets(
+        'insufficient signals → RANGE UNCONFIRMED badge + honest fallback copy',
+        (tester) async {
+      BaselineData.clearManagerOverride();
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      expect(find.text('RANGE UNCONFIRMED'), findsOneWidget);
+      expect(
+          find.textContaining('Not enough recent 60-day evidence'),
+          findsOneWidget);
+      expect(
+          find.textContaining('Config Default range as a placeholder'),
+          findsOneWidget);
+      // The legacy GOOD OPZ RANGE badge must not leak through when
+      // recommendation signals say insufficient.
+      expect(find.text('GOOD OPZ RANGE'), findsNothing);
+
+      // 7.55p.5h-review-fix: the drawn target tick reflects the
+      // signal's Config Default placeholder (4.5), not the legacy
+      // seed-selected derivation (~4.58).
+      expect(find.text('4.50'), findsWidgets);
+    });
+
+    testWidgets(
+        'weak + wide union band → RANGE TOO WIDE TO TEACH badge + copy',
+        (tester) async {
+      BaselineData.clearManagerOverride();
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 1.40,
+          selectedShiftCount: 12,
+          rangeFloorCPLH: 3.8,
+          rangeCeilingCPLH: 5.2,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      expect(find.text('RANGE TOO WIDE TO TEACH'), findsOneWidget);
+      expect(find.textContaining('Dayparts'), findsOneWidget);
+      expect(
+          find.textContaining('Per-daypart benchmarks are coming'),
+          findsOneWidget);
+      // Stale manager-override copy must not leak through.
+      expect(
+          find.textContaining('Tighten to one clean standard'),
+          findsNothing);
+    });
+
+    testWidgets('weak + narrow union band → RANGE UNCERTAIN badge + copy',
+        (tester) async {
+      BaselineData.clearManagerOverride();
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 0.40,
+          selectedShiftCount: 4,
+          rangeFloorCPLH: 4.4,
+          rangeCeilingCPLH: 4.8,
+          targetCPLH: 4.6,
+        ),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      expect(find.text('RANGE UNCERTAIN'), findsOneWidget);
+      expect(
+          find.textContaining('did not meet the quality bar'),
+          findsOneWidget);
+      expect(
+          find.textContaining('recommendation improves as evidence builds'),
+          findsOneWidget);
+    });
+
+    testWidgets('strong signals → existing GOOD OPZ RANGE badge, no fallback',
+        (tester) async {
+      BaselineData.clearManagerOverride();
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'strong',
+          unionBandWidth: 0.60,
+          selectedShiftCount: 10,
+          rangeFloorCPLH: 4.30,
+          rangeCeilingCPLH: 4.90,
+          targetCPLH: 4.58,
+        ),
+      );
+
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      expect(find.text('GOOD OPZ RANGE'), findsOneWidget);
+      expect(find.text('RANGE UNCONFIRMED'), findsNothing);
+      expect(find.text('RANGE UNCERTAIN'), findsNothing);
+      expect(find.text('RANGE TOO WIDE TO TEACH'), findsNothing);
+    });
+
+    testWidgets('manager override wins — graph shows STAR SHIFT RANGE '
+        'and legacy badge even when insufficient signals linger',
+        (tester) async {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.2, splh: 176, ppa: 41, covers: 160,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.6, splh: 181, ppa: 44, covers: 240,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.9, splh: 183, ppa: 45, covers: 250,
+            isSelected: true),
+      ]);
+
+      await tester.pumpWidget(
+        const MaterialApp(home: BaselineTracker()),
+      );
+
+      // Manager-override copy / STAR SHIFT RANGE inner label remain.
+      expect(find.text('STAR SHIFT RANGE'), findsOneWidget);
+      expect(find.text('GOOD OPZ RANGE'), findsOneWidget);
+      // Recommendation-signal badges must not fire in manager-override mode.
+      expect(find.text('RANGE UNCONFIRMED'), findsNothing);
+      expect(find.text('RANGE UNCERTAIN'), findsNothing);
+      expect(find.text('RANGE TOO WIDE TO TEACH'), findsNothing);
+    });
+  });
+
+  // ── D. Shared blended-wage seam (7.55q.3) ────────────────────────────────
+  //
+  // Drift 2 + Drift 3 fix from 7.55q.1: blended wage is a Benchmark-owned
+  // target metric. There must be ONE shared seam at the active-target
+  // boundary; Benchmark and Variance WTD must read that same seam and
+  // produce the same number for the same active target state.
+  //
+  //   D1. The static seam is cover-independent (matches the cancellation
+  //       proof in the phase doc).
+  //   D2. The profile getter wraps the static seam.
+  //   D3. WeekData.theoreticalBlendedWage delegates to the same seam
+  //       (no per-surface drift for the same target inputs).
+  //   D4. Same active target state → Benchmark and WTD blended wage
+  //       agree numerically.
+  //   D5. Honest zero-input boundary returns 0.0 (no NaN / divide-by-zero).
+
+  group('D. 7.55q.3 — shared benchmark blended-wage seam', () {
+    const fohWage = 16.50;
+    const bohWage = 21.35;
+    const cplh = 4.5;
+    const splh = 180.0;
+    const ppa = 42.0;
+
+    test('D1: static seam is cover-independent — pure function of '
+        'CPLH/SPLH/PPA/wages, no demand input', () {
+      final fohHourBasis = 1.0 / cplh;
+      final bohHourBasis = ppa / splh;
+      final expected = (fohHourBasis * fohWage + bohHourBasis * bohWage) /
+          (fohHourBasis + bohHourBasis);
+
+      final seam = ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+      );
+      expect(seam, closeTo(expected, 0.001));
+    });
+
+    test('D2: profile.targetBlendedWage wraps the static seam', () {
+      const profile = ActiveTargetProfile(
+        targetProfileId: 'q3-test',
+        restaurantId: 'q3-test-r',
+        sourceType: 'system_baseline',
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        opzFloorCPLH: 0,
+        opzCeilingCPLH: 0,
+        theoreticalFohLaborPct: 0,
+        theoreticalBohLaborPct: 0,
+        theoreticalLaborPct: 0,
+        builtAt: '',
+      );
+      final fromGetter = profile.targetBlendedWage;
+      final fromStatic = ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+      );
+      expect(fromGetter, equals(fromStatic));
+    });
+
+    test('D3: WeekData.theoreticalBlendedWage delegates to the same seam '
+        '(plan hours and actual covers do NOT affect it)', () {
+      // Build a WeekData with pathological plan hours: 250 FOH / 25 BOH
+      // (10:1 mix). If WeekData were still computing its own hour-weighted
+      // value, the result would be ~ ((250*16.5 + 25*21.35) / 275) ≈ 16.94
+      // — quite different from the canonical seam. The new code must NOT
+      // produce that.
+      final data = WeekData(
+        weekId: 'q3-test',
+        weekLabel: 'Q3 Test',
+        totalCovers: 500,
+        totalSales: 500 * 41.79,
+        totalFohHours: 110,
+        totalBohHours: 115,
+        shiftsCompleted: 7,
+        shiftsTotal: 14,
+        wtdForecastCovers: 500,
+        totalWeekForecastCovers: 1000,
+        primaryLeverId: 'covers_down',
+        planFohHoursWtd: 250,
+        planBohHoursWtd: 25,
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        targetFohWage: fohWage,
+        targetBohWage: bohWage,
+        theoreticalFohLaborPct: 9.2,
+        theoreticalBohLaborPct: 12.1,
+        theoreticalLaborPct: 21.3,
+      );
+      final canonical = ActiveTargetProfile.computeTargetBlendedWage(
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+      );
+      expect(data.theoreticalBlendedWage, closeTo(canonical, 0.001));
+
+      // Sanity: the OLD plan-hour-weighted value would have been ~16.94,
+      // distinctly different from the canonical ~18.95. Asserting
+      // closeTo(canonical) guarantees the old behaviour is gone.
+      final oldStylePlanWeighted = (250 * fohWage + 25 * bohWage) / 275;
+      expect(data.theoreticalBlendedWage,
+          isNot(closeTo(oldStylePlanWeighted, 0.5)),
+          reason:
+              'WeekData must NOT route through the old plan-hour-weighted '
+              'derivation — the new shared seam is plan-hour-independent');
+    });
+
+    test('D4: Benchmark and Variance WTD show the same blended wage for '
+        'the same active target state — no per-surface drift', () {
+      const profile = ActiveTargetProfile(
+        targetProfileId: 'q3-cross-surface',
+        restaurantId: 'q3-cross-r',
+        sourceType: 'system_baseline',
+        targetCPLH: cplh,
+        targetSPLH: splh,
+        targetPPA: ppa,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        opzFloorCPLH: 0,
+        opzCeilingCPLH: 0,
+        theoreticalFohLaborPct: 0,
+        theoreticalBohLaborPct: 0,
+        theoreticalLaborPct: 0,
+        builtAt: '',
+      );
+      // Benchmark reads the profile getter directly.
+      final benchmarkBlendedWage = profile.targetBlendedWage;
+
+      // Variance WTD reads via WeekData with profile-derived target inputs
+      // — same path ShiftService uses to construct WeekData at runtime.
+      final wtd = WeekData(
+        weekId: 'q3-cross', weekLabel: 'X',
+        totalCovers: 800, totalSales: 800 * 41.79,
+        totalFohHours: 120, totalBohHours: 130,
+        shiftsCompleted: 5, shiftsTotal: 14,
+        wtdForecastCovers: 800, totalWeekForecastCovers: 1200,
+        primaryLeverId: 'covers_down',
+        targetCPLH: profile.targetCPLH,
+        targetSPLH: profile.targetSPLH,
+        targetPPA: profile.targetPPA,
+        targetFohWage: profile.fohWage,
+        targetBohWage: profile.bohWage,
+        theoreticalFohLaborPct: profile.theoreticalFohLaborPct,
+        theoreticalBohLaborPct: profile.theoreticalBohLaborPct,
+        theoreticalLaborPct: profile.theoreticalLaborPct,
+      );
+      final wtdBlendedWage = wtd.theoreticalBlendedWage;
+
+      expect(benchmarkBlendedWage, closeTo(wtdBlendedWage, 0.001),
+          reason: '7.55q.3 conformance: Benchmark and WTD must read the '
+              'same shared seam and show the same number');
+    });
+
+    test('D5: zero-input safety — returns 0.0 when targetCPLH or '
+        'targetSPLH is non-positive (no NaN / divide-by-zero)', () {
+      expect(
+          ActiveTargetProfile.computeTargetBlendedWage(
+            targetCPLH: 0,
+            targetSPLH: splh,
+            targetPPA: ppa,
+            fohWage: fohWage,
+            bohWage: bohWage,
+          ),
+          0.0);
+      expect(
+          ActiveTargetProfile.computeTargetBlendedWage(
+            targetCPLH: cplh,
+            targetSPLH: 0,
+            targetPPA: ppa,
+            fohWage: fohWage,
+            bohWage: bohWage,
+          ),
+          0.0);
+      expect(
+          ActiveTargetProfile.computeTargetBlendedWage(
+            targetCPLH: -1,
+            targetSPLH: splh,
+            targetPPA: ppa,
+            fohWage: fohWage,
+            bohWage: bohWage,
+          ),
+          0.0);
     });
   });
 }

@@ -36,7 +36,6 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   ActiveTargetProfile? _profile;
   DemandForecastContext? _demandContext;
   SchedulePlan? _plan;
-  bool _isLockedPlan = false;
   ShiftDashboardReadModel? _shiftReadModel;
   WeekData? _weekData;
   WageStandardContext? _wageContext;
@@ -53,19 +52,26 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _demandContext =
           await DemandForecastContextService.instance.getCurrentContext();
 
-      // Resolve plan from locked weekly truth, falling back to live resolution
-      final lockedPlan = await SchedulePlanReadService.instance
-          .getCurrentLockedWeeklyPlan();
-      if (lockedPlan != null) {
-        _plan = lockedPlan;
-        _isLockedPlan = true;
-      } else {
-        _plan = await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
-        _isLockedPlan = false;
-      }
+      // Read the EXISTING locked weekly plan only. The audit panel is meant
+      // to reflect the same authority path as the production Schedule / Shift
+      // surfaces after 7.55q.2, not a looser "live resolved" fallback.
+      //
+      // If the current-week snapshot is absent, leave `_plan` null and let the
+      // panel render "Not resolved" honestly instead of auto-generating or
+      // live-resolving a competing current-week plan.
+      _plan = await SchedulePlanReadService.instance
+          .getExistingCurrentLockedWeeklyPlan();
 
       _shiftReadModel = await ShiftService.instance.getShiftDashboard();
-      _weekData = await ShiftService.instance.getLiveWeekToDate();
+
+      // Keep the audit panel read-only: only attempt the WTD alignment read
+      // when a locked current-week plan already exists. `getLiveWeekToDate()`
+      // legitimately bootstraps a current snapshot when missing, which is
+      // fine for production Variance but too loose for an "alignment audit"
+      // surface that is supposed to mirror strict authority paths.
+      _weekData = _plan != null
+          ? await ShiftService.instance.getLiveWeekToDate()
+          : null;
       _wageContext =
           await WageStandardContextService.instance.resolve(restaurantId);
     } catch (_) {
@@ -186,7 +192,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   Widget _buildScheduleSection() {
     final p = _plan;
     if (p == null) return _emptySection('SCHEDULE FORECAST', 'Not resolved');
-    final sourceLabel = _isLockedPlan ? 'LOCKED WEEKLY' : 'LIVE RESOLVED';
+    const sourceLabel = 'LOCKED WEEKLY';
     return _section('SCHEDULE FORECAST ($sourceLabel)', [
       _row('COVERS', p.forecastCovers.toString()),
       _row('SALES', '\$${Fmt.dollars(p.forecastSales)}'),
@@ -196,8 +202,9 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
 
   Widget _buildSchedulePlanSection() {
     final p = _plan;
+    final profile = _profile;
     if (p == null) return _emptySection('SCHEDULE PLAN', 'Not resolved');
-    final sourceLabel = _isLockedPlan ? 'LOCKED WEEKLY' : 'LIVE RESOLVED';
+    const sourceLabel = 'LOCKED WEEKLY';
     return _section('SCHEDULE PLAN ($sourceLabel)', [
       _row('FORECAST COVERS', p.forecastCovers.toString()),
       _row('FORECAST SALES', '\$${Fmt.dollars(p.forecastSales)}'),
@@ -207,9 +214,16 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
           '\$${Fmt.dollars(p.theoreticalFohLaborDollars)}'),
       _row('BOH LABOR \$',
           '\$${Fmt.dollars(p.theoreticalBohLaborDollars)}'),
-      _row('LABOR %', '${p.theoreticalLaborPct.toStringAsFixed(1)}%'),
-      _row('BLENDED WAGE',
-          '\$${p.targetBlendedWage.toStringAsFixed(2)}'),
+      _row(
+          'BENCHMARK THEORETICAL LABOR %',
+          profile != null
+              ? '${profile.theoreticalLaborPct.toStringAsFixed(1)}%'
+              : 'Not resolved'),
+      _row(
+          'BENCHMARK BLENDED WAGE',
+          profile != null
+              ? '\$${profile.targetBlendedWage.toStringAsFixed(2)}'
+              : 'Not resolved'),
     ]);
   }
 
@@ -229,7 +243,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
       _row('PLAN FOH HRS', s.planFohHours.toString()),
       _row('PLAN BOH HRS', s.planBohHours.toString()),
       _row('ACTUAL LABOR %', '${s.actualLaborPct.toStringAsFixed(1)}%'),
-      _row('TARGET LABOR %', '${s.targetLaborPct.toStringAsFixed(1)}%'),
+      _row('THEORETICAL LABOR %', '${s.targetLaborPct.toStringAsFixed(1)}%'),
       _row('PRIMARY LEVER', s.primaryLeverId),
     ]);
   }

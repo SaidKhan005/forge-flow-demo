@@ -131,8 +131,6 @@ void main() {
           plan.theoreticalFohLaborDollars);
       expect(snapshot.theoreticalBohLaborDollars,
           plan.theoreticalBohLaborDollars);
-      expect(snapshot.theoreticalLaborPct, plan.theoreticalLaborPct);
-      expect(snapshot.targetBlendedWage, plan.targetBlendedWage);
       expect(snapshot.coversSource, plan.coversSource);
       expect(snapshot.salesSource, plan.salesSource);
     });
@@ -300,8 +298,6 @@ void main() {
           original.theoreticalFohLaborDollars);
       expect(loaded.theoreticalBohLaborDollars,
           original.theoreticalBohLaborDollars);
-      expect(loaded.theoreticalLaborPct, original.theoreticalLaborPct);
-      expect(loaded.targetBlendedWage, original.targetBlendedWage);
       expect(loaded.coversSource, original.coversSource);
       expect(loaded.salesSource, original.salesSource);
       expect(loaded.generatedAt, original.generatedAt);

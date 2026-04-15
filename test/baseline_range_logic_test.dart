@@ -94,7 +94,7 @@ void main() {
       await BaselineManagerService.instance.saveSelection({});
 
       final m = BaselineData.rangeGraphModel;
-      expect(m.title, equals('CPLH TARGET'));
+      expect(m.title, equals('CPLH RANGE & TARGET'));
       expect(m.startLabel, equals('LOWEST CPLH LAST 60 DAYS'));
       expect(m.endLabel, equals('HIGHEST CPLH LAST 60 DAYS'));
       expect(m.rangeLabel, equals('BENCHMARK RANGE'));
@@ -112,16 +112,16 @@ void main() {
       expect(m.rangeLabel, equals('STAR SHIFT RANGE'));
     });
 
-    test('title remains CPLH TARGET in both states', () async {
+    test('title remains CPLH RANGE & TARGET in both states', () async {
       // No override
-      expect(BaselineData.rangeGraphModel.title, equals('CPLH TARGET'));
+      expect(BaselineData.rangeGraphModel.title, equals('CPLH RANGE & TARGET'));
 
       // With override
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       final pick = candidates.take(3).map((c) => c.recordKey).toSet();
       await BaselineManagerService.instance.saveSelection(pick);
-      expect(BaselineData.rangeGraphModel.title, equals('CPLH TARGET'));
+      expect(BaselineData.rangeGraphModel.title, equals('CPLH RANGE & TARGET'));
     });
   });
 
@@ -427,6 +427,338 @@ void main() {
       ]);
       expect(BaselineData.baselineRangeValidation.message,
           isNot(contains('operating range')));
+    });
+  });
+
+  // ── J: Benchmark graph honesty (7.55p.5h) ─────────────────────────────────
+  //
+  // Covers the degenerate-state fallback on `BaselineRangeGraphModel`.
+  // Manager-override branch: delegates to the existing
+  // `baselineRangeValidation` derivation. Recommendation-signals branch:
+  // drives honest fallback badges + copy without touching the
+  // recommendation math.
+
+  group('J — recommendation-signal honesty (7.55p.5h)', () {
+    tearDown(() {
+      BaselineData.clearManagerOverride();
+      BaselineData.clearHistoricalContext();
+      BaselineData.clearRecommendationSignals();
+    });
+
+    test('no signals + no override → graph matches existing '
+        'baselineRangeValidation (preserves legacy tests)', () {
+      // Fresh reseed via setUp already put us in the no-signals / no-override
+      // default. The graph should produce the existing healthy copy
+      // because the demo seed is GOOD.
+      final v = BaselineData.baselineRangeValidation;
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, v.status);
+      expect(m.statusBadgeLabel, v.statusLabel);
+      expect(m.recommendedExplanation, v.message);
+      expect(m.isDegenerate, v.showWarning);
+      expect(m.degenerateFallbackMessage, isNull);
+    });
+
+    test('insufficient signals → RANGE UNCONFIRMED + honest fallback copy',
+        () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          // MeridianConfig placeholder values (what the insufficient-
+          // fallback cycle actually persists).
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'insufficient');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'RANGE UNCONFIRMED');
+      expect(m.recommendedExplanation,
+          contains('Not enough recent 60-day evidence'));
+      expect(m.degenerateFallbackMessage,
+          contains('Config Default range as a placeholder'));
+    });
+
+    test('weak + wide union band → RANGE TOO WIDE TO TEACH', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 1.40, // > 1.25 → wide
+          selectedShiftCount: 12,
+          rangeFloorCPLH: 3.8,
+          rangeCeilingCPLH: 5.2,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'weak');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'RANGE TOO WIDE TO TEACH');
+      expect(m.recommendedExplanation,
+          contains('Dayparts'));
+      expect(m.recommendedExplanation,
+          contains('cross-daypart range is too wide'));
+      expect(m.degenerateFallbackMessage,
+          contains('Per-daypart benchmarks are coming'));
+    });
+
+    test('weak + narrow union band → RANGE UNCERTAIN', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 0.40, // < 1.25 → not wide
+          selectedShiftCount: 4,
+          rangeFloorCPLH: 4.4,
+          rangeCeilingCPLH: 4.8,
+          targetCPLH: 4.6,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'weak');
+      expect(m.isDegenerate, isTrue);
+      expect(m.statusBadgeLabel, 'RANGE UNCERTAIN');
+      expect(m.recommendedExplanation,
+          contains('Recent cohorts did not meet the quality bar'));
+      expect(m.degenerateFallbackMessage,
+          contains('recommendation improves as evidence builds'));
+    });
+
+    test('strong signals → GOOD OPZ RANGE, not degenerate', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'strong',
+          unionBandWidth: 0.60,
+          selectedShiftCount: 10,
+          rangeFloorCPLH: 4.3,
+          rangeCeilingCPLH: 4.9,
+          targetCPLH: 4.6,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'good');
+      expect(m.isDegenerate, isFalse);
+      expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
+      expect(m.degenerateFallbackMessage, isNull);
+    });
+
+    test('adequate signals → GOOD OPZ RANGE, not degenerate', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'adequate',
+          unionBandWidth: 1.00,
+          selectedShiftCount: 7,
+          rangeFloorCPLH: 4.2,
+          rangeCeilingCPLH: 5.2,
+          targetCPLH: 4.7,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, 'good');
+      expect(m.isDegenerate, isFalse);
+      expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
+    });
+
+    test('manager override wins even when signals say insufficient', () {
+      // Simulate a prior recommended-path cycle that left insufficient
+      // signals behind, then a manager override arrives. The graph
+      // should fall back to the existing star-shift copy for the
+      // manager's explicit selection.
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+      BaselineData.applyManagerOverride([
+        const DaypartBaseline(
+            daypart: 'lunch', cplh: 4.2, splh: 176, ppa: 41, covers: 160,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.6, splh: 181, ppa: 44, covers: 240,
+            isSelected: true),
+        const DaypartBaseline(
+            daypart: 'dinner', cplh: 4.9, splh: 183, ppa: 45, covers: 250,
+            isSelected: true),
+      ]);
+
+      final v = BaselineData.baselineRangeValidation;
+      final m = BaselineData.rangeGraphModel;
+
+      // Manager override takes precedence — we route through
+      // baselineRangeValidation (healthy here), not the insufficient
+      // recommendation signals.
+      expect(v.status, 'healthy');
+      expect(m.qualityTier, 'healthy');
+      expect(m.statusBadgeLabel, 'GOOD OPZ RANGE');
+      expect(m.isDegenerate, isFalse);
+      expect(m.degenerateFallbackMessage, isNull);
+      // Inner range label reflects manager override.
+      expect(m.rangeLabel, 'STAR SHIFT RANGE');
+      // Geometry comes from the selected override records (4.2 / 4.9 /
+      // avg ≈ 4.57), NOT the insufficient signals (3.5 / 5.8 / 4.5).
+      expect(m.activeRangeStartCPLH, closeTo(4.2, 0.001));
+      expect(m.activeRangeEndCPLH, closeTo(4.9, 0.001));
+      expect(m.targetCPLH, closeTo(4.57, 0.05));
+    });
+
+    test('clearRecommendationSignals returns graph to the default branch',
+        () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+      expect(BaselineData.rangeGraphModel.isDegenerate, isTrue);
+
+      BaselineData.clearRecommendationSignals();
+      final v = BaselineData.baselineRangeValidation;
+      final m = BaselineData.rangeGraphModel;
+      expect(m.qualityTier, v.status);
+      expect(m.statusBadgeLabel, v.statusLabel);
+      expect(m.isDegenerate, v.showWarning);
+      expect(m.degenerateFallbackMessage, isNull);
+    });
+  });
+
+  // ── K: Graph geometry matches signals source truth (7.55p.5h-review-fix)
+  //
+  // Proves that when recommendation signals are present and no manager
+  // override is active, the drawn inner band + target come from the
+  // signals (which mirror the persisted cycle) rather than
+  // `BaselineData.records.where(isSelected)`. This is the finding the
+  // review surfaced: previously the copy said "Config Default
+  // placeholder" while the geometry still drew seed-selected values.
+
+  group('K — graph geometry matches signal source truth '
+      '(7.55p.5h-review-fix)', () {
+    tearDown(() {
+      BaselineData.clearManagerOverride();
+      BaselineData.clearHistoricalContext();
+      BaselineData.clearRecommendationSignals();
+    });
+
+    test('insufficient → graph geometry reflects Config Default placeholder '
+        '(3.5 / 5.8 / 4.5), not seed-selected (4.2-4.8 / ~4.58)', () {
+      // Fresh reseed leaves BaselineData.records = seed records with
+      // 14 isSelected shifts. Without signals the graph would draw
+      // activeMin ≈ 4.2, activeMax ≈ 4.8, target ≈ 4.58. With
+      // insufficient signals it must instead draw the MeridianConfig
+      // placeholder.
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.activeRangeStartCPLH, closeTo(3.5, 0.001),
+          reason: 'insufficient floor must come from the signal');
+      expect(m.activeRangeEndCPLH, closeTo(5.8, 0.001),
+          reason: 'insufficient ceiling must come from the signal');
+      expect(m.targetCPLH, closeTo(4.5, 0.001),
+          reason: 'insufficient target must come from the signal');
+
+      // Cross-check: seed-selected derivation is NOT in play here.
+      final seedSelected =
+          BaselineData.records.where((r) => r.isSelected).toList();
+      final seedSelectedAvg =
+          seedSelected.fold<double>(0, (s, r) => s + r.cplh) /
+              seedSelected.length;
+      expect(m.targetCPLH, isNot(closeTo(seedSelectedAvg, 0.01)),
+          reason:
+              'target must not match the legacy seed-selected derivation');
+    });
+
+    test('weak+wide → graph geometry reflects signal union band, not '
+        'seed-selected', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'weak',
+          unionBandWidth: 1.40,
+          selectedShiftCount: 12,
+          rangeFloorCPLH: 3.8,
+          rangeCeilingCPLH: 5.2,
+          targetCPLH: 4.5,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.activeRangeStartCPLH, closeTo(3.8, 0.001));
+      expect(m.activeRangeEndCPLH, closeTo(5.2, 0.001));
+      expect(m.targetCPLH, closeTo(4.5, 0.001));
+    });
+
+    test('strong → graph geometry still reflects the signal values '
+        '(recommendation-backed)', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended',
+          overallQuality: 'strong',
+          unionBandWidth: 0.60,
+          selectedShiftCount: 10,
+          rangeFloorCPLH: 4.30,
+          rangeCeilingCPLH: 4.90,
+          targetCPLH: 4.58,
+        ),
+      );
+
+      final m = BaselineData.rangeGraphModel;
+      expect(m.activeRangeStartCPLH, closeTo(4.30, 0.001));
+      expect(m.activeRangeEndCPLH, closeTo(4.90, 0.001));
+      expect(m.targetCPLH, closeTo(4.58, 0.001));
+    });
+
+    test('clearing signals restores legacy seed-selected geometry', () {
+      BaselineData.applyRecommendationSignals(
+        const BaselineRecommendationSignals(
+          sourceType: 'cycle_recommended_insufficient',
+          overallQuality: 'insufficient',
+          unionBandWidth: 0,
+          selectedShiftCount: 0,
+          rangeFloorCPLH: 3.5,
+          rangeCeilingCPLH: 5.8,
+          targetCPLH: 4.5,
+        ),
+      );
+      expect(BaselineData.rangeGraphModel.targetCPLH, closeTo(4.5, 0.001));
+
+      BaselineData.clearRecommendationSignals();
+      final m = BaselineData.rangeGraphModel;
+      // Back to seed-selected derivation (target ≈ 4.58 from 14 selected
+      // records in the default seed).
+      expect(m.targetCPLH, closeTo(BaselineData.derivedTargetCPLH, 0.001));
     });
   });
 }

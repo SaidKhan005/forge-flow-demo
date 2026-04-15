@@ -32,7 +32,6 @@ class WeekHistoryTile extends StatelessWidget {
     final lever = leverCard.shortLabel;
     final leverColor =
         leverCard.isFavorable ? AppColors.positive : AppColors.negative;
-    final sideLabel = _sideShortLabel(leverCard.side);
 
     return InkWell(
       onTap: onTap,
@@ -56,29 +55,13 @@ class WeekHistoryTile extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // ── Left: week label + shifts completed ─────────────────────
+              // ── Left: week label ────────────────────────────────────────
               SizedBox(
-                width: 84,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(week.weekLabel,
-                        style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary,
-                            weight: FontWeight.w600)),
-                    const SizedBox(height: 3),
-                    Text(
-                      '${week.shiftsCompleted} shifts',
-                      style: AppTextStyles.mono10(color: AppColors.textMuted),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      week.provenanceLabel,
-                      style: AppTextStyles.mono8(color: AppColors.textMuted),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
+                width: 64,
+                child: Text(week.weekLabel,
+                    style: AppTextStyles.mono14(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w600)),
               ),
 
               // ── Variance pts ─────────────────────────────────────────────
@@ -109,11 +92,6 @@ class WeekHistoryTile extends StatelessWidget {
               // ── Lever badge ───────────────────────────────────────────────
               _LeverBadge(label: lever, color: leverColor),
 
-              const SizedBox(width: 4),
-
-              // ── Side badge ────────────────────────────────────────────────
-              _LeverBadge(label: sideLabel, color: AppColors.textMuted),
-
               const SizedBox(width: 6),
 
               // ── Chevron ───────────────────────────────────────────────────
@@ -127,14 +105,6 @@ class WeekHistoryTile extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-String _sideShortLabel(LeverSide side) {
-  switch (side) {
-    case LeverSide.foh:  return 'FOH';
-    case LeverSide.boh:  return 'BOH';
-    case LeverSide.both: return 'BOTH';
   }
 }
 

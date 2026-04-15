@@ -75,6 +75,9 @@ those vendor shapes directly to the UI.
 - punches / timecards
 - worked hours
 - labor dollars or wage truth when exposed
+- some integrations may expose only hours at close time; in that case the app
+  may use the sanctioned wage-authority seam as an operational fallback until
+  richer labor truth is available
 
 #### Reservation system owns
 
@@ -106,6 +109,10 @@ Contract:
 - canonical facts are not themselves benchmark standards or plan values
 - later integrations should replace transport, not create a second UI-facing
   truth path
+- if a labor vendor provides richer finalized labor truth after the initial
+  close event, the integration may need explicit reconciliation/sync handlers
+  around close, approval, payroll-close, or other boundary events rather than
+  leaving that follow-up implicit
 
 ### 3. 60-day benchmark snapshot
 
@@ -135,7 +142,6 @@ It owns:
 - target CPLH
 - target SPLH
 - target PPA
-- wage standards
 - OPZ bounds
 - source provenance for recommended vs override vs replacement
 
@@ -148,6 +154,15 @@ Contract:
   cycle
 - a new cycle affects future comparison context only
 - a new cycle does not re-grade already closed history
+- cycle provenance and target geometry remain the canonical benchmark
+  anchor for the in-force standards window
+- wage authority is a sanctioned companion seam:
+  - labor integration wage truth should be used when available
+  - when integration does not provide usable wage truth, the admin wage
+    mix in Settings is the sanctioned manual fallback
+  - this manual wage seam is allowed to influence the live benchmark
+    profile with the same downstream effect as integrated wage truth;
+    it is not treated as an ad hoc competing authority
 
 ### 5. ActiveTargetProfile
 
@@ -161,6 +176,11 @@ Contract:
   competing authority
 - target standards should be resolved from cycle-backed profile state, not
   ad hoc bridge-era globals
+- the canonical wage-authority seam may refresh the profile's wage and
+  theoretical-labor fields without being treated as an architecture
+  violation, as long as the source is:
+  - labor integration wage truth, or
+  - the admin-configured wage mix fallback in Settings
 
 ### 6. DemandForecastContext
 

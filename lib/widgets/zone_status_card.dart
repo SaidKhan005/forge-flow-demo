@@ -57,7 +57,7 @@ class ZoneStatusCard extends StatelessWidget {
           Row(
             children: [
               Text(
-                currentCPLH.toStringAsFixed(1),
+                currentCPLH.toStringAsFixed(2),
                 style: AppTextStyles.mono28(color: AppColors.textPrimary),
               ),
               const Spacer(),
@@ -399,7 +399,7 @@ class _CplhGauge extends StatelessWidget {
                       child: SizedBox(
                         width: valW,
                         child: Text(
-                          safeFloor.toStringAsFixed(1),
+                          safeFloor.toStringAsFixed(2),
                           style: AppTextStyles.mono10(
                               color: AppColors.textSecondary),
                           textAlign: TextAlign.center,
@@ -417,7 +417,7 @@ class _CplhGauge extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            target.toStringAsFixed(1),
+                            target.toStringAsFixed(2),
                             style: AppTextStyles.mono12(
                                 color: AppColors.sunsetDark),
                             textAlign: TextAlign.center,
@@ -438,7 +438,7 @@ class _CplhGauge extends StatelessWidget {
                       child: SizedBox(
                         width: valW,
                         child: Text(
-                          safeCeiling.toStringAsFixed(1),
+                          safeCeiling.toStringAsFixed(2),
                           style: AppTextStyles.mono10(
                               color: AppColors.textSecondary),
                           textAlign: TextAlign.center,

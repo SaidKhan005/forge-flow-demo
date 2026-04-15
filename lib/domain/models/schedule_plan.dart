@@ -15,6 +15,15 @@
 ///   total labor dollars = FOH + BOH labor dollars
 ///   theoretical labor % = total labor dollars / forecast sales * 100
 ///   target blended wage = total labor dollars / total required hours
+///
+/// Ownership note after 7.55q:
+/// - covers / sales / required hours are the plan-owned values consumers
+///   should read 1:1 from the plan
+/// - `theoreticalLaborPct` and `targetBlendedWage` are still carried here as
+///   derived outputs for preview/projection compatibility, but non-closed
+///   runtime surfaces should read those benchmark-owned metrics from the
+///   active target profile seam instead of treating these plan fields as the
+///   canonical benchmark authority
 library;
 
 import '../models/schedule_forecast_demand.dart';

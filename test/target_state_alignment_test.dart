@@ -1,4 +1,8 @@
-// Phase 7.5b â€” Target state alignment tests.
+// Target state alignment tests.
+//
+// Current contract (7.55l+ profile persistence, 7.55q.5 week preservation):
+// the persisted ActiveTargetProfile is the propagation authority; closed
+// shift and week truth do not drift when the active profile changes.
 //
 // Validates:
 // A. Active target profile persists current effective baseline state
@@ -6,12 +10,18 @@
 // C. Close shift locks a target profile version
 // D. Historical shift truth does not drift after active target changes
 // E. Historical week truth does not drift after active target changes
+//
+// Historical origin: Phase 7.5b.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/baseline_manager_service.dart';
+import 'package:forge_and_flow/data/business_date_authority_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/data/target_cycle_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
+import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
@@ -105,27 +115,33 @@ void main() {
   // â”€â”€ A: Active target profile persists current effective baseline state â”€â”€â”€â”€
 
   group('A â€” active target profile persistence', () {
-    test('initial profile matches current BaselineData + MeridianConfig',
+    test('initial profile matches the seeded active cycle projection',
         () async {
       final profile =
           await profileRepo.getActiveTargetProfile('demo_restaurant_001');
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle('demo_restaurant_001');
       expect(profile, isNotNull);
-      expect(profile!.targetCPLH,
-          closeTo(BaselineData.derivedTargetCPLH, 0.001));
-      expect(profile.targetSPLH,
-          closeTo(BaselineData.derivedTargetSPLH, 0.001));
-      expect(profile.targetPPA,
-          closeTo(BaselineData.derivedTargetPPA, 0.001));
-      expect(profile.fohWage, MeridianConfig.fohWage);
-      expect(profile.bohWage, MeridianConfig.bohWage);
-      expect(profile.sourceType, 'system_baseline');
+      expect(cycle, isNotNull);
+      expect(profile!.targetCPLH, closeTo(cycle!.targetCPLH, 0.001));
+      expect(profile.targetSPLH, closeTo(cycle.targetSPLH, 0.001));
+      expect(profile.targetPPA, closeTo(cycle.targetPPA, 0.001));
+      expect(profile.fohWage, closeTo(cycle.fohWage, 0.001));
+      expect(profile.bohWage, closeTo(cycle.bohWage, 0.001));
+      expect(profile.sourceType, 'cycle_recommended');
     });
   });
 
   // â”€â”€ B: Manager override refreshes active target profile state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('B â€” override refreshes profile', () {
-    test('sourceType becomes manager_override after selection', () async {
+    test('sourceType becomes cycle_manager_override after selection (7.55q.9)',
+        () async {
+      // 7.55q.9: saveSelection now routes through
+      // TargetCycleService.applyManagerOverrideCycle, so the active
+      // profile is produced by TargetCycleActiveTargetProfileProjector
+      // and carries the cycle-era source label, not the legacy bridge
+      // 'manager_override' value.
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       expect(candidates, isNotEmpty);
@@ -136,12 +152,12 @@ void main() {
       final profile =
           await profileRepo.getActiveTargetProfile('demo_restaurant_001');
       expect(profile, isNotNull);
-      expect(profile!.sourceType, 'manager_override');
+      expect(profile!.sourceType, 'cycle_manager_override');
       expect(profile.targetCPLH,
           closeTo(BaselineData.derivedTargetCPLH, 0.001));
     });
 
-    test('clearing override restores system_baseline', () async {
+    test('clearing override restores cycle_recommended', () async {
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       await BaselineManagerService.instance
@@ -151,7 +167,29 @@ void main() {
 
       final profile =
           await profileRepo.getActiveTargetProfile('demo_restaurant_001');
-      expect(profile!.sourceType, 'system_baseline');
+      expect(profile!.sourceType, 'cycle_recommended');
+    });
+
+    test('clearing override restores recommended authority without '
+        'resetting once-per-cycle usage', () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      await BaselineManagerService.instance
+          .saveSelection({candidates[0].recordKey});
+
+      await BaselineManagerService.instance.saveSelection({});
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle('demo_restaurant_001');
+      expect(cycle, isNotNull);
+      expect(cycle!.source, TargetCycleSource.recommended);
+      expect(cycle.managerOverrideUsed, isTrue);
+
+      expect(
+        () => BaselineManagerService.instance
+            .saveSelection({candidates[1].recordKey}),
+        throwsA(isA<ManagerOverrideDeniedException>()),
+      );
     });
   });
 
@@ -301,7 +339,13 @@ void main() {
       final weeks = await ShiftService.instance.getWeekHistory();
       final w13 = weeks.firstWhere((w) => w.weekId == '2026-W13');
       final originalTargetCPLH = w13.targetCPLH;
-      final originalTargetFohHours = w13.targetFohHours;
+      // 7.55q.5: compare the nullable preserved locked plan hours
+      // directly. A null value here just means the snapshot was not
+      // persisted before close (honest legacy). The stability
+      // property the test asserts is "closed truth doesn't drift
+      // after profile change" â€” still demonstrated either way.
+      final originalLockedFohHours = w13.lockedRequiredFohHours;
+      final originalLockedBohHours = w13.lockedRequiredBohHours;
 
       // Change active targets
       final candidates =
@@ -314,7 +358,8 @@ void main() {
       final w13After = weeksAfter.firstWhere((w) => w.weekId == '2026-W13');
 
       expect(w13After.targetCPLH, closeTo(originalTargetCPLH!, 0.001));
-      expect(w13After.targetFohHours, originalTargetFohHours);
+      expect(w13After.lockedRequiredFohHours, originalLockedFohHours);
+      expect(w13After.lockedRequiredBohHours, originalLockedBohHours);
     });
   });
 
@@ -371,25 +416,141 @@ void main() {
   group('G â€” active-target authority propagation', () {
     test('persisted active profile changes propagate independently of BaselineData.revision',
         () async {
-      // Read initial persisted profile
+      // Read initial persisted profile. The seeded demo path is now
+      // cycle-backed, so fresh state should already carry the
+      // projected recommended-cycle source label.
       final profileBefore =
           await profileRepo.getActiveTargetProfile('demo_restaurant_001');
-      expect(profileBefore!.sourceType, 'system_baseline');
+      expect(profileBefore, isNotNull);
+      expect(profileBefore!.sourceType, 'cycle_recommended');
 
-      // Apply override through service path (which persists the profile)
+      // Apply override through service path (which now routes through
+      // TargetCycleService.applyManagerOverrideCycle per 7.55q.9).
       final candidates =
           await BaselineManagerService.instance.getCandidateShifts();
       await BaselineManagerService.instance
           .saveSelection({candidates[0].recordKey});
 
-      // Re-read persisted profile â€” should reflect override
+      // Re-read persisted profile â€” should reflect cycle-era override.
       final profileAfter =
           await profileRepo.getActiveTargetProfile('demo_restaurant_001');
-      expect(profileAfter!.sourceType, 'manager_override');
+      expect(profileAfter!.sourceType, 'cycle_manager_override');
 
       // The persisted state changed without needing BaselineData.revision
       // as the propagation authority
       expect(profileAfter.targetCPLH, isNot(equals(0)));
+    });
+  });
+
+  // â”€â”€ H: 7.55q.9 â€” Baseline Manager Done writes cycle + profile together â”€â”€
+  //
+  // Closes the divergence the 7.55q deep-check surfaced: saveSelection
+  // now routes through TargetCycleService.applyManagerOverrideCycle, so
+  // after Done the active target_cycle row and the active_target_profiles
+  // row MUST carry the same targetCPLH. The once-per-60-day
+  // managerOverrideUsed rule is now actually enforced â€” a second save
+  // in the same cycle throws ManagerOverrideDeniedException. The new
+  // BaselineManagerService.resetForAdminTest affordance clears the flag
+  // so manual validation can loop.
+
+  group('H â€” 7.55q.9 cycle <-> profile lockstep + once-per-cycle', () {
+    Future<String> activeBusinessDate() async {
+      final date = await BusinessDateAuthorityService.instance
+          .resolvePlanningAnchorDate('demo_restaurant_001');
+      expect(date, isNotNull,
+          reason: 'replay seed must yield a planning anchor date');
+      return date!;
+    }
+
+    test('after Done with a selection, cycle.targetCPLH == profile.targetCPLH',
+        () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      await BaselineManagerService.instance.saveSelection({
+        candidates[0].recordKey,
+        candidates[1].recordKey,
+      });
+
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getActiveCycle('demo_restaurant_001');
+      final profile =
+          await profileRepo.getActiveTargetProfile('demo_restaurant_001');
+
+      expect(cycle, isNotNull);
+      expect(profile, isNotNull);
+      expect(cycle!.targetCPLH, closeTo(profile!.targetCPLH, 0.001),
+          reason: 'cycle and profile must carry the same targetCPLH');
+      expect(cycle.managerOverrideUsed, isTrue,
+          reason: 'saveSelection now consumes the once-per-cycle rule');
+      // `TargetCycleSource.managerOverride.label == 'manager_override'`.
+      // The 'cycle_manager_override' string is the projected
+      // ActiveTargetProfile.sourceType (see projector), NOT the cycle's
+      // own enum label.
+      expect(cycle.source, TargetCycleSource.managerOverride);
+      expect(profile.sourceType, 'cycle_manager_override');
+    });
+
+    test('second saveSelection in the same cycle throws '
+        'ManagerOverrideDeniedException', () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      await BaselineManagerService.instance
+          .saveSelection({candidates[0].recordKey});
+
+      expect(
+        () => BaselineManagerService.instance
+            .saveSelection({candidates[1].recordKey}),
+        throwsA(isA<ManagerOverrideDeniedException>()),
+      );
+    });
+
+    test('resetForAdminTest clears the override flag + lets manager '
+        'override again', () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+
+      // First override consumes the cycle's once-per-cycle allowance.
+      await BaselineManagerService.instance
+          .saveSelection({candidates[0].recordKey});
+      final cycleBefore = await SqliteTargetCycleRepository.instance
+          .getActiveCycle('demo_restaurant_001');
+      expect(cycleBefore!.managerOverrideUsed, isTrue);
+
+      // Admin reset deactivates the cycle + clears the selection.
+      await BaselineManagerService.instance.resetForAdminTest();
+
+      final cycleAfterReset = await SqliteTargetCycleRepository.instance
+          .getActiveCycle('demo_restaurant_001');
+      expect(cycleAfterReset, isNotNull);
+      expect(cycleAfterReset!.managerOverrideUsed, isFalse,
+          reason: 'reset must rebuild a fresh cycle with the override '
+              'flag cleared');
+      expect(cycleAfterReset.cycleId, isNot(equals(cycleBefore.cycleId)),
+          reason: 'a new cycle row must be written');
+
+      // Manager can now override again without exception.
+      await BaselineManagerService.instance
+          .saveSelection({candidates[1].recordKey});
+      final cycleAfterSecondOverride = await SqliteTargetCycleRepository
+          .instance
+          .getActiveCycle('demo_restaurant_001');
+      expect(cycleAfterSecondOverride!.managerOverrideUsed, isTrue);
+    });
+
+    test('applyManagerOverrideCycle directly uses the same wire as '
+        'saveSelection (contract check)', () async {
+      final candidates =
+          await BaselineManagerService.instance.getCandidateShifts();
+      await BaselineManagerService.instance
+          .saveSelection({candidates[0].recordKey});
+
+      // Direct call should also hit the denial path.
+      final businessDate = await activeBusinessDate();
+      expect(
+        () => TargetCycleService.instance
+            .applyManagerOverrideCycle('demo_restaurant_001', businessDate),
+        throwsA(isA<ManagerOverrideDeniedException>()),
+      );
     });
   });
 }

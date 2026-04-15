@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/data/active_target_profile_notifier.dart';
+import 'package:forge_and_flow/data/baseline_manager_service.dart';
 import 'package:forge_and_flow/data/database_helper.dart';
 import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 import 'package:forge_and_flow/screens/baseline_manager_screen.dart';
+import 'package:forge_and_flow/services/labor_model.dart';
+import 'package:provider/provider.dart';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 // Week 10 Mon = 2026-03-02, Week 10 Fri = 2026-03-06,
@@ -95,9 +100,29 @@ const _allCandidates = [_lunch1, _lunch2, _dinner1];
 const _withPreSelected = [_selectedLunch, _lunch1, _dinner1];
 const _leverTestCandidates = [_lunch1, _dinnerSplhDown, _dinner1];
 
-Widget _wrap(Widget child) => MaterialApp(
-      theme: ThemeData.dark(),
-      home: child,
+ActiveTargetProfile _defaultProfile() => ActiveTargetProfile(
+      targetProfileId: 'baseline-manager-test',
+      restaurantId: 'test-restaurant',
+      sourceType: 'system_baseline',
+      targetCPLH: BaselineData.derivedTargetCPLH,
+      targetSPLH: BaselineData.derivedTargetSPLH,
+      targetPPA: BaselineData.derivedTargetPPA,
+      fohWage: MeridianConfig.fohWage,
+      bohWage: MeridianConfig.bohWage,
+      opzFloorCPLH: BaselineData.opzFloorCPLH,
+      opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+      theoreticalFohLaborPct: BaselineData.derivedFohTheoreticalLaborPct,
+      theoreticalBohLaborPct: BaselineData.derivedBohTheoreticalLaborPct,
+      theoreticalLaborPct: BaselineData.derivedTheoreticalLaborPct,
+      builtAt: 'test',
+    );
+
+Widget _wrap(Widget child) => ChangeNotifierProvider(
+      create: (_) => ActiveTargetProfileNotifier.fromProfile(_defaultProfile()),
+      child: MaterialApp(
+        theme: ThemeData.dark(),
+        home: child,
+      ),
     );
 
 // ── Tile label helper ─────────────────────────────────────────────────────────
@@ -488,8 +513,32 @@ void main() {
       expect(preview.forecastSales, greaterThan(0));
       expect(preview.requiredFohHours, greaterThan(0));
       expect(preview.requiredBohHours, greaterThan(0));
-      expect(preview.theoreticalLaborPct, greaterThan(0));
-      expect(preview.targetBlendedWage, greaterThan(0));
+      expect(
+        preview.theoreticalLaborPct,
+        closeTo(
+          LaborModel.theoreticalLaborPct(
+            _lunch1.cplh,
+            _lunch1.splh,
+            _lunch1.ppa,
+            MeridianConfig.fohWage,
+            MeridianConfig.bohWage,
+          ),
+          0.001,
+        ),
+      );
+      expect(
+        preview.targetBlendedWage,
+        closeTo(
+          ActiveTargetProfile.computeTargetBlendedWage(
+            targetCPLH: _lunch1.cplh,
+            targetSPLH: _lunch1.splh,
+            targetPPA: _lunch1.ppa,
+            fohWage: MeridianConfig.fohWage,
+            bohWage: MeridianConfig.bohWage,
+          ),
+          0.001,
+        ),
+      );
     });
 
     test('averages multiple candidates', () async {
@@ -503,7 +552,22 @@ void main() {
       expect(preview, isNotNull);
       expect(preview!.forecastCovers, equals(demandCovers));
       expect(preview.forecastSales, greaterThan(0));
-      expect(preview.theoreticalLaborPct, greaterThan(0));
+      final avgCplh = (_lunch1.cplh + _dinner1.cplh) / 2;
+      final avgSplh = (_lunch1.splh + _dinner1.splh) / 2;
+      final avgPpa = (_lunch1.ppa + _dinner1.ppa) / 2;
+      expect(
+        preview.theoreticalLaborPct,
+        closeTo(
+          LaborModel.theoreticalLaborPct(
+            avgCplh,
+            avgSplh,
+            avgPpa,
+            MeridianConfig.fohWage,
+            MeridianConfig.bohWage,
+          ),
+          0.001,
+        ),
+      );
     });
   });
 
@@ -532,6 +596,40 @@ void main() {
       await _tapBackToCalendar(tester);
       await _tapCalendarDate(tester, '2026-03-06');
       expect(find.text('23.8%', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets('candidate tile shows -- when labor truth is unavailable',
+        (tester) async {
+      const unknownLabor = BaselineCandidateShift(
+        recordKey: '2026-W10|Mon|dinner_unknown',
+        weekId: '2026-W10',
+        weekLabel: 'Week of Mar 3',
+        dayLabel: 'Mon',
+        daypart: 'dinner',
+        covers: 190,
+        cplh: 4.4,
+        splh: 178.0,
+        ppa: 41.0,
+        primaryLeverId: 'splh_down',
+        isSelected: false,
+        businessDate: '2026-03-02',
+        actualLaborPct: 0.0,
+        hasActualLaborPctTruth: false,
+      );
+
+      await tester.pumpWidget(_wrap(
+        const BaselineManagerScreen.withCandidates(
+          [unknownLabor],
+          initialDemandCovers: 1800,
+        ),
+      ));
+      await tester.pump();
+
+      await _tapCalendarDate(tester, '2026-03-02');
+
+      expect(find.text('LABOR % ', skipOffstage: false), findsOneWidget);
+      expect(find.text('--', skipOffstage: false), findsAtLeastNWidgets(1));
+      expect(find.text('0.0%', skipOffstage: false), findsNothing);
     });
 
   });
@@ -939,6 +1037,230 @@ void main() {
       expect(find.text('0'), findsOneWidget);
       expect(find.text('--'), findsNWidgets(11));
       expect(find.text('CLEAR ALL'), findsNothing);
+    });
+  });
+
+  // ── S — 7.55q.8 Manager Override preview wage authority ──────────────
+  //
+  // Runtime contract: `_PlanImpactSection` reads the active profile
+  // wages via `context.watch<ActiveTargetProfileNotifier?>()?.profile`
+  // and passes `profile?.fohWage` / `profile?.bohWage` into
+  // `ManagerOverridePlanPreview.fromDraftSelection`. The MeridianConfig
+  // defaults remain a detached/unit fallback only; the live screen hides
+  // wage-dependent preview cells until profile wage authority is present.
+  //
+  // Proof: with a profile whose wages differ from the config defaults
+  // in the provider scope, preview `targetBlendedWage` / `theoreticalLaborPct`
+  // must move off the config-default result.
+
+  group('S - 7.55q.8 preview wage authority', () {
+    const distinctFohWage = 25.00; // vs MeridianConfig.fohWage = 16.50
+    const distinctBohWage = 32.00; // vs MeridianConfig.bohWage = 21.35
+
+    ActiveTargetProfile makeProfileWithWages({
+      required double fohWage,
+      required double bohWage,
+    }) {
+      return ActiveTargetProfile(
+        targetProfileId: 's-test',
+        restaurantId: 's-test-r',
+        sourceType: 'system_baseline',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 42.0,
+        fohWage: fohWage,
+        bohWage: bohWage,
+        opzFloorCPLH: 4.2,
+        opzCeilingCPLH: 4.8,
+        theoreticalFohLaborPct: 8.2,
+        theoreticalBohLaborPct: 12.3,
+        theoreticalLaborPct: 20.5,
+        builtAt: '2026-04-14T00:00:00Z',
+      );
+    }
+
+    test('fromDraftSelection with distinct profile wages produces a '
+        'DIFFERENT preview than the MeridianConfig default path', () async {
+      final ctx =
+          await DemandForecastContextService.instance.getCurrentContext();
+      final demand = ctx.historicalWeeklyAvgCovers;
+
+      final configDefault = ManagerOverridePlanPreview.fromDraftSelection(
+        [_lunch1],
+        historicalWeeklyAvgCovers: demand,
+      );
+      final profileDriven = ManagerOverridePlanPreview.fromDraftSelection(
+        [_lunch1],
+        historicalWeeklyAvgCovers: demand,
+        fohWage: distinctFohWage,
+        bohWage: distinctBohWage,
+      );
+
+      expect(configDefault, isNotNull);
+      expect(profileDriven, isNotNull);
+
+      // Blended wage is an hour-weighted mix of FOH/BOH wages — must
+      // move with the wage inputs.
+      expect(profileDriven!.targetBlendedWage,
+          isNot(closeTo(configDefault!.targetBlendedWage, 0.01)),
+          reason: 'distinct wages must produce a distinct blended wage');
+      // Labor % depends on wage inputs as well — must move too.
+      expect(profileDriven.theoreticalLaborPct,
+          isNot(closeTo(configDefault.theoreticalLaborPct, 0.01)),
+          reason: 'distinct wages must produce a distinct theoretical %');
+      // Volume-side fields stay the same across both calls (same
+      // shift inputs, same demand context).
+      expect(profileDriven.forecastCovers,
+          equals(configDefault.forecastCovers));
+      expect(profileDriven.requiredFohHours,
+          equals(configDefault.requiredFohHours));
+    });
+
+    testWidgets('_PlanImpactSection renders the PROFILE-driven BLENDED '
+        'WAGE when ActiveTargetProfileNotifier is in scope (not the '
+        'MeridianConfig default)', (tester) async {
+      final profileNotifier = ActiveTargetProfileNotifier.fromProfile(
+        makeProfileWithWages(
+            fohWage: distinctFohWage, bohWage: distinctBohWage),
+      );
+
+      // Expected preview computed through the production seam with the
+      // distinct profile wages.
+      final expectedPreview =
+          ManagerOverridePlanPreview.fromDraftSelection(
+        [_lunch1],
+        historicalWeeklyAvgCovers: demandCovers,
+        fohWage: distinctFohWage,
+        bohWage: distinctBohWage,
+      );
+      expect(expectedPreview, isNotNull);
+      final expectedWageStr =
+          '\$${expectedPreview!.targetBlendedWage.toStringAsFixed(2)}';
+
+      // Config-default path is the "negative" — must NOT be rendered.
+      final configDefaultPreview =
+          ManagerOverridePlanPreview.fromDraftSelection(
+        [_lunch1],
+        historicalWeeklyAvgCovers: demandCovers,
+      );
+      final configDefaultWageStr =
+          '\$${configDefaultPreview!.targetBlendedWage.toStringAsFixed(2)}';
+      expect(expectedWageStr, isNot(equals(configDefaultWageStr)),
+          reason: 'precondition — distinct wages must produce distinct '
+              'rendered strings');
+
+      // Render with the profile notifier in scope.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(
+            value: profileNotifier,
+            child: BaselineManagerScreen.withCandidates(
+              _allCandidates,
+              initialDemandCovers: demandCovers,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Select a candidate so the preview flips off "--".
+      await _tapCalendarDate(tester, '2026-03-02');
+      await _tapCandidateTile(tester, _lunch1);
+
+      // The preview now reads the profile-driven blended wage, not the
+      // config-default blended wage.
+      expect(find.text(expectedWageStr, skipOffstage: false),
+          findsAtLeastNWidgets(1),
+          reason: 'profile wages must flow into the rendered preview');
+      expect(find.text(configDefaultWageStr, skipOffstage: false),
+          findsNothing,
+          reason: 'the config-default blended wage must NOT appear when '
+              'the profile is in scope');
+
+      profileNotifier.dispose();
+    });
+
+    testWidgets('without profile wage authority, labor % and blended wage '
+        'stay on "--" instead of showing config-default preview values',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(),
+          home: BaselineManagerScreen.withCandidates(
+            _allCandidates,
+            initialDemandCovers: demandCovers,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await _tapCalendarDate(tester, '2026-03-02');
+      await _tapCandidateTile(tester, _lunch1);
+
+      expect(find.text('--'), findsNWidgets(2),
+          reason: 'without an active profile in scope, wage-dependent '
+              'preview cells should degrade honestly');
+    });
+  });
+
+  // ── T — 7.55q.9 Done routes through cycle path; SnackBar on denial ───────
+  //
+  // After the first Done, the active TargetCycle has consumed its
+  // once-per-cycle manager override. A second Done must surface the
+  // ManagerOverrideDeniedException via SnackBar and KEEP the draft
+  // intact (no Navigator.pop). The first-Done plumbing is covered
+  // by `target_state_alignment_test.dart` group H; this widget test
+  // focuses on the denial UX only.
+
+  group('T - 7.55q.9 Done denial surfaces as SnackBar', () {
+    testWidgets('Done after the override is already consumed shows the '
+        '"already used" SnackBar and keeps the screen open', (tester) async {
+      // Consume the once-per-cycle manager override at the SERVICE
+      // layer first. This removes the widget-level fragility of
+      // running two full Done flows back-to-back in one widget tree.
+      await tester.runAsync(() async {
+        await BaselineManagerService.instance
+            .saveSelection({_lunch1.recordKey});
+      });
+
+      // Now mount the form, draft a different selection, hit Done.
+      // Cycle is locked → ManagerOverrideDeniedException → SnackBar.
+      await tester.pumpWidget(_wrap(
+        BaselineManagerScreen.withCandidates(_allCandidates,
+            initialDemandCovers: demandCovers),
+      ));
+      await tester.pump();
+
+      await _tapCalendarDate(tester, '2026-03-10');
+      await _tapCandidateTile(tester, _lunch2);
+
+      // Drive the Done tap + saveSelection's real async DB work via
+      // runAsync (the same pattern as the existing
+      // `_commitDoneAndReadKeys` helper). Pumping frames alone does
+      // not advance real async; it only ticks the fake clock.
+      await tester.runAsync(() async {
+        await tester.tap(find.text('DONE'));
+        await Future<void>.delayed(const Duration(milliseconds: 600));
+      });
+      // Pump a frame so the SnackBar renders.
+      await tester.pump();
+
+      // SnackBar with the "already used" copy must be visible.
+      expect(
+        find.textContaining('Manager override already used',
+            skipOffstage: false),
+        findsAtLeastNWidgets(1),
+        reason: 'denial must surface as a SnackBar honestly',
+      );
+      expect(
+        find.textContaining('Reset Target Cycle', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+        reason: 'SnackBar must point users at the admin reset path',
+      );
+      // Screen is still mounted — DONE button still present.
+      expect(find.text('DONE'), findsOneWidget,
+          reason: 'the Baseline Manager must NOT pop on denial');
     });
   });
 }

@@ -5,6 +5,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
+import '../data/active_target_profile_notifier.dart';
 import '../data/learn_benchmark_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/shift_data_source.dart';
@@ -16,6 +17,7 @@ import '../models/shift_record.dart';
 import '../models/variance_week_projection_row.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
+import '../widgets/dollar_impact_card.dart';
 import '../models/learn_repeatable_win_summary.dart';
 import '../models/learn_teaching_summary.dart';
 import '../services/daypart_evidence_visibility_policy.dart';
@@ -25,6 +27,7 @@ import '../services/history_teaching_analyzer.dart';
 import '../services/learn_teaching_analyzer.dart';
 import '../services/variance_week_projection_read_service.dart';
 import '../utils/formatters.dart';
+import '../widgets/app_screen_header.dart';
 import '../widgets/lever_card.dart';
 import '../widgets/week_history_tile.dart';
 import 'week_detail_screen.dart';
@@ -36,65 +39,44 @@ class VarianceReport extends StatelessWidget {
   Widget build(BuildContext context) {
     return DefaultTabController(
       length: 3,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // ── Screen header + tab bar ────────────────────────────────────
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [AppColors.backgroundDeep, AppColors.shimmer],
+      child: FadingHeaderShell(
+        header: AppScreenHeader(
+          title: 'Variance',
+          bottom: Container(
+            margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                    color: AppColors.sunset.withValues(alpha: 0.2),
+                    width: 1),
               ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 22, 16, 8),
-                  child: Text('Variance', style: AppTextStyles.display28()),
-                ),
-                Container(
-                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                  decoration: BoxDecoration(
-                    border: Border(
-                      bottom: BorderSide(
-                          color: AppColors.sunset.withValues(alpha: 0.2),
-                          width: 1),
-                    ),
-                  ),
-                  child: TabBar(
-                    isScrollable: false,
-                    labelStyle: AppTextStyles.mono12(
-                        color: AppColors.sunsetDark),
-                    unselectedLabelStyle: AppTextStyles.mono12(
-                        color: AppColors.textMuted),
-                    indicatorColor: AppColors.sunset,
-                    indicatorWeight: 3,
-                    labelColor: AppColors.sunsetDark,
-                    unselectedLabelColor: AppColors.textMuted,
-                    dividerColor: Colors.transparent,
-                    tabs: const [
-                      Tab(text: 'This Week'),
-                      Tab(text: 'History'),
-                      Tab(text: 'Learn'),
-                    ],
-                  ),
-                ),
+            child: TabBar(
+              isScrollable: false,
+              labelStyle:
+                  AppTextStyles.mono12(color: AppColors.sunsetDark),
+              unselectedLabelStyle:
+                  AppTextStyles.mono12(color: AppColors.textMuted),
+              indicatorColor: AppColors.sunset,
+              indicatorWeight: 3,
+              labelColor: AppColors.sunsetDark,
+              unselectedLabelColor: AppColors.textMuted,
+              dividerColor: Colors.transparent,
+              tabs: const [
+                Tab(text: 'This Week'),
+                Tab(text: 'History'),
+                Tab(text: 'Learn'),
               ],
             ),
           ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _ThisWeekTab(),
-                _HistoryTab(),
-                _LearnTab(),
-              ],
-            ),
-          ),
-        ],
+        ),
+        child: TabBarView(
+          children: [
+            _ThisWeekTab(),
+            _HistoryTab(),
+            _LearnTab(),
+          ],
+        ),
       ),
     );
   }
@@ -159,15 +141,14 @@ class _ThisWeekContent extends StatelessWidget {
           _SectionLabel('WEEK-TO-DATE vs LOCKED PLAN'),
           _WtdTable(data: weekData),
 
-          const SizedBox(height: 20),
-
           // ── Dollar Impact Card ────────────────────────────────────────
-          _DollarImpactCard(
-            weekly: weekData.dollarGap,
-            annualized: weekData.dollarGapAnnualized,
-            contextLine:
-                'Through ${weekData.lastClosedDay} · '
-                '${weekData.totalCovers} covers WTD · run rate.',
+          _SectionLabel('DOLLAR IMPACT'),
+          DollarImpactCard(
+            weekImpact: weekData.dollarGap,
+            monthImpact: weekData.monthDollarImpact,
+            sixtyDayImpact: weekData.sixtyDayDollarImpact,
+            annualizedImpact: weekData.annualizedDollarImpact,
+            footerText: 'Through ${weekData.lastClosedDay}',
           ),
 
           // ── Primary Lever ─────────────────────────────────────────────
@@ -296,20 +277,28 @@ class _WtdTable extends StatelessWidget {
           _divider(),
           _TableRow(
             label: 'FOH Hours',
-            target: data.modelFohHoursWtd.toString(),
+            target: data.targetFohHoursWtd?.toString() ?? '—',
             actual: data.totalFohHours.toString(),
-            variance: Fmt.varStr(data.totalFohHours - data.modelFohHoursWtd),
-            varColor: Fmt.varColor('FOH Hours',
-                (data.totalFohHours - data.modelFohHoursWtd).toDouble()),
+            variance: data.targetFohHoursWtd != null
+                ? Fmt.varStr(data.totalFohHours - data.targetFohHoursWtd!)
+                : '—',
+            varColor: data.targetFohHoursWtd != null
+                ? Fmt.varColor('FOH Hours',
+                    (data.totalFohHours - data.targetFohHoursWtd!).toDouble())
+                : AppColors.textMuted,
           ),
           _divider(),
           _TableRow(
             label: 'BOH Hours',
-            target: data.modelBohHoursWtd.toString(),
+            target: data.targetBohHoursWtd?.toString() ?? '—',
             actual: data.totalBohHours.toString(),
-            variance: Fmt.varStr(data.totalBohHours - data.modelBohHoursWtd),
-            varColor: Fmt.varColor('BOH Hours',
-                (data.totalBohHours - data.modelBohHoursWtd).toDouble()),
+            variance: data.targetBohHoursWtd != null
+                ? Fmt.varStr(data.totalBohHours - data.targetBohHoursWtd!)
+                : '—',
+            varColor: data.targetBohHoursWtd != null
+                ? Fmt.varColor('BOH Hours',
+                    (data.totalBohHours - data.targetBohHoursWtd!).toDouble())
+                : AppColors.textMuted,
           ),
           _divider(),
           _TableRow(
@@ -514,87 +503,6 @@ class _TableRow extends StatelessWidget {
   }
 }
 
-// ─── Dollar Impact Card ────────────────────────────────────────────────────────
-
-class _DollarImpactCard extends StatelessWidget {
-  final double weekly;
-  final double annualized;
-  final String contextLine;
-
-  const _DollarImpactCard({
-    required this.weekly,
-    required this.annualized,
-    required this.contextLine,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final isOver = weekly > 0;
-    final accentColor = isOver ? AppColors.negative : AppColors.positive;
-    final sign = isOver ? '−' : '+';
-
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.backgroundSurface, AppColors.shimmer, AppColors.cardGlow],
-        ),
-        border: Border(
-          left: const BorderSide(color: AppColors.borderSubtle, width: 4),
-          top: BorderSide(
-              color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
-          right: const BorderSide(color: AppColors.borderSubtle, width: 1),
-          bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('DOLLAR IMPACT',
-              style: AppTextStyles.mono11(color: AppColors.textMuted)),
-          const SizedBox(height: 14),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('$sign\$${Fmt.dollars(weekly.abs())}',
-                  style: AppTextStyles.display36(color: accentColor)),
-              const SizedBox(width: 10),
-              Text('this week',
-                  style: AppTextStyles.mono12(
-                      color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: 1,
-            color: AppColors.borderSubtle.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 6),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text('$sign\$${Fmt.dollars(annualized.abs())}',
-                  style: AppTextStyles.display28(color: accentColor)),
-              const SizedBox(width: 10),
-              Text('annualized',
-                  style: AppTextStyles.mono12(
-                      color: AppColors.textSecondary)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(contextLine,
-              style: AppTextStyles.body13(color: AppColors.textMuted)),
-        ],
-      ),
-    );
-  }
-}
-
 // ─── Full Week loader — bridges data source to _FullWeekSection ──────────────
 
 class _FullWeekLoader extends StatefulWidget {
@@ -657,7 +565,24 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
 
   @override
   Widget build(BuildContext context) {
-    final projection = _readService.build(widget.shifts);
+    // 7.55q.4-review-fix: thread the CURRENT shared
+    // [ActiveTargetProfile] into the read service so day-row
+    // aggregates substitute current Benchmark theoretical % for
+    // non-closed children (Rule 3). Closed children continue to
+    // contribute their own locked `shift.theoreticalLaborPct`
+    // (Rule 4 exception). Without this Provider read the
+    // `currentTargetProfile` parameter the read service grew in
+    // `7.55q.4` would never receive a value in production — only
+    // the unit tests would exercise it. Honest fallback: when
+    // the notifier isn't in scope (e.g. legacy widget tests),
+    // the profile is null and the read service falls back to
+    // per-shift values (backward-compatible).
+    final currentTargetProfile =
+        context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    final projection = _readService.build(
+      widget.shifts,
+      currentTargetProfile: currentTargetProfile,
+    );
     final groups = projection.dayRows;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -803,28 +728,14 @@ class _DayRow extends StatelessWidget {
                               weight: FontWeight.w600)),
                       const SizedBox(height: 2),
                       _DaypartChips(children: row.children),
-                      if (row.statusSummary.isNotEmpty) ...[
-                        const SizedBox(height: 1),
-                        Text(row.statusSummary,
-                            style: AppTextStyles.mono7(
-                                color: AppColors.textMuted)),
-                      ],
                     ],
                   ),
                 ),
 
-                // Covers
-                Expanded(
-                  child: Text(
-                    '${row.totalCovers} cvr',
-                    style: AppTextStyles.mono11(
-                        color: row.allProjected
-                            ? AppColors.textMuted
-                            : (row.hasOpen || row.status == RowStatus.mixed)
-                                ? AppColors.sunsetDark
-                                : AppColors.textSecondary),
-                  ),
-                ),
+                // Covers column removed from the collapsed header — the
+                // bare total-covers number was un-labeled noise here.
+                // Per-daypart covers are still shown in the expanded detail.
+                const Spacer(),
 
                 // Labor %
                 Text(
@@ -1149,24 +1060,103 @@ class _ProjectedShiftDetail extends StatelessWidget {
           ]),
           const SizedBox(height: 7),
 
-          // Labor % row
+          // FOH Hours row
           Row(children: [
             Expanded(
               flex: 4,
-              child: Text('Labor %',
+              child: Text('FOH Hours',
                   style: AppTextStyles.body13(
                       color: AppColors.textSecondary)),
             ),
             Expanded(
               flex: 6,
               child: Text(
-                '${shift.theoreticalLaborPct.toStringAsFixed(1)}%  (theoretical)',
+                '${shift.fohHours}  (plan)',
                 style: AppTextStyles.mono12(
                     color: AppColors.sunsetDark),
                 textAlign: TextAlign.right,
               ),
             ),
           ]),
+          const SizedBox(height: 7),
+
+          // BOH Hours row
+          Row(children: [
+            Expanded(
+              flex: 4,
+              child: Text('BOH Hours',
+                  style: AppTextStyles.body13(
+                      color: AppColors.textSecondary)),
+            ),
+            Expanded(
+              flex: 6,
+              child: Text(
+                '${shift.bohHours}  (plan)',
+                style: AppTextStyles.mono12(
+                    color: AppColors.sunsetDark),
+                textAlign: TextAlign.right,
+              ),
+            ),
+          ]),
+          const SizedBox(height: 7),
+
+          // Blended Wage row — 7.55q.4: Benchmark-owned, read from
+          // current ActiveTargetProfile via the 7.55q.3 shared seam.
+          // Honest fallback to per-shift fields when the profile
+          // notifier isn't in scope (e.g. legacy widget tests).
+          Builder(builder: (ctx) {
+            final profile =
+                ctx.watch<ActiveTargetProfileNotifier?>()?.profile;
+            final wage = profile?.targetBlendedWage ??
+                shift.snapshotBlendedWage ??
+                shift.blendedWage;
+            return Row(children: [
+              Expanded(
+                flex: 4,
+                child: Text('Blended Wage',
+                    style: AppTextStyles.body13(
+                        color: AppColors.textSecondary)),
+              ),
+              Expanded(
+                flex: 6,
+                child: Text(
+                  '\$${wage.toStringAsFixed(2)}  (plan)',
+                  style: AppTextStyles.mono12(
+                      color: AppColors.sunsetDark),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ]);
+          }),
+          const SizedBox(height: 7),
+
+          // Labor % row — 7.55q.4: Benchmark-owned theoretical %,
+          // read from current ActiveTargetProfile (Rule 3). Honest
+          // fallback to the shift's locked-at-write value when the
+          // profile notifier isn't in scope.
+          Builder(builder: (ctx) {
+            final profile =
+                ctx.watch<ActiveTargetProfileNotifier?>()?.profile;
+            final theoPct = profile?.theoreticalLaborPct ??
+                shift.theoreticalLaborPct;
+            return Row(children: [
+              Expanded(
+                flex: 4,
+                child: Text('Labor %',
+                    style: AppTextStyles.body13(
+                        color: AppColors.textSecondary)),
+              ),
+              Expanded(
+                flex: 6,
+                child: Text(
+                  '${theoPct.toStringAsFixed(1)}%  (theoretical)',
+                  style: AppTextStyles.mono12(
+                      color: AppColors.sunsetDark),
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ]);
+          }),
 
           const SizedBox(height: 12),
 
@@ -1331,7 +1321,7 @@ class _ProjectedTotalRow extends StatelessWidget {
 
     return Container(
       color: AppColors.backgroundSurface,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       child: Row(
         children: [
           Expanded(
@@ -1349,32 +1339,38 @@ class _ProjectedTotalRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${wd.projTargetLaborPct.toStringAsFixed(1)}%',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  'TARGET',
+                  style:
+                      AppTextStyles.mono8(color: AppColors.textMuted),
                 ),
+                const SizedBox(height: 4),
                 Text(
-                  'target',
-                  style: AppTextStyles.mono7(color: AppColors.textMuted),
+                  '${wd.projTargetLaborPct.toStringAsFixed(1)}%',
+                  style: AppTextStyles.mono12(color: AppColors.textMuted),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 6),
           Expanded(
             flex: 3,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
+                  'PROJ',
+                  style:
+                      AppTextStyles.mono8(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 4),
+                Text(
                   '${wd.projActualLaborPct.toStringAsFixed(1)}%',
                   style: AppTextStyles.mono12(color: ptColor),
-                ),
-                Text(
-                  'proj',
-                  style: AppTextStyles.mono7(color: AppColors.textMuted),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 6),
           Expanded(
             flex: 3,
             child: Text(
@@ -1453,8 +1449,6 @@ class _TeachingSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final topLeaks = summary.topLeakDayparts.join(' / ');
-
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       clipBehavior: Clip.antiAlias,
@@ -1474,23 +1468,9 @@ class _TeachingSummaryCard extends StatelessWidget {
           _TeachRow(
             title: 'MOST COMMON LEAK',
             value: leakCard.shortLabel,
-            subtitle: '${summary.mostCommonLeakCount} of last $weekCount weeks',
+            subtitle:
+                '${summary.mostCommonLeakCount} dayparts in the last $weekCount weeks',
             valueColor: AppColors.negative,
-          ),
-          Container(height: 1, color: AppColors.borderSubtle),
-
-          // MOST OFTEN IN
-          _TeachRow(
-            title: 'MOST OFTEN IN',
-            value: topLeaks.isEmpty ? '—' : topLeaks,
-          ),
-          Container(height: 1, color: AppColors.borderSubtle),
-
-          // MAINLY
-          _TeachRow(
-            title: 'MAINLY',
-            value: summary.mostCommonLeakSideLabel,
-            valueColor: AppColors.textSecondary,
           ),
           Container(height: 1, color: AppColors.borderSubtle),
 

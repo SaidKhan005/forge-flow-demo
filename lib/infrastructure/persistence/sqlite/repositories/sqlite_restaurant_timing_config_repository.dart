@@ -1,0 +1,87 @@
+import 'dart:convert';
+import '../../../../domain/models/restaurant_timing_config.dart';
+import '../../../../domain/models/service_period_definition.dart';
+import '../../../../domain/repositories/restaurant_timing_config_repository.dart';
+import '../dao/restaurant_scope_dao.dart';
+import '../dao/restaurant_timing_config_dao.dart';
+import '../sqlite_database.dart';
+
+class SqliteRestaurantTimingConfigRepository
+    implements RestaurantTimingConfigRepository {
+  SqliteRestaurantTimingConfigRepository._();
+  static final SqliteRestaurantTimingConfigRepository instance =
+      SqliteRestaurantTimingConfigRepository._();
+
+  RestaurantTimingConfigDao? _dao;
+  RestaurantScopeDao? _scopeDao;
+
+  Future<RestaurantTimingConfigDao> get _daoReady async {
+    if (_dao != null) return _dao!;
+    final db = await SqliteDatabase.instance.database;
+    _dao = RestaurantTimingConfigDao(db);
+    return _dao!;
+  }
+
+  Future<RestaurantScopeDao> get _scopeDaoReady async {
+    if (_scopeDao != null) return _scopeDao!;
+    final db = await SqliteDatabase.instance.database;
+    _scopeDao = RestaurantScopeDao(db);
+    return _scopeDao!;
+  }
+
+  @override
+  Future<RestaurantTimingConfig?> getTimingConfig(String restaurantId) async {
+    final dao = await _daoReady;
+    final raw = await dao.getRaw(restaurantId);
+    if (raw == null) return null;
+
+    // Compose timezone from RestaurantLocation — single source of truth.
+    // No fallback: if the restaurant location row is missing, this is a scope
+    // mismatch and we fail closed by returning null.
+    final scopeDao = await _scopeDaoReady;
+    final location = await scopeDao.getRestaurant(restaurantId);
+    if (location == null) return null;
+    final timezone = location.businessTimezone;
+
+    final defsJson =
+        jsonDecode(raw['service_period_definitions_json'] as String) as List;
+    final definitions = defsJson
+        .map((e) => ServicePeriodDefinition.fromMap(
+            Map<String, dynamic>.from(e as Map)))
+        .toList();
+
+    return RestaurantTimingConfig(
+      restaurantId: raw['restaurant_id'] as String,
+      businessTimezone: timezone,
+      businessDayStartLocalTime:
+          raw['business_day_start_local_time'] as String,
+      weekStartDay: raw['week_start_day'] as int,
+      servicePeriodDefinitions: definitions,
+      shiftCloseAuthority:
+          ShiftCloseAuthority.fromValue(raw['shift_close_authority'] as String),
+      localCloseFallback: raw['local_close_fallback'] as String?,
+      createdAt: raw['created_at'] as String,
+      updatedAt: raw['updated_at'] as String,
+    );
+  }
+
+  @override
+  Future<void> saveTimingConfig(RestaurantTimingConfig config) async {
+    final dao = await _daoReady;
+    await dao.upsert(
+      restaurantId: config.restaurantId,
+      businessDayStartLocalTime: config.businessDayStartLocalTime,
+      weekStartDay: config.weekStartDay,
+      servicePeriodDefinitions: config.servicePeriodDefinitions,
+      shiftCloseAuthority: config.shiftCloseAuthority,
+      localCloseFallback: config.localCloseFallback,
+      createdAt: config.createdAt,
+      updatedAt: config.updatedAt,
+    );
+  }
+
+  void resetDao() {
+    _dao = null;
+    _scopeDao = null;
+  }
+}

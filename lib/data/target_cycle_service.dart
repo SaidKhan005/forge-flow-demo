@@ -6,8 +6,8 @@
 // Override UX.
 //
 // 7.55l.2b fixes:
-// - recommended-cycle creation now rebuilds fresh from current
-//   BaselineData + resolved wages instead of reading potentially stale
+// - recommended-cycle creation now rebuilds fresh from explicit
+//   recommendation inputs + resolved wages instead of reading a stale
 //   persisted ActiveTargetProfile
 // - all existing active cycles are deactivated before writing a new one
 //   to enforce one-active-per-restaurant
@@ -36,7 +36,10 @@
 //   repository, keeping the persisted profile synchronized with the
 //   current active cycle
 
+import '../models/baseline_candidate_shift.dart';
+import '../domain/models/active_target_profile.dart';
 import '../domain/models/benchmark_selection_summary.dart';
+import '../domain/models/recommended_benchmark_selection.dart';
 import '../domain/models/target_cycle.dart';
 import '../domain/models/target_cycle_source.dart';
 import '../domain/repositories/benchmark_selection_summary_repository.dart';
@@ -47,7 +50,7 @@ import '../domain/services/target_cycle_policy.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
-import '../infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'app_notification_service.dart';
 import 'baseline_manager_service.dart';
 import 'baseline_selection_analytics_service.dart';
 import 'legacy_fixture_data.dart';
@@ -94,7 +97,17 @@ class TargetCycleService {
     }
 
     if (TargetCyclePolicy.needsAutoRefresh(existing, businessDate)) {
-      return _createRecommendedCycle(restaurantId, businessDate);
+      final newCycle =
+          await _createRecommendedCycle(restaurantId, businessDate);
+      // Persist passive notification for cycle rollover (7.55p.4d).
+      // Awaited so the notification row is durable before the rollover
+      // path returns. Only on auto-refresh, not initial bootstrap.
+      await AppNotificationService.instance.emitCycleRollover(
+        restaurantId: restaurantId,
+        cycleEffectiveStart: newCycle.effectiveStart,
+        businessDate: businessDate,
+      );
+      return newCycle;
     }
 
     return existing;
@@ -168,6 +181,30 @@ class TargetCycleService {
 
   // ── Shared replacement write path (7.55l.3a) ──────────────────────────
 
+  /// Restores recommended-cycle authority after a manager override is cleared.
+  ///
+  /// Uses the canonical replacement-cycle path instead of mutating the active
+  /// profile directly. Prior override usage is preserved so clearing the
+  /// override does not silently grant a fresh once-per-cycle allowance.
+  Future<TargetCycle> restoreRecommendedCycle(
+      String restaurantId, String businessDate) async {
+    final current = await getOrCreateActiveCycle(restaurantId, businessDate);
+
+    if (current.source == TargetCycleSource.recommended) {
+      return current;
+    }
+
+    return _writeReplacementCycle(
+      current: current,
+      restaurantId: restaurantId,
+      businessDate: businessDate,
+      source: TargetCycleSource.recommended,
+      managerOverrideUsed: current.managerOverrideUsed,
+      managerOverrideAt: current.managerOverrideAt,
+      adminReplacedAt: current.adminReplacedAt,
+    );
+  }
+
   Future<TargetCycle> _writeReplacementCycle({
     required TargetCycle current,
     required String restaurantId,
@@ -185,12 +222,45 @@ class TargetCycleService {
     final wageCtx =
         await WageStandardContextService.instance.resolve(restaurantId);
 
-    // Build fresh locked standards from current app truth.
-    final profile = SqliteDatabase.buildActiveTargetProfileFromBaseline(
-      restaurantId,
-      fohWageOverride: wageCtx.fohWage,
-      bohWageOverride: wageCtx.bohWage,
-    );
+    // Manager-override replacement stays backed by the explicit
+    // manager-selected candidate cohort. Admin replacements with no
+    // manager-selected keys use the app-owned recommendation service
+    // (7.55p.5g) so the replaced recommended baseline is not pulled
+    // from bridge-selected state.
+    final hasOverride = await BaselineManagerService.instance
+        .hasPersistedManagerOverride(restaurantId);
+
+    ActiveTargetProfileBuildResult build;
+    RecommendedBenchmarkSelection? recommendation;
+    if (hasOverride) {
+      final selected = await _selectedManagerOverrideCandidates(
+        restaurantId,
+        businessDate,
+      );
+      build = ActiveTargetProfileBuildResult(
+        profile: _buildManagerOverrideProfile(
+          restaurantId: restaurantId,
+          wageFoh: wageCtx.fohWage ?? MeridianConfig.fohWage,
+          wageBoh: wageCtx.bohWage ?? MeridianConfig.bohWage,
+          selectedCandidates: selected,
+          sourceType: source == TargetCycleSource.adminReplacement
+              ? 'admin_replacement'
+              : 'manager_override',
+        ),
+        sourceLabel: source.label,
+      );
+    } else {
+      recommendation = await BaselineManagerService.instance
+          .resolveRecommendedSelection(restaurantId, businessDate);
+      build = _buildRecommendedProfile(
+        restaurantId: restaurantId,
+        wageFoh: wageCtx.fohWage,
+        wageBoh: wageCtx.bohWage,
+        recommendation: recommendation,
+      );
+    }
+
+    final profile = build.profile;
 
     // Deactivate all active cycles for the restaurant.
     await SqliteTargetCycleRepository.instance
@@ -229,18 +299,36 @@ class TargetCycleService {
 
     await _cycleRepo.upsertCycle(replacement);
     await _syncActiveTargetProfile(replacement);
-    await _persistSelectionSummary(replacement, source.label);
+    await _persistSelectionSummary(
+      replacement,
+      source.label,
+      fromRecommendation: recommendation,
+    );
     return replacement;
   }
 
-  // ── Bridge: build recommended cycle from current app truth ────────────
+  // ── Recommended-cycle write path (7.55p.5g) ───────────────────────────
+  //
+  // Routes between two source-truth paths:
+  //
+  // 1. Manager override present → read from the persisted selected
+  //    candidate cohort directly. This is the explicit manager-selected
+  //    authority path.
+  //
+  // 2. No manager override → consult
+  //    `RecommendedBenchmarkSelectionService` for app-owned recommendation
+  //    truth. The default recommended/system cycle no longer depends on
+  //    hardcoded seed-selected BaselineData records for its active cohort.
+  //
+  // Both paths now build the profile from explicit values. The older
+  // `buildActiveTargetProfileFromBaseline` helper remains as a bridge/
+  // compatibility seam, but it is no longer the live authoring path here.
 
   Future<TargetCycle> _createRecommendedCycle(
       String restaurantId, String businessDate) async {
     // Re-prime benchmark context for the requested business date's 60-day
-    // window. This ensures buildActiveTargetProfileFromBaseline reads from
-    // fresh BaselineData anchored to the correct date, not stale in-memory
-    // state left over from a prior load or screen interaction.
+    // window. Still used for historicalContextRecords and manager-override
+    // path compatibility.
     await BaselineManagerService.instance
         .primeBaselineContextForDate(restaurantId, businessDate);
 
@@ -248,14 +336,20 @@ class TargetCycleService {
     final wageCtx =
         await WageStandardContextService.instance.resolve(restaurantId);
 
-    // Build from freshly primed BaselineData + resolved wages.
-    // This is the transitional bridge — 7.55l.4 will project the profile
-    // from the cycle instead.
-    final profile = SqliteDatabase.buildActiveTargetProfileFromBaseline(
-      restaurantId,
-      fohWageOverride: wageCtx.fohWage,
-      bohWageOverride: wageCtx.bohWage,
+    // Recommended-cycle creation must stay provenance-honest even if
+    // persisted manager-selected keys happen to exist already. Override
+    // selections only become authoritative through the explicit
+    // applyManagerOverrideCycle/write-replacement path.
+    final recommendation = await BaselineManagerService.instance
+        .resolveRecommendedSelection(restaurantId, businessDate);
+    final build = _buildRecommendedProfile(
+      restaurantId: restaurantId,
+      wageFoh: wageCtx.fohWage,
+      wageBoh: wageCtx.bohWage,
+      recommendation: recommendation,
     );
+
+    final profile = build.profile;
 
     // Enforce one-active-per-restaurant: deactivate all existing active
     // cycles before writing the new one.
@@ -287,8 +381,115 @@ class TargetCycleService {
 
     await _cycleRepo.upsertCycle(cycle);
     await _syncActiveTargetProfile(cycle);
-    await _persistSelectionSummary(cycle, 'cycle_recommended');
+    await _persistSelectionSummary(
+      cycle,
+      build.sourceLabel,
+      fromRecommendation: recommendation,
+    );
     return cycle;
+  }
+
+  /// Builds a profile for the recommended path. When the recommendation
+  /// is `'insufficient'`, falls back to `MeridianConfig` hard defaults
+  /// rather than the seed-selected `BaselineData` cohort. That keeps
+  /// the bridge honest: we either teach from app-owned recommendation
+  /// output, or we admit we do not have a recommendation and fall back
+  /// to the Config Default standards.
+  ActiveTargetProfileBuildResult _buildRecommendedProfile({
+    required String restaurantId,
+    required double? wageFoh,
+    required double? wageBoh,
+    required RecommendedBenchmarkSelection recommendation,
+  }) {
+    final resolvedFohWage = wageFoh ?? MeridianConfig.fohWage;
+    final resolvedBohWage = wageBoh ?? MeridianConfig.bohWage;
+    if (recommendation.isInsufficient) {
+      return ActiveTargetProfileBuildResult(
+        profile: ActiveTargetProfile.build(
+          restaurantId: restaurantId,
+          sourceType: 'system_baseline_insufficient',
+          targetCPLH: MeridianConfig.targetCPLH,
+          targetSPLH: MeridianConfig.targetSPLH,
+          targetPPA: MeridianConfig.targetPPA,
+          fohWage: resolvedFohWage,
+          bohWage: resolvedBohWage,
+          opzFloorCPLH: MeridianConfig.opzFloorCPLH,
+          opzCeilingCPLH: MeridianConfig.opzCeilingCPLH,
+        ),
+        sourceLabel: 'cycle_recommended_insufficient',
+      );
+    }
+
+    return ActiveTargetProfileBuildResult(
+      profile: ActiveTargetProfile.build(
+        restaurantId: restaurantId,
+        sourceType: 'system_baseline',
+        targetCPLH: recommendation.pooledRecommendedTargetCPLH,
+        targetSPLH: recommendation.pooledRecommendedTargetSPLH,
+        targetPPA: recommendation.pooledRecommendedTargetPPA,
+        fohWage: resolvedFohWage,
+        bohWage: resolvedBohWage,
+        opzFloorCPLH: recommendation.unionOpzFloorCPLH,
+        opzCeilingCPLH: recommendation.unionOpzCeilingCPLH,
+      ),
+      sourceLabel: 'cycle_recommended',
+    );
+  }
+
+  Future<List<BaselineCandidateShift>> _selectedManagerOverrideCandidates(
+    String restaurantId,
+    String businessDate,
+  ) async {
+    final startDate = _addDays(businessDate, -59);
+    final candidates = await BaselineManagerService.instance
+        .getCandidateShiftsForDateRange(
+      startDate,
+      businessDate,
+      restaurantId: restaurantId,
+    );
+    return candidates.where((c) => c.isSelected).toList();
+  }
+
+  ActiveTargetProfile _buildManagerOverrideProfile({
+    required String restaurantId,
+    required double wageFoh,
+    required double wageBoh,
+    required List<BaselineCandidateShift> selectedCandidates,
+    required String sourceType,
+  }) {
+    if (selectedCandidates.isEmpty) {
+      throw StateError(
+        'TargetCycleService: manager override profile requested without any '
+        'selected candidate shifts in the active 60-day window.',
+      );
+    }
+
+    double targetCPLH = 0;
+    double targetSPLH = 0;
+    double targetPPA = 0;
+    double opzFloor = selectedCandidates.first.cplh;
+    double opzCeiling = selectedCandidates.first.cplh;
+
+    for (final candidate in selectedCandidates) {
+      targetCPLH += candidate.cplh;
+      targetSPLH += candidate.splh;
+      targetPPA += candidate.ppa;
+      if (candidate.cplh < opzFloor) opzFloor = candidate.cplh;
+      if (candidate.cplh > opzCeiling) opzCeiling = candidate.cplh;
+    }
+
+    final count = selectedCandidates.length.toDouble();
+    return ActiveTargetProfile.build(
+      restaurantId: restaurantId,
+      sourceType: sourceType,
+      targetCPLH: targetCPLH / count,
+      targetSPLH: targetSPLH / count,
+      targetPPA: targetPPA / count,
+      fohWage: wageFoh,
+      bohWage: wageBoh,
+      opzFloorCPLH: opzFloor,
+      opzCeilingCPLH: opzCeiling,
+    );
   }
 
   // ── Cycle -> ActiveTargetProfile projection (7.55l.4a) ────────────────
@@ -299,17 +500,42 @@ class TargetCycleService {
     await _profileRepo.upsertActiveTargetProfile(profile);
   }
 
-  // ── Benchmark selection summary persistence (7.55l.8c) ────────────────
+  // ── Benchmark selection summary persistence (7.55l.8c + 7.55p.5g) ─────
 
-  /// Captures the benchmark-selection summary from the currently effective
-  /// BaselineData state (which must have been freshly primed before this
-  /// call) and persists it alongside the cycle.
+  /// Captures the benchmark-selection summary alongside the cycle.
+  ///
+  /// When [fromRecommendation] is provided, the summary is derived from
+  /// the app-owned recommendation output (7.55p.5g) rather than from
+  /// potentially stale `BaselineData` seed-selected state. Manager-
+  /// override and legacy paths continue to read from `BaselineData`.
   Future<void> _persistSelectionSummary(
-      TargetCycle cycle, String sourceLabel) async {
-    final selected = BaselineData.records.where((r) => r.isSelected).toList();
+    TargetCycle cycle,
+    String sourceLabel, {
+    RecommendedBenchmarkSelection? fromRecommendation,
+  }) async {
+    int selectedCount;
+    List<double> cplhValues;
+    if (fromRecommendation != null) {
+      selectedCount = fromRecommendation.selectedRecordIds.length;
+      // Use the union band's floor/ceiling to compute the spread-quality
+      // label. This matches how the union band is actually surfaced by
+      // legacy consumers today.
+      cplhValues = fromRecommendation.selectedRecordIds.isEmpty
+          ? <double>[]
+          : <double>[
+              fromRecommendation.unionOpzFloorCPLH,
+              fromRecommendation.unionOpzCeilingCPLH,
+            ];
+    } else {
+      final selected =
+          BaselineData.records.where((r) => r.isSelected).toList();
+      selectedCount = selected.length;
+      cplhValues = selected.map((r) => r.cplh).toList();
+    }
+
     final analytics = BaselineSelectionAnalyticsService.computeAnalytics(
-      selected.length,
-      selected.map((r) => r.cplh).toList(),
+      selectedCount,
+      cplhValues,
     );
     final summary = BenchmarkSelectionSummary(
       summaryId: '${cycle.cycleId}_summary',
@@ -322,6 +548,85 @@ class TargetCycleService {
       createdAt: cycle.createdAt,
     );
     await _summaryRepo.upsert(summary);
+
+    // 7.55p.5h + 7.55p.5h-review-fix: project recommendation-quality
+    // truth AND the persisted cycle's geometry into BaselineData so the
+    // Benchmark graph model can tell an honest story AND draw geometry
+    // from the same source of truth as the copy. For manager-override
+    // writes we clear the signals so the existing `baselineRangeValidation`
+    // derivation remains authoritative for that path.
+    if (fromRecommendation != null) {
+      BaselineData.applyRecommendationSignals(
+        BaselineRecommendationSignals(
+          sourceType: sourceLabel,
+          overallQuality: fromRecommendation.overallQuality,
+          unionBandWidth: fromRecommendation.unionBandWidth,
+          selectedShiftCount: selectedCount,
+          rangeFloorCPLH: cycle.opzFloorCPLH,
+          rangeCeilingCPLH: cycle.opzCeilingCPLH,
+          targetCPLH: cycle.targetCPLH,
+        ),
+      );
+    } else {
+      BaselineData.clearRecommendationSignals();
+    }
+  }
+
+  // ── Bootstrap honesty hydration (7.55p.5h-review-fix) ─────────────────
+  //
+  // Recommendation-honesty signals on `BaselineData` are in-memory. Cycle
+  // writes set them inline through `_persistSelectionSummary`, but a fresh
+  // app launch only sees the persisted cycle + summary, not the in-memory
+  // signal. Call this once on bootstrap (and on explicit refresh) to
+  // rehydrate honesty from the active cycle so the Benchmark graph
+  // tells the same story across restarts.
+  //
+  // Routing mirrors the write-time logic:
+  //   - No active cycle       → clear signals.
+  //   - Manager-override cycle or persisted manager-selected keys
+  //                            → clear signals (existing override branch wins).
+  //   - Recommended cycle     → re-run the recommendation service against
+  //                            the cycle's calibration window so the tier
+  //                            matches what the cycle was built from, and
+  //                            apply signals with the cycle's geometry.
+  Future<void> hydrateBenchmarkHonestyFromActiveCycle(
+      String restaurantId) async {
+    final cycle = await _cycleRepo.getActiveCycle(restaurantId);
+    if (cycle == null) {
+      BaselineData.clearRecommendationSignals();
+      return;
+    }
+
+    final hasOverride = await BaselineManagerService.instance
+        .hasPersistedManagerOverride(restaurantId);
+    if (hasOverride || cycle.source == TargetCycleSource.managerOverride) {
+      BaselineData.clearRecommendationSignals();
+      return;
+    }
+
+    // Recover the recommendation tier against the cycle's calibration
+    // window so the hydrated tier matches the cycle's own build-time
+    // evidence. For admin-replacement recommended cycles this still
+    // uses the recommendation pipeline (7.55p.5g admin branch).
+    final recommendation = await BaselineManagerService.instance
+        .resolveRecommendedSelection(
+            restaurantId, cycle.calibrationWindowEnd);
+
+    final sourceLabel = recommendation.isInsufficient
+        ? 'cycle_recommended_insufficient'
+        : 'cycle_recommended';
+
+    BaselineData.applyRecommendationSignals(
+      BaselineRecommendationSignals(
+        sourceType: sourceLabel,
+        overallQuality: recommendation.overallQuality,
+        unionBandWidth: recommendation.unionBandWidth,
+        selectedShiftCount: recommendation.selectedRecordIds.length,
+        rangeFloorCPLH: cycle.opzFloorCPLH,
+        rangeCeilingCPLH: cycle.opzCeilingCPLH,
+        targetCPLH: cycle.targetCPLH,
+      ),
+    );
   }
 
   // ── Date helpers (UTC to avoid DST issues) ────────────────────────────
@@ -337,4 +642,18 @@ class TargetCycleService {
     return '${result.year}-${result.month.toString().padLeft(2, '0')}'
         '-${result.day.toString().padLeft(2, '0')}';
   }
+}
+
+/// Internal: pairs a freshly-built [ActiveTargetProfile] with the
+/// summary source label used by the cycle write path. Different paths
+/// (manager override, app-owned recommendation, insufficient fallback)
+/// carry different source labels so the benchmark-selection summary
+/// reflects the real provenance.
+class ActiveTargetProfileBuildResult {
+  final ActiveTargetProfile profile;
+  final String sourceLabel;
+  const ActiveTargetProfileBuildResult({
+    required this.profile,
+    required this.sourceLabel,
+  });
 }

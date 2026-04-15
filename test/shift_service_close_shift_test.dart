@@ -1,13 +1,23 @@
-// Tests for ShiftService.closeShift â€” the Phase 3 ingest path.
+// Tests for ShiftService.closeShift.
+//
+// Current contract (7.55q.5): closing the 14th shift builds a WeekRecord
+// whose `lockedRequiredFohHours` / `lockedRequiredBohHours` come from the
+// `WeeklyPlanSnapshot` in force (read-only lookup by business date). No
+// snapshot => fields stay null => Week Detail renders "-" honestly.
 //
 // These tests use the real SQLite database (sqflite_common_ffi on desktop)
 // and call reseedDemo() before each test to ensure a clean, reproducible state.
+//
+// Historical origin: Phase 3 close-ingest path.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/database_helper.dart';
 import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/week_data.dart';
+import 'package:forge_and_flow/models/week_record.dart';
 
 // â”€â”€ Shared close inputs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -223,9 +233,68 @@ void main() {
     expect(w13, isEmpty);
   });
 
+  // â”€â”€ 7.55q.5: preserved locked plan hours from snapshot â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+  test('7.55q.5: closing all 14 shifts preserves locked plan FOH/BOH hours from the snapshot in force',
+      () async {
+    // Ensure a WeeklyPlanSnapshot is persisted for the current week.
+    // This path auto-generates from the live plan when none is
+    // persisted â€” acceptable for tests since we're just guaranteeing
+    // the read-only lookup in _buildWeekRecord finds a snapshot.
+    final snapshot = await WeeklyPlanSnapshotService.instance
+        .getCurrentWeekSnapshot();
+    expect(snapshot, isNotNull,
+        reason:
+            'current-week snapshot should be generable from the live plan');
+
+    // Close the 5 remaining projected slots to complete the week.
+    await ShiftService.instance.closeShift(_friDinner());
+    await ShiftService.instance.closeShift(_friLateNight());
+    await ShiftService.instance.closeShift(_satDinner());
+    await ShiftService.instance.closeShift(_satLateNight());
+    await ShiftService.instance.closeShift(_sunDinner());
+
+    // The WeekRecord should carry the snapshot's locked plan hours.
+    final history = await ShiftService.instance.getWeekHistory();
+    final w13 = history.firstWhere((w) => w.weekId == '2026-W13');
+    expect(w13.lockedRequiredFohHours, snapshot!.requiredFohHours);
+    expect(w13.lockedRequiredBohHours, snapshot.requiredBohHours);
+
+    // Strict getters now return the preserved values (no throw).
+    expect(w13.targetFohHours, snapshot.requiredFohHours);
+    expect(w13.targetBohHours, snapshot.requiredBohHours);
+  });
+
+  test('7.55q.5: closing all 14 shifts without a snapshot leaves preserved plan hours null (honest legacy)',
+      () async {
+    // Explicitly remove any snapshot that exists for the current week
+    // so the close-time lookup finds nothing. Honest legacy path: the
+    // preserved plan-hour fields stay null; Week Detail renders "â€”"
+    // for those cells rather than re-modeling from actuals.
+    final db = await SqliteDatabase.instance.database;
+    await db.delete('weekly_plan_snapshots');
+
+    await ShiftService.instance.closeShift(_friDinner());
+    await ShiftService.instance.closeShift(_friLateNight());
+    await ShiftService.instance.closeShift(_satDinner());
+    await ShiftService.instance.closeShift(_satLateNight());
+    await ShiftService.instance.closeShift(_sunDinner());
+
+    final history = await ShiftService.instance.getWeekHistory();
+    final w13 = history.firstWhere((w) => w.weekId == '2026-W13');
+    expect(w13.lockedRequiredFohHours, isNull);
+    expect(w13.lockedRequiredBohHours, isNull);
+    expect(w13.preservedTargetFohHours, isNull);
+    expect(w13.preservedTargetBohHours, isNull);
+
+    // Strict getters must throw rather than silently re-model from actuals.
+    expect(() => w13.targetFohHours, throwsA(isA<StateError>()));
+    expect(() => w13.targetBohHours, throwsA(isA<StateError>()));
+  });
+
   // â”€â”€ Test 4: WeekData fallback to config-wage when stored totals absent â”€
 
-  test('WeekData falls back to config-wage labor dollars when stored totals are absent',
+  test('WeekData degrades honestly to 0 labor dollars when stored totals are absent',
       () {
     final wtd = WeekData(
       weekId: 'test',
@@ -250,8 +319,88 @@ void main() {
       // storedTotalFohLaborDollar and storedTotalBohLaborDollar intentionally omitted
     );
 
-    expect(wtd.totalFohLaborDollar, closeTo(165.0, 0.001));  // 10 Ã— 16.50
-    expect(wtd.totalBohLaborDollar, closeTo(427.0, 0.001));  // 20 Ã— 21.35
-    expect(wtd.totalLaborDollar,    closeTo(592.0, 0.001));  // 165 + 427
+    expect(wtd.totalFohLaborDollar, closeTo(0.0, 0.001));
+    expect(wtd.totalBohLaborDollar, closeTo(0.0, 0.001));
+    expect(wtd.totalLaborDollar, closeTo(0.0, 0.001));
+  });
+
+  // -- 7.55q.10: frozen Dollar Impact windows at close ----------------------
+  //
+  // Closing the 14th shift must capture month + 60-day dollar impact and
+  // a closedAt timestamp on the WeekRecord, so Week Detail can render the
+  // same 4 rows the live Variance card was showing the moment the close
+  // happened. Annualized must use the same (365/60) trend formula that
+  // WeekData.annualizedDollarImpact uses, frozen to the snapshot value.
+  //
+  // Honest legacy: rows that pre-date V22 (or that have no usable shift
+  // businessDate) leave all three fields null; Week Detail then renders
+  // the historical 2-row + boilerplate-footer view.
+
+  group('7.55q.10: frozen dollar impact windows at close', () {
+    test('all 14 closed -> WeekRecord carries month + 60-day + closedAt',
+        () async {
+      await ShiftService.instance.closeShift(_friDinner());
+      await ShiftService.instance.closeShift(_friLateNight());
+      await ShiftService.instance.closeShift(_satDinner());
+      await ShiftService.instance.closeShift(_satLateNight());
+      await ShiftService.instance.closeShift(_sunDinner());
+
+      final history = await ShiftService.instance.getWeekHistory();
+      final w13 = history.firstWhere((w) => w.weekId == '2026-W13');
+
+      // closedAt is the latest business date among the 14 closed shifts.
+      // Sunday dinner is 2026-03-29 (the last day of 2026-W13).
+      expect(w13.closedAt, '2026-03-29');
+
+      // Both windows captured (non-null). Sign comes from
+      // _accumulateDollarImpact = actualLabor - theoreticalLabor.
+      expect(w13.monthDollarImpact, isNotNull);
+      expect(w13.sixtyDayDollarImpact, isNotNull);
+    });
+
+    test('frozenAnnualizedImpact uses the (365/60) trend formula', () async {
+      await ShiftService.instance.closeShift(_friDinner());
+      await ShiftService.instance.closeShift(_friLateNight());
+      await ShiftService.instance.closeShift(_satDinner());
+      await ShiftService.instance.closeShift(_satLateNight());
+      await ShiftService.instance.closeShift(_sunDinner());
+
+      final history = await ShiftService.instance.getWeekHistory();
+      final w13 = history.firstWhere((w) => w.weekId == '2026-W13');
+
+      expect(w13.frozenAnnualizedImpact, isNotNull);
+      expect(
+        w13.frozenAnnualizedImpact!,
+        closeTo(w13.sixtyDayDollarImpact! * (365.0 / 60), 0.001),
+      );
+    });
+
+    test('legacy null path: frozenAnnualizedImpact null; dollarGapAnnualized still computes',
+        () {
+      // Simulate a pre-V22 row by constructing a WeekRecord without the
+      // new fields — they default to null per the additive constructor.
+      const legacy = WeekRecord(
+        weekId: '2025-W42',
+        weekLabel: 'Oct 13',
+        totalCovers: 1000,
+        forecastCovers: 1000,
+        totalFohHours: 200,
+        totalBohHours: 220,
+        avgPPA: 42.0,
+        avgCPLH: 5.0,
+        theoreticalLaborPct: 20.6,
+        actualLaborPct: 21.0,
+        dollarGap: 200.0,
+        primaryLeverId: 'covers_down',
+      );
+
+      expect(legacy.monthDollarImpact, isNull);
+      expect(legacy.sixtyDayDollarImpact, isNull);
+      expect(legacy.closedAt, isNull);
+      expect(legacy.frozenAnnualizedImpact, isNull);
+
+      // Legacy ×52 fallback still works: dollarGap.abs() * 52 = 200 * 52
+      expect(legacy.dollarGapAnnualized, closeTo(200.0 * 52, 0.001));
+    });
   });
 }

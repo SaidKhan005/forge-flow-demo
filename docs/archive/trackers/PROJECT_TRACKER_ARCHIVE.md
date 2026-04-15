@@ -47,6 +47,74 @@ The following planning truths were moved out of the active tracker and should no
 - Phase 9 implementation is broken into `9a` through `9e` plus `9.5`
 - Firebase setup and trusted admin-backend setup are explicit checkpoints and must be confirmed before implementation is treated as complete
 
+## Archived Active Tracker Notes (moved 2026-04-14)
+
+These notes previously lived in the active tracker's guardrails section. They
+were moved here once `7.55p.5` was complete and `7.55q` became the active lane,
+so `PROJECT_TRACKER.md` could stay focused on the current conformance work and
+next prompts.
+
+### `7.55p.5` Closeout Detail
+
+- `7.55p.5` landed through `7.55p.5j`:
+  - `7.55p.5b` confirmed the current OPZ width is honest selected-range truth
+  - `7.55p.5c` / `5d` / `5e` locked the target-package split and verified
+    Variance/the blended-wage paths
+  - `7.55p.5f1` simplified wage setup without creating a second
+    wage-authority path
+  - `7.55p.5g` / `5h` landed the app-owned recommendation service plus honest
+    graph fallback behavior
+  - `7.55p.5i` / `5j` landed the planned labor package contract and Schedule
+    wiring without altering Benchmark / Variance theoretical ownership
+
+### `7.55p.5f1` Wage Authority UX Note
+
+- `7.55p.5f1` landed the Settings whole-mix wage setup flow without creating a
+  second wage authority path:
+  - one simple whole-mix setup flow for FOH / BOH / management roles
+  - still persist/resolve through the same wage authority seam
+  - widget tests now drive the real save path and prove the override trickles
+    into target/theoretical wage consumers the same way the fallback-role
+    editor did
+
+### Recommendation Service / Graph Follow-up Note
+
+- the parked benchmark-recommendation issue was integrated into the plan:
+  - the default recommended benchmark set can visually degenerate toward the
+    full historical range
+  - treat this as a recommendation/data-selection problem, not a
+    graph-rendering problem
+  - recommendation logic should live in an app/domain service, not widget code
+  - preferred statistical direction:
+    - eligibility gates
+    - daypart-first stratification
+    - robust outlier labeling (median + MAD, IQR sanity checks)
+    - stable high-performance cluster selection
+    - trimmed-mean or median target derivation
+  - `7.55p.5g` landed the app-owned recommendation service, cycle write-path
+    seam, and explicit restaurant-scope routing fix
+  - `7.55p.5h` landed the Benchmark graph/explainer fallback so weak /
+    insufficient / wide-union recommendation states now teach honestly and
+    survive fresh load
+
+### Planned Package Follow-up Note
+
+- the planned-package follow-up was integrated into the plan:
+  - add a scope-aware planned labor package for daypart / day / week planning
+    surfaces
+  - derive planned labor % from planned labor dollars divided by forecast sales
+    at the same scope
+  - do not average percentages across rows; aggregate dollars and sales, then
+    recompute %
+  - use this for planning/day tables and full-week planning/projection
+    surfaces without replacing Variance's theoretical package
+  - `7.55p.5i` landed the contract for planned labor % as a planning metric at
+    daypart / day / week scope with explicit aggregation, degradation, and
+    surface-ownership rules
+  - `7.55p.5j` landed the app-owned planned labor package seam and wired it
+    into Schedule's planning-facing week/day/daypart surfaces without touching
+    Benchmark / Variance theoretical ownership
+
 ### Phase 7.53 Summary
 
 All sub-prompts (`7.53a` through `7.53f` plus polish) are complete.

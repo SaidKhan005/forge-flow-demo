@@ -5,9 +5,16 @@
 /// model returned by [build] — it should not decide source truth itself.
 ///
 /// See phase_7_55k_4_variance_full_week_projection_semantics.md.
+///
+/// 7.55q.4: [build] now accepts an optional [ActiveTargetProfile] so
+/// non-closed children's theoretical-% contribution to day-row
+/// aggregates reads from the CURRENT shared Benchmark target object,
+/// per `7.55q.1` Rule 3. Closed children's contribution stays on
+/// their locked `shift.theoreticalLaborPct` (Rule 4 exception).
 library;
 
 import '../data/legacy_fixture_data.dart';
+import '../domain/models/active_target_profile.dart';
 import '../models/shift_record.dart';
 import '../models/variance_week_projection_row.dart';
 
@@ -16,7 +23,20 @@ class VarianceWeekProjectionReadService {
 
   /// Builds the Full Week Projection read model from a merged shift list
   /// (closed + open + projected).
-  VarianceWeekProjection build(List<ShiftRecord> shifts) {
+  ///
+  /// 7.55q.4: when [currentTargetProfile] is provided, day-row aggregates
+  /// substitute `currentTargetProfile.theoreticalLaborPct` for non-closed
+  /// children's contribution (Rule 3). Closed children always contribute
+  /// their own `shift.theoreticalLaborPct` (Rule 4 exception). When
+  /// [currentTargetProfile] is null the previous per-shift behaviour is
+  /// preserved (backward compatibility for pure-data tests).
+  VarianceWeekProjection build(
+    List<ShiftRecord> shifts, {
+    ActiveTargetProfile? currentTargetProfile,
+  }) {
+    // Build a daypart → most-recent closed lever index for carry-forward.
+    // Key: daypart string. Value: last closed lever label seen so far.
+    final lastClosedLever = <String, String>{};
     final dayRows = <ProjectionDayRow>[];
 
     for (final day in WeekDayOrder.dayLabels) {
@@ -27,8 +47,20 @@ class VarianceWeekProjectionReadService {
 
       if (dayShifts.isEmpty) continue;
 
-      final children = dayShifts.map((s) => _buildDaypartRow(s)).toList();
-      dayRows.add(_buildDayRow(day, children));
+      // Update carry-forward map from closed shifts in this day, then
+      // build rows with the map available for open/projected resolution.
+      for (final s in dayShifts) {
+        if (s.isClosed) {
+          lastClosedLever[s.daypart] =
+              s.primaryLever.replaceAll('_', ' ');
+        }
+      }
+
+      final children = dayShifts
+          .map((s) => _buildDaypartRow(s, lastClosedLever))
+          .toList();
+      dayRows.add(_buildDayRow(day, children,
+          currentTargetProfile: currentTargetProfile));
     }
 
     return VarianceWeekProjection(dayRows: dayRows);
@@ -36,7 +68,8 @@ class VarianceWeekProjectionReadService {
 
   // ── Private helpers ─────────────────────────────────────────────────────
 
-  ProjectionDaypartRow _buildDaypartRow(ShiftRecord s) {
+  ProjectionDaypartRow _buildDaypartRow(
+      ShiftRecord s, Map<String, String> lastClosedLever) {
     final status = _statusFromShift(s);
     return ProjectionDaypartRow(
       dayLabel: s.dayLabel,
@@ -44,12 +77,13 @@ class VarianceWeekProjectionReadService {
       daypartLabel: s.daypartLabel,
       status: status,
       shift: s,
-      driverLabel: _driverLabel(s, status),
+      driverLabel: _driverLabel(s, status, lastClosedLever),
     );
   }
 
   ProjectionDayRow _buildDayRow(
-      String dayLabel, List<ProjectionDaypartRow> children) {
+      String dayLabel, List<ProjectionDaypartRow> children,
+      {ActiveTargetProfile? currentTargetProfile}) {
     final status = _resolveDayStatus(children);
     final summary = _statusSummary(children);
 
@@ -60,10 +94,14 @@ class VarianceWeekProjectionReadService {
     final totalSales =
         children.fold<double>(0, (s, r) => s + r.shift.actualSales);
     final totalLabor =
-        children.fold<double>(0, (s, r) => s + r.shift.totalLaborDollar);
-    final laborPct = totalSales > 0 ? totalLabor / totalSales * 100 : _meanTheoreticalPct(children);
+        children.fold<double>(0, (s, r) => s + _laborDollarsForRow(r));
+    final laborPct = totalSales > 0
+        ? totalLabor / totalSales * 100
+        : _meanTheoreticalPct(children,
+            currentTargetProfile: currentTargetProfile);
 
-    final theoPct = _weightedTheoreticalPct(children, totalSales);
+    final theoPct = _weightedTheoreticalPct(children, totalSales,
+        currentTargetProfile: currentTargetProfile);
     final variancePts = laborPct - theoPct;
 
     return ProjectionDayRow(
@@ -84,11 +122,14 @@ class VarianceWeekProjectionReadService {
     return RowStatus.projected;
   }
 
-  static String _driverLabel(ShiftRecord s, RowStatus status) {
+  static String _driverLabel(
+      ShiftRecord s, RowStatus status, Map<String, String> lastClosedLever) {
     if (status == RowStatus.closed) {
       return s.primaryLever.replaceAll('_', ' ');
     }
-    // Open and projected rows: ON_MODEL is a placeholder, not truth.
+    // Carry forward the most recent closed lever from the same daypart.
+    final carried = lastClosedLever[s.daypart];
+    if (carried != null) return carried;
     return 'Not yet available';
   }
 
@@ -110,26 +151,66 @@ class VarianceWeekProjectionReadService {
     for (final status in [RowStatus.closed, RowStatus.open, RowStatus.projected]) {
       final n = counts[status];
       if (n != null && n > 0) {
-        parts.add('$n ${status.name}');
+        final label = status.name[0].toUpperCase() + status.name.substring(1);
+        parts.add('$n $label');
       }
     }
     return parts.join(', ');
   }
 
-  static double _weightedTheoreticalPct(
-      List<ProjectionDaypartRow> children, double totalSales) {
-    if (totalSales > 0) {
-      final weighted = children.fold<double>(
-          0, (s, r) => s + r.shift.theoreticalLaborPct * r.shift.actualSales);
-      return weighted / totalSales;
+  /// 7.55q.4: per-row theoretical % source.
+  /// - Closed rows: locked `shift.theoreticalLaborPct` (Rule 4).
+  /// - Non-closed rows: `currentTargetProfile.theoreticalLaborPct`
+  ///   when provided (Rule 3). Falls back to `shift.theoreticalLaborPct`
+  ///   when no current profile is passed (backward-compatible).
+  static double _theoreticalPctForRow(
+      ProjectionDaypartRow row, ActiveTargetProfile? currentTargetProfile) {
+    if (row.status == RowStatus.closed || currentTargetProfile == null) {
+      return row.shift.theoreticalLaborPct;
     }
-    return _meanTheoreticalPct(children);
+    return currentTargetProfile.theoreticalLaborPct;
   }
 
-  static double _meanTheoreticalPct(List<ProjectionDaypartRow> children) {
+  static double _weightedTheoreticalPct(
+      List<ProjectionDaypartRow> children, double totalSales,
+      {ActiveTargetProfile? currentTargetProfile}) {
+    if (totalSales > 0) {
+      final weighted = children.fold<double>(
+          0,
+          (s, r) =>
+              s +
+              _theoreticalPctForRow(r, currentTargetProfile) *
+                  r.shift.actualSales);
+      return weighted / totalSales;
+    }
+    return _meanTheoreticalPct(children,
+        currentTargetProfile: currentTargetProfile);
+  }
+
+  static double _meanTheoreticalPct(List<ProjectionDaypartRow> children,
+      {ActiveTargetProfile? currentTargetProfile}) {
     if (children.isEmpty) return 0.0;
     return children.fold<double>(
-            0, (s, r) => s + r.shift.theoreticalLaborPct) /
+            0,
+            (s, r) =>
+                s + _theoreticalPctForRow(r, currentTargetProfile)) /
         children.length;
+  }
+
+  /// 7.55q follow-up: open/projected rows built from [OpenShiftSnapshot]
+  /// carry `snapshotBlendedWage`, not stored source labor dollars. When
+  /// that snapshot wage is present, use it for the collapsed day-row labor
+  /// aggregate so the collapsed path stays consistent with the expanded
+  /// projected detail. Closed rows continue to use persisted actual labor
+  /// dollars.
+  static double _laborDollarsForRow(ProjectionDaypartRow row) {
+    final shift = row.shift;
+    final totalHours = shift.fohHours + shift.bohHours;
+    if (row.status != RowStatus.closed &&
+        shift.snapshotBlendedWage != null &&
+        totalHours > 0) {
+      return shift.snapshotBlendedWage! * totalHours;
+    }
+    return shift.totalLaborDollar;
   }
 }

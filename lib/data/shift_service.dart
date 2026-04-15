@@ -4,10 +4,29 @@
 // intentional — the planning anchor resolves from mock replay state and
 // closed-shift history, while operational authority resolves from
 // open/projected shift snapshots reflecting "what business day is it now."
+//
+// Phase 7.55n.4: locked WTD forecast accumulation now uses business-date
+// comparison instead of ISO weekday-number ordering, so it stays honest
+// regardless of the configured week-start day. The non-locked WTD path
+// still uses weekId-based membership (not migrated).
+//
+// Phase 7.55n.4a: locked WTD closed-shift membership now loads by snapshot
+// date span (getClosedShiftsInDateRange) instead of the compatibility weekId
+// query, so actual closed-truth membership follows the configured week span.
+// closedDayNumber now reflects position inside the configured week span,
+// not fixed Mon–Sun numbering.
+//
+// Phase 7.55n.5: locked WTD closed-truth membership now consults
+// ShiftBoundaryResolver for finalization authority. Under
+// appLocalCutoffFallback, a same-business-date closed row is no longer
+// treated as finalized — the current operational business date must be
+// strictly later than the row's business date. Falls back to the existing
+// closed-row behavior when timing config or operational business date is
+// unavailable.
 
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/closed_shift_input.dart';
-import '../domain/models/target_cycle.dart';
+import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/weekly_plan_snapshot.dart';
 import '../domain/models/shift_fact.dart';
 import '../domain/models/target_profile_version.dart';
@@ -16,12 +35,15 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
+import '../domain/repositories/weekly_plan_snapshot_repository.dart';
+import '../domain/services/shift_boundary_resolver.dart';
+import '../domain/services/utc_metadata_timestamp.dart';
+import 'app_runtime_invalidation_bus.dart';
 import 'business_date_authority_service.dart';
+import 'restaurant_timing_config_read_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'weekly_plan_snapshot_service.dart';
 import '../domain/services/shift_fact_builder.dart';
-import '../domain/services/target_cycle_active_target_profile_projector.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../domain/services/target_snapshot_builder.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
@@ -29,6 +51,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scop
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
 import '../models/current_week_state.dart';
 import '../models/history_pattern_record.dart';
 import '../models/shift_dashboard_read_model.dart';
@@ -55,6 +78,8 @@ class ShiftService {
       SqliteTargetProfileRepository.instance;
   final OpenShiftSnapshotRepository _openShiftRepo =
       SqliteOpenShiftSnapshotRepository.instance;
+  final WeeklyPlanSnapshotRepository _weeklyPlanSnapshotRepo =
+      SqliteWeeklyPlanSnapshotRepository.instance;
 
   Future<String> _activeRestaurantId() => _scopeRepo.getActiveRestaurantId();
 
@@ -124,6 +149,34 @@ class ShiftService {
     final closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
     final lastClosedDay = BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
 
+    // ── Dollar Impact accumulation (7.55p.3a) ─────────────────────────
+    // Compat path: derive month and 60-day windows from closed business
+    // dates when available, same contract as the locked path.
+    final closedDates = closed
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .toList();
+    final maxClosedDate = closedDates.isNotEmpty
+        ? closedDates.reduce((a, b) => a.compareTo(b) >= 0 ? a : b)
+        : null;
+
+    double? monthDollarImpact;
+    double? sixtyDayDollarImpact;
+    if (maxClosedDate != null) {
+      final closedDt = _parseDate(maxClosedDate);
+      final monthStartDate = _formatDate(
+          DateTime.utc(closedDt.year, closedDt.month, 1));
+      final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, monthStartDate, maxClosedDate);
+      monthDollarImpact = _accumulateDollarImpact(monthShifts);
+
+      final sixtyDayStartDt = closedDt.subtract(const Duration(days: 59));
+      final sixtyDayStartDate = _formatDate(sixtyDayStartDt);
+      final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, sixtyDayStartDate, maxClosedDate);
+      sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
+    }
+
     return WeekData(
       weekId:             weekId,
       weekLabel:          weekLabel,
@@ -140,6 +193,8 @@ class ShiftService {
       closedDayNumber:         closedDayNum,
       storedTotalFohLaborDollar: totalFohLaborDollar,
       storedTotalBohLaborDollar: totalBohLaborDollar,
+      monthDollarImpact: monthDollarImpact,
+      sixtyDayDollarImpact: sixtyDayDollarImpact,
       targetCPLH: profile.targetCPLH,
       targetSPLH: profile.targetSPLH,
       targetPPA: profile.targetPPA,
@@ -188,7 +243,7 @@ class ShiftService {
     final profile = await _loadActiveProfile(input.restaurantId);
 
     // 2. Create an immutable target profile version
-    final now = DateTime.now().toIso8601String();
+    final now = nowIsoUtc();
     final versionId = 'tpv_${now.replaceAll(RegExp(r'[^0-9]'), '')}_${input.weekId}_${input.dayLabel}_${input.daypart}';
     final version = TargetProfileVersion(
       targetProfileVersionId: versionId,
@@ -231,11 +286,14 @@ class ShiftService {
 
     // 8. Upsert WeekRecord only when the week is fully closed (14 shifts)
     if (closedShifts.length == 14) {
-      final weekRecord = _buildWeekRecord(
+      final weekRecord = await _buildWeekRecord(
         input.restaurantId, input.weekId, closedShifts,
       );
       await _weekRepo.upsertWeekRecord(weekRecord);
     }
+
+    // 9. Signal current-state invalidation (7.55p.4b + 7.55n.11)
+    AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
 
     return record;
   }
@@ -286,12 +344,19 @@ class ShiftService {
 
   // ── Private: build WeekRecord from 14 closed shifts ──────────────────────────
   // Materializes week-level locked targets from the closed shifts' locked targets.
+  //
+  // Phase 7.55q.5: also preserves the locked plan FOH/BOH hours from the
+  // WeeklyPlanSnapshot in force for the week's business-date span. The
+  // lookup is read-only (never auto-generates a snapshot); when no
+  // snapshot is persisted for the anchor date, the locked-plan-hour
+  // fields are left null and Week Detail renders "—" honestly rather
+  // than re-modeling from actuals.
 
-  WeekRecord _buildWeekRecord(
+  Future<WeekRecord> _buildWeekRecord(
     String restaurantId,
     String weekId,
     List<ShiftRecord> closedShifts,
-  ) {
+  ) async {
     final totalCovers       = closedShifts.fold<int>(0, (s, r) => s + r.covers);
     final forecastCovers    = closedShifts.fold<int>(0, (s, r) => s + r.forecastCovers);
     final totalFohHours     = closedShifts.fold<int>(0, (s, r) => s + r.fohHours);
@@ -395,6 +460,61 @@ class ShiftService {
     // Source type: use the first shift's source type as representative
     final sourceType = closedShifts.first.targetSourceType;
 
+    // ── Preserved locked plan hours (7.55q.5) ────────────────────────
+    // Look up the locked WeeklyPlanSnapshot in force for this week's
+    // business-date span via the first closed shift's businessDate.
+    // Read-only — never auto-generates a new snapshot. Missing
+    // snapshot or missing anchor date leaves the locked-plan-hour
+    // fields null (honest legacy degradation; Week Detail renders
+    // "—" for those rows instead of re-modeling from actuals).
+    int? lockedRequiredFohHours;
+    int? lockedRequiredBohHours;
+    final anchorBusinessDate = _anchorBusinessDate(closedShifts);
+    if (anchorBusinessDate != null) {
+      final snapshot = await _weeklyPlanSnapshotRepo
+          .getSnapshotForBusinessDate(restaurantId, anchorBusinessDate);
+      if (snapshot != null) {
+        lockedRequiredFohHours = snapshot.requiredFohHours;
+        lockedRequiredBohHours = snapshot.requiredBohHours;
+      }
+    }
+
+    // ── Frozen Dollar Impact windows (7.55q.10) ──────────────────────
+    // Capture month + 60-day impact at close from the same closed-truth
+    // date-range queries the live Variance card was reading. Locks the
+    // 4-row Dollar Impact view at the close moment — Week Detail then
+    // shows the same numbers that were on screen the instant the 14th
+    // shift closed. Reuses _accumulateDollarImpact for parity with the
+    // current-week WTD path.
+    //
+    // Honest legacy: if no shift has a businessDate, the windows + the
+    // closedAt timestamp stay null and the Week Detail UI falls back to
+    // its existing 2-row + boilerplate-footer view. Inherited debt:
+    // "14 shifts" close-detection one layer above is unowned debt
+    // (PROJECT_TRACKER line 90; phase_7_55_time_boundary_contract Rule 9).
+    double? monthDollarImpact;
+    double? sixtyDayDollarImpact;
+    String? closedAt;
+    final maxClosedDate = closedShifts
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .fold<String?>(null, (max, d) =>
+            max == null || d.compareTo(max) > 0 ? d : max);
+    if (maxClosedDate != null) {
+      closedAt = maxClosedDate;
+      final closedDt = _parseDate(maxClosedDate);
+      final monthStart =
+          _formatDate(DateTime.utc(closedDt.year, closedDt.month, 1));
+      final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, monthStart, maxClosedDate);
+      monthDollarImpact = _accumulateDollarImpact(monthShifts);
+      final sixtyDayStart =
+          _formatDate(closedDt.subtract(const Duration(days: 59)));
+      final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, sixtyDayStart, maxClosedDate);
+      sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
+    }
+
     return WeekRecord(
       restaurantId: restaurantId,
       weekId: weekId,
@@ -420,7 +540,22 @@ class ShiftService {
       targetBohWage: wkTargetBohWage,
       theoreticalFohLaborPct: wkTheoFohPct,
       theoreticalBohLaborPct: wkTheoBohPct,
+      lockedRequiredFohHours: lockedRequiredFohHours,
+      lockedRequiredBohHours: lockedRequiredBohHours,
+      monthDollarImpact: monthDollarImpact,
+      sixtyDayDollarImpact: sixtyDayDollarImpact,
+      closedAt: closedAt,
     );
+  }
+
+  /// Returns the first non-null `businessDate` from [closedShifts], or
+  /// null when every shift is missing a business-date anchor.
+  static String? _anchorBusinessDate(List<ShiftRecord> closedShifts) {
+    for (final s in closedShifts) {
+      final bd = s.businessDate;
+      if (bd != null) return bd;
+    }
+    return null;
   }
 
   String _weekLabelFromWeekId(String weekId) {
@@ -457,57 +592,148 @@ class ShiftService {
 
   /// WTD query that resolves the current week from persisted state.
   ///
-  /// Uses the locked [WeeklyPlanSnapshot] for weekly forecast truth and
-  /// the snapshot-linked [TargetCycle] for target standards when available.
-  /// Falls back to live profile + shift-summed forecast when no snapshot
-  /// or linked cycle exists.
+  /// Uses the locked [WeeklyPlanSnapshot] for the Plan-owned weekly
+  /// forecast truth (forecast covers, plan hours WTD).
+  ///
+  /// 7.55q.4: the Benchmark-owned target standards (CPLH/SPLH/PPA/wages
+  /// /theoretical %) are read from the CURRENT [ActiveTargetProfile] in
+  /// `_buildLockedWeekToDate` — not from the snapshot's cycle. This is
+  /// the conformance-Rule-3 fix: non-closed Variance rows must read
+  /// shared objects 1:1, and the snapshot's cycle can lag behind the
+  /// current Benchmark target.
+  ///
+  /// Uses the weekly-snapshot pipeline for current-week WTD truth.
+  ///
+  /// The current-week snapshot may still be auto-generated by
+  /// [WeeklyPlanSnapshotService.getCurrentWeekSnapshot] when the week
+  /// first comes into force, which is still within the single locked-plan
+  /// authority path. What this method must NOT do is silently fall back to
+  /// the historical live/model WTD path when locked weekly truth is
+  /// unavailable.
   Future<WeekData?> getLiveWeekToDate() async {
     final weekId = await getCurrentWeekId();
     if (weekId == null) return null;
     final weekLabel = _weekLabelFromWeekId(weekId);
 
-    // Try locked weekly snapshot for current-week comparison truth.
+    // Try locked weekly snapshot for current-week Plan-owned truth.
     final snapshot =
         await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
     if (snapshot != null) {
-      final cycle = await SqliteTargetCycleRepository.instance
-          .getCycleById(snapshot.targetCycleId);
-      if (cycle != null) {
-        return _buildLockedWeekToDate(weekId, weekLabel, snapshot, cycle);
-      }
+      return _buildLockedWeekToDate(weekId, weekLabel, snapshot);
     }
 
-    // No snapshot or cycle — fall back to live behavior.
-    return getWeekToDate(weekId, weekLabel);
+    // No locked weekly snapshot could be resolved/generated.
+    // Degrade honestly instead of falling back to the historical
+    // live/model target path, which would create a competing target layer.
+    return null;
   }
 
-  /// Builds current-week WTD from locked snapshot + cycle truth.
+  /// Builds current-week WTD from the locked snapshot (Plan-owned
+  /// fields) and the current [ActiveTargetProfile] (Benchmark-owned
+  /// fields).
   ///
-  /// Actual closed-shift aggregation is identical to [getWeekToDate].
-  /// Forecast fields come from the locked snapshot day rows.
-  /// Target fields come from the snapshot-linked cycle.
+  /// Closed-shift membership uses the snapshot date span
+  /// ([getClosedShiftsInDateRange]) instead of the compatibility weekId
+  /// query, so actuals follow the configured week span (7.55n.4a).
+  ///
+  /// Phase 7.55n.5: closed rows are now filtered through
+  /// [ShiftBoundaryResolver.isEligibleForClosedTruth] using the
+  /// restaurant's configured [ShiftCloseAuthority] and the current
+  /// operational business date. Under [appLocalCutoffFallback],
+  /// same-business-date closed rows are excluded from finalized truth.
+  /// Falls back to the existing closed-row behavior when timing config
+  /// or operational business date is unavailable.
+  ///
+  /// 7.55q.4: Plan-owned fields (forecast covers, plan hours WTD) come
+  /// from the locked snapshot day rows. Benchmark-owned target fields
+  /// (CPLH/SPLH/PPA/wages/theoretical %) come from the CURRENT
+  /// [ActiveTargetProfile] — NOT from the snapshot's cycle. This is
+  /// Rule 3 conformance: non-closed Variance rows read shared objects
+  /// 1:1 with the active Benchmark. Closed-truth actuals are aggregated
+  /// from `ShiftRecord.lockedTarget*` fields elsewhere
+  /// (`_ClosedShiftDetail`), so the Rule 4 closed exception is preserved.
   Future<WeekData?> _buildLockedWeekToDate(
     String weekId,
     String weekLabel,
     WeeklyPlanSnapshot snapshot,
-    TargetCycle cycle,
   ) async {
     final restaurantId = await _activeRestaurantId();
-    final profile = TargetCycleActiveTargetProfileProjector.project(cycle);
-    final shifts = await _shiftRepo.getShiftsForWeek(restaurantId, weekId);
-    final closed = shifts.where((s) => s.isClosed).toList();
-    if (closed.isEmpty) return null;
+    // 7.55q.4: read CURRENT Benchmark target object, not snapshot.cycle.
+    final profile = await _loadActiveProfile(restaurantId);
 
-    // ── Day ordering (canonical source from BusinessDateAuthorityService) ──
-    final lastDayLabel = closed
-        .map((s) => s.dayLabel)
-        .reduce((a, b) =>
-            (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
-                    (BusinessDateAuthorityService.dayNumber(b) ?? 0)
-                ? a
-                : b);
-    final closedDayNum = BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
-    final lastClosedDay = BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
+    // ── Load closed shifts by snapshot date span (7.55n.4a) ──────────
+    // Uses business-date-range query instead of the compatibility weekId
+    // query so actual closed-truth membership follows the configured
+    // week span, not the ISO/Monday-based weekId bucket.
+    final allClosed = await _shiftRepo.getClosedShiftsInDateRange(
+        restaurantId, snapshot.weekStartDate, snapshot.weekEndDate);
+    if (allClosed.isEmpty) return null;
+
+    // ── Finalization filter (7.55n.5) ────────────────────────────────
+    // Read timing config for shiftCloseAuthority and operational
+    // business date for the finalization gate.
+    // Compatibility fallback: when timing config or operational business
+    // date is unavailable, use all closed rows (pre-7.55n.5 behavior).
+    final timingConfig = await RestaurantTimingConfigReadService.instance
+        .getTimingConfig(restaurantId);
+    final operationalBusinessDate =
+        await _openShiftRepo.getCurrentBusinessDate(restaurantId);
+
+    final List<ShiftRecord> closed;
+    if (timingConfig != null && operationalBusinessDate != null) {
+      closed = allClosed
+          .where((s) => ShiftBoundaryResolver.isEligibleForClosedTruth(
+                rowStatus: s.status,
+                shiftCloseAuthority: timingConfig.shiftCloseAuthority,
+                rowBusinessDate: s.businessDate,
+                currentOperationalBusinessDate: operationalBusinessDate,
+              ))
+          .toList();
+      if (closed.isEmpty) return null;
+    } else {
+      // Compatibility fallback: no timing config or no operational
+      // business date — use all closed rows as before (7.55n.5 doc
+      // documents this honestly).
+      closed = allClosed;
+    }
+
+    // ── Closed-day position inside configured week span (7.55n.4a) ───
+    // Derive closedDayNumber from the latest closed business date's
+    // position inside the snapshot week span instead of ISO weekday
+    // numbering. For Sunday-start, the first closed Sunday reads as
+    // Day 1, not Day 7.
+    final closedDates = closed
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .toList();
+    final maxClosedDate = closedDates.isNotEmpty
+        ? closedDates.reduce((a, b) => a.compareTo(b) >= 0 ? a : b)
+        : null;
+
+    final int closedDayNum;
+    final String lastClosedDay;
+    if (maxClosedDate != null) {
+      final weekStartDt = _parseDate(snapshot.weekStartDate);
+      final closedDt = _parseDate(maxClosedDate);
+      closedDayNum = closedDt.difference(weekStartDt).inDays + 1;
+      // Derive human-readable name from the closed date's ISO weekday.
+      final isoWeekday = closedDt.weekday; // 1=Mon, 7=Sun
+      lastClosedDay =
+          BusinessDateAuthorityService.fullDayNames[isoWeekday] ?? 'Monday';
+    } else {
+      // Fallback: no business dates available — use canonical day ordering.
+      final lastDayLabel = closed
+          .map((s) => s.dayLabel)
+          .reduce((a, b) =>
+              (BusinessDateAuthorityService.dayNumber(a) ?? 0) >=
+                      (BusinessDateAuthorityService.dayNumber(b) ?? 0)
+                  ? a
+                  : b);
+      closedDayNum =
+          BusinessDateAuthorityService.dayNumber(lastDayLabel) ?? 1;
+      lastClosedDay =
+          BusinessDateAuthorityService.fullDayNames[closedDayNum] ?? 'Monday';
+    }
 
     // ── Actual aggregation (unchanged from getWeekToDate) ─────────────
     final totalCovers = closed.fold<int>(0, (s, r) => s + r.covers);
@@ -516,10 +742,29 @@ class ShiftService {
     final totalSales = closed.fold<double>(0, (s, r) => s + r.actualSales);
 
     // ── Locked WTD forecast from snapshot day rows ────────────────────
-    // Sum snapshot day-row forecast covers through the last closed day.
-    final wtdForecastCovers = snapshot.dayRows
-        .where((d) => (BusinessDateAuthorityService.dayNumber(d.day) ?? 0) <= closedDayNum)
-        .fold<int>(0, (s, d) => s + d.forecastCovers);
+    // Sum snapshot day-row forecast covers through the last closed
+    // business date. Uses business-date comparison (7.55n.4).
+    // Filter snapshot day rows through the last closed business date.
+    final closedDayRows = maxClosedDate != null
+        ? snapshot.dayRows
+            .where((d) =>
+                d.businessDate.compareTo(snapshot.weekStartDate) >= 0 &&
+                d.businessDate.compareTo(maxClosedDate) <= 0)
+            .toList()
+        : snapshot.dayRows
+            .where((d) =>
+                (BusinessDateAuthorityService.dayNumber(d.day) ?? 0) <=
+                closedDayNum)
+            .toList();
+
+    final wtdForecastCovers =
+        closedDayRows.fold<int>(0, (s, d) => s + d.forecastCovers);
+
+    // ── Locked WTD plan hours from snapshot day rows ─────────────────
+    final planFohHoursWtd =
+        closedDayRows.fold<int>(0, (s, d) => s + d.requiredFohHours);
+    final planBohHoursWtd =
+        closedDayRows.fold<int>(0, (s, d) => s + d.requiredBohHours);
 
     final totalFohLaborDollar =
         closed.fold<double>(0, (s, r) => s + r.fohLaborDollar);
@@ -558,6 +803,27 @@ class ShiftService {
       modelBohHours: wtdModelBoh,
     );
 
+    // ── Multi-window dollar impact accumulation (7.55p.3) ──────────
+    // Month: first of current calendar month through latest closed date.
+    // 60-day: rolling window ending at latest closed date.
+    // Uses per-shift locked targets so cross-cycle windows stay honest.
+    double? monthDollarImpact;
+    double? sixtyDayDollarImpact;
+    if (maxClosedDate != null) {
+      final closedDt = _parseDate(maxClosedDate);
+      final monthStartDate = _formatDate(
+          DateTime.utc(closedDt.year, closedDt.month, 1));
+      final monthShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, monthStartDate, maxClosedDate);
+      monthDollarImpact = _accumulateDollarImpact(monthShifts);
+
+      final sixtyDayStartDt = closedDt.subtract(const Duration(days: 59));
+      final sixtyDayStartDate = _formatDate(sixtyDayStartDt);
+      final sixtyDayShifts = await _shiftRepo.getClosedShiftsInDateRange(
+          restaurantId, sixtyDayStartDate, maxClosedDate);
+      sixtyDayDollarImpact = _accumulateDollarImpact(sixtyDayShifts);
+    }
+
     // ── Locked forecast from snapshot; targets from cycle ─────────────
     return WeekData(
       weekId: weekId,
@@ -575,6 +841,10 @@ class ShiftService {
       closedDayNumber: closedDayNum,
       storedTotalFohLaborDollar: totalFohLaborDollar,
       storedTotalBohLaborDollar: totalBohLaborDollar,
+      planFohHoursWtd: planFohHoursWtd,
+      planBohHoursWtd: planBohHoursWtd,
+      monthDollarImpact: monthDollarImpact,
+      sixtyDayDollarImpact: sixtyDayDollarImpact,
       targetCPLH: profile.targetCPLH,
       targetSPLH: profile.targetSPLH,
       targetPPA: profile.targetPPA,
@@ -604,10 +874,11 @@ class ShiftService {
         await _openShiftRepo.getSnapshotsForDay(restaurantId, businessDate);
     if (snapshots.isEmpty) return null;
 
-    // Resolve plan from locked weekly truth, falling back to live resolution
+    // Resolve plan from the persisted locked weekly snapshot only.
+    // If the snapshot is missing, degrade honestly instead of
+    // silently swapping in the live plan.
     final plan = await SchedulePlanReadService.instance
-            .getCurrentLockedWeeklyPlan() ??
-        await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
+        .getExistingCurrentLockedWeeklyPlan();
 
     // Pick the day row matching the open shift
     final openSnap = snapshots
@@ -656,8 +927,9 @@ class ShiftService {
         .toList();
 
     // Convert open/projected snapshots to ShiftRecord shape.
-    // For the current locked week, use the snapshot-linked cycle's projected
-    // profile for target fields. Fall back to live active profile otherwise.
+    // 7.55q.4: non-closed Full Week rows now read Benchmark-owned target
+    // fields from the CURRENT active profile, not from the snapshot-linked
+    // cycle projection.
     final closedKeys = kept
         .where((s) => s.isClosed)
         .map((s) => '${s.dayLabel}|${s.daypart}')
@@ -671,25 +943,21 @@ class ShiftService {
     return [...kept, ...openAsRecords];
   }
 
-  /// Resolves the target profile for Full Week open/projected row conversion.
+  /// Resolves the target profile used when converting open/projected
+  /// snapshots into [ShiftRecord]s for Full Week rendering.
   ///
-  /// Only consults the locked [WeeklyPlanSnapshot] when [weekId] matches
-  /// the current week. Non-current/historical reads stay on the live
-  /// active-profile path and never trigger snapshot generation side effects.
+  /// 7.55q.4: always returns the CURRENT [ActiveTargetProfile] —
+  /// previously this branched on whether [weekId] matched the current
+  /// week and projected the snapshot's cycle in that case, which made
+  /// non-closed `ShiftRecord` rows carry snapshot-cycle target fields
+  /// even when the active Benchmark had rolled. That violated Rule 3:
+  /// non-closed Variance rows must read shared Benchmark/Plan objects
+  /// 1:1. Plan-owned fields (forecast covers, scheduled hours) still
+  /// come from the snapshot itself via
+  /// [CurrentWeekState.shiftRecordFromSnapshot]; only the
+  /// Benchmark-owned target fields are now sourced here.
   Future<ActiveTargetProfile> _resolveProfileForFullWeek(
       String restaurantId, String weekId) async {
-    final currentWeekId = await getCurrentWeekId();
-    if (weekId == currentWeekId) {
-      final snapshot =
-          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
-      if (snapshot != null) {
-        final cycle = await SqliteTargetCycleRepository.instance
-            .getCycleById(snapshot.targetCycleId);
-        if (cycle != null) {
-          return TargetCycleActiveTargetProfileProjector.project(cycle);
-        }
-      }
-    }
     return _loadActiveProfile(restaurantId);
   }
 
@@ -698,8 +966,8 @@ class ShiftService {
   /// Builds [CurrentWeekState] for the current week using locked truth.
   ///
   /// Uses [getLiveWeekToDate] for locked WTD and [getFullWeekShifts] for
-  /// the full-week shift list. Falls back gracefully when no locked
-  /// snapshot exists.
+  /// the full-week shift list. Returns null when locked WTD truth is not
+  /// available for the in-force week.
   Future<CurrentWeekState?> getCurrentWeekState(
       String weekId, String weekLabel) async {
     // Use the locked current-week WTD path (7.55l.7b/7b1).
@@ -713,10 +981,12 @@ class ShiftService {
 
   Future<void> reseedDemo() async {
     await SqliteDatabase.instance.reseedDemo();
+    AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
   }
 
   Future<void> clearAllData() async {
     await SqliteDatabase.instance.clearAllData();
+    AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
   }
 
   // ── Mock replay scenario controls ──────────────────────────────────────
@@ -748,5 +1018,44 @@ class ShiftService {
         '-${next.day.toString().padLeft(2, '0')}';
 
     await SqliteDatabase.instance.reseedMockReplayForBusinessDate(nextDate);
+    AppRuntimeInvalidationBus.instance.notifyRuntimeWriteCompleted();
+  }
+
+  // ── Date helpers ────────────────────────────────────────────────────────
+
+  static DateTime _parseDate(String isoDate) {
+    final parts = isoDate.split('-');
+    return DateTime.utc(
+      int.parse(parts[0]),
+      int.parse(parts[1]),
+      int.parse(parts[2]),
+    );
+  }
+
+  static String _formatDate(DateTime dt) =>
+      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+
+  // ── Dollar Impact accumulation (7.55p.3) ────────────────────────────────
+  // Sums per-shift dollar impact using each shift's own locked targets.
+  // Impact = actual labor − theoretical labor (model hours × locked wages).
+  // Shifts with missing locked targets (targetCPLH or targetSPLH ≤ 0)
+  // are skipped to avoid division errors.
+  static double _accumulateDollarImpact(List<ShiftRecord> shifts) {
+    return shifts.fold<double>(0, (sum, s) {
+      final cplh = s.targetCPLH;
+      final splh = s.targetSPLH;
+      final fohWage = s.targetFohWage;
+      final bohWage = s.targetBohWage;
+      if (cplh == null || cplh <= 0 ||
+          splh == null || splh <= 0 ||
+          fohWage == null || bohWage == null) {
+        return sum;
+      }
+      final actualLabor = s.fohLaborDollar + s.bohLaborDollar;
+      final modelFoh = LaborModel.modelFohHours(s.covers, cplh);
+      final modelBoh = LaborModel.modelBohHoursFromSales(s.actualSales, splh);
+      final theoreticalLabor = modelFoh * fohWage + modelBoh * bohWage;
+      return sum + (actualLabor - theoreticalLabor);
+    });
   }
 }

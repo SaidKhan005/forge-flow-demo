@@ -212,6 +212,46 @@ void main() {
         // avgSales: (200*40 + 100*50) / 2 = (8000 + 5000) / 2 = 6500
         expect(s.avgSales, 6500.0);
       });
+
+      test('avgLaborPct ignores shifts without source-backed labor truth', () {
+        final shifts = [
+          ShiftRecord(
+            weekId: '2026-W10',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            covers: 200,
+            forecastCovers: 200,
+            ppa: 40.0,
+            cplh: 4.0,
+            splh: 160.0,
+            fohHours: 50,
+            bohHours: 50,
+            primaryLever: 'CPLH_DOWN',
+            storedTotalLaborPct: 24.0,
+          ),
+          ShiftRecord(
+            weekId: '2026-W11',
+            dayLabel: 'Mon',
+            daypart: 'dinner',
+            status: 'closed',
+            covers: 100,
+            forecastCovers: 100,
+            ppa: 50.0,
+            cplh: 5.0,
+            splh: 200.0,
+            fohHours: 20,
+            bohHours: 25,
+            primaryLever: 'CPLH_DOWN',
+          ),
+        ];
+
+        final result = DaypartPatternSummaryBuilder.fromClosedShifts(shifts);
+        final s = result.first;
+
+        expect(s.avgLaborSampleCount, 1);
+        expect(s.avgLaborPct, 24.0);
+      });
     });
 
     // ── D: benchmark / leak counts and dominant levers ────────────────────

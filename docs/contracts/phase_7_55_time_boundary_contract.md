@@ -25,6 +25,7 @@ For the broader system architecture that sits above these timing rules, see:
 
 - `docs/contracts/phase_7_55_architecture_contract.md`
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
+- `docs/contracts/phase_7_55_current_state_freshness_contract.md`
 
 ## Core Principle
 
