@@ -6,14 +6,17 @@ import '../data/app_refresh_coordinator.dart';
 import '../data/baseline_manager_service.dart';
 import '../data/mock_integration_replay_seed.dart';
 import '../data/restaurant_scope_notifier.dart';
+import '../data/restaurant_timing_config_read_service.dart';
 import '../data/shift_service.dart';
 import '../data/wage_standard_context_service.dart';
+import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/wage_role_row.dart';
 import '../domain/models/wage_standard_context.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import '../models/app_data_status.dart';
 import '../widgets/data_alignment_audit_panel.dart';
+import '../widgets/sticky_section_delegate.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// Optional injected status for testability. When null, loads from service.
@@ -103,9 +106,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final restaurantDisplayName =
-        context.watch<RestaurantScopeNotifier?>()?.restaurant?.displayName ??
-            'Restaurant';
+    final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final restaurantDisplayName = restaurant?.displayName ?? 'Restaurant';
     return Scaffold(
       backgroundColor: AppColors.backgroundDeep,
       appBar: AppBar(
@@ -118,222 +120,308 @@ class _SettingsScreenState extends State<SettingsScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+      body: CustomScrollView(
+        cacheExtent: 9999,
+        slivers: [
           // ── Restaurant hero ──────────────────────────────────────────
-          _SettingsRestaurantHero(name: restaurantDisplayName),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: _SettingsRestaurantHero(name: restaurantDisplayName),
+            ),
+          ),
 
           // ── DATA STATUS ──────────────────────────────────────────────
-          const _SettingsSectionHeader(label: 'DATA STATUS'),
-          _DataStatusTile(status: _status),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('DATA STATUS'),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _DataStatusTile(status: _status),
+                ),
+              ),
+            ],
+          ),
 
           // ── MOCK REPLAY ──────────────────────────────────────────────
-          const _SettingsSectionHeader(label: 'MOCK REPLAY'),
-          _SettingsMockReplayCard(
-            mockReplayDate: _mockReplayDate,
-            formatDate: _formatDate,
-          ),
-          const SizedBox(height: 10),
-          _SettingsCard(
-            children: [
-              _SettingsActionRow(
-                icon: Icons.replay_rounded,
-                label: 'Reset Mock Scenario',
-                description:
-                    'Reset to default scenario date (${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)})',
-                onTap: () async {
-                  await ShiftService.instance.reseedDemo();
-                  await _refreshAfterWrite();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Mock scenario reset to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
-                          style: AppTextStyles.mono11(
-                              color: AppColors.textPrimary),
-                        ),
-                        backgroundColor: AppColors.backgroundMid,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                },
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('MOCK REPLAY'),
               ),
-              const _SettingsRowDivider(),
-              _SettingsActionRow(
-                icon: Icons.skip_next_rounded,
-                label: 'Advance Mock Day',
-                description: 'Move mock business date forward one day',
-                onTap: () async {
-                  await ShiftService.instance.advanceMockReplayDay();
-                  await _refreshAfterWrite();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Mock scenario advanced to ${_mockReplayDate != null ? _formatDate(_mockReplayDate!) : "next day"}.',
-                          style: AppTextStyles.mono11(
-                              color: AppColors.textPrimary),
-                        ),
-                        backgroundColor: AppColors.backgroundMid,
-                        duration: const Duration(seconds: 2),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _SettingsMockReplayCard(
+                    mockReplayDate: _mockReplayDate,
+                    formatDate: _formatDate,
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                  child: _SettingsCard(
+                    children: [
+                      _SettingsActionRow(
+                        icon: Icons.replay_rounded,
+                        label: 'Reset Mock Scenario',
+                        description:
+                            'Reset to default scenario date (${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)})',
+                        onTap: () async {
+                          await ShiftService.instance.reseedDemo();
+                          await _refreshAfterWrite();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Mock scenario reset to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
+                                  style: AppTextStyles.mono11(
+                                      color: AppColors.textPrimary),
+                                ),
+                                backgroundColor: AppColors.backgroundMid,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
                       ),
-                    );
-                  }
-                },
+                      const _SettingsRowDivider(),
+                      _SettingsActionRow(
+                        icon: Icons.skip_next_rounded,
+                        label: 'Advance Mock Day',
+                        description: 'Move mock business date forward one day',
+                        onTap: () async {
+                          await ShiftService.instance.advanceMockReplayDay();
+                          await _refreshAfterWrite();
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Mock scenario advanced to ${_mockReplayDate != null ? _formatDate(_mockReplayDate!) : "next day"}.',
+                                  style: AppTextStyles.mono11(
+                                      color: AppColors.textPrimary),
+                                ),
+                                backgroundColor: AppColors.backgroundMid,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
 
           // ── DATA MANAGEMENT ──────────────────────────────────────────
-          const _SettingsSectionHeader(label: 'DATA MANAGEMENT'),
-          _SettingsCard(
-            children: [
-              _SettingsActionRow(
-                icon: Icons.delete_outline_rounded,
-                label: 'Clear All Data',
-                description:
-                    'Remove all operational data while keeping restaurant scope and connector settings.',
-                tone: _SettingsRowTone.danger,
-                onTap: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: AppColors.backgroundMid,
-                      title: Text(
-                        'Clear all data?',
-                        style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary),
-                      ),
-                      content: Text(
-                        'This removes all operational data while keeping restaurant scope and connector settings. Cannot be undone.',
-                        style: AppTextStyles.body13(
-                            color: AppColors.textSecondary),
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(false),
-                          child: Text('Cancel',
-                              style: AppTextStyles.mono11(
-                                  color: AppColors.textSecondary)),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                          child: Text('Clear',
-                              style: AppTextStyles.mono11(
-                                  color: AppColors.negative)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    await ShiftService.instance.clearAllData();
-                    await _refreshAfterWrite();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'All operational data cleared.',
-                            style: AppTextStyles.mono11(
-                                color: AppColors.textPrimary),
-                          ),
-                          backgroundColor: AppColors.backgroundMid,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  }
-                },
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('DATA MANAGEMENT'),
               ),
-              const _SettingsRowDivider(),
-              // 7.55q.9: admin/dev affordance — clears the manager override
-              // + rebuilds the active 60-day cycle from the current
-              // recommendation so the once-per-cycle rule can be tested
-              // repeatedly without a real 60-day rollover.
-              _SettingsActionRow(
-                icon: Icons.refresh_rounded,
-                label: 'Reset Target Cycle (Admin)',
-                description:
-                    'Clears manager override + rebuilds the active 60-day '
-                    'cycle from the current recommendation. For testing — '
-                    'skips the once-per-cycle rule.',
-                tone: _SettingsRowTone.admin,
-                trailingBadge: 'ADMIN',
-                onTap: () async {
-                  final confirmed = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) => AlertDialog(
-                      backgroundColor: AppColors.backgroundMid,
-                      title: Text(
-                        'Reset target cycle?',
-                        style: AppTextStyles.mono14(
-                            color: AppColors.textPrimary),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _SettingsCard(
+                    children: [
+                      _SettingsActionRow(
+                        icon: Icons.delete_outline_rounded,
+                        label: 'Clear All Data',
+                        description:
+                            'Remove all operational data while keeping restaurant scope and connector settings.',
+                        tone: _SettingsRowTone.danger,
+                        onTap: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: AppColors.backgroundMid,
+                              title: Text(
+                                'Clear all data?',
+                                style: AppTextStyles.mono14(
+                                    color: AppColors.textPrimary),
+                              ),
+                              content: Text(
+                                'This removes all operational data while keeping restaurant scope and connector settings. Cannot be undone.',
+                                style: AppTextStyles.body13(
+                                    color: AppColors.textSecondary),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(false),
+                                  child: Text('Cancel',
+                                      style: AppTextStyles.mono11(
+                                          color: AppColors.textSecondary)),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(true),
+                                  child: Text('Clear',
+                                      style: AppTextStyles.mono11(
+                                          color: AppColors.negative)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await ShiftService.instance.clearAllData();
+                            await _refreshAfterWrite();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'All operational data cleared.',
+                                    style: AppTextStyles.mono11(
+                                        color: AppColors.textPrimary),
+                                  ),
+                                  backgroundColor: AppColors.backgroundMid,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
+                        },
                       ),
-                      content: Text(
-                        'Clears the persisted manager override and the '
-                        'active 60-day TargetCycle, then creates a fresh '
-                        'recommended cycle. Use this to test the '
-                        'once-per-cycle override rule repeatedly. '
-                        'Closed shifts and week history are NOT affected.',
-                        style: AppTextStyles.body13(
-                            color: AppColors.textSecondary),
+                      const _SettingsRowDivider(),
+                      // 7.55q.9: admin/dev affordance — clears the manager override
+                      // + rebuilds the active 60-day cycle from the current
+                      // recommendation so the once-per-cycle rule can be tested
+                      // repeatedly without a real 60-day rollover.
+                      _SettingsActionRow(
+                        icon: Icons.refresh_rounded,
+                        label: 'Reset Target Cycle (Admin)',
+                        description:
+                            'Clears manager override + rebuilds the active 60-day '
+                            'cycle from the current recommendation. For testing — '
+                            'skips the once-per-cycle rule.',
+                        tone: _SettingsRowTone.admin,
+                        trailingBadge: 'ADMIN',
+                        onTap: () async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              backgroundColor: AppColors.backgroundMid,
+                              title: Text(
+                                'Reset target cycle?',
+                                style: AppTextStyles.mono14(
+                                    color: AppColors.textPrimary),
+                              ),
+                              content: Text(
+                                'Clears the persisted manager override and the '
+                                'active 60-day TargetCycle, then creates a fresh '
+                                'recommended cycle. Use this to test the '
+                                'once-per-cycle override rule repeatedly. '
+                                'Closed shifts and week history are NOT affected.',
+                                style: AppTextStyles.body13(
+                                    color: AppColors.textSecondary),
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(false),
+                                  child: Text('Cancel',
+                                      style: AppTextStyles.mono11(
+                                          color: AppColors.textSecondary)),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.of(ctx).pop(true),
+                                  child: Text('Reset',
+                                      style: AppTextStyles.mono11(
+                                          color: AppColors.sunset)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await BaselineManagerService.instance.resetForAdminTest();
+                            await _refreshAfterWrite();
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Target cycle reset. Manager override is '
+                                    'available again.',
+                                    style: AppTextStyles.mono11(
+                                        color: AppColors.textPrimary),
+                                  ),
+                                  backgroundColor: AppColors.backgroundMid,
+                                  duration: const Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
+                        },
                       ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(false),
-                          child: Text('Cancel',
-                              style: AppTextStyles.mono11(
-                                  color: AppColors.textSecondary)),
-                        ),
-                        TextButton(
-                          onPressed: () => Navigator.of(ctx).pop(true),
-                          child: Text('Reset',
-                              style: AppTextStyles.mono11(
-                                  color: AppColors.sunset)),
-                        ),
-                      ],
-                    ),
-                  );
-                  if (confirmed == true) {
-                    await BaselineManagerService.instance.resetForAdminTest();
-                    await _refreshAfterWrite();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            'Target cycle reset. Manager override is '
-                            'available again.',
-                            style: AppTextStyles.mono11(
-                                color: AppColors.textPrimary),
-                          ),
-                          backgroundColor: AppColors.backgroundMid,
-                          duration: const Duration(seconds: 2),
-                        ),
-                      );
-                    }
-                  }
-                },
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
 
+          // ── TIMING AUTHORITY ─────────────────────────────────────────
+          if (restaurant != null)
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('TIMING AUTHORITY'),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _TimingAuthoritySection(restaurantId: restaurant.restaurantId),
+                  ),
+                ),
+              ],
+            ),
+
           // ── WAGE AUTHORITY ───────────────────────────────────────────
-          const _SettingsSectionHeader(label: 'WAGE AUTHORITY'),
-          _WageAuthoritySection(onChanged: _refreshAppState),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('WAGE AUTHORITY'),
+              ),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: _WageAuthoritySection(onChanged: _refreshAppState),
+                ),
+              ),
+            ],
+          ),
 
           // ── AUDIT ────────────────────────────────────────────────────
-          const _SettingsSectionHeader(label: 'AUDIT'),
-          const DataAlignmentAuditPanel(),
-
-          const SizedBox(height: 24),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('AUDIT'),
+              ),
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: DataAlignmentAuditPanel(),
+                ),
+              ),
+            ],
+          ),
 
           // ── Footer ───────────────────────────────────────────────────
-          _SettingsFooter(restaurantName: restaurantDisplayName),
-          ],
-        ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+              child: _SettingsFooter(restaurantName: restaurantDisplayName),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -522,49 +610,6 @@ class _SettingsRestaurantHero extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _SettingsSectionHeader extends StatelessWidget {
-  final String label;
-  const _SettingsSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 24, bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 18,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.sunset, AppColors.sunsetDark],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(label,
-                  style: AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w700)),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Container(
-            height: 1,
-            color: AppColors.sunsetDark.withValues(alpha: 0.25),
-          ),
-        ],
       ),
     );
   }
@@ -864,6 +909,219 @@ class _SettingsFooter extends StatelessWidget {
 // `WageRoleRow -> WageStandardContextService -> ActiveTargetProfile`
 // authority seam used by Benchmark, Variance, and Shift downstream
 // consumers.
+
+class _TimingAuthoritySection extends StatelessWidget {
+  final String restaurantId;
+  const _TimingAuthoritySection({required this.restaurantId});
+
+  static String _formatTime(String hhmm) {
+    final parts = hhmm.split(':');
+    if (parts.length != 2) return hhmm;
+    final hour24 = int.tryParse(parts[0]);
+    final minute = int.tryParse(parts[1]);
+    if (hour24 == null || minute == null) return hhmm;
+    final hour12 = hour24 % 12 == 0 ? 12 : hour24 % 12;
+    final amPm = hour24 >= 12 ? 'PM' : 'AM';
+    return '$hour12:${minute.toString().padLeft(2, '0')} $amPm';
+  }
+
+  static String _formatWeekStart(int weekStartDay) {
+    const names = {
+      DateTime.monday: 'Monday',
+      DateTime.tuesday: 'Tuesday',
+      DateTime.wednesday: 'Wednesday',
+      DateTime.thursday: 'Thursday',
+      DateTime.friday: 'Friday',
+      DateTime.saturday: 'Saturday',
+      DateTime.sunday: 'Sunday',
+    };
+    return names[weekStartDay] ?? 'Day $weekStartDay';
+  }
+
+  static String _formatApplicableDays(List<int> days) {
+    const shortNames = {
+      1: 'Mon',
+      2: 'Tue',
+      3: 'Wed',
+      4: 'Thu',
+      5: 'Fri',
+      6: 'Sat',
+      7: 'Sun',
+    };
+    if (days.length == 7) return 'Daily';
+    if (_sameDays(days, const [1, 2, 3, 4, 5])) return 'Mon–Fri';
+    if (_sameDays(days, const [5, 6])) return 'Fri–Sat';
+    return days.map((d) => shortNames[d] ?? '$d').join(', ');
+  }
+
+  static bool _sameDays(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  static String _formatShiftCloseRule(RestaurantTimingConfig config) {
+    switch (config.shiftCloseAuthority) {
+      case ShiftCloseAuthority.vendorFinalization:
+        return 'Vendor finalization';
+      case ShiftCloseAuthority.appLocalCutoffFallback:
+        final cutoff =
+            config.localCloseFallback ?? config.businessDayStartLocalTime;
+        return 'Local cutoff fallback (${_formatTime(cutoff)})';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<RestaurantTimingConfig?>(
+      future:
+          RestaurantTimingConfigReadService.instance.getTimingConfig(restaurantId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _SettingsCard(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                child: Text(
+                  'Loading timing settings…',
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final config = snapshot.data;
+        if (config == null) {
+          return _SettingsCard(
+            children: [
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                child: Text(
+                  'Timing settings are not available yet for this restaurant.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ),
+            ],
+          );
+        }
+
+        final periods = config.servicePeriodDefinitions;
+        return _SettingsCard(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 5),
+                        decoration: BoxDecoration(
+                          color: AppColors.sunset.withValues(alpha: 0.12),
+                          border: Border.all(
+                            color: AppColors.sunset.withValues(alpha: 0.45),
+                            width: 1,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          'ACTIVE TIMING',
+                          style:
+                              AppTextStyles.mono10(color: AppColors.sunsetDark),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Restaurant-local timing controls the business date, week start, and service buckets. Timezone is visible here now; full timezone editing stays in the deeper time-boundary lane.',
+                    style: AppTextStyles.body13(
+                        color: AppColors.textSecondary),
+                  ),
+                  const SizedBox(height: 12),
+                  _TimingValueRow(
+                    label: 'Timezone',
+                    value: config.businessTimezone,
+                  ),
+                  const _SettingsRowDivider(),
+                  _TimingValueRow(
+                    label: 'Business Day Starts',
+                    value: _formatTime(config.businessDayStartLocalTime),
+                  ),
+                  const _SettingsRowDivider(),
+                  _TimingValueRow(
+                    label: 'Week Starts',
+                    value: _formatWeekStart(config.weekStartDay),
+                  ),
+                  const _SettingsRowDivider(),
+                  _TimingValueRow(
+                    label: 'Shift Close Rule',
+                    value: _formatShiftCloseRule(config),
+                  ),
+                  if (periods.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'SERVICE PERIODS',
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < periods.length; i++) ...[
+                      if (i > 0) const _SettingsRowDivider(),
+                      _TimingValueRow(
+                        label: periods[i].label,
+                        value:
+                            '${_formatApplicableDays(periods[i].applicableDays)} · ${_formatTime(periods[i].startLocalTime)}–${_formatTime(periods[i].endLocalTime)}',
+                      ),
+                    ],
+                  ],
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _TimingValueRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _TimingValueRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 128,
+            child: Text(
+              label,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              value,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _WageAuthoritySection extends StatefulWidget {
   final VoidCallback onChanged;

@@ -1246,7 +1246,7 @@ class BaselineData {
         status: 'too_narrow',
         statusLabel: 'OPZ RANGE TOO NARROW',
         message:
-            'Star shifts too tightly clustered. Add more for a teachable range.',
+            'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         showWarning: true,
       );
     }
@@ -1264,19 +1264,19 @@ class BaselineData {
       status = 'too_narrow';
       statusLabel = 'OPZ RANGE TOO NARROW';
       message =
-          'Star shifts too tightly clustered. Add more for a teachable range.';
+          'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.';
       showWarning = true;
     } else if (rangeWidth > 1.25) {
       status = 'too_wide';
       statusLabel = 'OPZ RANGE TOO WIDE';
       message =
-          'Star shifts too widely spread. Tighten to one clean standard.';
+          'Star shifts are spread too far apart. Tighten the set until the team is working to one standard.';
       showWarning = true;
     } else {
       status = 'healthy';
       statusLabel = 'GOOD OPZ RANGE';
       message =
-          'Target sits in a usable range with room to flex.';
+          'Team looks busy without getting stretched. Service should hold here.';
       showWarning = false;
     }
 
@@ -1491,12 +1491,11 @@ class BaselineData {
             isDegenerate: true,
             badgeLabel: 'RANGE UNCONFIRMED',
             explanation:
-                'Not enough recent 60-day evidence to recommend a '
-                'benchmark range yet. Close more shifts before treating '
-                'this as a target.',
+                'Not enough recent shifts yet to set a reliable '
+                'benchmark range.',
             fallbackMessage:
-                'The graph is showing the Config Default range as a '
-                'placeholder, not a recommendation.',
+                'For now this is a placeholder range until more shift '
+                'history builds.',
           );
         case 'weak':
           if (signals.unionBandWidth > _unionBandWideThresholdCPLH) {
@@ -1505,12 +1504,11 @@ class BaselineData {
               isDegenerate: true,
               badgeLabel: 'RANGE TOO WIDE TO TEACH',
               explanation:
-                  'Dayparts (lunch, dinner, late night) have very '
-                  'different CPLH levels. The combined cross-daypart '
-                  'range is too wide to teach one standard.',
+                  'Lunch, dinner, and late night are behaving '
+                  'differently. This needs daypart-specific coaching.',
               fallbackMessage:
-                  'Per-daypart benchmarks are coming. Until then, treat '
-                  'this union band as context only.',
+                  'Use this as a broad guide for now, not one standard '
+                  'for every period.',
             );
           }
           return const _BaselineGraphHonesty(
@@ -1518,11 +1516,11 @@ class BaselineData {
             isDegenerate: true,
             badgeLabel: 'RANGE UNCERTAIN',
             explanation:
-                'Recent cohorts did not meet the quality bar. Target may '
-                'not be teachable yet.',
+                'We do not have a clean operating range yet. Let more '
+                'shifts close before coaching to this.',
             fallbackMessage:
-                'Give the 60-day window more closed shifts — the '
-                'recommendation improves as evidence builds.',
+                'As more shifts close, the benchmark will settle into a '
+                'clearer working range.',
           );
         case 'adequate':
         case 'strong':
@@ -1532,7 +1530,7 @@ class BaselineData {
             isDegenerate: false,
             badgeLabel: 'GOOD OPZ RANGE',
             explanation:
-                'Target sits in a usable range with room to flex.',
+                'Team looks busy without getting stretched. Service should hold here.',
             fallbackMessage: null,
           );
       }
@@ -1784,3 +1782,6 @@ class WeekDayOrder {
     );
   }
 }
+
+
+

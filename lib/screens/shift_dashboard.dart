@@ -10,6 +10,7 @@ import '../models/current_state_freshness.dart';
 import '../models/shift_dashboard_read_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';
+import '../widgets/sticky_section_delegate.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
 import '../widgets/sales_forecast_card.dart';
@@ -68,26 +69,41 @@ class ShiftDashboard extends StatelessWidget {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: _SectionHeader(label: 'SHIFT OUTPUTS'),
-                ),
+              // Each SliverMainAxisGroup bundles a header + its content
+              // so the next group's header pushes the entire previous
+              // group off — iOS UITableView-style, no stacking.
+              SliverMainAxisGroup(
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: StickySectionDelegate('SHIFT OUTPUTS'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _OutputsSection(readModel: rm),
+                  ),
+                ],
               ),
-              SliverToBoxAdapter(
-                child: _OutputsSection(readModel: rm),
+              SliverMainAxisGroup(
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: StickySectionDelegate('SHIFT INPUTS'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: _InputsSection(readModel: rm),
+                  ),
+                ],
               ),
-              SliverToBoxAdapter(
-                child: _InputsSection(readModel: rm),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _SectionHeader(label: 'FOH PRODUCTIVITY'),
-                      ZoneStatusCard(
+              SliverMainAxisGroup(
+                slivers: [
+                  SliverPersistentHeader(
+                    pinned: true,
+                    delegate: StickySectionDelegate('FOH PRODUCTIVITY'),
+                  ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: ZoneStatusCard(
                         currentCPLH: rm.actualCPLH,
                         opzFloorCPLH: rm.opzFloorCPLH,
                         opzCeilingCPLH: rm.opzCeilingCPLH,
@@ -96,16 +112,10 @@ class ShiftDashboard extends StatelessWidget {
                         opzLabel: rm.opzLabel,
                         opzSubLabel: rm.opzSubLabel,
                       ),
-                    ],
+                    ),
                   ),
-                ),
+                ],
               ),
-              // PRIMARY DRIVER teaching section hidden (Phase 10.5).
-              // The lever IS computed in the read model (drives the DRIVER
-              // badge on metric cards), but the full teaching takeaway is
-              // deferred until Shift is daypart-live. Showing a whole-day
-              // aggregate lever as a current-service-period teaching signal
-              // would be misleading. See phase_7_55m_4 audit doc.
               const SliverToBoxAdapter(child: SizedBox(height: 48)),
             ],
             ),
@@ -130,8 +140,10 @@ class _ShiftHeader extends StatelessWidget {
             'Restaurant';
     return AppScreenHeader(
       title: restaurantName,
+      trailing: const _LiveClock(),
       bottom: _ShiftHeaderMeta(
         day: readModel.day,
+        businessDate: readModel.businessDate,
         daypart: readModel.daypart,
         freshness: freshness,
       ),
@@ -139,15 +151,33 @@ class _ShiftHeader extends StatelessWidget {
   }
 }
 
-/// Bottom-row meta for the Shift header: day · daypart on the left, live
-/// clock + optional freshness chip on the right. Lives in the same slot
-/// where Variance shows its TabBar so all four tabs match in height.
+String _formatMonthDay(String isoDate) {
+  const months = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+  ];
+  final parts = isoDate.split('-');
+  if (parts.length != 3) return isoDate;
+  final month = int.tryParse(parts[1]);
+  final day = int.tryParse(parts[2]);
+  if (month == null || day == null || month < 1 || month > 12) {
+    return isoDate;
+  }
+  return '${months[month - 1]} $day';
+}
+
+/// Bottom-row meta for the Shift header: day · live business date · optional
+/// daypart on the left, live clock + optional freshness chip on the right.
+/// Lives in the same slot where Variance shows its TabBar so all four tabs
+/// match in height.
 class _ShiftHeaderMeta extends StatelessWidget {
   final String day;
+  final String businessDate;
   final String daypart;
   final CurrentStateFreshness? freshness;
   const _ShiftHeaderMeta({
     required this.day,
+    required this.businessDate,
     required this.daypart,
     this.freshness,
   });
@@ -158,30 +188,32 @@ class _ShiftHeaderMeta extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Left — day · daypart with sunset accent dot
-          Container(
-            width: 6,
-            height: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.sunset,
-              shape: BoxShape.circle,
-            ),
+          // Left group — dot + day · date
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: const BoxDecoration(
+                  color: AppColors.sunset,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '$day \u00b7 ${_formatMonthDay(businessDate)}',
+                style:
+                    AppTextStyles.mono12(color: AppColors.sunsetDark),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Flexible(
-            child: Text(
-              daypart.isEmpty ? day : '$day \u00b7 $daypart',
-              style:
-                  AppTextStyles.mono12(color: AppColors.sunsetDark),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          const Spacer(),
-          // Right — live clock + freshness chip
-          const _LiveClock(),
+          // Clock moved to the title row trailing slot. Only the
+          // freshness chip remains here on the right.
           if (freshness != null) ...[
-            const SizedBox(width: 10),
+            const Spacer(),
             _FreshnessLabel(freshness: freshness!),
           ],
         ],
@@ -306,51 +338,8 @@ class _FreshnessLabel extends StatelessWidget {
   }
 }
 
-// ─── Section header ──────────────────────────────────────────────────────────
-
-class _SectionHeader extends StatelessWidget {
-  final String label;
-  const _SectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 32, bottom: 10),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 4,
-                height: 20,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [AppColors.sunset, AppColors.sunsetDark],
-                  ),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(label, style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Container(
-            height: 2,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [AppColors.sunset, AppColors.sunsetDark],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// _SectionHeader removed — replaced by shared StickySectionDelegate
+// pinned headers in the CustomScrollView slivers above.
 
 // ignore: unused_element — Phase 10.5 lever teaching
 class _SectionHeaderWithIcon extends StatelessWidget {
@@ -480,7 +469,6 @@ class _InputsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionHeader(label: 'SHIFT INPUTS'),
           // PPA, CPLH, SPLH in grid
           GridView.count(
             crossAxisCount: 2,
@@ -617,18 +605,9 @@ class _LaborCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [AppColors.backgroundMid, AppColors.cardGlow],
         ),
-        border: Border(
-          left: BorderSide(color: AppColors.sunset, width: 4),
-          top: BorderSide(
-              color: AppColors.borderSubtle.withValues(alpha: 0.7),
-              width: 1),
-          right: BorderSide(
-              color: AppColors.borderSubtle.withValues(alpha: 0.7),
-              width: 1),
-          bottom: BorderSide(
-              color: AppColors.borderSubtle.withValues(alpha: 0.7),
-              width: 1),
-        ),
+        border: Border.all(
+            color: AppColors.borderSubtle.withValues(alpha: 0.7), width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: _LaborVarianceSection(readModel: readModel),
     );

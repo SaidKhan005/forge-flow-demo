@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart' as sqflite_mobile;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import '../../../data/legacy_fixture_data.dart';
 import '../../../data/mock_integration_replay_seed.dart';
+import '../../../data/recommended_benchmark_selection_service.dart';
 import '../../../domain/models/active_target_profile.dart';
 import '../../../domain/models/import_run.dart';
 import '../../../domain/models/open_shift_snapshot.dart';
@@ -19,6 +20,8 @@ import '../../../domain/models/target_cycle.dart';
 import '../../../domain/models/target_cycle_source.dart';
 import '../../../domain/services/target_cycle_active_target_profile_projector.dart';
 import '../../../domain/services/utc_metadata_timestamp.dart';
+import '../../../models/baseline_candidate_shift.dart';
+import '../../../models/shift_record.dart';
 
 /// The demo restaurant scope defaults used across persistence.
 class DemoScope {
@@ -35,7 +38,7 @@ class SqliteDatabase {
   String? _overrideDbPath;
 
   /// Current schema version.
-  static const int schemaVersion = 22;
+  static const int schemaVersion = 24;
 
   Future<Database> get database async {
     _db ??= await _initDb();
@@ -93,6 +96,7 @@ class SqliteDatabase {
     await _seedDemoActiveTargetProfile(
       db,
       businessDate: MockIntegrationReplaySeed.defaultBusinessDate,
+      replay: MockIntegrationReplaySeed.output,
     );
 
     // Persist default mock replay business date
@@ -299,6 +303,8 @@ class SqliteDatabase {
         month_dollar_impact        REAL,
         sixty_day_dollar_impact    REAL,
         closed_at                  TEXT,
+        target_calibration_window_start TEXT,
+        target_calibration_window_end   TEXT,
         UNIQUE(restaurant_id, week_id)
       )
     ''');
@@ -478,6 +484,10 @@ class SqliteDatabase {
     Database db, {
     required String businessDate,
   }) async {
+    final cycle = await _ensureDemoSeedCycle(
+      db,
+      businessDate: businessDate,
+    );
     final profile = await _loadSeedAuthorityProfile(
       db,
       businessDate: businessDate,
@@ -569,6 +579,21 @@ class SqliteDatabase {
       profile.bohWage,
       profile.theoreticalFohLaborPct,
       profile.theoreticalBohLaborPct,
+      DemoScope.restaurantId,
+    ]);
+
+    await db.execute('''
+      UPDATE week_records SET
+        target_calibration_window_start = ?,
+        target_calibration_window_end = ?
+      WHERE restaurant_id = ?
+        AND (
+          target_calibration_window_start IS NULL OR
+          target_calibration_window_end IS NULL
+        )
+    ''', [
+      cycle.calibrationWindowStart,
+      cycle.calibrationWindowEnd,
       DemoScope.restaurantId,
     ]);
   }
@@ -819,10 +844,12 @@ class SqliteDatabase {
   Future<void> _seedDemoActiveTargetProfile(
     Database db, {
     required String businessDate,
+    MockReplayOutput? replay,
   }) async {
     final profile = await _loadSeedAuthorityProfile(
       db,
       businessDate: businessDate,
+      replay: replay,
     );
     await db.insert('active_target_profiles', profile.toMap(),
         conflictAlgorithm: ConflictAlgorithm.replace);
@@ -831,10 +858,12 @@ class SqliteDatabase {
   Future<ActiveTargetProfile> _loadSeedAuthorityProfile(
     Database db, {
     required String businessDate,
+    MockReplayOutput? replay,
   }) async {
     final cycle = await _ensureDemoSeedCycle(
       db,
       businessDate: businessDate,
+      replay: replay,
     );
     return TargetCycleActiveTargetProfileProjector.project(cycle);
   }
@@ -842,6 +871,7 @@ class SqliteDatabase {
   Future<TargetCycle> _ensureDemoSeedCycle(
     Database db, {
     required String businessDate,
+    MockReplayOutput? replay,
   }) async {
     final existing = await db.query(
       'target_cycles',
@@ -874,6 +904,7 @@ class SqliteDatabase {
       businessDate: businessDate,
       fohWageOverride: fohOverride,
       bohWageOverride: bohOverride,
+      replay: replay ?? MockIntegrationReplaySeed.generateForDate(businessDate),
     );
     await db.insert(
       'target_cycles',
@@ -887,7 +918,16 @@ class SqliteDatabase {
     required String businessDate,
     double? fohWageOverride,
     double? bohWageOverride,
+    required MockReplayOutput replay,
   }) {
+    final recommendation = RecommendedBenchmarkSelectionService.instance.select(
+      _seedRecommendationCandidates(
+        replay,
+        businessDate: businessDate,
+      ),
+    );
+    final isInsufficient = recommendation.isInsufficient;
+
     return TargetCycle(
       cycleId: 'demo_cycle_$businessDate',
       restaurantId: DemoScope.restaurantId,
@@ -896,15 +936,59 @@ class SqliteDatabase {
       effectiveEnd: _addIsoDays(businessDate, 59),
       calibrationWindowStart: _addIsoDays(businessDate, -59),
       calibrationWindowEnd: businessDate,
-      targetCPLH: BaselineData.derivedTargetCPLH,
-      targetSPLH: BaselineData.derivedTargetSPLH,
-      targetPPA: BaselineData.derivedTargetPPA,
+      targetCPLH: isInsufficient
+          ? MeridianConfig.targetCPLH
+          : recommendation.pooledRecommendedTargetCPLH,
+      targetSPLH: isInsufficient
+          ? MeridianConfig.targetSPLH
+          : recommendation.pooledRecommendedTargetSPLH,
+      targetPPA: isInsufficient
+          ? MeridianConfig.targetPPA
+          : recommendation.pooledRecommendedTargetPPA,
       fohWage: fohWageOverride ?? MeridianConfig.fohWage,
       bohWage: bohWageOverride ?? MeridianConfig.bohWage,
-      opzFloorCPLH: BaselineData.opzFloorCPLH,
-      opzCeilingCPLH: BaselineData.opzCeilingCPLH,
+      opzFloorCPLH: isInsufficient
+          ? MeridianConfig.opzFloorCPLH
+          : recommendation.unionOpzFloorCPLH,
+      opzCeilingCPLH: isInsufficient
+          ? MeridianConfig.opzCeilingCPLH
+          : recommendation.unionOpzCeilingCPLH,
       createdAt: nowIsoUtc(),
     );
+  }
+
+  static List<BaselineCandidateShift> _seedRecommendationCandidates(
+    MockReplayOutput replay, {
+    required String businessDate,
+  }) {
+    final startDate = _addIsoDays(businessDate, -59);
+    final closedShifts = <ShiftRecord>[
+      ...replay.historicalClosedShifts,
+      ...replay.currentWeekShifts.where((s) => s.status == 'closed'),
+    ];
+
+    return closedShifts
+        .where((shift) =>
+            shift.businessDate != null &&
+            shift.businessDate!.compareTo(startDate) >= 0 &&
+            shift.businessDate!.compareTo(businessDate) <= 0)
+        .map((shift) => BaselineCandidateShift(
+              recordKey: '${shift.weekId}|${shift.dayLabel}|${shift.daypart}',
+              weekId: shift.weekId,
+              weekLabel: shift.weekId,
+              dayLabel: shift.dayLabel,
+              daypart: shift.daypart,
+              covers: shift.covers,
+              cplh: shift.cplh,
+              splh: shift.splh,
+              ppa: shift.ppa,
+              primaryLeverId: shift.normalizedLeverId,
+              isSelected: false,
+              businessDate: shift.businessDate,
+              actualLaborPct: shift.totalLaborPct,
+              hasActualLaborPctTruth: shift.hasSourceBackedTotalLaborPct,
+            ))
+        .toList();
   }
 
   /// Weighted average hourly rate from raw DB rows for a given labor bucket.
@@ -1132,6 +1216,12 @@ class SqliteDatabase {
     if (oldV < 22) {
       await _migrateToV22(db);
     }
+    if (oldV < 23) {
+      await _migrateToV23(db);
+    }
+    if (oldV < 24) {
+      await _migrateToV24(db);
+    }
   }
 
   // Phase 7.55q.5: add preserved locked plan hour columns to week_records.
@@ -1177,6 +1267,93 @@ class SqliteDatabase {
         'ALTER TABLE week_records ADD COLUMN closed_at TEXT',
       );
     }
+  }
+
+  // Phase 7.55q.11: add frozen target calibration-window columns to
+  // week_records. Captured at week close from the TargetCycle linked by the
+  // locked WeeklyPlanSnapshot so History can show which 60-day window the
+  // week's targets were actually built from. Additive + nullable — legacy
+  // rows stay null and Week Detail omits the range honestly.
+  Future<void> _migrateToV23(Database db) async {
+    if (!await _columnExists(
+        db, 'week_records', 'target_calibration_window_start')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN target_calibration_window_start TEXT',
+      );
+    }
+    if (!await _columnExists(
+        db, 'week_records', 'target_calibration_window_end')) {
+      await db.execute(
+        'ALTER TABLE week_records ADD COLUMN target_calibration_window_end TEXT',
+      );
+    }
+
+    // Demo/backfill safety net: older seeded History rows may already carry
+    // locked target numbers but pre-date the calibration-window fields.
+    // When an active demo cycle exists, backfill the new display metadata from
+    // that preserved cycle so upgraded demo DBs show the same range contract
+    // after restart. This is intentionally scoped to the demo restaurant.
+    await db.execute('''
+      UPDATE week_records
+      SET
+        target_calibration_window_start = (
+          SELECT calibration_window_start
+          FROM target_cycles
+          WHERE restaurant_id = ? AND deactivated_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        ),
+        target_calibration_window_end = (
+          SELECT calibration_window_end
+          FROM target_cycles
+          WHERE restaurant_id = ? AND deactivated_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+      WHERE restaurant_id = ?
+        AND (
+          target_calibration_window_start IS NULL OR
+          target_calibration_window_end IS NULL
+        )
+    ''', [
+      DemoScope.restaurantId,
+      DemoScope.restaurantId,
+      DemoScope.restaurantId,
+    ]);
+  }
+
+  // Phase 7.55q.11a: repair already-upgraded demo DBs whose V23 schema landed
+  // before the historical-week calibration-window backfill logic existed.
+  // No schema change here — this is a data repair migration so existing local
+  // app DBs pick up the "Built from ..." History subtitle on restart.
+  Future<void> _migrateToV24(Database db) async {
+    await db.execute('''
+      UPDATE week_records
+      SET
+        target_calibration_window_start = (
+          SELECT calibration_window_start
+          FROM target_cycles
+          WHERE restaurant_id = ? AND deactivated_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        ),
+        target_calibration_window_end = (
+          SELECT calibration_window_end
+          FROM target_cycles
+          WHERE restaurant_id = ? AND deactivated_at IS NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        )
+      WHERE restaurant_id = ?
+        AND (
+          target_calibration_window_start IS NULL OR
+          target_calibration_window_end IS NULL
+        )
+    ''', [
+      DemoScope.restaurantId,
+      DemoScope.restaurantId,
+      DemoScope.restaurantId,
+    ]);
   }
 
   Future<void> _migrateToV10(Database db) async {
@@ -1890,7 +2067,11 @@ class SqliteDatabase {
         where: 'restaurant_id = ? AND deactivated_at IS NULL',
         whereArgs: [DemoScope.restaurantId]);
     if (preservedCycles.isEmpty) {
-      await _seedDemoActiveTargetProfile(db, businessDate: isoDate);
+      await _seedDemoActiveTargetProfile(
+        db,
+        businessDate: isoDate,
+        replay: replay,
+      );
     }
     await _seedDemoDataFromReplay(db, replay);
     await _backfillLockedTargets(db, businessDate: isoDate);

@@ -123,6 +123,68 @@ Wages have one extra practical rule:
   instead of assuming the first close-time ingest is the last word forever
   targets
 
+### What the Benchmark range badges mean
+
+The CPLH range bar is trying to answer one simple question:
+
+**do we have a clean, coachable working range yet?**
+
+There are two versions of that answer.
+
+#### When a manager is choosing star shifts
+
+- `OPZ RANGE TOO NARROW`
+  - math:
+    - fewer than 2 selected star shifts, or
+    - the selected CPLH spread is under `0.15`
+  - hospitality meaning:
+    - the chosen shifts are too similar to teach from yet
+
+- `OPZ RANGE TOO WIDE`
+  - math:
+    - the selected CPLH spread is over `1.25`
+  - hospitality meaning:
+    - the chosen shifts are describing too many different service patterns
+
+- `GOOD OPZ RANGE`
+  - math:
+    - the selected spread sits between those bounds
+  - hospitality meaning:
+    - the selected shifts describe a realistic service rhythm the team can
+      repeat
+
+#### When the app is recommending the benchmark
+
+- `RANGE UNCONFIRMED`
+  - math:
+    - the recommendation summary is missing, or
+    - the recommendation path marked the evidence as insufficient
+  - hospitality meaning:
+    - we do not have enough recent clean history to coach to this yet
+
+- `RANGE TOO WIDE TO TEACH`
+  - math:
+    - the persisted benchmark summary says the range quality is too wide
+  - hospitality meaning:
+    - lunch, dinner, and late night are behaving too differently for one
+      combined range to teach cleanly
+
+- `RANGE UNCERTAIN`
+  - math:
+    - the persisted benchmark summary says the range quality is too narrow /
+      weak
+  - hospitality meaning:
+    - we have some history, but not a stable enough pattern to call this a
+      dependable benchmark yet
+
+- `GOOD OPZ RANGE`
+  - math:
+    - the persisted summary is present and not in the weak / wide /
+      insufficient branches
+  - hospitality meaning:
+    - the recent shift history is strong enough to use this as a real working
+      benchmark
+
 ## Demand: Estimating Volume
 
 Demand is a different question.

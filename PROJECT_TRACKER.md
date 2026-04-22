@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-14
+Updated: 2026-04-15
 Owner: You
 Execution model: We think, Claude codes
 
@@ -24,6 +24,7 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - Current phase: `7.55o` refactor / extraction lane resumed after `7.55q.1` through `7.55q.9`
 - Current prompt: `7.55o.1` - shared surface primitives extraction
 - Current goal: resume extraction without reopening the landed single-plan / single-benchmark-target / whole-day-Shift source-truth contracts
+- Current UX shell state: the broad header / shell / Learn / Settings / Plan / Benchmark / Variance visual pass is already landed; remaining `7.55o` work should build on it rather than reopen it
 - Current live-integration scope: one restaurant/location, not multi-location org management
 - Naming guardrail: keep internal `Baseline` / `Schedule` names unchanged during this alignment pass
 
@@ -54,12 +55,27 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
   - `7.55o.2` Variance shell split
   - `7.55o.3` Schedule planning surface separation
   - `7.55o.4` Settings surface split
+    - keep the read-only timing authority visible there; defer editable
+      timezone/timing authority until full restaurant-local timezone
+      conversion and persisted timing-control wiring are landed
   - `7.55o.5` Baseline Manager decomposition plus remaining candidate-truth / bridge cleanup
   - `7.55o.6` SQLite bootstrap breakup only if still justified
+  - keep the landed UX shell pass recorded as done:
+    - shared sticky/fading headers across core tabs
+    - Shift header/live-time polish
+    - Variance / History / Learn shell cleanup
+    - Plan / Benchmark header-stat cleanup
+    - Settings visual rework
   - revisit canonical live-facts contract planning after the extraction lane
   - `7.55j.3` vendor endpoint checklist template
   - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before `7.55j.4` / the pre-Phase-8 readiness answer
   - `7.55j.4` gap report
+  - keep the post-audit bounded cleanup list visible without reopening the
+    landed q-lane contracts:
+    - dev-only `DataAlignmentAuditPanel` service wrap
+    - persisted timing/service-period wiring closeout
+    - UTC metadata timestamp normalization
+    - non-locked WTD business-date membership
 
 ## Active Guardrails
 
@@ -91,7 +107,7 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - Baseline Manager is not extraction-only; its first future touch should focus on the remaining candidate-truth / bridge cleanup rather than reopening the already-landed wage-authority fix
 - use `docs/internal/status_ledger_post_7_55p_deep_check.md` as the reference sheet for:
   - which older user asks are already done vs partial vs still open
-  - the later `7.55o.*` naming/polish lane
+  - the remaining `7.55o.*` naming/polish lane after the landed shell pass
   - the later `7.55j.4` readiness-check conversation
 - `10.5` still owns live Shift service-period behavior, live time-into-service, and daypart-live driver teaching
 

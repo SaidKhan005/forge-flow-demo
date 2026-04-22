@@ -182,6 +182,71 @@ Contract:
   - labor integration wage truth, or
   - the admin-configured wage mix fallback in Settings
 
+### 5A. Benchmark range-state contract
+
+The Benchmark CPLH range bar has two different state families:
+
+- manager-selected star-shift states
+- system-recommended benchmark states
+
+Those states are not decorative. They are the contract for how confident the
+app is in the visible range.
+
+#### A. Manager-selected star-shift states
+
+These are driven from the selected-star-shift CPLH width.
+
+Math:
+
+- `OPZ RANGE TOO NARROW`
+  - selected count `< 2`, or
+  - selected CPLH width `< 0.15`
+- `OPZ RANGE TOO WIDE`
+  - selected CPLH width `> 1.25`
+- `GOOD OPZ RANGE`
+  - selected CPLH width is between those bounds
+
+Hospitality meaning:
+
+- `OPZ RANGE TOO NARROW`
+  - the chosen star shifts are too similar to coach from yet
+- `OPZ RANGE TOO WIDE`
+  - the chosen star shifts are trying to teach more than one operating style
+- `GOOD OPZ RANGE`
+  - the chosen star shifts describe a workable service rhythm the team can run
+
+#### B. System-recommended benchmark states
+
+These are driven from the persisted benchmark-selection summary for the active
+cycle.
+
+Math / source contract:
+
+- `RANGE UNCONFIRMED`
+  - no persisted summary is available yet, or
+  - the summary source is an `insufficient` recommendation path
+- `RANGE TOO WIDE TO TEACH`
+  - the persisted summary says `rangeQualityLabel == 'OPZ RANGE TOO WIDE'`
+- `RANGE UNCERTAIN`
+  - the persisted summary says `rangeQualityLabel == 'OPZ RANGE TOO NARROW'`
+- `GOOD OPZ RANGE`
+  - the persisted summary is present and not in the wide / narrow /
+    insufficient branches
+
+Hospitality meaning:
+
+- `RANGE UNCONFIRMED`
+  - we do not have enough recent clean shift history to coach to this yet
+- `RANGE TOO WIDE TO TEACH`
+  - lunch / dinner / late night are behaving too differently for one combined
+    benchmark range to teach cleanly
+- `RANGE UNCERTAIN`
+  - we have some history, but not a stable enough operating pattern to call
+    this a dependable coaching range yet
+- `GOOD OPZ RANGE`
+  - the recent history is strong enough that this range can be treated as a
+    usable benchmark
+
 ### 6. DemandForecastContext
 
 Demand is separate from standards.

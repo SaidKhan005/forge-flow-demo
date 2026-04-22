@@ -90,8 +90,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('WEEKLY PLAN SUMMARY'), findsOneWidget);
-      expect(find.text('COVER FORECAST BY DAY'), findsOneWidget);
+      expect(find.text('LABOR PLAN'), findsOneWidget);
+      expect(find.text('COVER FORECAST ADJUSTED BY DAY'), findsOneWidget);
       expect(find.text('DAY-BY-DAY PLAN'), findsOneWidget);
 
       notifier.dispose();
@@ -118,7 +118,7 @@ void main() {
       await tester.pump();
 
       // The old caption was removed in 7.55m.6 and replaced by the
-      // COVER FORECAST BY DAY section label.
+      // COVER FORECAST ADJUSTED BY DAY section label.
       expect(
         find.text('COVER FORECAST DISTRIBUTED BY DAY', skipOffstage: false),
         findsNothing,
@@ -220,7 +220,7 @@ void main() {
       //  FOH HRS / BOH HRS — all Plan-owned values that always render
       //  a number, never `—`.)
       // Note: SALES is a Plan-owned column header, so it stays.
-      expect(find.text('SALES'), findsOneWidget);
+      expect(find.text('SALES'), findsAtLeastNWidgets(1));
 
       notifier.dispose();
     });
@@ -532,8 +532,8 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('WEEKLY PLAN SUMMARY'), findsOneWidget);
-      expect(find.text('COVER FORECAST BY DAY'), findsOneWidget);
+      expect(find.text('LABOR PLAN'), findsOneWidget);
+      expect(find.text('COVER FORECAST ADJUSTED BY DAY'), findsOneWidget);
       expect(find.text('DAY-BY-DAY PLAN'), findsOneWidget);
 
       notifier.dispose();

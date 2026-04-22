@@ -33,6 +33,7 @@ import '../domain/models/target_profile_version.dart';
 import '../domain/repositories/open_shift_snapshot_repository.dart';
 import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
+import '../domain/repositories/target_cycle_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/repositories/week_record_repository.dart';
 import '../domain/repositories/weekly_plan_snapshot_repository.dart';
@@ -49,6 +50,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snap
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
+import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_weekly_plan_snapshot_repository.dart';
@@ -80,6 +82,8 @@ class ShiftService {
       SqliteOpenShiftSnapshotRepository.instance;
   final WeeklyPlanSnapshotRepository _weeklyPlanSnapshotRepo =
       SqliteWeeklyPlanSnapshotRepository.instance;
+  final TargetCycleRepository _targetCycleRepo =
+      SqliteTargetCycleRepository.instance;
 
   Future<String> _activeRestaurantId() => _scopeRepo.getActiveRestaurantId();
 
@@ -191,6 +195,7 @@ class ShiftService {
       primaryLeverId:          primaryLeverId,
       lastClosedDay:           lastClosedDay,
       closedDayNumber:         closedDayNum,
+      lastClosedBusinessDate:  maxClosedDate,
       storedTotalFohLaborDollar: totalFohLaborDollar,
       storedTotalBohLaborDollar: totalBohLaborDollar,
       monthDollarImpact: monthDollarImpact,
@@ -469,6 +474,8 @@ class ShiftService {
     // "—" for those rows instead of re-modeling from actuals).
     int? lockedRequiredFohHours;
     int? lockedRequiredBohHours;
+    String? targetCalibrationWindowStart;
+    String? targetCalibrationWindowEnd;
     final anchorBusinessDate = _anchorBusinessDate(closedShifts);
     if (anchorBusinessDate != null) {
       final snapshot = await _weeklyPlanSnapshotRepo
@@ -476,6 +483,11 @@ class ShiftService {
       if (snapshot != null) {
         lockedRequiredFohHours = snapshot.requiredFohHours;
         lockedRequiredBohHours = snapshot.requiredBohHours;
+        final cycle = await _targetCycleRepo.getCycleById(snapshot.targetCycleId);
+        if (cycle != null) {
+          targetCalibrationWindowStart = cycle.calibrationWindowStart;
+          targetCalibrationWindowEnd = cycle.calibrationWindowEnd;
+        }
       }
     }
 
@@ -545,6 +557,8 @@ class ShiftService {
       monthDollarImpact: monthDollarImpact,
       sixtyDayDollarImpact: sixtyDayDollarImpact,
       closedAt: closedAt,
+      targetCalibrationWindowStart: targetCalibrationWindowStart,
+      targetCalibrationWindowEnd: targetCalibrationWindowEnd,
     );
   }
 
@@ -839,6 +853,7 @@ class ShiftService {
       primaryLeverId: primaryLeverId,
       lastClosedDay: lastClosedDay,
       closedDayNumber: closedDayNum,
+      lastClosedBusinessDate: maxClosedDate,
       storedTotalFohLaborDollar: totalFohLaborDollar,
       storedTotalBohLaborDollar: totalBohLaborDollar,
       planFohHoursWtd: planFohHoursWtd,

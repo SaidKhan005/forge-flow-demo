@@ -10,19 +10,24 @@ import '../theme/app_theme.dart';
 /// fixed-height row underneath (used for Variance's TabBar, for Shift's
 /// day + live time meta line, and left empty for Plan / Benchmark).
 class AppScreenHeader extends StatelessWidget {
-  static const double _titleRowHeight = 68;
-  static const double _bottomRowHeight = 50;
+  static const double _titleRowHeight = 64;
+  static const double _bottomRowHeight = 56;
 
   /// Total fixed header height. Exposed so callers (e.g. SliverAppBar
   /// hosts) can size around it.
   static const double height = _titleRowHeight + _bottomRowHeight;
 
   final String title;
+
+  /// Optional widget pinned to the right of the title (e.g. Shift's
+  /// live clock). Vertically baseline-aligned with the title.
+  final Widget? trailing;
   final Widget? bottom;
 
   const AppScreenHeader({
     super.key,
     required this.title,
+    this.trailing,
     this.bottom,
   });
 
@@ -51,13 +56,25 @@ class AppScreenHeader extends StatelessWidget {
           SizedBox(
             height: _titleRowHeight,
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
               child: Align(
                 alignment: Alignment.bottomLeft,
-                child: Text(
-                  title,
-                  style: AppTextStyles.display28(),
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                  textBaseline: TextBaseline.alphabetic,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: AppTextStyles.display28(),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (trailing != null) ...[
+                      const SizedBox(width: 12),
+                      trailing!,
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -173,5 +190,4 @@ class _FadingHeaderShellState extends State<FadingHeaderShell> {
     );
   }
 }
-
 

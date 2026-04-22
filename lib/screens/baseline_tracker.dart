@@ -8,6 +8,7 @@ import '../data/legacy_fixture_data.dart';
 import '../domain/models/active_target_profile.dart';
 import '../widgets/app_screen_header.dart';
 import '../widgets/daypart_table.dart';
+import '../widgets/sticky_section_delegate.dart';
 import 'baseline_manager_screen.dart';
 
 class BaselineTracker extends StatefulWidget {
@@ -60,108 +61,92 @@ class _BaselineTrackerState extends State<BaselineTracker> {
                 child: Align(
                   alignment: Alignment.centerLeft,
                   child: AppHeaderStat(
-                    label: 'TOTAL COVERS LAST 60 DAYS',
+                    label: 'TOTAL COVERS LAST 60 DAYS:',
                     value: view.historicalTotalCoversTracked.toString(),
                   ),
                 ),
               ),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+      child: CustomScrollView(
+        cacheExtent: 9999,
+        slivers: [
           // Manager override banner — only shown when active
           if (_loading && view == null)
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: LinearProgressIndicator(minHeight: 2),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: LinearProgressIndicator(minHeight: 2),
+              ),
             )
           else if (view == null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
-              child: Text(
-                'Benchmark evidence unavailable',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                child: Text(
+                  'Benchmark evidence unavailable',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                ),
               ),
             )
           else if (view.hasManagerOverride)
-            _OverrideBanner(selectedCount: view.selectedShiftCount),
+            SliverToBoxAdapter(
+              child: _OverrideBanner(selectedCount: view.selectedShiftCount),
+            ),
 
           // TOTAL COVERS LAST 60 DAYS now lives in the screen header
           // bottom slot — see AppHeaderStat above. Card removed from the
           // body to stop duplicating the same number.
 
-          const SizedBox(height: 8),
+          const SliverToBoxAdapter(child: SizedBox(height: 8)),
 
           // CPLH range bar — replaces 60-day line chart
-          if (view != null) _SectionLabel('CPLH RANGE & TARGET'),
-          if (view != null) _CplhRangeBar(graph: view.rangeGraphModel),
-
-          const SizedBox(height: 8),
+          if (view != null)
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('CPLH RANGE & TARGET'),
+                ),
+                SliverToBoxAdapter(
+                  child: _CplhRangeBar(graph: view.rangeGraphModel),
+                ),
+                const SliverToBoxAdapter(child: SizedBox(height: 8)),
+              ],
+            ),
 
           // Daypart breakdown
-          if (view != null) _SectionLabel('DAYPART BREAKDOWN'),
-          if (view != null) DaypartTable(dayparts: view.daypartRanges),
+          if (view != null)
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('DAYPART BREAKDOWN'),
+                ),
+                SliverToBoxAdapter(
+                  child: DaypartTable(dayparts: view.daypartRanges),
+                ),
+              ],
+            ),
 
           // Baseline targets
-          _SectionLabel('TARGETS DERIVED FROM BENCHMARK'),
-          _BaselineTargetsCard(),
-
-          const SizedBox(height: 24),
-          ],
-        ),
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('TARGETS DERIVED FROM BENCHMARK'),
+              ),
+              SliverToBoxAdapter(child: _BaselineTargetsCard()),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-// ─── Section label ────────────────────────────────────────────────────────────
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 32, 16, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AppColors.sunset, AppColors.sunsetDark],
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  text,
-                  style: AppTextStyles.mono14(
-                      color: AppColors.textPrimary, weight: FontWeight.w700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 2,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.sunset, AppColors.sunsetDark],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-}
+// _SectionLabel removed — replaced by shared StickySectionDelegate
+// pinned headers in the CustomScrollView slivers above.
 
 // ─── Override banner ───────────────────────────────────────────────────────────
 

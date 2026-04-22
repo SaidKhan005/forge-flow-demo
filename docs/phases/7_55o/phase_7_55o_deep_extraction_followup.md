@@ -291,6 +291,16 @@ not arbitrary test splitting for its own sake.
 
 ## Recommended 7.55o Sequence (deeper version)
 
+Note after the later UX shell pass:
+
+- shared app-shell/header work is no longer hypothetical
+- the sticky/fading header treatment, cross-tab shell cleanup, Learn reskin,
+  Plan/Benchmark header-stat cleanup, and Settings visual rework are already
+  landed
+- the remaining `7.55o` work should therefore stay focused on file/layer
+  extraction and ownership cleanup, not on reopening the already-landed shell
+  redesign
+
 ### `7.55o.1` — Shared surface primitives extraction
 
 Do first.
@@ -371,9 +381,10 @@ Reason for deferring:
 
 - do not sneak timing/service-period behavior changes into extraction work
 - do not use `7.55o` to retire bridge-era truth by accident
-- do not relabel product language broadly while extracting structure
-- do not mix visual redesign into engineering hygiene unless a slice explicitly
-  says so
+- do not relabel product language broadly while extracting structure unless the
+  slice explicitly owns copy cleanup
+- do not reopen the already-landed shell/header redesign while doing
+  engineering hygiene
 - do not touch `legacy_fixture_data.dart` aggressively without a separate
   bridge-ownership decision
 

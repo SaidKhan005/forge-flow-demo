@@ -51,6 +51,8 @@ class WeekRecord {
   final double? monthDollarImpact;
   final double? sixtyDayDollarImpact;
   final String? closedAt; // 'YYYY-MM-DD' — last shift's businessDate
+  final String? targetCalibrationWindowStart;
+  final String? targetCalibrationWindowEnd;
 
   const WeekRecord({
     this.id,
@@ -84,6 +86,8 @@ class WeekRecord {
     this.monthDollarImpact,
     this.sixtyDayDollarImpact,
     this.closedAt,
+    this.targetCalibrationWindowStart,
+    this.targetCalibrationWindowEnd,
   });
 
   double get laborPctVariance => actualLaborPct - theoreticalLaborPct;
@@ -206,6 +210,8 @@ class WeekRecord {
         'month_dollar_impact': monthDollarImpact,
         'sixty_day_dollar_impact': sixtyDayDollarImpact,
         'closed_at': closedAt,
+        'target_calibration_window_start': targetCalibrationWindowStart,
+        'target_calibration_window_end': targetCalibrationWindowEnd,
       };
 
   factory WeekRecord.fromMap(Map<String, dynamic> m) => WeekRecord(
@@ -243,5 +249,9 @@ class WeekRecord {
         monthDollarImpact: (m['month_dollar_impact'] as num?)?.toDouble(),
         sixtyDayDollarImpact: (m['sixty_day_dollar_impact'] as num?)?.toDouble(),
         closedAt: m['closed_at'] as String?,
+        targetCalibrationWindowStart:
+            m['target_calibration_window_start'] as String?,
+        targetCalibrationWindowEnd:
+            m['target_calibration_window_end'] as String?,
       );
 }

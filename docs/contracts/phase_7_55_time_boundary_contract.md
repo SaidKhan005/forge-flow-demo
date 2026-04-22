@@ -417,7 +417,9 @@ Those changes must never silently rewrite already locked history.
 - `CurrentWeekState.shiftRecordFromSnapshot` still drops `businessDate`
 - service periods are still hardcoded through fixture-era helpers
   (`WeekDayOrder.daypartsFor(...)`)
-- `SettingsScreen` does not expose timing settings yet
+- `SettingsScreen` can now surface timing authority summary rows, but
+  editable timezone authority is still deferred until full
+  restaurant-local timezone conversion lands end to end
 - metadata timestamps are not yet consistently normalized to UTC everywhere
 
 ## Current Code Seams This Contract Must Govern

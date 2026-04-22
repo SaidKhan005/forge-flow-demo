@@ -1,6 +1,6 @@
 # Status Ledger - Post-7.55p Deep Check
 
-Updated: 2026-04-14
+Updated: 2026-04-15
 Owner: Codex
 Purpose: durable status reference for the user's long-running "did we actually do this?" checklist.
 
@@ -44,31 +44,39 @@ in `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_
 
 ### Variance WTD / Full Week Requests
 
-| Request | Status | Notes |
-|---|---|---|
-| WTD FOH/BOH target hours should match the plan | Reopened under `7.55q.2` / `7.55q.4` | Internal WTD math uses locked plan-to-date hours when available, but the app still exposes a second current-week live plan authority in Schedule. Under the conformance contract, this is not "done" until the repo carries one current-week plan object. |
-| Remove collapsed `cvr` label | Done | Collapsed Full Week rows no longer show `cvr`. |
-| Remove `1 closed / 1 open / 1 projected` collapsed text | Done | Status chips/icons remain; summary text removed from collapsed day rows. |
-| Carry forward primary lever from last closed daypart | Done | `VarianceWeekProjectionReadService` carries the last closed lever by daypart. |
-| Capitalization consistency like `Target` | Partial | Some copy cleanup landed, but no global naming/copy audit has happened yet. |
-| Change row label to just `Period . Closed/Open/Projected` | Open | Current headers still show day + daypart + covers + status. |
-| Daypart cover targets align with the plan | Reopened under `7.55q.4` | Closed rows staying locked truth is still correct, but the old mixed "open/projected uses plan/snapshot truth" reading is killed. Non-closed rows must read the one locked weekly plan object 1:1. |
-| Blended wage row matches the shared benchmark target object | Open under `7.55q.3` / `7.55q.4` | The older "blended wage corresponds to the plan" framing is architecturally wrong. Blended wage is a Benchmark-owned target metric for non-closed rows and is still drifting across Benchmark / WTD / Full Week. |
-| FOH/BOH non-closed target rows align with the locked weekly plan / shared benchmark objects | Reopened under `7.55q.4` | The old mixed-contract reading is killed. Non-closed Variance rows should read plan-owned volume metrics and benchmark-owned rate metrics 1:1. |
+#### Done
 
-### Important Clarifier
+| Request | Notes |
+|---|---|
+| WTD FOH/BOH target hours should match the plan | WTD target hours now read locked plan-to-date hours only. Honest degradation applies when locked hours are unavailable. |
+| Remove collapsed `cvr` label | Collapsed Full Week rows no longer show `cvr`. |
+| Remove `1 closed / 1 open / 1 projected` collapsed text | Status chips/icons remain; summary text was removed from collapsed day rows. |
+| Change Full Week expanded row label to just `Period - Closed/Open/Projected` | Expanded Full Week daypart detail labels now show just the period plus row state, without repeating day names or cover counts in the badge. |
+| Carry forward primary lever from last closed daypart | `VarianceWeekProjectionReadService` carries the last closed lever by daypart. |
+| Blended wage row matches the shared benchmark target object | Non-closed Variance rows now read the shared benchmark target seam for blended wage; closed rows stay locked closed truth. |
+| FOH/BOH non-closed target rows align with the locked weekly plan / shared benchmark objects | Non-closed Variance rows now read plan-owned volume metrics and benchmark-owned rate metrics 1:1. |
 
-`7.55p.2` improved the internal WTD / Full Week target wiring, but the old
-"mixed but intentional" reading is no longer valid architecture authority.
-`7.55q` kills that looser interpretation and replaces it with:
+#### Killed
 
-- one locked weekly plan object should decide the in-force week
-- one shared benchmark target object should set non-volume target standards
-- non-closed Variance rows should read those two objects 1:1
-- closed Full Week rows should stay locked closed-truth comparisons
+| Request | Notes |
+|---|---|
+| Older "mixed but intentional" target-package interpretation | Superseded by the `7.55q` architecture-conformance lane. The app no longer treats per-surface recomputation or mixed live-plan / benchmark ownership as acceptable. |
 
-Until `7.55q` lands, treat any non-closed Variance drift from those shared
-objects as open architecture debt, not as an acceptable alternative reading.
+#### Still Open
+
+| Request | Notes |
+|---|---|
+| Full capitalization consistency audit like `Target` | Local cleanup landed in Variance / Plan / Benchmark, but no repo-wide naming/copy audit has happened yet. This belongs with the later `7.55o.6` polish lane. |
+
+### Current Architecture Read
+
+The old transition wording is no longer the right frame here. `7.55q` is
+landed through `7.55q.9`, so the active interpretation is now simply:
+
+- one locked weekly plan object decides the in-force week
+- one shared benchmark target object owns non-volume target standards
+- non-closed Variance rows read those two objects 1:1
+- closed Full Week rows stay locked closed-truth comparisons
 
 ## B. After 7.55p.3
 
@@ -134,19 +142,66 @@ no planned-labor concept is now landed.
 
 ## E. After 7.55o.6
 
-These are still open product/polish asks:
+### Done In The Current UX Shell Pass
 
-- naming consistency audit across screens
-- shed extra language / simplify copy
+- app shell header unification landed:
+  - shared `AppScreenHeader`
+  - fixed-height sticky headers across Shift / Variance / Plan / Benchmark
+  - dedicated header action pills for Settings + Notifications
+  - shared gradient / bottom-slot language
+  - fade-on-scroll shell behavior
+- Shift header/live-time polish landed:
+  - restaurant-name title
+  - live business date + service period line
+  - live clock + freshness chip
+  - overflow fix for narrow layouts
+  - FOH Productivity CPLH formatting cleanup
+  - stronger sales-progress bar readability
+- Variance / History shell cleanup landed:
+  - Dollar Impact section labeling
+  - PROJ TOTAL row label spacing cleanup
+  - collapsed day-row cover clutter removed
+  - History week tile simplification
+  - `Most Common Leak` subtitle cleanup
+  - redundant History supporting rows removed
+- Learn tab visual rebuild landed:
+  - hero strip
+  - chapter rail
+  - swipeable carousel
+  - card-sequenced leak/wins coaching structure
+  - `Coach Next Week` footer kept below the carousel
+- Plan shell cleanup landed:
+  - `Weekly Operating Plan` header treatment
+  - `NEXT WEEK PROJECTIONS` header pills
+  - `LABOR PLAN` rename
+  - section-label styling aligned with Variance
+  - top forecast card row removed
+  - chart legend moved out of the bar field
+- Benchmark shell cleanup landed:
+  - `60 Day Benchmark` header treatment
+  - total-covers count moved to a header pill
+  - inline summary cards removed
+  - `CPLH RANGE & TARGET` extracted to a shared section-label pattern
+- Settings visual rework landed:
+  - restaurant hero card
+  - unified section headers
+  - Data Status / Mock Replay card polish
+  - action-tile treatment
+  - wage-mix redesign
+  - pinned save bar in the editor
+  - footer cleanup
+- cross-cutting card language / accent-stripe / gradient-shell uplift landed across
+  Settings, Plan, Benchmark, Dollar Impact, and Learn
+
+### Still Open
+
+- full naming consistency audit across every screen
+- full extra-language / copy-shedding pass across every screen
 - workflow automation / AI introduction pass
-- better Settings organization and visual quality
-- refactor/decoupling review
-- sticky top titles during scrolling
-- Shift Friday/live-time visual improvement
-- stronger sales progress bar edge visibility
-- general card feel/polish uplift
+- deeper refactor / decoupling review beyond the landed shell pass
 
-No accepted slice so far closes this cluster.
+The broad shell/header/polish pass is no longer open. What remains is the
+cleanup/audit work that goes beyond the already-landed visual and layout pass.
 
 ## F. After 7.55j.4 / Pre-Phase-8 Readiness Check
 
@@ -213,9 +268,12 @@ Phase 8, or Phase 9). Keep them visible here until they are assigned.
 
 | Gap | Current status | Representative evidence |
 |---|---|---|
-| Full timezone conversion for business-date / timing boundaries | Open and unowned | `phase_7_55n_10_boundary_invalidation_refresh.md`, `phase_7_55n_12_vendor_live_data_capability_audit.md`, `phase_7_55n_13_proof_blocker_cleanup.md`, `shift_boundary_resolver.dart` |
+| Full timezone conversion for business-date / timing boundaries | Open and unowned; read-only Timing Authority is visible in Settings, but editable timezone authority is still deferred | `phase_7_55n_10_boundary_invalidation_refresh.md`, `phase_7_55n_12_vendor_live_data_capability_audit.md`, `phase_7_55n_13_proof_blocker_cleanup.md`, `shift_boundary_resolver.dart`, `settings_screen.dart` |
 | Non-locked WTD path still uses `weekId`-based membership | Open and unowned | `shift_service.dart` top-of-file note; `phase_7_55n_4_week_start_wiring.md`; `phase_7_55n_5_service_period_close_vs_shift_finalization.md` |
 | Learn partial-migration cleanup for `Benchmark Set` / `Recurring Leak` / `Coach Next Week` | Open and unowned | this ledger Sections F and G; `phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md` |
+| Dev-only audit panel still reads repositories directly | Open and unowned | `lib/widgets/data_alignment_audit_panel.dart` still reads `SqliteRestaurantScopeRepository` and `SqliteTargetProfileRepository` directly; wrap with a thin read service when assigned |
+| Persisted timing / service-period wiring closeout | Partial and unowned | `settings_screen.dart` now shows a read-only Timing Authority summary, but editable timing controls are still missing and some callers still rely on `ServicePeriodDefinitionResolver.demoDefinitions` |
+| UTC metadata timestamp normalization sweep | Partial and unowned | `UtcMetadataTimestamp.nowIsoUtc()` is adopted in some services; raw `DateTime.now().toUtc().toIso8601String()` still appears in `WageStandardContextService`, `ShiftDashboardNotifier`, `AppDataStatusService`, and related DAO/service paths |
 | Audit panel cycle/week provenance columns | Open and unowned | `phase_7_55j_1_codebase_feature_inventory.md` notes the audit surface still does not expose cycle/week columns |
 | Historical actual fallback cleanup for wages/labor dollars when stored values are absent | Open and unowned | `phase_7_55p_5f1_wage_mix_setup_ux_and_authority_verification.md`; `ShiftRecord` / `WeekRecord` fallback debt also noted in Section H |
 | Wage-mix role templates / quick-setup presets | Open and unowned | `phase_7_55p_5f1_wage_mix_setup_ux_and_authority_verification.md` |
@@ -226,7 +284,7 @@ Phase 8, or Phase 9). Keep them visible here until they are assigned.
 
 Revisit this ledger:
 
-1. before or during the resumed `7.55o.*` naming/polish/settings lane after `7.55q.1` through `7.55q.8`
+1. before or during the resumed `7.55o.*` naming/polish/settings lane after `7.55q.1` through `7.55q.9`
 2. before `7.55j.4` / the pre-Phase-8 readiness answer
 3. when deciding whether to create a plain-English derivations explainer
 4. when assigning owners to the unowned gaps in Section J

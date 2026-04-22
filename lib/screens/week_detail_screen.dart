@@ -9,6 +9,7 @@ import '../models/week_record.dart';
 import '../utils/formatters.dart';
 import '../widgets/dollar_impact_card.dart';
 import '../widgets/lever_card.dart';
+import '../widgets/sticky_section_delegate.dart';
 
 class WeekDetailScreen extends StatelessWidget {
   final WeekRecord week;
@@ -28,124 +29,125 @@ class WeekDetailScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ──────────────────────────────────────────────────
-            Padding(
+      body: CustomScrollView(
+        cacheExtent: 9999,
+        slivers: [
+          // ── Header ──────────────────────────────────────────────────
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
               child: Text(
                 'Week of ${week.weekLabel}',
                 style: AppTextStyles.display20(),
               ),
             ),
-            Padding(
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
               child: Text(
                 '${week.shiftsCompleted} shifts · Closed',
                 style: AppTextStyles.body13(color: AppColors.textMuted),
               ),
             ),
-            Padding(
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Text(
-                'Targets: ${week.provenanceLabel}',
-                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Targets: ${week.provenanceLabel}',
+                    style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
+                  if (week.targetCalibrationWindowStart != null &&
+                      week.targetCalibrationWindowEnd != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Built from '
+                      '${_fmtMonthDay(week.targetCalibrationWindowStart!)} - '
+                      '${_fmtMonthDay(week.targetCalibrationWindowEnd!)}',
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+                    ),
+                  ],
+                ],
               ),
             ),
+          ),
 
-            // ── Grouped Summary Table ───────────────────────────────────
-            _SectionLabel('WEEKLY SUMMARY vs LOCKED TARGETS'),
-            _GroupedSummaryTable(week: week),
+          // ── Grouped Summary Table ───────────────────────────────────
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('WEEKLY SUMMARY vs LOCKED TARGETS'),
+              ),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: const StickyColumnHeaderDelegate(),
+              ),
+              SliverToBoxAdapter(
+                child: _GroupedSummaryTable(week: week),
+              ),
+            ],
+          ),
 
-            const SizedBox(height: 20),
+          // ── Dollar Impact Card ─────────────────────────────────────
+          // Phase 7.55q.10: now shows the same 4 rows that were on the
+          // live Variance card the moment the 14th shift closed (when
+          // the closing wrote frozen month + 60-day windows). Legacy
+          // rows (closed before V22) fall back to the historical 2-row
+          // + boilerplate-footer view; no silent re-modeling.
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('DOLLAR IMPACT'),
+              ),
+              SliverToBoxAdapter(
+                child: DollarImpactCard(
+                  weekImpact: week.dollarGap,
+                  monthImpact: week.monthDollarImpact,
+                  sixtyDayImpact: week.sixtyDayDollarImpact,
+                  annualizedImpact: week.frozenAnnualizedImpact ??
+                      (week.closedAt == null
+                          ? (week.dollarGap >= 0
+                              ? week.dollarGapAnnualized
+                              : -week.dollarGapAnnualized)
+                          : null),
+                  footerText: week.closedAt != null
+                      ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
+                      : 'At \$3M annual sales. One location.',
+                ),
+              ),
+            ],
+          ),
 
-            // ── Dollar Impact Card ─────────────────────────────────────
-            // Phase 7.55q.10: now shows the same 4 rows that were on the
-            // live Variance card the moment the 14th shift closed (when
-            // the closing wrote frozen month + 60-day windows). Legacy
-            // rows (closed before V22) fall back to the historical 2-row
-            // + boilerplate-footer view; no silent re-modeling.
-            _SectionLabel('DOLLAR IMPACT'),
-            DollarImpactCard(
-              weekImpact: week.dollarGap,
-              monthImpact: week.monthDollarImpact,
-              sixtyDayImpact: week.sixtyDayDollarImpact,
-              annualizedImpact: week.frozenAnnualizedImpact ??
-                  (week.closedAt == null
-                      ? (week.dollarGap >= 0
-                          ? week.dollarGapAnnualized
-                          : -week.dollarGapAnnualized)
-                      : null),
-              footerText: week.closedAt != null
-                  ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
-                  : 'At \$3M annual sales. One location.',
-            ),
+          // ── Primary Lever ──────────────────────────────────────────
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('PRIMARY DRIVER'),
+              ),
+              SliverToBoxAdapter(
+                child: Builder(builder: (context) {
+                  final lever = LeverCards.all.firstWhere(
+                    (l) => l.id == week.primaryLeverId,
+                    orElse: () => LeverCards.coversDown,
+                  );
+                  return LeverCardWidget(data: lever);
+                }),
+              ),
+            ],
+          ),
 
-            const SizedBox(height: 16),
-
-            // ── Primary Lever ──────────────────────────────────────────
-            _SectionLabel('PRIMARY DRIVER'),
-            Builder(builder: (context) {
-              final lever = LeverCards.all.firstWhere(
-                (l) => l.id == week.primaryLeverId,
-                orElse: () => LeverCards.coversDown,
-              );
-              return LeverCardWidget(data: lever);
-            }),
-
-            const SizedBox(height: 32),
-          ],
-        ),
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+        ],
       ),
     );
   }
-}
-
-// ─── Section label — teal accent ─────────────────────────────────────────────
-
-class _SectionLabel extends StatelessWidget {
-  final String text;
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 32, 16, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AppColors.sunset, AppColors.sunsetDark],
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(text,
-                    style: AppTextStyles.mono14(color: AppColors.textPrimary, weight: FontWeight.w700)),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 2,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.sunset, AppColors.sunsetDark],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
 }
 
 // ─── Grouped Summary Table ───────────────────────────────────────────────────
@@ -211,8 +213,8 @@ class _GroupedSummaryTable extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: Column(
         children: [
-          // ── Column header band ──────────────────────────────────────
-          _ColumnHeader(),
+          // Column header (TARGET | ACTUAL | VAR) extracted to a sticky
+          // SliverPersistentHeader in the sliver tree above.
 
           // ── CONDITIONS ──────────────────────────────────────────────
           _GroupBand('CONDITIONS'),
@@ -327,45 +329,6 @@ class _GroupedSummaryTable extends StatelessWidget {
       Container(height: 1, color: AppColors.borderSubtle);
 }
 
-// ─── Column header band ──────────────────────────────────────────────────────
-
-class _ColumnHeader extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border(
-          bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
-        ),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      child: Row(
-        children: [
-          const Expanded(flex: 5, child: SizedBox()),
-          Expanded(
-            flex: 3,
-            child: Text('TARGET',
-                style: AppTextStyles.mono8(color: AppColors.textMuted),
-                textAlign: TextAlign.right),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text('ACTUAL',
-                style: AppTextStyles.mono8(color: AppColors.textSecondary),
-                textAlign: TextAlign.right),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text('VAR',
-                style: AppTextStyles.mono8(color: AppColors.sunsetDark),
-                textAlign: TextAlign.right),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─── Group band ──────────────────────────────────────────────────────────────
 
@@ -473,6 +436,10 @@ class _TableRow extends StatelessWidget {
 // shared util — keeps scope tight for this slice.
 
 String _fmtClosedAt(String iso) {
+  return _fmtMonthDay(iso);
+}
+
+String _fmtMonthDay(String iso) {
   final parts = iso.split('-');
   if (parts.length != 3) return iso;
   final month = int.tryParse(parts[1]);

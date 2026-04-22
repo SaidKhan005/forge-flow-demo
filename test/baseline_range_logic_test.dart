@@ -371,7 +371,7 @@ void main() {
       final v = BaselineData.baselineRangeValidation;
       expect(v.status, equals('too_narrow'));
       expect(v.message,
-          equals('Star shifts too tightly clustered. Add more for a teachable range.'));
+          equals('Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.'));
     });
 
     test('fewer-than-2 branch uses same shortened narrow copy', () {
@@ -385,7 +385,7 @@ void main() {
       final v = BaselineData.baselineRangeValidation;
       expect(v.status, equals('too_narrow'));
       expect(v.message,
-          equals('Star shifts too tightly clustered. Add more for a teachable range.'));
+          equals('Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.'));
     });
 
     test('all three messages are shortened (no old long copy remains)', () {
@@ -480,9 +480,9 @@ void main() {
       expect(m.isDegenerate, isTrue);
       expect(m.statusBadgeLabel, 'RANGE UNCONFIRMED');
       expect(m.recommendedExplanation,
-          contains('Not enough recent 60-day evidence'));
+          contains('Not enough recent shifts yet'));
       expect(m.degenerateFallbackMessage,
-          contains('Config Default range as a placeholder'));
+          contains('placeholder range until more shift history builds'));
     });
 
     test('weak + wide union band → RANGE TOO WIDE TO TEACH', () {
@@ -503,11 +503,11 @@ void main() {
       expect(m.isDegenerate, isTrue);
       expect(m.statusBadgeLabel, 'RANGE TOO WIDE TO TEACH');
       expect(m.recommendedExplanation,
-          contains('Dayparts'));
+          contains('Lunch, dinner, and late night'));
       expect(m.recommendedExplanation,
-          contains('cross-daypart range is too wide'));
+          contains('daypart-specific coaching'));
       expect(m.degenerateFallbackMessage,
-          contains('Per-daypart benchmarks are coming'));
+          contains('Use this as a broad guide for now'));
     });
 
     test('weak + narrow union band → RANGE UNCERTAIN', () {
@@ -528,9 +528,9 @@ void main() {
       expect(m.isDegenerate, isTrue);
       expect(m.statusBadgeLabel, 'RANGE UNCERTAIN');
       expect(m.recommendedExplanation,
-          contains('Recent cohorts did not meet the quality bar'));
+          contains('We do not have a clean operating range yet'));
       expect(m.degenerateFallbackMessage,
-          contains('recommendation improves as evidence builds'));
+          contains('benchmark will settle into a clearer working range'));
     });
 
     test('strong signals → GOOD OPZ RANGE, not degenerate', () {
@@ -762,3 +762,5 @@ void main() {
     });
   });
 }
+
+

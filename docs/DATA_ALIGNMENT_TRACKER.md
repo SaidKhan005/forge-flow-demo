@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-04-14
+Updated: 2026-04-15
 Owner: You
 Purpose: keep the app aligned for live POS, labor, and reservation integrations before Phase 8 / 8R
 
@@ -56,10 +56,20 @@ In plain terms:
 
 - Current:
   - resume `7.55o.1` through `7.55o.6`
+  - treat the broad UX shell/header pass as already landed:
+    - shared sticky/fading headers
+    - Shift / Variance / History / Learn / Plan / Benchmark shell cleanup
+    - Settings visual rework
 - Then:
   - revisit canonical live-facts contract planning
   - then resume `7.55j.3` and `7.55j.4`
   - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before `7.55j.4` / the pre-Phase-8 readiness answer
+  - keep the bounded post-audit cleanup list visible without treating it as
+    a new q-lane:
+    - dev-only audit-panel service wrap
+    - persisted timing/service-period wiring closeout
+    - UTC metadata timestamp normalization
+    - non-locked WTD business-date membership
 
 ## Alignment Guardrails
 
@@ -82,6 +92,7 @@ In plain terms:
   - explicit freshness age when not live
   - Shift as the highest-priority live surface
 - file extraction / engineering hygiene is now back on the active path in `7.55o`
+- the broad `7.55o` UX shell pass is already landed; remaining `7.55o` work should not reopen the source-truth-neutral shell/header cleanup
 - Shift stays whole-day until `10.5`
 - History stays closed-truth only
 - Learn is partially migrated today:

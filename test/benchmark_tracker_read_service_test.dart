@@ -70,4 +70,31 @@ void main() {
     expect(view.rangeGraphModel.targetCPLH, closeTo(cycle.targetCPLH, 0.001));
     expect(view.rangeGraphModel.targetCPLH, isNot(closeTo(7.77, 0.001)));
   });
+
+  test('reseeded demo cycle projects the current recommendation geometry',
+      () async {
+    final restaurantId =
+        await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    final businessDate = await BusinessDateAuthorityService.instance
+        .resolvePlanningAnchorDate(restaurantId);
+    final recommendation = await BaselineManagerService.instance
+        .resolveRecommendedSelection(restaurantId, businessDate!);
+    final cycle = await TargetCycleService.instance
+        .getOrCreateActiveCycle(restaurantId, businessDate);
+    final view = await BenchmarkTrackerReadService.instance.load();
+
+    expect(recommendation.isInsufficient, isFalse);
+    expect(cycle.opzFloorCPLH,
+        closeTo(recommendation.unionOpzFloorCPLH, 0.001));
+    expect(cycle.opzCeilingCPLH,
+        closeTo(recommendation.unionOpzCeilingCPLH, 0.001));
+    expect(cycle.targetCPLH,
+        closeTo(recommendation.pooledRecommendedTargetCPLH, 0.001));
+    expect(view.rangeGraphModel.activeRangeStartCPLH,
+        closeTo(recommendation.unionOpzFloorCPLH, 0.001));
+    expect(view.rangeGraphModel.activeRangeEndCPLH,
+        closeTo(recommendation.unionOpzCeilingCPLH, 0.001));
+    expect(view.rangeGraphModel.targetCPLH,
+        closeTo(recommendation.pooledRecommendedTargetCPLH, 0.001));
+  });
 }

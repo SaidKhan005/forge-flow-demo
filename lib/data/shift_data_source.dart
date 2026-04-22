@@ -68,6 +68,11 @@ class StaticShiftDataSource implements ShiftDataSource {
         closed.fold<int>(0, (s, r) => s + r.forecastCovers);
     final allForecastCovers =
         replay.currentWeekShifts.fold<int>(0, (s, r) => s + r.forecastCovers);
+    final maxClosedBusinessDate = closed
+        .map((s) => s.businessDate)
+        .whereType<String>()
+        .fold<String?>(
+            null, (max, d) => max == null || d.compareTo(max) > 0 ? d : max);
 
     final avgPPA = totalCovers > 0 ? totalSales / totalCovers : 0.0;
     final avgCPLH = totalFohHours > 0 ? totalCovers / totalFohHours : 0.0;
@@ -96,6 +101,7 @@ class StaticShiftDataSource implements ShiftDataSource {
       wtdForecastCovers: wtdForecastCovers,
       totalWeekForecastCovers: allForecastCovers,
       primaryLeverId: primaryLeverId,
+      lastClosedBusinessDate: maxClosedBusinessDate,
       targetCPLH: BaselineData.derivedTargetCPLH,
       targetSPLH: BaselineData.derivedTargetSPLH,
       targetPPA: BaselineData.derivedTargetPPA,

@@ -3,9 +3,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/data/restaurant_scope_notifier.dart';
 import 'package:forge_and_flow/data/wage_standard_context_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
+import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_context.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_source.dart';
@@ -90,9 +93,11 @@ void main() {
         ),
       ));
       await tester.pump();
+      await _scrollToText(tester, 'Clear All Data');
 
       expect(
-        find.textContaining('Remove all operational data'),
+        find.textContaining(
+            'keeping restaurant scope and connector settings'),
         findsOneWidget,
       );
     });
@@ -123,6 +128,46 @@ void main() {
       await tester.pump();
 
       expect(find.text('DATA MANAGEMENT'), findsOneWidget);
+    });
+  });
+
+  group('Settings timing authority section', () {
+    testWidgets('shows persisted restaurant timing settings', (tester) async {
+      await _reseedDemoForWidgetTest(tester);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<RestaurantScopeNotifier>(
+              create: (_) => RestaurantScopeNotifier.fromRestaurant(
+                const RestaurantLocation(
+                  restaurantId: 'demo_restaurant_001',
+                  displayName: 'Forge & Flow',
+                  businessTimezone: 'America/St_Johns',
+                  createdAt: '2026-03-30T10:00:00Z',
+                  updatedAt: '2026-03-30T10:00:00Z',
+                ),
+              ),
+            ),
+          ],
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        ),
+      );
+      await _pumpForAsync(tester);
+      await _scrollToText(tester, 'TIMING AUTHORITY');
+
+      expect(find.text('TIMING AUTHORITY'), findsOneWidget);
+      expect(find.text('America/St_Johns'), findsOneWidget);
+      expect(find.text('Business Day Starts'), findsOneWidget);
+      expect(find.text('Week Starts'), findsOneWidget);
+      expect(find.text('Lunch'), findsOneWidget);
+      expect(find.text('Dinner'), findsOneWidget);
+      expect(find.text('Late Night'), findsOneWidget);
     });
   });
 
@@ -632,7 +677,13 @@ void main() {
       // on-stage before tapping (Settings is taller than the test
       // viewport).
       await _scrollToText(tester, 'Reset Target Cycle (Admin)');
-      await tester.tap(find.text('Reset Target Cycle (Admin)'));
+      final resetRow = find.ancestor(
+        of: find.text('Reset Target Cycle (Admin)'),
+        matching: find.byType(InkWell),
+      );
+      await tester.ensureVisible(resetRow.first);
+      await _pumpForAsync(tester);
+      await tester.tap(resetRow.first);
       await _pumpForAsync(tester);
 
       expect(find.text('Reset target cycle?'), findsOneWidget);

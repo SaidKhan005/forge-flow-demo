@@ -158,7 +158,7 @@ void main() {
       // Shift header trailing slot now renders day · daypart on a single
       // line under the live clock, matching the variance-style header.
       expect(
-          find.text('Friday \u00b7 Dinner', skipOffstage: false),
+          find.text('Friday \u00b7 Mar 27', skipOffstage: false),
           findsOneWidget);
     });
 

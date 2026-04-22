@@ -34,20 +34,12 @@ class InputMetricCard extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: [AppColors.backgroundMid, AppColors.cardGlow],
               ),
-        border: isHero
-            ? Border(
-                left: BorderSide(color: AppColors.borderStrong, width: 4),
-                top: BorderSide(
-                    color: AppColors.borderSubtle, width: 1),
-                right: BorderSide(
-                    color: AppColors.borderSubtle, width: 1),
-                bottom: BorderSide(
-                    color: AppColors.borderSubtle, width: 1),
-              )
-            : Border.all(
-                color: AppColors.borderSubtle.withValues(alpha: 0.7),
-                width: 1),
-        borderRadius: isHero ? null : BorderRadius.circular(3),
+        border: Border.all(
+            color: isHero
+                ? AppColors.borderSubtle
+                : AppColors.borderSubtle.withValues(alpha: 0.7),
+            width: 1),
+        borderRadius: BorderRadius.circular(3),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

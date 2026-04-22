@@ -52,7 +52,7 @@ void main() {
           selectedShiftCount: 0,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
-              'Star shifts too tightly clustered. Add more for a teachable range.',
+              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         );
       };
 
@@ -69,7 +69,7 @@ void main() {
           selectedShiftCount: 1,
           rangeQualityLabel: 'OPZ RANGE TOO NARROW',
           rangeQualityMessage:
-              'Star shifts too tightly clustered. Add more for a teachable range.',
+              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         );
       };
 
@@ -90,7 +90,7 @@ void main() {
           selectedShiftCount: 5,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Target sits in a usable range with room to flex.',
+              'Team looks busy without getting stretched. Service should hold here.',
         );
       };
 
@@ -111,7 +111,7 @@ void main() {
           selectedShiftCount: 8,
           rangeQualityLabel: 'OPZ RANGE TOO WIDE',
           rangeQualityMessage:
-              'Star shifts too widely spread. Tighten to one clean standard.',
+              'Star shifts are spread too far apart. Tighten the set until the team is working to one standard.',
         );
       };
 
@@ -187,7 +187,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Target sits in a usable range with room to flex.',
+              'Team looks busy without getting stretched. Service should hold here.',
         );
       };
 
@@ -293,7 +293,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Star shifts too tightly clustered. Add more for a teachable range.',
+          'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         ),
       );
     });
@@ -304,7 +304,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Target sits in a usable range with room to flex.',
+          'Team looks busy without getting stretched. Service should hold here.',
         ),
       );
     });
@@ -315,7 +315,7 @@ void main() {
       expect(
         a.rangeQualityMessage,
         equals(
-          'Star shifts too widely spread. Tighten to one clean standard.',
+          'Star shifts are spread too far apart. Tighten the set until the team is working to one standard.',
         ),
       );
     });
@@ -425,7 +425,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Target sits in a usable range with room to flex.',
+              'Team looks busy without getting stretched. Service should hold here.',
         );
       };
 
@@ -474,7 +474,7 @@ void main() {
           targetPPA: 42.0,
           rangeQualityLabel: 'GOOD OPZ RANGE',
           rangeQualityMessage:
-              'Target sits in a usable range with room to flex.',
+              'Team looks busy without getting stretched. Service should hold here.',
         );
       };
 
@@ -923,3 +923,4 @@ void main() {
     });
   });
 }
+

@@ -213,6 +213,12 @@ void main() {
       final rows = await db.query('week_records');
       expect(rows, isNotEmpty);
       expect(rows.length, 8);
+      expect(
+        rows.every((r) =>
+            r['target_calibration_window_start'] != null &&
+            r['target_calibration_window_end'] != null),
+        isTrue,
+      );
     });
 
     test('active_target_profiles populated after reseed', () async {

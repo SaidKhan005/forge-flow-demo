@@ -33,18 +33,23 @@ import 'package:forge_and_flow/services/labor_model.dart';
 // ── Test harness ──────────────────────────────────────────────────────────────
 
 Widget _buildVarianceReport() => MultiProvider(
-      providers: [
-        ChangeNotifierProvider<WeekDataNotifier>(
-          create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
-        ),
-        Provider<ShiftDataSource>(
-          create: (_) => const StaticShiftDataSource(),
-        ),
-      ],
-      child: const MaterialApp(
-        home: Scaffold(body: VarianceReport()),
-      ),
-    );
+  providers: [
+    ChangeNotifierProvider<WeekDataNotifier>(
+      create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
+    ),
+    Provider<ShiftDataSource>(create: (_) => const StaticShiftDataSource()),
+  ],
+  child: const MaterialApp(home: Scaffold(body: VarianceReport())),
+);
+
+/// Pumps extra frames so the CustomScrollView in the This Week tab has
+/// time to build all slivers (including those below the test viewport).
+Future<void> _pumpVarianceFrames(WidgetTester tester) async {
+  await tester.pumpWidget(_buildVarianceReport());
+  for (int i = 0; i < 5; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
@@ -79,26 +84,36 @@ void main() {
 
   // ── B: This Week tab — section labels ────────────────────────────────────
 
+  // Section labels now render inside SliverPersistentHeader which may be
+  // below the test viewport — use skipOffstage: false and extra pump
+  // frames so the CustomScrollView has time to build all slivers.
   group('B — This Week section labels', () {
-    testWidgets('WEEK-TO-DATE vs LOCKED PLAN section is present', (tester) async {
+    Future<void> pumpAndSettle(WidgetTester tester) async {
       await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump(); // first frame
-      await tester.pump(); // WeekDataNotifier resolves
-      expect(find.text('WEEK-TO-DATE vs LOCKED PLAN'), findsOneWidget);
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    testWidgets('WEEK-TO-DATE vs PLAN section is present', (tester) async {
+      await pumpAndSettle(tester);
+      expect(
+        find.text('WEEK-TO-DATE vs PLAN', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('FULL WEEK PROJECTION section is present', (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('FULL WEEK PROJECTION'), findsOneWidget);
+      await pumpAndSettle(tester);
+      expect(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('PRIMARY DRIVER section label is present', (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('PRIMARY DRIVER'), findsOneWidget);
+      await pumpAndSettle(tester);
+      expect(find.text('PRIMARY DRIVER', skipOffstage: false), findsOneWidget);
     });
   });
 
@@ -106,9 +121,7 @@ void main() {
 
   group('C — WTD coaching group labels', () {
     Future<void> loadThisWeek(WidgetTester tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+      await _pumpVarianceFrames(tester);
     }
 
     testWidgets('CONDITIONS group label appears', (tester) async {
@@ -131,9 +144,7 @@ void main() {
 
   group('D — WTD metric labels', () {
     Future<void> loadThisWeek(WidgetTester tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+      await _pumpVarianceFrames(tester);
     }
 
     testWidgets('Covers label appears', (tester) async {
@@ -190,11 +201,10 @@ void main() {
   // ── E: History tab — section label ───────────────────────────────────────
 
   group('E — History tab section', () {
-    testWidgets('Previous Weeks label is present after switching to History tab',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('Previous Weeks header shows the real displayed week range', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
 
       // Navigate to History tab — pumpAndSettle lets the tab animation
       // complete and the FutureBuilder's Future.wait resolve.
@@ -202,6 +212,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Previous Weeks'), findsOneWidget);
+      expect(find.text('Jan 26 - Mar 22'), findsOneWidget);
     });
   });
 
@@ -303,7 +314,10 @@ void main() {
         updatedAt: '2026-03-27T19:42:00',
       );
 
-      final record = CurrentWeekState.shiftRecordFromSnapshot(snapshot, profile);
+      final record = CurrentWeekState.shiftRecordFromSnapshot(
+        snapshot,
+        profile,
+      );
 
       // Open/projected rows get the ON_MODEL placeholder, not a real lever.
       expect(record.primaryLever, 'ON_MODEL');
@@ -345,7 +359,10 @@ void main() {
         updatedAt: '2026-03-27T19:42:00',
       );
 
-      final record = CurrentWeekState.shiftRecordFromSnapshot(snapshot, profile);
+      final record = CurrentWeekState.shiftRecordFromSnapshot(
+        snapshot,
+        profile,
+      );
 
       expect(record.primaryLever, 'ON_MODEL');
       expect(record.status, 'open');
@@ -361,64 +378,67 @@ void main() {
   // ── G: Full Week Projection read model (7.55k.4) ──────────────────────
 
   group('G — projection read model in widget tree', () {
-    testWidgets('FULL WEEK PROJECTION section still renders after read-service migration',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
-      expect(find.text('FULL WEEK PROJECTION'), findsOneWidget);
-    });
+    testWidgets(
+      'FULL WEEK PROJECTION section still renders after read-service migration',
+      (tester) async {
+        await _pumpVarianceFrames(tester);
+        expect(
+          find.text('FULL WEEK PROJECTION', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
 
-    testWidgets('projected-row copy says weekly plan, not 60-day baseline',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('projected-row copy says weekly plan, not 60-day baseline', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
 
-      // Scroll down to reach the Full Week section and expand a day
-      // that has projected rows. In StaticShiftDataSource, Sat is projected.
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      // Scroll to the Full Week section. In the sliver tree, use
+      // ensureVisible which auto-scrolls the correct ancestor.
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
 
       // Find and tap the Sat day row to expand it
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isNotEmpty) {
+        await tester.ensureVisible(satFinder.first);
+        await tester.pump();
         await tester.tap(satFinder.first);
         await tester.pump();
 
         // Verify updated projected copy
         expect(
           find.text(
-              'Projected from weekly plan. Actuals populate when shift closes.'),
+            'Projected from weekly plan. Actuals populate when shift closes.',
+          ),
           findsWidgets,
         );
         expect(
           find.text(
-              'Projected from 60-day baseline. Actuals populate when shift closes.'),
+            'Projected from 60-day baseline. Actuals populate when shift closes.',
+          ),
           findsNothing,
         );
       }
     });
 
-    testWidgets('plan label appears instead of baseline on covers',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('plan label appears instead of baseline on covers', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
 
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isNotEmpty) {
+        await tester.ensureVisible(satFinder.first);
+        await tester.pump();
         await tester.tap(satFinder.first);
         await tester.pump();
 
@@ -432,17 +452,14 @@ void main() {
   // ── H: Mixed day-row and open-header honesty (7.55k.4a) ────────────────
 
   group('H — mixed-row and open-header honesty', () {
-    testWidgets('mixed day renders status chips instead of summary text',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('mixed day renders status chips instead of summary text', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
 
       // Scroll to the Full Week section.
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
 
@@ -456,22 +473,21 @@ void main() {
       );
     });
 
-    testWidgets('open-row detail does not use CURRENT as header',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('open-row detail does not use CURRENT as header', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
 
       // Expand Fri to see the projected dinner detail
-      final friFinder = find.text('Fri');
+      final friFinder = find.byKey(const ValueKey('full-week-day-Fri'));
       if (friFinder.evaluate().isNotEmpty) {
+        await tester.ensureVisible(friFinder.first);
+        await tester.pump();
         await tester.tap(friFinder.first);
         await tester.pump();
 
@@ -480,22 +496,19 @@ void main() {
       }
     });
 
-    testWidgets('projected row detail header says PROJECTED',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets('projected row detail header says PROJECTED', (tester) async {
+      await _pumpVarianceFrames(tester);
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
 
       // Expand Sat (all projected in static data)
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isNotEmpty) {
+        await tester.ensureVisible(satFinder.first);
+        await tester.pump();
         await tester.tap(satFinder.first);
         await tester.pump();
 
@@ -509,21 +522,25 @@ void main() {
   group('J — Dollar Impact card accumulation framing', () {
     Future<void> loadThisWeek(WidgetTester tester) async {
       await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+      // Extra pumps so the CustomScrollView builds slivers below the fold.
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
     }
 
     testWidgets('DOLLAR IMPACT label is present', (tester) async {
       await loadThisWeek(tester);
-      expect(find.text('DOLLAR IMPACT'), findsOneWidget);
+      expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets('card shows "this week" label', (tester) async {
       await loadThisWeek(tester);
-      expect(find.text('this week'), findsOneWidget);
+      expect(find.text('this week', skipOffstage: false), findsOneWidget);
     });
 
-    testWidgets('annualized row hidden when 60-day data unavailable', (tester) async {
+    testWidgets('annualized row hidden when 60-day data unavailable', (
+      tester,
+    ) async {
       // StaticShiftDataSource does not populate sixtyDayDollarImpact,
       // so annualized should not render (no weekly × 52 fallback).
       await loadThisWeek(tester);
@@ -532,7 +549,10 @@ void main() {
 
     testWidgets('card shows "Through" context line', (tester) async {
       await loadThisWeek(tester);
-      expect(find.textContaining('Through'), findsOneWidget);
+      expect(
+        find.textContaining('Through', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
     testWidgets('card does not contain "covers WTD"', (tester) async {
@@ -549,49 +569,50 @@ void main() {
   // ── I: Projected detail plan target package (7.55p.2a) ────────────────
 
   group('I — projected detail plan target package', () {
-    testWidgets('projected row shows FOH Hours, BOH Hours, Blended Wage labels',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+    testWidgets(
+      'projected row shows FOH Hours, BOH Hours, Blended Wage labels',
+      (tester) async {
+        await _pumpVarianceFrames(tester);
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump();
-
-      // Expand a day with projected rows
-      final dayFinder = find.text('Mon');
-      if (dayFinder.evaluate().isNotEmpty) {
-        await tester.tap(dayFinder.first);
+        await tester.ensureVisible(
+          find.text('FULL WEEK PROJECTION', skipOffstage: false),
+        );
         await tester.pump();
 
-        // Plan target package: covers, FOH/BOH hours, blended wage, labor %
-        expect(find.text('FOH Hours'), findsWidgets);
-        expect(find.text('BOH Hours'), findsWidgets);
-        expect(find.text('Blended Wage'), findsWidgets);
-      }
-    });
+        // Expand a day with projected rows — Mon may be below the fold
+        // so ensureVisible first, then tap.
+        final dayFinder = find.byKey(const ValueKey('full-week-day-Mon'));
+        if (dayFinder.evaluate().isNotEmpty) {
+          await tester.ensureVisible(dayFinder.first);
+          await tester.pump();
+          await tester.tap(dayFinder.first);
+          await tester.pump();
+          await tester.pump();
 
-    testWidgets('projected row shows (plan) annotation on hours and wage',
-        (tester) async {
-      await tester.pumpWidget(_buildVarianceReport());
-      await tester.pump();
-      await tester.pump();
+          // Plan target package: covers, FOH/BOH hours, blended wage, labor %
+          expect(find.text('FOH Hours', skipOffstage: false), findsWidgets);
+          expect(find.text('BOH Hours', skipOffstage: false), findsWidgets);
+          expect(find.text('Blended Wage', skipOffstage: false), findsWidgets);
+        }
+      },
+    );
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+    testWidgets('projected row shows (plan) annotation on hours and wage', (
+      tester,
+    ) async {
+      await _pumpVarianceFrames(tester);
+
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
 
       // Expand Sat (all-projected day) to verify plan annotations.
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isNotEmpty) {
+        await tester.ensureVisible(satFinder.first);
+        await tester.pump();
         await tester.tap(satFinder.first);
         await tester.pumpAndSettle();
 
@@ -628,9 +649,7 @@ void main() {
       required ActiveTargetProfile profile,
       bool withProfileNotifier = true,
     }) {
-      const inner = MaterialApp(
-        home: Scaffold(body: VarianceReport()),
-      );
+      const inner = MaterialApp(home: Scaffold(body: VarianceReport()));
       // Nest manually to avoid depending on `nested` (provider's package).
       Widget tree = ChangeNotifierProvider<WeekDataNotifier>(
         create: (_) => WeekDataNotifier(const StaticShiftDataSource()),
@@ -673,23 +692,23 @@ void main() {
     }
 
     testWidgets('G1: projected-row Blended Wage + Labor % render from the '
-        'current ActiveTargetProfile (the 7.55q.3 shared seam)',
-        (tester) async {
+        'current ActiveTargetProfile (the 7.55q.3 shared seam)', (
+      tester,
+    ) async {
       final profile = distinctProfile();
       await tester.pumpWidget(buildWithProfile(profile: profile));
-      await tester.pump();
-      await tester.pump();
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
 
       // Expand Sat (all-projected in the StaticShiftDataSource fixture).
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isEmpty) {
         // The fixture week may not have a projected Sat — skip cleanly
         // rather than asserting structure that doesn't exist in the
@@ -697,35 +716,44 @@ void main() {
         // contract deterministically.
         return;
       }
+      await tester.ensureVisible(satFinder.first);
+      await tester.pump();
       await tester.tap(satFinder.first);
       await tester.pumpAndSettle();
 
-      // The profile's targetBlendedWage = 25.0 → "$25.00  (plan)"
-      // The profile's theoreticalLaborPct = 33.3 → "33.3%  (theoretical)"
+      // The profile's targetBlendedWage = 25.0 → "$25.00 (plan)"
+      // The profile's theoreticalLaborPct = 33.3 → "33.3% (theoretical)"
       // These must appear; the StaticShiftDataSource's seeded shift
       // values (e.g. ≈ 20% theoretical) must NOT be the source for
       // open/projected rows under 7.55q.4.
-      expect(find.text('\$25.00  (plan)'), findsWidgets,
-          reason: 'projected-row Blended Wage must read the profile seam');
-      expect(find.text('33.3%  (theoretical)'), findsWidgets,
-          reason: 'projected-row Labor % must read the profile seam');
+      expect(
+        find.text('\$25.00 (plan)', skipOffstage: false),
+        findsWidgets,
+        reason: 'projected-row Blended Wage must read the profile seam',
+      );
+      expect(
+        find.text('33.3% (theoretical)', skipOffstage: false),
+        findsWidgets,
+        reason: 'projected-row Labor % must read the profile seam',
+      );
     });
 
     testWidgets('G2: without ActiveTargetProfileNotifier in scope, the '
-        'widget falls back to shift fields honestly (no errors)',
-        (tester) async {
+        'widget falls back to shift fields honestly (no errors)', (
+      tester,
+    ) async {
       // No profile notifier → context.watch returns null → fallback path.
-      await tester.pumpWidget(buildWithProfile(
-        profile: distinctProfile(),
-        withProfileNotifier: false,
-      ));
+      await tester.pumpWidget(
+        buildWithProfile(
+          profile: distinctProfile(),
+          withProfileNotifier: false,
+        ),
+      );
       await tester.pump();
       await tester.pump();
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
@@ -734,29 +762,35 @@ void main() {
       expect(find.text('FULL WEEK PROJECTION'), findsOneWidget);
       // The distinct profile values must NOT appear (since the notifier
       // wasn't in scope to be read).
-      expect(find.text('33.3%  (theoretical)'), findsNothing,
-          reason: 'no profile notifier ⇒ widget must not invent the '
-              'profile values; honest fallback to shift fields only');
+      expect(
+        find.text('33.3% (theoretical)'),
+        findsNothing,
+        reason:
+            'no profile notifier ⇒ widget must not invent the '
+            'profile values; honest fallback to shift fields only',
+      );
     });
 
     testWidgets('G3: Plan-owned values (covers, FOH hours, BOH hours) '
-        'continue to come from the ShiftRecord regardless of profile',
-        (tester) async {
+        'continue to come from the ShiftRecord regardless of profile', (
+      tester,
+    ) async {
       final profile = distinctProfile();
       await tester.pumpWidget(buildWithProfile(profile: profile));
-      await tester.pump();
-      await tester.pump();
+      for (int i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 50));
+      }
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
 
-      final satFinder = find.text('Sat');
+      final satFinder = find.byKey(const ValueKey('full-week-day-Sat'));
       if (satFinder.evaluate().isEmpty) return;
+      await tester.ensureVisible(satFinder.first);
+      await tester.pump();
       await tester.tap(satFinder.first);
       await tester.pumpAndSettle();
 
@@ -817,9 +851,7 @@ void main() {
       required ActiveTargetProfile profile,
       bool withProfileNotifier = true,
     }) {
-      const inner = MaterialApp(
-        home: Scaffold(body: VarianceReport()),
-      );
+      const inner = MaterialApp(home: Scaffold(body: VarianceReport()));
       // Use _ScreenWireProbeDataSource so the Full Week section gets
       // EXACTLY ONE all-projected day with zero-input shifts. That
       // forces totalSales = 0 in the day-row aggregate, which makes
@@ -845,17 +877,14 @@ void main() {
     testWidgets('G4: 7.55q.4-review-fix — _FullWeekSection passes the '
         'profile into the read service so collapsed day-row aggregates '
         'reflect the current Benchmark theoretical % '
-        '(all-projected day path, deterministic probe data)',
-        (tester) async {
+        '(all-projected day path, deterministic probe data)', (tester) async {
       final profile = screenWireProbeProfile();
       await tester.pumpWidget(buildWithProbeData(profile: profile));
       await tester.pump();
       await tester.pump();
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
@@ -865,46 +894,58 @@ void main() {
       // `_meanTheoreticalPct(currentTargetProfile)`. Without the
       // screen-side wire, the rendered value would be the probe
       // shift's locked theoretical % (33.3%), not 87.7%.
-      expect(find.text('87.7%'), findsWidgets,
-          reason:
-              '7.55q.4-review-fix: _FullWeekSection must pass the '
-              'current ActiveTargetProfile into the read service so '
-              'all-projected day rows show the current Benchmark '
-              'theoretical % (87.7%), not the locked shift-carried '
-              'value (33.3%).');
+      expect(
+        find.text('87.7%'),
+        findsWidgets,
+        reason:
+            '7.55q.4-review-fix: _FullWeekSection must pass the '
+            'current ActiveTargetProfile into the read service so '
+            'all-projected day rows show the current Benchmark '
+            'theoretical % (87.7%), not the locked shift-carried '
+            'value (33.3%).',
+      );
     });
 
     testWidgets('G5: 7.55q.4-review-fix — without the profile in scope, '
         'the same all-projected day-row aggregate falls back honestly '
-        'to the locked shift theoretical % (no silent invention)',
-        (tester) async {
+        'to the locked shift theoretical % (no silent invention)', (
+      tester,
+    ) async {
       // No profile notifier in the tree.
-      await tester.pumpWidget(buildWithProbeData(
-        profile: screenWireProbeProfile(),
-        withProfileNotifier: false,
-      ));
+      await tester.pumpWidget(
+        buildWithProbeData(
+          profile: screenWireProbeProfile(),
+          withProfileNotifier: false,
+        ),
+      );
       await tester.pump();
       await tester.pump();
 
-      await tester.scrollUntilVisible(
-        find.text('FULL WEEK PROJECTION'),
-        200,
-        scrollable: find.byType(Scrollable).first,
+      await tester.ensureVisible(
+        find.text('FULL WEEK PROJECTION', skipOffstage: false),
       );
       await tester.pump();
       await tester.pump();
 
       // The probe profile value must NOT appear anywhere on the
       // screen — the notifier wasn't in scope for the wire to read.
-      expect(find.text('87.7%'), findsNothing,
-          reason: 'no profile notifier ⇒ wire passes null ⇒ read '
-              'service falls back to per-shift theoretical % '
-              '(legacy backward-compat path)');
+      expect(
+        find.text('87.7%'),
+        findsNothing,
+        reason:
+            'no profile notifier ⇒ wire passes null ⇒ read '
+            'service falls back to per-shift theoretical % '
+            '(legacy backward-compat path)',
+      );
       // The probe shift's locked theoretical (33.3%) is rendered
       // instead — proves the fallback path is honest, not silent.
-      expect(find.text('33.3%'), findsWidgets,
-          reason: 'fallback must use the locked shift value, not '
-              'invent a number');
+      expect(
+        find.text('33.3%'),
+        findsWidgets,
+        reason:
+            'fallback must use the locked shift value, not '
+            'invent a number',
+      );
     });
   });
 }
@@ -967,24 +1008,21 @@ class _ScreenWireProbeDataSource implements ShiftDataSource {
     // One all-projected day on Sat with zero-input shifts so
     // totalSales = 0 in the read-service aggregate path.
     ShiftRecord projected({required String daypart}) => const ShiftRecord(
-          weekId: _weekId,
-          dayLabel: 'Sat',
-          daypart: 'dinner', // overridden below
-          status: 'projected',
-          covers: 0,
-          forecastCovers: 100,
-          ppa: 0,
-          cplh: 0,
-          splh: 0,
-          fohHours: 0,
-          bohHours: 0,
-          theoreticalLaborPct: _shiftLockedTheoreticalPct,
-          primaryLever: 'ON_MODEL',
-        ).copyWithDaypart(daypart);
-    return [
-      projected(daypart: 'dinner'),
-      projected(daypart: 'late_night'),
-    ];
+      weekId: _weekId,
+      dayLabel: 'Sat',
+      daypart: 'dinner', // overridden below
+      status: 'projected',
+      covers: 0,
+      forecastCovers: 100,
+      ppa: 0,
+      cplh: 0,
+      splh: 0,
+      fohHours: 0,
+      bohHours: 0,
+      theoreticalLaborPct: _shiftLockedTheoreticalPct,
+      primaryLever: 'ON_MODEL',
+    ).copyWithDaypart(daypart);
+    return [projected(daypart: 'dinner'), projected(daypart: 'late_night')];
   }
 }
 
@@ -992,18 +1030,18 @@ extension on ShiftRecord {
   /// Local helper — `ShiftRecord` has no copyWith for `daypart`, so
   /// reconstruct minimally for the probe.
   ShiftRecord copyWithDaypart(String daypart) => ShiftRecord(
-        weekId: weekId,
-        dayLabel: dayLabel,
-        daypart: daypart,
-        status: status,
-        covers: covers,
-        forecastCovers: forecastCovers,
-        ppa: ppa,
-        cplh: cplh,
-        splh: splh,
-        fohHours: fohHours,
-        bohHours: bohHours,
-        theoreticalLaborPct: theoreticalLaborPct,
-        primaryLever: primaryLever,
-      );
+    weekId: weekId,
+    dayLabel: dayLabel,
+    daypart: daypart,
+    status: status,
+    covers: covers,
+    forecastCovers: forecastCovers,
+    ppa: ppa,
+    cplh: cplh,
+    splh: splh,
+    fohHours: fohHours,
+    bohHours: bohHours,
+    theoreticalLaborPct: theoreticalLaborPct,
+    primaryLever: primaryLever,
+  );
 }

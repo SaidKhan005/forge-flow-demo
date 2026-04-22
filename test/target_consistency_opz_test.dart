@@ -186,11 +186,21 @@ void main() {
         find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)),
         findsAtLeastNWidgets(1),
       );
-      expect(find.text(label), findsOneWidget);
+      expect(find.text(skipOffstage: false, label), findsOneWidget);
     });
   });
 
   // ── E. BaselineTracker widget ————————————————————————————————————————————
+
+  // BaselineTracker now uses CustomScrollView with slivers. Pump extra
+  // frames so all slivers (including below-fold content like OPZ FLOOR,
+  // _BaselineTargetsCard, etc.) are built by the layout pipeline.
+  Future<void> pumpBaseline(WidgetTester tester, Widget widget) async {
+    await tester.pumpWidget(widget);
+    for (int i = 0; i < 5; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+  }
 
   group('E. BaselineTracker widget', () {
     testWidgets(
@@ -198,63 +208,63 @@ void main() {
         (tester) async {
       BaselineData.clearManagerOverride();
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
       // Graph title (7.55p.5: renamed to CPLH RANGE & TARGET)
-      expect(find.text('CPLH RANGE & TARGET'), findsOneWidget);
+      expect(find.text('CPLH RANGE & TARGET', skipOffstage: false),
+          findsOneWidget);
       // CPLH TARGET tick label on the graph
-      expect(find.text('CPLH TARGET'), findsOneWidget);
-      expect(find.text('TOTAL COVERS LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('WEEKLY AVG COVERS'), findsNothing);
-      expect(find.text(BaselineData.historicalTotalCoversTracked.toString()), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'CPLH TARGET'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'TOTAL COVERS LAST 60 DAYS:'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'WEEKLY AVG COVERS'), findsNothing);
+      expect(find.text(skipOffstage: false, BaselineData.historicalTotalCoversTracked.toString()), findsOneWidget);
 
-      expect(find.text('BEST CPLH'), findsNothing);
-      expect(find.text('WORST CPLH'), findsNothing);
+      expect(find.text(skipOffstage: false, 'BEST CPLH'), findsNothing);
+      expect(find.text(skipOffstage: false, 'WORST CPLH'), findsNothing);
 
-      expect(find.text('LOWEST CPLH LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('BENCHMARK RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'LOWEST CPLH LAST 60 DAYS'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'BENCHMARK RANGE'), findsOneWidget);
 
-      expect(find.text(BaselineData.rangeGraphModel.displayRangeStartCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text(BaselineData.rangeGraphModel.displayRangeEndCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.rangeGraphModel.displayRangeStartCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.rangeGraphModel.displayRangeEndCPLH.toStringAsFixed(2)), findsWidgets);
 
-      expect(find.text(BaselineData.rangeGraphModel.targetCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text(BaselineData.baselineRangeValidation.statusLabel), findsWidgets);
-      expect(find.text(BaselineData.rangeGraphModel.recommendedExplanation), findsOneWidget);
-      expect(find.text('CHOOSE STAR SHIFTS'), findsOneWidget);
+      expect(find.text(skipOffstage: false, BaselineData.rangeGraphModel.targetCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.baselineRangeValidation.statusLabel), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.rangeGraphModel.recommendedExplanation), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'CHOOSE STAR SHIFTS'), findsOneWidget);
 
-      expect(find.text('OPZ FLOOR'), findsOneWidget);
-      expect(find.text('OPZ CEILING'), findsOneWidget);
-      expect(find.text('HEADROOM'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ FLOOR'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ CEILING'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'HEADROOM'), findsOneWidget);
 
       // Wage rows added in 7.55h
-      expect(find.text('FOH WAGE'), findsOneWidget);
-      expect(find.text('BOH WAGE'), findsOneWidget);
-      expect(find.text('BLENDED WAGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'FOH WAGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'BOH WAGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'BLENDED WAGE'), findsOneWidget);
 
       // 7.55p.5a: theoretical output uses explicit "THEORETICAL" labels
       // to avoid confusion with Shift's whole-day labor card reference line
-      expect(find.text('FOH THEORETICAL %'), findsOneWidget);
-      expect(find.text('BOH THEORETICAL %'), findsOneWidget);
-      expect(find.text('TOTAL THEORETICAL %'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'FOH THEORETICAL %'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'BOH THEORETICAL %'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'TOTAL THEORETICAL %'), findsOneWidget);
 
       // 2dp precision on targets card (7.55h)
-      expect(find.text(BaselineData.derivedTargetCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text('\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'), findsOneWidget);
+      expect(find.text(skipOffstage: false, BaselineData.derivedTargetCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, '\$${BaselineData.derivedTargetPPA.toStringAsFixed(2)}'), findsOneWidget);
       // OPZ floor/ceiling at 2dp may match range bar endpoints (same data, no override)
-      expect(find.text(BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
 
       // Old titles must be gone
-      expect(find.text('RECOMMENDED TARGET — 60 DAY RANGE'), findsNothing);
-      expect(find.text('CPLH RANGE — LAST 60 DAYS'), findsNothing);
-      expect(find.text('OPZ BAND — TARGET POSITION'), findsNothing);
-      expect(find.text('WORST'), findsNothing);
-      expect(find.text('BEST'), findsNothing);
-      expect(find.text('Below OPZ'), findsNothing);
-      expect(find.text('Above OPZ'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RECOMMENDED TARGET — 60 DAY RANGE'), findsNothing);
+      expect(find.text(skipOffstage: false, 'CPLH RANGE — LAST 60 DAYS'), findsNothing);
+      expect(find.text(skipOffstage: false, 'OPZ BAND — TARGET POSITION'), findsNothing);
+      expect(find.text(skipOffstage: false, 'WORST'), findsNothing);
+      expect(find.text(skipOffstage: false, 'BEST'), findsNothing);
+      expect(find.text(skipOffstage: false, 'Below OPZ'), findsNothing);
+      expect(find.text(skipOffstage: false, 'Above OPZ'), findsNothing);
     });
 
     testWidgets(
@@ -272,14 +282,13 @@ void main() {
             isSelected: true),
       ]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text('LOWEST CPLH LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
-      expect(find.text('STAR SHIFT RANGE'), findsOneWidget);
-      expect(find.text('BENCHMARK RANGE'), findsNothing);
+      expect(find.text(skipOffstage: false, 'LOWEST CPLH LAST 60 DAYS'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'HIGHEST CPLH LAST 60 DAYS'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'STAR SHIFT RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'BENCHMARK RANGE'), findsNothing);
 
       BaselineData.clearManagerOverride();
     });
@@ -358,31 +367,31 @@ void main() {
 
       // Profile target CPLH (5.55) should appear; BaselineData's should not
       // dominate the targets card.
-      expect(find.text('5.55'), findsWidgets,
+      expect(find.text(skipOffstage: false, '5.55'), findsWidgets,
           reason: 'profile targetCPLH should be displayed');
 
       // Profile OPZ bounds
-      expect(find.text('4.80'), findsWidgets,
+      expect(find.text(skipOffstage: false, '4.80'), findsWidgets,
           reason: 'profile opzFloorCPLH should be displayed');
-      expect(find.text('6.30'), findsWidgets,
+      expect(find.text(skipOffstage: false, '6.30'), findsWidgets,
           reason: 'profile opzCeilingCPLH should be displayed');
 
       // Profile wages
-      expect(find.text('\$19.00'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '\$19.00'), findsOneWidget,
           reason: 'profile fohWage should be displayed');
-      expect(find.text('\$24.00'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '\$24.00'), findsOneWidget,
           reason: 'profile bohWage should be displayed');
 
       // Profile theoretical output — FOH / BOH / total
-      expect(find.text('9.2%'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '9.2%'), findsOneWidget,
           reason: 'profile FOH theoretical % should be displayed');
-      expect(find.text('12.1%'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '12.1%'), findsOneWidget,
           reason: 'profile BOH theoretical % should be displayed');
-      expect(find.text('21.3%'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '21.3%'), findsOneWidget,
           reason: 'profile TOTAL theoretical % should be displayed');
 
       // Profile target PPA
-      expect(find.text('\$38.50'), findsOneWidget,
+      expect(find.text(skipOffstage: false, '\$38.50'), findsOneWidget,
           reason: 'profile targetPPA should be displayed');
 
       notifier.dispose();
@@ -391,18 +400,17 @@ void main() {
     testWidgets('without profile: targets card falls back to BaselineData safely',
         (tester) async {
       // Mount without any provider — the card uses BaselineData fallbacks.
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
       // Card renders without error.
-      expect(find.text('OPZ FLOOR'), findsOneWidget);
-      expect(find.text('OPZ CEILING'), findsOneWidget);
-      expect(find.text('TOTAL THEORETICAL %'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ FLOOR'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'OPZ CEILING'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'TOTAL THEORETICAL %'), findsOneWidget);
 
       // Values come from BaselineData fallbacks.
-      expect(find.text(BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
-      expect(find.text(BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.opzFloorCPLH.toStringAsFixed(2)), findsWidgets);
+      expect(find.text(skipOffstage: false, BaselineData.opzCeilingCPLH.toStringAsFixed(2)), findsWidgets);
     });
   });
 
@@ -435,25 +443,24 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text('RANGE UNCONFIRMED'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsOneWidget);
       expect(
-          find.textContaining('Not enough recent 60-day evidence'),
+          find.textContaining('Not enough recent shifts yet'),
           findsOneWidget);
       expect(
-          find.textContaining('Config Default range as a placeholder'),
+          find.textContaining('placeholder range until more shift history builds'),
           findsOneWidget);
       // The legacy GOOD OPZ RANGE badge must not leak through when
       // recommendation signals say insufficient.
-      expect(find.text('GOOD OPZ RANGE'), findsNothing);
+      expect(find.text(skipOffstage: false, 'GOOD OPZ RANGE'), findsNothing);
 
       // 7.55p.5h-review-fix: the drawn target tick reflects the
       // signal's Config Default placeholder (4.5), not the legacy
       // seed-selected derivation (~4.58).
-      expect(find.text('4.50'), findsWidgets);
+      expect(find.text(skipOffstage: false, '4.50'), findsWidgets);
     });
 
     testWidgets(
@@ -472,14 +479,15 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text('RANGE TOO WIDE TO TEACH'), findsOneWidget);
-      expect(find.textContaining('Dayparts'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsOneWidget);
       expect(
-          find.textContaining('Per-daypart benchmarks are coming'),
+          find.textContaining('Lunch, dinner, and late night'),
+          findsOneWidget);
+      expect(
+          find.textContaining('Use this as a broad guide for now'),
           findsOneWidget);
       // Stale manager-override copy must not leak through.
       expect(
@@ -502,16 +510,15 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text('RANGE UNCERTAIN'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsOneWidget);
       expect(
-          find.textContaining('did not meet the quality bar'),
+          find.textContaining('clean operating range yet'),
           findsOneWidget);
       expect(
-          find.textContaining('recommendation improves as evidence builds'),
+          find.textContaining('benchmark will settle into a clearer working range'),
           findsOneWidget);
     });
 
@@ -530,14 +537,13 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
-      expect(find.text('GOOD OPZ RANGE'), findsOneWidget);
-      expect(find.text('RANGE UNCONFIRMED'), findsNothing);
-      expect(find.text('RANGE UNCERTAIN'), findsNothing);
-      expect(find.text('RANGE TOO WIDE TO TEACH'), findsNothing);
+      expect(find.text(skipOffstage: false, 'GOOD OPZ RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsNothing);
     });
 
     testWidgets('manager override wins — graph shows STAR SHIFT RANGE '
@@ -566,17 +572,16 @@ void main() {
             isSelected: true),
       ]);
 
-      await tester.pumpWidget(
-        const MaterialApp(home: BaselineTracker()),
-      );
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
 
       // Manager-override copy / STAR SHIFT RANGE inner label remain.
-      expect(find.text('STAR SHIFT RANGE'), findsOneWidget);
-      expect(find.text('GOOD OPZ RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'STAR SHIFT RANGE'), findsOneWidget);
+      expect(find.text(skipOffstage: false, 'GOOD OPZ RANGE'), findsOneWidget);
       // Recommendation-signal badges must not fire in manager-override mode.
-      expect(find.text('RANGE UNCONFIRMED'), findsNothing);
-      expect(find.text('RANGE UNCERTAIN'), findsNothing);
-      expect(find.text('RANGE TOO WIDE TO TEACH'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE UNCONFIRMED'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE UNCERTAIN'), findsNothing);
+      expect(find.text(skipOffstage: false, 'RANGE TOO WIDE TO TEACH'), findsNothing);
     });
   });
 
@@ -776,3 +781,5 @@ void main() {
     });
   });
 }
+
+

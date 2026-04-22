@@ -29,6 +29,7 @@ class WeekData {
   final String primaryLeverId;
   final String lastClosedDay;
   final int closedDayNumber;
+  final String? lastClosedBusinessDate;
 
   // ── Stored aggregate labor dollars (Phase 3 addition) ────────────────────
   final double? storedTotalFohLaborDollar;
@@ -69,6 +70,7 @@ class WeekData {
     required this.primaryLeverId,
     this.lastClosedDay = 'Monday',
     this.closedDayNumber = 1,
+    this.lastClosedBusinessDate,
     this.storedTotalFohLaborDollar,
     this.storedTotalBohLaborDollar,
     this.planFohHoursWtd,

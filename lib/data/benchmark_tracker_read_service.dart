@@ -243,7 +243,7 @@ class BenchmarkTrackerReadService {
           isDegenerate: true,
           badgeLabel: 'OPZ RANGE TOO NARROW',
           explanation:
-              'Star shifts too tightly clustered. Add more for a teachable range.',
+              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         );
       }
 
@@ -254,7 +254,7 @@ class BenchmarkTrackerReadService {
           isDegenerate: true,
           badgeLabel: 'OPZ RANGE TOO NARROW',
           explanation:
-              'Star shifts too tightly clustered. Add more for a teachable range.',
+              'Star shifts are bunched too tightly. Add a few more solid shifts before coaching to this range.',
         );
       }
       if (width > 1.25) {
@@ -263,7 +263,7 @@ class BenchmarkTrackerReadService {
           isDegenerate: true,
           badgeLabel: 'OPZ RANGE TOO WIDE',
           explanation:
-              'Star shifts too widely spread. Tighten to one clean standard.',
+              'Star shifts are spread too far apart. Tighten the set until the team is working to one standard.',
         );
       }
 
@@ -271,7 +271,8 @@ class BenchmarkTrackerReadService {
         tier: 'good',
         isDegenerate: false,
         badgeLabel: 'GOOD OPZ RANGE',
-        explanation: 'Target sits in a usable range with room to flex.',
+        explanation:
+            'Team looks busy without getting stretched. Service should hold here.',
       );
     }
 
@@ -281,7 +282,7 @@ class BenchmarkTrackerReadService {
         isDegenerate: true,
         badgeLabel: 'RANGE UNCONFIRMED',
         explanation:
-            'Benchmark evidence is not fully loaded yet. Treat the graph as context only.',
+            'We are still building a clean read on this range. Use it as a guide, not a standard yet.',
       );
     }
 
@@ -291,9 +292,9 @@ class BenchmarkTrackerReadService {
         isDegenerate: true,
         badgeLabel: 'RANGE UNCONFIRMED',
         explanation:
-            'Not enough recent 60-day evidence to recommend a benchmark range yet. Close more shifts before treating this as a target.',
+            'Not enough recent shifts yet to set a reliable benchmark range.',
         fallbackMessage:
-            'The graph is showing the Config Default range as a placeholder, not a recommendation.',
+            'For now this is a placeholder range until more shift history builds.',
       );
     }
 
@@ -304,9 +305,9 @@ class BenchmarkTrackerReadService {
           isDegenerate: true,
           badgeLabel: 'RANGE TOO WIDE TO TEACH',
           explanation:
-              'Dayparts (lunch, dinner, late night) have very different CPLH levels. The combined cross-daypart range is too wide to teach one standard.',
+              'Lunch, dinner, and late night are behaving differently. This needs daypart-specific coaching.',
           fallbackMessage:
-              'Per-daypart benchmarks are coming. Until then, treat this union band as context only.',
+              'Use this as a broad guide for now, not one standard for every period.',
         );
       case 'OPZ RANGE TOO NARROW':
         return const _GraphHonesty(
@@ -314,16 +315,17 @@ class BenchmarkTrackerReadService {
           isDegenerate: true,
           badgeLabel: 'RANGE UNCERTAIN',
           explanation:
-              'Recent cohorts did not meet the quality bar. Target may not be teachable yet.',
+              'We do not have a clean operating range yet. Let more shifts close before coaching to this.',
           fallbackMessage:
-              'Give the 60-day window more closed shifts - the recommendation improves as evidence builds.',
+              'As more shifts close, the benchmark will settle into a clearer working range.',
         );
       default:
         return const _GraphHonesty(
           tier: 'good',
           isDegenerate: false,
           badgeLabel: 'GOOD OPZ RANGE',
-          explanation: 'Target sits in a usable range with room to flex.',
+          explanation:
+              'Team looks busy without getting stretched. Service should hold here.',
         );
     }
   }

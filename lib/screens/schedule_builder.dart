@@ -18,6 +18,7 @@ import '../services/labor_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';
 import '../widgets/schedule_day_row.dart';
+import '../widgets/sticky_section_delegate.dart';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
@@ -658,57 +659,101 @@ class _ScheduleBuilderContentState
         builder: (context, notifier, _) => AppScreenHeader(
           title: 'Weekly Operating Plan',
           bottom: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-            child: Row(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+            // Left-aligned label above left-aligned pill row — same
+            // pattern as the Benchmark header so the two tabs feel
+            // cohesive.
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                AppHeaderStat(
-                  label: 'COVERS',
-                  value: notifier.weeklyCovers.toString(),
-                ),
-                const SizedBox(width: 8),
-                AppHeaderStat(
-                  label: 'SALES',
-                  value: '\$${Fmt.dollars(notifier.forecastedSales)}',
+                Text('NEXT WEEK PROJECTIONS',
+                    style:
+                        AppTextStyles.mono8(color: AppColors.textMuted)),
+                const SizedBox(height: 2),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    AppHeaderStat(
+                      label: 'COVERS',
+                      value: notifier.weeklyCovers.toString(),
+                    ),
+                    const SizedBox(width: 8),
+                    AppHeaderStat(
+                      label: 'SALES',
+                      value:
+                          '\$${Fmt.dollars(notifier.forecastedSales)}',
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
       ),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── LABOR PLAN ──────────────────────────────────────────────
-            const _PlanSectionLabel('LABOR PLAN'),
+      child: CustomScrollView(
+        cacheExtent: 9999,
+        slivers: [
+          // ── LABOR PLAN ──────────────────────────────────────────────
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('LABOR PLAN'),
+              ),
 
-            // Derived summary cards (FOH/BOH hrs, labor %, labor $)
-            Consumer<ScheduleForecastNotifier>(
-              builder: (context, notifier, _) =>
-                  _DerivedSummaryCards(notifier: notifier),
-            ),
+              // Derived summary cards (FOH/BOH hrs, labor %, labor $)
+              SliverToBoxAdapter(
+                child: Consumer<ScheduleForecastNotifier>(
+                  builder: (context, notifier, _) =>
+                      _DerivedSummaryCards(notifier: notifier),
+                ),
+              ),
 
-            // ── COVER FORECAST BY DAY ──────────────────────────────────
-            const _PlanSectionLabel('COVER FORECAST BY DAY'),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
 
-            // Bar chart
-            Consumer<ScheduleForecastNotifier>(
-              builder: (context, notifier, _) =>
-                  _CoverBarChart(notifier: notifier),
-            ),
+          // ── COVER FORECAST ADJUSTED BY DAY ─────────────────────────
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('COVER FORECAST ADJUSTED BY DAY'),
+              ),
 
-            // ── DAY-BY-DAY PLAN ────────────────────────────────────────
-            const _PlanSectionLabel('DAY-BY-DAY PLAN'),
+              // Bar chart
+              SliverToBoxAdapter(
+                child: Consumer<ScheduleForecastNotifier>(
+                  builder: (context, notifier, _) =>
+                      _CoverBarChart(notifier: notifier),
+                ),
+              ),
 
-            // Day-by-day table
-            Consumer<ScheduleForecastNotifier>(
-              builder: (context, notifier, _) =>
-                  _DayTable(notifier: notifier),
-            ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
 
-            const SizedBox(height: 24),
-          ],
-        ),
+          // ── DAY-BY-DAY PLAN ────────────────────────────────────────
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: StickySectionDelegate('DAY-BY-DAY PLAN'),
+              ),
+
+              // Day-by-day table
+              SliverToBoxAdapter(
+                child: Consumer<ScheduleForecastNotifier>(
+                  builder: (context, notifier, _) =>
+                      _DayTable(notifier: notifier),
+                ),
+              ),
+
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -799,6 +844,48 @@ class _DerivedSummaryCards extends StatelessWidget {
 
 }
 
+/// Tiny dashed swatch used in chart legends to echo an in-chart dashed
+/// reference line.
+class _DashedSwatch extends StatelessWidget {
+  final Color color;
+  const _DashedSwatch({required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 16,
+      height: 2,
+      child: CustomPaint(
+        painter: _DashedLinePainter(color: color),
+      ),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  final Color color;
+  const _DashedLinePainter({required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1.5;
+    const dashWidth = 3.0;
+    const dashGap = 2.0;
+    double x = 0;
+    final y = size.height / 2;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, y),
+          Offset((x + dashWidth).clamp(0.0, size.width), y), paint);
+      x += dashWidth + dashGap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedLinePainter old) => old.color != color;
+}
+
 class _CoverBarChart extends StatelessWidget {
   final ScheduleForecastNotifier notifier;
 
@@ -851,6 +938,21 @@ class _CoverBarChart extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Legend — dashed swatch + "DAILY AVG" above the chart so the
+          // label never collides with a bar column.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(4, 2, 4, 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                _DashedSwatch(color: AppColors.sunset),
+                const SizedBox(width: 6),
+                Text('WEEKLY AVG',
+                    style: AppTextStyles.mono7(
+                        color: AppColors.sunsetDark)),
+              ],
+            ),
+          ),
           SizedBox(
             height: 160,
             child: BarChart(
@@ -905,6 +1007,7 @@ class _CoverBarChart extends StatelessWidget {
                       color: AppColors.sunset,
                       strokeWidth: 1,
                       dashArray: [4, 4],
+                      // Label moved to the legend row above the chart.
                     ),
                   ],
                 ),
@@ -918,57 +1021,8 @@ class _CoverBarChart extends StatelessWidget {
   }
 }
 
-// ─── Plan section label ──────────────────────────────────────────────────────
-// Premium variance-style section divider: teal accent stripe on the left,
-// title text, and a sunset gradient underline. Matches the section labels
-// used on Variance, Week Detail, and Benchmark so every screen reads as
-// part of one design system.
-
-class _PlanSectionLabel extends StatelessWidget {
-  final String text;
-  const _PlanSectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 28, 16, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 4,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [AppColors.sunset, AppColors.sunsetDark],
-                    ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Text(
-                  text,
-                  style: AppTextStyles.mono14(
-                      color: AppColors.textPrimary, weight: FontWeight.w700),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 2,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [AppColors.sunset, AppColors.sunsetDark],
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-}
+// _PlanSectionLabel removed — replaced by shared StickySectionDelegate
+// pinned headers in the CustomScrollView slivers above.
 
 class _DayTable extends StatefulWidget {
   final ScheduleForecastNotifier notifier;

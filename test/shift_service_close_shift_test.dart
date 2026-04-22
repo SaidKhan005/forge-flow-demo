@@ -16,6 +16,7 @@ import 'package:forge_and_flow/data/shift_service.dart';
 import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/models/week_data.dart';
 import 'package:forge_and_flow/models/week_record.dart';
 
@@ -339,6 +340,13 @@ void main() {
   group('7.55q.10: frozen dollar impact windows at close', () {
     test('all 14 closed -> WeekRecord carries month + 60-day + closedAt',
         () async {
+      final snapshot = await WeeklyPlanSnapshotService.instance
+          .getCurrentWeekSnapshot();
+      expect(snapshot, isNotNull);
+      final cycle = await SqliteTargetCycleRepository.instance
+          .getCycleById(snapshot!.targetCycleId);
+      expect(cycle, isNotNull);
+
       await ShiftService.instance.closeShift(_friDinner());
       await ShiftService.instance.closeShift(_friLateNight());
       await ShiftService.instance.closeShift(_satDinner());
@@ -351,6 +359,8 @@ void main() {
       // closedAt is the latest business date among the 14 closed shifts.
       // Sunday dinner is 2026-03-29 (the last day of 2026-W13).
       expect(w13.closedAt, '2026-03-29');
+      expect(w13.targetCalibrationWindowStart, cycle!.calibrationWindowStart);
+      expect(w13.targetCalibrationWindowEnd, cycle.calibrationWindowEnd);
 
       // Both windows captured (non-null). Sign comes from
       // _accumulateDollarImpact = actualLabor - theoreticalLabor.

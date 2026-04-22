@@ -11,6 +11,7 @@ class ShiftDashboardReadModel {
   // ── Header context ──────────────────────────────────────────────────────
   final String daypart;
   final String day;
+  final String businessDate;
 
   // Phase 7.55m.3: timeLabel and serviceElapsedLabel are no longer the
   // primary header time source. The Shift header now uses a live wall-clock
@@ -79,6 +80,7 @@ class ShiftDashboardReadModel {
   const ShiftDashboardReadModel({
     required this.daypart,
     required this.day,
+    required this.businessDate,
     required this.timeLabel,
     required this.serviceElapsedLabel,
     required this.actualCovers,
@@ -266,6 +268,7 @@ class ShiftDashboardReadModel {
     return ShiftDashboardReadModel(
       daypart: snapshots.length > 1 ? '' : _daypartLabel(openSnap.daypart),
       day: dayName,
+      businessDate: openSnap.businessDate,
       timeLabel: openSnap.timeLabel,
       serviceElapsedLabel: openSnap.serviceElapsedLabel,
       actualCovers: totalCovers,

@@ -317,6 +317,7 @@ void main() {
       expect(wtd.closedDayNumber, 4,
           reason: 'Last finalized date is Thursday = Day 4');
       expect(wtd.lastClosedDay, 'Thursday');
+      expect(wtd.lastClosedBusinessDate, '2026-03-26');
     });
 
     test('vendorFinalization: same-business-date rows are included', () async {
@@ -339,6 +340,7 @@ void main() {
           reason: 'Under vendorFinalization, all closed rows are finalized');
       expect(wtd.closedDayNumber, 5,
           reason: 'Fri is Day 5 and its lunch row is finalized');
+      expect(wtd.lastClosedBusinessDate, '2026-03-27');
     });
   });
 
