@@ -60,9 +60,13 @@ docs/internal/barrio/barrio_legado_business_plan.pdf
 
 # Codex local tooling
 .codex_appdata/
+.codex_tmp_*
 
 # Graphify generated output
 graphify-out/
 
 # Kotlin compiler sessions
 android/.kotlin/
+
+# Personal outreach / drafts (not for repo)
+Selling.md
