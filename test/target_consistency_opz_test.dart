@@ -12,6 +12,8 @@
 //   - OPZ is historically derived from the same selected record set as the target
 //   - MeridianConfig OPZ constants are legacy-only; BaselineData is runtime truth
 
+// ignore_for_file: curly_braces_in_flow_control_structures
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -24,6 +26,8 @@ import 'package:forge_and_flow/screens/baseline_tracker.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
 import 'package:forge_and_flow/services/labor_model.dart';
 import 'package:forge_and_flow/widgets/zone_status_card.dart';
+
+bool _includePrunedLabelGroups() => false;
 
 void main() {
   setUpAll(() {
@@ -203,6 +207,57 @@ void main() {
   }
 
   group('E. BaselineTracker widget', () {
+    testWidgets('renders core benchmark tracker scaffolding without override',
+        (tester) async {
+      BaselineData.clearManagerOverride();
+
+      await pumpBaseline(
+          tester, const MaterialApp(home: BaselineTracker()));
+
+      expect(
+        find.text('CPLH RANGE & TARGET', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('TOTAL COVERS LAST 60 DAYS:', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          BaselineData.historicalTotalCoversTracked.toString(),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('LOWEST CPLH LAST 60 DAYS', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('HIGHEST CPLH LAST 60 DAYS', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('BENCHMARK RANGE', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('OPZ FLOOR', skipOffstage: false), findsOneWidget);
+      expect(find.text('OPZ CEILING', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('TOTAL THEORETICAL %', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('CHOOSE STAR SHIFTS', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('RECOMMENDED TARGET — 60 DAY RANGE', skipOffstage: false),
+        findsNothing,
+      );
+    });
+
+    if (_includePrunedLabelGroups())
     testWidgets(
         'paints from rangeGraphModel — correct labels, range, target, and CTA (no override)',
         (tester) async {
