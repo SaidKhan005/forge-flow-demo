@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-04-15
+Updated: 2026-04-24
 Owner: You
 Purpose: keep the app aligned for live POS, labor, and reservation integrations before Phase 8 / 8R
 
@@ -49,27 +49,35 @@ In plain terms:
 | `7.55p.4c` | complete | replay integrity / mock-to-live transition audit landed through `7.55p.4c1` |
 | `7.55p.4d` | complete | persisted passive notifications landed through `7.55p.4d1` |
 | `7.55p.5` | complete | Benchmark OPZ / graph honesty audit, OPZ-width research, target-labor package contract, Variance theoretical-package verification, blended-wage audit, recommendation-statistics contract cleanup, wage-mix setup UX, the app-owned recommended benchmark selection service, its restaurant-scope runtime fix, the Benchmark graph fallback/explainer cleanup, and the scope-aware planned labor package contract + wiring landed through `7.55p.5j` |
-| `7.55q` | complete | architecture-conformance lane landed through `7.55q.9`: single-plan / single-benchmark-target rule codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment landed, post-q authority/test hygiene synced, and cycle-backed Benchmark override wiring landed |
+| `7.55q` | complete | architecture-conformance lane landed through `7.55q.10`: single-plan / single-benchmark-target rule codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment landed, post-q authority/test hygiene synced, cycle-backed Benchmark override wiring landed, and Dollar Impact card unified with frozen-at-close parity (SQLite v22 migration + shared widget) |
 | `7.55o` | active | shared-surface extraction / shell split lane resumed after the q-lane source-truth cleanup |
 
 ## Current Next Steps
 
 - Current:
   - resume `7.55o.1` through `7.55o.6`
+  - follow the automatic Codex prompt loop in `docs/CODEX_PROMPT_GENERATION_STANDARD.md`: verify repo truth, update tracker truth only after accepted slices, then generate the next prompt from the updated trackers
+  - use the `7.55o` companion docs before any code movement:
+    - non-behavior-change contract
+    - verification matrix
+    - extraction ownership map
   - treat the broad UX shell/header pass as already landed:
     - shared sticky/fading headers
     - Shift / Variance / History / Learn / Plan / Benchmark shell cleanup
     - Settings visual rework
 - Then:
   - revisit canonical live-facts contract planning
-  - then resume `7.55j.3` and `7.55j.4`
-  - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before `7.55j.4` / the pre-Phase-8 readiness answer
+  - use `7.55j.3` and `7.55j.4` as the active pre-Phase-8 vendor packaging authority
+  - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before any new pre-Phase-8 readiness answer
   - keep the bounded post-audit cleanup list visible without treating it as
     a new q-lane:
-    - dev-only audit-panel service wrap
-    - persisted timing/service-period wiring closeout
-    - UTC metadata timestamp normalization
-    - non-locked WTD business-date membership
+    - dev-only audit-panel service wrap + drift detection + cycle/week
+      provenance readout (`7.55r`)
+    - persisted timing/service-period wiring closeout (`7.55r`)
+    - UTC metadata timestamp normalization (`7.55r`)
+    - non-locked WTD business-date membership audit (`7.55r`)
+    - editable restaurant timing + service-period settings write path
+      (`10a`)
 
 ## Alignment Guardrails
 
@@ -93,16 +101,16 @@ In plain terms:
   - Shift as the highest-priority live surface
 - file extraction / engineering hygiene is now back on the active path in `7.55o`
 - the broad `7.55o` UX shell pass is already landed; remaining `7.55o` work should not reopen the source-truth-neutral shell/header cleanup
-- Shift stays whole-day until `10.5`
+- Shift's whole-day view is authoritative; `10.5` adds an additive daypart view alongside it without replacing whole-day
 - History stays closed-truth only
-- Learn is partially migrated today:
-  - Repeatable Wins is evidence-backed closed truth
-  - Benchmark Set / Recurring Leak / Coach Next Week still use compatibility seams
+- Learn benchmark-context and coaching-summary cleanup landed through
+  `7.55l.8` + `7.55k`; active alignment truth no longer treats named
+  Learn surface seams as open
 - no new manager workflow
 - no draft/publish language in the UI
 - fixed `14 shifts` debt spans runtime, replay seeding, tests, UI copy, and active integration docs
 - `7.55p.5` is fully landed through `7.55p.5j`; use the status ledger for the detailed recommendation, graph, wage-authority, and planned-labor closeout notes instead of treating the active tracker as the long-form archive
-- `7.55q` is fully landed through `7.55q.9`; use the phase docs and status ledger for the detailed architecture-conformance, Shift-alignment, post-q hygiene, and cycle-backed override-wiring closeout notes
+- `7.55q` is fully landed through `7.55q.10`; use the phase docs and status ledger for the detailed architecture-conformance, Shift-alignment, post-q hygiene, cycle-backed override-wiring, and Dollar Impact card unification closeout notes
 - use `docs/internal/status_ledger_post_7_55p_deep_check.md` as the reference sheet for older ask reconciliation:
   - what `7.55p.2` / `7.55p.3` / `7.55p.4d` / `7.55p.5` did and did not close
   - what to revisit before `7.55o.*` polish work and `7.55j.4` readiness review
@@ -155,11 +163,19 @@ In plain terms:
 - `docs/phases/7_55q/phase_7_55q_7_shift_whole_day_target_alignment.md`
 - `docs/phases/7_55q/phase_7_55q_8_authority_sync_and_test_hygiene_cleanup.md`
 - `docs/phases/7_55q/phase_7_55q_9_benchmark_override_cycle_wiring.md`
+- `docs/phases/7_55q/phase_7_55q_10_dollar_impact_card_unification.md`
 - `docs/internal/status_ledger_post_7_55p_deep_check.md`
 - `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
+- `docs/phases/7_55o/phase_7_55o_refactor_non_behavior_change_contract.md`
+- `docs/phases/7_55o/phase_7_55o_verification_matrix.md`
+- `docs/phases/7_55o/phase_7_55o_extraction_ownership_map.md`
+- `docs/phases/phase_7_55r/phase_7_55r_foundation_closeout_plan.md`
 - `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`
+- `docs/phases/7_55j/phase_7_55j_4_gap_report.md`
 - `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
+- `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
 
 ## Archive And Reference
 

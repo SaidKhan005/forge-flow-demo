@@ -1,8 +1,9 @@
 # Phase 8R - Official Reservation Connector
 
-Updated: 2026-04-14
-Status: Planned
+Updated: 2026-04-22
+Status: Planned, blocked on vendor selection
 Owner: Future reservation connector lane
+Last review: 2026-04-22 - vendor TBD; working preference is OpenTable (aligns with Phase 7.56 demo signal and Barrio V1.1 Daily Board covers source). API access / partner status not yet secured.
 
 ## Goal
 

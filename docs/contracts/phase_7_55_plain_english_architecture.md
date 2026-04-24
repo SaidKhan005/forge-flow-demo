@@ -289,8 +289,9 @@ So the clean rule is:
 
 Also:
 
-- Shift is still whole-day for now
-- live service-period behavior is reserved for Phase 10.5
+- Shift's default view is whole-day
+- Phase 10.5 adds a daypart-aware view alongside the whole-day view without
+  replacing it
 
 ## Variance: Comparing Plan To What Happened
 

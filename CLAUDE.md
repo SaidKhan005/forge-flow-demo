@@ -54,7 +54,8 @@ When the user pastes an `Execution Report`:
 - `WeeklyPlanSnapshot` is the locked week-in-force comparison plan.
 - Keep source facts, derived metrics, and teaching summaries separate.
 - Widgets should not own source-truth or service-period bucketing rules.
-- Shift stays whole-day until Phase 10.5.
+- Shift's whole-day view is authoritative; Phase 10.5 adds an additive
+  daypart view alongside it without replacing whole-day.
 
 ## Time Guardrails
 

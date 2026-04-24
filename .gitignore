@@ -70,3 +70,15 @@ android/.kotlin/
 
 # Personal outreach / drafts (not for repo)
 Selling.md
+
+# Obsidian vault config (not for repo)
+.obsidian/
+
+# Scratch research dumps from other projects (root-anchored)
+/ha_*
+/pd_*
+/po_*
+/ppa_*
+/rmm_*
+/smp_*
+/tc_*

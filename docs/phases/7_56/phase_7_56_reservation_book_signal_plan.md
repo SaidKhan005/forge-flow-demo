@@ -260,7 +260,7 @@ Out of scope:
 - Guest names or reservation detail rows.
 - Push notifications.
 - Barrio Daily Companion screens.
-- Auth, roles, permissions, or Firestore.
+- Auth, roles, permissions, or any remote backend (Supabase Postgres / Firebase Auth land in Phase 9).
 - Changes to labor formulas or lever detection.
 
 ## Future Phase 8R Scope

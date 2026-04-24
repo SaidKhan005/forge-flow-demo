@@ -513,8 +513,10 @@ That does not replace business date. It keeps audit metadata coherent.
 - `7.55n` owns the restaurant timing + service-period runtime foundation:
   timing settings, business-date resolution, service-period definitions,
   week-start wiring, close-boundary contract, and UTC metadata normalization
-- `10.5` owns live service-period-aware Shift behavior and live
-  time-into-service
+- `10.5` adds the daypart-aware Shift view, live service-period-aware
+  behavior, and live time-into-service as an additive lens alongside the
+  existing whole-day view; whole-day Shift remains the default and is
+  preserved
 
 ## The One-Sentence Product Rule
 

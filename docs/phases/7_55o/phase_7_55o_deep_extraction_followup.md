@@ -1,6 +1,6 @@
 # Phase 7.55o - Deep Extraction Follow-Up
 
-Assessed: 2026-04-12  
+Assessed: 2026-04-24  
 Status: active `7.55o` planning follow-up  
 Relationship: supersedes the earlier extraction analysis; archived copy retained for reference
 
@@ -26,21 +26,21 @@ This follow-up captures:
 
 ---
 
-## Current Hotspots (fresh counts)
+## Current Hotspots (2026-04-24 refresh)
 
 ### Production files
 
 | File | Lines | Classes | Read |
 |---|---:|---:|---|
-| `lib/screens/variance_report.dart` | 2346 | 39 | still the largest mixed-concern screen |
+| `lib/screens/variance_report.dart` | 2991 | 39 | still the largest mixed-concern screen |
 | `lib/data/legacy_fixture_data.dart` | 1346 | n/a | huge bridge/config file, but not a simple extraction target |
-| `lib/infrastructure/persistence/sqlite/sqlite_database.dart` | 1446 | 2 | monolithic bootstrap/migration/seeding hub |
-| `lib/screens/baseline_manager_screen.dart` | 1069 | 13 | calendar UI, preview logic, candidate selection, bottom-bar flow all mixed |
-| `lib/screens/schedule_builder.dart` | 775 | 12 | screen + notifier + view models + fallback daypart allocation in one file |
-| `lib/screens/settings_screen.dart` | 700 | 9 | status, mock replay, data management, wage editor, audit panel in one surface |
-| `lib/screens/shift_dashboard.dart` | 658 | 13 | screen shell plus many local sections/helpers |
-| `lib/screens/baseline_tracker.dart` | 511 | 6 | benchmark UI with duplicated section primitives |
-| `lib/screens/week_detail_screen.dart` | 435 | 7 | duplicated comparison-table and dollar-impact widgets |
+| `lib/infrastructure/persistence/sqlite/sqlite_database.dart` | 2104 | 2 | monolithic bootstrap/migration/seeding hub |
+| `lib/screens/settings_screen.dart` | 2147 | 25 | status, mock replay, data management, wage editor, timing display, audit panel in one surface |
+| `lib/screens/baseline_manager_screen.dart` | 1235 | 13 | calendar UI, preview logic, candidate selection, bottom-bar flow all mixed |
+| `lib/screens/schedule_builder.dart` | 1163 | 12 | screen + notifier + view models + fallback daypart allocation in one file |
+| `lib/screens/shift_dashboard.dart` | 750 | 14 | screen shell plus many local sections/helpers |
+| `lib/screens/baseline_tracker.dart` | 634 | 5 | benchmark UI still carries local presentation structure |
+| `lib/screens/week_detail_screen.dart` | 453 | 4 | duplicated comparison-table primitives still present |
 
 ### Structural import pressure
 
@@ -49,6 +49,28 @@ This follow-up captures:
 | `sqlite_database.dart` | imported by 42 files across `lib/` and `test/` |
 | `legacy_fixture_data.dart` | imported by 28 files in `lib/` |
 | duplicated section/table primitives | repeated across Variance, Week Detail, Benchmark |
+
+## What Already Landed Since The First 7.55o Note
+
+The refactor lane is not starting from zero anymore. These shared pieces are
+already extracted and should be treated as landed infrastructure, not
+re-opened work:
+
+- `lib/widgets/app_screen_header.dart`
+  - `AppScreenHeader`
+  - `FadingHeaderShell`
+- `lib/widgets/sticky_section_delegate.dart`
+  - shared `SectionLabel`
+  - shared sticky header delegate
+- `lib/widgets/dollar_impact_card.dart`
+  - shared Variance / Week Detail dollar-impact widget
+
+That means the remaining `7.55o` work is less about inventing a shell system
+and more about:
+
+- shrinking the still-monolithic screens
+- moving local widgets / helpers / view models to better file boundaries
+- preserving the already-landed source-truth seams while doing so
 
 ---
 
@@ -181,40 +203,34 @@ Assessment:
 - definitely in scope for `7.55o`
 - especially because the user has already called out settings organization
 
-## 4. Shared primitives are bigger than the original note captured
+## 4. Shared primitives are still incomplete, even though some landed
 
-The first note correctly called out `_SectionLabel` and `_DollarImpactCard`,
-but the duplication pattern is broader.
+The first note correctly called out shared-surface duplication. Since then,
+some of that work has landed:
 
-Current repeated primitives:
+- `SectionLabel` is now shared through `sticky_section_delegate.dart`
+- `DollarImpactCard` is now shared through `widgets/dollar_impact_card.dart`
+- app-shell header primitives are shared through `app_screen_header.dart`
 
-- `_SectionLabel`
-  - `variance_report.dart`
-  - `baseline_tracker.dart`
-  - `week_detail_screen.dart`
-- `_DollarImpactCard`
-  - `variance_report.dart`
-  - `week_detail_screen.dart`
+What is still duplicated:
+
 - `_GroupBand`
   - `variance_report.dart`
   - `week_detail_screen.dart`
 - `_TableRow`
   - `variance_report.dart`
   - `week_detail_screen.dart`
-- `_ColumnHeader`
-  - `variance_report.dart`
-  - `week_detail_screen.dart`
 
-This suggests `7.55o.1` should not just extract one label widget. It should
-extract a small reusable "comparison surface" kit.
+This means `7.55o.1` should no longer be framed as "extract the first shared
+widgets." It should be framed as "finish the comparison-surface kit and stop
+leaving the remaining duplicated table/group primitives inside the two
+screens."
 
 Recommended primitive set:
 
-- `section_label.dart`
 - `comparison_column_header.dart`
 - `comparison_group_band.dart`
 - `comparison_metric_row.dart`
-- `dollar_impact_card.dart`
 
 That will remove duplication from:
 
@@ -374,6 +390,27 @@ Reason for deferring:
 ### Optional later follow-up
 
 - large test harness extraction if churn on those tests starts slowing delivery
+
+## Companion Docs Required Before Code Movement
+
+As of the 2026-04-24 audit, `7.55o` now has three companion docs that should
+be treated as part of the active refactor lane:
+
+- `phase_7_55o_refactor_non_behavior_change_contract.md`
+- `phase_7_55o_verification_matrix.md`
+- `phase_7_55o_extraction_ownership_map.md`
+
+Why they are needed:
+
+- the architecture contracts already tell us **what the system means**
+- the `7.55o` phase doc already tells us **what files are too big**
+- what was missing was the explicit refactor contract for:
+  - what must not change
+  - how we prove behavior stayed stable
+  - which concerns may move vs must stay put
+
+Those companion docs close that gap without introducing a new top-level
+architecture lane.
 
 ---
 

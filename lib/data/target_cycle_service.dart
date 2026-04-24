@@ -47,6 +47,7 @@ import '../domain/repositories/target_cycle_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
 import '../domain/services/target_cycle_active_target_profile_projector.dart';
 import '../domain/services/target_cycle_policy.dart';
+import '../domain/services/utc_metadata_timestamp.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
@@ -376,7 +377,7 @@ class TargetCycleService {
       bohWage: profile.bohWage,
       opzFloorCPLH: profile.opzFloorCPLH,
       opzCeilingCPLH: profile.opzCeilingCPLH,
-      createdAt: DateTime.now().toUtc().toIso8601String(),
+      createdAt: nowIsoUtc(),
     );
 
     await _cycleRepo.upsertCycle(cycle);

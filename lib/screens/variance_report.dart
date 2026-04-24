@@ -8,8 +8,10 @@ import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
 import '../data/learn_benchmark_context_service.dart';
 import '../data/legacy_fixture_data.dart';
+import '../data/restaurant_timing_config_read_service.dart';
 import '../data/shift_data_source.dart';
 import '../data/week_data_notifier.dart';
+import '../domain/models/service_period_definition.dart';
 import '../models/history_benchmark_daypart_summary.dart';
 import '../models/history_pattern_record.dart';
 import '../models/learn_benchmark_context.dart';
@@ -561,6 +563,31 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
   String? _expandedDayLabel;
   final Map<String, GlobalKey> _dayRowKeys = <String, GlobalKey>{};
 
+  /// 7.55r item 1: persisted service-period definitions, loaded async
+  /// on init. Null until the first load completes; the read service
+  /// falls back to `demoDefinitions` when null is passed.
+  List<ServicePeriodDefinition>? _servicePeriodDefinitions;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTimingConfig();
+  }
+
+  Future<void> _loadTimingConfig() async {
+    try {
+      final config = await RestaurantTimingConfigReadService.instance
+          .getActiveTimingConfig();
+      if (!mounted) return;
+      final defs = config?.servicePeriodDefinitions;
+      if (defs != null && defs.isNotEmpty) {
+        setState(() => _servicePeriodDefinitions = defs);
+      }
+    } catch (_) {
+      // Honest fallback: leave null, read service uses demoDefinitions.
+    }
+  }
+
   GlobalKey _dayRowKey(String dayLabel) =>
       _dayRowKeys.putIfAbsent(dayLabel, () => GlobalKey());
 
@@ -612,6 +639,7 @@ class _FullWeekSectionState extends State<_FullWeekSection> {
     final projection = _readService.build(
       widget.shifts,
       currentTargetProfile: currentTargetProfile,
+      servicePeriodDefinitions: _servicePeriodDefinitions,
     );
     final groups = projection.dayRows;
     if (groups.isEmpty) {

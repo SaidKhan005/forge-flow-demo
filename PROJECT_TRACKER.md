@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-15
+Updated: 2026-04-24
 Owner: You
 Execution model: We think, Claude codes
 
@@ -21,9 +21,10 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 ## Active Focus
 
-- Current phase: `7.55o` refactor / extraction lane resumed after `7.55q.1` through `7.55q.9`
+- Current phase: `7.55o` refactor / extraction lane resumed after `7.55q.1` through `7.55q.10`
 - Current prompt: `7.55o.1` - shared surface primitives extraction
 - Current goal: resume extraction without reopening the landed single-plan / single-benchmark-target / whole-day-Shift source-truth contracts
+- Prompt sequencing: automatic Codex loop per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`; after an accepted slice, verify repo truth, update trackers, then generate the next prompt from the updated tracker state
 - Current UX shell state: the broad header / shell / Learn / Settings / Plan / Benchmark / Variance visual pass is already landed; remaining `7.55o` work should build on it rather than reopen it
 - Current live-integration scope: one restaurant/location, not multi-location org management
 - Naming guardrail: keep internal `Baseline` / `Schedule` names unchanged during this alignment pass
@@ -44,20 +45,25 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 | `7.55p.4c` | complete | replay integrity / mock-to-live transition audit landed through `7.55p.4c1` |
 | `7.55p.4d` | complete | persisted passive notifications landed through `7.55p.4d1` |
 | `7.55p.5` | complete | Benchmark OPZ / graph honesty audit, OPZ-width research, target-labor package contract, Variance theoretical-package verification, blended-wage audit, recommendation-statistics contract cleanup, wage-mix setup UX, the app-owned recommended benchmark selection service, its restaurant-scope runtime fix, the Benchmark graph fallback/explainer cleanup, and the scope-aware planned labor package contract + wiring landed through `7.55p.5j` |
-| `7.55q` | complete | architecture-conformance lane landed through `7.55q.9`: single-plan / single-benchmark-target contract codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment formalized, post-q authority/test hygiene synced, and cycle-backed Benchmark override wiring landed |
+| `7.55q` | complete | architecture-conformance lane landed through `7.55q.10`: single-plan / single-benchmark-target contract codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment formalized, post-q authority/test hygiene synced, cycle-backed Benchmark override wiring landed, and Dollar Impact card unified with frozen-at-close parity between live Variance and Week Detail (SQLite v22 migration, `monthDollarImpact` / `sixtyDayDollarImpact` / `closedAt` on `WeekRecord`, shared `DollarImpactCard` widget) |
 | `7.55o` | active | shared-surface extraction / shell split lane resumed now that the q-lane source-truth contracts are landed |
 
 ## Current And Next
 
 - Current:
   - `7.55o.1` shared surface primitives extraction
+  - use the `7.55o` companion docs before any code movement:
+    - non-behavior-change contract
+    - verification matrix
+    - extraction ownership map
 - Then:
   - `7.55o.2` Variance shell split
   - `7.55o.3` Schedule planning surface separation
   - `7.55o.4` Settings surface split
-    - keep the read-only timing authority visible there; defer editable
-      timezone/timing authority until full restaurant-local timezone
-      conversion and persisted timing-control wiring are landed
+    - keep the read-only timing authority visible there; editable
+      restaurant timing + service-period settings now belong to
+      `Phase 10a` shared-state writes rather than the `7.55o` extraction
+      lane
   - `7.55o.5` Baseline Manager decomposition plus remaining candidate-truth / bridge cleanup
   - `7.55o.6` SQLite bootstrap breakup only if still justified
   - keep the landed UX shell pass recorded as done:
@@ -67,12 +73,18 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
     - Plan / Benchmark header-stat cleanup
     - Settings visual rework
   - revisit canonical live-facts contract planning after the extraction lane
-  - `7.55j.3` vendor endpoint checklist template
-  - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before `7.55j.4` / the pre-Phase-8 readiness answer
-  - `7.55j.4` gap report
+  - keep `7.55j.3` vendor endpoint checklist template and `7.55j.4` gap report as the active pre-Phase-8 vendor-readiness authority
+  - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before any new pre-Phase-8 readiness answer
+  - keep pre-launch sequencing truth visible:
+    - `Phase 10a` is pre-launch shared state (Jul-Sep 2026 fourth contractor lane) and starts once `Phase 9` auth identity is usable
+    - `Phase 10.5` is additive whole-day + daypart Shift behavior and ships at or near launch
+    - `Phase 11a` runs in parallel with `Phase 8` / `8R` / `9`
+    - `Phase 11a` + `11b` advisor work ships before `Phase 9.75` Barrio V1.1
+    - `Phase 10b` remains post-launch future work
   - keep the post-audit bounded cleanup list visible without reopening the
     landed q-lane contracts:
-    - dev-only `DataAlignmentAuditPanel` service wrap
+    - dev-only `DataAlignmentAuditPanel` service wrap, drift detection,
+      and cycle/week provenance readout
     - persisted timing/service-period wiring closeout
     - UTC metadata timestamp normalization
     - non-locked WTD business-date membership
@@ -100,9 +112,9 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
   - otherwise show explicit freshness age such as `Updated 7 min ago`
   - Shift is the highest-priority live surface
 - stale current-state must not masquerade as live
-- Learn is partially migrated today:
-  - Repeatable Wins is evidence-backed
-  - Benchmark Set / Recurring Leak / Coach Next Week still use compatibility seams
+- Learn benchmark-context and coaching-summary cleanup landed through
+  `7.55l.8` + `7.55k`; active tracker truth no longer treats named Learn
+  surface seams as open
 - fixed `14 shifts` debt spans runtime, replay seeding, tests, UI copy, and active integration docs
 - Baseline Manager is not extraction-only; its first future touch should focus on the remaining candidate-truth / bridge cleanup rather than reopening the already-landed wage-authority fix
 - use `docs/internal/status_ledger_post_7_55p_deep_check.md` as the reference sheet for:
@@ -127,11 +139,26 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - `docs/phases/7_55q/phase_7_55q_7_shift_whole_day_target_alignment.md`
 - `docs/phases/7_55q/phase_7_55q_8_authority_sync_and_test_hygiene_cleanup.md`
 - `docs/phases/7_55q/phase_7_55q_9_benchmark_override_cycle_wiring.md`
+- `docs/phases/7_55q/phase_7_55q_10_dollar_impact_card_unification.md`
 - `docs/internal/status_ledger_post_7_55p_deep_check.md`
 - `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
+- `docs/phases/7_55o/phase_7_55o_refactor_non_behavior_change_contract.md`
+- `docs/phases/7_55o/phase_7_55o_verification_matrix.md`
+- `docs/phases/7_55o/phase_7_55o_extraction_ownership_map.md`
+- `docs/phases/phase_7_55r/phase_7_55r_foundation_closeout_plan.md`
 - `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`
+- `docs/phases/7_55j/phase_7_55j_4_gap_report.md`
 - `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
+- `docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md`
+- `docs/phases/phase_9_75/phase_9_75_staff_daily_companion_plan.md`
+- `docs/phases/phase_9_8/phase_9_8_compliance_and_legal_plan.md`
+- `docs/phases/operations_el_podio/operations_el_podio_stub.md`
+- `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
+- `docs/phases/phase_10b/phase_10b_full_offline_sync_plan.md`
+- `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`
+- `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md`
 
 ## Notes
 

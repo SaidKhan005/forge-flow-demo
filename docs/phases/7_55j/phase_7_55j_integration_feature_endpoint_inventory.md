@@ -1,8 +1,8 @@
 # Phase 7.55j - Integration Feature + Endpoint Inventory
 
-Updated: 2026-04-12
+Updated: 2026-04-23
 Owner: Codex planning / tracker truth
-Status: Planned, not implemented
+Status: Complete - inventory, vendor checklist template, and gap report written
 
 ## Purpose
 
@@ -53,6 +53,8 @@ After that, the next risk is integration underuse: connecting to a vendor but on
 4. A fallback plan for missing vendor capabilities.
 5. A source ownership map for any contested fields.
 6. A list of connector-readiness blockers before Phase 8 / Phase 8R.
+7. A reusable vendor endpoint checklist template for Toast, 7shifts, and OpenTable.
+8. A final gap report summarizing what is ready, what remains app-derived, and what still needs vendor-doc validation.
 
 This inventory should follow the active `TargetCycle + WeeklyPlanSnapshot`
 planning rule:
@@ -342,13 +344,24 @@ still holds as seam guidance under the newer cycle/week architecture.
 
 ### 7.55j.3 - Vendor Endpoint Checklist Template
 
-Create a reusable checklist that can be filled in once the first POS, labor, and reservation vendors are selected.
+**Output**: `docs/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`
 
-The checklist should avoid fake endpoint names before a vendor is chosen. Use capability language first, then fill in official endpoint names later.
+Reusable per-vendor checklist for:
+
+- POS (`Toast`)
+- Labor (`7shifts`)
+- Reservation (`OpenTable`)
+
+The checklist uses capability language first, then leaves endpoint-name
+capture to the official vendor-doc pass. It records auth mode, sandbox
+status, rate limits, webhook semantics, and the capability-to-endpoint
+mapping needed for Phase 8 / 8R.
 
 ### 7.55j.4 - Gap Report
 
-End with a short "integration readiness gap report":
+**Output**: `docs/phases/7_55j/phase_7_55j_4_gap_report.md`
+
+Final "integration readiness gap report":
 
 - features fully supported by current canonical models
 - features needing schema/model additions
@@ -372,3 +385,6 @@ Important:
 - Phase 8 and Phase 8R can start with vendor-specific profiles instead of rediscovering app requirements
 - no feature depends on vendor DTOs reaching UI code
 - official-access-only guardrails are repeated in the connector checklist
+
+Phase 7.55j is now complete. Use `7.55j.3` and `7.55j.4` as the active
+authority docs when vendor-specific Phase 8 / 8R work begins.

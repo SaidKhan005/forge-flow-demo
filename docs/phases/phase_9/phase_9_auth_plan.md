@@ -1,8 +1,83 @@
 # Phase 9 Auth Plan
 
-Updated: 2026-04-02
+Updated: 2026-04-23
 Owner: Codex planning / tracker truth
 Purpose: define the final auth, role, permission, and persistent-session architecture for Forge & Flow and Barrio before Phase 9 implementation begins.
+
+Last review: 2026-04-23 - Backend stack pivoted from Firebase/Firestore to Firebase Auth + Supabase Postgres + Cloud Run. Firebase Auth retained as the identity layer (mature Flutter SDK, officially supported OIDC integration with Supabase). Supabase Postgres becomes the data layer for profiles, roles, permissions, and all application state. Phase 9.5 (El Podio Learning Identity) remains extracted at `docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md`.
+
+## Decisions Locked (2026-04-23 review)
+
+- **Backend stack: hybrid Firebase Auth + Supabase Postgres + Cloud Run.**
+  - Firebase Auth owns identity, email/password login, password reset, and
+    session persistence. Kept for its mature Flutter SDK and robust OAuth
+    provider list.
+  - Supabase Postgres owns the canonical data layer: profiles, roles,
+    permissions, restaurant settings, methodology corpus (via Apache AGE),
+    vector embeddings (via pgvector), analytics, audit trail, leaderboards.
+  - Integration: Supabase verifies Firebase-issued JWTs natively via OIDC
+    third-party auth (officially supported since 2025). No JWT translation
+    layer. Firebase JWT identity (`sub` / `uid`) plus minimal restaurant-
+    scoping claims map to Postgres RLS policies.
+  - Cloud Run hosts Phase 11a MCP server + Phase 11b agent runtime.
+  - Cloud Functions (or Supabase Edge Functions) host auth admin ops that
+    bypass user-scoped access via Supabase service role.
+
+- **Project structure for V1: one Firebase Auth project + one Supabase
+  project, both single-instance.** Both Forge & Flow and Barrio share the
+  same Firebase Auth project and the same Supabase Postgres project.
+  Simpler infra, unified auth, one billing account per vendor.
+  Local dev uses the Supabase local stack (Docker) and the Firebase Auth
+  emulator so dev work does not touch real data.
+
+- **Plan to migrate to environment-separated projects (dev / staging /
+  prod) when any of these triggers hits. This is a deferred complexity,
+  not an oversight:**
+  - A second engineer joins the codebase (lose ability to coordinate
+    "don't touch prod right now" manually)
+  - Second operator onboards as a paying customer (risk tolerance for
+    "oops" drops sharply when real customer data is in the project)
+  - Automated tests start writing to production Postgres or production
+    Firebase Auth (not just the local emulator stacks)
+  - Schema migrations get complex enough that rehearsing them on a
+    staging project is worth the ops overhead (likely triggered by
+    Phase 11a knowledge-graph schema evolution or large Vanessa SOP
+    ingestion restructures)
+
+  Migration path when triggered: stand up `forge-flow-staging`
+  alongside `forge-flow-prod` for both vendors, use `pg_dump` /
+  Supabase backup-restore for content seed, use Firebase Auth user
+  export / import for identity seed, update build flavors to env-aware
+  config files.
+
+- **Single Postgres instance implies same infra footprint for:**
+  - Phase 9 auth profile tables, roles, permissions
+  - Phase 9.5 El Podio leaderboard tables
+  - Phase 10a shared multi-device restaurant state tables
+  - Phase 11a methodology corpus + operator SOP tables (with Apache AGE
+    extension for graph traversal and pgvector for embeddings)
+  All four live in the same Supabase Postgres under separate tables and
+  schemas. Row-Level Security (RLS) policies enforce per-table +
+  per-operator access based on JWT claims.
+
+- **Admin backend path: mixed.** Cloud Functions (or Supabase Edge
+  Functions) for auth admin operations (user creation with roles,
+  custom claims, role management, admin-only ops that bypass
+  user-scoped RLS). Phase 11a MCP server + Phase 11b agent runtime live
+  on a dedicated backend (Cloud Run), not Cloud Functions. Reason:
+  Cloud Functions timeouts, cold starts, and statelessness constraints
+  do not fit MCP tool-serving or an agent reasoning loop. Phase 11a owns
+  the dedicated-backend decision and implementation.
+
+  - Phase 9 admin-ops scope (Cloud Functions or Edge Functions): user
+    provisioning via Firebase Admin SDK, role + permission management
+    in Postgres via Supabase service-role, audit-style admin writes.
+  - Phase 11a/b dedicated backend scope: MCP server, graph retrieval,
+    agent runtime, ingestion pipeline runners, all reading Postgres via
+    Supabase service-role where RLS must be bypassed.
+  - Both backends authenticate clients against the same Firebase Auth;
+    both read/write the same Supabase Postgres (with their respective
+    RLS policies or service-role bypass).
 
 ## Final Decisions Locked
 
@@ -11,7 +86,7 @@ These decisions are now the planning baseline.
 - Use one auth style across both products.
 - Use email/password login.
 - Use Firebase Auth as the credential and session authority.
-- Use Firestore as the canonical user, role, and permission store.
+- Use Supabase Postgres as the canonical user, role, and permission store.
 - Keep SQLite for local app data and cache only.
 - No guest mode.
 - No punch-pin auth.
@@ -94,9 +169,9 @@ Why:
 - the same backend account can be used by both app flavors
 - this gives a standard session lifecycle instead of inventing a local auth system
 
-### Firestore Is The Canonical Profile / Role / Permission Store
+### Supabase Postgres Is The Canonical Profile / Role / Permission Store
 
-Use Firestore for:
+Use Supabase Postgres for:
 
 - restaurant records
 - restaurant user profiles
@@ -111,6 +186,8 @@ Why:
 - roles and permissions are shared application state, not device-local state
 - admins need to govern users centrally
 - a real multi-user leaderboard cannot live only in local `SharedPreferences`
+- Postgres RLS + the Firebase JWT integration give per-operator isolation
+  enforced at the database layer, consistent across every query path
 
 ### SQLite Stays Local And Operational
 
@@ -128,23 +205,34 @@ Do not use SQLite as the source of truth for:
 - permission assignments
 - restaurant user identity
 
-## Firebase Guardrails
+## Auth + RLS Guardrails
 
 These guardrails should be explicit in the plan.
 
-- Use email/password auth, not username aliases layered on top of email.
-- Enable standard password reset flow.
+- Use email/password auth (Firebase Auth), not username aliases layered on top of email.
+- Enable standard Firebase Auth password reset flow.
 - Keep the user signed in until explicit logout.
-- Keep Firebase custom claims minimal.
-- Do not try to store the full permission catalog in custom claims.
-- Treat Firestore as the canonical role/permission source.
-- Use Security Rules to protect backend data instead of trusting the client.
-- Test Security Rules in the Firebase emulator before production rollout.
+- Keep Firebase custom claims minimal (`restaurant_id` for tenant scoping, plus
+  only the coarse role / scope facts Supabase RLS actually needs; never the
+  full permission catalog).
+- Treat Supabase Postgres as the canonical role/permission source.
+- Use Postgres Row-Level Security (RLS) policies on every table to protect
+  backend data instead of trusting the client.
+- Configure Supabase's third-party auth integration with the Firebase
+  project so Supabase validates Firebase-issued JWTs natively (no token
+  translation layer).
+- Test RLS policies against the local Supabase stack before production
+  rollout. Include cross-operator access attempts as integration tests.
+- Assign `role: 'authenticated'` as a custom claim on all Firebase users
+  so Supabase's RLS policies can scope to the authenticated role.
 
 Important platform note:
 
-- Custom claims are useful for coarse access facts, but they are not the right place for a large, changing permission matrix.
+- Custom claims are useful for coarse access facts (`restaurant_id`, role
+  name, tenant id), but they are not the right place for a large, changing
+  permission matrix.
 - Claims are server-managed and token-refresh-driven, which makes them a bad fit for highly detailed per-screen permission state.
+- The detailed permission matrix lives in Postgres tables; RLS policies reference JWT claims for scoping, then the app resolves fine-grained per-surface permissions from the Postgres role/permission tables.
 
 ## Session Model
 
@@ -264,7 +352,7 @@ Rules:
 - permission keys are app-defined engineering artifacts
 - roles may include any existing permission keys
 - admins may edit which permission keys a role has
-- admins may not invent new permission key names in Firestore
+- admins may not invent new permission key names in Postgres
 
 ### 6. ExternalIdentityLink
 
@@ -287,23 +375,35 @@ Important:
 - later `TargetCycle` early unlock / replace actions should be permissioned
   through this same auth/role model as admin-only controls
 
-## Firestore Storage Model
+## Postgres Schema Model
 
-Recommended structure:
+Recommended schema structure (Supabase Postgres):
 
-- `restaurants/{restaurantId}`
-- `restaurants/{restaurantId}/users/{uid}`
-- `restaurants/{restaurantId}/roles/{roleId}`
+- `public.restaurants` (`restaurant_id` PK, `display_name`, `status`, `created_at`)
+- `public.restaurant_users` (`uid` PK from Firebase, `restaurant_id` FK, profile columns)
+- `public.roles` (`role_id` PK, `restaurant_id` FK, `display_name`, `is_seeded`, `is_editable`)
+- `public.role_permissions` (join table: `role_id`, `permission_key`)
 
-Optional later collections:
+Optional later tables:
 
-- `restaurants/{restaurantId}/learning_progress/{uid}`
-- `restaurants/{restaurantId}/podio_learning/{uid}`
+- `public.learning_progress` (`uid`, `restaurant_id`, mastery/completion state)
+- `public.podio_learning` (`uid`, `restaurant_id`, points/streaks)
+
+RLS policies (applied to every table):
+
+- `SELECT` / `UPDATE` / `DELETE` restricted to rows where `restaurant_id`
+  matches the authenticated user's restaurant claim (resolved from
+  Firebase JWT via the Supabase third-party auth integration)
+- Admin-only tables (seeded role edits, user deactivation) require the
+  authenticated user to have the appropriate role claim, resolved from
+  the `restaurant_users` row keyed by `auth.uid()`
 
 The important rule is:
 
-- backend identity lives on `uid`
-- restaurant-specific profile and role state live under the restaurant record
+- backend identity lives on the Firebase `uid`, also used as the
+  `auth.uid()` value Supabase sees via the JWT integration
+- restaurant-specific profile and role state live on rows keyed by
+  `restaurant_id`, enforced through RLS policies on every table
 
 ## Role And Permission Model
 
@@ -406,15 +506,18 @@ Flow:
 
 ### Important Backend Requirement
 
-Firebase client apps should not directly create other users as an admin action.
+Firebase client apps should not directly create other users as an admin action, and Supabase client SDKs should not hold the service-role key.
 
 If admins create users inside the app, the project needs a trusted server-side path such as:
 
-- Cloud Functions
-- Firebase Admin SDK
-- or another controlled backend admin endpoint
+- Cloud Functions (with Firebase Admin SDK for user creation; Supabase service-role key for inserting the matching `restaurant_users` row)
+- Supabase Edge Functions (Deno-based; Firebase Admin SDK via npm package; Supabase service-role key)
+- or another controlled backend admin endpoint (Cloud Run microservice, etc.)
 
-This is a hard Phase 9 requirement.
+This is a hard Phase 9 requirement. Admin-op handlers must authenticate
+the calling admin (verify their Firebase JWT + check their role in
+Postgres) before performing any privileged action with the Firebase
+Admin SDK or Supabase service-role.
 
 ### Password Reset
 
@@ -531,86 +634,74 @@ This means:
 
 ## El Podio Split
 
-El Podio should be treated as two different systems.
+El Podio is split into two different systems. The full plan lives in its
+own doc:
 
-### Phase 9.5 - Learning El Podio
+- [phase_9_5_el_podio_learning_identity_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md)
 
-Scope:
+Summary:
 
-- real authenticated `userId`
-- user-scoped completion points
-- user-scoped mastery
-- user-scoped streaks
-- learning leaderboard identity
+- **Phase 9.5 - Learning El Podio** owns real authenticated `userId`,
+  user-scoped points / mastery / streaks, and shared-backend learning
+  leaderboard. Deliberately split from Phase 9 so core auth ships without
+  a parallel learning-identity rewrite.
+- **Later - Operations El Podio** owns total sales / PPA / CPLH ranking;
+  depends on Phase 8 vendor attribution and is explicitly out of the
+  initial auth implementation.
 
-Important:
-
-- if El Podio is truly a restaurant-wide multi-user leaderboard, the source of truth must be shared backend data, not only local `SharedPreferences`
-
-### Later - Operations El Podio
-
-Depends on:
-
-- Phase 8 vendor data
-- external identity links
-- valid employee/shift/sales attribution rules
-
-Examples:
-
-- total sales ranking
-- PPA ranking
-- CPLH ranking
-
-Do not fold this into the initial auth implementation.
+Do not fold Phase 9.5 or Operations El Podio into Phase 9 prompts.
 
 ## Implementation Research Guardrails
 
 The plan should follow the platform reality:
 
 - Firebase Auth is a strong fit for email/password, reset, and persisted mobile auth sessions.
-- Firebase Security Rules should be used to protect backend data instead of trusting clients.
-- Firestore rules should be tested in the emulator before rollout.
-- Firebase Admin SDK or trusted server-side code is required for safe admin-created user flows.
-- Keep custom claims minimal and avoid turning them into the main permission catalog.
+- Postgres Row-Level Security policies should be used to protect backend data instead of trusting clients.
+- RLS policies should be tested against the local Supabase stack before rollout, including explicit cross-operator access attempts as integration tests.
+- Firebase Admin SDK (via Cloud Functions or Supabase Edge Functions) is required for safe admin-created user flows.
+- Supabase's third-party auth integration with Firebase is officially
+  supported since 2025 (OIDC-based JWT validation); Supabase verifies
+  Firebase JWTs natively without any translation layer.
+- Keep custom claims minimal (role name, optional tenant id) and avoid
+  turning them into the main permission catalog; detailed permissions
+  live in Postgres role/permission tables.
 
-## Firebase Setup Checkpoints
+## Firebase Auth + Supabase Setup Checkpoints
 
 Phase 9 has a few places where work cannot responsibly continue without either:
 
-- user-provided Firebase console setup
+- user-provided Firebase console setup for the identity layer
+- user-provided Supabase project setup for the data layer
 - user confirmation of backend choices
 - or macOS-side Apple configuration later
 
 Those checkpoints should be explicit in the plan.
 
-### Firebase Project Shape
+### Project Shape
 
 Recommended setup:
 
-- one Firebase project for both apps
-- same backend identity system
-- same Firestore data store
-- separate registered app entries per native package/bundle id
+- one Firebase project for both apps (identity only — Firebase Auth enabled, Firestore NOT used)
+- one Supabase project for both apps (data layer for profiles, roles, permissions, and all application state)
+- same backend identity system via Firebase Auth; same Postgres data via Supabase
+- separate registered app entries per native package/bundle id on the Firebase side
 
 Why:
 
 - same users need to work across Forge & Flow and Barrio
 - same restaurant-scoped roles and permissions need to govern both products
 - Forge & Flow inside Barrio must resolve against the same backend identity
+- Firebase Auth for Flutter SDK polish; Supabase Postgres for analytics, graph (Phase 11a), and vectors (Phase 11a)
 
 ### Setup Prompt Guidance
 
-At the relevant implementation prompt, Codex/Claude should stop and guide the user through exactly what must be configured in Firebase and where the files belong in the repo.
+At the relevant implementation prompt, Codex/Claude should stop and guide the user through exactly what must be configured in Firebase + Supabase and where the files belong in the repo.
 
 That guidance should cover:
 
+Firebase side:
 - creating or selecting the Firebase project
 - enabling Email/Password auth
-- creating the Firestore database
-- deciding the trusted admin backend path:
-  - Cloud Functions + Firebase Admin SDK
-  - or another backend endpoint
-- confirming any billing requirement if Cloud Functions are chosen
 - registering Android app ids:
   - `com.forgeflow.app`
   - `com.forgeflow.barrio`
@@ -622,25 +713,46 @@ That guidance should cover:
 - planning iOS config-file wiring per scheme/configuration
 - setting password reset email templates if desired
 
-### Expected Firebase File Placement
+Supabase side:
+- creating the Supabase project in the desired region (Canadian for NL-based data residency when available)
+- enabling the `pgvector` and Apache `AGE` extensions via the SQL editor (Phase 11a needs these; enable now to avoid re-migration)
+- configuring third-party auth integration with the Firebase project (OIDC Issuer Discovery; officially supported pattern)
+- defining the minimal Firebase JWT claim contract Supabase RLS depends on
+  (`restaurant_id`, the authenticated-role shape Supabase expects, and any
+  optional coarse role/scope claim)
+- deciding the trusted admin backend path:
+  - Cloud Functions + Firebase Admin SDK + Supabase service-role
+  - Supabase Edge Functions + Firebase Admin SDK (via npm)
+  - Cloud Run microservice (if more general backend needed)
+- confirming billing requirement (Firebase Blaze if Cloud Functions, Supabase Pro if graduating past the free tier)
+- initial schema migration applied (`restaurants`, `restaurant_users`,
+  `roles`, `role_permissions` with RLS policies)
 
-Android:
+### Expected Config File Placement
+
+Android (Firebase Auth):
 
 - `android/app/src/forgeflow/google-services.json`
 - `android/app/src/barrio/google-services.json`
 
-iOS:
+iOS (Firebase Auth):
 
 - flavor-specific `GoogleService-Info.plist` handling will be needed for the two iOS bundle ids
 - because iOS already uses separate schemes/configurations, this should be handled in the iOS-specific auth prompt
 - if the user is on Windows during implementation, the plan should call out any macOS/Xcode-only verification honestly
 
+Supabase (both flavors):
+
+- Supabase URL and anon key committed via build-time flavor config (environment files), never hardcoded in Dart source
+- service-role key never committed to client or repo; used only from Cloud Functions / Edge Functions / Cloud Run
+
 ### Prompt Behavior Rule
 
-At the Firebase setup prompt, Codex/Claude should:
+At the setup prompt, Codex/Claude should:
 
-- tell the user exactly what to create in Firebase
-- tell the user exactly where the resulting files go in this repo
+- tell the user exactly what to create in Firebase (Auth project + app registrations)
+- tell the user exactly what to create in Supabase (project + extensions + third-party auth integration with Firebase)
+- tell the user exactly where the resulting config files go in this repo
 - tell the user what backend requirement exists for admin-created users
 - stop and wait for that setup to exist before pretending the auth work is complete
 
@@ -656,37 +768,58 @@ Umbrella objective:
 
 - one shared auth, role, and permission system across Forge & Flow and Barrio
 
-### Prompt 9a - Firebase Foundation + Auth Backend Shape
+### Prompt 9a - Identity + Data Platform Foundation
 
 Purpose:
 
-- lock the Firebase project shape and backend responsibilities before runtime auth code is written
+- lock the Firebase Auth project shape, Supabase project shape, and backend responsibilities before runtime auth code is written
 
-#### Prompt 9a.1 - Firebase Project Setup + Native App Registration
+#### Prompt 9a.1 - Firebase Auth Project Setup + Native App Registration
 
 Goal:
 
-- guide the user through Firebase setup and wire the project/app registrations into the repo
+- guide the user through Firebase Auth setup and wire the project/app registrations into the repo
 
 In scope:
 
-- one Firebase project decision
+- one Firebase Auth project decision (identity only; no Firestore)
 - Email/Password auth enablement
-- Firestore creation
 - Android app registration for:
   - `com.forgeflow.app`
   - `com.forgeflow.barrio`
 - iOS app registration for:
   - `com.forgeflow.app`
   - `com.forgeflow.barrio`
-- Android config file placement
-- iOS config-file wiring plan
+- Android config file placement (`google-services.json` per flavor)
+- iOS config-file wiring plan (`GoogleService-Info.plist` per bundle id)
 
 Important:
 
 - this is a prompt where Codex/Claude should explicitly ask the user for the Firebase setup status and guide them on exactly what to configure and where
 
-#### Prompt 9a.2 - Trusted Admin Backend Decision
+#### Prompt 9a.2 - Supabase Project Setup + Third-Party Auth Integration
+
+Goal:
+
+- guide the user through Supabase project setup and wire the Firebase JWT integration so RLS can scope by authenticated identity
+
+In scope:
+
+- Supabase project creation (region choice: Canadian for NL data residency when available)
+- Enable `pgvector` and Apache `AGE` extensions (Phase 11a needs these)
+- Configure third-party auth integration with the Firebase Auth project (OIDC Issuer Discovery URL)
+- Define the minimal Firebase JWT claim contract Supabase RLS depends on
+  (`restaurant_id`, the authenticated-role shape Supabase expects, and any
+  optional coarse role / scope claim)
+- Apply initial schema migration: `restaurants`, `restaurant_users`, `roles`, `role_permissions` tables
+- Apply baseline RLS policies on those tables (per-operator scoping based on Firebase JWT claims)
+- Commit Supabase URL + anon key into flavor-specific build config (never the service-role key)
+
+Important:
+
+- this prompt depends on `Prompt 9a.1` completing first (Firebase Auth project must exist before Supabase can trust its JWTs)
+
+#### Prompt 9a.3 - Trusted Admin Backend Decision
 
 Goal:
 
@@ -694,9 +827,12 @@ Goal:
 
 In scope:
 
-- choose Cloud Functions/Admin SDK or another trusted backend path
+- choose the admin backend path (Cloud Functions + Admin SDK, Supabase Edge Functions, or Cloud Run microservice)
 - document any billing/backend requirement
-- define which admin actions require server-side execution
+- define which admin actions require server-side execution (user creation requires Firebase Admin SDK; role + permission writes require Supabase service-role)
+- define how admin-created users receive and refresh the required Firebase
+  custom claims used by Supabase RLS
+- define how admin-op handlers authenticate the calling admin before any privileged action
 
 ### Prompt 9b - Identity Model + Role Model + Permission Catalog
 
@@ -743,18 +879,20 @@ Purpose:
 
 - add the real login lifecycle to both products
 
-#### Prompt 9c.1 - Firebase Auth Wiring + Session Bootstrap
+#### Prompt 9c.1 - Firebase Auth + Supabase Client Wiring + Session Bootstrap
 
 Goal:
 
-- wire Firebase Auth into app bootstrap and keep users signed in until logout
+- wire Firebase Auth into app bootstrap, configure the Supabase client to validate Firebase JWTs, and keep users signed in until logout
 
 In scope:
 
-- Firebase SDK wiring
-- startup auth resolution
-- persistent session until logout
+- Firebase Auth SDK wiring (Flutter `firebase_auth` package)
+- Supabase Flutter SDK wiring (`supabase_flutter` package) with Firebase JWT injection so RLS applies per request
+- startup auth resolution (Firebase first, then Supabase session with Firebase JWT)
+- persistent session until logout (both Firebase and Supabase sessions)
 - separate local persisted sessions per installed app
+- token refresh handoff: when Firebase Auth refreshes the JWT, Supabase client uses the refreshed token
 
 #### Prompt 9c.2 - Login / Logout / Password Reset UX
 
@@ -791,7 +929,7 @@ In scope:
 
 Important:
 
-- this prompt depends on the trusted admin backend path chosen in `9a.2`
+- this prompt depends on the trusted admin backend path chosen in `9a.3`
 
 #### Prompt 9d.2 - In-App Admin Console
 
@@ -844,42 +982,15 @@ Important:
 - Barrio uses the same shared user and permission model
 - Barrio admin remains the superset role
 
-### Prompt 9.5 - El Podio Learning Identity + Shared Data Model
+### Prompt 9.5 - El Podio Learning Identity
 
-Purpose:
+Moved to its own plan:
 
-- separate learning leaderboard identity work from the core auth rollout
+- [phase_9_5_el_podio_learning_identity_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md)
 
-#### Prompt 9.5a - User-Scoped Learning Persistence
-
-Goal:
-
-- replace in-memory learning completion/streak state with real user-scoped data
-
-In scope:
-
-- mastery persistence
-- completion persistence
-- streak ownership by `uid`
-
-#### Prompt 9.5b - Shared El Podio Learning Leaderboard
-
-Goal:
-
-- move El Podio from demo users to real authenticated learning leaderboard data
-
-In scope:
-
-- learning points model
-- ranking identity
-- shared backend learning leaderboard state
-
-Out of scope:
-
-- live sales ranking
-- live PPA ranking
-- live CPLH ranking
-- POS/labor-attributed leaderboard logic
+That doc contains prompts `9.5a` (User-Scoped Learning Persistence) and
+`9.5b` (Shared El Podio Learning Leaderboard). Phase 9 execution does not
+run those prompts; Phase 9.5 does.
 
 ## Non-Negotiable Rules
 

@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../data/active_target_profile_notifier.dart';
 import '../data/demand_forecast_context_notifier.dart';
 import '../data/legacy_fixture_data.dart';
+import '../data/restaurant_timing_config_read_service.dart';
 import '../data/schedule_distribution_weights_notifier.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../data/schedule_plan_read_service.dart';
@@ -14,6 +15,7 @@ import '../domain/models/active_target_profile.dart';
 import '../domain/models/schedule_distribution_weights.dart';
 import '../domain/models/schedule_forecast_demand.dart';
 import '../domain/models/schedule_plan.dart';
+import '../domain/models/service_period_definition.dart';
 import '../services/labor_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';
@@ -78,6 +80,13 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// 7.55q.2: load state of the locked plan. Idle in live mode.
   ScheduleLockedPlanLoadState _lockedPlanLoadState =
       ScheduleLockedPlanLoadState.idle;
+
+  /// 7.55r item 1: active service-period definitions used for daypart
+  /// subrow ordering and label lookup. Defaults to `demoDefinitions`;
+  /// [loadLockedPlan] replaces this with the persisted
+  /// `RestaurantTimingConfig.servicePeriodDefinitions` when available.
+  List<ServicePeriodDefinition> _servicePeriodDefinitions =
+      ServicePeriodDefinitionResolver.demoDefinitions;
 
   /// Test/preview constructor — builds the plan via
   /// [SchedulePlanReadService.resolveFromInputs] (the live path).
@@ -172,6 +181,10 @@ class ScheduleForecastNotifier extends ChangeNotifier {
     if (_mode != _ScheduleAuthorityMode.locked) return;
     _lockedPlanLoadState = ScheduleLockedPlanLoadState.loading;
     notifyListeners();
+    // 7.55r item 1: load persisted service-period definitions alongside
+    // the plan. Honest fallback — when no timing config is persisted,
+    // stays on [demoDefinitions].
+    await _loadServicePeriodDefinitions();
     try {
       final plan = await SchedulePlanReadService.instance
           .getExistingCurrentLockedWeeklyPlan();
@@ -184,6 +197,22 @@ class ScheduleForecastNotifier extends ChangeNotifier {
       _lockedPlanLoadState = ScheduleLockedPlanLoadState.unavailable;
     }
     notifyListeners();
+  }
+
+  /// 7.55r item 1: loads the active restaurant's persisted
+  /// service-period definitions. Falls back silently to `demoDefinitions`
+  /// when no timing config is persisted or when the load fails.
+  Future<void> _loadServicePeriodDefinitions() async {
+    try {
+      final config = await RestaurantTimingConfigReadService.instance
+          .getActiveTimingConfig();
+      final defs = config?.servicePeriodDefinitions;
+      if (defs != null && defs.isNotEmpty) {
+        _servicePeriodDefinitions = defs;
+      }
+    } catch (_) {
+      // Honest fallback — leave demoDefinitions in place.
+    }
   }
 
   /// 7.55q.2: true when this notifier is in locked-authority
@@ -357,7 +386,8 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   ///
   /// When [_distributionWeights] has day-specific daypart weights for a given
   /// day, those weights drive the subrow split. Otherwise falls back to
-  /// [WeekDayOrder.daypartsFor] + [_daypartCoverWeight].
+  /// [ServicePeriodDefinitionResolver.idsForDayLabel] over
+  /// [_servicePeriodDefinitions] + [_daypartCoverWeight].
   ///
   /// 7.55q.6: per-day and per-daypart planned labor packages are gone
   /// (planned labor package killed). Day rows and daypart subrows
@@ -390,7 +420,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
       final subrows = List.generate(ids.length, (i) {
         return ScheduleDaySubrow(
           label: ServicePeriodDefinitionResolver.labelForId(
-              ServicePeriodDefinitionResolver.demoDefinitions, ids[i]),
+              _servicePeriodDefinitions, ids[i]),
           forecastCovers: subCovers[i],
           forecastSales: subSales[i],
           requiredFohHours: subFoh[i],
@@ -418,7 +448,7 @@ class ScheduleForecastNotifier extends ChangeNotifier {
   /// Returns entries in canonical service-period order, then any unknown
   /// IDs sorted alphabetically.
   List<(String, int)> _resolveDaypartWeights(String day) {
-    const defs = ServicePeriodDefinitionResolver.demoDefinitions;
+    final defs = _servicePeriodDefinitions;
     if (_distributionWeights != null && _distributionWeights!.isAvailable) {
       final daypartMap = _distributionWeights!.daypartWeightsFor(day);
       if (daypartMap.isNotEmpty && daypartMap.values.any((v) => v > 0)) {

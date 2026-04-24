@@ -56,6 +56,7 @@ import '../domain/repositories/restaurant_scope_repository.dart';
 import '../domain/repositories/shift_record_repository.dart';
 import '../domain/repositories/target_cycle_repository.dart';
 import '../domain/repositories/target_profile_repository.dart';
+import '../domain/services/utc_metadata_timestamp.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
@@ -215,7 +216,7 @@ class LearnBenchmarkContextService {
           selectedShiftCount: analytics.selectedShiftCount,
           rangeQualityLabel: analytics.rangeQualityLabel,
           rangeQualityMessage: analytics.rangeQualityMessage,
-          createdAt: DateTime.now().toUtc().toIso8601String(),
+          createdAt: nowIsoUtc(),
         );
         if (testPersistSummary != null) {
           await testPersistSummary!(summary);

@@ -11,10 +11,20 @@
 /// aggregates reads from the CURRENT shared Benchmark target object,
 /// per `7.55q.1` Rule 3. Closed children's contribution stays on
 /// their locked `shift.theoreticalLaborPct` (Rule 4 exception).
+///
+/// 7.55r item 1: [build] now also accepts an optional
+/// [servicePeriodDefinitions] list so the day/daypart sort order can
+/// come from the restaurant's persisted `RestaurantTimingConfig`
+/// instead of the fixture-era `WeekDayOrder.daypartsFor(...)` helper.
+/// Defaults to [ServicePeriodDefinitionResolver.demoDefinitions] for
+/// backward compatibility with pure-data tests that don't have a
+/// persisted config.
 library;
 
 import '../data/legacy_fixture_data.dart';
 import '../domain/models/active_target_profile.dart';
+import '../domain/models/service_period_definition.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../models/shift_record.dart';
 import '../models/variance_week_projection_row.dart';
 
@@ -30,17 +40,29 @@ class VarianceWeekProjectionReadService {
   /// their own `shift.theoreticalLaborPct` (Rule 4 exception). When
   /// [currentTargetProfile] is null the previous per-shift behaviour is
   /// preserved (backward compatibility for pure-data tests).
+  ///
+  /// 7.55r item 1: [servicePeriodDefinitions] overrides the fixture-era
+  /// demo definitions used for intra-day daypart sort ordering. When
+  /// null (default), falls back to
+  /// [ServicePeriodDefinitionResolver.demoDefinitions] so existing tests
+  /// and code paths continue to work. Widget callers should load the
+  /// active restaurant's timing config at build time and inject it.
   VarianceWeekProjection build(
     List<ShiftRecord> shifts, {
     ActiveTargetProfile? currentTargetProfile,
+    List<ServicePeriodDefinition>? servicePeriodDefinitions,
   }) {
+    // 7.55r item 1: prefer persisted config; fall back to demo.
+    final defs = servicePeriodDefinitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+
     // Build a daypart → most-recent closed lever index for carry-forward.
     // Key: daypart string. Value: last closed lever label seen so far.
     final lastClosedLever = <String, String>{};
     final dayRows = <ProjectionDayRow>[];
 
     for (final day in WeekDayOrder.dayLabels) {
-      final order = WeekDayOrder.daypartsFor(day);
+      final order = ServicePeriodDefinitionResolver.idsForDayLabel(defs, day);
       final dayShifts = shifts.where((s) => s.dayLabel == day).toList()
         ..sort((a, b) =>
             order.indexOf(a.daypart).compareTo(order.indexOf(b.daypart)));

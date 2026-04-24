@@ -1722,8 +1722,14 @@ class ScheduleDay {
 
   /// Per-daypart cover breakdown for this day, proportional to BaselineData
   /// targetCovers for each daypart. Drives expandable rows in ScheduleBuilder.
+  ///
+  /// 7.55r item 2: inline resolver call (demo definitions for this
+  /// fixture path, which is retired from the visible Schedule surface
+  /// per compatibility_bridge_scope.md). No longer goes through the
+  /// retired `WeekDayOrder.daypartsFor(...)` helper.
   List<DaypartForecast> get daypartBreakdown {
-    final ids    = WeekDayOrder.daypartsFor(day);
+    final ids    = ServicePeriodDefinitionResolver.idsForDayLabel(
+        ServicePeriodDefinitionResolver.demoDefinitions, day);
     final ranges = BaselineData.daypartRanges
         .where((r) => ids.contains(r.id))
         .toList();
@@ -1760,27 +1766,18 @@ class ScheduleForecastDefaults {
 }
 
 // ─── Day-order constants for Full Week section ────────────────────────────────
-// Thin bridge: delegates to CanonicalDayOrder and
-// ServicePeriodDefinitionResolver with demo definitions.
-// Retained for callers not yet wired to the persisted timing config.
+// Thin bridge: delegates to CanonicalDayOrder for day-label iteration.
+// The per-day daypart-ID lookup helper was retired in Phase 7.55r item 2;
+// callers now read `RestaurantTimingConfig.servicePeriodDefinitions`
+// (via `RestaurantTimingConfigReadService`) and call
+// `ServicePeriodDefinitionResolver.idsForDayLabel(defs, dayLabel)` directly,
+// with `demoDefinitions` as honest fallback when no persisted config exists.
 
 class WeekDayOrder {
   /// Canonical Mon–Sun day-label list.
   ///
   /// Thin bridge: delegates to [CanonicalDayOrder.labels].
   static const List<String> dayLabels = CanonicalDayOrder.labels;
-
-  /// Returns service-period IDs applicable to [dayLabel] in canonical order.
-  ///
-  /// Thin bridge: delegates to [ServicePeriodDefinitionResolver] with
-  /// demo definitions. Will be retired when callers wire to the
-  /// persisted timing config.
-  static List<String> daypartsFor(String dayLabel) {
-    return ServicePeriodDefinitionResolver.idsForDayLabel(
-      ServicePeriodDefinitionResolver.demoDefinitions,
-      dayLabel,
-    );
-  }
 }
 
 

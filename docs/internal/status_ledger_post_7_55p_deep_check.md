@@ -1,6 +1,6 @@
 # Status Ledger - Post-7.55p Deep Check
 
-Updated: 2026-04-15
+Updated: 2026-04-24
 Owner: Codex
 Purpose: durable status reference for the user's long-running "did we actually do this?" checklist.
 
@@ -71,7 +71,7 @@ in `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_
 ### Current Architecture Read
 
 The old transition wording is no longer the right frame here. `7.55q` is
-landed through `7.55q.9`, so the active interpretation is now simply:
+landed through `7.55q.10`, so the active interpretation is now simply:
 
 - one locked weekly plan object decides the in-force week
 - one shared benchmark target object owns non-volume target standards
@@ -215,10 +215,15 @@ cleanup/audit work that goes beyond the already-landed visual and layout pass.
 
 ### Learn Migration Clarifier
 
-Learn is still partially migrated:
+Active tracker truth no longer treats the named Learn surfaces as an open
+architecture-alignment lane:
 
-- Repeatable Wins is evidence-backed
-- Benchmark Set / Recurring Leak / Coach Next Week still use compatibility seams
+- Repeatable Wins evidence-backed cleanup is landed
+- the current Learn shell/teaching surface is no longer queued as a q-lane
+  migration item
+- older archive notes about `Benchmark Set` / `Recurring Leak` /
+  `Coach Next Week` compatibility seams remain historical context, but the
+  active trackers no longer treat them as an open ownerless blocker
 
 ### History Clarifier
 
@@ -263,18 +268,24 @@ most complete inventory of these seams.
 ## J. Currently Unowned Gaps
 
 These items are still open, but they do not currently have an explicit owner
-in the active queued lanes (`7.55q`, `7.55o`, `7.55j.3`, `7.55j.4`, `10.5`,
-Phase 8, or Phase 9). Keep them visible here until they are assigned.
+in the active queued lanes (`7.55o`, `7.55j.3`, `7.55j.4`, `7.55r`, `10.5`,
+`10a`, Phase 8, or Phase 9). Keep them visible here until they are assigned.
+
+No longer listed here because they now have an explicit owner or closure:
+
+- dev-only audit-panel boundary cleanup + drift detection -> `7.55r`
+- audit-panel cycle/week provenance columns -> `7.55r`
+- persisted timing / service-period wiring closeout -> `7.55r`
+- UTC metadata normalization sweep -> `7.55r`
+- non-locked WTD business-date membership -> `7.55r` audit delivered; no
+  production patch targets found
+- editable restaurant timing + service-period settings write path -> `10a`
+- named Learn-surface migration debt is no longer treated as an open
+  ownerless blocker by the active trackers
 
 | Gap | Current status | Representative evidence |
 |---|---|---|
 | Full timezone conversion for business-date / timing boundaries | Open and unowned; read-only Timing Authority is visible in Settings, but editable timezone authority is still deferred | `phase_7_55n_10_boundary_invalidation_refresh.md`, `phase_7_55n_12_vendor_live_data_capability_audit.md`, `phase_7_55n_13_proof_blocker_cleanup.md`, `shift_boundary_resolver.dart`, `settings_screen.dart` |
-| Non-locked WTD path still uses `weekId`-based membership | Open and unowned | `shift_service.dart` top-of-file note; `phase_7_55n_4_week_start_wiring.md`; `phase_7_55n_5_service_period_close_vs_shift_finalization.md` |
-| Learn partial-migration cleanup for `Benchmark Set` / `Recurring Leak` / `Coach Next Week` | Open and unowned | this ledger Sections F and G; `phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md` |
-| Dev-only audit panel still reads repositories directly | Open and unowned | `lib/widgets/data_alignment_audit_panel.dart` still reads `SqliteRestaurantScopeRepository` and `SqliteTargetProfileRepository` directly; wrap with a thin read service when assigned |
-| Persisted timing / service-period wiring closeout | Partial and unowned | `settings_screen.dart` now shows a read-only Timing Authority summary, but editable timing controls are still missing and some callers still rely on `ServicePeriodDefinitionResolver.demoDefinitions` |
-| UTC metadata timestamp normalization sweep | Partial and unowned | `UtcMetadataTimestamp.nowIsoUtc()` is adopted in some services; raw `DateTime.now().toUtc().toIso8601String()` still appears in `WageStandardContextService`, `ShiftDashboardNotifier`, `AppDataStatusService`, and related DAO/service paths |
-| Audit panel cycle/week provenance columns | Open and unowned | `phase_7_55j_1_codebase_feature_inventory.md` notes the audit surface still does not expose cycle/week columns |
 | Historical actual fallback cleanup for wages/labor dollars when stored values are absent | Open and unowned | `phase_7_55p_5f1_wage_mix_setup_ux_and_authority_verification.md`; `ShiftRecord` / `WeekRecord` fallback debt also noted in Section H |
 | Wage-mix role templates / quick-setup presets | Open and unowned | `phase_7_55p_5f1_wage_mix_setup_ux_and_authority_verification.md` |
 | One unified plain-English derivations / benchmark / recommendation explainer | Open and unowned | this ledger Section I |
@@ -284,7 +295,7 @@ Phase 8, or Phase 9). Keep them visible here until they are assigned.
 
 Revisit this ledger:
 
-1. before or during the resumed `7.55o.*` naming/polish/settings lane after `7.55q.1` through `7.55q.9`
+1. before or during the resumed `7.55o.*` naming/polish/settings lane after `7.55q.1` through `7.55q.10`
 2. before `7.55j.4` / the pre-Phase-8 readiness answer
 3. when deciding whether to create a plain-English derivations explainer
 4. when assigning owners to the unowned gaps in Section J

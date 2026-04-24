@@ -1,25 +1,25 @@
 import 'package:flutter/material.dart';
-import '../data/demand_forecast_context_service.dart';
 import '../data/legacy_fixture_data.dart';
 import '../data/mock_integration_replay_seed.dart';
-import '../data/schedule_plan_read_service.dart';
-import '../data/shift_service.dart';
-import '../data/wage_standard_context_service.dart';
-import '../domain/models/active_target_profile.dart';
-import '../domain/models/demand_forecast_context.dart';
-import '../domain/models/schedule_plan.dart';
-import '../domain/models/wage_standard_context.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
-import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
-import '../models/shift_dashboard_read_model.dart';
-import '../models/week_data.dart';
+import '../models/data_alignment_audit_snapshot.dart';
+import '../models/data_alignment_drift_check.dart';
+import '../services/data_alignment_audit_read_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 
-/// Expandable audit panel for the Settings screen.
+/// Expandable dev-only audit panel for the Settings screen.
 ///
-/// Loads all resolved values from every data layer on first expand
-/// and displays them side by side for architectural alignment verification.
+/// Phase 7.55r item 4 (scope expanded 2026-04-24):
+///   - Tier 1 (boundary hygiene): this widget no longer imports SQLite
+///     repositories directly; all diagnostic reads flow through
+///     [DataAlignmentAuditReadService].
+///   - Tier 2 (drift detection): a new DRIFT CHECKS section at the top
+///     renders green / red badges flagging cross-section value drift
+///     against q-lane conformance Rules 2 and 3 plus wage-authority
+///     consistency. Acts as a live regression detector for the q-lane
+///     contracts during refactoring work.
+///
+/// Not shown to real operators — developer Settings surface only.
 class DataAlignmentAuditPanel extends StatefulWidget {
   const DataAlignmentAuditPanel({super.key});
 
@@ -32,50 +32,17 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   bool _isExpanded = false;
   bool _isLoading = false;
 
-  // Loaded data
-  ActiveTargetProfile? _profile;
-  DemandForecastContext? _demandContext;
-  SchedulePlan? _plan;
-  ShiftDashboardReadModel? _shiftReadModel;
-  WeekData? _weekData;
-  WageStandardContext? _wageContext;
+  /// Complete diagnostic snapshot assembled by
+  /// [DataAlignmentAuditReadService].
+  DataAlignmentAuditSnapshot? _snapshot;
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
-      _profile = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-
-      // Load canonical demand context from repository
-      _demandContext =
-          await DemandForecastContextService.instance.getCurrentContext();
-
-      // Read the EXISTING locked weekly plan only. The audit panel is meant
-      // to reflect the same authority path as the production Schedule / Shift
-      // surfaces after 7.55q.2, not a looser "live resolved" fallback.
-      //
-      // If the current-week snapshot is absent, leave `_plan` null and let the
-      // panel render "Not resolved" honestly instead of auto-generating or
-      // live-resolving a competing current-week plan.
-      _plan = await SchedulePlanReadService.instance
-          .getExistingCurrentLockedWeeklyPlan();
-
-      _shiftReadModel = await ShiftService.instance.getShiftDashboard();
-
-      // Keep the audit panel read-only: only attempt the WTD alignment read
-      // when a locked current-week plan already exists. `getLiveWeekToDate()`
-      // legitimately bootstraps a current snapshot when missing, which is
-      // fine for production Variance but too loose for an "alignment audit"
-      // surface that is supposed to mirror strict authority paths.
-      _weekData = _plan != null
-          ? await ShiftService.instance.getLiveWeekToDate()
-          : null;
-      _wageContext =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      _snapshot =
+          await DataAlignmentAuditReadService.instance.loadSnapshot();
     } catch (_) {
-      // Gracefully handle missing data
+      _snapshot = null;
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -91,7 +58,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
           InkWell(
             onTap: () {
               setState(() => _isExpanded = !_isExpanded);
-              if (_isExpanded && _profile == null && !_isLoading) {
+              if (_isExpanded && _snapshot == null && !_isLoading) {
                 _load();
               }
             },
@@ -105,6 +72,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
                       style: AppTextStyles.mono12(color: AppColors.textPrimary),
                     ),
                   ),
+                  // Inline drift summary in the header when loaded.
+                  if (_snapshot != null) _headerDriftSummary(_snapshot!),
                   Icon(
                     _isExpanded ? Icons.expand_less : Icons.expand_more,
                     size: 18,
@@ -123,6 +92,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
                     style: AppTextStyles.mono11(color: AppColors.textMuted)),
               )
             else ...[
+              _buildDriftChecksSection(),
+              _sectionDivider(),
               _buildProfileSection(),
               _sectionDivider(),
               _buildDemandContextSection(),
@@ -146,10 +117,97 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
     );
   }
 
+  // ─── Drift summary (header) ───────────────────────────────────────────────
+
+  /// Compact drift badge shown in the panel header when loaded.
+  Widget _headerDriftSummary(DataAlignmentAuditSnapshot s) {
+    final drifted = s.driftedCount;
+    final aligned = s.alignedCount;
+    if (aligned == 0 && drifted == 0) {
+      return const SizedBox.shrink();
+    }
+    final color = drifted > 0 ? AppColors.negative : AppColors.positive;
+    final text = drifted > 0 ? '$drifted drifted' : 'all aligned';
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Text(text, style: AppTextStyles.mono10(color: color)),
+    );
+  }
+
   // ─── Sections ──────────────────────────────────────────────────────────────
 
+  Widget _buildDriftChecksSection() {
+    final checks = _snapshot?.driftChecks ?? const <DataAlignmentDriftCheck>[];
+    if (checks.isEmpty) {
+      return _emptySection(
+          'DRIFT CHECKS', 'No checks available yet (missing authority data)');
+    }
+    final drifted = _snapshot!.driftedCount;
+    final aligned = _snapshot!.alignedCount;
+    final title = drifted > 0
+        ? 'DRIFT CHECKS — $drifted drifted, $aligned aligned'
+        : 'DRIFT CHECKS — all $aligned aligned';
+    return _section(title, checks.map(_driftRow).toList());
+  }
+
+  Widget _driftRow(DataAlignmentDriftCheck c) {
+    final Color color;
+    final String icon;
+    switch (c.status) {
+      case DriftCheckStatus.aligned:
+        color = AppColors.positive;
+        icon = '✓';
+        break;
+      case DriftCheckStatus.drifted:
+        color = AppColors.negative;
+        icon = '⚠';
+        break;
+      case DriftCheckStatus.unavailable:
+        color = AppColors.textMuted;
+        icon = '—';
+        break;
+    }
+
+    final expected = c.expectedValue != null
+        ? c.expectedValue!.toStringAsFixed(2)
+        : '—';
+    final compared = c.comparedValue != null
+        ? c.comparedValue!.toStringAsFixed(2)
+        : '—';
+    final valueStr = '$expected / $compared';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 14,
+            child: Text(icon,
+                style: AppTextStyles.mono12(color: color)),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              c.label,
+              style: AppTextStyles.mono11(color: AppColors.textSecondary),
+            ),
+          ),
+          Text(
+            c.ruleReference,
+            style: AppTextStyles.mono8(color: AppColors.textMuted),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            valueStr,
+            style: AppTextStyles.mono12(color: color),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildProfileSection() {
-    final p = _profile;
+    final p = _snapshot?.profile;
     if (p == null) return _emptySection('ACTIVE TARGET PROFILE', 'Not loaded');
     return _section('ACTIVE TARGET PROFILE', [
       _row('CPLH', p.targetCPLH.toStringAsFixed(2)),
@@ -165,7 +223,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildDemandContextSection() {
-    final dc = _demandContext;
+    final dc = _snapshot?.demandContext;
     if (dc == null) {
       return _emptySection('DEMAND CONTEXT (ROLLING)', 'Not loaded');
     }
@@ -190,7 +248,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildScheduleSection() {
-    final p = _plan;
+    final p = _snapshot?.plan;
     if (p == null) return _emptySection('SCHEDULE FORECAST', 'Not resolved');
     const sourceLabel = 'LOCKED WEEKLY';
     return _section('SCHEDULE FORECAST ($sourceLabel)', [
@@ -201,8 +259,8 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildSchedulePlanSection() {
-    final p = _plan;
-    final profile = _profile;
+    final p = _snapshot?.plan;
+    final profile = _snapshot?.profile;
     if (p == null) return _emptySection('SCHEDULE PLAN', 'Not resolved');
     const sourceLabel = 'LOCKED WEEKLY';
     return _section('SCHEDULE PLAN ($sourceLabel)', [
@@ -228,7 +286,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildShiftSection() {
-    final s = _shiftReadModel;
+    final s = _snapshot?.shiftReadModel;
     if (s == null) return _emptySection('SHIFT DASHBOARD', 'No open shift');
     return _section('SHIFT DASHBOARD', [
       _row('ACTUAL COVERS', s.actualCovers.toString()),
@@ -249,7 +307,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildVarianceSection() {
-    final w = _weekData;
+    final w = _snapshot?.weekData;
     if (w == null) return _emptySection('VARIANCE WTD', 'No WTD data');
     return _section('VARIANCE WTD', [
       _row('TOTAL COVERS', w.totalCovers.toString()),
@@ -270,7 +328,7 @@ class _DataAlignmentAuditPanelState extends State<DataAlignmentAuditPanel> {
   }
 
   Widget _buildWageAuthoritySection() {
-    final w = _wageContext;
+    final w = _snapshot?.wageContext;
     if (w == null) return _emptySection('WAGE AUTHORITY', 'Not loaded');
     return _section('WAGE AUTHORITY', [
       _row('SOURCE', w.source.displayLabel),

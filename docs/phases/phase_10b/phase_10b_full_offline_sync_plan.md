@@ -1,0 +1,154 @@
+# Phase 10b - Full Offline Sync (V2)
+
+Updated: 2026-04-23
+Status: Planned, post-launch
+Owner: Future shared-state V2 lane
+
+## Decisions Locked (2026-04-23 review)
+
+- **Sequencing: post-launch (H1 2028).** Phase 10b ships after Phase 10a
+  is live and has operated in production long enough to surface real
+  pain points from the LWW + online-first pattern.
+- **Scope: layer over Phase 10a, do not replace.** 10b extends 10a's
+  shared-state foundation; it does not rebuild it. Existing Postgres
+  tables, RLS policies, and Supabase Realtime integration remain; 10b
+  adds optimistic-concurrency, richer offline support, and conflict UI
+  on top.
+- **Trigger to start 10b work:** any one of:
+  - Operator #3+ onboards (multi-team concurrency becomes routine)
+  - Field reports of "I changed it on my phone but the tablet showed
+    old data for minutes" in more than occasional frequency
+  - High-stakes object needs concurrency protection (e.g., two managers
+    simultaneously adjusting a benchmark override during a contentious
+    shift)
+
+## Goal
+
+Evolve shared-state sync from "works fine with 2-3 online devices, LWW
+on conflict" to "works perfectly across any connectivity pattern with
+any number of devices, with explicit conflict resolution on high-stakes
+objects."
+
+This phase is the difference between "usable" multi-device and "trusted
+for high-team-size restaurants in spotty-connectivity locations."
+
+## Scope
+
+Phase 10b owns:
+
+- **Optimistic concurrency per object** for high-stakes tables:
+  - Read includes row version (`version` column or `updated_at`
+    timestamp)
+  - Write conditional on version match (Postgres transaction with
+    version check, or Supabase client `update().eq('version', v)`
+    pattern)
+  - On version mismatch, client receives rejection and handles via
+    conflict resolution path
+- **Offline write queue with reconciliation:**
+  - Writes while offline persist to local IndexedDB/SQLite queue with
+    client-generated idempotency key
+  - On reconnect, queue flushes to Postgres
+  - Rejections (version mismatch, RLS violation) trigger local
+    rollback + user-facing conflict UI
+- **Conflict UI surfaces:**
+  - "Someone else changed this while you were offline. Here's their
+    version, here's yours. Keep yours / accept theirs / merge."
+  - Applies only to objects flagged as high-stakes; low-stakes objects
+    continue LWW silently
+- **Optimistic UI:**
+  - Writes apply immediately to local state
+  - Background sync to Postgres
+  - Rollback on rejection (rare)
+- **Tombstone handling:**
+  - Deletes become soft-deletes with `deleted_at` timestamp
+  - Devices reconcile to "deleted" state on next sync
+  - Hard deletes only via admin ops after grace period
+- **Causal ordering** for objects where LWW is dangerous (e.g.,
+  sequential edits to the same weekly plan that should merge, not
+  overwrite)
+
+Adjacent work that may land here:
+
+- Performance optimization on large per-operator datasets (pagination,
+  selective subscriptions)
+- Supabase Realtime V2 migration if relevant at the time
+- Cross-device edit-conflict analytics (measure how often conflicts
+  actually happen; informs whether 10b was worth building when)
+
+## Scope Does Not Own
+
+Phase 10b does not own:
+
+- Core shared-state infrastructure (`Phase 10a`)
+- Auth, roles, permission keys (`Phase 9`)
+- Full CRDT-based collaborative editing (different product shape;
+  would be a separate phase if ever needed)
+- Real-time cursor/presence indicators (different product shape)
+- Cross-restaurant synchronization (each restaurant stays isolated)
+
+## Runtime Contract (additive over 10a)
+
+Same Postgres + Realtime substrate as 10a. Adds:
+
+```text
+optimistic concurrency write path (high-stakes objects only):
+  client reads row with version
+  client attempts update with `version = read_version` condition
+  ↳ on match: update succeeds, version increments
+  ↳ on mismatch: rejection, client handles via conflict UI
+
+offline write path:
+  client writes to local queue with idempotency key
+  ↳ UI shows optimistic state
+  ↳ on reconnect: flush queue
+     - each write retried with its version check
+     - rejections trigger conflict UI
+     - successes confirm local state
+```
+
+## Dependencies
+
+Required before Phase 10b can ship real:
+
+- `Phase 10a` in production, stable, with enough usage data to
+  validate pain points
+- Specific high-stakes objects identified (not every table needs
+  optimistic concurrency)
+- Conflict UI designs (UX work, not just engineering)
+
+## Non-Negotiables
+
+- Never break 10a's foundation; 10b is additive
+- Optimistic concurrency applies per-object, not globally (LWW remains
+  the default for most tables)
+- Conflict UI appears only for objects where silent LWW is dangerous;
+  low-stakes objects stay silent
+- Audit trail still captures every write (10a pattern preserved)
+
+## Adjacent Phases
+
+- `Phase 10a` provides the foundation 10b extends
+- `Phase 9.75` Barrio V1.1 shared state uses 10a; 10b makes that
+  sharing more resilient to spotty connectivity
+- `Phase 11a` corpus writes are admin-only and infrequent; likely do
+  not need 10b's protections (can stay on 10a LWW)
+
+## Source Material
+
+- [phase_10a_shared_state_v1_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md)
+- Postgres transaction and optimistic concurrency documentation
+- Supabase client write patterns for versioned updates
+
+## Placeholder Notes
+
+This is a skeleton. Detailed design is deferred until Phase 10a has
+been in production long enough to validate:
+
+- Which specific objects hit concurrency pain often enough to justify
+  optimistic concurrency
+- Whether spotty-connectivity offline scenarios are actual operator
+  complaints or hypothetical
+- How multi-operator scaling has shaped the concurrency profile
+
+Tracker folding: add to `PROJECT_TRACKER.md` Active Planning Docs list
+on next Codex pass (as a post-launch future-work phase).

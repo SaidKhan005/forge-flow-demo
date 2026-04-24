@@ -4,7 +4,7 @@ Flutter prototype for labor coaching and shift decision support.
 
 The current product flow is:
 
-`POS + Labor Systems -> Canonical Shift Facts -> Baseline -> Targets -> Schedule -> Shift -> Variance -> Learn`
+`POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Benchmark Snapshot -> TargetCycle + DemandForecastContext -> SchedulePlan -> WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn`
 
 ## Main Surfaces
 
@@ -17,12 +17,12 @@ The current product flow is:
 ## Repo Guide
 
 - [PROJECT_TRACKER.md](PROJECT_TRACKER.md): active roadmap, current prompt, and next execution block
-- [PROJECT_TRACKER_ARCHIVE.md](PROJECT_TRACKER_ARCHIVE.md): top-level pointer to the tracker archive
+- [docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md](docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md): archived tracker history
 - [docs/DATA_ALIGNMENT_TRACKER.md](docs/DATA_ALIGNMENT_TRACKER.md): active alignment notes and current source-of-truth watchpoints
 - [docs/archive/README.md](docs/archive/README.md): archived trackers, completed phase docs, and background reference material
 - [docs/archive/reference/REFACTOR_AND_DECOUPLING.MD](docs/archive/reference/REFACTOR_AND_DECOUPLING.MD): archived Phase 7.5 alignment contract
 - [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
-- [docs/phase_7_52_execution_plan.md](docs/phase_7_52_execution_plan.md): Phase 7.52 cleanup, private-build, and Barrio shell contract
+- [docs/archive/phases/phase_7_52_execution_plan.md](docs/archive/phases/phase_7_52_execution_plan.md): archived Phase 7.52 cleanup, private-build, and Barrio shell contract
 - [docs/phases/phase_8_gate/](docs/phases/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
 - [jim_taylor_labor_model_deep_dive.html](docs/internal/barrio/jim_taylor_labor_model_deep_dive.html): local teaching/model reference used throughout the app
 
@@ -31,9 +31,10 @@ The current product flow is:
 - Phase 7.5 structural alignment is complete (restaurant scope, locked target truth, fixture replay)
 - Phases 7.52, 7.53, and 7.54 are complete
 - Phase 7.55 is the active release-stabilization lane
-- Phase 9 auth planning is locked in `docs/phase_9_auth_plan.md`
+- Phase 7.55o is the active refactor / extraction lane; it follows `docs/CODEX_PROMPT_GENERATION_STANDARD.md` for prompt generation, verification, tracker ownership, and automatic next-prompt sequencing
+- Phase 9 auth planning is locked in `docs/phases/phase_9/phase_9_auth_plan.md`
 - Phase 8 gate artifacts are checked in at `docs/phases/phase_8_gate/`
-- Phase 8 (live POS + labor adapters) is blocked only on vendor selection
+- Phase 8 / 8R live integration remains a future adapter lane; the current app is still fixture/replay-backed at the transport layer and should not be described as simple-swap integration-ready
 
 
 flutter clean

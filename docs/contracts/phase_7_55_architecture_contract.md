@@ -317,14 +317,15 @@ It should answer:
 
 Contract:
 
-- Shift is whole-day until Phase 10.5
+- Shift's default view is whole-day; Phase 10.5 adds an additive
+  daypart-aware view alongside whole-day without replacing it
 - Shift can use live open snapshot context
 - Shift truth is live operational fact, not closed historical truth
 - Shift compares those live facts against benchmark-backed standards and the
   current plan context
 - Shift is the "now" surface, not the historical teaching surface
-- live time-into-service and live service-period behavior stay reserved for
-  Phase 10.5
+- live time-into-service and live service-period behavior arrive with
+  Phase 10.5 as additive lenses alongside the whole-day view
 
 ### 10. Variance
 
@@ -577,12 +578,14 @@ These seams are still incomplete and intentionally deferred:
 - `7.55k.8`:
   - integration implications
 
-### Reserved for 10.5
+### Added by Phase 10.5 (additive alongside whole-day)
 
-- live Shift service-period behavior
-- live time-into-service
+- live Shift service-period behavior as a second view alongside whole-day
+- live time-into-service display
 - live service-period tracking during the shift
 - Shift primary-driver teaching that depends on daypart-live truth
+
+The whole-day Shift view remains the default and is not replaced.
 
 ## One-Sentence Contract
 

@@ -231,4 +231,6 @@ Canonical Operational Facts
   - `WeeklyPlanSnapshot`
 - `7.55k` should assume Variance and History compare against a locked weekly
   plan, not a continuously moving forecast.
-- Shift remains whole-business-day until Phase 10.5.
+- Shift's whole-business-day view remains authoritative for whole-day
+  comparisons. Phase 10.5 adds a daypart-aware view alongside whole-day
+  without replacing it.
