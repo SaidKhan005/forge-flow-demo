@@ -52,6 +52,20 @@ Accepted 2026-04-25.
   `test/advisor_corpus_manifest_test.dart`, and
   `test/provider_abstraction_test.dart`.
 
+### `7.57.3c` Static DataSourceProvider Wiring
+
+Accepted 2026-04-25.
+
+- Routed `StaticShiftDataSource` mock-replay reads through
+  `MockReplayDataSourceProvider`.
+- Added an injectable `MockReplayProvider` seam for tests while preserving
+  default static/demo output.
+- Verified by `dart analyze`,
+  `test/runtime_fixture_retirement_test.dart`,
+  `test/provider_abstraction_test.dart`,
+  `test/wtd_variance_logic_test.dart`, and
+  `test/variance_visual_widget_test.dart` (107 tests passed).
+
 ## Archived Active Tracker Summaries (moved 2026-04-02)
 
 These summaries previously lived in the active tracker and were moved here to keep `PROJECT_TRACKER.md` focused on current work and next prompts.

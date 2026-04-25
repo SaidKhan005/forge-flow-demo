@@ -25,9 +25,9 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 ## Now
 
 - Current phase: `7.57` Stabilization, paused `11a` after `11a.7`.
-- Last accepted prompt: `7.57.3b` routed advisor corpus embedding execution
-  through `VoyageEmbeddingProvider`.
-- Next slice prompt for Codex to generate: **`7.57.3c`**.
+- Last accepted prompt: `7.57.3c` routed `StaticShiftDataSource` through
+  `MockReplayDataSourceProvider`.
+- Next slice prompt for Codex to generate: **`7.57.3d`**.
 - Active planning input: `docs/phases/post_11a7_stabilization_plan.md`.
 - Prompt loop: after each Claude report, Codex verifies repo truth, updates
   trackers, then generates the next prompt from updated tracker truth.
@@ -42,7 +42,7 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 | Phase | Status | Current truth |
 | --- | --- | --- |
-| `7.57` | active | Structural stabilization. `7.57.0`, `7.57.1`, `7.57.2`, `7.57.3a`, and `7.57.3b` accepted. Next: `7.57.3c`. |
+| `7.57` | active | Structural stabilization. `7.57.0`, `7.57.1`, `7.57.2`, `7.57.3a`, `7.57.3b`, and `7.57.3c` accepted. Next: `7.57.3d`. |
 | `11a` | paused at `11a.7` | Corpus, chunking, local Supabase load, Voyage embeddings, and embedding load are landed. Resumes as `11a.8` after `7.57.4` accepts. |
 | `7.58` | queued | Pre-11b behavioral alignment lane. Opens after `9.5`; closes before `11b.0`. |
 | `7.61` | queued | Pre-Phase-8 freshness audit. Opens after `10b`; closes before Phase 8. |
@@ -54,8 +54,8 @@ Completed phase history was moved to
 
 `7.57` remaining sequence:
 
-1. `7.57.3c` - route mock-replay data-source seams through
-   `DataSourceProvider`.
+1. `7.57.3d` - rename advisor-specific answer provider seam to
+   general-purpose `LLMProvider` and expose prompt-caching capability.
 2. `7.57.4` - Apache AGE graph projection in the local Supabase/Postgres
    container.
 3. Resume `11a.8` - vector search functions / indexes + smoke queries.
@@ -76,6 +76,8 @@ Completed phase history was moved to
   is configurable, visible in Settings, and update-aware.
 - `7.57.3b` advisor corpus embedding execution now routes through
   `VoyageEmbeddingProvider`.
+- `7.57.3c` StaticShiftDataSource mock-replay reads now route through
+  `MockReplayDataSourceProvider`.
 - `7.57.3` provider abstraction must accept before `7.57.4`.
 - `7.57.4` AGE graph projection must accept before `11a.8` resumes and before
   `11b` starts.
@@ -142,6 +144,15 @@ Completed phase history was moved to
 ## Locked Future Tweaks
 
 - `11a.8`: default pgvector indexes to HNSW.
+- `11a.8`: vector versioning schema columns on the embeddings table.
+  Every embedded chunk row carries `embedding_provider_id` (e.g.
+  `voyage`), `embedding_model_id` (e.g. `voyage-4-large`), and
+  `embedding_dimension` (e.g. `1024`) from day one. Lands in `11a.8`
+  schema scope alongside vector-search functions and HNSW indexes.
+  Without these columns, mixed-provider retrieval breaks silently
+  during a future provider transition; with them, retrieval queries
+  scope by provider/model and provider swaps trigger a clean
+  re-embed of affected rows only. Decided 2026-04-25.
 - `7.57.3`: `LLMProvider.answer(..., tier)` routes `quick` -> Haiku
   and `nuanced` -> Sonnet; default `quick`. Renamed from
   `AdvisorAnswerProvider` per hard promise #8 (general-purpose AI
@@ -172,13 +183,15 @@ Completed phase history was moved to
   index, not deleted) so old advisor recommendations remain
   replayable against the exact chunks they cited. Embedding regen
   runs on chunks with new hashes only. Decided 2026-04-25.
-- New `11a.x` slice (queued after `11a.11`, exact slot tbd):
-  **Corpus admin UX in app settings.** Vanessa drops a markdown file
-  in a Settings page; the app ingests it, chunks it, content-hashes
-  the chunks, embeds new/changed chunks via Voyage, writes to
-  Postgres. Markdown only at MVP. Default scope is operator-scoped
-  corpus (hard promise #4) — global F&F-shipped corpus vs operator
-  extensions is a separate decision when multi-operator goes live.
+- `11a.12`: **Corpus admin UX in app settings.** Vanessa drops a
+  markdown file in a Settings page; the app ingests it, chunks it,
+  content-hashes the chunks, embeds new/changed chunks via Voyage,
+  writes to Postgres. Markdown only at MVP. Default scope is
+  operator-scoped corpus (hard promise #4); global F&F-shipped
+  corpus vs operator extensions is a separate decision when multi-
+  operator goes live. Slot locked 2026-04-25 (was previously `11a.x`
+  tbd); queued after `11a.11` cloud DB apply so the corpus pipeline
+  writes to production Postgres.
 - Post-launch caching layer for repeat advisor questions (Q7 option
   B, deferred). When production data shows specific question
   classes recurring, add a cache so an Anthropic blip surfaces

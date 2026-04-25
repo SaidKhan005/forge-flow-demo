@@ -49,38 +49,31 @@ Accepted:
 - `7.57.3a` provider interfaces/adapters plus dev model-routing Settings.
 - `7.57.3b` advisor corpus embedding execution through
   `VoyageEmbeddingProvider`.
+- `7.57.3c` StaticShiftDataSource mock-replay reads through
+  `MockReplayDataSourceProvider`.
 
 Current next:
 
-- `7.57.3c` route the remaining mock-replay data-source seam through
-  `DataSourceProvider`.
+- `7.57.3d` rename the advisor-specific answer provider seam to a
+  general-purpose `LLMProvider` and expose prompt-caching capability.
 
 ## Remaining 7.57 Queue
 
-### `7.57.3c` - Mock Replay DataSource seam
+### `7.57.3d` - Provider naming/capability cleanup
 
 Scope:
 
-- Route `StaticShiftDataSource` through `MockReplayDataSourceProvider`.
-- Preserve output values, order, week ids, labels, defaults, and fallbacks.
-- Report remaining direct production `MockIntegrationReplaySeed` importers.
+- Rename advisor-specific answer abstraction to `LLMProvider` where needed.
+- Keep `quick -> Haiku`, `nuanced -> Sonnet`, default `quick`.
+- Expose prompt-caching capability generically.
 
 Acceptance:
 
-- Static demo output unchanged.
-- Injected provider path tested.
-- No `LiveShiftDataSource`, `ShiftService`, SQLite, Settings, audit UI, data
-  values, or formulas changed.
-
-### `7.57.3d` - Provider naming/capability cleanup if still needed
-
-Open only if `7.57.3c` leaves provider-foundation cleanup behind.
-
-Likely scope:
-
-- Rename advisor-specific answer abstraction to `LLMProvider` where needed.
-- Keep `quick -> Haiku`, `nuanced -> Sonnet`, default `quick`.
-- Expose prompt-caching capability generically if not already covered.
+- No `AdvisorAnswerProvider` symbols remain in live code/tests.
+- Existing Claude answer provider behavior and dev Settings routing are
+  unchanged.
+- Provider capability exposes prompt-caching support without wiring live API
+  calls.
 
 ### `7.57.4` - AGE graph projection
 
