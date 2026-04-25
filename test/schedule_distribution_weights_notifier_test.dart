@@ -11,7 +11,7 @@
 // priority over latest closed date, matching the rest of the planning stack.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/schedule_distribution_weights_notifier.dart';
+import 'package:forge_and_flow/state/schedule_distribution_weights_notifier.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';

@@ -15,6 +15,43 @@ Detailed `7.52` scope, destination contracts, completion notes, and the post-`7.
 
 Use this archive plus that execution-plan doc together when you need to revisit how the private Barrio shell and content phase was delivered.
 
+## 7.57 Stabilization Accepted Detail
+
+### `7.57.3a` Provider Abstraction Foundation
+
+Accepted 2026-04-25.
+
+- Added provider interfaces for embeddings, rerank, advisor answers, and data
+  sources.
+- Added concrete Voyage, Claude, and mock-replay adapters with injected
+  gateways for fake-tested behavior.
+- Fixed advisor model routing after review:
+  - quick defaults to `claude-haiku-4-5`
+  - nuanced defaults to `claude-sonnet-4-6`
+  - dev overrides persist via `SharedPreferences`
+  - Settings exposes debug-only `ADVISOR MODELS`
+  - Anthropic model check is update-aware and segment-orders model ids
+- Verified by `dart analyze`,
+  `test/provider_abstraction_test.dart`,
+  `test/runtime_fixture_retirement_test.dart`,
+  `test/advisor_corpus_manifest_test.dart`, and
+  `test/settings_screen_widget_test.dart`.
+
+### `7.57.3b` Corpus Embedding Provider Wiring
+
+Accepted 2026-04-25.
+
+- Routed `CorpusEmbeddingExecutor` vector generation through
+  `VoyageEmbeddingProvider`.
+- Preserved the existing `AdvisorEmbeddingGateway` fake/HTTP seam,
+  `VOYAGE_API_KEY` behavior, batch/token accounting, SQL output, and
+  execution manifest fields.
+- Added wrong-dimension regression coverage proving provider contract checks
+  reject bad gateway output.
+- Verified by full `dart analyze`,
+  `test/advisor_corpus_manifest_test.dart`, and
+  `test/provider_abstraction_test.dart`.
+
 ## Archived Active Tracker Summaries (moved 2026-04-02)
 
 These summaries previously lived in the active tracker and were moved here to keep `PROJECT_TRACKER.md` focused on current work and next prompts.
@@ -118,6 +155,94 @@ next prompts.
 ### Phase 7.53 Summary
 
 All sub-prompts (`7.53a` through `7.53f` plus polish) are complete.
+
+## Archived Active Tracker Cleanup (moved 2026-04-25)
+
+These notes previously lived in the active tracker. They were moved here once
+`7.57` became the active stabilization lane so `PROJECT_TRACKER.md` could stay
+focused on current gates, next prompts, and live guardrails.
+
+### Completed Phase Summary Moved From Active Tracker
+
+| Phase | Archived completion summary |
+| --- | --- |
+| `7.55l` | `TargetCycle` + `WeeklyPlanSnapshot` runtime architecture landed. |
+| `7.55m` | Runtime-truth cleanup landed. |
+| `7.55k` | Daypart / Variance / History / Learn plan landed through `7.55k.8a`. |
+| `7.55n` | Restaurant timing + service-period runtime foundation landed through `7.55n.6a`; freshness / live-data extension landed through `7.55n.13`. |
+| `7.55p.1` | Shift driver trust audit landed against Chapter 10. |
+| `7.55p.2` | Variance WTD target alignment and Full Week target-package / carry-forward cleanup landed through `7.55p.2a`. |
+| `7.55p.3` | Dollar Impact accumulation model landed through `7.55p.3a`. |
+| `7.55p.4a` | App-owned refresh / invalidation policy landed through `7.55p.4a1`. |
+| `7.55p.4b` | Connector-fed live freshness propagation landed through `7.55p.4b1`. |
+| `7.55p.4c` | Replay integrity / mock-to-live transition audit landed through `7.55p.4c1`. |
+| `7.55p.4d` | Persisted passive notifications landed through `7.55p.4d1`. |
+| `7.55p.5` | Benchmark OPZ / graph honesty audit, OPZ-width research, target-labor package contract, Variance theoretical-package verification, blended-wage audit, recommendation-statistics contract cleanup, wage-mix setup UX, app-owned recommended benchmark selection, Benchmark graph fallback/explainer cleanup, and planned labor package wiring landed through `7.55p.5j`. |
+| `7.55q` | Architecture-conformance lane landed through `7.55q.10`: single-plan / single-benchmark-target contract, non-closed Variance 1:1 rewiring, History locked-target truth, planned labor cleanup, whole-day Shift target alignment, cycle-backed Benchmark override wiring, and Dollar Impact parity. |
+| `7.55o` | Shared-surface extraction completed through `7.55o.6`: shared comparison primitives, Variance shell split, Schedule planning separation, Settings surface split, Baseline Manager decomposition, and SQLite bootstrap breakup. |
+| `7.55r` | Foundation closeout completed through `7.55r.2`: dev-only audit read service, locked-week / target-cycle provenance, UTC metadata and WTD audits, service-period runtime wiring verification. |
+| `7.56` | Reservation-book signal verified in `7.56a`; `7.56b` closed benchmark-selection-summary replay stability; `7.56c.0` and follow-ups aligned Full Week Plan / Benchmark authority; `7.56c.1` expanded the dev-only audit into live/actual + Plan/Benchmark source-alignment checks. |
+
+### Completed `7.57` Sub-Slice Detail Moved From Active Tracker
+
+- `7.57.0` codified the service-layer split, RLS-ready schema rule,
+  phase-doc hygiene rule, and five hard architectural promises in
+  `CLAUDE.md`.
+- `7.57.1` legacy fixture extraction accepted:
+  - `7.57.1a` moved runtime defaults, lever metadata, and pure value types to
+    `lib/data/app_defaults.dart`.
+  - `7.57.1b` moved demo sample-data definitions to
+    `lib/dev/demo_fixture_data.dart` and swept production importers off
+    `legacy_fixture_data.dart`.
+  - `7.57.1c` migrated tests off the shim and deleted
+    `lib/data/legacy_fixture_data.dart`.
+- `7.57.2a` moved state holders and refresh coordination to `lib/state/`.
+- `7.57.2b` moved `fixture_seed_data.dart` to `lib/dev/` and
+  `database_helper.dart` to SQLite infrastructure.
+- `7.57.2c` moved nine runtime read/orchestration services from `lib/data/`
+  to `lib/services/`.
+- `7.57.2d` moved the baseline / benchmark service cluster:
+  `baseline_manager_service.dart`, `baseline_selection_analytics_service.dart`,
+  and `benchmark_tracker_read_service.dart` to `lib/services/`, and
+  `recommended_benchmark_selection_service.dart` to `lib/domain/services/`.
+- `7.57.2e` moved `TargetCycleService` from `lib/data/` to
+  `lib/services/`, preserving TargetCycle logic and rewiring imports only.
+- `7.57.2f` moved `ShiftService` from `lib/data/` to `lib/services/`,
+  preserving Shift runtime logic and rewiring imports only.
+- `7.57.2g` moved `ShiftDataSource` from `lib/data/` to `lib/services/`,
+  leaving `lib/data/` with only `app_defaults.dart` and
+  `mock_integration_replay_seed.dart`.
+- `7.57.2` parent closed: state holders live in `lib/state/`, runtime
+  orchestration in `lib/services/`, pure deterministic domain services in
+  `lib/domain/services/`, demo fixtures in `lib/dev/`, and SQLite
+  infrastructure in `lib/infrastructure/persistence/sqlite/`.
+
+### Archived Carry-Forward Notes
+
+- `7.56c.1` retained the rule: do not compare live operating results against
+  targets as drift.
+- UX shell work is landed: shared sticky/fading headers, Shift header/live-time
+  polish, Variance / History / Learn shell cleanup, Plan / Benchmark header-stat
+  cleanup, and Settings visual rework.
+- `7.55j.3` vendor endpoint checklist template and `7.55j.4` gap report remain
+  the pre-Phase-8 vendor-readiness historical authority.
+- `docs/internal/status_ledger_post_7_55p_deep_check.md` remains the reference
+  sheet for older asks, post-`7.55o` naming/copy/refactor audit ideas, and later
+  readiness-check context.
+- Pre-launch sequencing truth remains: Phase 10a is pre-launch shared
+  multi-device state; Phase 10.5 owns additive whole-day + daypart Shift
+  behavior; advisor work ships before Phase 9.75 Barrio V1.1; Phase 10b sits
+  between `11b.2` and Phase 8.
+- `DataAlignmentAuditPanel` cycle/week provenance landed in `7.55r.1`.
+- Persisted timing/service-period wiring closeout verified in `7.55r.2`.
+- UTC metadata timestamp normalization and non-locked WTD membership audit are
+  documented in `7.55r` as closed / no-patch findings.
+- Legacy q-lane contract notes remain authoritative in the active contract
+  docs, not in the working tracker: `TargetCycle` locks 60-day standards;
+  locked weekly plan is the in-force comparison authority; Benchmark sets the
+  standard, Plan decides the week, Shift manages now, Variance compares plan vs
+  actual, History preserves closed truth, and Learn teaches repeated closed
+  results.
 
 Key outcomes:
 

@@ -1,0 +1,141 @@
+#!/bin/bash
+# graphify-hook-start
+# After-commit hook for the Forge & Flow knowledge graph.
+#
+# Two paths:
+#  - Code files (AST-supported langs incl. Dart since graphify 0.4.x):
+#    rebuild graphify-out/graph.json incrementally via _rebuild_code.
+#    No LLM, fast, runs every commit that touches code.
+#  - Markdown changes: write graphify-out/needs_update with the changed
+#    file list so the next session can run `/graphify --update`. Doc
+#    extraction uses LLM subagents (real token cost), so we deliberately
+#    do NOT auto-rebuild docs on every commit. Per CLAUDE.md, graphify
+#    is not run mid-session by Claude — the user invokes `--update`.
+#
+# Frozen-history paths are excluded from the doc-flag entirely. The
+# graph grows forward with new content; it does not go back to
+# re-process retired material. See FROZEN_HISTORY_PATHS below.
+#
+# Order matters: code rebuild runs first because graphify's update sweep
+# clears the needs_update flag. We rewrite the doc flag afterwards so a
+# mixed commit ends with both the refreshed code graph AND the pending
+# doc-flag preserved.
+
+CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD 2>/dev/null)
+if [ -z "$CHANGED" ]; then
+    exit 0
+fi
+
+# Detect the correct Python interpreter (handles pipx, venv, system installs)
+GRAPHIFY_BIN=$(command -v graphify 2>/dev/null)
+if [ -n "$GRAPHIFY_BIN" ]; then
+    _SHEBANG=$(head -1 "$GRAPHIFY_BIN" | sed 's/^#![[:space:]]*//')
+    case "$_SHEBANG" in
+        */env\ *) GRAPHIFY_PYTHON="${_SHEBANG#*/env }" ;;
+        *)         GRAPHIFY_PYTHON="$_SHEBANG" ;;
+    esac
+    case "$GRAPHIFY_PYTHON" in
+        *[!a-zA-Z0-9/_.-]*) GRAPHIFY_PYTHON="python3" ;;
+    esac
+    if ! "$GRAPHIFY_PYTHON" -c "import graphify" 2>/dev/null; then
+        GRAPHIFY_PYTHON="python3"
+    fi
+else
+    GRAPHIFY_PYTHON="python3"
+fi
+
+export GRAPHIFY_CHANGED="$CHANGED"
+export PYTHONUTF8=1
+$GRAPHIFY_PYTHON -c "
+import os, sys
+from pathlib import Path
+
+# Detection-side extensions (matches graphify.detect.CODE_EXTENSIONS in 0.4.x).
+# graphify 0.4.x supports Dart via tree-sitter + extract_dart, even though
+# extract.collect_files._EXTENSIONS lacks .dart — _rebuild_code uses detect,
+# not collect_files, so .dart files do flow through the AST path.
+CODE_EXTS = {
+    '.py', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.go', '.rs', '.java',
+    '.cpp', '.cc', '.cxx', '.c', '.h', '.hpp', '.rb', '.cs', '.kt', '.kts',
+    '.scala', '.php', '.swift', '.lua', '.zig', '.ps1', '.ex', '.exs',
+    '.m', '.mm', '.jl', '.vue', '.svelte', '.dart', '.v', '.sv',
+}
+DOC_EXTS = {'.md'}
+
+# Frozen-history paths the doc graph never queries. Changes inside
+# these paths do NOT flag /graphify --update. Forward-growing graph,
+# not back-filling retired material.
+#
+# Match by normalized POSIX prefix so trailing slashes / mixed
+# separators behave the same on Windows (git-bash) as on Unix.
+FROZEN_HISTORY_PATHS = (
+    'docs/archive/',
+    'graphify-out/',
+)
+
+def is_frozen(path: Path) -> bool:
+    norm = str(path).replace('\\\\', '/')
+    return any(norm.startswith(p) for p in FROZEN_HISTORY_PATHS)
+
+changed_raw = os.environ.get('GRAPHIFY_CHANGED', '')
+changed = [Path(f.strip()) for f in changed_raw.strip().splitlines() if f.strip()]
+code_changed = [f for f in changed if f.suffix.lower() in CODE_EXTS and f.exists()]
+doc_changed = [
+    f for f in changed
+    if f.suffix.lower() in DOC_EXTS
+    and f.exists()
+    and not is_frozen(f)
+]
+doc_skipped_frozen = [
+    f for f in changed
+    if f.suffix.lower() in DOC_EXTS
+    and f.exists()
+    and is_frozen(f)
+]
+
+# Code path: AST rebuild (no LLM, fast). Run first because graphify's
+# update sweep clears the needs_update flag — we rewrite it after.
+if code_changed:
+    print(f'[graphify hook] {len(code_changed)} code file(s) changed - rebuilding code graph...')
+    try:
+        from graphify.watch import _rebuild_code
+        _rebuild_code(Path('.'))
+    except Exception as exc:
+        print(f'[graphify hook] Code rebuild failed: {exc}')
+
+# Doc path: write the flag so the next user-turn in Claude triggers
+# /graphify --update (per CLAUDE.md Knowledge Graph Flag rule). The
+# refresh runs inside the user's existing long-lived Claude session
+# rather than headlessly from this hook (LLM subagents need a Claude
+# Code Agent context). Bash-side notification below ensures the user
+# notices the flag in their always-on session.
+if doc_changed:
+    flag = Path('graphify-out') / 'needs_update'
+    flag.parent.mkdir(parents=True, exist_ok=True)
+    flag.write_text('\n'.join(str(f) for f in doc_changed) + '\n')
+    print(f'[graphify hook] {len(doc_changed)} doc file(s) changed - flagged graphify-out/needs_update')
+    print(f'[graphify hook] Claude will run /graphify --update on the next user turn.')
+elif doc_skipped_frozen:
+    # All changed docs were frozen — no flag, no notification.
+    print(f'[graphify hook] {len(doc_skipped_frozen)} frozen-history doc file(s) changed - skipped flag (paths excluded from doc graph).')
+
+if doc_skipped_frozen and doc_changed:
+    print(f'[graphify hook] (also skipped {len(doc_skipped_frozen)} frozen-history doc file(s).)')
+
+# Emit a sentinel for the bash side so the audio notification only
+# fires when a real (non-frozen) doc changed.
+if doc_changed:
+    sentinel = Path('graphify-out') / '.notify_active_doc_change'
+    sentinel.parent.mkdir(parents=True, exist_ok=True)
+    sentinel.write_text('1')
+"
+
+# Audible + visual notification when ACTIVE docs changed so the
+# always-on Claude session does not miss the flag. Frozen-history
+# changes do not trigger notification — the Python side wrote a
+# sentinel only when a non-frozen doc landed.
+if [ -f graphify-out/.notify_active_doc_change ]; then
+    rm -f graphify-out/.notify_active_doc_change
+    powershell -NoProfile -Command "[console]::beep(1200,180); Start-Sleep -Milliseconds 80; [console]::beep(1200,180); Write-Host '** Doc graph stale - Claude will run /graphify --update on next message **' -ForegroundColor Cyan" 2>/dev/null || true
+fi
+# graphify-hook-end

@@ -1,6 +1,6 @@
 // A completed week stored in SQLite. Used for History tab.
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 
 class WeekRecord {
   final int? id;

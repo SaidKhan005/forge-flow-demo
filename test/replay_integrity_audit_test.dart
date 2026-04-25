@@ -12,10 +12,11 @@
 // Groups A, B, and E are no longer skipped.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
-import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
+import 'package:forge_and_flow/services/shift_data_source.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
+import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';

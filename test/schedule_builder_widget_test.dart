@@ -18,7 +18,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/models/schedule_plan.dart';

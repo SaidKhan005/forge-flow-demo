@@ -1,9 +1,9 @@
 // Shift dashboard notifier tests — empty-state behavior + locked plan (7.55l.7a).
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
-import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/state/shift_dashboard_notifier.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/models/current_state_freshness.dart';

@@ -18,9 +18,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_and_flow/data/active_target_profile_notifier.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
-import 'package:forge_and_flow/data/week_data_notifier.dart';
+import 'package:forge_and_flow/state/active_target_profile_notifier.dart';
+import 'package:forge_and_flow/services/shift_data_source.dart';
+import 'package:forge_and_flow/state/week_data_notifier.dart';
 import 'package:forge_and_flow/models/current_week_state.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';

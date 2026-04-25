@@ -7,7 +7,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../data/restaurant_timing_config_read_service.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
 import '../../domain/models/restaurant_timing_config.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -223,4 +223,4 @@ class _TimingValueRow extends StatelessWidget {
       ),
     );
   }
-}
+}

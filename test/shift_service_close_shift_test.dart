@@ -11,9 +11,9 @@
 // Historical origin: Phase 3 close-ingest path.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/database_helper.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
-import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
+import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';

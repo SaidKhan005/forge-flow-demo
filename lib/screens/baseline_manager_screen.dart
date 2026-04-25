@@ -6,9 +6,9 @@
 
 import 'package:flutter/material.dart';
 
-import '../data/baseline_manager_service.dart';
-import '../data/demand_forecast_context_service.dart';
-import '../data/target_cycle_service.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import '../services/demand_forecast_context_service.dart';
+import '../services/target_cycle_service.dart';
 import '../domain/services/service_period_definition_resolver.dart';
 import '../models/baseline_candidate_shift.dart';
 import '../theme/app_theme.dart';

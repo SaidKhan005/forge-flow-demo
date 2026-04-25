@@ -5,10 +5,11 @@ import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
 
 import '../theme/app_theme.dart';
-import '../data/active_target_profile_notifier.dart';
-import '../data/demand_forecast_context_notifier.dart';
-import '../data/legacy_fixture_data.dart';
-import '../data/schedule_distribution_weights_notifier.dart';
+import '../state/active_target_profile_notifier.dart';
+import '../state/demand_forecast_context_notifier.dart';
+import '../data/app_defaults.dart';
+import '../dev/demo_fixture_data.dart';
+import '../state/schedule_distribution_weights_notifier.dart';
 import '../domain/models/active_target_profile.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';

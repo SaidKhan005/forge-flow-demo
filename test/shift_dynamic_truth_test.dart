@@ -5,7 +5,8 @@
 // Now validates through the read model rather than static demo wiring.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/models/shift_dashboard_read_model.dart';

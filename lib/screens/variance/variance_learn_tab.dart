@@ -8,9 +8,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/learn_benchmark_context_service.dart';
-import '../../data/legacy_fixture_data.dart';
-import '../../data/shift_data_source.dart';
+import '../../services/learn_benchmark_context_service.dart';
+import '../../data/app_defaults.dart';
+import '../../services/shift_data_source.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/learn_benchmark_context.dart';
 import '../../models/learn_repeatable_win_summary.dart';

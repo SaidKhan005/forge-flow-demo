@@ -14,8 +14,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/fixture_seed_data.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/dev/fixture_seed_data.dart';
+import 'package:forge_and_flow/data/app_defaults.dart';
 import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/week_record.dart';

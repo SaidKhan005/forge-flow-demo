@@ -1,88 +1,83 @@
 # CLAUDE.md
 
-Short repo guidance for Claude Code.
+## Authority Order
 
-## Read First
+When sources conflict, later loses to earlier:
 
-Use these as authority:
+1. The active prompt.
+2. `docs/contracts/**`.
+3. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`.
+4. The active phase doc named in the prompt (`docs/phases/**`).
+5. This file.
 
-- `PROJECT_TRACKER.md`
-- `docs/DATA_ALIGNMENT_TRACKER.md`
-- `docs/contracts/**`
-- `docs/KNOWN_FAILING_TESTS.md` — pre-existing failures, not in scope by default
-- any active phase doc explicitly referenced in the prompt, usually under
-  `docs/phases/**`
+`docs/archive/**` is history — ignore unless the prompt names it.
+`docs/KNOWN_FAILING_TESTS.md` lists pre-existing failures; treat them
+as expected, not regressions.
 
-Treat `docs/archive/**` as history unless the prompt points there.
+## Hard Promises
 
-## Knowledge Graph Flag
+Every slice respects these. Plan: `docs/phases/post_11a7_stabilization_plan.md`.
 
-If `graphify-out/needs_update` exists, the doc-side knowledge graph is
-behind the committed Markdown. **Run `/graphify --update` as the FIRST
-action in the next user turn**, before responding to the user's actual
-request. This is a narrow, explicit relaxation of the "do not run
-graphify mid-session" rule (Commits & Push) — bounded to the per-commit
-incremental refresh only, never to the full `/graphify .` rebuild.
-
-Acknowledge the refresh briefly so the user knows what's happening
-(e.g. "Refreshing the doc graph from your last commit...") and can
-interrupt if they have a time-critical request. `/graphify --update`
-clears the flag automatically on success. Doc-heavy updates can take a
-minute or two — do not promise a specific time in the acknowledgement.
-
-The flag file itself lists which `.md` files changed since the last
-`--update`, if you need to know what is being re-extracted.
-
-## Use the Graph Before Grepping
-
-A unified `graphify` MCP server is registered in `.mcp.json` and exposes
-both code structure (Dart AST over `lib/`) and doc concepts (semantic
-extraction over `docs/` + root `.md`). Tools:
-`mcp__graphify__get_neighbors`, `__shortest_path`, `__god_nodes`,
-`__query_graph`, `__get_node`, `__get_community`, `__graph_stats`.
-
-Prefer graph queries over Glob/Grep when:
-
-- finding callers / dependents of a function or class (`get_neighbors`)
-- tracing how two concepts connect (`shortest_path`)
-- locating which contract bullet covers a topic (`query_graph` over the
-  doc corpus, returns concept nodes with `source_file` + `source_location`)
-- orienting in an unfamiliar phase lane before opening files
-
-Fall back to Glob/Grep when the graph returns nothing useful or the
-seam is too new to be in the graph yet (e.g. a function added in this
-session before any commit).
-
-## Docs Layout
-
-- `docs/contracts/` = active architecture rules
-- `docs/phases/` = live planning lanes
-- `docs/archive/` = completed / historical docs
+1. **Phase 8 = pure transport swap.** Vendor connector writers
+   against existing SQLite tables only. Cleanup belongs to `7.57`
+   (structural) or `7.61` (freshness). Phase 8 work that touches
+   fixtures, services, or freshness surfaces as a `7.57`/`7.58`/`7.61`
+   follow-up.
+2. **Demo mode persists post-launch.** `kDemoMode` is a writer-side
+   switch. True → `mock_integration_replay_seed.dart` fills SQLite.
+   False → vendor connectors fill SQLite. Same tables, same reads,
+   same UI.
+3. **No app logic changes before `7.58`.** `7.57.0`–`9.5` are
+   docs/governance, file moves, abstraction layers, or additive
+   capability. `7.58.0` (Primary Driver audit) is the first
+   logic-deciding slice.
+4. **Per-operator isolation is non-negotiable.** RLS-ready schema
+   from day one (see RLS-Ready Schema). Phase 9 enforces. `11b` does
+   not ship multi-operator before then.
+5. **AGE graph projection ships before `11b`.** Lands in `7.57.4`.
+   Graph traversal is the launch differentiator, not vector-only
+   retrieval.
+6. **Advisor speaks in recommendations, not commands.** Decided
+   2026-04-25: F&F provides advisory information; operator decides
+   whether to act. F&F never acts on the operator's behalf in the
+   launch product. Liability codification (T&Cs) lands in Phase 9.8.
+7. **F&F holds all provider keys server-side.** No BYO-key path.
+   Proxy backend in `11a.10` brokers all LLM/embedding calls.
+   Client app never holds production keys; dev `--dart-define` is
+   for local development only. Production keys live in Cloud Run
+   env / KMS.
+8. **AI infrastructure is general-purpose.** `LLMProvider`,
+   `EmbeddingProvider`, `RerankProvider`, `DataSourceProvider` are
+   not advisor-specific. The advisor (11b) is one consumer;
+   workflow automation (Phase 12 post-launch) will be another with
+   the same plumbing.
 
 ## Workflow
 
-- Codex plans, reviews, and updates tracker truth.
-- Claude implements the scoped prompt, runs focused tests, and reports back.
+- Codex plans, reviews, advances trackers. Claude implements the
+  scoped prompt, runs focused tests, reports back.
 - Do not broaden scope.
-- Do not update trackers during implementation runs unless the handoff
-  explicitly asks for it.
-- If docs move or docs are touched materially, update touched links and report
-  `Links updated: yes/no`.
-- Do not use TodoWrite. It is not available in this workflow and generates
-  system-reminder noise. Track implementation tasks inline from the prompt's
-  task list only.
+- Do not update trackers during implementation unless the prompt asks.
+- If docs move or are materially touched, update touched links and
+  report `Links updated: yes/no`.
 
-## Review Loop
+## Review Loop (user pastes an Execution Report)
 
-When the user pastes an `Execution Report`:
+1. Review changed files plus nearby runtime seams.
+2. Issues found → return findings; keep the slice active.
+3. Clean → Codex advances trackers and the next prompt.
+4. Ignore stale findings if the current code no longer matches them.
+5. User pivots into architecture, workflow, or docs cleanup → stop
+   the prompt loop and consolidate.
 
-1. Treat it as a review handoff.
-2. Review the changed files plus nearby runtime seams.
-3. If issues exist, return findings first and keep the same slice active.
-4. If clean, Codex advances trackers and the next prompt.
-5. Ignore stale pasted findings if the current code no longer matches them.
-6. If the user pivots into architecture, workflow, or docs cleanup, stop the
-   prompt loop and consolidate instead of auto-advancing execution slices.
+## Service-Layer Split
+
+- `lib/data/` — frozen legacy. Delete-only, never add.
+- `lib/services/` — runtime orchestration.
+- `lib/domain/services/` — pure formulas, no I/O.
+- `lib/state/` — new state holders.
+- `lib/dev/` — demo and dev-only material.
+- `lib/infrastructure/persistence/sqlite/` — DB helpers.
 
 ## Architecture Guardrails
 
@@ -91,65 +86,104 @@ When the user pastes an `Execution Report`:
 - `ActiveTargetProfile` is the runtime projection of the active cycle.
 - `DemandForecastContext` is rolling demand, not standards.
 - `WeeklyPlanSnapshot` is the locked week-in-force comparison plan.
-- Keep source facts, derived metrics, and teaching summaries separate.
-- Widgets should not own source-truth or service-period bucketing rules.
-- Shift's whole-day view is authoritative; Phase 10.5 adds an additive
-  daypart view alongside it without replacing whole-day.
+- Source facts, derived metrics, and teaching summaries stay separate.
+- Widgets do not own source-truth or service-period bucketing.
+- Shift's whole-day view is authoritative; `10.5` adds daypart
+  alongside, never replacing.
 
 ## Time Guardrails
 
-- Restaurant-local timing rules win.
-- Business date is the anchor.
-- Week start, business-day rollover, and service periods are restaurant-owned
-  settings.
-- Closed truth does not get rewritten by later cycles or later weekly plans.
+- Restaurant-local timing wins. Business date is the anchor.
+- Week start, business-day rollover, and service periods are
+  restaurant-owned settings.
+- Closed truth is not rewritten by later cycles or weekly plans.
+- **Storage rule (decided 2026-04-25):** operator-scoped Postgres
+  fact tables store source-truth instants as `TIMESTAMPTZ` (UTC)
+  plus a denormalized `business_date` `DATE` column computed at
+  write time using `location.timezone` + `business_day_rollover_hour`.
+  `location.timezone` is an IANA string on the `locations` table
+  (per-location, not per-operator — multi-location operators may
+  span zones). `TIMESTAMP WITHOUT TIME ZONE` is banned in
+  operator-scoped tables (silent DST corruption). `business_date`
+  is computed once at write, never recomputed at read.
 
-See:
+Refs: `docs/contracts/phase_7_55_architecture_contract.md`,
+`phase_7_55_time_boundary_contract.md`,
+`phase_7_55_target_cycle_weekly_plan_rules.md`.
 
-- `docs/contracts/phase_7_55_architecture_contract.md`
-- `docs/contracts/phase_7_55_time_boundary_contract.md`
-- `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
+## RLS-Ready Schema
+
+Operator-scoped Postgres fact tables (shifts, cycles, plans, weekly
+snapshots, variance, history) include `(operator_id, location_id)`
+plus an RLS policy stub from creation. Single-location operators run
+with a default `location_id`. Corpus / methodology stays
+`operator_id`-scoped. Phase 9 enables enforcement. Scaffolding is
+not retrofitted later.
+
+**Repository pattern (decided 2026-04-25, two-layer defense):** app
+code reads/writes operator-scoped Postgres tables only through
+`OperatorScopedRepository<T>` (or equivalent), which injects
+`(operator_id, location_id)` from the current `OperatorContext`. Raw
+`package:postgres` imports are forbidden outside
+`lib/infrastructure/persistence/postgres/` — CI lint enforces.
+Postgres RLS is the backup safety net under the repository, not the
+primary defense.
 
 ## Testing
 
-- Prefer focused test runs over broad suites.
 - Run the smallest set that proves the seam.
-- Always run `dart analyze` when the prompt requires verification.
-- If the prompt says not to rerun tests, do a code review instead.
-- Pre-existing failures listed in `docs/KNOWN_FAILING_TESTS.md` are not in
-  scope unless the slice names them. If a test in that list still fails,
-  treat it as expected, not a regression.
+- `dart analyze` whenever the prompt requires verification.
+- "No rerun" prompts → do a code review instead.
+
+## Phase Doc Hygiene
+
+- Slice < 1 week AND < 5 files → inline in the tracker.
+- Larger, or new contract → own phase doc.
+- Closed phase docs retire to `docs/archive/phases/` within a week.
+
+## Graph vs Grep
+
+`rg` first when symbol, filename, import path, or literal text is
+known. The `graphify` MCP server is for orientation:
+
+- `shortest_path` — trace how unfamiliar concepts connect.
+- `query_graph` — find which contract bullet covers a topic
+  (returns `source_file` + `source_location`).
+- Phase-lane orientation before opening files.
+
+Skip god-nodes and community exploration unless Codex requests them.
+
+## Knowledge Graph Refresh
+
+`graphify-out/needs_update` exists → run `/graphify --update` as the
+FIRST action of the next turn. This is the only sanctioned graphify
+run mid-session. Brief acknowledgement first ("Refreshing the doc
+graph from your last commit…"); do not promise a duration.
+
+The hook excludes `docs/archive/**` and `graphify-out/**` via
+`FROZEN_HISTORY_PATHS` in `.githooks/post-commit`. Extend that list
+when a surface retires.
 
 ## Commits & Push
 
-- Commits happen at phase close, not slice close.
-- Per-slice no-commit is the default. Wait for explicit user instruction
-  before creating a commit.
-- Push is automatic on commit. The graphify post-commit hook does two
-  things: (1) AST-rebuilds the code graph when code files changed (no
-  LLM, includes Dart since graphify 0.4.x), and (2) writes
-  `graphify-out/needs_update` when Markdown changed. Doc graph rebuilds
-  use LLM subagents and are user-initiated via `/graphify --update` —
-  the hook only flags them, never runs them.
-- Do not run graphify mid-session.
+- Commits at phase close, not slice close. No commit per slice
+  unless the user asks.
+- Push is automatic on commit. The post-commit hook (a) AST-rebuilds
+  the code graph and (b) writes `needs_update` if Markdown changed.
+- Do not run graphify mid-session except per Knowledge Graph Refresh.
 
-## Session Handoff
+## Session Handoff (only when wrapping)
 
-Before ending a session or when the user says to wrap up, update:
+Update
+`~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md`:
 
-- `~/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/session_handoff.md`
+- what finished, files changed, tests run, what comes next, doc
+  moves
+- hard cap **40 lines**
+- "What Completed" = last accepted slice only; prior slices live in
+  `PROJECT_TRACKER.md`
 
-Keep it short:
-
-- what finished
-- files changed
-- tests run
-- what comes next
-- current doc locations if they changed
-
-Hard cap: the file must stay under **40 lines total**. "What Completed" =
-last accepted slice only. Prior slices are tracker truth in
-`PROJECT_TRACKER.md`, not handoff truth — do not duplicate them here.
+Not prompt authority. Do not reread mid-execution.
 
 ## Flavors
 

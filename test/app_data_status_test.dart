@@ -9,8 +9,8 @@
 // F. intraday open-snapshot replacement
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_data_status_service.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
+import 'package:forge_and_flow/services/app_data_status_service.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
 import 'package:forge_and_flow/domain/models/import_run.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_import_tracking_repository.dart';

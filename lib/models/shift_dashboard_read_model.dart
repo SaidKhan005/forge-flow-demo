@@ -2,7 +2,7 @@
 /// persisted current-state + active target profile + whole-day SchedulePlan.
 library;
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../services/labor_model.dart';

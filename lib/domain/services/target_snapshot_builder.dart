@@ -1,4 +1,5 @@
-import '../../data/legacy_fixture_data.dart';
+import '../../data/app_defaults.dart';
+import '../../dev/demo_fixture_data.dart';
 import '../models/active_target_profile.dart';
 import '../models/target_snapshot.dart';
 

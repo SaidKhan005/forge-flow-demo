@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/app_theme.dart';
-import '../data/week_data_notifier.dart';
+import '../state/week_data_notifier.dart';
 import '../utils/formatters.dart';
 
 class VarianceBanner extends StatelessWidget {

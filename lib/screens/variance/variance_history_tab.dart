@@ -8,8 +8,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/legacy_fixture_data.dart';
-import '../../data/shift_data_source.dart';
+import '../../data/app_defaults.dart';
+import '../../services/shift_data_source.dart';
 import '../../models/history_benchmark_daypart_summary.dart';
 import '../../models/history_pattern_record.dart';
 import '../../models/shift_record.dart';

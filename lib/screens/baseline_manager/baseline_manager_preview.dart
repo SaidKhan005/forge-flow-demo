@@ -9,9 +9,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/active_target_profile_notifier.dart';
-import '../../data/legacy_fixture_data.dart';
-import '../../data/schedule_plan_read_service.dart';
+import '../../state/active_target_profile_notifier.dart';
+import '../../data/app_defaults.dart';
+import '../../services/schedule_plan_read_service.dart';
 import '../../domain/models/active_target_profile.dart';
 import '../../models/baseline_candidate_shift.dart';
 import '../../services/labor_model.dart';

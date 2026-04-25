@@ -13,12 +13,12 @@
 // I. getExistingCurrentLockedWeeklyPlan read-only path (7.55q.2-review-fix)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/business_date_authority_service.dart';
-import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
-import 'package:forge_and_flow/data/target_cycle_service.dart';
-import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/services/business_date_authority_service.dart';
+import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
+import 'package:forge_and_flow/services/target_cycle_service.dart';
+import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_schedule_plan_projector.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';

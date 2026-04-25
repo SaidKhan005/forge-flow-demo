@@ -8,9 +8,9 @@
 // - Profile-without-cycle recovery (8d)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/baseline_selection_analytics_service.dart';
-import 'package:forge_and_flow/data/learn_benchmark_context_service.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/services/baseline_selection_analytics_service.dart';
+import 'package:forge_and_flow/services/learn_benchmark_context_service.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/benchmark_selection_summary.dart';
 import 'package:forge_and_flow/domain/models/target_cycle.dart';

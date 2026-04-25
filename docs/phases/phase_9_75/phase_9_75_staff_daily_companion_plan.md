@@ -27,8 +27,11 @@ Product label: Barrio V1.1
     (same project as Phase 9 / 10a / 11a). Founder-authored Markdown
     remains the ingestion source of truth before it is loaded into the
     graph.
-  - Timing: Phase 11a runs in parallel with Phase 8 / 8R / 9, so the
-    retrieval layer should be ready before 9.75 ships. Barrio AI-assisted
+  - Timing: Phase 11a's retrieval infrastructure closes ahead of 9.75
+    per the sequential build cadence locked 2026-04-25
+    (`7.57 -> 11a -> 9.8 -> 9 -> 10a -> 10.5 -> 9.5 -> [7.58] -> 11b
+    -> 9.75 -> ...`), so the retrieval layer is ready before 9.75
+    ships. Barrio AI-assisted
     coaching surfaces can light up at 9.75 launch without waiting on
     Phase 11b (the agent runtime + Coach Chatbot UX). Conversational chat
     is Phase 11b; pre-composed coaching tips and Focus suggestions are

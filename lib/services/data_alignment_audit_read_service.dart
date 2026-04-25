@@ -25,12 +25,12 @@
 /// widgets must go through services.
 library;
 
-import '../data/demand_forecast_context_service.dart';
-import '../data/restaurant_timing_config_read_service.dart';
-import '../data/schedule_plan_read_service.dart';
-import '../data/shift_service.dart';
-import '../data/wage_standard_context_service.dart';
-import '../data/weekly_plan_snapshot_service.dart';
+import '../services/demand_forecast_context_service.dart';
+import '../services/restaurant_timing_config_read_service.dart';
+import '../services/schedule_plan_read_service.dart';
+import 'shift_service.dart';
+import '../services/wage_standard_context_service.dart';
+import '../services/weekly_plan_snapshot_service.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/benchmark_selection_summary.dart';
 import '../domain/models/schedule_distribution_weights.dart';

@@ -433,6 +433,34 @@ void main() {
         throwsA(isA<CorpusManifestException>()),
       );
     });
+
+    test(
+      'wrong-dimension gateway output fails through the provider abstraction',
+      () async {
+        // 7.57.3b regression: the embedding executor now routes
+        // through `VoyageEmbeddingProvider`, which enforces the
+        // contract dimension count. A gateway that returns a
+        // shorter vector must be rejected by the provider (StateError)
+        // instead of slipping through to the SQL writer.
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+        await CorpusEmbeddingJobPreparer(repoRoot: repo).prepare();
+
+        expect(
+          CorpusEmbeddingExecutor(
+            repoRoot: repo,
+            gateway: _WrongDimensionEmbeddingGateway(),
+          ).execute(apiKey: 'test-key'),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
   });
 
   group('Advisor corpus schema scaffold', () {
@@ -588,6 +616,27 @@ class _FakeEmbeddingGateway implements AdvisorEmbeddingGateway {
           ],
       ],
       providerReportedTokenCount: 1234,
+    );
+  }
+}
+
+/// Returns vectors that are one dimension short of the contract.
+/// Used to verify the `VoyageEmbeddingProvider` rejection path the
+/// executor now relies on (7.57.3b).
+class _WrongDimensionEmbeddingGateway implements AdvisorEmbeddingGateway {
+  @override
+  Future<EmbeddingBatchResult> embedDocuments({
+    required String apiKey,
+    required String model,
+    required int dimensions,
+    required List<String> inputs,
+  }) async {
+    return EmbeddingBatchResult(
+      vectors: <List<double>>[
+        for (var i = 0; i < inputs.length; i += 1)
+          List<double>.filled(dimensions - 1, 0.0),
+      ],
+      providerReportedTokenCount: 0,
     );
   }
 }

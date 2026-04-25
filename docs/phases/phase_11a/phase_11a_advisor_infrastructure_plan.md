@@ -31,17 +31,26 @@ work.
 
 Build the backend substrate for the agentic advisor: a knowledge graph of
 shared methodology, a content ingestion pipeline so founders can keep
-expanding the corpus, and an MCP tool layer exposing per-operator live
-data. No user-facing surface; purely infrastructure.
+expanding the corpus, and a proxy backend + MCP tool layer (`11a.10`,
+split into `10a` infra + `10b` per-operator enforcement; `10c` admin
+dashboards flagged for post-100-locations; `10d` provider fallback as
+locked future capability, off by default) brokering all LLM / embedding
+calls and exposing per-operator live data. No user-facing surface;
+purely infrastructure.
 
-Phase 11a runs in parallel with Phase 8 / 8R / 9 since it is backend-only
-and does not gate on auth or vendor transport. By the time Phase 9 lands,
-the graph and tool layer are ready so Phase 11b (Advisor UX) is a small
-lift instead of a from-scratch build.
+**Cadence superseded 2026-04-25.** Original 2026-04-22 framing was
+"Phase 11a runs in parallel with Phase 8 / 8R / 9." That parallel
+framing is now obsolete. Phase 11a now runs sequentially: resume after
+`7.57` stabilization closes, run before `9.8`, per the locked build
+order in `docs/phases/post_11a7_stabilization_plan.md`. By the time
+Phase 9 lands, the graph + proxy + tool layer are ready so Phase 11b
+(Advisor UX) is a small lift instead of a from-scratch build.
 
 ## Decisions Locked (2026-04-22 review)
 
-- **Sequence:** 11a runs in parallel with Phase 8 / 8R / 9. Does not wait
+- **Sequence (superseded 2026-04-25):** original framing was "11a runs
+  in parallel with Phase 8 / 8R / 9." Now: 11a runs sequentially
+  between `7.57` and `9.8` per the locked build cadence. Does not wait
   on auth or vendor selection. Phase 8 is blocked on vendor picks anyway,
   so 11a uses that time to build the knowledge substrate.
 - **Content model:** founder-authored methodology, SOPs, handbooks, and
@@ -175,7 +184,8 @@ founder uploads methodology / SOP / training content
 -> Claude answer runtime with citations / provenance
 
 operator repositories (POS, labor, canonical facts, variance)
--> MCP tool layer (read-only, per-operator scoping hooks)
+-> proxy backend (`11a.10a`) + MCP tool layer (read-only,
+   per-operator scoping hooks via `11a.10b` enforcement)
 -> ready to serve the agent runtime when Phase 11b lights up
 ```
 
@@ -228,7 +238,7 @@ Consumers of Phase 11a:
 ## Source Material
 
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)
-- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/Rag_Architecture.svg)
+- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/reference/Rag_Architecture.svg)
 - [corpus_manifest.yaml](C:/Git%20Local%20Repos/forge_flow_demo/docs/Knowledge_graph_docs/corpus_manifest.yaml)
 - [phase_11a_0_corpus_manifest_ingestion_contract.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_0_corpus_manifest_ingestion_contract.md)
 - [phase_11a_1_manifest_validator_chunk_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_1_manifest_validator_chunk_plan.md)
@@ -276,6 +286,7 @@ source for 11a ingestion is now:
 
 - `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md`
 
-The older `docs/internal/barrio/**` and archive references remain historical
-unless a later content-provenance cleanup explicitly scopes them. Runtime Dart
-content references are not part of this 11a.0 corpus contract slice.
+Older archive references to the retired internal Barrio docs path remain
+historical unless a later content-provenance cleanup explicitly scopes them.
+Runtime Dart content references are not part of this 11a.0 corpus contract
+slice.

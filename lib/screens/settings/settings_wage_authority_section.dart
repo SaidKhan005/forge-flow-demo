@@ -11,7 +11,7 @@
 
 import 'package:flutter/material.dart';
 
-import '../../data/wage_standard_context_service.dart';
+import '../../services/wage_standard_context_service.dart';
 import '../../domain/models/wage_role_row.dart';
 import '../../domain/models/wage_standard_context.dart';
 import '../../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';

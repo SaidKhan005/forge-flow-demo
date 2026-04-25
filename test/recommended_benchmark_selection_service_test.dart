@@ -16,7 +16,7 @@
 //   J. Degenerate-range per-daypart flags (TOO WIDE / TOO NARROW)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/recommended_benchmark_selection_service.dart';
+import 'package:forge_and_flow/domain/services/recommended_benchmark_selection_service.dart';
 import 'package:forge_and_flow/domain/models/recommended_benchmark_selection.dart';
 import 'package:forge_and_flow/models/baseline_candidate_shift.dart';
 

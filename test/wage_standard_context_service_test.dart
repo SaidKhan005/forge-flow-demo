@@ -10,7 +10,7 @@
 // G. Empty generator rows after delete → config fallback
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/wage_standard_context_service.dart';
+import 'package:forge_and_flow/services/wage_standard_context_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
 import 'package:forge_and_flow/domain/models/wage_standard_source.dart';

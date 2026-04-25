@@ -8,13 +8,13 @@
 // from injected context.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/fixture_seed_data.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/dev/fixture_seed_data.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/models/history_pattern_record.dart';
 import 'package:forge_and_flow/models/learn_benchmark_context.dart';
 import 'package:forge_and_flow/services/history_pattern_builder.dart';
 import 'package:forge_and_flow/services/history_teaching_analyzer.dart';
-import 'package:forge_and_flow/data/learn_benchmark_context_service.dart';
+import 'package:forge_and_flow/services/learn_benchmark_context_service.dart';
 import 'package:forge_and_flow/services/learn_teaching_analyzer.dart';
 
 /// Builds a LearnBenchmarkContext from current BaselineData state.

@@ -9,12 +9,12 @@
 // D. Fixture replay can drive the aligned app read surfaces
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/restaurant_timing_config_read_service.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
-import 'package:forge_and_flow/data/target_cycle_service.dart';
-import 'package:forge_and_flow/data/wage_standard_context_service.dart';
-import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/services/restaurant_timing_config_read_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
+import 'package:forge_and_flow/services/target_cycle_service.dart';
+import 'package:forge_and_flow/services/wage_standard_context_service.dart';
+import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
 import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';

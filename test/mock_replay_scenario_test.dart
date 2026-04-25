@@ -10,13 +10,13 @@
 // G. Replay-regenerated scenario data rebuilds coherently (7.55m.2a)
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/baseline_manager_service.dart';
-import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
-import 'package:forge_and_flow/data/shift_service.dart';
-import 'package:forge_and_flow/data/weekly_plan_snapshot_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/services/shift_service.dart';
+import 'package:forge_and_flow/services/weekly_plan_snapshot_service.dart';
 import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';

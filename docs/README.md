@@ -2,7 +2,7 @@
 
 Updated: 2026-04-25
 
-This repo now keeps docs in four main buckets:
+This repo keeps docs in four main buckets:
 
 ## 1. Root authority docs
 
@@ -16,8 +16,8 @@ These stay at the top level because they are the fastest-entry authority docs:
 
 `docs/contracts/`
 
-These are the active architecture and timing rules that other live docs should
-point to instead of restating from scratch.
+Active architecture and timing rules. Other live docs should point here instead
+of restating them.
 
 Current examples:
 
@@ -30,8 +30,7 @@ Current examples:
 
 `docs/phases/`
 
-These are still-live lane docs grouped by phase family instead of sitting loose
-in the docs root.
+Still-live lane docs grouped by phase family.
 
 Current live groups:
 
@@ -53,30 +52,18 @@ Current live groups:
 
 `docs/archive/`
 
-This is where completed phase slices, retired reference docs, and tracker
-history live.
+Completed phase slices, retired reference docs, internal notes, and tracker
+history live here.
 
-Useful archive areas:
+Common archive areas:
 
-- `docs/archive/phases/7_55i/`
-- `docs/archive/phases/7_55j/`
-- `docs/archive/phases/7_55k/`
-- `docs/archive/phases/7_55n/`
-- `docs/archive/phases/7_55p/`
-- `docs/archive/phases/7_55l/`
-- `docs/archive/phases/7_55m/`
-- `docs/archive/phases/7_55o/`
-- `docs/archive/phases/7_55q/`
-- `docs/archive/phases/7_56/`
-- `docs/archive/phases/phase_7_55r/`
-- `docs/archive/phases/phase_11a/`
+- `docs/archive/phases/`
 - `docs/archive/internal/`
-- `docs/archive/trackers/`
 - `docs/archive/reference/`
+- `docs/archive/trackers/`
 
 ## Other folders
 
-- `docs/internal/` - internal company / product reference material
 - `docs/app_store_release/` - release collateral
 
 ## Working rule

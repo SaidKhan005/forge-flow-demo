@@ -21,7 +21,7 @@
 /// persisted config.
 library;
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/service_period_definition_resolver.dart';

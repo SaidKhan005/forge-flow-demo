@@ -1,16 +1,18 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import 'data/active_target_profile_notifier.dart';
-import 'data/app_refresh_coordinator.dart';
-import 'data/app_runtime_invalidation_bus.dart';
-import 'data/business_date_authority_service.dart';
-import 'data/demand_forecast_context_notifier.dart';
-import 'data/restaurant_scope_notifier.dart';
-import 'data/schedule_distribution_weights_notifier.dart';
-import 'data/shift_dashboard_notifier.dart';
-import 'data/shift_data_source.dart';
-import 'data/week_data_notifier.dart';
+import 'services/advisor_model_config_service.dart';
+import 'services/business_date_authority_service.dart';
+import 'services/shift_data_source.dart';
+import 'state/active_target_profile_notifier.dart';
+import 'state/app_refresh_coordinator.dart';
+import 'state/app_runtime_invalidation_bus.dart';
+import 'state/demand_forecast_context_notifier.dart';
+import 'state/restaurant_scope_notifier.dart';
+import 'state/schedule_distribution_weights_notifier.dart';
+import 'state/shift_dashboard_notifier.dart';
+import 'state/week_data_notifier.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
@@ -225,9 +227,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _openSettings(BuildContext context) {
+    // In debug builds, wire the ADVISOR MODELS dev section by passing a
+    // live `AdvisorModelConfigService`. In release the section stays
+    // hidden because `SettingsScreen` only renders it when both
+    // `kDebugMode` and a service instance are present.
+    final advisorConfig = kDebugMode ? AdvisorModelConfigService() : null;
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => const SettingsScreen(),
+        builder: (_) => SettingsScreen(
+          advisorModelConfigService: advisorConfig,
+        ),
         fullscreenDialog: true,
       ),
     );

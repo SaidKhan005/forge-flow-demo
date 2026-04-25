@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
+import 'package:forge_and_flow/state/shift_dashboard_notifier.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/shift_dashboard.dart';
 

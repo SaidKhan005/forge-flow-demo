@@ -8,8 +8,8 @@
 
 import 'package:flutter/foundation.dart';
 
-import '../../data/restaurant_timing_config_read_service.dart';
-import '../../data/schedule_plan_read_service.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
+import '../../services/schedule_plan_read_service.dart';
 import '../../domain/models/active_target_profile.dart';
 import '../../domain/models/schedule_distribution_weights.dart';
 import '../../domain/models/schedule_forecast_demand.dart';

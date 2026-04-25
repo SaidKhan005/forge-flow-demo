@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/baseline_manager_service.dart';
-import 'package:forge_and_flow/data/benchmark_tracker_read_service.dart';
-import 'package:forge_and_flow/data/business_date_authority_service.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
-import 'package:forge_and_flow/data/target_cycle_service.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
+import 'package:forge_and_flow/services/business_date_authority_service.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
+import 'package:forge_and_flow/services/target_cycle_service.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 

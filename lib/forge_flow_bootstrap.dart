@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'data/baseline_manager_service.dart';
-import 'data/target_cycle_service.dart';
-import 'data/wage_standard_context_service.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import 'services/target_cycle_service.dart';
+import 'services/wage_standard_context_service.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 
 /// Shared Forge & Flow app bootstrap used by both standalone and host shells.

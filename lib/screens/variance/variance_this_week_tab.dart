@@ -9,11 +9,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../data/active_target_profile_notifier.dart';
-import '../../data/legacy_fixture_data.dart';
-import '../../data/restaurant_timing_config_read_service.dart';
-import '../../data/shift_data_source.dart';
-import '../../data/week_data_notifier.dart';
+import '../../state/active_target_profile_notifier.dart';
+import '../../data/app_defaults.dart';
+import '../../services/restaurant_timing_config_read_service.dart';
+import '../../services/shift_data_source.dart';
+import '../../state/week_data_notifier.dart';
 import '../../domain/models/service_period_definition.dart';
 import '../../models/shift_record.dart';
 import '../../models/variance_week_projection_row.dart';

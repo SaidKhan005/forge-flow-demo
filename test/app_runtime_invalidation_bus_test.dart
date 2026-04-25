@@ -10,16 +10,16 @@
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/app_refresh_coordinator.dart';
-import 'package:forge_and_flow/data/app_runtime_invalidation_bus.dart';
-import 'package:forge_and_flow/data/active_target_profile_notifier.dart';
-import 'package:forge_and_flow/data/demand_forecast_context_notifier.dart';
-import 'package:forge_and_flow/data/restaurant_scope_notifier.dart';
-import 'package:forge_and_flow/data/schedule_distribution_weights_notifier.dart';
+import 'package:forge_and_flow/state/app_refresh_coordinator.dart';
+import 'package:forge_and_flow/state/app_runtime_invalidation_bus.dart';
+import 'package:forge_and_flow/state/active_target_profile_notifier.dart';
+import 'package:forge_and_flow/state/demand_forecast_context_notifier.dart';
+import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
+import 'package:forge_and_flow/state/schedule_distribution_weights_notifier.dart';
 import 'package:forge_and_flow/domain/models/schedule_distribution_weights.dart';
-import 'package:forge_and_flow/data/shift_dashboard_notifier.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
-import 'package:forge_and_flow/data/week_data_notifier.dart';
+import 'package:forge_and_flow/state/shift_dashboard_notifier.dart';
+import 'package:forge_and_flow/services/shift_data_source.dart';
+import 'package:forge_and_flow/state/week_data_notifier.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';

@@ -5,7 +5,7 @@
 // No push/toast, no background delivery, no unread tracking.
 
 import 'package:flutter/material.dart';
-import '../data/app_notification_service.dart';
+import '../services/app_notification_service.dart';
 import '../domain/models/app_notification.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../theme/app_theme.dart';

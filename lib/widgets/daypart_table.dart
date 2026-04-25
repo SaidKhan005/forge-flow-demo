@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/legacy_fixture_data.dart';
+import '../dev/demo_fixture_data.dart';
 
 class DaypartTable extends StatelessWidget {
   final List<DaypartRange> dayparts;

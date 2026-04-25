@@ -5,9 +5,9 @@
 // Phase 7.55f.2 adds 60-day date-window candidate loading tests.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/baseline_manager_service.dart';
-import 'package:forge_and_flow/data/database_helper.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
 
 void main() {

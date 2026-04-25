@@ -11,7 +11,7 @@
 // H. Schema table exists and is queryable
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/restaurant_timing_config_read_service.dart';
+import 'package:forge_and_flow/services/restaurant_timing_config_read_service.dart';
 import 'package:forge_and_flow/domain/models/restaurant_timing_config.dart';
 import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/domain/services/weekly_plan_snapshot_policy.dart';

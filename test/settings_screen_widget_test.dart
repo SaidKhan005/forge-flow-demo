@@ -5,9 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
-import 'package:forge_and_flow/data/restaurant_scope_notifier.dart';
-import 'package:forge_and_flow/data/wage_standard_context_service.dart';
+import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
+import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
+import 'package:forge_and_flow/services/wage_standard_context_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/restaurant_location.dart';
 import 'package:forge_and_flow/domain/models/wage_role_row.dart';
@@ -19,6 +19,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
+import 'package:forge_and_flow/services/advisor_model_config_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 bool _includePrunedLabelGroups() => false;
 
@@ -909,6 +911,11 @@ void main() {
       expect(find.text('Reset target cycle?'), findsNothing);
     });
   });
+
+  // 7.57.3a-review-fix: dev-only ADVISOR MODELS section. Registered last so
+  // it does not change the relative ordering of the prior groups (a few
+  // smoke tests are sensitive to a clean test-binding state at start).
+  _advisorSectionTests();
 }
 
 /// Helper: pump repeatedly to let async DB work + animations settle
@@ -1004,3 +1011,189 @@ Future<ActiveTargetProfile?> _getActiveTargetProfile(
         .getActiveTargetProfile(restaurantId);
   }))!;
 }
+
+// ─── 7.57.3a-review-fix: dev-only ADVISOR MODELS section tests ───────────────
+
+Future<void> _pumpAdvisorSettings(
+  WidgetTester tester, {
+  required AdvisorModelConfigService service,
+}) async {
+  await tester.pumpWidget(MaterialApp(
+    home: SettingsScreen(
+      initialStatus: AppDataStatus.current(),
+      initialMockDate: '2026-03-27',
+      advisorModelConfigService: service,
+      forceShowAdvisorModelSection: true,
+    ),
+  ));
+  // Section bodies use FutureBuilders / async loads — drain them so no
+  // timers leak into subsequent tests in the same file.
+  await tester.pump();
+  await tester.pumpAndSettle();
+}
+
+void _advisorSectionTests() {
+  group('Settings ADVISOR MODELS section (dev-only)', () {
+    setUp(() {
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    testWidgets('renders pinned defaults and Voyage read-only values',
+        (tester) async {
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn: ({
+          required String quickModelId,
+          required String nuancedModelId,
+        }) async =>
+            const AnthropicModelCheckResult.cannotCheck('test default'),
+      );
+
+      await _pumpAdvisorSettings(tester, service: svc);
+      await _scrollToText(tester, 'ADVISOR MODELS');
+
+      expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
+      expect(find.textContaining('claude-haiku-4-5', skipOffstage: false),
+          findsWidgets);
+      expect(find.textContaining('claude-sonnet-4-6', skipOffstage: false),
+          findsWidgets);
+      expect(find.byKey(const Key('advisor_voyage_pinned'), skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('voyage-4-large', skipOffstage: false),
+          findsWidgets);
+      expect(find.textContaining('rerank-2.5', skipOffstage: false),
+          findsWidgets);
+    });
+
+    testWidgets('Reset Defaults and Check Anthropic Models actions render',
+        (tester) async {
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn: ({
+          required String quickModelId,
+          required String nuancedModelId,
+        }) async =>
+            const AnthropicModelCheckResult.cannotCheck('test default'),
+      );
+
+      await _pumpAdvisorSettings(tester, service: svc);
+      await _scrollToText(tester, 'ADVISOR MODELS');
+
+      expect(find.byKey(const Key('advisor_reset_button'), skipOffstage: false),
+          findsOneWidget);
+      expect(find.byKey(const Key('advisor_check_button'), skipOffstage: false),
+          findsOneWidget);
+      expect(find.byKey(const Key('advisor_quick_override_field'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(find.byKey(const Key('advisor_nuanced_override_field'),
+              skipOffstage: false),
+          findsOneWidget);
+    });
+
+    testWidgets('Check action surfaces injected fake result text',
+        (tester) async {
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn: ({
+          required String quickModelId,
+          required String nuancedModelId,
+        }) async =>
+            const AnthropicModelCheckResult(
+          status: AnthropicModelCheckStatus.available,
+          message: 'fake-up-to-date-message',
+        ),
+      );
+
+      await _pumpAdvisorSettings(tester, service: svc);
+      // Scroll the check button itself onto the visible region before tap.
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('advisor_check_button')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.byKey(const Key('advisor_check_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.textContaining('fake-up-to-date-message', skipOffstage: false),
+          findsOneWidget);
+      // Up-to-date branch (status=available + updateAvailable=false).
+      expect(find.text('UP TO DATE', skipOffstage: false), findsOneWidget);
+    });
+
+    testWidgets(
+        'UPDATE AVAILABLE label and candidate rows render when fake reports update',
+        (tester) async {
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn: ({
+          required String quickModelId,
+          required String nuancedModelId,
+        }) async =>
+            const AnthropicModelCheckResult(
+          status: AnthropicModelCheckStatus.available,
+          message: 'newer same-family seen',
+          seenModelIds: [
+            'claude-haiku-4-5',
+            'claude-sonnet-4-6',
+            'claude-sonnet-4-7',
+          ],
+          updateAvailable: true,
+          latestNuancedCandidate: 'claude-sonnet-4-7',
+        ),
+      );
+
+      await _pumpAdvisorSettings(tester, service: svc);
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('advisor_check_button')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.tap(find.byKey(const Key('advisor_check_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(find.text('UPDATE AVAILABLE', skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_check_nuanced_candidate'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('claude-sonnet-4-7', skipOffstage: false),
+          findsWidgets);
+    });
+
+    testWidgets(
+        'real debug route renders ADVISOR MODELS without forceShow (kDebugMode + service)',
+        (tester) async {
+      // Mirrors what `forge_flow_app.dart::_openSettings` does in debug:
+      // pushes a SettingsScreen with `advisorModelConfigService` set but
+      // no force flag. The section gate (kDebugMode && service != null)
+      // should render the section in this configuration.
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn: ({
+          required String quickModelId,
+          required String nuancedModelId,
+        }) async =>
+            const AnthropicModelCheckResult.cannotCheck(
+                'real-route-test no-network'),
+      );
+
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+          advisorModelConfigService: svc,
+          // forceShowAdvisorModelSection deliberately omitted
+        ),
+      ));
+      await tester.pump();
+      await tester.pumpAndSettle();
+      await _scrollToText(tester, 'ADVISOR MODELS');
+
+      expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
+    });
+  });
+}
+

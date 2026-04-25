@@ -18,10 +18,14 @@ Owner: Future live daypart/service-period lane
   references in Source Material below. No synthesis; no imagined
   shapes.
 
-- **Build sequence: parallel with Phase 8, validate post-Phase-8.** The
-  bucketing engine, read service, and UI can be built against demo
-  data once the deferred time-boundary foundation is closed. Real-data
-  validation is a post-Phase-8 pass, not a build blocker.
+- **Build sequence (superseded 2026-04-25):** original framing was
+  "parallel with Phase 8, validate post-Phase-8." Updated lock: 10.5
+  runs sequentially in the `7.57 -> 11a -> 9.8 -> 9 -> 10a -> 10.5
+  -> 9.5 -> [7.58] -> 11b -> 9.75 -> 11b.2 -> 10b -> [7.61] -> 8 -> 8R`
+  order. The bucketing engine, read service, and UI can be built
+  against demo data once the deferred time-boundary foundation is
+  closed; real-data validation happens after Phase 8 transport ships
+  (later in the sequence), not as a build blocker.
 
 - **Pre-requisite: close the deferred time-boundary foundation.**
   Persist timing settings (`businessDayStartLocalTime`, `weekStartDay`),

@@ -14,7 +14,7 @@
 import 'dart:math' show max;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/demand_forecast_context_service.dart';
+import 'package:forge_and_flow/services/demand_forecast_context_service.dart';
 import 'package:forge_and_flow/domain/models/demand_forecast_context.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/services/schedule_forecast_demand_resolver.dart';

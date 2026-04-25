@@ -14,7 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
-import 'package:forge_and_flow/data/shift_data_source.dart';
+import 'package:forge_and_flow/services/mock_replay_data_source_provider.dart';
+import 'package:forge_and_flow/services/shift_data_source.dart';
 import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 
@@ -180,6 +181,44 @@ void main() {
             reason: '${p.weekId} should come from mock replay history');
       }
     });
+
+    test(
+        'routes mock replay reads through an injected MockReplayProvider '
+        '(7.57.3c)', () async {
+      // Stub provider returns an output with a different week id and
+      // empty shift lists. If StaticShiftDataSource still reached into
+      // MockIntegrationReplaySeed.output directly, these reads would
+      // surface the real fixture instead of the stub.
+      final stub = _StubMockReplayProvider(
+        output: const MockReplayOutput(
+          historicalClosedShifts: [],
+          currentWeekShifts: [],
+          weekRecords: [],
+          scenario: MockReplayScenario(
+            currentBusinessDate: '9999-10-15',
+            currentWeekId: '9999-W42',
+            openShiftDayLabel: 'Mon',
+            openShiftDaypart: 'lunch',
+          ),
+        ),
+      );
+
+      final ds = StaticShiftDataSource(provider: stub);
+
+      expect(await ds.getWeekHistory(), isEmpty);
+      expect(await ds.getHistoricalClosedShifts(), isEmpty);
+      expect(await ds.getFullWeekShifts('9999-W42'), isEmpty);
+
+      final wtd = await ds.getWeekToDate();
+      expect(wtd, isNotNull);
+      expect(wtd!.weekId, '9999-W42',
+          reason: 'weekId must come from the injected scenario, not the seed const');
+      expect(wtd.shiftsCompleted, 0);
+      expect(wtd.shiftsTotal, 0);
+
+      expect(stub.fetchCalls, greaterThan(0),
+          reason: 'StaticShiftDataSource must route through fetch()');
+    });
   });
 
   // ── D. sqlite_database.dart has no DemoData operational reads ───────────
@@ -200,7 +239,7 @@ void main() {
     });
 
     test('shift_data_source.dart does not import fixture_seed_data', () {
-      final file = File('lib/data/shift_data_source.dart');
+      final file = File('lib/services/shift_data_source.dart');
       expect(file.existsSync(), isTrue);
 
       final source = file.readAsStringSync();
@@ -210,4 +249,26 @@ void main() {
           reason: 'shift_data_source.dart must not reference DemoData');
     });
   });
+}
+
+/// Counts `fetch()` calls and returns a caller-supplied stub
+/// [MockReplayOutput]. Used to prove `StaticShiftDataSource` routes
+/// reads through the provider seam (7.57.3c).
+class _StubMockReplayProvider implements MockReplayProvider {
+  _StubMockReplayProvider({required this.output});
+
+  final MockReplayOutput output;
+  int fetchCalls = 0;
+
+  @override
+  String get providerId => 'stub_mock_replay';
+
+  @override
+  String get sourceSystem => 'stub_source';
+
+  @override
+  Future<MockReplayOutput> fetch({String? businessDate}) async {
+    fetchCalls += 1;
+    return output;
+  }
 }

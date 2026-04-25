@@ -83,7 +83,7 @@ class LaborModel {
 
   // ── Primary lever detection ───────────────────────────────────────────────
   // Identifies the strongest signal driver from WTD actuals.
-  // Returns a LeverCardData.id string (see LeverCards in legacy_fixture_data.dart).
+  // Returns a LeverCardData.id string (see LeverCards in app_defaults.dart).
   //
   // Thresholds (% deviation from target before a lever fires):
   //   Covers: ±2%   CPLH/SPLH: ±5%   PPA/wage: ±3%

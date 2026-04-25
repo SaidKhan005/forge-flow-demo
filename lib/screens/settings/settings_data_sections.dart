@@ -7,9 +7,9 @@
 
 import 'package:flutter/material.dart';
 
-import '../../data/baseline_manager_service.dart';
+import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import '../../data/mock_integration_replay_seed.dart';
-import '../../data/shift_service.dart';
+import '../../services/shift_service.dart';
 import '../../models/app_data_status.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/data_alignment_audit_panel.dart';
@@ -561,4 +561,4 @@ class SettingsFooter extends StatelessWidget {
       ),
     );
   }
-}
+}

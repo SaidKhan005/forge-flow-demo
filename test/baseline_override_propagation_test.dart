@@ -19,8 +19,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/benchmark_tracker_read_service.dart';
-import 'package:forge_and_flow/data/legacy_fixture_data.dart';
+import 'package:forge_and_flow/services/benchmark_tracker_read_service.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/screens/baseline_tracker.dart';
 import 'package:forge_and_flow/widgets/zone_status_card.dart';
 

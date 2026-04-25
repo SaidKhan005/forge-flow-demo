@@ -2,7 +2,7 @@
 // a teaching summary: most common leak, where it repeats, and benchmark
 // dayparts to study against it.
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 import '../models/history_pattern_record.dart';
 
 class HistoryTeachingSummary {

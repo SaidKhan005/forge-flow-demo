@@ -18,10 +18,11 @@ how each restaurant actually operates, not one that retrieves similar text.
 ## Decisions Locked (2026-04-22 review)
 
 - **Sequence:** 11b ships after Phase 11a (infrastructure) and Phase 9
-  (auth). Forge & Flow manager chat can ship before Phase 9.75; the
-  Barrio manager / staff chat surfaces light up once the Barrio shell
-  exists. Phase 11a running in parallel with 8 / 8R / 9 means 11b is a
-  small UX lift, not a from-scratch build.
+  (auth) per the sequential build cadence locked 2026-04-25. Forge &
+  Flow manager chat can ship before Phase 9.75; the Barrio manager /
+  staff chat surfaces light up once the Barrio shell exists. With
+  Phase 11a's infrastructure (graph + proxy + MCP tool layer) closed
+  before 11b opens, 11b is a small UX lift, not a from-scratch build.
 - **Operator isolation:** enforced via Phase 9 auth. No query can retrieve
   or reason about another operator's numbers. This is a non-negotiable.
 - **Stateless reasoning:** the model retains nothing between queries. Every
@@ -63,7 +64,8 @@ Phase 11b owns:
 
 Phase 11b does not own:
 
-- knowledge graph, content ingestion, MCP tool layer (`Phase 11a`)
+- knowledge graph, content ingestion, proxy backend (`11a.10`), MCP
+  tool layer (`Phase 11a`)
 - POS + Labor connector transport (`Phase 8`)
 - reservation connector transport (`Phase 8R`)
 - auth, roles, permission keys (`Phase 9`)
@@ -90,7 +92,8 @@ operator query (Forge & Flow manager / Barrio manager / Barrio staff)
 
 Required before Phase 11b can ship real:
 
-- `Phase 11a` knowledge graph + ingestion pipeline + MCP tool layer
+- `Phase 11a` knowledge graph + ingestion pipeline + proxy backend
+  (`11a.10`) + MCP tool layer
 - `Phase 9` auth so per-operator scoping is enforceable
 - `Phase 8` live POS + Labor transport so tool calls return real numbers
   for meaningful answers
@@ -131,7 +134,7 @@ Helpful but not required:
 
 - [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)
-- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/Rag_Architecture.svg)
+- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/reference/Rag_Architecture.svg)
 
 ## Placeholder Notes
 

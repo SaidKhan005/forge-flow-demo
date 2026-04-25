@@ -8,7 +8,7 @@
 //   benchmarkDayparts   = ['Wed Dinner', 'Thu Dinner']
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:forge_and_flow/data/fixture_seed_data.dart';
+import 'package:forge_and_flow/dev/fixture_seed_data.dart';
 import 'package:forge_and_flow/services/history_pattern_builder.dart';
 import 'package:forge_and_flow/services/history_teaching_analyzer.dart';
 

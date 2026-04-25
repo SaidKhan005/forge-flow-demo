@@ -16,7 +16,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
-import 'package:forge_and_flow/data/database_helper.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/domain/services/shift_fact_builder.dart';

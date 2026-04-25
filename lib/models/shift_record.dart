@@ -1,7 +1,7 @@
 // One shift (one daypart) — stored in SQLite.
 // Raw inputs are set at close time; all labor % and dollar fields are derived.
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 import '../services/labor_model.dart';
 
 class ShiftRecord {

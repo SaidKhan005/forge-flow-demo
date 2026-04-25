@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:forge_and_flow/services/voyage_embedding_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
 
@@ -1639,36 +1640,41 @@ class CorpusEmbeddingExecutor {
       batchEstimatedTokenLimit: batchEstimatedTokenLimit,
     );
 
+    // 7.57.3b — route vector generation through the same Voyage
+    // provider abstraction the runtime advisor uses. The gateway
+    // still owns the HTTP/test seam, but the provider enforces the
+    // 1:1 input/output and dimension contract. Per-batch token
+    // counts (which the provider interface omits) are captured in
+    // a closure variable so accounting stays unchanged.
+    var lastBatchProviderReportedTokenCount = 0;
+    final embeddingProvider = VoyageEmbeddingProvider(
+      embedFn: (texts, {required String model}) async {
+        final batchResult = await _gateway.embedDocuments(
+          apiKey: resolvedApiKey,
+          model: model,
+          dimensions: dimensions,
+          inputs: texts,
+        );
+        lastBatchProviderReportedTokenCount =
+            batchResult.providerReportedTokenCount;
+        return batchResult.vectors;
+      },
+    );
+
     final rows = <_EmbeddingUpdateRow>[];
     var providerReportedTokenCount = 0;
     for (var batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
       final batch = batches[batchIndex];
-      final batchResult = await _gateway.embedDocuments(
-        apiKey: resolvedApiKey,
-        model: model,
-        dimensions: dimensions,
-        inputs: batch.map((input) => input['input'].toString()).toList(),
+      final vectors = await embeddingProvider.embedBatch(
+        batch.map((input) => input['input'].toString()).toList(),
       );
-      if (batchResult.vectors.length != batch.length) {
-        throw CorpusManifestException(
-          'Voyage returned ${batchResult.vectors.length} embeddings for '
-          '${batch.length} inputs.',
-        );
-      }
-      providerReportedTokenCount += batchResult.providerReportedTokenCount;
+      providerReportedTokenCount += lastBatchProviderReportedTokenCount;
       for (var index = 0; index < batch.length; index += 1) {
-        final vector = batchResult.vectors[index];
-        if (vector.length != dimensions) {
-          throw CorpusManifestException(
-            'Voyage returned ${vector.length} dimensions for '
-            '${batch[index]['chunk_id']}; expected $dimensions.',
-          );
-        }
         rows.add(
           _EmbeddingUpdateRow(
             chunkId: batch[index]['chunk_id'].toString(),
             contentSha256: batch[index]['content_sha256'].toString(),
-            vector: vector,
+            vector: vectors[index],
           ),
         );
       }

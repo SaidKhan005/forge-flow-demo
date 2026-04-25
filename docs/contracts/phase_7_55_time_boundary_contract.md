@@ -348,6 +348,37 @@ It must not teach from:
 - projected rows
 - service periods that ended but have not closed
 
+### Rule 11 - Storage convention for operator-scoped fact tables
+
+Decided 2026-04-25. Applies to every Postgres fact table carrying
+`(operator_id, location_id)` (shifts, cycles, plans, weekly snapshots,
+variance, history, etc.):
+
+- Source-truth instants are stored as `TIMESTAMPTZ` (UTC). This is the
+  audit / ordering / "when did this happen globally" column.
+- A denormalized `business_date` `DATE` column lives alongside the
+  `TIMESTAMPTZ`, computed at write time using `location.timezone`
+  (IANA string on the `locations` table, per-location, since multi-
+  location operators can span zones) plus
+  `business_day_rollover_hour` (per-location restaurant setting).
+  This is the "which restaurant business day does this fact belong
+  to" column.
+- `business_date` is **write-once** — never recomputed at read.
+  Indexes on `business_date` are the natural shape for "shifts on
+  2026-04-25" and cycle-bucketing queries.
+- `TIMESTAMP WITHOUT TIME ZONE` is **banned** in operator-scoped fact
+  tables. DST transitions corrupt timezone-naive timestamps silently
+  and unrecoverably (the 2:30 AM hour on fall-back appears twice with
+  no way to distinguish; spring-forward gaps lose data).
+- The two columns must stay consistent: writes that set `TIMESTAMPTZ`
+  also set `business_date`. The trigger or write-time service that
+  enforces this lives in the persistence layer, not in app code.
+
+This rule operationalizes the "Restaurant-local timing rules own
+operational boundaries; business date is the master anchor" core
+principle. Without it, every developer invents their own timezone
+math and DST eventually corrupts cycle / shift truth.
+
 ## Reset, Lock, and Rollover Matrix
 
 | Surface / concept | Reset trigger | Lock trigger | Authority |

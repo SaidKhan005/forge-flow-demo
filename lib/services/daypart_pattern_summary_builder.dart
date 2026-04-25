@@ -12,7 +12,7 @@
 // (aligned with HistoryPatternBuilder). Exemplar fallback IDs use stable
 // source fields instead of input-order-dependent indices.
 
-import '../data/legacy_fixture_data.dart';
+import '../data/app_defaults.dart';
 import '../domain/canonical_day_order.dart';
 import '../models/daypart_pattern_summary.dart';
 import '../models/shift_record.dart';

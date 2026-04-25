@@ -4,7 +4,7 @@
 
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../data/legacy_fixture_data.dart'; // LeverCards
+import '../data/app_defaults.dart'; // LeverCards
 import '../models/week_record.dart';
 import '../utils/formatters.dart';
 import '../widgets/comparison_group_band.dart';

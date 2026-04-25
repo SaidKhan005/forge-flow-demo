@@ -52,6 +52,14 @@ android/app/upload-keystore.jks
 # Local database
 *.db
 
+# Local secrets
+.env
+.env.local
+.env.*.local
+.env.example
+.env.*.example
+.env.local.example
+
 # Large binary assets
 docs/internal/barrio/barrio_legado_business_plan.pdf
 

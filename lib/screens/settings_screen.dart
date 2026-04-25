@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../data/app_data_status_service.dart';
-import '../data/app_refresh_coordinator.dart';
-import '../data/restaurant_scope_notifier.dart';
-import '../data/shift_service.dart';
+import '../services/advisor_model_config_service.dart';
+import '../services/app_data_status_service.dart';
+import '../state/app_refresh_coordinator.dart';
+import '../state/restaurant_scope_notifier.dart';
+import '../services/shift_service.dart';
 import '../models/app_data_status.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
+import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
@@ -19,7 +21,25 @@ class SettingsScreen extends StatefulWidget {
   /// Optional injected mock replay date for testability.
   final String? initialMockDate;
 
-  const SettingsScreen({super.key, this.initialStatus, this.initialMockDate});
+  /// Optional injected advisor model config service for testability.
+  /// When null, the dev-only `ADVISOR MODELS` section constructs its
+  /// own service with default loaders. Tests pass a fake-backed service
+  /// + force the section to render via [forceShowAdvisorModelSection].
+  final AdvisorModelConfigService? advisorModelConfigService;
+
+  /// Test-only override: when true, the `ADVISOR MODELS` section
+  /// renders even outside `kDebugMode`. Production code never sets
+  /// this; in release builds the section is gated by
+  /// `advisorModelSectionEnabled`.
+  final bool forceShowAdvisorModelSection;
+
+  const SettingsScreen({
+    super.key,
+    this.initialStatus,
+    this.initialMockDate,
+    this.advisorModelConfigService,
+    this.forceShowAdvisorModelSection = false,
+  });
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -211,6 +231,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
           ),
+
+          // ── ADVISOR MODELS (dev-only) ────────────────────────────────
+          // Visibility:
+          //   * forceShowAdvisorModelSection (test-only override), OR
+          //   * kDebugMode AND a config service is explicitly wired.
+          //
+          // Production debug builds wire `advisorModelConfigService` in
+          // their app shell to opt in. Tests must pass both the service
+          // and (optionally) the force flag — this keeps the section
+          // out of test scenarios that haven't initialized
+          // SharedPreferences.
+          if (widget.forceShowAdvisorModelSection ||
+              (advisorModelSectionEnabled &&
+                  widget.advisorModelConfigService != null))
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('ADVISOR MODELS'),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SettingsAdvisorModelSection(
+                      service: widget.advisorModelConfigService ??
+                          AdvisorModelConfigService(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
 
           // ── Footer ───────────────────────────────────────────────────
           SliverToBoxAdapter(

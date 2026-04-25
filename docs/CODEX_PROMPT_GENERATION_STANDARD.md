@@ -1,426 +1,317 @@
 # Codex Prompt Generation Standard
 
-How Codex and Claude operate together in this repo.
+How Codex and Claude run the execution loop in this repo.
 
-## Before You Generate a Prompt (Preflight)
+## Operating Loop
 
-Run this preflight before **every** prompt you generate — not just the
-first in a session. Each execution-cycle iteration starts here. This is
-the Codex-side equivalent of Claude auto-loading `CLAUDE.md` at session
-start: the harness does not enforce it; the workflow does.
+Every prompt cycle follows this order:
 
-Read these before drafting the prompt, in order:
+1. Codex reads tracker truth and only the active doc slice it needs.
+2. Codex generates a two-message prompt.
+3. Claude implements only the scoped slice.
+4. Claude reports files, tests, acceptance, scope, and blockers.
+5. Codex verifies against repo truth, not just the report.
+6. Codex updates trackers only after verification.
+7. Codex generates the next prompt unless the user pauses or pivots.
 
-1. `PROJECT_TRACKER.md` — current phase, next slice, sequencing
-2. The active slice's planning doc in `docs/phases/**` — exactly one doc
-3. `CLAUDE.md` — what Claude already auto-loads; do not duplicate
-4. This doc's `Authority Loading Budget` and `Prompt Shape` sections
+If the user pivots into architecture, workflow, or docs cleanup, pause prompt
+sequencing until that cleanup is handled.
 
-Conditional, only when the slice domain applies:
+## Preflight
 
-5. One contract doc in `docs/contracts/` (timing / architecture /
-   cycle-plan ownership). Never more than one.
-6. `docs/KNOWN_FAILING_TESTS.md` — only when the slice runs full or
-   near-full test suites, or when verification might surface failures
-   the slice does not own.
+Before every prompt, check:
 
-Then self-audit the generated prompt against this checklist:
+1. `PROJECT_TRACKER.md` current / next slice lines.
+2. The relevant section of one active planning doc under `docs/phases/**`.
+3. `CLAUDE.md` only when guardrails may have changed.
+4. This standard only when prompt shape is in question.
 
-- [ ] Slice type is named explicitly (see `Slice Types`) — implementation /
-      closeout-verification / closeout-with-blockers / audit
-- [ ] Message 1 authority list (excluding `PROJECT_TRACKER.md`) ≤ 3 entries
-- [ ] At most 1 prior-slice phase doc is loaded
-- [ ] No contract + plain-English companion pair loaded together
-- [ ] Every file over 500 lines has a method- or region-level qualifier
-- [ ] Message 1 includes a short plain-English explanation immediately
-      after `This run is ...`
-- [ ] Message 2 has no "Architecture authority" restatement
-- [ ] Message 2 has no "Why this slice exists" narrative if the phase
-      doc / drift table covers it
-- [ ] No "only if touched" files appear in Message 1
-- [ ] Message 2 body ≤ 60 lines
-- [ ] If the slice touches contract-bound seams (cycle / plan / labor /
-      timing / replay-stable artifacts / truth ownership boundaries),
-      Message 2 includes a `Routing rules to mirror` section quoting the
-      2–3 specific contract bullets the implementation must mirror
+Add only when needed:
 
-If any item fails, fix the prompt before sending. Checklist failure is
-a prompt defect, not an optional improvement. Claude will call out
-defects in the execution report's Blockers section rather than silently
-absorbing them.
+- One contract doc from `docs/contracts/` for contract-bound seams.
+- `docs/DATA_ALIGNMENT_TRACKER.md` for alignment-heavy slices.
+- `docs/KNOWN_FAILING_TESTS.md` for full or near-full test runs.
+
+Read full files only for a phase primer, a new unfamiliar lane, or a disputed
+authority question. Do not load archived docs unless the prompt explicitly
+targets archive history.
+
+## Phase Primer vs Slice Prompt
+
+Use a long context block only when a phase opens or the architecture changes.
+After that, generate delta prompts:
+
+- `phase primer`: allowed to summarize goals, gates, and core docs.
+- `normal slice`: current run, plain-English goal, exact files/tasks/tests.
+- `review-fix`: finding, exact files, exact tests, no phase recap.
+
+## Prompt Rules
+
+Before sending the prompt:
+
+- Omit `Slice type` for normal implementation prompts.
+- Include `Slice type` only for `closeout-verification`,
+  `closeout-with-blockers`, or `audit`.
+- Visible authority list is 3 entries max and excludes stable docs by habit.
+- `Plain English:` immediately follows `This run is`.
+- Do not add a separate `Goal` section.
+- Do not include optional / "only if touched" files.
+- Files over 500 lines have method or region qualifiers.
+- Message 2 targets 40 lines for review-fixes, 50 for normal slices.
+- Do not restate architecture already in `CLAUDE.md`.
+- Contract-bound slices include `Routing rules to mirror`: 2 or 3 rules max.
+- Move slices include Codex's import audit and analyzer-forced follow-ups.
+- Use `Files to leave alone` only for real carve-outs.
+- Required tests and acceptance criteria are explicit.
+- Always tell Claude: no tracker updates, no commits.
+
+Rule failure is a prompt defect. Fix it before sending.
 
 ## Ownership
 
-### Codex owns
+Codex owns:
 
-- Roadmap, phase breakdown, prompt scoping
+- Roadmap, phase breakdown, prompt scope
 - Acceptance criteria and verification
-- Tracker truth (`PROJECT_TRACKER.md`, `DATA_ALIGNMENT_TRACKER.md`, archive trackers)
+- Tracker truth
 - Gate truth and release-readiness judgment
 
-### Claude owns
+Claude owns:
 
-- Code implementation within the given scope
-- Localized refactors inside the given scope
-- Tests requested by the prompt
-- Docs requested by the prompt
-- Styling and presentation when explicitly delegated
+- Implementation inside the scoped prompt
+- Localized refactors inside scope
+- Requested tests and docs
+- Execution report
 
-### Standing rules
+Standing rules:
 
-- Claude does not update tracker markdown files unless Codex explicitly asks.
-- Claude does not broaden scope, start other-phase work, or redefine architecture.
+- Claude does not update trackers unless explicitly asked.
+- Claude does not broaden scope or redefine architecture.
 - Codex updates trackers after verification, not before.
 - Tracker truth must never be ahead of repo truth.
 
-## Prompt Shape: Two-Message Pattern
+## Message 1 - Context
 
-### Message 1 - Context
-
-Establishes authority before execution starts.
+Use this shape:
 
 ```text
-Repo root: [absolute repo root]
+Authority files for this run:
 
-Before you do anything else, read these files and treat them as the authority for this run:
-
-- PROJECT_TRACKER.md
-- [specific runtime files]
-- [specific docs]
-- [specific tests]
+- [specific runtime files / tests]
+- [active phase doc section, only when needed]
 
 Important:
-- Follow the current phase and prompt order from PROJECT_TRACKER.md
-- This run is [scope description]
-- Plain English: [one to three short sentences explaining the problem, what this run checks/fixes, and what it is not if useful]
+- This run is [prompt id + scope]
+- Plain English: [1 to 3 concise sentences; include an example when helpful]
 - Do not update tracker markdown files in this run
 - Do not broaden scope
 ```
 
-Claude also has `CLAUDE.md` loaded automatically. It carries architecture rules, the core test suite, session context, and the handoff rule. Message 1 does not need to repeat those.
+Use repo-root-relative paths. Add repo root only for external handoffs.
+Plain English orients; it does not re-teach architecture.
 
-Keep the plain-English explanation concise. It should help the implementer
-orient quickly, not restate the architecture docs or become a second
-implementation prompt. One sentence is preferred for small fixes; up to three
-sentences is allowed when the slice is a verification/closeout pass with a few
-distinct checks.
+## Message 2 - Implementation Prompt
 
-Prefer repo-root-relative paths after the first line instead of repeating the absolute root on every file path.
-
-## Authority Loading Budget
-
-Default to the smallest authority set that can still keep the slice honest.
-
-Claude has a doc-graph available via the `graphify` MCP server (see Tool
-hints for Claude under Message 2). When a slice needs orientation
-("which contract talks about X") rather than a quoted rule, prefer
-hinting Claude to query the graph over loading the whole doc. Reserve
-full doc loads for Routing rules to mirror (where you must quote the
-exact contract bullet) and for cases where the slice depends on
-multiple bullets from one doc.
-
-Concretely: if you find yourself listing 2+ contract docs in Message 1
-just to give Claude orientation, replace one of them with a tool hint
-in Message 2 (e.g. `Use mcp__graphify__query_graph "blended wage
-ownership" before reading any contract doc`). Loading 3 contract docs
-when the slice only really needs 2 specific bullets is the classic
-authority-bloat pattern this seam fixes.
-
-### Tiered loading
-
-- Always load:
-  - `PROJECT_TRACKER.md`
-- Add only when the slice actually depends on them:
-  - `docs/contracts/phase_7_55_time_boundary_contract.md` for timing / date / business-date work
-  - `docs/contracts/phase_7_55_architecture_contract.md` for ownership / truth / downstream-surface work
-  - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md` for cycle / benchmark / plan ownership work
-  - `docs/DATA_ALIGNMENT_TRACKER.md` for alignment-heavy or integration-readiness slices
-  - `docs/KNOWN_FAILING_TESTS.md` for slices that run full or near-full test suites, or verification slices likely to surface unrelated red tests
-- Do not load `docs/CODEX_PROMPT_GENERATION_STANDARD.md` in execution prompts unless the work is about workflow itself.
-
-### Prior-slice doc rule
-
-Load the most recent prior-slice doc only when it contains a drift table,
-schema delta, or live constraint that the current slice explicitly depends
-on. Do not load prior-slice docs "for context." If the prior slice is
-accepted and tracker truth already captures its outcome, do not load the
-phase doc at all.
-
-Maximum prior-slice docs in Message 1: 1. No exceptions.
-
-### Companion-doc rule
-
-When loading a contract doc, do not also load its plain-English companion.
-`phase_7_55_architecture_contract.md` and
-`phase_7_55_plain_english_architecture.md` are redundant as a pair. Load
-one or the other. Prefer the contract doc.
-
-### Optional file rule
-
-- Do not include "only if touched" files in Message 1.
-- Do not preload optional tests in Message 1.
-- Add optional files to Message 2 only, under `Files to modify`, when they are genuinely in play.
-- Message 1 authority list (excluding `PROJECT_TRACKER.md`) must name 3 or fewer files. If you need a 4th, drop the one that is least slice-critical first.
-
-### Narrow file targeting
-
-When possible, point Claude at methods or regions instead of giant files.
-
-Examples:
-
-- `sqlite_database.dart - _seedDemoDataFromReplay() only`
-- `variance_report.dart - WTD table + Full Week projection UI only`
-- `shift_service.dart - locked/current WTD builders only`
-
-This is preferred to listing a whole large file with no guidance.
-
-For files over 500 lines, method-level or region-level scoping is **required**,
-not preferred. Example:
-
-- `shift_service.dart - _buildWeekRecord + closeShift callsite only`
-- `sqlite_database.dart - week_records CREATE TABLE + migration pattern only`
-
-Listing a file over 500 lines with no region qualifier is a prompt defect.
-
-### Review finding hygiene
-
-- Do not carry resolved findings forward into a new prompt.
-- If a finding is already closed in repo truth, drop it from the next prompt entirely.
-- Only keep live findings that still constrain the next slice.
-
-### Message 2 - Implementation Prompt
+Use this shape:
 
 ```text
-Goal
-[exact goal]
-
-Slice type
-[implementation | closeout-verification | closeout-with-blockers | audit]
-
 Current issues
-[what's broken or missing]
+[what is missing, stale, or broken]
 
 Hard constraints
-- Do not change business logic, target math, or labor formulas (unless that is the goal)
-- Do not add live POS/labor/reservation transport
-- Do not commit unless explicitly asked
+- Do not change business logic, target math, or labor formulas unless that is the goal.
+- Do not add live vendor transport unless that is the goal.
+- Do not update trackers.
+- Do not commit unless explicitly asked.
 
 Routing rules to mirror
-[only when the slice touches contract-bound seams — see section below]
-- [contract doc + bullet] — [one-line restatement of the rule]
-- [contract doc + bullet] — [one-line restatement of the rule]
+[only for contract-bound seams]
+- [doc/rule] - [one-line restatement]
 
 Files to modify
-[list]
+- [file or file - region/method]
 
-Files to leave alone
-[list]
+[Optional] Files to leave alone
+- [omit unless there is a specific carve-out]
 
 Implementation tasks
 1. ...
 2. ...
 
 Required tests
-[specific test files or "core test suite" per CLAUDE.md]
+- dart analyze
+- [focused test files]
 
 Acceptance criteria
-- [ ] [explicit, checkable item]
-- [ ] [explicit, checkable item]
+- [ ] [checkable criterion]
 
-When finished, report using the standard report format below.
+When finished, report using the standard report format.
 ```
 
-`Hard constraints` should always appear near the top of Message 2, before file lists or implementation detail.
+## Visible Authority
 
-Keep `Files to leave alone` short. Name only the most tempting or high-risk files that must stay untouched.
+- Codex always reads `PROJECT_TRACKER.md`; list it in Claude prompts only
+  when the slice changes tracker truth or needs a live gate checked.
+- Include an active phase doc/section only when the slice needs it.
+- Include at most one contract doc.
+- Do not load a contract doc and its plain-English companion together.
+- Do not load prior-slice docs unless the current slice depends on a live
+  drift table, schema delta, or constraint from that doc.
+- Do not put this standard in execution prompts unless the work is workflow.
 
-### Routing rules to mirror
+Use graphify only for unfamiliar architecture/concept orientation. For known
+symbols, imports, callsites, and filenames, use `rg`; do not add graph
+pre-search hints.
 
-When a slice touches contract-bound code — cycle / plan / labor / timing
-seams, replay-stable artifacts, truth ownership boundaries — Message 2 must
-include a `Routing rules to mirror` section that quotes the 2–3 specific
-contract bullets the implementation must mirror.
+## File Scoping
 
-Why: implementers can follow a correct task list and still diverge from the
-contract routing the prompt assumed was obvious. Quoting the exact rule
-catches this in the first pass instead of in a review-fix slice.
+Use narrow file targets:
 
-Skip this section when the slice is purely additive UI, doc-only, or pure
-verification (no code changes).
+- Good: `sqlite_database_seed.dart - _seedDemoDataFromReplay() only`
+- Good: `shift_service.dart - getFullWeekShifts + helper only`
+- Bad: `shift_service.dart` when the file is over 500 lines
 
-Examples of contract-bound seams that warrant this section:
+For any file over 500 lines, method or region scoping is required.
 
-- Anything that writes `TargetCycle`, `WeeklyPlanSnapshot`, or
-  `BenchmarkSelectionSummary`
-- Anything that derives evidence routing from `TargetCycleSource` or
-  `hasPersistedManagerOverride`
-- Anything that mutates source facts (`OpenShiftSnapshot`, `ShiftFact`,
-  `ShiftRecord`) vs derived/contextual signals
-- Anything that touches business-date / week-start / service-period
-  resolution
+## Move Slices
 
-### Tool hints for Claude
+Structural file-move slices are mechanical: move files, rewire imports,
+no behavior change. Codex pre-computes the import audit and passes it through.
+Claude does not re-grep imports unless the audit is missing or analyzer output
+proves it stale.
 
-Claude has a project-scoped `graphify` MCP server registered in `.mcp.json`
-exposing a **unified graph** of two corpora:
-
-- **Code** — Dart AST over `lib/` (rebuilt on every commit, free).
-- **Docs** — semantic concept extraction over `docs/` + root `.md` files
-  (rebuilt on `.md` commits via auto `/graphify --update` per CLAUDE.md
-  Knowledge Graph Flag rule).
-
-Tools: `mcp__graphify__get_neighbors`, `__shortest_path`, `__god_nodes`,
-`__query_graph`, `__get_node`, `__get_community`, `__graph_stats`.
-
-When a slice would otherwise send Claude grep-hunting for seams (callers,
-dependents, contract bullets, concept-to-code paths), Message 2 can hint
-the tool by name. Examples by query shape:
+For each moved file, list same-directory relative imports and classify each
+target as `MOVES` or `STAYS`, plus the implied rewrite:
 
 ```text
-# Code-side — find callers / dependents
-Use mcp__graphify__get_neighbors on `getFullWeekShifts` to enumerate
-callers before pre-listing files.
-
-# Doc-side — find contract bullet without loading the whole doc
-Use mcp__graphify__query_graph "replay-stable artifacts" to surface the
-exact contract bullet before quoting it in Routing rules to mirror.
-
-# Cross-corpus — code-to-doc bridge
-Use mcp__graphify__shortest_path from `WeeklyPlanSnapshot` to "Rule C
-weekly plan locks" to confirm the runtime seam matches the rule.
+Implementation tasks
+1. Move <file> to <new dir>. Internal imports:
+   - 'sibling_a.dart'  (MOVES with this slice): keep same-dir
+   - 'sibling_b.dart'  (STAYS in <old dir>):    rewrite to '../<old dir>/sibling_b.dart'
+   - '../foo/bar.dart' (cross-package, unchanged)
 ```
 
-Codex itself does NOT have access to graphify during planning — the graph
-only lights up for Claude during execution. Codex must still reason from
-authority docs and tracker truth when generating prompts. The graph's
-role is shaving Claude's discovery rounds during implementation.
+When the moved target is imported by a file that otherwise stays out of
+scope, name the exact import-declaration follow-up:
 
-Skip this hint when `Files to modify` is already exhaustive and Claude has
-no discovery left to do (most small fixes). It is most useful for audit
-slices, contract-bound seams (where you'd otherwise load 2-3 contract
-docs just to quote one bullet), slices touching unfamiliar parts of the
-runtime, and slices where the seam's caller set is non-obvious.
+```text
+Implementation tasks
+3. Update lib/data/target_cycle_service.dart (>500-line stayer):
+   - line 55: 'baseline_manager_service.dart'             -> '../services/baseline_manager_service.dart'
+   - line 56: 'baseline_selection_analytics_service.dart' -> '../services/baseline_selection_analytics_service.dart'
+   - body otherwise left alone
+```
 
-### Message 2 body budget
+Stale doc-comment path strings in leave-alone files (e.g. comments
+pointing at a moved file's old path) are in scope for cleanup as long as
+no behavior or assertion semantics change. The slice acceptance criteria
+should call this out explicitly when known stale comments exist.
 
-Do not restate content already present in `CLAUDE.md` or in an authority
-file loaded in Message 1. Specifically prohibited in Message 2:
+## Routing Rules
 
-- An "Architecture authority" section listing models already documented in
-  `CLAUDE.md`'s Architecture Guardrails
-- A "Why this slice exists" narrative when the active phase doc or prior-
-  slice drift table already covers it
-- An "Important" section repeating phase-order, tracker, or scope rules
-  already in `CLAUDE.md`
+Include `Routing rules to mirror` when the slice touches:
 
-If you feel the temptation to add any of these, check `CLAUDE.md` first.
-If it is there, omit it from Message 2.
+- `TargetCycle`, `WeeklyPlanSnapshot`, or `BenchmarkSelectionSummary`
+- Plan / benchmark / labor ownership
+- Replay-stable artifacts
+- Source facts vs derived signals
+- Business date, week start, or service-period resolution
 
-Target: 60 lines or fewer for a normal implementation slice.
+Skip it for doc-only, pure UI, or read-only verification slices unless the
+verification itself is contract-bound.
 
 ## Slice Types
 
-Every execution prompt names its slice type. Each type has different scope
-rules and different acceptance shapes.
+`implementation`
 
-### implementation
+- Default. Omit the `Slice type` block. Requires focused tests.
 
-Default. Adds or changes code. Subject to all hard constraints listed in
-Message 2. Includes focused tests.
+`closeout-verification`
 
-### closeout-verification
+- Read-only verification. May update doc status if requested. Does not fix
+  blockers.
 
-Read-only verification of an already-landed slice against its plan doc. May
-patch the plan doc status line and add explicit "intentional divergence"
-notes when current behavior is correct but post-dates the plan. No
-production code changes.
+`closeout-with-blockers`
 
-If verification surfaces blockers (broken tests, missing artifacts, contract
-violations), do not absorb them into this slice. Surface the blocker in the
-execution report and let Codex spawn a separate fix slice.
+- Verification plus bounded fixes. Prompt names eligible files and max blast
+  radius.
 
-### closeout-with-blockers
+`audit`
 
-Same as closeout-verification but explicitly allows fixing blockers found
-during verification. Use only when the user wants verification + fix in one
-hop. The prompt must name this slice type and bound the maximum allowed
-blast radius (which files / which tests / which contracts are eligible).
+- Drift check only. Produces findings or a follow-up plan. No implementation
+  changes unless explicitly scoped.
 
-### audit
+## Sub-Slices
 
-Periodic plan-vs-code drift check across one or more phase docs. No code
-changes. Output is a findings list — typically a new doc or a section
-appended to a plan doc — that Codex turns into follow-up implementation
-slices.
+For parent slices split into `a`, `b`, `c`:
 
-## Phase-Doc Budget
+- Track acceptance at the sub-slice level.
+- Do not mark the parent slice complete until the final sub-slice satisfies
+  the parent acceptance criteria.
+- Generate the next prompt from the latest accepted sub-slice, not from the
+  original parent description.
+- Keep parent gates intact. Example: `7.57.2` cannot open until all remaining
+  `7.57.1*` extraction sub-slices accept.
 
-New phase docs should stay compact at the top.
+## Review Handoff
 
-Preferred top structure:
+When Claude reports:
 
-1. Goal
-2. Scope
-3. Touched readers/writers or touched runtime seams
-4. Remaining gaps
+1. Inspect the changed files directly.
+2. Confirm claimed "left alone" files are actually untouched.
+3. Check acceptance criteria against repo content.
+4. Confirm test evidence.
+5. Run a small targeted rerun only when needed.
+6. Return findings if there are issues.
+7. If clean, update trackers and generate the next prompt.
 
-Keep that opening section tight. Push design rationale, historical narrative, and long examples into a later `### Details` section so Claude can skip it unless needed.
+Codex verifies repo truth, not report wording.
 
-## Execution Cycle
+Do not use `git stash` during verification. Prefer:
 
-This is the full cycle - Codex steps marked (C), Claude steps marked (CL).
-Every iteration restarts at step 1.
+- `git diff HEAD -- <file>`
+- `git status --short`
+- `rg` for imports/callsites
+- targeted test reruns when evidence is incomplete
 
-1. **(C) Preflight** — re-read this doc's `Before You Generate a Prompt` section.
-2. **(C)** Build plan, break into phases and prompts
-3. **(C)** Write two-message execution prompt
-4. **(CL)** Read authority files, implement scoped changes
-5. **(CL)** Run required tests (`dart analyze` + focused test files or core suite)
-6. **(CL)** Self-review the diff before reporting - check for scope creep, stale references, missed acceptance criteria
-7. **(CL)** Report back using the standard report format
-8. **(C)** Verify against repo (not just Claude's summary)
-9. **(C)** Update trackers after verification
-10. **(C)** If the slice is accepted and the user has not paused or pivoted, **return to step 1** and generate the next prompt from updated tracker truth.
+Verdicts:
 
-Codex should not rerun Claude's test suite by default. Prefer Claude's reported
-test evidence unless a rerun is needed to complete verification honestly.
+- `ACCEPT`
+- `FOLLOW-UP NEEDED`
+- `REJECT`
 
-Commit / push / graphify cadence is owned by the `Commit Cadence` section below.
+## Test Reruns
 
-If the user pivots into architecture, docs structure, or workflow cleanup:
+Codex does not rerun Claude's tests by default. Rerun only when:
 
-- stop automatic next-prompt generation
-- consolidate the active authority/docs first
-- resume prompt sequencing only after the workflow/docs state is clear again
+- The user asks.
+- The report is missing test evidence.
+- The reported tests do not match the prompt.
+- The diff makes the report doubtful.
+- A known risky seam needs local confirmation.
 
-If the slice is **FOLLOW-UP NEEDED** or **REJECT**:
+Prefer the smallest targeted rerun.
 
-- keep the current slice active
-- do not advance tracker phase order
-- do not generate the next prompt yet
+## Tracker Updates
 
-### When to skip step 5
+After accepting a slice:
 
-- Step 5 (review): Skip only for trivial single-file fixes.
+- Update `PROJECT_TRACKER.md` current / next / hard-gate wording.
+- Update `docs/DATA_ALIGNMENT_TRACKER.md` only for alignment-heavy slices.
+- Do not move tracker truth ahead of repo truth.
+- Do not advance the parent phase if only a sub-slice accepted.
 
 ## Commit Cadence
 
-- Commits happen at phase close, not slice close.
-- Per-slice no-commit is the default for execution prompts. Hard constraints
-  in Message 2 should retain `Do not commit unless explicitly asked`.
-- The user invokes the commit explicitly when a phase closes. Codex may
-  suggest the commit moment but does not auto-commit.
-- Push is automatic on commit. The graphify post-commit hook AST-rebuilds
-  the code graph (free, fast, includes Dart) and drops a
-  `graphify-out/needs_update` flag when Markdown changed. Doc rebuilds
-  cost LLM tokens and are user-initiated via `/graphify --update` —
-  Codex never instructs Claude to run them.
-- Do not include commit, push, or graphify steps in execution prompts or
-  execution reports.
+- Commits happen at phase close unless the user says otherwise.
+- Execution prompts should say `Do not commit unless explicitly asked`.
+- Do not include commit, push, or graphify steps in execution prompts.
+- If Markdown changed and `graphify-out/needs_update` appears later,
+  `CLAUDE.md` owns that flag workflow.
 
 ## Report Format
 
-Claude should report in this exact structure:
+Claude should report:
 
 ```text
 ## Execution Report - [Prompt ID]
@@ -429,98 +320,38 @@ Claude should report in this exact structure:
 - [file]: [what changed]
 
 ### Files left alone
-- [file]: [confirmed untouched]
+- [optional; only if a prompt listed carve-outs or something tempting was verified]
 
 ### Tests run
-- [test file]: [pass count] passed
 - dart analyze: [result]
+- [test file]: [pass count] passed
 
 ### Acceptance criteria
-- [ ] or [x] [criterion from the prompt]
+- [x] [criterion]
 
 ### Scope check
 - No tracker changes: [yes/no]
 - No other-phase work: [yes/no]
 - No unauthorized commits: [yes/no]
-- Links updated: [yes/no] (only if docs moved or doc links changed)
+- Links updated: [yes/no, only if docs changed]
 
 ### Blockers
-- [any blockers, or "none"]
+- [none or blocker]
 
 ### Status
 [complete / follow-up needed]
 ```
 
-## Verification Standard
+Do not include `Out-of-scope touched: None` or similar boilerplate. Report
+out-of-scope touches only when there was something to explain.
 
-After Claude reports, Codex verifies by:
+## Do Not Cut
 
-- Checking the target files directly (not just Claude's summary)
-- Confirming acceptance criteria against actual file content
-- Checking that files claimed "left alone" are actually unchanged
-- Confirming tests or latest test evidence
-- Checking tracker truth still matches repo truth
+When making prompts shorter, never cut:
 
-Codex does not need to rerun tests unless one of these is true:
-
-- the user explicitly asks for a rerun
-- Claude's report is missing test evidence
-- the reported test scope does not match the prompt's required tests
-- repo truth makes the reported result doubtful
-- a required suite is still likely to be red after the claimed change
-
-When Codex reruns tests, prefer the smallest targeted rerun needed to resolve
-the verification question.
-
-Verdicts: **ACCEPT** / **FOLLOW-UP NEEDED** / **REJECT**
-
-For accepted slices, prefer recording acceptance in the active phase doc or parent plan doc status line when that doc is touched anyway.
-
-### Git verification hygiene
-
-Do not use `git stash` during verification runs. Stashing causes the SDK to
-re-inject full-file contents as system reminders for every stashed file,
-which can burn thousands of tokens on a single verification check.
-
-Prefer:
-
-- `git diff HEAD -- <file>` to inspect a single file's changes
-- `git log -p --follow -n1 -- <file>` for last-commit evidence
-- `git status` to confirm untouched files
-
-These cover the read-only checks the verification standard actually needs.
-
-## Planning Standard
-
-Before generating a prompt, Codex should:
-
-1. Establish current phase and prompt from `PROJECT_TRACKER.md`
-2. Restate the exact goal
-3. Identify in-scope vs out-of-scope
-4. Identify risks, dependencies, and verification requirements
-5. Break large work into sub-prompts (e.g., `7.52a`, `7.52b`, `7.52c`)
-
-Prompt boundaries should be narrow enough that the expected output is obvious, the file set is understandable, and verification is practical.
-
-When a prompt is getting heavy, cut repetition before cutting guardrails:
-
-1. shorten authority loading
-2. switch to repo-root-relative paths
-3. collapse repeated issue/context wording
-4. group closely related acceptance criteria
-
-Do not cut:
-
-- tracker-first phase control
-- hard constraints
-- required tests
-- explicit acceptance criteria
-- repo verification before tracker updates
-
-## Styling Delegation
-
-Claude may have creative freedom for visual/presentation work, but only inside a locked engineering frame:
-
-- Codex locks architecture, logic, and data contracts
-- Claude explores the visual solution
-- This is not permission to change scope, business rules, data flow, or target math
+- Tracker-first phase control
+- Hard constraints
+- Required tests
+- Explicit acceptance criteria
+- Repo verification before tracker updates
+- No-commit / no-tracker-change instructions for Claude
