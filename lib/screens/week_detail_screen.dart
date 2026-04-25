@@ -7,6 +7,8 @@ import '../theme/app_theme.dart';
 import '../data/legacy_fixture_data.dart'; // LeverCards
 import '../models/week_record.dart';
 import '../utils/formatters.dart';
+import '../widgets/comparison_group_band.dart';
+import '../widgets/comparison_metric_row.dart';
 import '../widgets/dollar_impact_card.dart';
 import '../widgets/lever_card.dart';
 import '../widgets/sticky_section_delegate.dart';
@@ -217,16 +219,17 @@ class _GroupedSummaryTable extends StatelessWidget {
           // SliverPersistentHeader in the sliver tree above.
 
           // ── CONDITIONS ──────────────────────────────────────────────
-          _GroupBand('CONDITIONS'),
-          _TableRow(
+          const ComparisonGroupBand('CONDITIONS'),
+          ComparisonMetricRow(
             label: 'Covers',
             target: week.targetCovers.toString(),
             actual: week.totalCovers.toString(),
             variance: Fmt.varStr(coversVar),
             varColor: Fmt.varColor('Covers', coversVar.toDouble()),
+            verticalPadding: 14,
           ),
           _divider(),
-          _TableRow(
+          ComparisonMetricRow(
             label: 'Blended Wage',
             target: targetBlendedWage != null
                 ? '\$${targetBlendedWage.toStringAsFixed(2)}'
@@ -238,19 +241,21 @@ class _GroupedSummaryTable extends StatelessWidget {
             varColor: wageVar != null
                 ? Fmt.varColor('Blended Wage', wageVar)
                 : AppColors.textMuted,
+            verticalPadding: 14,
           ),
 
           // ── EXECUTION ───────────────────────────────────────────────
-          _GroupBand('EXECUTION'),
-          _TableRow(
+          const ComparisonGroupBand('EXECUTION'),
+          ComparisonMetricRow(
             label: 'PPA',
             target: '\$${week.storedTargetPPA.toStringAsFixed(2)}',
             actual: '\$${week.avgPPA.toStringAsFixed(2)}',
             variance: Fmt.varDollars(ppaVar),
             varColor: Fmt.varColor('PPA', ppaVar),
+            verticalPadding: 14,
           ),
           _divider(),
-          _TableRow(
+          ComparisonMetricRow(
             label: 'FOH Hours',
             target: preservedFohHours != null
                 ? preservedFohHours.toString()
@@ -263,9 +268,10 @@ class _GroupedSummaryTable extends StatelessWidget {
                 ? Fmt.varColor('FOH Hours',
                     (week.totalFohHours - preservedFohHours).toDouble())
                 : AppColors.textMuted,
+            verticalPadding: 14,
           ),
           _divider(),
-          _TableRow(
+          ComparisonMetricRow(
             label: 'BOH Hours',
             target: preservedBohHours != null
                 ? preservedBohHours.toString()
@@ -278,33 +284,37 @@ class _GroupedSummaryTable extends StatelessWidget {
                 ? Fmt.varColor('BOH Hours',
                     (week.totalBohHours - preservedBohHours).toDouble())
                 : AppColors.textMuted,
+            verticalPadding: 14,
           ),
           _divider(),
-          _TableRow(
+          ComparisonMetricRow(
             label: 'CPLH',
             target: week.storedTargetCPLH.toStringAsFixed(2),
             actual: week.avgCPLH.toStringAsFixed(2),
             variance: Fmt.varDelta(cplhVar),
             varColor: Fmt.varColor('CPLH', cplhVar),
+            verticalPadding: 14,
           ),
           _divider(),
-          _TableRow(
+          ComparisonMetricRow(
             label: 'SPLH',
             target: '\$${week.storedTargetSPLH.toStringAsFixed(0)}',
             actual: '\$${week.avgSPLH.toStringAsFixed(0)}',
             variance: Fmt.varDollars(splhVar),
             varColor: Fmt.varColor('SPLH', splhVar),
+            verticalPadding: 14,
           ),
 
           // ── OUTCOMES ────────────────────────────────────────────────
-          _GroupBand('OUTCOMES'),
-          _TableRow(
+          const ComparisonGroupBand('OUTCOMES'),
+          ComparisonMetricRow(
             label: 'Total Labor %',
             target: '${week.theoreticalLaborPct.toStringAsFixed(1)}%',
             actual: '${week.actualLaborPct.toStringAsFixed(1)}%',
             variance: Fmt.varPts(week.laborPctVariance),
             varColor: Fmt.varColor('Total Labor %', week.laborPctVariance),
             isBold: true,
+            verticalPadding: 14,
           ),
         ],
       ),
@@ -329,106 +339,6 @@ class _GroupedSummaryTable extends StatelessWidget {
       Container(height: 1, color: AppColors.borderSubtle);
 }
 
-
-// ─── Group band ──────────────────────────────────────────────────────────────
-
-class _GroupBand extends StatelessWidget {
-  final String label;
-  const _GroupBand(this.label);
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.backgroundDeep,
-      padding: const EdgeInsets.fromLTRB(14, 7, 14, 7),
-      child: Row(
-        children: [
-          Container(width: 2, height: 10, color: AppColors.sunsetDark),
-          const SizedBox(width: 6),
-          Text(label,
-              style: AppTextStyles.mono8(color: AppColors.sunsetDark)),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Container(
-                height: 1,
-                color: AppColors.sunsetDark.withValues(alpha: 0.2)),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Table row ───────────────────────────────────────────────────────────────
-
-class _TableRow extends StatelessWidget {
-  final String label;
-  final String target;
-  final String actual;
-  final String variance;
-  final Color varColor;
-  final bool isBold;
-
-  const _TableRow({
-    required this.label,
-    required this.target,
-    required this.actual,
-    required this.variance,
-    this.varColor = AppColors.textMuted,
-    this.isBold = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      child: Row(
-        children: [
-          Expanded(
-            flex: 5,
-            child: Text(
-              label,
-              style: isBold
-                  ? AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w600)
-                  : AppTextStyles.mono11(color: AppColors.textSecondary),
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              target,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              actual,
-              style: isBold
-                  ? AppTextStyles.mono12(
-                      color: AppColors.textPrimary,
-                      weight: FontWeight.w600)
-                  : AppTextStyles.mono12(color: AppColors.textPrimary),
-              textAlign: TextAlign.right,
-            ),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text(
-              variance,
-              style: AppTextStyles.mono14(
-                  color: varColor, weight: FontWeight.w700),
-              textAlign: TextAlign.right,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 // ─── Closed-at footer formatting ─────────────────────────────────────────────
 // 'YYYY-MM-DD' → 'Mon DD'. Mirrors the month-array style in

@@ -22,7 +22,9 @@ import 'package:forge_and_flow/data/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/schedule_forecast_demand.dart';
 import 'package:forge_and_flow/domain/models/schedule_plan.dart';
+import 'package:forge_and_flow/domain/services/service_period_definition_resolver.dart';
 import 'package:forge_and_flow/screens/schedule_builder.dart';
+import 'package:forge_and_flow/services/daypart_plan_allocator.dart';
 
 void main() {
   const testCPLH = 4.5;
@@ -604,6 +606,53 @@ void main() {
       expect(notifier.theoreticalLaborPct, equals(27.5),
           reason: 'getter must follow the profile (benchmark-owned), '
               'not the plan');
+
+      notifier.dispose();
+    });
+
+    // ── F: 7.56c.0 — Schedule daypart subrows route through the
+    //    shared DaypartPlanAllocator ────────────────────────────────
+    //
+    // Regression coverage for the shared seam Variance Full Week now
+    // also consumes (`ShiftService.getFullWeekShifts`). If Schedule
+    // ever drifts away from the allocator, Sat dinner covers/hours
+    // could disagree with Variance Full Week again. Asserting subrow
+    // equality with a direct `DaypartPlanAllocator.allocate(...)` call
+    // catches that immediately at the unit-test layer.
+    test('F: notifier.adjustedDayViews subrows match '
+        'DaypartPlanAllocator.allocate output exactly', () {
+      final notifier =
+          ScheduleForecastNotifier.lockedAuthority(profile: makeProfile());
+      notifier.setLockedPlanForTest(makePlan());
+
+      final monday =
+          notifier.adjustedDayViews.firstWhere((d) => d.day == 'Mon');
+      final monPlan =
+          notifier.plan!.dayPlans.firstWhere((dp) => dp.day == 'Mon');
+
+      final expected = DaypartPlanAllocator.allocate(
+        day: 'Mon',
+        dayCovers: monPlan.forecastCovers,
+        daySales: monPlan.forecastSales,
+        dayFohHours: monPlan.requiredFohHours,
+        dayBohHours: monPlan.requiredBohHours,
+        definitions: ServicePeriodDefinitionResolver.demoDefinitions,
+        distributionWeights: null,
+      );
+
+      expect(monday.subrows.length, equals(expected.length),
+          reason: 'subrow count must match the shared allocator output');
+      for (var i = 0; i < expected.length; i++) {
+        expect(monday.subrows[i].label, equals(expected[i].label));
+        expect(monday.subrows[i].forecastCovers,
+            equals(expected[i].forecastCovers));
+        expect(monday.subrows[i].forecastSales,
+            closeTo(expected[i].forecastSales, 0.001));
+        expect(monday.subrows[i].requiredFohHours,
+            equals(expected[i].requiredFohHours));
+        expect(monday.subrows[i].requiredBohHours,
+            equals(expected[i].requiredBohHours));
+      }
 
       notifier.dispose();
     });

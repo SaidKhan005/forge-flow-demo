@@ -324,6 +324,13 @@ void main() {
       expect(find.text('Not resolved', skipOffstage: false),
           findsAtLeastNWidgets(2));
 
+      // 7.55r item 4 Tier 3: provenance section degrades honestly in the
+      // no-snapshot state (does not fabricate a locked-week identity).
+      expect(find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+          findsOneWidget);
+      expect(find.text('No current-week snapshot resolved', skipOffstage: false),
+          findsOneWidget);
+
       await tester.runAsync(() async {
         final db = await SqliteDatabase.instance.database;
         expect(await db.query('weekly_plan_snapshots'), isEmpty,
@@ -331,6 +338,150 @@ void main() {
                 'expanding the audit panel must not auto-generate a locked '
                 'snapshot through the live plan path');
       });
+    });
+
+    testWidgets(
+        'audit panel exposes locked-week / target-cycle provenance rows '
+        'when a snapshot exists', (tester) async {
+      await _reseedDemoForWidgetTest(tester);
+
+      // Prime a locked weekly plan via the auto-generating read path so
+      // the audit panel has a snapshot to read from. Uses the same
+      // authority seam a production first-render would take.
+      await tester.runAsync(() async {
+        await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await _pumpForAsync(tester);
+      await _scrollToText(tester, 'Data Alignment Audit');
+
+      await tester.tap(find.text('Data Alignment Audit'));
+      await _pumpUntilFound(
+        tester,
+        find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+      );
+
+      expect(find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+          findsOneWidget);
+      // Labels rendered by the provenance rows. Asserting the labels
+      // rather than the resolved values keeps the test robust to seed
+      // timing drift.
+      expect(find.text('WEEK KEY', skipOffstage: false), findsOneWidget);
+      expect(find.text('WEEK SPAN', skipOffstage: false), findsOneWidget);
+      expect(find.text('SNAPSHOT ID', skipOffstage: false), findsOneWidget);
+      expect(find.text('TARGET CYCLE ID', skipOffstage: false), findsOneWidget);
+      expect(find.text('EFFECTIVE WINDOW', skipOffstage: false), findsOneWidget);
+      expect(find.text('CALIBRATION WINDOW', skipOffstage: false),
+          findsOneWidget);
+    });
+
+    // ── 7.56c.1 — grouped audit-check sections render ───────────────────
+    //
+    // The audit panel now exposes Plan + Benchmark coverage in grouped
+    // sections (live actuals / benchmark authority / benchmark runtime
+    // / locked plan ↔ projection / plan runtime). This smoke covers
+    // header + group titles for the populated-snapshot path so the
+    // grouped audit is wired through the read service end to end.
+
+    testWidgets(
+        'audit panel renders 7.56c.1 grouped audit-check sections '
+        'with summary lines', (tester) async {
+      await _reseedDemoForWidgetTest(tester);
+      await tester.runAsync(() async {
+        await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await _pumpForAsync(tester);
+      await _scrollToText(tester, 'Data Alignment Audit');
+
+      await tester.tap(find.text('Data Alignment Audit'));
+      await _pumpUntilFound(
+        tester,
+        find.textContaining('AUDIT CHECKS —', skipOffstage: false),
+      );
+
+      // Overall AUDIT CHECKS header is present with a summary line.
+      expect(find.textContaining('AUDIT CHECKS —', skipOffstage: false),
+          findsOneWidget);
+
+      // Each canonical group title is rendered with an aligned/drifted/
+      // unavailable summary suffix.
+      expect(
+        find.textContaining('LIVE / ACTUAL PROVENANCE', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('BENCHMARK AUTHORITY', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('BENCHMARK -> RUNTIME', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+            'LOCKED PLAN <-> PROJECTION',
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('PLAN -> RUNTIME', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+        'audit panel grouped sections degrade to unavailable when no '
+        'snapshot exists', (tester) async {
+      await _reseedDemoForWidgetTest(tester);
+
+      await tester.runAsync(() async {
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('weekly_plan_snapshots');
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: SettingsScreen(
+          initialStatus: AppDataStatus.current(),
+          initialMockDate: '2026-03-27',
+        ),
+      ));
+      await _pumpForAsync(tester);
+      await _scrollToText(tester, 'Data Alignment Audit');
+
+      await tester.tap(find.text('Data Alignment Audit'));
+      await _pumpUntilFound(
+        tester,
+        find.textContaining('AUDIT CHECKS —', skipOffstage: false),
+      );
+
+      // Group titles still render even when the snapshot path is empty.
+      expect(
+        find.textContaining(
+            'LOCKED PLAN <-> PROJECTION',
+            skipOffstage: false),
+        findsOneWidget,
+      );
+
+      // Confirms the panel degrades honestly: the no-snapshot path
+      // surfaces unavailable counts somewhere in the AUDIT CHECKS area
+      // rather than silently dropping the sections.
+      expect(
+        find.textContaining('unavailable', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
     });
   });
 

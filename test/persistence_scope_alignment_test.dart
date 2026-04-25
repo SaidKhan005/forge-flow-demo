@@ -539,6 +539,44 @@ void main() {
             PRIMARY KEY (restaurant_id, record_key))
         ''');
 
+        // Tables introduced by later migrations that the v8 migration's
+        // seed path now transitively queries (target_cycles added in v15,
+        // wage_role_rows added in v14). Pre-seeding them empty lets
+        // _ensureDemoSeedCycle / _loadSeedAuthorityProfile run against this
+        // pre-v8 test fixture without crashing on "no such table".
+        await db.execute('''
+          CREATE TABLE target_cycles (
+            cycle_id                 TEXT PRIMARY KEY NOT NULL,
+            restaurant_id            TEXT NOT NULL,
+            source                   TEXT NOT NULL,
+            effective_start          TEXT NOT NULL,
+            effective_end            TEXT NOT NULL,
+            calibration_window_start TEXT NOT NULL,
+            calibration_window_end   TEXT NOT NULL,
+            target_cplh              REAL NOT NULL,
+            target_splh              REAL NOT NULL,
+            target_ppa               REAL NOT NULL,
+            foh_wage                 REAL NOT NULL,
+            boh_wage                 REAL NOT NULL,
+            opz_floor_cplh           REAL NOT NULL,
+            opz_ceiling_cplh         REAL NOT NULL,
+            manager_override_used    INTEGER NOT NULL DEFAULT 0,
+            manager_override_at      TEXT,
+            admin_replaced_at        TEXT,
+            created_at               TEXT NOT NULL,
+            deactivated_at           TEXT)
+        ''');
+        await db.execute('''
+          CREATE TABLE wage_role_rows (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            restaurant_id   TEXT NOT NULL,
+            role_name       TEXT NOT NULL,
+            labor_bucket    TEXT NOT NULL,
+            hourly_rate     REAL NOT NULL,
+            weighted_hours  REAL NOT NULL,
+            UNIQUE(restaurant_id, role_name))
+        ''');
+
         // Seed demo restaurant
         final now = DateTime.now().toIso8601String();
         await db.insert('restaurant_locations', {
@@ -752,6 +790,41 @@ void main() {
             restaurant_id TEXT NOT NULL DEFAULT 'demo_restaurant_001',
             record_key TEXT NOT NULL,
             PRIMARY KEY (restaurant_id, record_key))
+        ''');
+
+        // Tables introduced by later migrations that the v8 migration's
+        // seed path now transitively queries (see K group for detail).
+        await db.execute('''
+          CREATE TABLE target_cycles (
+            cycle_id                 TEXT PRIMARY KEY NOT NULL,
+            restaurant_id            TEXT NOT NULL,
+            source                   TEXT NOT NULL,
+            effective_start          TEXT NOT NULL,
+            effective_end            TEXT NOT NULL,
+            calibration_window_start TEXT NOT NULL,
+            calibration_window_end   TEXT NOT NULL,
+            target_cplh              REAL NOT NULL,
+            target_splh              REAL NOT NULL,
+            target_ppa               REAL NOT NULL,
+            foh_wage                 REAL NOT NULL,
+            boh_wage                 REAL NOT NULL,
+            opz_floor_cplh           REAL NOT NULL,
+            opz_ceiling_cplh         REAL NOT NULL,
+            manager_override_used    INTEGER NOT NULL DEFAULT 0,
+            manager_override_at      TEXT,
+            admin_replaced_at        TEXT,
+            created_at               TEXT NOT NULL,
+            deactivated_at           TEXT)
+        ''');
+        await db.execute('''
+          CREATE TABLE wage_role_rows (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            restaurant_id   TEXT NOT NULL,
+            role_name       TEXT NOT NULL,
+            labor_bucket    TEXT NOT NULL,
+            hourly_rate     REAL NOT NULL,
+            weighted_hours  REAL NOT NULL,
+            UNIQUE(restaurant_id, role_name))
         ''');
 
         final now = DateTime.now().toIso8601String();

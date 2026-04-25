@@ -1,7 +1,7 @@
 # Phase 7.55o - Deep Extraction Follow-Up
 
 Assessed: 2026-04-24  
-Status: active `7.55o` planning follow-up  
+Status: complete through `7.55o.6`  
 Relationship: supersedes the earlier extraction analysis; archived copy retained for reference
 
 ## Why This Exists
@@ -32,15 +32,24 @@ This follow-up captures:
 
 | File | Lines | Classes | Read |
 |---|---:|---:|---|
-| `lib/screens/variance_report.dart` | 2991 | 39 | still the largest mixed-concern screen |
-| `lib/data/legacy_fixture_data.dart` | 1346 | n/a | huge bridge/config file, but not a simple extraction target |
-| `lib/infrastructure/persistence/sqlite/sqlite_database.dart` | 2104 | 2 | monolithic bootstrap/migration/seeding hub |
-| `lib/screens/settings_screen.dart` | 2147 | 25 | status, mock replay, data management, wage editor, timing display, audit panel in one surface |
-| `lib/screens/baseline_manager_screen.dart` | 1235 | 13 | calendar UI, preview logic, candidate selection, bottom-bar flow all mixed |
-| `lib/screens/schedule_builder.dart` | 1163 | 12 | screen + notifier + view models + fallback daypart allocation in one file |
+| `lib/screens/variance/variance_this_week_tab.dart` | 1733 | 17 | extracted This Week implementation from `7.55o.2`; still dense but now tab-local rather than route-shell mixed |
+| `lib/data/legacy_fixture_data.dart` | 1784 | 20 | huge bridge/config file, but not a simple extraction target |
+| `lib/infrastructure/persistence/sqlite/sqlite_database_migrations.dart` | 732 | 0 | extracted SQLite migration helpers from `7.55o.6` |
+| `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart` | 625 | 0 | extracted SQLite seeding / replay-reset helpers from `7.55o.6` |
+| `lib/infrastructure/persistence/sqlite/sqlite_database.dart` | 409 | 2 | lifecycle / public API shell after `7.55o.6` |
+| `lib/infrastructure/persistence/sqlite/sqlite_database_schema.dart` | 378 | 0 | extracted SQLite schema helpers from `7.55o.6` |
+| `lib/screens/settings/settings_wage_authority_section.dart` | 1042 | 15 | extracted wage authority/editor surface from `7.55o.4`; large but responsibility-local |
+| `lib/screens/settings/settings_data_sections.dart` | 564 | 8 | extracted data status / mock replay / data management / audit wrapper from `7.55o.4` |
+| `lib/screens/settings_screen.dart` | 226 | 2 | Settings route shell and section dispatch after `7.55o.4` |
+| `lib/screens/baseline_manager_screen.dart` | 250 | 2 | Baseline Manager route/state/dispatch shell after `7.55o.5` |
+| `lib/screens/schedule_builder.dart` | 609 | 9 | Plan screen composition/rendering shell after `7.55o.3` |
+| `lib/screens/schedule/schedule_forecast_notifier.dart` | 530 | 1 | extracted locked-plan notifier and allocation helpers from `7.55o.3` |
 | `lib/screens/shift_dashboard.dart` | 750 | 14 | screen shell plus many local sections/helpers |
 | `lib/screens/baseline_tracker.dart` | 634 | 5 | benchmark UI still carries local presentation structure |
-| `lib/screens/week_detail_screen.dart` | 453 | 4 | duplicated comparison-table primitives still present |
+| `lib/screens/variance/variance_learn_tab.dart` | 599 | 11 | extracted Learn implementation from `7.55o.2` |
+| `lib/screens/variance/variance_history_tab.dart` | 531 | 7 | extracted History implementation from `7.55o.2` |
+| `lib/screens/week_detail_screen.dart` | 363 | 2 | shared comparison-table primitives extracted in `7.55o.1` |
+| `lib/screens/variance_report.dart` | 59 | 1 | shell-only route / tab dispatch after `7.55o.2` |
 
 ### Structural import pressure
 
@@ -48,7 +57,7 @@ This follow-up captures:
 |---|---|
 | `sqlite_database.dart` | imported by 42 files across `lib/` and `test/` |
 | `legacy_fixture_data.dart` | imported by 28 files in `lib/` |
-| duplicated section/table primitives | repeated across Variance, Week Detail, Benchmark |
+| comparison-surface primitives | `ComparisonGroupBand` and `ComparisonMetricRow` now shared across Variance and Week Detail; Benchmark reuse remains optional later |
 
 ## What Already Landed Since The First 7.55o Note
 
@@ -64,9 +73,46 @@ re-opened work:
   - shared sticky header delegate
 - `lib/widgets/dollar_impact_card.dart`
   - shared Variance / Week Detail dollar-impact widget
+- `lib/widgets/comparison_group_band.dart`
+  - shared comparison group band for Variance / Week Detail
+- `lib/widgets/comparison_metric_row.dart`
+  - shared comparison metric row for Variance / Week Detail
+- `lib/screens/variance/`
+  - `ThisWeekTab`
+  - `HistoryTab`
+  - `LearnTab`
+  - `VarianceChip`
+  - `variance_report.dart` is now a shell-only route / tab dispatcher
+- `lib/screens/schedule/`
+  - `ScheduleForecastNotifier`
+  - `ScheduleLockedPlanLoadState`
+  - `ScheduleDayView`
+  - `ScheduleDaySubrow`
+  - `schedule_builder.dart` remains the Plan screen composition/rendering
+    shell
+- `lib/screens/settings/`
+  - shared settings card/action primitives
+  - data status / mock replay / data management / audit wrapper sections
+  - read-only timing authority section
+  - wage authority summary + whole-mix editor section
+  - `settings_screen.dart` remains the Settings route shell and section
+    dispatcher
+- `lib/screens/baseline_manager/`
+  - shared Baseline Manager date / lever helpers
+  - preview model + preview panel
+  - calendar grid
+  - day detail + candidate tiles
+  - clear-all and bottom action bars
+  - `baseline_manager_screen.dart` remains the route, draft-state, and
+    target-cycle write dispatcher
+- `lib/infrastructure/persistence/sqlite/`
+  - `sqlite_database.dart` is now the lifecycle / public-API shell
+  - `sqlite_database_schema.dart` owns schema helper functions
+  - `sqlite_database_seed.dart` owns seed / replay reset helper functions
+  - `sqlite_database_migrations.dart` owns migration helper functions
 
-That means the remaining `7.55o` work is less about inventing a shell system
-and more about:
+That means the completed `7.55o` work became less about inventing a shell
+system and more about:
 
 - shrinking the still-monolithic screens
 - moving local widgets / helpers / view models to better file boundaries
@@ -76,171 +122,126 @@ and more about:
 
 ## What The Original 7.55o Analysis Got Right
 
-### 1. `variance_report.dart` should still be the first extraction target
+### 1. `variance_report.dart` was the first extraction target
 
-That file is still the clearest "developer velocity tax" in the repo:
+`7.55o.2` accepted this split. The route file is now a 59-line shell, and the
+dense tab implementations live under `lib/screens/variance/`:
 
-- 3 tabs
-- async loading in multiple local states
-- dense UI sections
-- duplicated primitives
-- mixed surface math/presentation concerns
+- This Week tab
+- History tab
+- Learn tab
+- shared variance chip helper
 
-The core recommendation still holds:
+The original recommendation has landed and should not be reopened as part of
+later cleanup.
 
-- keep `variance_report.dart` as a shell
-- move tab-specific widgets out
-- move shared primitives out
+### 2. `sqlite_database.dart` was correctly deferred until after Variance
 
-### 2. `sqlite_database.dart` is still lower priority than Variance
+`7.55o.6` accepted the SQLite split after the higher-friction screen files
+were already carved apart. The main file is now a 409-line lifecycle /
+public-API shell, with schema, seed, and migration bodies moved to same-library
+part files.
 
-Even at 1446 lines, it is comparatively coherent:
-
-- schema
-- migration routing
-- seeding
-- mock replay reset helpers
-
-It is big, but it is not as mixed and fast-changing as the Variance screen.
-
-So the priority call remains correct:
+The original priority call remains correct in hindsight:
 
 - **split Variance first**
-- **split SQLite later only if churn continues**
+- **split SQLite later**
+- keep schema text, migration order, seed output, and reset entrypoints stable
 
 ---
 
 ## What The Original 7.55o Analysis Under-Scoped
 
-## 1. `baseline_manager_screen.dart` is a real hotspot, not a side note
+## 1. `baseline_manager_screen.dart` decomposition has landed
 
-At 1069 lines, this file is no longer just "large but fine."
+`7.55o.5` closed the Baseline Manager screen split:
 
-It currently mixes:
+- `baseline_manager_screen.dart` is now the route, draft-state, and write
+  dispatcher
+- date / lever helpers live in
+  `lib/screens/baseline_manager/baseline_manager_helpers.dart`
+- `ManagerOverridePlanPreview` and preview widgets live in
+  `baseline_manager_preview.dart`
+- calendar grid, day detail / candidate tiles, and action bars live in their
+  own responsibility files
 
-- draft selection state
-- async loading of candidates
-- calendar grouping/layout
-- plan impact preview model
-- per-day detail rendering
-- selection affordances
-- footer action bars
-
-This is not just widget volume. It is multiple responsibilities in one file.
-
-Recommended shape later:
-
-- `baseline_manager/manager_screen_shell.dart`
-- `baseline_manager/calendar_grid.dart`
-- `baseline_manager/day_detail.dart`
-- `baseline_manager/candidate_tile.dart`
-- `baseline_manager/plan_preview_widgets.dart`
-- keep preview model logic out of the screen file
+The split preserved selection semantics, candidate truth, date-window logic,
+preview formulas, labels, keys, empty states, and the target-cycle write path.
 
 Assessment:
 
-- this is a **real** `7.55o` target
-- do not leave it out of the lane
+- accepted as `7.55o.5`
+- the reported `baseline_override_propagation_test.dart` failure is tracked as
+  pre-existing and not caused by the structural split
 
-## 2. `schedule_builder.dart` is carrying too much non-screen logic
+## 2. `schedule_builder.dart` non-screen logic has been split
 
-This file is only 775 lines, but it has an important structural smell:
+`7.55o.3` closed the main separation-of-concerns seam:
 
-- `ScheduleForecastNotifier` lives inside the screen file
-- schedule day/daypart view models live inside the screen file
-- fallback daypart allocation helpers live inside the screen file
-- widget tree and planning logic are bundled together
+- `ScheduleForecastNotifier` now lives in
+  `lib/screens/schedule/schedule_forecast_notifier.dart`
+- schedule day/daypart view models now live in
+  `lib/screens/schedule/schedule_view_models.dart`
+- `schedule_builder.dart` remains the Plan screen composition/rendering shell
 
-That means this is not just visual bloat. It is a separation-of-concerns seam.
-
-Important specific concern:
-
-- the screen file still owns fixture-era fallback daypart allocation via
-  `WeekDayOrder.daypartsFor(...)`
-
-That part will be affected by `7.55n`, which is exactly why this should not be
-split before timing/service-period work lands.
-
-Recommended later shape:
-
-- move `ScheduleForecastNotifier` out of the screen file
-- move schedule day/daypart view models out of the screen file
-- keep the screen focused on composition/rendering
+The extracted notifier still owns locked-plan load state, service-period
+fallback loading, and allocation helpers. Those behaviors remain unchanged and
+should not be reopened inside post-`7.55o` cleanup work.
 
 Assessment:
 
-- this should be a formal `7.55o` target
-- but **after** `7.55n`, not before it
+- accepted as `7.55o.3`
+- no further schedule split was queued in the completed `7.55o` sequence
 
-## 3. `settings_screen.dart` is now a multi-tool admin surface
+## 3. `settings_screen.dart` surface split has landed
 
-This file is not just "a little long."
+`7.55o.4` closed the Settings screen split:
 
-It currently mixes:
+- `settings_screen.dart` is now the route shell and section dispatcher
+- shared Settings card/action primitives live in
+  `lib/screens/settings/settings_shared_widgets.dart`
+- data status, mock replay, data management, and audit wrapper sections live in
+  `lib/screens/settings/settings_data_sections.dart`
+- read-only timing authority display lives in
+  `lib/screens/settings/settings_timing_authority_section.dart`
+- wage authority summary and whole-mix editor live in
+  `lib/screens/settings/settings_wage_authority_section.dart`
 
-- data status
-- mock replay controls
-- destructive data management
-- wage fallback editing
-- audit panel surface
-
-This creates two problems:
-
-1. engineering friction when touching any one of those concerns
-2. product clutter, because a manager-facing surface and a debug/admin surface
-   are still sharing one flat page
-
-Recommended later shape:
-
-- `settings/status_section.dart`
-- `settings/mock_replay_section.dart`
-- `settings/data_management_section.dart`
-- `settings/wage_authority_section.dart`
-- `settings/audit_section.dart`
+The split preserved data actions, wage-authority writes, timing display,
+audit-panel behavior, labels, section order, and refresh semantics.
 
 Assessment:
 
-- definitely in scope for `7.55o`
-- especially because the user has already called out settings organization
+- accepted as `7.55o.4`
+- editable restaurant timing + service-period writes still belong to `10a`
 
-## 4. Shared primitives are still incomplete, even though some landed
+## 4. Shared primitives are now past the first extraction pass
 
 The first note correctly called out shared-surface duplication. Since then,
-some of that work has landed:
+the core reusable pieces have landed:
 
 - `SectionLabel` is now shared through `sticky_section_delegate.dart`
 - `DollarImpactCard` is now shared through `widgets/dollar_impact_card.dart`
 - app-shell header primitives are shared through `app_screen_header.dart`
+- `ComparisonGroupBand` is now shared through `widgets/comparison_group_band.dart`
+- `ComparisonMetricRow` is now shared through `widgets/comparison_metric_row.dart`
 
-What is still duplicated:
+What `7.55o.1` closed:
 
-- `_GroupBand`
-  - `variance_report.dart`
-  - `week_detail_screen.dart`
-- `_TableRow`
-  - `variance_report.dart`
-  - `week_detail_screen.dart`
+- duplicated `_GroupBand` definitions in Variance and Week Detail
+- duplicated `_TableRow` definitions in Variance and Week Detail
+- the Variance / Week Detail row-padding difference via an explicit shared
+  `verticalPadding` parameter
 
-This means `7.55o.1` should no longer be framed as "extract the first shared
-widgets." It should be framed as "finish the comparison-surface kit and stop
-leaving the remaining duplicated table/group primitives inside the two
-screens."
+What can still be considered later:
 
-Recommended primitive set:
-
-- `comparison_column_header.dart`
-- `comparison_group_band.dart`
-- `comparison_metric_row.dart`
-
-That will remove duplication from:
-
-- Variance
-- Week Detail
-- Benchmark (partial)
+- moving the sticky comparison column header into a dedicated file if it
+  becomes useful during the Variance shell split
+- reusing comparison primitives in Benchmark only if the API stays clean
 
 ## 5. `shift_dashboard.dart` is not first-tier, but it is not tiny anymore
 
-At 658 lines, this file is still workable, but it already has:
+At 750 lines, this file is still workable, but it already has:
 
 - header
 - live clock
@@ -263,7 +264,7 @@ Assessment:
 
 ## 6. `legacy_fixture_data.dart` is large, but should not be treated like a normal extraction job
 
-This file is 1346 lines and imported in 28 runtime files, but it is not just
+This file is 1784 lines and imported in 28 runtime files, but it is not just
 "one big screen."
 
 It still holds:
@@ -313,21 +314,21 @@ Note after the later UX shell pass:
 - the sticky/fading header treatment, cross-tab shell cleanup, Learn reskin,
   Plan/Benchmark header-stat cleanup, and Settings visual rework are already
   landed
-- the remaining `7.55o` work should therefore stay focused on file/layer
-  extraction and ownership cleanup, not on reopening the already-landed shell
-  redesign
+- the remaining work in the lane stayed focused on file/layer extraction and
+  ownership cleanup, not on reopening the already-landed shell redesign
 
 ### `7.55o.1` — Shared surface primitives extraction
 
-Do first.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
 - extract duplicated section/table primitives shared by Variance and Week Detail
-- extract shared dollar-impact card
-- optionally extract shared small chips/badges if the API can stay clean
+- preserve the existing Variance vs Week Detail row-padding difference
+- leave `DollarImpactCard`, sticky headers, and projection/read-service
+  behavior untouched
 
-Why first:
+Why this mattered:
 
 - low risk
 - high reuse
@@ -335,57 +336,88 @@ Why first:
 
 ### `7.55o.2` — Variance shell split
 
-Do second.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
-- keep `variance_report.dart` as shell + tab dispatch
-- move This Week, History, and Learn tab sections to their own files
-- keep existing read services; do not re-internalize truth logic
+- kept `variance_report.dart` as a 59-line shell + tab dispatcher
+- moved This Week, History, and Learn tab implementations under
+  `lib/screens/variance/`
+- moved the cross-tab chip helper to `variance_shared_widgets.dart`
+- kept existing read services and source-truth logic untouched
 
 ### `7.55o.3` — Schedule planning surface separation
 
-Do third, after `7.55n`.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
-- move `ScheduleForecastNotifier` out of `schedule_builder.dart`
-- move day/daypart view models out of the screen file
-- leave service-period fallback rewiring for the already-owned `7.55n` work
+- kept `schedule_builder.dart` as a 609-line Plan screen shell
+- moved `ScheduleForecastNotifier` and locked-plan load state to
+  `lib/screens/schedule/schedule_forecast_notifier.dart`
+- moved `ScheduleDayView` and `ScheduleDaySubrow` to
+  `lib/screens/schedule/schedule_view_models.dart`
+- preserved the `schedule_builder.dart` public import surface via exports
+- kept resolver formulas, allocation math, fallback behavior, labels, and
+  provider wiring unchanged
 
 ### `7.55o.4` — Settings surface split
 
-Do fourth.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
-- split by responsibility
-- keep one screen shell
-- reduce the current "flat admin wall" feel
+- kept `settings_screen.dart` as a 226-line Settings route shell
+- moved shared Settings primitives to `settings_shared_widgets.dart`
+- moved data status, mock replay, data management, audit wrapper, hero, and
+  footer sections to `settings_data_sections.dart`
+- moved read-only timing authority display to
+  `settings_timing_authority_section.dart`
+- moved wage authority summary, editor state, and wage-mix helper widgets to
+  `settings_wage_authority_section.dart`
+- kept data actions, dialog/snackbar copy, wage writes, timing display,
+  audit behavior, section order, and refresh semantics unchanged
 
 ### `7.55o.5` — Baseline Manager decomposition
 
-Do fifth.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
-- shell vs calendar vs detail vs preview
-- reduce merge conflicts on one of the most stateful screens
+- kept `baseline_manager_screen.dart` as a 250-line route/state/dispatch
+  shell
+- moved date and lever helpers to `baseline_manager_helpers.dart`
+- moved `ManagerOverridePlanPreview` and preview widgets to
+  `baseline_manager_preview.dart`
+- moved calendar grid and day-detail/candidate presentation to separate files
+- moved clear-all and bottom action bars to `baseline_manager_actions.dart`
+- preserved the `baseline_manager_screen.dart` public import surface for
+  `ManagerOverridePlanPreview`
+- kept selection semantics, candidate truth, date-window logic, preview
+  formulas, labels, keys, empty states, and target-cycle write behavior
+  unchanged
+- one required test failure in `baseline_override_propagation_test.dart` was
+  reported and verified by the implementer as pre-existing on `master`
 
-### `7.55o.6` — SQLite bootstrap breakup (only if still justified)
+### `7.55o.6` — SQLite bootstrap breakup
 
-Do last, and only if needed.
+Accepted 2026-04-24.
 
-Targets:
+Landed:
 
-- migrations directory
-- seeders directory
-- grouped schema files
+- kept `sqlite_database.dart` as a 409-line lifecycle / public-API shell
+- moved schema helpers to `sqlite_database_schema.dart`
+- moved seed / replay-reset helpers to `sqlite_database_seed.dart`
+- moved migration helpers to `sqlite_database_migrations.dart`
+- used same-library `part` files so private helper access stayed intact
+- kept `schemaVersion`, SQL text, migration order, seed output, reset/reseed
+  entrypoints, and public test wrappers unchanged
 
-Reason for deferring:
+Verification note:
 
-- stable but large
-- lower day-to-day friction than the screen files
+- the targeted test run reported 224 / 233 passing
+- the 9 reported failures were verified by the implementer as pre-existing on
+  `master` and unrelated to the structural split
 
 ### Optional later follow-up
 
@@ -436,14 +468,14 @@ The original `7.55o` analysis was right about the direction:
 
 But the lane is bigger than that now.
 
-The deeper practical scope is:
+The completed practical scope was:
 
 1. shared surface primitives
 2. Variance shell split
 3. Schedule screen separation
 4. Settings split
 5. Baseline Manager split
-6. SQLite breakup only if still worth it
+6. SQLite breakup
 
-That sequence better matches the current repo friction and the user's recent
-surface concerns about settings, clarity, and maintainability.
+That sequence now lands the intended extraction lane without changing the
+source-truth contracts that were established before it.

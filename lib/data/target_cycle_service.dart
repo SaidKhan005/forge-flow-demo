@@ -88,7 +88,8 @@ class TargetCycleService {
   /// - If the active cycle is past its effective end, creates a new
   ///   recommended cycle (auto-refresh). All existing active cycles are
   ///   deactivated before the new one is written.
-  /// - Otherwise returns the active cycle unchanged.
+  /// - Otherwise returns the active cycle unchanged, repairing the
+  ///   companion [BenchmarkSelectionSummary] if it is missing (7.56b.1).
   Future<TargetCycle> getOrCreateActiveCycle(
       String restaurantId, String businessDate) async {
     final existing = await _cycleRepo.getActiveCycle(restaurantId);
@@ -111,6 +112,10 @@ class TargetCycleService {
       return newCycle;
     }
 
+    // 7.56b.1: the seed path (`_ensureDemoSeedCycle`) inserts an active
+    // cycle row without a companion summary. Existing summaries are not
+    // rewritten — the repair only writes when the row is missing.
+    await _ensureSelectionSummaryExists(existing);
     return existing;
   }
 
@@ -571,6 +576,94 @@ class TargetCycleService {
     } else {
       BaselineData.clearRecommendationSignals();
     }
+  }
+
+  // ── Missing-summary repair (7.56b.1) ──────────────────────────────────
+  //
+  // When an active cycle row exists without a companion
+  // `benchmark_selection_summaries` row — the shape produced by the
+  // SQLite seed path's `_ensureDemoSeedCycle` helper — write exactly one
+  // summary using the same provenance conventions as cycle writes.
+  //
+  // This is a narrow recovery path: it never rewrites an existing
+  // summary, never duplicates, and never touches `BaselineData`
+  // recommendation signals (those belong to
+  // `hydrateBenchmarkHonestyFromActiveCycle`).
+
+  Future<void> _ensureSelectionSummaryExists(TargetCycle cycle) async {
+    final existing = await _summaryRepo.getByTargetCycleId(cycle.cycleId);
+    if (existing != null) return;
+
+    // 7.56b.1-review-fix: mirror `_writeReplacementCycle` evidence routing.
+    //   - managerOverride cycles always use the persisted manager-selected
+    //     cohort (read directly via `_selectedManagerOverrideCandidates`,
+    //     never from the in-memory `BaselineData` bridge which can be
+    //     stale on bootstrap / test setup).
+    //   - adminReplacement cycles route on `hasPersistedManagerOverride`
+    //     exactly as the write path does: override-selected cohort when
+    //     present, recommendation pipeline otherwise.
+    //   - recommended cycles always use the recommendation pipeline.
+    String sourceLabel;
+    int selectedCount;
+    List<double> cplhValues;
+
+    final useOverrideEvidence =
+        cycle.source == TargetCycleSource.managerOverride ||
+            (cycle.source == TargetCycleSource.adminReplacement &&
+                await BaselineManagerService.instance
+                    .hasPersistedManagerOverride(cycle.restaurantId));
+
+    if (useOverrideEvidence) {
+      sourceLabel = cycle.source == TargetCycleSource.managerOverride
+          ? 'manager_override'
+          : 'admin_replacement';
+      final selected = await _selectedManagerOverrideCandidates(
+        cycle.restaurantId,
+        cycle.calibrationWindowEnd,
+      );
+      selectedCount = selected.length;
+      cplhValues = selected.map((c) => c.cplh).toList();
+    } else {
+      // Recommended + admin-replacement-without-override both derive from
+      // the recommendation pipeline. Re-run it against the cycle's
+      // calibration-window end so the repaired selected_shift_count
+      // reflects the evidence the cycle was built against.
+      final recommendation = await BaselineManagerService.instance
+          .resolveRecommendedSelection(
+              cycle.restaurantId, cycle.calibrationWindowEnd);
+
+      if (cycle.source == TargetCycleSource.adminReplacement) {
+        sourceLabel = 'admin_replacement';
+      } else {
+        sourceLabel = recommendation.isInsufficient
+            ? 'cycle_recommended_insufficient'
+            : 'cycle_recommended';
+      }
+
+      selectedCount = recommendation.selectedRecordIds.length;
+      cplhValues = recommendation.selectedRecordIds.isEmpty
+          ? <double>[]
+          : <double>[
+              recommendation.unionOpzFloorCPLH,
+              recommendation.unionOpzCeilingCPLH,
+            ];
+    }
+
+    final analytics = BaselineSelectionAnalyticsService.computeAnalytics(
+      selectedCount,
+      cplhValues,
+    );
+    final summary = BenchmarkSelectionSummary(
+      summaryId: '${cycle.cycleId}_summary',
+      restaurantId: cycle.restaurantId,
+      targetCycleId: cycle.cycleId,
+      sourceType: sourceLabel,
+      selectedShiftCount: analytics.selectedShiftCount,
+      rangeQualityLabel: analytics.rangeQualityLabel,
+      rangeQualityMessage: analytics.rangeQualityMessage,
+      createdAt: cycle.createdAt,
+    );
+    await _summaryRepo.upsert(summary);
   }
 
   // ── Bootstrap honesty hydration (7.55p.5h-review-fix) ─────────────────

@@ -50,32 +50,33 @@ In plain terms:
 | `7.55p.4d` | complete | persisted passive notifications landed through `7.55p.4d1` |
 | `7.55p.5` | complete | Benchmark OPZ / graph honesty audit, OPZ-width research, target-labor package contract, Variance theoretical-package verification, blended-wage audit, recommendation-statistics contract cleanup, wage-mix setup UX, the app-owned recommended benchmark selection service, its restaurant-scope runtime fix, the Benchmark graph fallback/explainer cleanup, and the scope-aware planned labor package contract + wiring landed through `7.55p.5j` |
 | `7.55q` | complete | architecture-conformance lane landed through `7.55q.10`: single-plan / single-benchmark-target rule codified, non-closed Variance rewired 1:1, History restored to preserved locked-target truth, planned labor killed, whole-day Shift target alignment landed, post-q authority/test hygiene synced, cycle-backed Benchmark override wiring landed, and Dollar Impact card unified with frozen-at-close parity (SQLite v22 migration + shared widget) |
-| `7.55o` | active | shared-surface extraction / shell split lane resumed after the q-lane source-truth cleanup |
+| `7.55o` | complete | shared-surface extraction / shell split lane completed through `7.55o.6`: shared comparison primitives, Variance shell split, Schedule planning separation, Settings surface split, Baseline Manager decomposition, and SQLite schema / seed / migration breakup accepted |
+| `7.55r` | complete | bounded foundation closeout completed through `7.55r.2`: dev-only audit read service + drift flags + locked-week / target-cycle provenance readout landed, UTC metadata and non-locked WTD audits closed, and service-period runtime wiring verified with no production patch target |
+| `7.56` | complete | reservation-book signal verified complete in `7.56a`; `7.56b` closed the pre-existing target-cycle `benchmark_selection_summaries` replay-stability failure; `7.56c.0` plus the projection-sales and target-hour field follow-ups aligned Full Week Plan / Benchmark authority, and `7.56c.1` expanded the dev-only audit into a full live / actual + Plan / Benchmark source-alignment monitor (grouped audit checks across 5 groups, 9 q-lane checks preserved) |
 
 ## Current Next Steps
 
 - Current:
-  - resume `7.55o.1` through `7.55o.6`
+  - `7.56c` Plan + Benchmark authority alignment is closed; the two phase docs (`phase_7_56c0_full_week_projection_authority_alignment.md`, `phase_7_56c_data_alignment_audit_plan_benchmark_coverage.md`) are marked complete and the dev-only audit panel now answers both architecture questions: where the live / actual value came from, and where the target / comparison value came from
+  - no in-flight alignment slice — next prompt is owner-driven
   - follow the automatic Codex prompt loop in `docs/CODEX_PROMPT_GENERATION_STANDARD.md`: verify repo truth, update tracker truth only after accepted slices, then generate the next prompt from the updated trackers
-  - use the `7.55o` companion docs before any code movement:
-    - non-behavior-change contract
-    - verification matrix
-    - extraction ownership map
-  - treat the broad UX shell/header pass as already landed:
+  - do not compare live operating results against targets as drift (`7.56c.1` design rule)
+  - treat the broad UX shell/header pass and `7.55o` structural extraction as already landed:
     - shared sticky/fading headers
     - Shift / Variance / History / Learn / Plan / Benchmark shell cleanup
     - Settings visual rework
+    - SQLite bootstrap breakup into schema / seed / migration part files
 - Then:
-  - revisit canonical live-facts contract planning
+  - decide whether to move to `Phase 8` / `8R` vendor-selection prep, continue bounded pre-Phase-8 cleanup, or pause for owner prioritization
   - use `7.55j.3` and `7.55j.4` as the active pre-Phase-8 vendor packaging authority
   - revisit `docs/internal/status_ledger_post_7_55p_deep_check.md` before any new pre-Phase-8 readiness answer
   - keep the bounded post-audit cleanup list visible without treating it as
     a new q-lane:
-    - dev-only audit-panel service wrap + drift detection + cycle/week
-      provenance readout (`7.55r`)
-    - persisted timing/service-period wiring closeout (`7.55r`)
-    - UTC metadata timestamp normalization (`7.55r`)
-    - non-locked WTD business-date membership audit (`7.55r`)
+    - dev-only audit-panel cycle/week provenance readout landed in `7.55r.1`
+    - persisted timing/service-period wiring closeout verified / closed in `7.55r.2`
+    - UTC metadata timestamp normalization and non-locked WTD business-date
+      membership audit are already documented in `7.55r` as closed / no-patch
+      findings
     - editable restaurant timing + service-period settings write path
       (`10a`)
 
@@ -88,6 +89,7 @@ In plain terms:
 - the locked weekly plan is the current-week plan authority; the app should not carry a second competing live plan for the in-force week
 - Benchmark sets the standard, Plan decides the week, Shift manages right now, Variance compares plan vs actual, History preserves what closed, and Learn teaches from repeated closed results
 - non-closed Variance rows should inherit benchmark targets + locked-plan targets 1:1 rather than recomputing per surface
+- non-closed Full Week daypart plan targets should come from the same shared daypart allocation used by Schedule; `OpenShiftSnapshot` / `ShiftRecord` should not be a competing projected plan authority
 - closed Full Week rows stay locked historical truth
 - blended wage should come from one shared benchmark target value, not multiple screen/model recomputations
 - whole-day Shift target alignment landed through `7.55q.7`; `10.5` still owns live service-period/daypart-aware Shift behavior and driver teaching
@@ -99,8 +101,8 @@ In plain terms:
   - live floor data when fresh enough to be treated as current
   - explicit freshness age when not live
   - Shift as the highest-priority live surface
-- file extraction / engineering hygiene is now back on the active path in `7.55o`
-- the broad `7.55o` UX shell pass is already landed; remaining `7.55o` work should not reopen the source-truth-neutral shell/header cleanup
+- file extraction / engineering hygiene completed through `7.55o.6`
+- the broad `7.55o` UX shell pass and structural extraction lane are already landed; later cleanup should not reopen source-truth-neutral shell/header acceptance
 - Shift's whole-day view is authoritative; `10.5` adds an additive daypart view alongside it without replacing whole-day
 - History stays closed-truth only
 - Learn benchmark-context and coaching-summary cleanup landed through
@@ -113,7 +115,7 @@ In plain terms:
 - `7.55q` is fully landed through `7.55q.10`; use the phase docs and status ledger for the detailed architecture-conformance, Shift-alignment, post-q hygiene, cycle-backed override-wiring, and Dollar Impact card unification closeout notes
 - use `docs/internal/status_ledger_post_7_55p_deep_check.md` as the reference sheet for older ask reconciliation:
   - what `7.55p.2` / `7.55p.3` / `7.55p.4d` / `7.55p.5` did and did not close
-  - what to revisit before `7.55o.*` polish work and `7.55j.4` readiness review
+  - what to revisit before post-`7.55o` polish work and `7.55j.4` readiness review
 - wage-authority reminder:
   - the app should keep one resolved FOH/BOH wage authority path
   - any improved Settings wage setup should still end by syncing resolved wages into the active target profile
@@ -174,6 +176,9 @@ In plain terms:
 - `docs/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`
 - `docs/phases/7_55j/phase_7_55j_4_gap_report.md`
 - `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
+- `docs/phases/7_56/phase_7_56b_benchmark_selection_summary_replay_stability.md`
+- `docs/phases/7_56/phase_7_56c0_full_week_projection_authority_alignment.md`
+- `docs/phases/7_56/phase_7_56c_data_alignment_audit_plan_benchmark_coverage.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
 - `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
 

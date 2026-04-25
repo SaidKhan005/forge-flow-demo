@@ -1,7 +1,7 @@
 # Phase 7.55r - Foundation Closeout
 
 Updated: 2026-04-24
-Status: In Progress
+Status: Complete through `7.55r.2`
 Owner: Foundation closeout lane
 
 ## Decisions Locked (2026-04-23 review)
@@ -68,6 +68,51 @@ Owner: Foundation closeout lane
   provenance visibility land before the service-period runtime wiring
   changes, so the detector and provenance readout are active when those
   surfaces change.
+
+- **Tracker handoff after `7.55o.6` (2026-04-24).** Repo truth now shows
+  `DataAlignmentAuditReadService`, `DataAlignmentAuditSnapshot`, and
+  `DataAlignmentDriftCheck` already present, and the widget no longer imports
+  SQLite repositories directly. The next patch target is the remaining Tier 3
+  readout: show the existing locked-week identity and linked target-cycle
+  metadata in the dev-only audit panel without generating snapshots or
+  changing production read paths.
+
+- **`7.55r.1` accepted (2026-04-24).** The Tier 3 locked-week /
+  target-cycle provenance readout landed in the dev-only audit panel.
+  `DataAlignmentAuditReadService` now reads the current locked snapshot once,
+  projects the plan and provenance from that same snapshot instance, loads
+  the linked `TargetCycle`, and renders a `LOCKED WEEK PROVENANCE` section.
+  Missing snapshot / missing cycle degrade honestly. Reported verification:
+  `dart analyze` clean, `data_alignment_audit_read_service_test.dart` 22/22,
+  `settings_screen_widget_test.dart` 11/11, `current_state_alignment_test.dart`
+  54/54, combined 87/87.
+
+- **Repo-truth handoff for `7.55r.2` (2026-04-24).** After the `7.55o.3`
+  Schedule split, the Schedule runtime seam named in older notes no longer
+  lives in `lib/screens/schedule_builder.dart`; it lives in
+  `lib/screens/schedule/schedule_forecast_notifier.dart`. Current repo truth
+  already shows the Schedule notifier and Variance Full Week section loading
+  persisted `RestaurantTimingConfig.servicePeriodDefinitions` with
+  `demoDefinitions` as honest fallback. `7.55r.2` should verify that this is
+  complete, patch only real load-bearing leftovers, and leave fixture-only
+  compatibility paths alone.
+
+- **`7.55r.2` accepted (2026-04-24).** Verification found no production patch
+  target. The Schedule locked-authority notifier already loads persisted
+  service-period definitions through `RestaurantTimingConfigReadService`;
+  Variance Full Week already loads and passes persisted definitions into
+  `VarianceWeekProjectionReadService`; that service already orders from
+  provided definitions and falls back to `demoDefinitions` only when null.
+  `WeekDayOrder.daypartsFor(...)` has no live callers and `WeekDayOrder`
+  retains only the `dayLabels` bridge. One confirmatory test group was added
+  to `variance_week_projection_read_service_test.dart` proving custom
+  service-period ordering and null fallback. Reported verification:
+  `dart analyze` clean and `service_period_definition_resolver_test.dart` +
+  `variance_week_projection_read_service_test.dart` +
+  `schedule_builder_widget_test.dart` 89/89. The remaining direct
+  `demoDefinitions` callers on the Baseline Manager seam are outside this
+  phase's named orphan set and stay flagged for a future scoped decision, not
+  a 7.55r blocker.
 
 - **UTC metadata normalization item closed (2026-04-24) — scope by
   design, not partial delivery.** Two `createdAt` callsites migrated
@@ -142,17 +187,28 @@ code after the tracker-authority and orphan-audit passes, so the timing,
 metadata, audit-panel, and week-membership seams stop lagging behind the
 otherwise-landed 7.55 foundation.
 
+Outcome: complete. The audit-panel provenance, service-period runtime
+wiring verification, UTC metadata scope, and non-locked WTD membership audit
+are all closed as of 2026-04-24.
+
 ## Scope
 
 Phase 7.55r owns:
 
-- **Service-period definitions runtime wiring**
+- **Service-period definitions runtime wiring (`7.55r.2` verification /
+  closeout)**
   - replace the verified orphan-audit runtime callers that still read
     `ServicePeriodDefinitionResolver.demoDefinitions`
-  - current verified shared runtime callers:
-    - `lib/screens/schedule_builder.dart`
-    - `lib/data/legacy_fixture_data.dart`
-    - `lib/services/variance_week_projection_read_service.dart`
+  - current post-extraction shared runtime seams:
+    - `lib/screens/schedule/schedule_forecast_notifier.dart` -
+      `_loadServicePeriodDefinitions()` / `_resolveDaypartWeights()` only
+    - `lib/screens/variance/variance_this_week_tab.dart` -
+      `_FullWeekSectionState` timing-config load + projection call only
+    - `lib/services/variance_week_projection_read_service.dart` -
+      `build()` ordering only
+    - `lib/data/legacy_fixture_data.dart` - `ScheduleDay.daypartBreakdown`
+      and `WeekDayOrder` bridge only; expected to stay fixture-compatible
+      unless it is still visible-runtime load-bearing
   - read persisted `RestaurantTimingConfig.servicePeriodDefinitions`
     instead
 
@@ -175,7 +231,8 @@ Phase 7.55r owns:
     boundary and the 2026-04-24 Decisions Locked section above for the
     full rationale.
 
-- **Dev-only `DataAlignmentAuditPanel` boundary cleanup + drift detection**
+- **Dev-only `DataAlignmentAuditPanel` boundary cleanup + drift detection
+  (landed through `7.55r.1`)**
   - Tier 1 — boundary hygiene:
     - add a thin dev-only read service such as
       `DataAlignmentAuditReadService`
@@ -194,7 +251,7 @@ Phase 7.55r owns:
       detector for the q-lane contracts the refactor work touches
     - remain value-comparison only; provenance-tagged drift (right
       number, wrong pathway) is out of scope for this slice
-  - Tier 3 â€” cycle/week provenance visibility:
+  - Tier 3 - cycle/week provenance visibility:
     - surface the current locked-week identity the panel is reading from
       (week key/label plus snapshot timing when available)
     - surface the target-cycle linkage behind that locked week
@@ -284,7 +341,7 @@ Phase 7.55r does not wait on:
 
 ## Adjacent Phases
 
-- `7.55o` remains the active extraction lane; `7.55r` is bounded
+- `7.55o` is complete through SQLite bootstrap breakup; `7.55r` is bounded
   foundation closeout
 - `Phase 10a` later owns editable timing and service-period write paths
 - `Phase 10.5` consumes the cleaned service-period runtime seam

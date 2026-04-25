@@ -146,6 +146,16 @@ void main() {
           const MaterialApp(home: Scaffold(body: BaselineTracker())));
       await tester.pump();
 
+      // Scroll the Baseline targets card into view. Above it live the
+      // CPLH range bar + daypart breakdown; on the default test surface the
+      // targets card is below the fold.
+      await tester.scrollUntilVisible(
+        find.text('TARGETS DERIVED FROM BENCHMARK'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
+
       // Override target must now appear in the Baseline targets card
       expect(find.text(overrideTargetText), findsWidgets);
     });

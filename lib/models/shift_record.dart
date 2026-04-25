@@ -80,6 +80,13 @@ class ShiftRecord {
   /// (which derive blended wage from actual labor dollars).
   final double? snapshotBlendedWage;
 
+  /// Plan-sourced forecast sales for open/projected rows.
+  ///
+  /// This is an in-memory bridge for Full Week projection rows built from
+  /// open snapshots. Closed rows and persisted historical rows leave it null
+  /// and continue deriving sales from actual covers * row PPA.
+  final double? planForecastSales;
+
   /// ISO 8601 date string for the business day of this shift (e.g. '2026-03-27').
   /// Nullable for backward compatibility with rows created before 7.55f.
   final String? businessDate;
@@ -127,6 +134,7 @@ class ShiftRecord {
     this.theoreticalFohLaborPct,
     this.theoreticalBohLaborPct,
     this.snapshotBlendedWage,
+    this.planForecastSales,
     this.businessDate,
     this.sourceSystem,
     this.sourceShiftId,
@@ -296,6 +304,7 @@ class ShiftRecord {
       theoreticalFohLaborPct: theoreticalFohLaborPct ?? defaultTheoreticalFohLaborPct,
       theoreticalBohLaborPct: theoreticalBohLaborPct ?? defaultTheoreticalBohLaborPct,
       snapshotBlendedWage: snapshotBlendedWage,
+      planForecastSales: planForecastSales,
       businessDate: businessDate,
       sourceSystem: sourceSystem,
       sourceShiftId: sourceShiftId,

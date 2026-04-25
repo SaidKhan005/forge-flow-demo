@@ -1,0 +1,43 @@
+# .graphifyignore — scopes graphify to lib/ + docs/ + root authority files.
+# Same syntax as .gitignore.
+
+# Flutter platform scaffolding — auto-generated, no architectural value
+ios/
+android/
+windows/
+linux/
+macos/
+web/
+
+# Build / tool artifacts
+build/
+.dart_tool/
+.gradle/
+.metadata
+.idea/
+.vscode/
+
+# Static assets (mostly images, no semantic value for the workflow)
+assets/
+
+# graphify's own outputs and install artifacts
+graphify-out/
+AGENTS.md
+GEMINI.md
+.gemini/
+.opencode/
+
+# Tests excluded from initial bootstrap — can run /graphify test/ later if useful
+test/
+test_driver/
+integration_test/
+
+# Scratch / temp / generated
+.codex_tmp_*
+*.pyc
+.codex_session/
+node_modules/
+
+# External binary docs (PDF business plan, etc — large, not part of the
+# architecture corpus we want to query)
+ForgeFlow docs/

@@ -114,9 +114,9 @@ class VarianceWeekProjectionReadService {
         children.fold<int>(0, (s, r) => s + r.shift.covers);
 
     final totalSales =
-        children.fold<double>(0, (s, r) => s + r.shift.actualSales);
-    final totalLabor =
-        children.fold<double>(0, (s, r) => s + _laborDollarsForRow(r));
+        children.fold<double>(0, (s, r) => s + _salesForRow(r));
+    final totalLabor = children.fold<double>(
+        0, (s, r) => s + _laborDollarsForRow(r, currentTargetProfile));
     final laborPct = totalSales > 0
         ? totalLabor / totalSales * 100
         : _meanTheoreticalPct(children,
@@ -202,7 +202,7 @@ class VarianceWeekProjectionReadService {
           (s, r) =>
               s +
               _theoreticalPctForRow(r, currentTargetProfile) *
-                  r.shift.actualSales);
+                  _salesForRow(r));
       return weighted / totalSales;
     }
     return _meanTheoreticalPct(children,
@@ -219,19 +219,47 @@ class VarianceWeekProjectionReadService {
         children.length;
   }
 
+  /// Sales basis for collapsed Full Week projection math.
+  ///
+  /// Closed rows stay on actual closed-shift sales. Non-closed rows may
+  /// carry a Plan-owned forecast sales target from the locked weekly plan
+  /// daypart allocation; when present, use that target sales basis for
+  /// projection weighting without rewriting the row's actual/current sales.
+  static double _salesForRow(ProjectionDaypartRow row) {
+    if (row.status != RowStatus.closed) {
+      final planSales = row.shift.planForecastSales;
+      if (planSales != null) return planSales;
+    }
+    return row.shift.actualSales;
+  }
+
   /// 7.55q follow-up: open/projected rows built from [OpenShiftSnapshot]
   /// carry `snapshotBlendedWage`, not stored source labor dollars. When
-  /// that snapshot wage is present, use it for the collapsed day-row labor
-  /// aggregate so the collapsed path stays consistent with the expanded
-  /// projected detail. Closed rows continue to use persisted actual labor
-  /// dollars.
-  static double _laborDollarsForRow(ProjectionDaypartRow row) {
+  /// that snapshot wage is present and positive, use it for the collapsed
+  /// day-row labor aggregate so the collapsed path stays consistent with
+  /// the expanded projected detail. Closed rows continue to use persisted
+  /// actual labor dollars.
+  ///
+  /// 7.56c.0: a `snapshotBlendedWage` of `0.00` is treated as absent
+  /// rather than authoritative. Without this, a seeded zero wage can
+  /// render `0.0%` collapsed labor even though the expanded detail and
+  /// the rest of the app price labor at the active Benchmark blended
+  /// wage. When [currentTargetProfile] is provided, fall back to
+  /// `currentTargetProfile.targetBlendedWage`. When no profile is
+  /// available, fall back to the shift's own labor dollars (legacy
+  /// behaviour).
+  static double _laborDollarsForRow(
+      ProjectionDaypartRow row, ActiveTargetProfile? currentTargetProfile) {
     final shift = row.shift;
     final totalHours = shift.fohHours + shift.bohHours;
-    if (row.status != RowStatus.closed &&
-        shift.snapshotBlendedWage != null &&
-        totalHours > 0) {
-      return shift.snapshotBlendedWage! * totalHours;
+    if (row.status != RowStatus.closed && totalHours > 0) {
+      final snapshotWage = shift.snapshotBlendedWage;
+      if (snapshotWage != null && snapshotWage > 0) {
+        return snapshotWage * totalHours;
+      }
+      if (currentTargetProfile != null) {
+        return currentTargetProfile.targetBlendedWage * totalHours;
+      }
     }
     return shift.totalLaborDollar;
   }

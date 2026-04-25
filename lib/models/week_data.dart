@@ -26,6 +26,8 @@ class WeekData {
   final int shiftsTotal;
   final int wtdForecastCovers;
   final int totalWeekForecastCovers;
+  final double? wtdForecastSales;
+  final double? totalWeekForecastSales;
   final String primaryLeverId;
   final String lastClosedDay;
   final int closedDayNumber;
@@ -67,6 +69,8 @@ class WeekData {
     required this.shiftsTotal,
     required this.wtdForecastCovers,
     required this.totalWeekForecastCovers,
+    this.wtdForecastSales,
+    this.totalWeekForecastSales,
     required this.primaryLeverId,
     this.lastClosedDay = 'Monday',
     this.closedDayNumber = 1,
@@ -171,7 +175,14 @@ class WeekData {
   }
 
   double get projectedRemainingShiftSales =>
-      remainingForecastCovers * _targetPPA;
+      remainingForecastSales ?? remainingForecastCovers * _targetPPA;
+  double? get remainingForecastSales {
+    final total = totalWeekForecastSales;
+    final wtd = wtdForecastSales;
+    if (total == null || wtd == null) return null;
+    final r = total - wtd;
+    return r < 0 ? 0 : r;
+  }
   double get projTotalSales => totalSales + projectedRemainingShiftSales;
   int get projTotalCovers => totalCovers + remainingForecastCovers;
   double get projRemainingLaborDollar =>

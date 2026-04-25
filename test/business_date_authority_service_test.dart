@@ -334,9 +334,18 @@ void main() {
         () async {
       // The Shift dashboard resolves business date from
       // OpenShiftSnapshotRepository, not from the planning anchor.
+      //
+      // 7.55q.2-review-fix changed getShiftDashboard to consume the
+      // existing locked weekly plan (null-if-missing) instead of
+      // auto-generating one. reseedDemo() does NOT write a
+      // weekly_plan_snapshots row, so the test first primes the locked
+      // plan via the auto-generating read-service entrypoint, then
+      // asserts the dashboard resolves.
+      await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
+
       final dashboard = await ShiftService.instance.getShiftDashboard();
 
-      // With seeded data, dashboard should work.
+      // With seeded data + a locked plan in place, dashboard should work.
       expect(dashboard, isNotNull);
       expect(dashboard!.forecastCovers, greaterThan(0));
     });

@@ -11,6 +11,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/open_shift_snapshot.dart';
+import 'package:forge_and_flow/domain/models/service_period_definition.dart';
 import 'package:forge_and_flow/models/current_week_state.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/models/variance_week_projection_row.dart';
@@ -62,6 +63,7 @@ ShiftRecord _openShift({
   int fohHours = 22,
   int bohHours = 9,
   double? snapshotBlendedWage,
+  double? planForecastSales,
 }) =>
     ShiftRecord(
       weekId: '2026-W13',
@@ -85,6 +87,7 @@ ShiftRecord _openShift({
       theoreticalFohLaborPct: 8.63,
       theoreticalBohLaborPct: 11.86,
       snapshotBlendedWage: snapshotBlendedWage,
+      planForecastSales: planForecastSales,
     );
 
 ShiftRecord _projectedShift({
@@ -705,6 +708,215 @@ void main() {
       expect(day.laborPct, isNot(closeTo(legacyPct, 0.001)),
           reason:
               'Collapsed day-row labor % must not fall back to config-wage-derived dollars when snapshot blended wage is present');
+    });
+  });
+
+  // ── Phase 7.55r item 1 — service-period definition override ──────────────
+  //
+  // Proves the build() wiring that lets the Variance Full Week screen pass
+  // persisted `RestaurantTimingConfig.servicePeriodDefinitions` into the
+  // read service so intra-day daypart ordering follows restaurant config,
+  // and falls back honestly to demoDefinitions when null.
+  group('N — 7.55r servicePeriodDefinitions override', () {
+    const service = VarianceWeekProjectionReadService();
+
+    // Reversed vs the demo definitions: dinner sorts first, lunch second.
+    const reversedDefs = [
+      ServicePeriodDefinition(
+        id: 'dinner',
+        label: 'Dinner',
+        shortLabel: 'D',
+        sortOrder: 1,
+        startLocalTime: '17:00',
+        endLocalTime: '23:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5, 6, 7],
+      ),
+      ServicePeriodDefinition(
+        id: 'lunch',
+        label: 'Lunch',
+        shortLabel: 'L',
+        sortOrder: 2,
+        startLocalTime: '11:00',
+        endLocalTime: '15:00',
+        rollsPastMidnight: false,
+        applicableDays: [1, 2, 3, 4, 5],
+      ),
+    ];
+
+    test('N1: custom definitions reorder daypart children', () {
+      final shifts = [
+        _closedShift(dayLabel: 'Mon', daypart: 'lunch'),
+        _closedShift(dayLabel: 'Mon', daypart: 'dinner'),
+      ];
+      final projection = service.build(
+        shifts,
+        servicePeriodDefinitions: reversedDefs,
+      );
+      final day = projection.dayRows.single;
+      expect(day.children.map((c) => c.daypart).toList(),
+          equals(['dinner', 'lunch']),
+          reason:
+              'Custom definitions with dinner.sortOrder=1 must reorder the '
+              'children so dinner precedes lunch');
+    });
+
+    test('N2: null servicePeriodDefinitions falls back to demoDefinitions '
+        '(lunch → dinner)', () {
+      final shifts = [
+        _closedShift(dayLabel: 'Mon', daypart: 'dinner'),
+        _closedShift(dayLabel: 'Mon', daypart: 'lunch'),
+      ];
+      final projection = service.build(shifts);
+      final day = projection.dayRows.single;
+      expect(day.children.map((c) => c.daypart).toList(),
+          equals(['lunch', 'dinner']),
+          reason:
+              'Honest fallback: null defs must use demo ordering (lunch=1, '
+              'dinner=2) regardless of input list order');
+    });
+  });
+
+  // ── O: 7.56c.0 — zero snapshot wage no longer treated as authoritative
+  //
+  // Bug fix from 7.56c.0: a `snapshotBlendedWage = 0.00` on an open or
+  // projected row was previously multiplied through to a $0 labor
+  // contribution, rendering false `0.0%` collapsed labor on days with
+  // any non-zero sales. The collapsed path now treats a zero wage as
+  // absent and prefers the active Benchmark blended wage when the
+  // profile is in scope. Without a profile, the legacy fallback to
+  // `shift.totalLaborDollar` is preserved (honest backward compat).
+
+  group('O — 7.56c.0 zero snapshot wage falls back to profile blended wage',
+      () {
+    ActiveTargetProfile makeProfile() {
+      return ActiveTargetProfile(
+        targetProfileId: 'c0',
+        restaurantId: 'demo_restaurant_001',
+        sourceType: 'system_baseline',
+        targetCPLH: 4.5,
+        targetSPLH: 180.0,
+        targetPPA: 42.0,
+        fohWage: 16.50,
+        bohWage: 21.35,
+        opzFloorCPLH: 3.5,
+        opzCeilingCPLH: 5.8,
+        theoreticalFohLaborPct: 8.5,
+        theoreticalBohLaborPct: 12.0,
+        theoreticalLaborPct: 20.5,
+        builtAt: '2026-04-24T00:00:00Z',
+      );
+    }
+
+    test('O1: snapshotBlendedWage = 0.0 with profile in scope -> day-row '
+        'labor uses profile.targetBlendedWage, not zero', () {
+      final open = _openShift(
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        covers: 100,
+        forecastCovers: 100,
+        ppa: 40.0,
+        fohHours: 10,
+        bohHours: 10,
+        snapshotBlendedWage: 0.0,
+      );
+      final profile = makeProfile();
+
+      final projection =
+          service.build([open], currentTargetProfile: profile);
+      final day = projection.dayRows.single;
+
+      final expectedLabor = profile.targetBlendedWage * 20;
+      final expectedSales = 100 * 40.0;
+      final expectedPct = expectedLabor / expectedSales * 100;
+
+      expect(day.laborPct, closeTo(expectedPct, 0.01),
+          reason:
+              'zero snapshot wage must fall back to profile.targetBlendedWage '
+              'when profile is in scope');
+      expect(day.laborPct, isNot(closeTo(0.0, 0.01)),
+          reason:
+              'collapsed labor must not render 0.0% just because the '
+              'snapshot wage was 0.00');
+    });
+
+    test('O2: snapshotBlendedWage = 0.0 without profile -> falls back to '
+        'shift.totalLaborDollar (legacy honest path)', () {
+      final open = _openShift(
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        covers: 100,
+        forecastCovers: 100,
+        ppa: 40.0,
+        fohHours: 10,
+        bohHours: 10,
+        snapshotBlendedWage: 0.0,
+      );
+
+      final projection = service.build([open]); // no profile
+      final day = projection.dayRows.single;
+
+      final expectedSales = 100 * 40.0;
+      final expectedPct = expectedSales > 0
+          ? open.totalLaborDollar / expectedSales * 100
+          : 0.0;
+      expect(day.laborPct, closeTo(expectedPct, 0.01),
+          reason:
+              'no profile in scope -> fall back to shift.totalLaborDollar, '
+              'not invent a profile-derived value');
+    });
+
+    test('O3: snapshotBlendedWage > 0 still wins over profile (existing '
+        'behavior preserved)', () {
+      final open = _openShift(
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        covers: 100,
+        forecastCovers: 100,
+        ppa: 40.0,
+        fohHours: 10,
+        bohHours: 10,
+        snapshotBlendedWage: 20.0,
+      );
+      final profile = makeProfile();
+
+      final projection =
+          service.build([open], currentTargetProfile: profile);
+      final day = projection.dayRows.single;
+
+      // 20 hours × $20.00 snapshot wage = $400 / $4000 sales = 10.0%
+      expect(day.laborPct, closeTo(10.0, 0.01),
+          reason:
+              'a positive snapshot wage remains the authoritative source '
+              'even when a profile is available');
+    });
+
+    test('O4: non-closed planForecastSales is used as target sales basis '
+        'without rewriting actualSales', () {
+      final open = _openShift(
+        dayLabel: 'Fri',
+        daypart: 'dinner',
+        covers: 50,
+        forecastCovers: 100,
+        ppa: 10.0,
+        fohHours: 10,
+        bohHours: 10,
+        snapshotBlendedWage: 20.0,
+        planForecastSales: 2000.0,
+      );
+
+      expect(open.actualSales, equals(500.0),
+          reason:
+              'actual/current sales stay derived from row actuals; plan '
+              'target sales is a separate comparison basis');
+
+      final projection = service.build([open]);
+      final day = projection.dayRows.single;
+
+      expect(day.laborPct, closeTo(20.0, 0.01),
+          reason:
+              'collapsed target projection math should price \$400 labor '
+              'against the \$2,000 plan sales target, not \$500 actual sales');
     });
   });
 }

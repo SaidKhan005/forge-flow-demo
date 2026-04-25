@@ -1,8 +1,65 @@
 # Phase 7.56 - Reservation Book Signal Demo
 
-Updated: 2026-04-11
+Updated: 2026-04-24
 Owner: Codex planning / tracker truth
-Status: Planned
+Status: Complete - 7.56a landed + verified (2026-04-24)
+
+## Closeout Verification (2026-04-24 — Prompt 7.56a-closeout)
+
+All 7.56a Scope artifacts are present in repo truth and behave per this plan.
+No production code changes were required to close the slice; this was a
+verification-only pass.
+
+### Landed artifacts
+
+- `lib/domain/models/reservation_book_snapshot.dart` — exact field shape
+  from the Proposed Data Model section.
+- `lib/domain/repositories/reservation_book_snapshot_repository.dart` —
+  `getForShift` + `getForDay` + `replaceReservationBookSnapshot`.
+- `lib/infrastructure/persistence/sqlite/dao/reservation_book_snapshot_dao.dart`
+- `lib/infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart`
+- `reservation_book_snapshots` table — declared in
+  `sqlite_database_schema.dart` with the exact `UNIQUE(restaurant_id,
+  business_date, daypart)` constraint from the plan; `_migrateToV11` in
+  `sqlite_database_migrations.dart` creates + seeds on upgrade.
+- Seed path — `_seedReservationBookSnapshotsFromReplay` in
+  `sqlite_database_seed.dart`. `reseedMockReplayForBusinessDate` calls it;
+  `clearAllData` deletes the table rows; `SqliteDatabase` carries the
+  correct lifecycle hooks.
+- Shift read path — both `ShiftDashboardNotifier._load()` and
+  `ShiftService.getShiftDashboard()` aggregate `unseatedCovers` via
+  `getForDay(restaurantId, businessDate)` and pass the non-zero sum into
+  `ShiftDashboardReadModel.buildWholeDay(inTheBooksCovers: …)`.
+- Read-model field — `ShiftDashboardReadModel.inTheBooksCovers` is
+  optional (`int?`) and does not mutate `actualCovers` / `forecastCovers`
+  / lever math.
+- UI path — COVERS `InputMetric` renders
+  `'In the books $inTheBooksCovers'` via `targetSupportFormatted` only
+  when `inTheBooksCovers != null`.
+
+### Intentional divergence from the pre-7.55q.7 plan spec
+
+The plan's `Definition Of "In The Books"` section describes daypart-scoped
+aggregation. Current repo behaviour is whole-day aggregation across all
+dayparts for the current business date. This aligns with the whole-day
+Shift authority landed in `7.55q.7` (`Shift whole-day target alignment`)
+after this plan was originally written. No patch required — the whole-day
+aggregation is the intended behaviour for the current Shift surface, and
+`Phase 10.5` still owns the daypart-aware live service-period Shift view.
+
+### Test coverage
+
+`test/reservation_book_snapshot_repository_test.dart` +
+`test/shift_dashboard_notifier_test.dart` +
+`test/shift_visual_widget_test.dart` +
+`test/shift_whole_day_alignment_test.dart` exercise the reservation seam
+(persistence round-trip, read-model wiring, COVERS card rendering when
+present / hidden when absent, mock-replay scenario coherence).
+
+`test/mock_replay_scenario_test.dart` still contains a pre-existing,
+non-reservation failure in the `benchmark_selection_summaries` replay-stability
+path. That target-cycle / weekly-plan seam is queued separately as `7.56b`;
+it does not reopen this reservation-book closeout.
 
 ## Purpose
 

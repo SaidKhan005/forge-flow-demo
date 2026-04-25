@@ -1,0 +1,207 @@
+// Phase 7.56c.0 - Shared daypart plan-target allocator.
+//
+// Pure deterministic allocator that splits a day-level plan target
+// package (covers, sales, FOH/BOH hours) across daypart subrows.
+//
+// Single shared seam used by:
+//   - `ScheduleForecastNotifier.adjustedDayViews` (Schedule presentation)
+//   - `ShiftService.getFullWeekShifts` (Variance Full Week non-closed
+//     row construction)
+//
+// Both surfaces read from the same locked plan daypart targets, so a
+// projected Sat dinner row cannot show 230 covers while the matching
+// Schedule subrow shows 223. Schedule's existing distribution-weight
+// + service-period-definition + largest-remainder behaviour is
+// preserved exactly - this file only relocates the math behind one
+// shared call.
+library;
+
+import '../domain/models/schedule_distribution_weights.dart';
+import '../domain/models/service_period_definition.dart';
+import '../domain/services/service_period_definition_resolver.dart';
+
+/// One daypart subrow allocated from a day-level plan target package.
+///
+/// Plan-owned values only - PPA, wages, blended wage, theoretical %,
+/// and OPZ bounds remain Benchmark-owned and live on
+/// [ActiveTargetProfile].
+class DaypartAllocation {
+  final String daypartId;
+  final String label;
+  final int forecastCovers;
+  final double forecastSales;
+  final int requiredFohHours;
+  final int requiredBohHours;
+
+  const DaypartAllocation({
+    required this.daypartId,
+    required this.label,
+    required this.forecastCovers,
+    required this.forecastSales,
+    required this.requiredFohHours,
+    required this.requiredBohHours,
+  });
+}
+
+/// Pure deterministic daypart plan-target allocator.
+class DaypartPlanAllocator {
+  const DaypartPlanAllocator._();
+
+  /// Allocates a day-level plan target package across daypart subrows.
+  ///
+  /// - [day] is the canonical day label ('Mon'..'Sun').
+  /// - [dayCovers], [daySales], [dayFohHours], [dayBohHours] are the
+  ///   day totals straight from the locked weekly plan day row.
+  /// - [definitions] are the active restaurant's persisted
+  ///   service-period definitions (or
+  ///   [ServicePeriodDefinitionResolver.demoDefinitions] when no
+  ///   timing config is persisted).
+  /// - [distributionWeights] are optional data-driven weights from
+  ///   closed `ShiftRecord` history. When available and at least one
+  ///   per-day daypart weight is positive, the per-day weights drive
+  ///   the cover split; otherwise the allocator falls back to the
+  ///   built-in lunch / dinner / late-night cover proportions.
+  ///
+  /// Allocation rules (preserved from the prior Schedule notifier
+  /// implementation):
+  ///   - covers and FOH hours: largest-remainder over integer weights
+  ///     so subrow sums equal the day totals exactly.
+  ///   - sales: proportional split across subrow covers, with the
+  ///     final slot absorbing the rounding remainder.
+  ///   - BOH hours: largest-remainder weighted by subrow sales (BOH
+  ///     follows sales, not covers).
+  ///
+  /// Returns subrows in canonical service-period order (sortOrder,
+  /// then id), with unknown ids appended alphabetically. Returns an
+  /// empty list when no service periods apply to [day] (e.g. an
+  /// unrecognised day label).
+  static List<DaypartAllocation> allocate({
+    required String day,
+    required int dayCovers,
+    required double daySales,
+    required int dayFohHours,
+    required int dayBohHours,
+    required List<ServicePeriodDefinition> definitions,
+    ScheduleDistributionWeights? distributionWeights,
+  }) {
+    final daypartData = _resolveDaypartWeights(
+      day: day,
+      definitions: definitions,
+      distributionWeights: distributionWeights,
+    );
+    if (daypartData.isEmpty) return const [];
+
+    final ids = daypartData.map((e) => e.$1).toList();
+    final intWeights = daypartData.map((e) => e.$2).toList();
+
+    final subCovers = _allocateLargestRemainder(dayCovers, intWeights);
+    final subSales = _allocateProportionalDoubles(daySales, subCovers);
+    final subFoh = _allocateLargestRemainder(dayFohHours, subCovers);
+    final subBoh =
+        _allocateLargestRemainderByDouble(dayBohHours, subSales);
+
+    return List.generate(ids.length, (i) {
+      return DaypartAllocation(
+        daypartId: ids[i],
+        label: ServicePeriodDefinitionResolver.labelForId(
+            definitions, ids[i]),
+        forecastCovers: subCovers[i],
+        forecastSales: subSales[i],
+        requiredFohHours: subFoh[i],
+        requiredBohHours: subBoh[i],
+      );
+    });
+  }
+
+  static List<(String, int)> _resolveDaypartWeights({
+    required String day,
+    required List<ServicePeriodDefinition> definitions,
+    required ScheduleDistributionWeights? distributionWeights,
+  }) {
+    if (distributionWeights != null && distributionWeights.isAvailable) {
+      final daypartMap = distributionWeights.daypartWeightsFor(day);
+      if (daypartMap.isNotEmpty && daypartMap.values.any((v) => v > 0)) {
+        final entries = daypartMap.entries.toList();
+        entries.sort((a, b) => ServicePeriodDefinitionResolver.sortKey(
+                definitions, a.key)
+            .compareTo(ServicePeriodDefinitionResolver.sortKey(
+                definitions, b.key)));
+        return entries.map((e) => (e.key, e.value)).toList();
+      }
+    }
+    final ids = ServicePeriodDefinitionResolver.idsForDayLabel(
+        definitions, day);
+    return ids.map((id) {
+      final w = _daypartCoverWeight[id] ?? 1.0;
+      return (id, (w * 100).round());
+    }).toList();
+  }
+}
+
+/// Default daypart cover weight proportions for fallback allocation.
+/// Derived from fixture daypart shape - lunch ~45%, dinner ~40%,
+/// late night ~15%. Not read from BaselineData at render time.
+const _daypartCoverWeight = <String, double>{
+  'lunch': 0.45,
+  'dinner': 0.40,
+  'late_night': 0.15,
+};
+
+/// Largest-remainder allocation of [total] across integer [weights].
+/// Guarantees `sum(result) == total`. Returns zeros when all weights
+/// are zero.
+List<int> _allocateLargestRemainder(int total, List<int> weights) {
+  final weightSum = weights.fold<int>(0, (s, v) => s + v);
+  if (weightSum == 0) return List.filled(weights.length, 0);
+  final fractional = weights.map((w) => total * w / weightSum).toList();
+  return _largestRemainderCore(total, fractional);
+}
+
+/// Largest-remainder allocation of [total] across double [shares].
+List<int> _allocateLargestRemainderByDouble(int total, List<double> shares) {
+  final shareSum = shares.fold<double>(0, (s, v) => s + v);
+  if (shareSum == 0) return List.filled(shares.length, 0);
+  final fractional = shares.map((s) => total * s / shareSum).toList();
+  return _largestRemainderCore(total, fractional);
+}
+
+/// Proportional double split of [total] across integer [weights].
+///
+/// Returns doubles that sum exactly to [total] (subject to
+/// floating-point precision) by assigning the rounding remainder to
+/// the final slot.
+List<double> _allocateProportionalDoubles(double total, List<int> weights) {
+  final weightSum = weights.fold<int>(0, (s, v) => s + v);
+  if (weightSum == 0 || total == 0) {
+    return List.filled(weights.length, 0.0);
+  }
+  final values = List<double>.filled(weights.length, 0.0);
+  double assigned = 0;
+  for (var i = 0; i < weights.length; i++) {
+    if (i == weights.length - 1) {
+      values[i] = total - assigned;
+    } else {
+      final share = total * weights[i] / weightSum;
+      values[i] = share;
+      assigned += share;
+    }
+  }
+  return values;
+}
+
+/// Core largest-remainder: floor each fractional value, then
+/// distribute remaining units to the slots with the largest
+/// fractional parts.
+List<int> _largestRemainderCore(int total, List<double> fractional) {
+  final floors = fractional.map((f) => f.floor()).toList();
+  var remainder = total - floors.fold<int>(0, (s, v) => s + v);
+  final remainders = List.generate(
+      fractional.length, (i) => (i, fractional[i] - floors[i]));
+  remainders.sort((a, b) => b.$2.compareTo(a.$2));
+  for (final entry in remainders) {
+    if (remainder <= 0) break;
+    floors[entry.$1] += 1;
+    remainder -= 1;
+  }
+  return floors;
+}

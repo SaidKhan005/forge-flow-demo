@@ -45,6 +45,7 @@ import 'restaurant_timing_config_read_service.dart';
 import 'schedule_plan_read_service.dart';
 import 'weekly_plan_snapshot_service.dart';
 import '../domain/services/shift_fact_builder.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../domain/services/target_snapshot_builder.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snapshot_repository.dart';
 import '../infrastructure/persistence/sqlite/repositories/sqlite_reservation_book_snapshot_repository.dart';
@@ -60,6 +61,7 @@ import '../models/shift_dashboard_read_model.dart';
 import '../models/shift_record.dart';
 import '../models/week_data.dart';
 import '../models/week_record.dart';
+import '../services/daypart_plan_allocator.dart';
 import '../services/history_pattern_builder.dart';
 import '../services/labor_model.dart';
 import '../infrastructure/persistence/sqlite/sqlite_database.dart';
@@ -773,6 +775,8 @@ class ShiftService {
 
     final wtdForecastCovers =
         closedDayRows.fold<int>(0, (s, d) => s + d.forecastCovers);
+    final wtdForecastSales =
+        closedDayRows.fold<double>(0, (s, d) => s + d.forecastSales);
 
     // ── Locked WTD plan hours from snapshot day rows ─────────────────
     final planFohHoursWtd =
@@ -850,6 +854,8 @@ class ShiftService {
       shiftsTotal: 14,
       wtdForecastCovers: wtdForecastCovers,
       totalWeekForecastCovers: snapshot.forecastCovers,
+      wtdForecastSales: wtdForecastSales,
+      totalWeekForecastSales: snapshot.forecastSales,
       primaryLeverId: primaryLeverId,
       lastClosedDay: lastClosedDay,
       closedDayNumber: closedDayNum,
@@ -945,17 +951,149 @@ class ShiftService {
     // 7.55q.4: non-closed Full Week rows now read Benchmark-owned target
     // fields from the CURRENT active profile, not from the snapshot-linked
     // cycle projection.
+    //
+    // 7.56c.0: when [weekId] matches the current operational week, also
+    // load the locked weekly snapshot + active timing config + closed-history
+    // distribution weights so non-closed rows can reuse the same shared
+    // daypart plan-target allocation Schedule renders. Plan-owned values
+    // (forecast covers, forecast sales, required FOH/BOH hours) come from
+    // that allocation when available; the Benchmark-owned PPA / wages /
+    // theoretical % still come from [profile]. When the locked snapshot is
+    // unavailable (no current-week snapshot persisted, non-current weekId,
+    // etc.) the overrides are skipped and snapshot values pass through
+    // unchanged (honest legacy degradation).
     final closedKeys = kept
         .where((s) => s.isClosed)
         .map((s) => '${s.dayLabel}|${s.daypart}')
         .toSet();
     final profile = await _resolveProfileForFullWeek(restaurantId, weekId);
+
+    final overrides = await _resolvePlanDaypartOverrides(
+      restaurantId: restaurantId,
+      weekId: weekId,
+    );
+
+    final keptWithPlanTargets = kept.map((s) {
+      final allocation = overrides[s.dayLabel]?[s.daypart];
+      return allocation == null ? s : _withPlanTargets(s, allocation);
+    }).toList();
+
     final openAsRecords = openSnapshots
         .where((s) => !closedKeys.contains('${s.dayLabel}|${s.daypart}'))
-        .map((s) => CurrentWeekState.shiftRecordFromSnapshot(s, profile))
+        .map((s) {
+          final allocation = overrides[s.dayLabel]?[s.daypart];
+          return CurrentWeekState.shiftRecordFromSnapshot(
+            s,
+            profile,
+            planForecastCovers: allocation?.forecastCovers,
+            planForecastSales: allocation?.forecastSales,
+            planRequiredFohHours: allocation?.requiredFohHours,
+            planRequiredBohHours: allocation?.requiredBohHours,
+          );
+        })
         .toList();
 
-    return [...kept, ...openAsRecords];
+    return [...keptWithPlanTargets, ...openAsRecords];
+  }
+
+  ShiftRecord _withPlanTargets(
+      ShiftRecord s, DaypartAllocation allocation) {
+    final isClosed = s.isClosed;
+    return ShiftRecord(
+      id: s.id,
+      restaurantId: s.restaurantId,
+      weekId: s.weekId,
+      dayLabel: s.dayLabel,
+      daypart: s.daypart,
+      status: s.status,
+      covers: s.covers,
+      forecastCovers: allocation.forecastCovers,
+      ppa: s.ppa,
+      cplh: s.cplh,
+      splh: s.splh,
+      fohHours: isClosed ? s.fohHours : allocation.requiredFohHours,
+      bohHours: isClosed ? s.bohHours : allocation.requiredBohHours,
+      theoreticalLaborPct: s.theoreticalLaborPct,
+      primaryLever: s.primaryLever,
+      scheduledFohHours: allocation.requiredFohHours,
+      scheduledBohHours: allocation.requiredBohHours,
+      storedFohLaborDollar: s.storedFohLaborDollar,
+      storedBohLaborDollar: s.storedBohLaborDollar,
+      storedFohLaborPct: s.storedFohLaborPct,
+      storedBohLaborPct: s.storedBohLaborPct,
+      storedTotalLaborPct: s.storedTotalLaborPct,
+      storedBlendedWage: s.storedBlendedWage,
+      targetProfileId: s.targetProfileId,
+      targetProfileVersionId: s.targetProfileVersionId,
+      targetSourceType: s.targetSourceType,
+      targetCPLH: s.targetCPLH,
+      targetSPLH: s.targetSPLH,
+      targetPPA: s.targetPPA,
+      targetFohWage: s.targetFohWage,
+      targetBohWage: s.targetBohWage,
+      opzFloorCPLH: s.opzFloorCPLH,
+      opzCeilingCPLH: s.opzCeilingCPLH,
+      theoreticalFohLaborPct: s.theoreticalFohLaborPct,
+      theoreticalBohLaborPct: s.theoreticalBohLaborPct,
+      snapshotBlendedWage: s.snapshotBlendedWage,
+      planForecastSales: allocation.forecastSales,
+      businessDate: s.businessDate,
+      sourceSystem: s.sourceSystem,
+      sourceShiftId: s.sourceShiftId,
+    );
+  }
+
+  /// 7.56c.0: builds a `dayLabel -> daypart -> [DaypartAllocation]`
+  /// lookup of locked-plan daypart targets for [weekId].
+  ///
+  /// Returns an empty map (every lookup falls back to snapshot values)
+  /// when [weekId] is not the current operational week, when no locked
+  /// weekly snapshot exists for the current week, or when allocation
+  /// inputs cannot be resolved. Read-only — never auto-generates a
+  /// snapshot, never reaches into per-snapshot plan rebuilding. The
+  /// non-current-week test guarantee from 7.55l.7c (no auto-generation)
+  /// still holds because this path skips the snapshot lookup unless
+  /// `weekId` matches the current operational week.
+  Future<Map<String, Map<String, DaypartAllocation>>>
+      _resolvePlanDaypartOverrides({
+    required String restaurantId,
+    required String weekId,
+  }) async {
+    final emptyOverrides = <String, Map<String, DaypartAllocation>>{};
+    final currentWeekId = await getCurrentWeekId();
+    if (currentWeekId == null || currentWeekId != weekId) {
+      return emptyOverrides;
+    }
+
+    final snapshot = await WeeklyPlanSnapshotService.instance
+        .getExistingCurrentWeekSnapshot();
+    if (snapshot == null) return emptyOverrides;
+
+    final config = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
+    final defs = config?.servicePeriodDefinitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+
+    final distributionWeights =
+        await SchedulePlanReadService.loadDistributionWeights(restaurantId);
+
+    final out = <String, Map<String, DaypartAllocation>>{};
+    for (final dayRow in snapshot.dayRows) {
+      final allocations = DaypartPlanAllocator.allocate(
+        day: dayRow.day,
+        dayCovers: dayRow.forecastCovers,
+        daySales: dayRow.forecastSales,
+        dayFohHours: dayRow.requiredFohHours,
+        dayBohHours: dayRow.requiredBohHours,
+        definitions: defs,
+        distributionWeights: distributionWeights,
+      );
+      if (allocations.isEmpty) continue;
+      out[dayRow.day] = {
+        for (final a in allocations) a.daypartId: a,
+      };
+    }
+    return out;
   }
 
   /// Resolves the target profile used when converting open/projected

@@ -23,6 +23,7 @@ import 'package:forge_and_flow/data/legacy_fixture_data.dart';
 import 'package:forge_and_flow/data/target_cycle_service.dart';
 import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/target_cycle_source.dart';
+import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_baseline_selection_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_benchmark_selection_summary_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_cycle_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_target_profile_repository.dart';
@@ -1125,6 +1126,215 @@ void main() {
       final ids = allRows.map((r) => r['target_cycle_id']).toSet();
       expect(ids, contains(first.cycleId));
       expect(ids, contains(refreshed.cycleId));
+    });
+
+    // ── 7.56b.1 — missing-summary repair on existing active cycle ─────
+    //
+    // When an active cycle row exists without a companion summary (the
+    // shape produced by the SQLite seed path's `_ensureDemoSeedCycle`
+    // helper), `getOrCreateActiveCycle` must repair it with exactly
+    // one summary. Existing summaries must never be rewritten.
+
+    test('missing summary on existing active cycle is repaired to exactly '
+        'one summary', () async {
+      // Create a cycle + summary via the normal write path, then delete
+      // just the summary row to reproduce the seed path's shape.
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      final db = await SqliteDatabase.instance.database;
+      await db.delete('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
+      final sanity = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
+      expect(sanity, isEmpty, reason: 'sanity: summary deleted before repair');
+
+      // Call getOrCreateActiveCycle again — must repair, not recreate
+      // the cycle itself.
+      final sameCycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      expect(sameCycle.cycleId, cycle.cycleId,
+          reason: 'repair must not replace the existing cycle');
+
+      final rows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
+      expect(rows.length, 1,
+          reason: 'repair must create exactly one summary');
+      expect(rows.first['source_type'], 'cycle_recommended',
+          reason: 'repair must use the recommended-path source label');
+      expect((rows.first['selected_shift_count'] as int), greaterThan(0),
+          reason:
+              're-resolved recommendation against the demo calibration '
+              'window should select shifts');
+    });
+
+    test('existing summary on existing active cycle is left unchanged', () async {
+      final cycle = await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      final db = await SqliteDatabase.instance.database;
+      final before = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
+      expect(before.length, 1);
+      final summaryIdBefore = before.first['summary_id'];
+      final createdAtBefore = before.first['created_at'];
+      final countBefore = before.first['selected_shift_count'];
+
+      // Second resolve must not rewrite or duplicate the summary.
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+
+      final after = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [cycle.cycleId]);
+      expect(after.length, 1, reason: 'no duplicate summary');
+      expect(after.first['summary_id'], summaryIdBefore,
+          reason: 'summary_id unchanged');
+      expect(after.first['created_at'], createdAtBefore,
+          reason: 'created_at unchanged — no rewrite');
+      expect(after.first['selected_shift_count'], countBefore,
+          reason: 'selected_shift_count unchanged');
+    });
+
+    // ── 7.56b.1-review-fix — repair mirrors write-path evidence routing ──
+
+    test('manager override missing-summary repair uses override-selected '
+        'evidence (matches write-path count)', () async {
+      // Persist manager-selected keys directly so the cycle-write path
+      // routes through `hasOverride=true` and evidence comes from the
+      // override cohort, not the recommendation pipeline.
+      final candidates = await BaselineManagerService.instance
+          .getCandidateShiftsForDateRange('2026-02-01', '2026-04-01',
+              restaurantId: restaurantId);
+      expect(candidates, isNotEmpty,
+          reason: 'demo seed must have candidates in this window');
+      final overrideKeys =
+          candidates.take(5).map((c) => c.recordKey).toSet();
+      await SqliteBaselineSelectionRepository.instance
+          .replaceSelectedRecordKeys(restaurantId, overrideKeys);
+      expect(
+          await BaselineManagerService.instance
+              .hasPersistedManagerOverride(restaurantId),
+          isTrue);
+
+      // Write a manager-override cycle. Write path uses override cohort.
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      final overridden = await TargetCycleService.instance
+          .applyManagerOverrideCycle(restaurantId, '2026-04-01');
+
+      final db = await SqliteDatabase.instance.database;
+      final writeRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [overridden.cycleId]);
+      expect(writeRows.length, 1);
+      final writeTimeCount =
+          writeRows.first['selected_shift_count'] as int;
+      expect(writeTimeCount, overrideKeys.length,
+          reason: 'write path should size summary from override cohort');
+
+      // Delete summary to reproduce the seed-path shape.
+      await db.delete('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [overridden.cycleId]);
+
+      // Repair.
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-04-01');
+
+      final repairRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [overridden.cycleId]);
+      expect(repairRows.length, 1);
+      expect(repairRows.first['source_type'], 'manager_override');
+      expect(repairRows.first['selected_shift_count'], writeTimeCount,
+          reason:
+              'repair must mirror write-path evidence: override cohort size');
+    });
+
+    test('admin replacement missing-summary repair with persisted override '
+        'keys uses override-selected evidence', () async {
+      final candidates = await BaselineManagerService.instance
+          .getCandidateShiftsForDateRange('2026-02-01', '2026-04-01',
+              restaurantId: restaurantId);
+      final overrideKeys =
+          candidates.take(5).map((c) => c.recordKey).toSet();
+      await SqliteBaselineSelectionRepository.instance
+          .replaceSelectedRecordKeys(restaurantId, overrideKeys);
+
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      final replaced = await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, '2026-04-01');
+
+      final db = await SqliteDatabase.instance.database;
+      final writeRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+      expect(writeRows.length, 1);
+      final writeTimeCount =
+          writeRows.first['selected_shift_count'] as int;
+      expect(writeTimeCount, overrideKeys.length,
+          reason:
+              'write path with persisted override keys sources summary from '
+              'override cohort even for admin-replacement source');
+
+      await db.delete('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-04-01');
+
+      final repairRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+      expect(repairRows.length, 1);
+      expect(repairRows.first['source_type'], 'admin_replacement');
+      expect(repairRows.first['selected_shift_count'], writeTimeCount,
+          reason:
+              'repair with persisted override keys must mirror write-path '
+              'override cohort evidence');
+    });
+
+    test('admin replacement missing-summary repair without persisted '
+        'override keys uses recommendation evidence', () async {
+      // No override keys persisted — the reseedDemo setUp already clears
+      // baseline_selected_records, so `hasPersistedManagerOverride` is
+      // false here.
+      expect(
+          await BaselineManagerService.instance
+              .hasPersistedManagerOverride(restaurantId),
+          isFalse);
+
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-03-27');
+      final replaced = await TargetCycleService.instance
+          .applyAdminReplacementCycle(restaurantId, '2026-04-01');
+
+      final db = await SqliteDatabase.instance.database;
+      final writeRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+      expect(writeRows.length, 1);
+      final writeTimeCount =
+          writeRows.first['selected_shift_count'] as int;
+
+      // Recompute recommendation evidence directly to compare.
+      final recommendation = await BaselineManagerService.instance
+          .resolveRecommendedSelection(
+              restaurantId, replaced.calibrationWindowEnd);
+      expect(writeTimeCount, recommendation.selectedRecordIds.length,
+          reason:
+              'write path without override keys sources summary from the '
+              'recommendation pipeline');
+
+      await db.delete('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+
+      await TargetCycleService.instance
+          .getOrCreateActiveCycle(restaurantId, '2026-04-01');
+
+      final repairRows = await db.query('benchmark_selection_summaries',
+          where: 'target_cycle_id = ?', whereArgs: [replaced.cycleId]);
+      expect(repairRows.length, 1);
+      expect(repairRows.first['source_type'], 'admin_replacement');
+      expect(repairRows.first['selected_shift_count'], writeTimeCount,
+          reason:
+              'repair without persisted override keys must mirror '
+              'write-path recommendation evidence');
     });
   });
 

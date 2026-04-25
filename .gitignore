@@ -82,3 +82,6 @@ Selling.md
 /rmm_*
 /smp_*
 /tc_*
+
+# Project-scoped MCP server registration (machine-specific absolute paths)
+.mcp.json
