@@ -188,7 +188,7 @@ companion behavior notes:
 
 - [barrio_staff_companion.docx](C:/Git%20Local%20Repos/forge_flow_demo/docs/app_store_release/barrio_staff_companion.docx)
 - [barrio_staff_companion_behavior_spec.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/reference/barrio_staff_companion_behavior_spec.md)
-- [phase_7_56_reservation_book_signal_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md)
+- [phase_7_56_reservation_book_signal_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/7_56/phase_7_56_reservation_book_signal_plan.md)
 - [phase_9_auth_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_9/phase_9_auth_plan.md)
 - [phase_9_5_el_podio_learning_identity_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md)
 

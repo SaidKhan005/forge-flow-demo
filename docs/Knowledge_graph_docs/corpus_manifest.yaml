@@ -1,0 +1,275 @@
+manifest_version: 1
+updated: "2026-04-25"
+corpus_root: "docs/Knowledge_graph_docs"
+default_scope: "global_shared_methodology"
+default_restaurant_id: null
+authorship_policy: "founder_authored_or_founder_synthesized_only"
+markdown_only: true
+
+ingestion_rules:
+  manifest_is_authority: true
+  directory_scan_behavior: "flag_unmanifested_markdown_for_review"
+  source_text_mutation: "do_not_rewrite_source_markdown_during_ingest"
+  missing_manifest_entry_behavior: "do_not_ingest"
+  non_markdown_behavior: "flag_for_conversion_before_ingest"
+  live_data_policy: "never_ingest_operator_metrics_or_live_values_into_global_corpus"
+  provenance_required: true
+
+excluded_sources:
+  - file_name: "The Empty Apron - 2026.md"
+    status: "excluded"
+    reason: "owner_removed_from_active_knowledge_graph_corpus_before_11a_0"
+    reintroduction_policy: "requires_explicit_manifest_update_before_ingest"
+
+documents:
+  - doc_id: "barrio_company_handbook"
+    file_name: "Barrio_company_handbook.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio_company_handbook.md"
+    title: "Barrio Company Handbook"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "operating_handbook"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "medium_high"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_policy_handbook"
+    graph_profiles:
+      - "Policy"
+      - "Procedure"
+      - "Role"
+      - "Concept"
+      - "Risk"
+    tags:
+      - "handbook"
+      - "employment"
+      - "operations"
+      - "culture"
+    word_count_estimate: 21598
+    heading_count: 171
+    line_count: 1344
+    sha256: "1f990f007a2dab9d832480eaf7a8a1f52b58895a42e5ce912ae06f6bbb3f4afb"
+
+  - doc_id: "barrio_interview_playbook"
+    file_name: "Barrio_interview_playbook.md"
+    source_path: "docs/Knowledge_graph_docs/Barrio_interview_playbook.md"
+    title: "Barrio Interview Playbook"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "hiring_interview_playbook"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "medium"
+    audience:
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_short_playbook"
+    graph_profiles:
+      - "Procedure"
+      - "Role"
+      - "CoachingMove"
+      - "Concept"
+    tags:
+      - "hiring"
+      - "interviewing"
+      - "team"
+      - "standards"
+    word_count_estimate: 2227
+    heading_count: 44
+    line_count: 297
+    sha256: "85cff55f81091721db1e61234d07dbcdcf167e85c95b65e142bc2cb8b6983515"
+
+  - doc_id: "bold_by_design"
+    file_name: "Bold By Design.md"
+    source_path: "docs/Knowledge_graph_docs/Bold By Design.md"
+    title: "BOLD By Design"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "shared_labor_methodology"
+    content_role: "labor_methodology_book"
+    authority_tier: "primary_founder_methodology"
+    risk_level: "medium"
+    audience:
+      - "operators"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_methodology_formula"
+    graph_profiles:
+      - "Concept"
+      - "Metric"
+      - "Formula"
+      - "CoachingMove"
+      - "Procedure"
+    tags:
+      - "labor"
+      - "benchmark_sixty"
+      - "metrics"
+      - "margin"
+      - "cplh"
+      - "splh"
+      - "ppa"
+    word_count_estimate: 30482
+    heading_count: 228
+    line_count: 3295
+    sha256: "00d43d24f04f368d95511e8bba70772f93a44678c82e30753394e5d029192c2e"
+
+  - doc_id: "food_safety_manual"
+    file_name: "food safety manual.md"
+    source_path: "docs/Knowledge_graph_docs/food safety manual.md"
+    title: "Food Safety Manual"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "food_safety_policy_manual"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "high"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_risk_policy"
+    graph_profiles:
+      - "Policy"
+      - "Procedure"
+      - "Risk"
+      - "Role"
+    tags:
+      - "food_safety"
+      - "compliance"
+      - "sanitation"
+      - "risk"
+    word_count_estimate: 10801
+    heading_count: 86
+    line_count: 703
+    sha256: "0dbbb82c79eff397296ea491732bc58820b5caaab38858f1bfdd7a618e3326d5"
+
+  - doc_id: "general_words_to_know"
+    file_name: "GENERAL WORDS TO KNOW.md"
+    source_path: "docs/Knowledge_graph_docs/GENERAL WORDS TO KNOW.md"
+    title: "General Words To Know"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "glossary"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "low"
+    audience:
+      - "staff"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "glossary_entry_per_term"
+    graph_profiles:
+      - "Term"
+      - "Alias"
+      - "Concept"
+    tags:
+      - "glossary"
+      - "training"
+      - "restaurant_language"
+    word_count_estimate: 2766
+    heading_count: 1
+    line_count: 100
+    sha256: "a6a7d1320aaf7d0fbd5e8efe25e6b5f85a8d2db74835a501a1921f7ab9008823"
+
+  - doc_id: "jim_taylor_labor_model_deep_dive"
+    file_name: "jim_taylor_labor_model_deep_dive.md"
+    source_path: "docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md"
+    title: "How the Metrics Actually Work"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "shared_labor_methodology"
+    content_role: "labor_metric_study_notes"
+    authority_tier: "primary_founder_synthesized_methodology"
+    risk_level: "medium"
+    audience:
+      - "operators"
+      - "managers"
+      - "founder_ops"
+    chunk_profile: "heading_aware_methodology_formula"
+    graph_profiles:
+      - "Concept"
+      - "Metric"
+      - "Formula"
+      - "CoachingMove"
+    tags:
+      - "labor"
+      - "metrics"
+      - "jim_taylor"
+      - "benchmark_sixty"
+      - "cplh"
+      - "splh"
+      - "ppa"
+    word_count_estimate: 7795
+    heading_count: 58
+    line_count: 1041
+    sha256: "e973007fc02d1d44f139d835bc87f2fdab4d2a1ac540ed2f91c234a5e4256957"
+
+  - doc_id: "oe_cheers_to_responsibility"
+    file_name: "OE Cheers to Responsibility.md"
+    source_path: "docs/Knowledge_graph_docs/OE Cheers to Responsibility.md"
+    title: "Responsible Alcohol Service In NL"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "responsible_alcohol_service_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "high"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_risk_policy"
+    graph_profiles:
+      - "Policy"
+      - "Procedure"
+      - "Risk"
+      - "Role"
+    tags:
+      - "alcohol_service"
+      - "newfoundland_labrador"
+      - "compliance"
+      - "risk"
+    word_count_estimate: 3975
+    heading_count: 25
+    line_count: 307
+    sha256: "8c4f884ce8e57fea7fde62457585e1db8931c31cfe63e9691f5b56f05d1c0b62"
+
+  - doc_id: "oe_mastering_the_metrics"
+    file_name: "OE MASTERING THE METRICS.md"
+    source_path: "docs/Knowledge_graph_docs/OE MASTERING THE METRICS.md"
+    title: "Mastering The Metrics"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "barrio_legado"
+    content_role: "metric_training"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "medium"
+    audience:
+      - "managers"
+      - "staff"
+      - "founder_ops"
+    chunk_profile: "heading_aware_metric_training"
+    graph_profiles:
+      - "Metric"
+      - "Formula"
+      - "Concept"
+      - "CoachingMove"
+    tags:
+      - "metrics"
+      - "training"
+      - "restaurant_operations"
+    word_count_estimate: 1979
+    heading_count: 9
+    line_count: 91
+    sha256: "6340118ea16823dee38b93a52bfdd75ca1abfcc0c1ba582bfa7f4d310ead206e"

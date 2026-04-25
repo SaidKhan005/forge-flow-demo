@@ -7,8 +7,8 @@ Authority: not tracker authority; use for roadmap consolidation only
 ## Inputs merged
 
 - `docs/phases/temporary_alignment_findings_2026-04-12.md`
-- `docs/phases/7_55o/phase_7_55o_file_extraction_analysis.md`
-- `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
+- `docs/archive/phases/7_55o/phase_7_55o_file_extraction_analysis.md`
+- `docs/archive/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
 
 ## Purpose
 

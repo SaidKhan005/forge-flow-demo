@@ -1,0 +1,100 @@
+---
+source_docx: GENERAL WORDS TO KNOW.docx
+entries: 92
+conversion_notes: Word glossary converted to Markdown; terms preserved in original order; text normalized to ASCII.
+---
+
+# General Words To Know
+
+- **86'D:** An item is no longer available/sold out.
+- **911:** Used when an item is needed urgently due to an error.
+- **A LA CARTE:** A menu featuring individually priced items allows customers to select and order each dish separately, rather than opting for a pre-set meal.
+- **AGC:** Average guest check. The average amount a guest spends in the restaurant.
+- **ALLERGY:** Occurs when the body's immune system sees a certain food as harmful and reacts by triggering an allergic reaction. If someone has a food allergy, their immune system mistakenly treats something in a particular food (most often, the protein) as if it's dangerous to them.
+- **BANQUET TABLE:** A collapsable long table typically used for large party dining.
+- **BD (BUSINESS DECLINE):** This refers to when the restaurant starts to slow down.
+- **BEHIND:** This is what employees call out to let their co-worker know they are behind them, often with full hands.
+- **BEO (BANQUET EVENT ORDER):** A comprehensive document utilized in the hospitality and events industry that outlines all critical details for an event, including menus, setup arrangements, timelines, and guest lists, effectively serving as a roadmap for staff to ensure seamless execution of the occasion.
+- **BOH (BACK OF HOUSE):** Refers to the kitchen team.
+- **BRAND:** The unique identity of a company, which encompassing the names, logos, designs, symbols, and the emotions they evoke which serves as a critical differentiator in the marketplace. It not only shapes guest perceptions and expectations but also builds loyalty through a holistic guest experience that reflects the company's values and reputation, ultimately communicating quality and lifestyle beyond mere physical attributes.
+- **CAMPERS:** Guests that stay seated for a long period of time after they have finished their dining experience.
+- **CHIT:** An order put into the POS prints on a slip of paper called a ticket or a chit.
+- **CHIT STACKING:** When a server takes multiple orders from different tables and then rings them in all at once.
+- **CLEAR THE TABLE:** Removing used dishes, cutlery, glasses, and any leftover food. This process focuses on emptying the table surface, which is distinct from the subsequent cleaning step that includes wiping or sanitizing the table.
+- **CLOPEN:** When an employee closes at night then comes in to open the next morning.
+- **COMP:** A complimentary item meaning to give an item away for free.
+- **CORE VALUES:** The fundamental, guiding beliefs and principles that define an organization's culture, shape its decisions, and direct employee behavior towards a shared mission, serving as an ethical compass that influences various aspects of operations, from hiring practices to guest interactions, ultimately ensuring purpose-driven growth and cultivating a unique identity that creates alignment, accountability, and a strong, consistent workplace environment.
+- **CORNER:** This is what employees call out when they are coming around a corner that they could potentially bump into another staff member.
+- **COURSE:** An individual dish or a collection of dishes presented together as part of a well-organized meal. Courses are typically served in a sequential manner, often with a short pause in between, following a thoughtfully arranged progression from lighter to heavier fare, encompassing an appetizer, main dish, and dessert.
+- **COVERS:** Refers to the number of people reserved for the night. 50 covers is the amount of guests that you can expect to arrive for reservations.
+- **CRUISER TABLE:** A tall table used often in events and cocktail parties for guests to be able to stand around.
+- **CULTURE:** The shared personality of an organization, encompassing its core values, beliefs, attitudes, and behaviors that guide employee interactions and decision-making. It fundamentally shapes the daily workplace experience and influences overall business success by establishing both stated principles and unwritten rules, which together create the collective energy of the environment, ultimately nurturing a sense of belonging or impeding it among employees.
+- **CUT:** When management takes someone out of their regular duties to do side duties and clock out.
+- **DEAD (BUSINESS LEVEL):** Refers to when the restaurant has little to no guests at a given time.
+- **DEAD PLATE:** When a dish has been sitting for too long without being delivered to the table causing its quality to be compromised, making it no longer servable.
+- **DEPOSIT:** The end-of-shift reconciliation process where servers and bartenders submit the cash owed to the restaurant. This amount is determined by taking their total sales and subtracting any credit card tips and payments received.
+- **DOUBLE SAT/TRIPLE SAT:** when two tables (three tables for triple sat) are sat in a servers section back to back without allowing time in between for the server to greet the first table.
+- **DROWNING:** The experience of being overwhelmed by a significant workload. This can arise from factors such as an excessive number of tables, delayed orders, or insufficient staff, which collectively hinder the ability to maintain efficient service. As a result, employees may encounter chaotic conditions and heightened stress levels, often leading to feelings of helplessness or anxiety in managing their responsibilities.
+- **EXPO:** The person in charge of prepping the plates, quality checking items, and ensuring accuracy before sending food to the guest.
+- **FAMILY STYLE:** A communal and casual dining atmosphere where large platters and bowls of various dishes are placed at the center of the table for sharing, rather than serving individual meals. This serving style encourages interaction among guests and allows everyone to sample a variety of flavors, creating a relaxed and home-like environment.
+- **FIFO (FIRST IN FIRST OUT):** A reminder acronym to how stock should be stocked, used, and rotated. Items that have been stored the longest (first in) should be used/consumed first (first out). Newer products should be stored at the back and product already stored should be moved to the front, following best by and expiry dates.
+- **FIRE:** Order given to start preparing food for a table.
+- **FLIP (THE TABLE):** Means to clean and reset a table.
+- **FLOOR:** The dining area where guests are served.
+- **FOH (FRONT OF HOUSE):** Refers to the service team.
+- **GARNISH:** Added to a drink or dish after it's been made to either add something to the flavor profile or aroma or enhance the drink's appearance.
+- **GUEST:** People coming to our restaurants are treated like our friends. We are welcoming them into our space and creating an experience for them. They are someone we would recognize if we saw them again. Therefore we do not refer to them as customers, they are our guests!
+- **GUEST RECOVERY:** Also known as service recovery, is the intentional and systematic approach to rectifying errors and addressing guest complaints in order to transform a negative dining experience into a positive one; this process seeks to restore guest satisfaction, build trust, mitigate the risk of negative reviews, and promote repeat business by promptly identifying issues, demonstrating empathy, delivering sincere apologies, taking immediate corrective action, and analyzing failures to prevent their recurrence.
+- **HANDS:** An order given by the expo or kitchen when the food is ready to be brought to the guest.
+- **HEARD:** Communicating that you heard the information that was relayed to you.
+- **HIGH TOP:** A bar height table.
+- **HOSPITALITY:** The art of delivering service that transcends mere functionality by fostering an emotional connection and a welcoming atmosphere; it involves not only anticipating unspoken needs but also building relationships and weaving care into every interaction, ultimately transforming routine encounters into memorable experiences that cultivate loyalty.
+- **HOT:** A crucial safety alert indicating that individuals are navigating a busy area while carrying hot food, liquids, plates, or equipment.
+- **IN THE WEEDS:** a term referring to being so busy that you have fallen behind and may not be able to catch up, often resulting in service quality taking a hit.
+- **IN THE WINDOW:** The heated area located between the kitchen and the service area. This is where chefs place completed dishes, ready for servers to collect.
+- **LOW BOY:** An under the counter refrigerator.
+- **MARRY:** Merging two partially filled bottles or containers of the same product into a single, full container can help reduce waste and maximize usage. This is done with items that have a long shelf life such as salt, ketchup, and spices.
+- **MDR:** Main Dining Room.
+- **MISE EN PLACE:** A French culinary phrase that translates to "everything in its place." It encompasses the essential practice of organizing and preparing all ingredients and components necessary for cooking, as well as the thorough preparation and arrangement of the dining area and service stations prior to the arrival of guests.
+- **MISSION STATEMENT:** A concise declaration of a company's fundamental purpose that explains why it exists, what it does, who it serves, and how it operates, thereby guiding decisions, motivating employees, and informing stakeholders about its core values, culture, and objectives.
+- **MP (MARKET PLACE):** Price of an item based on its current cost in the market, often seen with seafood items. The market price is subject to change based on factors such as availability, seasonality and market fluctuations.
+- **NO SHOW:** When a reservation does not show up.
+- **NPS (NET PROMOTER SCORE):** This metric serves as a valuable gauge of guest loyalty and the likelihood of guests recommending their dining experience to others. By surveying patrons, we categorize responses into three groups: Promoters (scores of 9-10), Passives (scores of 7-8), and Detractors (scores of 0-6). The resulting score reflects overall guest satisfaction. The goal is to establish a feedback loop that empowers operators to enhance dining experiences, boost guest retention, and transform satisfied guests into enthusiastic advocates.
+- **OFF-PREMISE:** An event that takes place at a location outside of the restaurant but is still managed by the restaurant team.
+- **ON THE FLY:** When a dish or drink is needed immediately, usually because the original order was wrong, unsatisfactory, or spilled, it's asked for "on the fly."
+- **OPEN MENUS:** The amount of guests that have a menu and have not ordered yet.
+- **PARTY:** This is another word for a table or group. A party of 4 is a table of 4 guests.
+- **PARTY CARD:** When there are multiple servers all serving the same group, everything is rang in under a party card instead of an individual server. This provides all servers taking care of the party access to ring in orders and take payments.
+- **PASS:** The essential workspace where chefs showcase finished dishes for inspection, garnishing, and final handoff to servers. Acting as a crucial control checkpoint between the BOH and the FOH, this area is typically overseen by an expeditor or head chef. Various components from different stations are meticulously assembled for final plating, ensuring that each dish maintains the highest standards of consistency and quality before it is served to guests.
+- **PATT:** Pay At The Table. This is the machine used to process debit and credit card payments at the table.
+- **PDR:** Private Dining Room.
+- **PICK UP:** chefs often use the term "pick up" to communicate to their team that a dish is ready for completion.
+- **PLATING FEE:** A service charge when guests bring their own food, such as a birthday cake. This fee helps cover costs related to cleaning, providing tableware, and labour costs for staff efforts.
+- **POLISH:** The procedure of hand-drying and cleaning items right after washing is essential for eliminating water spots, streaks, fingerprints, and lint. Staff utilize linens or steam techniques to achieve a streak-free, sparkling finish that ensures a pristine and sanitary presentation.
+- **POS:** Point of Sale. This is the machine where orders are rang in and staff clock in and out.
+- **PRE-FIXE:** French for "fixed price," refers to a thoughtfully curated multi-course meal available at a set cost. This dining option typically includes an appetizer, entree, and dessert, allowing guests to select from a limited menu for each course. This structure not only enhances the dining experience but also elevates it, making prix fixe menus particularly popular during holidays and special occasions.
+- **QSA:** Quality Service Assurance. This is the code supervisors and management use when discounting a bill to ensure the guest leaves happy.
+- **REGULAR:** A frequent visitor to a dining establishment, typically stopping by weekly or monthly, becoming a familiar face to the staff. Many regulars establish a routine, such as sitting in their favorite spots and ordering signature dishes. This familiarity allows them to cultivate relationships with the front-of-house team, building a sense of community that transcends mere transactions.
+- **REMAKE:** The process of recreating a dish or beverage when the initially prepared item is found to be unsatisfactory, incorrect, or spoiled.
+- **ROE (RECORD OF EMPLOYMENT):** A form employers must issue when an employee experiences an interruption of earnings and is the primary document Service Canada uses to determine EI eligibility, benefit amounts, and duration.
+- **RUNNER:** The person who helps the servers run the food to the table.
+- **SECTION:** A designated section of tables assigned to a specific server during their shift. This system helps to streamline service, making it both organized and efficient.
+- **SHADOW:** When a new employee follows a senior employee to receive training and see how the role is performed.
+- **SHARP:** A vital safety alert to indicate that individuals are moving behind others while carrying knives or other sharp, hazardous tools. This warning is frequently paired with the term "behind" (for example, "Sharp behind!") to help prevent accidents and injuries in a busy environment.
+- **SIDE DUTIES/SIDE WORK:** All tasks that are secondary to the guest experience including cleaning, prep work, and stocking.
+- **SOS:** Sauce on the side.
+- **SPILLAGE:** Wasted items, which cannot be sold, encompasses products that are spilled, wasted, spoiled, or even returned.
+- **SPLIT SHIFT:** When an employee works two separate shifts in a day.
+- **STEPS OF SERVICE:** A series of actions and interactions servers perform to provide a seamless dining experience for guests.
+- **SUB:** To substitute one item for another.
+- **T4:** An official tax document detailing employment income and deductions for the year. The information from a T4 slip is used to accurately complete personal income tax returns.
+- **TABLE TURNS:** The practice of efficiently serving guests and clearing tables to facilitate a prompt reset for new patrons thereby maximizing guest capacity and revenue during peak hours while carefully balancing the quality of the dining experience with operational speed.
+- **TECH STACK:** The comprehensive array of software, applications, and hardware that a restaurant employs to streamline its operations, serving as the digital backbone for essential functions such as point-of-sale transactions, inventory management, reservations, online ordering, marketing, and staff scheduling; in essence, it represents the modern evolution of a single cash register, integrating multiple systems to enhance efficiency and improve the overall guest experience.
+- **TEMPERATURE DANGER ZONE:** The temperature range where bacteria multiply the quickest. This range is between 4 - 60 degrees Celsius or 40 - 140 degrees Fahrenheit and is the range you want to keep food out of. Best practice is to keep hot foods hot and cold foods cold.
+- **TIP POOL:** A structured system in which employees merge all or part of their individual tips, distributing them among the team according to a predetermined formula. The intention behind this approach is to promote teamwork and ensure that all team members who enhance the guest experience are fairly compensated.
+- **TOP:** Refers to the amount of people on a table. For example a "4 top" would have 4 guests sat at the table.
+- **TURNOVER:** The rate at which employees exit a business - whether through voluntary resignation or involuntary separation - must be replaced, usually measured as a percentage over a specific timeframe. This metric is particularly critical in the hospitality sector due to the significant costs, service disruptions, and potential declines in morale associated with high turnover rates, often resulting from factors such as demanding work environments and inadequate compensation.
+- **WAITLIST:** A tool used to manage and organize guest wait times when all tables are occupied and there are parties still waiting to be seated.
+- **WALK IN (FRIDGE/FREEZER):** A spacious, insulated storage facility built to commercial standards, expertly designed to maintain consistent and safe temperatures for perishable goods.
+- **WALK IN (TABLE):** A group that has come into the restaurant without a reservation.
+- **WALK OUT:** A table/guest leaves without paying.

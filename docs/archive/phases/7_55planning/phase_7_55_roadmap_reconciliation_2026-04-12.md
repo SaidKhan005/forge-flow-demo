@@ -266,7 +266,7 @@ Also update the planning-doc list to include:
 
 - `docs/phases/phase_7_55_planning_merge_2026-04-12.md`
 - `docs/phases/phase_7_55_roadmap_reconciliation_2026-04-12.md`
-- `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
+- `docs/archive/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
 
 ### `docs/DATA_ALIGNMENT_TRACKER.md`
 

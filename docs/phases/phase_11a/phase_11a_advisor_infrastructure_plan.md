@@ -1,10 +1,31 @@
 # Phase 11a - Agentic Advisor Infrastructure
 
-Updated: 2026-04-23
-Status: Planned
+Updated: 2026-04-25
+Status: Active - 11a.7 local Voyage embeddings loaded
 Owner: Future advisor infrastructure lane
 
 Last review: 2026-04-23 - Backend stack pivoted from Firestore to Supabase Postgres with Apache AGE (graph) + pgvector (vectors). Rationale: native graph traversal via Cypher queries, native vector similarity, SQL for analytics, all in a single Postgres instance. Documented production pattern for "operational analytics + knowledge graph + semantic intelligence in a single engine" per Microsoft Azure's AGE + pgvector architecture guidance.
+
+Current review: 2026-04-25 - `11a.0` established the active Markdown corpus
+location, manifest authority, source inclusion/exclusion rules, chunking
+profiles, graph node/edge taxonomy, and retrieval provenance contract. `11a.1`
+added the local manifest validator plus chunk-plan dry run. `11a.2` added a
+deterministic build-only materializer that emits source document, source chunk,
+graph node seed, and graph edge hint records under `build/advisor_corpus/`.
+`11a.3` added the Supabase/Postgres schema scaffold for those record families,
+including extension prep, RLS enablement, indexes, and placeholder policies.
+`11a.4` added deterministic build-only SQL load preparation: ordered upsert
+files plus a load manifest under `build/advisor_corpus/load/`. `11a.5` loaded
+those records into a local Supabase Postgres container and verified counts,
+pending embedding state, RLS enablement, and reference integrity. `11a.6`
+added a dry-run embedding job preparer, then `11a.6a` revised the provider
+contract to the Claude-aligned lane: Claude/Anthropic for future advisor
+answers, Voyage `voyage-4-large` for embeddings, Voyage `rerank-2.5` for
+candidate reranking, and `vector(1024)` in pgvector.
+Local Voyage embedding generation is now complete and loaded into the local
+Supabase/Postgres container. Cloud database apply, vector search functions,
+rerank calls, AGE graph creation, MCP tools, and agent UX remain future 11a/11b
+work.
 
 ## Goal
 
@@ -29,31 +50,27 @@ lift instead of a from-scratch build.
   canonical store, many consumers (Barrio coaching, Forge & Flow advisor).
 - **Content authorship:** Vanessa primary for restaurant SOPs + training
   material. Jim Taylor + Preston Lee methodology is founder-synthesized
-  from public writing (same approach as existing
-  `docs/internal/barrio/jim_taylor_labor_model_deep_dive.html`). No
-  licensed third-party content.
+  from public writing. The active Jim Taylor source for 11a is the Markdown
+  corpus file in `docs/Knowledge_graph_docs/`. No licensed third-party content.
 
 - **Preston Lee methodology source:** Said will author a Preston Lee
   deep-dive doc, synthesized from public Preston Lee writing. Phase 11a
   can seed ingestion with Jim Taylor content first; Preston Lee ingests
   when the doc lands. Both co-exist in the same corpus location
-  (`docs/internal/barrio/` or whatever corpus location gets decided).
+  (`docs/Knowledge_graph_docs/`).
 
 - **Corpus format standard: Markdown only.** All ingestion material must
-  be Markdown. Applies to Jim Taylor deep-dive (existing HTML gets
-  converted to Markdown before ingestion), Preston Lee deep-dive
-  (authored in Markdown from day one), Vanessa's SOPs + training
+  be Markdown. Applies to Jim Taylor deep-dive, Preston Lee deep-dive
+  (authored in Markdown when it lands), Vanessa's SOPs + training
   material, and any future methodology content. Non-Markdown inputs
   (HTML, `.docx`, PDF, Google Docs) raise a flag in the ingestion pipeline
   for conversion-before-ingest; they do not silently bypass the standard.
 
-- **Vanessa's SOP + training backlog:** Vanessa authors in docs
-  (Google Docs / `.docx`). A backlog of existing material has already
-  been sent to Said but not yet uploaded to the repo. Initial ingestion
-  is a bulk dump of that backlog, followed by incremental additions over
-  time as Vanessa produces new material. Phase 11a ingestion pipeline
-  must support both the one-time bulk seed and the ongoing incremental
-  add-to-corpus flow, with docs-to-Markdown conversion in-line.
+- **Vanessa's SOP + training backlog:** The current active corpus is already
+  Markdown under `docs/Knowledge_graph_docs/`, including Vanessa / operator
+  training material provided for this lane. Future non-Markdown additions
+  (Google Docs / `.docx` / PDF) still go through conversion-before-ingest and
+  require a manifest update before they become active corpus rows.
 - **Corpus storage location: Supabase Postgres (same project as Phase 9).**
   Decision locked on 2026-04-23 as part of the backend stack pivot.
   Rationale: the content model is natively multi-tenant (shared
@@ -153,6 +170,9 @@ Phase 11a does not own:
 founder uploads methodology / SOP / training content
 -> ingestion pipeline
 -> knowledge graph (nodes + edges, confidence-tagged)
+-> pgvector cosine candidates
+-> Voyage rerank-2.5 ordering
+-> Claude answer runtime with citations / provenance
 
 operator repositories (POS, labor, canonical facts, variance)
 -> MCP tool layer (read-only, per-operator scoping hooks)
@@ -208,35 +228,54 @@ Consumers of Phase 11a:
 ## Source Material
 
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)
-- [rag_stack.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/business/rag_stack.svg)
-- [jim_taylor_labor_model_deep_dive.html](C:/Git%20Local%20Repos/forge_flow_demo/docs/internal/barrio/jim_taylor_labor_model_deep_dive.html)
+- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/Rag_Architecture.svg)
+- [corpus_manifest.yaml](C:/Git%20Local%20Repos/forge_flow_demo/docs/Knowledge_graph_docs/corpus_manifest.yaml)
+- [phase_11a_0_corpus_manifest_ingestion_contract.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_0_corpus_manifest_ingestion_contract.md)
+- [phase_11a_1_manifest_validator_chunk_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_1_manifest_validator_chunk_plan.md)
+- [phase_11a_2_ingestion_record_materializer.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_2_ingestion_record_materializer.md)
+- [phase_11a_3_supabase_corpus_storage_schema.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_3_supabase_corpus_storage_schema.md)
+- [phase_11a_4_db_loader_dry_run.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_4_db_loader_dry_run.md)
+- [phase_11a_5_local_db_load_verification.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_5_local_db_load_verification.md)
+- [phase_11a_6_embedding_contract_provider_prep.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_6_embedding_contract_provider_prep.md)
+- [phase_11a_7_embedding_execution_local_load.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_7_embedding_execution_local_load.md)
 - [phase_11b_advisor_ux_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11b/phase_11b_advisor_ux_plan.md)
 
 ## Placeholder Notes
 
-- Graph schema design pending (node types, edge types, property
-  conventions on Apache AGE); decision during implementation spec pass
-- Vector embedding model choice pending (OpenAI, Cohere, Voyage, or
-  local); affects pgvector dimension and retrieval quality; decision
-  during implementation spec pass
-- Tracker folding: add to `PROJECT_TRACKER.md` Active Planning Docs list
-  on next Codex pass
+- Graph ingestion implementation pending. `11a.0` defines the first node /
+  edge taxonomy and provenance contract, and `11a.3` stages graph seed storage,
+  but AGE vertex/edge creation and Cypher query shapes remain future work.
+  `11a.5` confirmed the tested Supabase Postgres image has `vector` available
+  but not `age`, so the schema now treats AGE extension creation as optional
+  until the graph projection environment is chosen.
+- Vector embedding model choice locked for the first advisor corpus pass:
+  Voyage `voyage-4-large`, 1024 dimensions, cosine retrieval. This is the
+  Claude-aligned path because Anthropic does not provide native Claude
+  embeddings and points Claude builders to Voyage; current Voyage docs list
+  `voyage-4-large` as the best general-purpose / multilingual retrieval-quality
+  option. The rerank lane is also locked for the first pass: Voyage
+  `rerank-2.5` orders pgvector candidate chunks before Claude receives the
+  grounded context. `11a.6a` prepares embedding inputs only; real provider
+execution and rerank calls remain future slices.
+- Local embedding execution status: `11a.7` executed Voyage `voyage-4-large`
+  embeddings for all 233 chunks using free-tier-safe batching, generated
+  `embedding_updates.sql`, and loaded the vectors into the local
+  Supabase/Postgres container. The local DB now reports 233 ready,
+  `voyage-4-large`, non-null `vector(1024)` embeddings.
+- Corpus storage live loader status. The manifest validator, chunk planner,
+  build-only materializer, Supabase/Postgres schema scaffold, build-only SQL
+  load-prep files, local Supabase Postgres load verification, and dry-run
+  embedding job preparation are now available. Applying those files to a
+  cloud/production database or calling the embedding provider still needs a
+  separately scoped slice.
 
-### Pre-ingest conversion task (Jim Taylor HTML -> Markdown)
+### Pre-ingest conversion status
 
-Before 11a ingestion starts, the existing HTML deep-dive must be converted
-to Markdown per the corpus-format standard. Touched surfaces:
+The old Jim Taylor HTML conversion task is superseded. The active Jim Taylor
+source for 11a ingestion is now:
 
-- `docs/internal/barrio/jim_taylor_labor_model_deep_dive.html` -> convert
-  to `jim_taylor_labor_model_deep_dive.md` (keep filename stem, change
-  extension)
-- `lib/internal/barrio/content/jim_taylor_model_content.dart` - update
-  `// Source:` comment path (provenance metadata only; no runtime impact)
-- `lib/internal/barrio/content/barrio_source_material.dart` - update
-  `repoPath:` field to the new `.md` path
-- `README.md` - update the repo-guide link
-- Archive docs under `docs/archive/**` reference the HTML path
-  historically; leave as-is (historical truth, not active authority)
+- `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md`
 
-This task is small but should land before ingestion runs so the corpus
-is consistent from day one.
+The older `docs/internal/barrio/**` and archive references remain historical
+unless a later content-provenance cleanup explicitly scopes them. Runtime Dart
+content references are not part of this 11a.0 corpus contract slice.

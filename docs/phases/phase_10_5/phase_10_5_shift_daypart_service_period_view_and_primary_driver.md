@@ -312,7 +312,7 @@ Architectural source:
 
 Integration requirements:
 
-- [phase_7_55j_integration_feature_endpoint_inventory.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md)
+- [phase_7_55j_integration_feature_endpoint_inventory.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md)
 
 ## Adjacent Phases
 

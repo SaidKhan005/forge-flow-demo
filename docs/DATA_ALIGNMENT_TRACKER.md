@@ -156,32 +156,9 @@ In plain terms:
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`
-- `docs/phases/7_55q/phase_7_55q_2_plan_authority_cleanup.md`
-- `docs/phases/7_55q/phase_7_55q_3_benchmark_target_object_cleanup.md`
-- `docs/phases/7_55q/phase_7_55q_4_variance_linearity_rewiring.md`
-- `docs/phases/7_55q/phase_7_55q_5_history_conformance_cleanup.md`
-- `docs/phases/7_55q/phase_7_55q_6_kill_planned_labor_package.md`
-- `docs/phases/7_55q/phase_7_55q_7_shift_whole_day_target_alignment.md`
-- `docs/phases/7_55q/phase_7_55q_8_authority_sync_and_test_hygiene_cleanup.md`
-- `docs/phases/7_55q/phase_7_55q_9_benchmark_override_cycle_wiring.md`
-- `docs/phases/7_55q/phase_7_55q_10_dollar_impact_card_unification.md`
-- `docs/internal/status_ledger_post_7_55p_deep_check.md`
-- `docs/phases/7_55o/phase_7_55o_deep_extraction_followup.md`
-- `docs/phases/7_55o/phase_7_55o_refactor_non_behavior_change_contract.md`
-- `docs/phases/7_55o/phase_7_55o_verification_matrix.md`
-- `docs/phases/7_55o/phase_7_55o_extraction_ownership_map.md`
-- `docs/phases/phase_7_55r/phase_7_55r_foundation_closeout_plan.md`
-- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
-- `docs/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`
-- `docs/phases/7_55j/phase_7_55j_4_gap_report.md`
-- `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
-- `docs/phases/7_56/phase_7_56b_benchmark_selection_summary_replay_stability.md`
-- `docs/phases/7_56/phase_7_56c0_full_week_projection_authority_alignment.md`
-- `docs/phases/7_56/phase_7_56c_data_alignment_audit_plan_benchmark_coverage.md`
+- `docs/phases/post_11a7_stabilization_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
 - `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
-
 ## Archive And Reference
 
 - `docs/archive/trackers/DATA_ALIGNMENT_TRACKER_FULL_2026-04-10.md`

@@ -25,9 +25,10 @@ graphify mid-session" rule (Commits & Push) — bounded to the per-commit
 incremental refresh only, never to the full `/graphify .` rebuild.
 
 Acknowledge the refresh briefly so the user knows what's happening
-(e.g. "Refreshing the doc graph from your last commit (~30s)...") and
-can interrupt if they have a time-critical request. `/graphify --update`
-clears the flag automatically on success.
+(e.g. "Refreshing the doc graph from your last commit...") and can
+interrupt if they have a time-critical request. `/graphify --update`
+clears the flag automatically on success. Doc-heavy updates can take a
+minute or two — do not promise a specific time in the acknowledgement.
 
 The flag file itself lists which `.md` files changed since the last
 `--update`, if you need to know what is being re-extracted.
@@ -154,12 +155,3 @@ last accepted slice only. Prior slices are tracker truth in
 
 - Forge & Flow: `lib/main_forgeflow.dart`
 - Barrio: `lib/main_barrio.dart`
-
-## graphify
-
-This project has a graphify knowledge graph at graphify-out/.
-
-Rules:
-- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
-- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
-- After modifying code files in this session, run `graphify update .` to keep the graph current (AST-only, no API cost)

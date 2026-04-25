@@ -1,6 +1,6 @@
 # Docs Layout
 
-Updated: 2026-04-24
+Updated: 2026-04-25
 
 This repo now keeps docs in four main buckets:
 
@@ -35,13 +35,10 @@ in the docs root.
 
 Current live groups:
 
+- `docs/phases/post_11a7_stabilization_plan.md`
 - `docs/phases/phase_8/`
 - `docs/phases/phase_8_gate/`
 - `docs/phases/phase_8R/`
-- `docs/phases/7_55j/`
-- `docs/phases/7_55o/`
-- `docs/phases/7_55q/`
-- `docs/phases/7_56/`
 - `docs/phases/phase_9/`
 - `docs/phases/phase_9_5/`
 - `docs/phases/phase_9_75/`
@@ -68,6 +65,11 @@ Useful archive areas:
 - `docs/archive/phases/7_55p/`
 - `docs/archive/phases/7_55l/`
 - `docs/archive/phases/7_55m/`
+- `docs/archive/phases/7_55o/`
+- `docs/archive/phases/7_55q/`
+- `docs/archive/phases/7_56/`
+- `docs/archive/phases/phase_7_55r/`
+- `docs/archive/phases/phase_11a/`
 - `docs/archive/internal/`
 - `docs/archive/trackers/`
 - `docs/archive/reference/`

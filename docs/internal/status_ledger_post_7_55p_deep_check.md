@@ -17,7 +17,7 @@ Use `PROJECT_TRACKER.md` and `docs/DATA_ALIGNMENT_TRACKER.md` for sequencing.
 - `docs/archive/phases/7_55p/phase_7_55p_5c_target_labor_package_contract.md`
 - `docs/archive/phases/7_55p/phase_7_55p_5d_variance_theoretical_package_wiring.md`
 - `docs/archive/phases/7_55p/phase_7_55p_5e_blended_wage_refinement_testing.md`
-- `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`
+- `docs/archive/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`
 - `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 - `docs/archive/phases/7_55j/phase_7_55j_1_codebase_feature_inventory.md`
 - `lib/screens/variance_report.dart`
@@ -38,7 +38,7 @@ acceptable or "close enough" runtime truth:
 
 If an older note in this ledger implied one of those was acceptable, it is now
 killed from the active interpretation and superseded by the conformance rules
-in `docs/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`.
+in `docs/archive/phases/7_55q/phase_7_55q_1_architecture_conformance_contract_and_drift_codification.md`.
 
 ## A. After 7.55p.2
 

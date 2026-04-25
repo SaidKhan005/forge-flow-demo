@@ -52,8 +52,8 @@ Forge & Flow should stay aggregate-first:
 
 The current demo/local foundation already defines the intended seam:
 
-- [phase_7_56_reservation_book_signal_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md)
-- [phase_7_55j_integration_feature_endpoint_inventory.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md)
+- [phase_7_56_reservation_book_signal_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/7_56/phase_7_56_reservation_book_signal_plan.md)
+- [phase_7_55j_integration_feature_endpoint_inventory.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md)
 
 The `7.56` doc's "Future Phase 8R Scope" section is the direct precursor to
 this lane.

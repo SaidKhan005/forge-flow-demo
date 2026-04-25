@@ -173,7 +173,7 @@ daypart semantics:
 - `docs/phase_7_55i_canonical_demand_schedule_plan_authority.md`
 - `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
 - `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 - `docs/archive/phases/7_55m/phase_7_55m_runtime_truth_surface_cleanup_plan.md`
@@ -188,7 +188,7 @@ daypart semantics:
 - `docs/archive/phases/7_55l/phase_7_55l_6b_weekly_plan_snapshot_persistence_autolock.md`
 - `docs/archive/phases/7_55l/phase_7_55l_7a_first_consumer_migration_slice.md`
 - `docs/archive/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
-- `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
+- `docs/archive/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
 
 ## Archive And Reference

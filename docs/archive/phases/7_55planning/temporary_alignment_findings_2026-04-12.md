@@ -994,7 +994,7 @@ Use this note together with:
 
 - current roadmap / trackers
 - `docs/archive/phases/7_55n/phase_7_55n_restaurant_timing_service_period_runtime_foundation.md`
-- `docs/phases/7_55o/phase_7_55o_file_extraction_analysis.md`
+- `docs/archive/phases/7_55o/phase_7_55o_file_extraction_analysis.md`
 - `docs/archive/reference/REFACTOR_AND_DECOUPLING.MD`
 
 The merge question should be:

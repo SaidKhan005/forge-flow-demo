@@ -24,7 +24,7 @@ The current product flow is:
 - [docs/CODEX_PROMPT_GENERATION_STANDARD.md](docs/CODEX_PROMPT_GENERATION_STANDARD.md): operating standard for Codex planning, Claude prompt generation, verification, and tracker ownership
 - [docs/archive/phases/phase_7_52_execution_plan.md](docs/archive/phases/phase_7_52_execution_plan.md): archived Phase 7.52 cleanup, private-build, and Barrio shell contract
 - [docs/phases/phase_8_gate/](docs/phases/phase_8_gate/README.md): Phase 8 readiness gate artifacts (vendor profiles, source ownership, replay evidence, signoff)
-- [jim_taylor_labor_model_deep_dive.html](docs/internal/barrio/jim_taylor_labor_model_deep_dive.html): local teaching/model reference used throughout the app
+- [jim_taylor_labor_model_deep_dive.md](docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md): local teaching/model reference used throughout the app
 
 ## Current Status
 
@@ -35,6 +35,7 @@ The current product flow is:
 - Phase 9 auth planning is locked in `docs/phases/phase_9/phase_9_auth_plan.md`
 - Phase 8 gate artifacts are checked in at `docs/phases/phase_8_gate/`
 - Phase 8 / 8R live integration remains a future adapter lane; the current app is still fixture/replay-backed at the transport layer and should not be described as simple-swap integration-ready
+- Phase 11a advisor infrastructure is active: the Markdown corpus lives under `docs/Knowledge_graph_docs`, local Supabase/Postgres corpus loading is verified, all 233 local corpus chunks have Voyage `voyage-4-large` vectors, and the current retrieval lane is pgvector -> Voyage `rerank-2.5` -> Claude answer runtime.
 
 
 flutter clean

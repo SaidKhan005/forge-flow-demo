@@ -1,6 +1,6 @@
 # Phase 11b - Agentic Advisor UX
 
-Updated: 2026-04-23
+Updated: 2026-04-25
 Status: Planned
 Owner: Future advisor UX lane
 
@@ -26,6 +26,9 @@ how each restaurant actually operates, not one that retrieves similar text.
   or reason about another operator's numbers. This is a non-negotiable.
 - **Stateless reasoning:** the model retains nothing between queries. Every
   answer assembles context fresh from 11a's graph + tools.
+- **Model lane:** advisor answers run through Claude / Anthropic. Phase 11a's
+  retrieval substrate uses Voyage `voyage-4-large` embeddings in pgvector and
+  Voyage `rerank-2.5` before Claude receives grounded context.
 - **First-surface order:** Forge & Flow manager chat ships first (simplest
   permission model), then Barrio manager chat, then Barrio staff chat.
   Staff chat depends on Phase 9.5 for staff-level identity.
@@ -75,9 +78,11 @@ Phase 11b does not own:
 operator query (Forge & Flow manager / Barrio manager / Barrio staff)
 -> agent runtime
 -> knowledge graph traversal (shared methodology, per Phase 11a)
+-> pgvector cosine candidate retrieval
+-> Voyage rerank-2.5
 -> MCP tool calls (per-operator live + historical data, isolated)
 -> context assembled fresh
--> model reasons, returns answer with provenance
+-> Claude reasons, returns answer with provenance
 -> no operator data retained by the model
 ```
 
@@ -126,12 +131,15 @@ Helpful but not required:
 
 - [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)
-- [rag_stack.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/business/rag_stack.svg)
+- [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/Rag_Architecture.svg)
 
 ## Placeholder Notes
 
 - Agent behavior spec (system prompt, tool-selection policy, refusal
   policy, escalation to human) must be expanded before implementation
   prompts start
+- Exact Claude model ID is still chosen at 11b implementation time, but the
+  model family is locked to Claude / Anthropic and the retrieval lane is locked
+  to Voyage embeddings + rerank from 11a.
 - Tracker folding: add to `PROJECT_TRACKER.md` Active Planning Docs list
   on next Codex pass

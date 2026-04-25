@@ -409,7 +409,7 @@ Before you do anything else, read these files and treat them as the authority fo
 - PROJECT_TRACKER.md
 - docs/DATA_ALIGNMENT_TRACKER.md
 - docs/phase_7_55d_whole_day_shift_schedule_plan.md
-- docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md
+- docs/archive/phases/7_56/phase_7_56_reservation_book_signal_plan.md
 - lib/screens/shift_dashboard.dart
 - lib/data/shift_dashboard_notifier.dart
 - lib/data/shift_service.dart

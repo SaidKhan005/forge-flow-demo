@@ -66,7 +66,7 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - `docs/archive/phases/7_55i/phase_7_55i_pre_7_55i3_integration_daypart_checkpoint.md`
 - `docs/phase_7_55i_plain_english_explainer.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
 - `docs/archive/phases/7_55j/phase_7_55j_gate_integration_readiness_pressure_test.md`
 - `docs/archive/phases/7_55l/phase_7_55l_target_cycle_weekly_plan_implementation.md`
 - `docs/archive/phases/7_55m/phase_7_55m_runtime_truth_surface_cleanup_plan.md`
@@ -83,7 +83,7 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 - `docs/archive/phases/7_55l/phase_7_55l_8a_learn_source_target_migration.md`
 - `docs/archive/phases/7_55l/phase_7_55l_8b_learn_selection_analytics_migration.md`
 - `docs/archive/phases/7_55k/phase_7_55k_daypart_variance_history_learn_plan.md`
-- `docs/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
+- `docs/archive/phases/7_56/phase_7_56_reservation_book_signal_plan.md`
 - `docs/phases/phase_9/phase_9_auth_plan.md`
 
 ### Archive Pointers

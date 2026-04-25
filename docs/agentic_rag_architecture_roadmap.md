@@ -1,4 +1,20 @@
-# Forge & Flow Agentic RAG — Architecture Roadmap
+# Forge & Flow Agentic RAG - Architecture Roadmap
+
+## 2026-04-25 Alignment Note
+
+This document is retained as the early Graphify/MCP roadmap, but the active
+implementation authority is now `docs/phases/phase_11a/`. The current lane is:
+
+```text
+Markdown corpus in docs/Knowledge_graph_docs
+-> Supabase Postgres corpus tables
+-> pgvector cosine candidate retrieval with Voyage voyage-4-large embeddings
+-> Voyage rerank-2.5
+-> Claude / Anthropic advisor answer runtime with citations
+```
+
+Graphify remains useful dev-time context. It is no longer the production
+retrieval plan by itself.
 
 ## Context
 
@@ -115,27 +131,28 @@ Run this on the next full rebuild, not as a separate step.
 | Formulas | Complete | `lib/services/labor_model.dart` — CPLH, SPLH, PPA, theoretical labor %, dollar gap, lever detection. |
 | Teaching Content | Exists, not in graph | `lib/internal/barrio/content/jim_taylor_model_content.dart` (4 modules, ~60 teaching units), handbook, playbook. |
 | Live Data | Models exist, no connectors | OpenShiftSnapshot, ReservationBookSnapshot tables ready. Phase 8 blocked on vendor selection. |
-| Agent Infrastructure | Nothing | No LLM API client, no MCP server, no tool definitions, no vector store. |
+| Agent Infrastructure | 11a in progress | Markdown manifest, chunk planner, materializer, Supabase/Postgres staging schema, local DB load, and dry-run Voyage embedding/rerank contract are landed. No runtime MCP server or UX yet. |
 
 ## Architecture: MCP Server
 
-The recommended approach: a **Python MCP server** that sits between
-Claude and the Forge & Flow data layer.
+The recommended approach is now a dedicated advisor tool/runtime service that
+sits between Claude and the Forge & Flow data layer. The service can still use
+MCP-style tools, but the production corpus is the Phase 11a Supabase/Postgres
+store, not only the local graphify JSON.
 
 **Why MCP:**
-- graphify is already Python — server imports it directly
-- MCP is Claude's native tool protocol — tools just work
+- MCP is Claude's native tool protocol - tools just work
 - Fastest path to a working prototype
 - Per-operator isolation works naturally (each operator gets their own
-  server instance scoped to their database)
+  authenticated scope against the backend data layer)
 
 **How it works:**
 - Claude is the reasoning layer (the "agentic model")
 - The MCP server exposes tools Claude can call
-- Two data sources, one server: (a) graphify knowledge graph for
-  methodology, (b) SQLite for live/historical operational data
-- Graph loaded once at startup. SQLite queried live per tool call.
-- No embedding, no vector store — the graph IS the retrieval layer
+- Two data sources, one service: (a) Phase 11a corpus retrieval for
+  methodology, (b) operational repositories for live/historical data
+- Retrieval is hybrid: pgvector candidates, Voyage rerank, graph/provenance
+  context, then Claude answers.
 
 ---
 
@@ -149,13 +166,13 @@ base the agent can query at runtime.
    concepts, methodology, and operational entities. ~100+ nodes pruned.
 
 2. **Ingest Jim Taylor content as first-class nodes.**
-   `jim_taylor_model_content.dart` has 4 modules (Foundation, Labor %,
-   CPLH, SPLH & OPZ) with ~60 teaching units. Each module becomes a
-   graph node with edges to the LaborModel formulas it teaches.
+   The active source is Markdown in
+   `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md`, governed
+   by `corpus_manifest.yaml`.
 
-3. **Ingest operator SOPs.** `company_handbook_content.dart` (31KB) and
-   `interview_playbook_content.dart` (25KB) — structured Dart data,
-   extract as graph nodes.
+3. **Ingest operator SOPs.** Active SOP/training material is Markdown under
+   `docs/Knowledge_graph_docs/` and enters the corpus only through the
+   manifest. Non-Markdown material must be converted before ingestion.
 
 4. **Add methodology-to-formula edges.** Connect domain entities to
    teaching content: `TargetCycle --implements--> "60-day benchmark
@@ -170,29 +187,27 @@ base the agent can query at runtime.
    Expose as `query_graph(question, budget_tokens=1500)`. Current 593x
    compression ratio means ~1,400 tokens per query vs 830K full corpus.
 
-7. **Graph = textbook, SQLite = numbers.** Methodology graph is shared
-   across all operators. Per-operator data (baselines, cycles, shifts)
-   stays in their SQLite database. Agent combines both at query time.
+7. **Corpus/graph = textbook, operational repositories = numbers.**
+   Methodology corpus rows are shared founder-authored truth. Per-operator
+   data (baselines, cycles, shifts) stays isolated in the app/backend data
+   layer. The agent combines both at query time.
 
 ## Phase 2: MCP Server Foundation
 
-**Goal:** Extend graphify's built-in MCP server (activated in Phase 0.2)
-with SQLite operational tools.
+**Goal:** expose corpus retrieval and operational data as tools Claude can call.
 
-1. **Start with graphify `--mcp`.** This already exposes graph query
-   tools (query, path, explain, community_list). Phase 0.2 activates it.
+1. **Start with Phase 11a retrieval.** Use pgvector cosine candidate search,
+   Voyage rerank, and graph/provenance context from the staged corpus tables.
 
-2. **Extend with operational tools.** Add a companion Python MCP server
-   in `mcp-server/` that reads the operator's SQLite database. Configure
-   both servers in `.claude/settings.json`.
+2. **Add operational tools.** Expose read-only tools over the canonical app
+   repositories so the agent can fetch current shift, target, plan, variance,
+   and history data.
 
-3. **Operator scoping:** `restaurantId` read from `restaurant_locations`
-   table at startup. Every tool call auto-scoped. Different operators =
-   different server instances.
+3. **Operator scoping:** every tool call is scoped by the authenticated
+   operator/restaurant identity from the Phase 9 auth layer.
 
-4. **Later: merge into one server** once the tool set stabilizes. For now,
-   two servers (graphify for knowledge, custom for operations) is simpler
-   to iterate on.
+4. **Graphify remains optional dev context.** It can help inspect graph shape,
+   but it is not the only retrieval layer in production.
 
 ## Phase 3: Tool Definitions
 
@@ -204,9 +219,9 @@ with SQLite operational tools.
 | `explain_metric` | metric name | Formula, what good/bad looks like | LaborModel signatures + teaching nodes |
 | `coaching_recommendation` | lever ID (covers_down, cplh_down) | Methodology-grounded action for that lever | Ch10 content + lever cards |
 
-**Operational tools (SQLite-backed):**
+**Operational tools (repository-backed):**
 
-| Tool | Input | Returns | SQL Source |
+| Tool | Input | Returns | Source |
 |------|-------|---------|-----------|
 | `get_current_shift` | (none) | Open/projected shift state | `open_shift_snapshots` |
 | `get_shift_history` | date range or week ID | Closed shift records with all metrics | `shift_records` |
@@ -239,18 +254,17 @@ with SQLite operational tools.
 **Goal:** When Phase 8 vendor connectors land, the agentic system
 consumes live data without architectural changes.
 
-1. **No tool changes needed.** Connectors write to the same SQLite tables
-   the MCP server already reads (open_shift_snapshots, shift_records).
+1. **No retrieval contract changes needed.** Connectors write into the same
+   canonical operational facts the advisor tools read.
 
-2. **Freshness is the app's responsibility.** MCP server reads SQLite at
-   query time -- always gets whatever the app last wrote. `updatedAt` and
-   `lastEventAt` timestamps let the agent report data freshness.
+2. **Freshness is the app/backend responsibility.** Advisor tools read at
+   query time and report `updatedAt` / `lastEventAt` style freshness metadata.
 
 3. **Add `get_reservation_book` tool** when reservation connectors land.
    Table already exists: `reservation_book_snapshots`.
 
-4. **Per-operator isolation scales naturally.** Each operator has their
-   own SQLite database. Their MCP server instance reads only their data.
+4. **Per-operator isolation scales through auth/RLS.** Each operator's reads
+   are scoped by the Phase 9 identity and backend policies.
 
 ---
 
@@ -258,12 +272,14 @@ consumes live data without architectural changes.
 
 | File | Role in RAG System |
 |------|-------------------|
-| `graphify-out/graph.json` | Knowledge graph -- needs domain restructuring |
+| `docs/Knowledge_graph_docs/corpus_manifest.yaml` | Active corpus authority for 11a ingestion |
+| `build/advisor_corpus/` | Deterministic generated corpus records and dry-run embedding job artifacts |
+| `supabase/migrations/202604250001_advisor_corpus_storage_schema.sql` | Advisor corpus table schema, pgvector extension, optional AGE staging |
+| `supabase/migrations/202604250002_advisor_embedding_contract.sql` | Voyage `voyage-4-large` / `vector(1024)` embedding contract |
 | `lib/services/labor_model.dart` | Formula source -- reimplement in Python for `calculate_labor_metrics` tool |
 | `lib/infrastructure/persistence/sqlite/sqlite_database.dart` | Schema definition (18 tables, v18) -- defines every SQL query the MCP server runs |
-| `lib/internal/barrio/content/jim_taylor_model_content.dart` | Teaching content (4 modules, 60+ units) -- ingest into graph |
-| `lib/internal/barrio/content/company_handbook_content.dart` | Operator SOPs -- ingest into graph |
-| `lib/internal/barrio/content/interview_playbook_content.dart` | Hiring methodology -- ingest into graph |
+| `docs/Knowledge_graph_docs/jim_taylor_labor_model_deep_dive.md` | Active Jim Taylor methodology source for the advisor corpus |
+| `docs/Knowledge_graph_docs/` | Active founder-authored global methodology / SOP corpus |
 | `docs/phases/phase_8_gate/source_ownership_matrix.md` | Field-level ownership map -- governs live data integration |
 | `.claude/settings.json` | Hook and MCP server configuration |
 | `.claude/hooks/graphify-content-sync.sh` | PostToolUse hook -- notifies on teaching content edits |

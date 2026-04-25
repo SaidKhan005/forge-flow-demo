@@ -185,7 +185,7 @@ per-vendor whether daypart depth is available or limited.
 ## Files
 
 - `docs/archive/phases/7_55k/phase_7_55k_8_integration_implications.md` (this doc)
-- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md` (updated)
+- `docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md` (updated)
 - `docs/archive/phases/7_55j/phase_7_55j_2_required_capability_matrix.md` (updated)
 
 ## Cross-References

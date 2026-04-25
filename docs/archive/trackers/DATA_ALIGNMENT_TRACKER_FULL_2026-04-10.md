@@ -590,7 +590,7 @@ Front-loaded checkpoint before `7.55i.3`:
 
 Persistent planning artifact:
 
-- `docs/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
+- `docs/archive/phases/7_55j/phase_7_55j_integration_feature_endpoint_inventory.md`
 
 Reason this exists:
 
