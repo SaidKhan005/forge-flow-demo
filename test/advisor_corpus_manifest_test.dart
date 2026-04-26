@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
+import 'package:forge_and_flow/domain/services/rerank_provider.dart';
+import 'package:forge_and_flow/services/voyage_rerank_provider.dart';
 
 import '../tool/advisor_corpus/advisor_corpus.dart';
 
@@ -297,6 +300,206 @@ void main() {
     });
   });
 
+  group('Advisor corpus content-addressed chunks (11a.11a)', () {
+    test('chunk ids are content-addressed and deterministic across runs',
+        () async {
+      final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+      final validation = await CorpusValidator(repoRoot: repo).validate();
+      final plan = await CorpusChunkPlanner(
+        repoRoot: repo,
+      ).plan(validation.manifest);
+
+      final firstResult = await CorpusIngestionMaterializer(
+        repoRoot: repo,
+      ).materialize(manifest: validation.manifest, plan: plan);
+      final firstChunks = File(
+        '${firstResult.outputDirectory}/source_chunks.jsonl',
+      ).readAsLinesSync().where((l) => l.trim().isNotEmpty).toList();
+      final firstIds = <String>[
+        for (final line in firstChunks)
+          (jsonDecode(line) as Map<String, Object?>)['chunk_id'].toString(),
+      ];
+
+      final secondResult = await CorpusIngestionMaterializer(
+        repoRoot: repo,
+      ).materialize(manifest: validation.manifest, plan: plan);
+      final secondChunks = File(
+        '${secondResult.outputDirectory}/source_chunks.jsonl',
+      ).readAsLinesSync().where((l) => l.trim().isNotEmpty).toList();
+      final secondIds = <String>[
+        for (final line in secondChunks)
+          (jsonDecode(line) as Map<String, Object?>)['chunk_id'].toString(),
+      ];
+
+      expect(secondIds, equals(firstIds));
+      // Format guard: ids are doc-prefixed and content-addressed.
+      for (final id in firstIds) {
+        expect(id, startsWith('sample_doc__c_'));
+        // suffix is 16 hex chars (head of sha256).
+        final suffix = id.substring('sample_doc__c_'.length);
+        expect(suffix, hasLength(16));
+        expect(RegExp(r'^[a-f0-9]{16}$').hasMatch(suffix), isTrue);
+      }
+    });
+
+    test('changing chunk text changes chunk_id', () async {
+      final repoA = await _createFixtureRepo(content: _headingAwareMarkdown);
+      final repoB = await _createFixtureRepo(content: _alteredHandbookMarkdown);
+
+      final planA = await CorpusChunkPlanner(repoRoot: repoA).plan(
+        (await CorpusValidator(repoRoot: repoA).validate()).manifest,
+      );
+      final planB = await CorpusChunkPlanner(repoRoot: repoB).plan(
+        (await CorpusValidator(repoRoot: repoB).validate()).manifest,
+      );
+
+      final idsA = planA.chunks.map((c) => c.chunkId).toSet();
+      final idsB = planB.chunks.map((c) => c.chunkId).toSet();
+
+      // Both fixtures emit at least the introductory + Food Safety sections;
+      // the altered fixture's Food Safety body text differs, so its chunk
+      // ids must shift accordingly. The altered repo must have at least
+      // one id absent from the original repo.
+      expect(idsB.difference(idsA), isNotEmpty);
+    });
+
+    test('same chunk text in different docs does not collide', () async {
+      final repo = await _createTwoDocFixtureWithSharedChunkText();
+      final validation = await CorpusValidator(repoRoot: repo).validate();
+      final plan = await CorpusChunkPlanner(
+        repoRoot: repo,
+      ).plan(validation.manifest);
+
+      final docAChunks = plan.chunks.where((c) => c.docId == 'doc_alpha');
+      final docBChunks = plan.chunks.where((c) => c.docId == 'doc_beta');
+      expect(docAChunks, isNotEmpty);
+      expect(docBChunks, isNotEmpty);
+
+      // No id appears in both docs' chunk-id sets, even though the
+      // chunk contents overlap.
+      final aIds = docAChunks.map((c) => c.chunkId).toSet();
+      final bIds = docBChunks.map((c) => c.chunkId).toSet();
+      expect(aIds.intersection(bIds), isEmpty);
+
+      // Doc-prefix discipline.
+      for (final c in docAChunks) {
+        expect(c.chunkId, startsWith('doc_alpha__c_'));
+      }
+      for (final c in docBChunks) {
+        expect(c.chunkId, startsWith('doc_beta__c_'));
+      }
+    });
+
+    test(
+      'load SQL marks prior chunks inactive (never deletes), inserts '
+      'current chunks active, and keeps embedding match by chunk_id + '
+      'content_sha256',
+      () async {
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+
+        final result = await CorpusDbLoadPreparer(repoRoot: repo).prepare();
+        final chunksSql = File(
+          '${result.outputDirectory}/003_source_chunks.sql',
+        ).readAsStringSync();
+
+        // Stale chunks for the materialized doc(s) get deactivated up
+        // front, in a single update keyed on doc_id.
+        expect(
+          chunksSql,
+          contains('update public.advisor_source_chunks'),
+        );
+        expect(chunksSql, contains('set active = false'));
+        expect(
+          chunksSql,
+          contains("where doc_id in ('sample_doc')"),
+        );
+
+        // Current chunks are inserted active=true and the upsert path
+        // re-activates a previously-deactivated chunk if its content
+        // re-emerged.
+        expect(chunksSql, contains('insert into public.advisor_source_chunks'));
+        expect(chunksSql, contains('active'));
+        expect(chunksSql, contains('active = excluded.active'));
+
+        // No deletion path — old chunks must remain in the table for
+        // citation replay.
+        expect(
+          chunksSql,
+          isNot(contains('delete from public.advisor_source_chunks')),
+        );
+      },
+    );
+
+    test(
+      '11a.11b: doc with zero current chunks is still deactivated',
+      () async {
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+
+        // Append a synthetic source-document record that has no
+        // matching chunk records. This simulates a manifest-included
+        // doc that materialized with zero current chunks (e.g. a
+        // template-only file). The fix for 11a.11b must still
+        // deactivate prior chunks for this doc_id.
+        final docsFile = File(
+          '${repo.path}/build/advisor_corpus/source_documents.jsonl',
+        );
+        final docLines = docsFile.readAsLinesSync();
+        final templateDoc =
+            jsonDecode(docLines.first) as Map<String, Object?>;
+        final zeroChunkDoc = Map<String, Object?>.from(templateDoc)
+          ..['doc_id'] = 'zero_chunk_doc'
+          ..['file_name'] = 'zero.md'
+          ..['source_path'] = 'docs/Knowledge_graph_docs/zero.md'
+          ..['title'] = 'Zero Chunk Handbook';
+        docsFile.writeAsStringSync(
+          '${docLines.join('\n')}\n${jsonEncode(zeroChunkDoc)}\n',
+        );
+
+        final result = await CorpusDbLoadPreparer(repoRoot: repo).prepare();
+        final chunksSql = File(
+          '${result.outputDirectory}/003_source_chunks.sql',
+        ).readAsStringSync();
+
+        // Both the chunk-bearing doc and the zero-chunk doc must
+        // appear in the deactivation list, in sorted order. The fix
+        // keys the list on the materialized source-document records,
+        // not on the chunk records themselves.
+        expect(
+          chunksSql,
+          contains("where doc_id in ('sample_doc', 'zero_chunk_doc')"),
+        );
+        expect(chunksSql, contains('set active = false'));
+
+        // The zero-chunk doc has no chunk rows. A content-addressed
+        // chunk-id prefixed `zero_chunk_doc__c_` would only appear in
+        // the SQL if a chunk row had been emitted for it, so the
+        // absence proves no upsert target exists for the empty doc.
+        expect(chunksSql, isNot(contains('zero_chunk_doc__c_')));
+
+        // No deletion path — old chunks for the zero-chunk doc stay
+        // in the table for citation replay.
+        expect(
+          chunksSql,
+          isNot(contains('delete from public.advisor_source_chunks')),
+        );
+      },
+    );
+  });
+
   group('Advisor corpus embedding job preparer', () {
     test(
       'writes deterministic dry-run embedding inputs and manifest',
@@ -348,7 +551,33 @@ void main() {
         );
         expect(input['record_type'], 'embedding_input');
         expect(input['dimensions'], advisorEmbeddingDimensions);
-        expect(input['input'], contains('Sample Handbook'));
+        // 11a.11a: chunk ordering is content-addressed (lex by hash),
+        // so the first record is no longer guaranteed to be the
+        // introductory section. Assert the doc title appears in at
+        // least one input across the file instead.
+        final allInputLines = File(
+          '${first.outputDirectory}/embedding_inputs.jsonl',
+        ).readAsLinesSync().where((l) => l.trim().isNotEmpty).toList();
+        final allInputTexts = <String>[
+          for (final line in allInputLines)
+            (jsonDecode(line)
+                    as Map<String, Object?>)['input']
+                .toString(),
+        ];
+        expect(
+          allInputTexts.any((t) => t.contains('Sample Handbook')),
+          isTrue,
+        );
+
+        // 11a.8: prepare-embeddings template documents the provider-safe
+        // triple that execute-embeddings will write per row.
+        final updateTemplate = File(
+          '${first.outputDirectory}/embedding_update_template.sql',
+        ).readAsStringSync();
+        expect(updateTemplate, contains('embedding_provider_id'));
+        expect(updateTemplate, contains('embedding_model_id'));
+        expect(updateTemplate, contains('embedding_dimension'));
+        expect(updateTemplate, contains('11a.8'));
       },
     );
 
@@ -411,6 +640,17 @@ void main() {
         expect(sql, contains("embedding_status = 'ready'"));
         expect(sql, contains("embedding_model = 'voyage-4-large'"));
         expect(sql, contains('::vector(1024)'));
+        // 11a.8 versioned embedding metadata: each row update writes the
+        // provider-safe triple consumed by advisor_search_chunks and the
+        // HNSW partial index.
+        expect(sql, contains("embedding_provider_id = 'voyage'"));
+        expect(sql, contains("embedding_model_id = 'voyage-4-large'"));
+        expect(sql, contains('embedding_dimension = 1024'));
+        // Surface comment carries the 11a.8 note.
+        expect(sql, contains('11a.8'));
+        expect(sql, contains('advisor_search_chunks'));
+        // Database mutation is still gated by the manifest, not by SQL apply.
+        expect(executionManifest['database_mutation'], isFalse);
       },
     );
 
@@ -474,16 +714,660 @@ void main() {
 
       expect(migration, contains('create extension if not exists vector'));
       expect(migration, contains("where name = 'age'"));
+      // 7.57.4: projection is no longer "a later slice" — the preparer
+      // generates it now, conditional on AGE availability.
       expect(
         migration,
-        contains('advisor graph projection remains staged only'),
+        contains('tool/advisor_corpus prepare-age-projection'),
+      );
+      expect(
+        migration,
+        isNot(contains('advisor graph projection remains staged only')),
+      );
+      expect(
+        migration,
+        isNot(contains('for later Apache AGE ingestion')),
       );
       expect(migration, contains('embedding vector(1024)'));
       expect(embeddingContractMigration, contains('vector(1024)'));
       expect(embeddingContractMigration, contains('voyage-4-large'));
       expect(embeddingContractMigration, contains('rerank-2.5'));
       expect(embeddingContractMigration, contains('Claude'));
+      // 11a.11a active flag + comment on advisor_source_chunks.
+      expect(migration, contains('active boolean not null default true'));
+      expect(
+        migration,
+        contains('comment on column public.advisor_source_chunks.active'),
+      );
+      expect(migration, contains('11a.11a'));
     });
+  });
+
+  group('Advisor vector search migration (11a.8)', () {
+    test(
+      'adds versioned embedding metadata, HNSW cosine index, and a stable '
+      'scoped advisor_search_chunks function',
+      () {
+        final migration = File(
+          'supabase/migrations/202604250003_advisor_vector_search.sql',
+        ).readAsStringSync();
+
+        // Provider/model/dimension columns.
+        expect(
+          migration,
+          contains('add column if not exists embedding_provider_id text'),
+        );
+        expect(
+          migration,
+          contains('add column if not exists embedding_model_id text'),
+        );
+        expect(
+          migration,
+          contains(
+            'add column if not exists embedding_dimension integer',
+          ),
+        );
+
+        // Backfill from the locked Voyage row shape.
+        expect(migration, contains("set embedding_provider_id = 'voyage'"));
+        expect(
+          migration,
+          contains("embedding_model_id = 'voyage-4-large'"),
+        );
+        expect(migration, contains('embedding_dimension = 1024'));
+        expect(migration, contains("embedding_status = 'ready'"));
+        expect(migration, contains('embedding is not null'));
+
+        // Column comments document the provider-safe contract.
+        expect(
+          migration,
+          contains('comment on column public.advisor_source_chunks.embedding_provider_id'),
+        );
+        expect(
+          migration,
+          contains('comment on column public.advisor_source_chunks.embedding_model_id'),
+        );
+        expect(
+          migration,
+          contains('comment on column public.advisor_source_chunks.embedding_dimension'),
+        );
+
+        // HNSW cosine index, partial on the provider-safe triple.
+        expect(
+          migration,
+          contains(
+            'create index if not exists advisor_source_chunks_voyage_hnsw_idx',
+          ),
+        );
+        expect(migration, contains('using hnsw (embedding vector_cosine_ops)'));
+        expect(migration, contains("embedding_provider_id = 'voyage'"));
+        expect(
+          migration,
+          contains("embedding_model_id = 'voyage-4-large'"),
+        );
+        expect(migration, contains('embedding_dimension = 1024'));
+
+        // Stable scoped search function.
+        expect(
+          migration,
+          contains('create or replace function public.advisor_search_chunks'),
+        );
+        expect(migration, contains('query_embedding vector(1024)'));
+        expect(migration, contains('scope_filter text'));
+        expect(migration, contains('restaurant_id_filter uuid'));
+        expect(migration, contains('provider_id_filter text'));
+        expect(migration, contains('model_id_filter text'));
+        expect(migration, contains('dimension_filter integer'));
+        expect(migration, contains('max_results integer'));
+
+        // Returns citation/provenance metadata alongside scores.
+        expect(migration, contains('returns table'));
+        expect(migration, contains('chunk_id text'));
+        expect(migration, contains('doc_id text'));
+        expect(migration, contains('source_path text'));
+        expect(migration, contains('heading_path text[]'));
+        expect(migration, contains('content_sha256 text'));
+        expect(migration, contains('provenance jsonb'));
+        expect(migration, contains('similarity double precision'));
+        expect(migration, contains('distance double precision'));
+
+        // Cosine distance operator + similarity = 1 - distance.
+        expect(migration, contains('c.embedding <=> query_embedding'));
+        expect(migration, contains('1.0 - (c.embedding <=> query_embedding)'));
+
+        // Filters: status, non-null, provider/model/dimension, scope,
+        // optional restaurant_id.
+        expect(migration, contains("c.embedding_status = 'ready'"));
+        expect(migration, contains('c.embedding is not null'));
+        expect(
+          migration,
+          contains('c.embedding_provider_id = provider_id_filter'),
+        );
+        expect(
+          migration,
+          contains('c.embedding_model_id = model_id_filter'),
+        );
+        expect(
+          migration,
+          contains('c.embedding_dimension = dimension_filter'),
+        );
+        expect(migration, contains('c.scope = scope_filter'));
+        expect(
+          migration,
+          contains(
+            'restaurant_id_filter is null or c.restaurant_id = restaurant_id_filter',
+          ),
+        );
+
+        // Result count cap is bounded.
+        expect(migration, contains('greatest(1, least('));
+        expect(migration, contains('100)'));
+
+        // Function is `stable` (read-only) and language sql so the
+        // planner can inline it through the HNSW index.
+        expect(migration, contains('language sql'));
+        expect(migration, contains('stable'));
+
+        // Routing-rules comment: candidate retrieval only — rerank +
+        // Claude answer runtime are downstream slices.
+        expect(migration, contains('Reranking'));
+        expect(migration, contains('11a.9'));
+        expect(migration, contains('candidate retrieval'));
+
+        // 11a.11a: active filtering on both the function and the
+        // partial HNSW index predicate.
+        expect(migration, contains('c.active = true'));
+        expect(migration, contains('and active = true'));
+      },
+    );
+  });
+
+  group('Advisor corpus rerank smoke (11a.9)', () {
+    CorpusVectorSearchCandidate candidate({
+      required String chunkId,
+      required String text,
+      double similarity = 0.5,
+      double distance = 0.5,
+      String sourcePath = 'docs/Knowledge_graph_docs/sample.md',
+      List<String>? headingPath,
+      String? contentSha256,
+      Map<String, Object?>? provenance,
+    }) {
+      return CorpusVectorSearchCandidate(
+        chunkId: chunkId,
+        text: text,
+        sourcePath: sourcePath,
+        headingPath: headingPath ?? const <String>['Sample Handbook'],
+        contentSha256: contentSha256 ?? ('a' * 64),
+        provenance: provenance ?? const <String, Object?>{
+          'source_doc_id': 'sample_doc',
+          'heading_path': <String>['Sample Handbook'],
+          'confidence': 'extracted',
+        },
+        similarity: similarity,
+        distance: distance,
+      );
+    }
+
+    test(
+      'routes through VoyageRerankProvider with the rerank-2.5 model',
+      () async {
+        String? seenModel;
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async {
+            seenModel = model;
+            return [
+              for (final c in candidates) (id: c.id, score: 0.5),
+            ];
+          },
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        final result = await runner.run(
+          query: 'how do we improve CPLH',
+          candidates: <CorpusVectorSearchCandidate>[
+            candidate(chunkId: 'chunk_a', text: 'CPLH context A'),
+          ],
+        );
+
+        expect(seenModel, equals(AdvisorProviderConstants.voyageRerankModelId));
+        expect(seenModel, equals('rerank-2.5'));
+        expect(result.providerId, equals('voyage'));
+        expect(result.modelId, equals('rerank-2.5'));
+        expect(result.query, equals('how do we improve CPLH'));
+      },
+    );
+
+    test(
+      'orders rows by provider score, not by original vector similarity',
+      () async {
+        // Vector order: chunk_a (sim 0.90) > chunk_c (sim 0.80) > chunk_b
+        // (sim 0.70). Rerank gateway flips it: chunk_b is the strongest
+        // CPLH match per rerank score. The rerank smoke output must
+        // honor the provider order, not the vector order.
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async {
+            return const [
+              (id: 'chunk_a', score: 0.20),
+              (id: 'chunk_b', score: 0.99),
+              (id: 'chunk_c', score: 0.50),
+            ];
+          },
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        final result = await runner.run(
+          query: 'CPLH',
+          candidates: <CorpusVectorSearchCandidate>[
+            candidate(
+              chunkId: 'chunk_a',
+              text: 'tangential CPLH mention',
+              similarity: 0.90,
+              distance: 0.10,
+            ),
+            candidate(
+              chunkId: 'chunk_b',
+              text: 'strong CPLH guidance and worked example',
+              similarity: 0.70,
+              distance: 0.30,
+            ),
+            candidate(
+              chunkId: 'chunk_c',
+              text: 'CPLH adjacent context',
+              similarity: 0.80,
+              distance: 0.20,
+            ),
+          ],
+        );
+
+        // Rerank order, not vector order.
+        expect(
+          result.rows.map((row) => row.chunkId).toList(),
+          equals(<String>['chunk_b', 'chunk_c', 'chunk_a']),
+        );
+        expect(
+          result.rows.map((row) => row.rank).toList(),
+          equals(<int>[0, 1, 2]),
+        );
+        expect(result.rows.first.rerankScore, closeTo(0.99, 1e-9));
+        expect(result.rows.last.rerankScore, closeTo(0.20, 1e-9));
+
+        // Each row preserves its original vector metrics.
+        expect(result.rows.first.vectorSimilarity, closeTo(0.70, 1e-9));
+        expect(result.rows.first.vectorDistance, closeTo(0.30, 1e-9));
+        expect(result.rows.last.vectorSimilarity, closeTo(0.90, 1e-9));
+        expect(result.rows.last.vectorDistance, closeTo(0.10, 1e-9));
+      },
+    );
+
+    test(
+      'preserves citation/provenance metadata unchanged across rerank',
+      () async {
+        const richProvenance = <String, Object?>{
+          'source_doc_id': 'sample_doc',
+          'heading_path': <String>['Sample Handbook', 'Food Safety'],
+          'chunk_id': 'chunk_a',
+          'confidence': 'extracted',
+        };
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async =>
+              [for (final c in candidates) (id: c.id, score: 0.7)],
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        final result = await runner.run(
+          query: 'CPLH',
+          candidates: <CorpusVectorSearchCandidate>[
+            CorpusVectorSearchCandidate(
+              chunkId: 'chunk_a',
+              text: 'CPLH guidance',
+              sourcePath: 'docs/Knowledge_graph_docs/sample.md',
+              headingPath: const <String>['Sample Handbook', 'Food Safety'],
+              contentSha256: 'b' * 64,
+              provenance: richProvenance,
+              similarity: 0.85,
+              distance: 0.15,
+            ),
+          ],
+        );
+
+        final row = result.rows.single;
+        expect(row.chunkId, equals('chunk_a'));
+        expect(
+          row.sourcePath,
+          equals('docs/Knowledge_graph_docs/sample.md'),
+        );
+        expect(
+          row.headingPath,
+          equals(const <String>['Sample Handbook', 'Food Safety']),
+        );
+        expect(row.contentSha256, equals('b' * 64));
+        expect(row.provenance, equals(richProvenance));
+        // Vector metrics survive too.
+        expect(row.vectorSimilarity, closeTo(0.85, 1e-9));
+        expect(row.vectorDistance, closeTo(0.15, 1e-9));
+      },
+    );
+
+    test(
+      'empty candidates degrade to empty rows without calling the gateway',
+      () async {
+        var gatewayCalled = false;
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async {
+            gatewayCalled = true;
+            return const <({String id, double score})>[];
+          },
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        final result = await runner.run(
+          query: 'q',
+          candidates: const <CorpusVectorSearchCandidate>[],
+        );
+
+        expect(result.rows, isEmpty);
+        // Provider id/model still surface for routing observability.
+        expect(result.providerId, equals('voyage'));
+        expect(result.modelId, equals('rerank-2.5'));
+        expect(gatewayCalled, isFalse);
+      },
+    );
+
+    test(
+      'unknown gateway-returned id is rejected by the provider check '
+      'and propagates through the smoke runner',
+      () async {
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async =>
+              const [(id: 'never_in_candidate_list', score: 0.5)],
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        expect(
+          runner.run(
+            query: 'CPLH',
+            candidates: <CorpusVectorSearchCandidate>[
+              candidate(chunkId: 'chunk_a', text: 'A'),
+            ],
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+
+    test(
+      'mismatched gateway score count is rejected by the provider check',
+      () async {
+        final provider = VoyageRerankProvider(
+          rerankFn: ({
+            required String query,
+            required List<RerankCandidate> candidates,
+            required String model,
+          }) async =>
+              const [(id: 'chunk_a', score: 0.7)], // missing chunk_b
+        );
+        final runner = CorpusRerankSmokeRunner(rerankProvider: provider);
+
+        expect(
+          runner.run(
+            query: 'CPLH',
+            candidates: <CorpusVectorSearchCandidate>[
+              candidate(chunkId: 'chunk_a', text: 'A'),
+              candidate(chunkId: 'chunk_b', text: 'B'),
+            ],
+          ),
+          throwsA(isA<StateError>()),
+        );
+      },
+    );
+  });
+
+  group('Advisor corpus AGE projection preparer', () {
+    test(
+      'writes deterministic AGE projection + smoke SQL artifacts and a manifest',
+      () async {
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+        final preparer = CorpusAgeProjectionPreparer(repoRoot: repo);
+
+        final first = await preparer.prepare();
+        final firstProjection = await File(
+          '${first.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.projectionFileName}',
+        ).readAsString();
+        final firstSmoke = await File(
+          '${first.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.smokeFileName}',
+        ).readAsString();
+        final second = await preparer.prepare();
+        final secondProjection = await File(
+          '${second.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.projectionFileName}',
+        ).readAsString();
+        final secondSmoke = await File(
+          '${second.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.smokeFileName}',
+        ).readAsString();
+        final manifest =
+            jsonDecode(
+                  File(
+                    '${first.outputDirectory}/'
+                    '${CorpusAgeProjectionPreparer.manifestFileName}',
+                  ).readAsStringSync(),
+                )
+                as Map<String, Object?>;
+
+        // Determinism between runs.
+        expect(first.projectionRunId, second.projectionRunId);
+        expect(secondProjection, firstProjection);
+        expect(secondSmoke, firstSmoke);
+
+        // Manifest shape.
+        expect(
+          manifest['record_type'],
+          'advisor_corpus_age_projection_manifest',
+        );
+        expect(manifest['graph_name'], advisorAgeGraphName);
+        expect(
+          manifest['apply_mode'],
+          'not_applied_build_artifacts_only',
+        );
+        expect(manifest['projection_run_id'], first.projectionRunId);
+
+        final projectionFiles =
+            (manifest['projection_files']! as List<Object?>)
+                .cast<Map<String, Object?>>();
+        expect(projectionFiles.map((f) => f['file']).toList(), <String>[
+          CorpusAgeProjectionPreparer.projectionFileName,
+          CorpusAgeProjectionPreparer.smokeFileName,
+        ]);
+
+        final inputs =
+            manifest['projection_inputs']! as Map<String, Object?>;
+        expect(
+          inputs['graph_node_seed_table'],
+          'public.advisor_graph_node_seeds',
+        );
+        expect(
+          inputs['graph_edge_hint_table'],
+          'public.advisor_graph_edge_hints',
+        );
+        expect(
+          (inputs['expected_node_types']! as List<Object?>)
+              .cast<String>(),
+          containsAll(<String>['Document', 'Chunk']),
+        );
+        expect(
+          (inputs['expected_edge_types']! as List<Object?>)
+              .cast<String>(),
+          contains('CONTAINS'),
+        );
+
+        final expectedCounts =
+            manifest['expected_counts_from_summary']!
+                as Map<String, Object?>;
+        expect(
+          expectedCounts['graph_node_seeds'],
+          first.expectedNodeSeedCount,
+        );
+        expect(
+          expectedCounts['graph_edge_hints'],
+          first.expectedEdgeHintCount,
+        );
+
+        final blocker = manifest['blocker_path']! as Map<String, Object?>;
+        expect(
+          blocker['condition'],
+          contains('pg_available_extensions'),
+        );
+        expect(blocker['behavior'], contains('AGE_BLOCKER'));
+
+        // Notes are honest about current shape — no fake Metric / Chapter /
+        // Formula nodes are claimed.
+        final notes = (manifest['notes']! as List<Object?>).cast<String>();
+        expect(notes.join('\n'), contains('Document/Chunk'));
+        expect(
+          notes.join('\n'),
+          contains('Metric / Chapter / Formula'),
+        );
+      },
+    );
+
+    test(
+      'projection SQL is idempotent and reads from the staged graph tables, '
+      'with an explicit AGE-missing blocker',
+      () async {
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+        final result =
+            await CorpusAgeProjectionPreparer(repoRoot: repo).prepare();
+        final projectionSql = await File(
+          '${result.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.projectionFileName}',
+        ).readAsString();
+
+        // Reads from staged graph tables.
+        expect(projectionSql, contains('public.advisor_graph_node_seeds'));
+        expect(projectionSql, contains('public.advisor_graph_edge_hints'));
+        expect(projectionSql, contains("node_type = 'Document'"));
+        expect(projectionSql, contains("node_type = 'Chunk'"));
+
+        // AGE availability gate.
+        expect(
+          projectionSql,
+          contains("from pg_available_extensions where name = 'age'"),
+        );
+        expect(projectionSql, contains('AGE_BLOCKER'));
+
+        // Idempotent extension + graph creation.
+        expect(
+          projectionSql,
+          contains('create extension if not exists age'),
+        );
+        expect(projectionSql, contains('ag_catalog.create_graph'));
+        expect(projectionSql, contains('ag_catalog.ag_graph'));
+
+        // MERGE-based vertex projection (idempotent on re-run).
+        expect(
+          projectionSql,
+          contains('MERGE (v:Document {node_id:'),
+        );
+        expect(projectionSql, contains('MERGE (v:Chunk {node_id:'));
+
+        // Edge projection from edge_hints with MERGE.
+        expect(projectionSql, contains('MERGE (a)-[r:'));
+
+        // Stamps projected provenance back onto the seed tables.
+        expect(
+          projectionSql,
+          contains('update public.advisor_graph_node_seeds'),
+        );
+        expect(projectionSql, contains('age_graph_name'));
+        expect(projectionSql, contains('age_vertex_id'));
+        expect(
+          projectionSql,
+          contains('update public.advisor_graph_edge_hints'),
+        );
+        expect(projectionSql, contains('age_edge_id'));
+      },
+    );
+
+    test(
+      'smoke traversal SQL covers the CPLH path honestly against the '
+      'current Document -> CONTAINS -> Chunk shape',
+      () async {
+        final repo = await _createFixtureRepo(content: _headingAwareMarkdown);
+        final validation = await CorpusValidator(repoRoot: repo).validate();
+        final plan = await CorpusChunkPlanner(
+          repoRoot: repo,
+        ).plan(validation.manifest);
+        await CorpusIngestionMaterializer(
+          repoRoot: repo,
+        ).materialize(manifest: validation.manifest, plan: plan);
+        final result =
+            await CorpusAgeProjectionPreparer(repoRoot: repo).prepare();
+        final smokeSql = await File(
+          '${result.outputDirectory}/'
+          '${CorpusAgeProjectionPreparer.smokeFileName}',
+        ).readAsString();
+
+        // Cypher traversal pattern.
+        expect(
+          smokeSql,
+          contains('MATCH (d:Document)-[:CONTAINS]->(c:Chunk)'),
+        );
+
+        // Joins to advisor_source_chunks for the CPLH text/heading filter.
+        expect(smokeSql, contains('public.advisor_source_chunks'));
+        expect(smokeSql, contains('cplh'));
+        expect(smokeSql, contains('lower(ch.text)'));
+        expect(smokeSql, contains('unnest(ch.heading_path)'));
+
+        // AGE-missing blocker is present in the smoke artifact too.
+        expect(
+          smokeSql,
+          contains("from pg_available_extensions where name = 'age'"),
+        );
+        expect(smokeSql, contains('AGE_BLOCKER'));
+
+        // Reports both the structural and CPLH-bearing counts honestly.
+        expect(smokeSql, contains('document_chunk_pairs'));
+        expect(smokeSql, contains('cplh_bearing_chunks'));
+      },
+    );
   });
 }
 
@@ -499,6 +1383,28 @@ Introductory context for the sample handbook.
 ## Food Safety
 
 Wash hands before prep. Keep cold food cold and hot food hot.
+
+## Service Standards
+
+Greet guests quickly and keep the floor communication clean.
+''';
+
+// 11a.11a: same shape as `_headingAwareMarkdown` but with materially
+// different Food Safety body text so the chunk-id content-address
+// changes for that section while the introductory section stays
+// stable. Used to prove "changing chunk text changes chunk_id".
+const _alteredHandbookMarkdown = '''
+---
+source: fixture
+---
+
+# Sample Handbook
+
+Introductory context for the sample handbook.
+
+## Food Safety
+
+Wash hands twice before prep. Refrigerate cold food immediately and reheat hot food to 165 degrees.
 
 ## Service Standards
 
@@ -639,6 +1545,68 @@ class _WrongDimensionEmbeddingGateway implements AdvisorEmbeddingGateway {
       providerReportedTokenCount: 0,
     );
   }
+}
+
+/// 11a.11a fixture: two distinct docs whose source content overlaps
+/// (both have a `## Food Safety` section with identical body). Used to
+/// prove cross-doc chunk_id collision is impossible under content-
+/// addressed ids.
+Future<Directory> _createTwoDocFixtureWithSharedChunkText() async {
+  final repo = await Directory.systemTemp.createTemp('advisor_corpus_2doc_');
+  const sharedMarkdown = '''
+---
+source: fixture
+---
+
+# Shared Title
+
+Introductory context shared between docs.
+
+## Food Safety
+
+Identical Food Safety body text in both docs to force a chunk-content
+overlap, exercising the content-addressed id's doc-prefix discipline.
+''';
+  await _writeText(
+    repo,
+    'docs/Knowledge_graph_docs/alpha.md',
+    sharedMarkdown,
+  );
+  await _writeText(
+    repo,
+    'docs/Knowledge_graph_docs/beta.md',
+    sharedMarkdown,
+  );
+  final alphaHash = await sha256ForFile(
+    File('${repo.path}/docs/Knowledge_graph_docs/alpha.md'),
+  );
+  final betaHash = await sha256ForFile(
+    File('${repo.path}/docs/Knowledge_graph_docs/beta.md'),
+  );
+  final manifest = _manifestYaml(<_FixtureDoc>[
+    _FixtureDoc(
+      docId: 'doc_alpha',
+      fileName: 'alpha.md',
+      sourcePath: 'docs/Knowledge_graph_docs/alpha.md',
+      title: 'Shared Title',
+      chunkProfile: 'heading_aware_policy_handbook',
+      contentRole: 'operating_handbook',
+      riskLevel: 'medium',
+      sha256Hash: alphaHash,
+    ),
+    _FixtureDoc(
+      docId: 'doc_beta',
+      fileName: 'beta.md',
+      sourcePath: 'docs/Knowledge_graph_docs/beta.md',
+      title: 'Shared Title',
+      chunkProfile: 'heading_aware_policy_handbook',
+      contentRole: 'operating_handbook',
+      riskLevel: 'medium',
+      sha256Hash: betaHash,
+    ),
+  ]);
+  await _writeText(repo, defaultManifestPath, manifest);
+  return repo;
 }
 
 String _manifestYaml(List<_FixtureDoc> documents) {

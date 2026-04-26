@@ -2,7 +2,7 @@
 
 Updated: 2026-04-25
 Owner: Codex planning input
-Status: Active until `7.57.4` accepts
+Status: Complete - `7.57` accepted 2026-04-25
 
 Full pre-trim history:
 `docs/archive/phases/post_11a7_stabilization_plan_full_2026-04-25_pre_trim.md`
@@ -51,29 +51,18 @@ Accepted:
   `VoyageEmbeddingProvider`.
 - `7.57.3c` StaticShiftDataSource mock-replay reads through
   `MockReplayDataSourceProvider`.
+- `7.57.3d` renamed the answer-provider seam to `LLMProvider` and exposed
+  prompt-caching capability.
+- `7.57.4` added deterministic AGE projection and CPLH smoke-traversal SQL
+  artifacts from the staged graph tables. Codex local verification could not
+  run Supabase because the `supabase` CLI is unavailable in this environment;
+  the generated artifacts document the `AGE_BLOCKER` path.
 
-Current next:
+Current next after this archive:
 
-- `7.57.3d` rename the advisor-specific answer provider seam to a
-  general-purpose `LLMProvider` and expose prompt-caching capability.
+- `11a.8` vector search functions / indexes + smoke queries.
 
-## Remaining 7.57 Queue
-
-### `7.57.3d` - Provider naming/capability cleanup
-
-Scope:
-
-- Rename advisor-specific answer abstraction to `LLMProvider` where needed.
-- Keep `quick -> Haiku`, `nuanced -> Sonnet`, default `quick`.
-- Expose prompt-caching capability generically.
-
-Acceptance:
-
-- No `AdvisorAnswerProvider` symbols remain in live code/tests.
-- Existing Claude answer provider behavior and dev Settings routing are
-  unchanged.
-- Provider capability exposes prompt-caching support without wiring live API
-  calls.
+## 7.57 Closeout
 
 ### `7.57.4` - AGE graph projection
 
@@ -89,9 +78,10 @@ Scope:
 
 Acceptance:
 
-- Local graph projection or explicit blocker documented.
-- Smoke traversal or blocker test evidence reported.
-- `11b` gate updated only after graph projection is verified.
+- Explicit blocker path documented in generated SQL/manifest.
+- Smoke traversal artifact and tests reported.
+- `11b` gate remains: run generated SQL in an AGE-enabled
+  Supabase/Postgres environment or record the exact provisioning blocker.
 
 ## After 7.57
 

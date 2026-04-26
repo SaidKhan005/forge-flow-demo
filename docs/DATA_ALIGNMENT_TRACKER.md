@@ -95,7 +95,6 @@ App owns:
 - `docs/contracts/phase_7_55_current_state_freshness_contract.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
-- `docs/phases/post_11a7_stabilization_plan.md`
 - `docs/phases/phase_8_gate/`
 
 ## Archive And Reference

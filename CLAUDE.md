@@ -16,7 +16,8 @@ as expected, not regressions.
 
 ## Hard Promises
 
-Every slice respects these. Plan: `docs/phases/post_11a7_stabilization_plan.md`.
+Every slice respects these. Origin:
+`docs/archive/phases/post_11a7_stabilization_plan.md`.
 
 1. **Phase 8 = pure transport swap.** Vendor connector writers
    against existing SQLite tables only. Cleanup belongs to `7.57`
@@ -34,7 +35,8 @@ Every slice respects these. Plan: `docs/phases/post_11a7_stabilization_plan.md`.
 4. **Per-operator isolation is non-negotiable.** RLS-ready schema
    from day one (see RLS-Ready Schema). Phase 9 enforces. `11b` does
    not ship multi-operator before then.
-5. **AGE graph projection ships before `11b`.** Lands in `7.57.4`.
+5. **AGE graph projection ships before `11b`.** Landed in `7.57.4`;
+   live apply still requires an AGE-enabled Supabase/Postgres environment.
    Graph traversal is the launch differentiator, not vector-only
    retrieval.
 6. **Advisor speaks in recommendations, not commands.** Decided
@@ -128,6 +130,20 @@ code reads/writes operator-scoped Postgres tables only through
 `lib/infrastructure/persistence/postgres/` — CI lint enforces.
 Postgres RLS is the backup safety net under the repository, not the
 primary defense.
+
+## Proxy & API Conventions
+
+- API URL versioning: `/v1/...` paths today; `/v2/...` when
+  breaking changes ship; old paths stay live until explicit
+  deprecation.
+- Every write the proxy does is idempotent. Clients carry an
+  idempotency key per request; the proxy stores keys in
+  `proxy_requests` (UNIQUE constraint). Retries return the prior
+  result instead of re-executing.
+- Every AI surface plugs into `11a.10`'s infrastructure (proxy +
+  provider abstractions + counter/caps + feature flags). No
+  parallel stacks. Phase 12 workflows, future Barrio staff
+  coaching, and any future AI surface reuse the same plumbing.
 
 ## Testing
 

@@ -19,6 +19,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
+import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -916,6 +917,11 @@ void main() {
   // it does not change the relative ordering of the prior groups (a few
   // smoke tests are sensitive to a clean test-binding state at start).
   _advisorSectionTests();
+
+  // 11a.12: dev-only ADVISOR CORPUS section. Registered after the model
+  // section for the same reason — keep the prior smoke-test ordering
+  // untouched.
+  _advisorCorpusSectionTests();
 }
 
 /// Helper: pump repeatedly to let async DB work + animations settle
@@ -1194,6 +1200,376 @@ void _advisorSectionTests() {
 
       expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
     });
+  });
+}
+
+// ─── 11a.12: dev-only ADVISOR CORPUS section tests ───────────────────────────
+
+Future<void> _pumpAdvisorCorpusSettings(
+  WidgetTester tester, {
+  required AdvisorCorpusAdminService service,
+}) async {
+  await tester.pumpWidget(MaterialApp(
+    home: SettingsScreen(
+      initialStatus: AppDataStatus.current(),
+      initialMockDate: '2026-03-27',
+      advisorCorpusAdminService: service,
+      forceShowAdvisorCorpusSection: true,
+    ),
+  ));
+  await tester.pump();
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollKeyIntoView(WidgetTester tester, Key key) async {
+  // scrollUntilVisible needs the default `skipOffstage: true` so it
+  // keeps scrolling until the widget is actually on stage. Passing
+  // `skipOffstage: false` would short-circuit on the first frame
+  // because the widget exists in the tree (just offstage).
+  await tester.scrollUntilVisible(
+    find.byKey(key),
+    100,
+    scrollable: find.byType(Scrollable).first,
+  );
+  await _pumpForAsync(tester);
+}
+
+void _advisorCorpusSectionTests() {
+  group('Settings ADVISOR CORPUS section (dev-only)', () {
+    testWidgets('renders header, fields, actions, and blocked cloud row',
+        (tester) async {
+      await _pumpAdvisorCorpusSettings(
+        tester,
+        service: AdvisorCorpusAdminService(),
+      );
+      await _scrollToText(tester, 'ADVISOR CORPUS');
+
+      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_header'), skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_file_name_field'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_markdown_field'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_preview_button'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_cloud_load_button'),
+              skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.byKey(const Key('advisor_corpus_cloud_blocked'),
+              skipOffstage: false),
+          findsOneWidget);
+    });
+
+    testWidgets('valid Markdown preview surfaces the local-only summary',
+        (tester) async {
+      final service = AdvisorCorpusAdminService();
+      await _pumpAdvisorCorpusSettings(tester, service: service);
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+
+      // Drive the controllers directly via the service's preview path
+      // and then request the rebuild via tap. Avoids enterText's
+      // EditableText focus path, which is unreliable for off-stage
+      // multi-line fields in the test viewport.
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = 'sample.md';
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = '# Heading\n\nBody line one.\nBody line two.\n';
+
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+      await tester.tap(find.byKey(const Key('advisor_corpus_preview_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(
+        find.byKey(const Key('advisor_corpus_preview_result'),
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.textContaining('PREVIEW LOCAL ONLY', skipOffstage: false),
+          findsOneWidget);
+      // Ingestion-shaped fields rendered in the result row.
+      expect(find.textContaining('file · sample.md', skipOffstage: false),
+          findsOneWidget);
+      expect(
+          find.textContaining(
+              'source · docs/Knowledge_graph_docs/sample.md',
+              skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('title · Heading', skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('headings · 1', skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('lines · 5', skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('est chunks · 1', skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('preview_local_only', skipOffstage: false),
+          findsOneWidget);
+    });
+
+    testWidgets(
+      'preview falls back to file-name stem when no H1 is present',
+      (tester) async {
+        final service = AdvisorCorpusAdminService();
+        await _pumpAdvisorCorpusSettings(tester, service: service);
+        await _scrollKeyIntoView(
+          tester,
+          const Key('advisor_corpus_preview_button'),
+        );
+
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('advisor_corpus_file_name_field'),
+                    skipOffstage: false))
+            .controller!
+            .text = 'Wage_Standards.md';
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('advisor_corpus_markdown_field'),
+                    skipOffstage: false))
+            .controller!
+            .text = '## Sub-only heading\n\nbody text\n';
+
+        await _scrollKeyIntoView(
+          tester,
+          const Key('advisor_corpus_preview_button'),
+        );
+        await tester
+            .tap(find.byKey(const Key('advisor_corpus_preview_button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        // Title falls back to the file-name stem (no `.md`); the H2
+        // line is counted in `headings` but does not become the title.
+        expect(find.textContaining('title · Wage_Standards',
+            skipOffstage: false), findsOneWidget);
+        expect(find.textContaining('headings · 1', skipOffstage: false),
+            findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'preview normalizes a backslash-prefixed file path to its basename',
+      (tester) async {
+        final service = AdvisorCorpusAdminService();
+        await _pumpAdvisorCorpusSettings(tester, service: service);
+        await _scrollKeyIntoView(
+          tester,
+          const Key('advisor_corpus_preview_button'),
+        );
+
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('advisor_corpus_file_name_field'),
+                    skipOffstage: false))
+            .controller!
+            .text = r'C:\some\path\Wage_Standards.md';
+        tester
+            .widget<TextField>(
+                find.byKey(const Key('advisor_corpus_markdown_field'),
+                    skipOffstage: false))
+            .controller!
+            .text = '# Wages\n\nbody\n';
+
+        await _scrollKeyIntoView(
+          tester,
+          const Key('advisor_corpus_preview_button'),
+        );
+        await tester
+            .tap(find.byKey(const Key('advisor_corpus_preview_button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+
+        expect(
+            find.textContaining('file · Wage_Standards.md',
+                skipOffstage: false),
+            findsOneWidget);
+        expect(
+            find.textContaining(
+                'source · docs/Knowledge_graph_docs/Wage_Standards.md',
+                skipOffstage: false),
+            findsOneWidget);
+      },
+    );
+
+    testWidgets('non-.md filename is rejected with a UI-visible error',
+        (tester) async {
+      final service = AdvisorCorpusAdminService();
+      await _pumpAdvisorCorpusSettings(tester, service: service);
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = 'sample.txt';
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = '# Heading\n';
+
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+      await tester.tap(find.byKey(const Key('advisor_corpus_preview_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(
+        find.byKey(const Key('advisor_corpus_preview_error'),
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+          findsOneWidget);
+      expect(find.textContaining('.md', skipOffstage: false), findsWidgets);
+    });
+
+    testWidgets('blank Markdown is rejected with a UI-visible error',
+        (tester) async {
+      final service = AdvisorCorpusAdminService();
+      await _pumpAdvisorCorpusSettings(tester, service: service);
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = 'sample.md';
+      tester
+          .widget<TextField>(
+              find.byKey(const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false))
+          .controller!
+          .text = '   \n  \t\n';
+
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+      await tester.tap(find.byKey(const Key('advisor_corpus_preview_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(
+        find.byKey(const Key('advisor_corpus_preview_error'),
+            skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+          findsOneWidget);
+    });
+
+    testWidgets(
+      'cloud-load button is non-interactive (onPressed == null)',
+      (tester) async {
+        await _pumpAdvisorCorpusSettings(
+          tester,
+          service: AdvisorCorpusAdminService(),
+        );
+
+        // The blocked row + disabled button are both always rendered.
+        // The button is greyed out because `onPressed: null` — no tap
+        // attempt is possible from this slice forward.
+        final button = tester.widget<TextButton>(find.byKey(
+            const Key('advisor_corpus_cloud_load_button'),
+            skipOffstage: false));
+        expect(button.onPressed, isNull);
+
+        expect(
+          find.byKey(const Key('advisor_corpus_cloud_blocked'),
+              skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(find.textContaining('CLOUD LOAD · BLOCKED', skipOffstage: false),
+            findsOneWidget);
+        expect(find.textContaining('11a.11b', skipOffstage: false),
+            findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'real debug route renders ADVISOR CORPUS without forceShow '
+      '(kDebugMode + service)',
+      (tester) async {
+        // Mirrors what `forge_flow_app.dart::_openSettings` does in
+        // debug: pushes a SettingsScreen with `advisorCorpusAdminService`
+        // set but no force flag. The section gate
+        // (kDebugMode && service != null) should render the section.
+        await tester.pumpWidget(MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            advisorCorpusAdminService: AdvisorCorpusAdminService(),
+            // forceShowAdvisorCorpusSection deliberately omitted
+          ),
+        ));
+        await tester.pump();
+        await tester.pumpAndSettle();
+        await _scrollToText(tester, 'ADVISOR CORPUS');
+
+        expect(find.text('ADVISOR CORPUS', skipOffstage: false),
+            findsOneWidget);
+        expect(
+          find.byKey(const Key('advisor_corpus_cloud_blocked'),
+              skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'is hidden by default — no force flag, no service injected',
+      (tester) async {
+        await tester.pumpWidget(MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            // forceShowAdvisorCorpusSection deliberately omitted
+            // advisorCorpusAdminService deliberately omitted
+          ),
+        ));
+        await tester.pump();
+        await tester.pumpAndSettle();
+
+        expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsNothing);
+      },
+    );
   });
 }
 

@@ -6,12 +6,12 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/data/mock_integration_replay_seed.dart';
-import 'package:forge_and_flow/domain/services/advisor_answer_provider.dart';
 import 'package:forge_and_flow/domain/services/advisor_model_routing.dart';
 import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
+import 'package:forge_and_flow/domain/services/llm_provider.dart';
 import 'package:forge_and_flow/domain/services/rerank_provider.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
-import 'package:forge_and_flow/services/claude_answer_provider.dart';
+import 'package:forge_and_flow/services/claude_llm_provider.dart';
 import 'package:forge_and_flow/services/mock_replay_data_source_provider.dart';
 import 'package:forge_and_flow/services/voyage_embedding_provider.dart';
 import 'package:forge_and_flow/services/voyage_rerank_provider.dart';
@@ -44,7 +44,7 @@ void main() {
     });
   });
 
-  group('B — ClaudeAnswerProvider tier dispatch', () {
+  group('B — ClaudeLLMProvider tier dispatch', () {
     String? capturedModelId;
     Future<String> fakeFn({
       required String modelId,
@@ -60,39 +60,45 @@ void main() {
     });
 
     test('default tier is quick and routes to Haiku', () async {
-      final provider = ClaudeAnswerProvider(answerFn: fakeFn);
+      final provider = ClaudeLLMProvider(completeFn: fakeFn);
 
       // modelIdFor(default-resolved-quick) returns Haiku without a call
-      expect(provider.modelIdFor(AdvisorTier.quick),
+      expect(provider.modelIdFor(LLMTier.quick),
           equals(AdvisorProviderConstants.haikuModelId));
 
-      // .answer(...) with no tier passed -> Haiku
-      final answer = await provider.answer(question: 'q', context: 'c');
-      expect(answer.tier, equals(AdvisorTier.quick));
+      // .complete(...) with no tier passed -> Haiku
+      final answer = await provider.complete(question: 'q', context: 'c');
+      expect(answer.tier, equals(LLMTier.quick));
       expect(answer.modelId, equals(AdvisorProviderConstants.haikuModelId));
       expect(capturedModelId, equals(AdvisorProviderConstants.haikuModelId));
     });
 
     test('nuanced tier routes to Sonnet', () async {
-      final provider = ClaudeAnswerProvider(answerFn: fakeFn);
+      final provider = ClaudeLLMProvider(completeFn: fakeFn);
 
-      expect(provider.modelIdFor(AdvisorTier.nuanced),
+      expect(provider.modelIdFor(LLMTier.nuanced),
           equals(AdvisorProviderConstants.sonnetModelId));
 
-      final answer = await provider.answer(
+      final answer = await provider.complete(
         question: 'q',
         context: 'c',
-        tier: AdvisorTier.nuanced,
+        tier: LLMTier.nuanced,
       );
-      expect(answer.tier, equals(AdvisorTier.nuanced));
+      expect(answer.tier, equals(LLMTier.nuanced));
       expect(answer.modelId, equals(AdvisorProviderConstants.sonnetModelId));
       expect(capturedModelId, equals(AdvisorProviderConstants.sonnetModelId));
     });
 
-    test('answer body comes from the gateway callback verbatim', () async {
-      final provider = ClaudeAnswerProvider(answerFn: fakeFn);
-      final answer = await provider.answer(question: 'q', context: 'c');
+    test('completion body comes from the gateway callback verbatim', () async {
+      final provider = ClaudeLLMProvider(completeFn: fakeFn);
+      final answer = await provider.complete(question: 'q', context: 'c');
       expect(answer.text, contains('fake answer'));
+    });
+
+    test('exposes promptCaching capability', () {
+      final provider = ClaudeLLMProvider(completeFn: fakeFn);
+      expect(provider.capabilities,
+          contains(LLMProviderCapability.promptCaching));
     });
   });
 
@@ -250,8 +256,8 @@ void main() {
       expect(r.effectiveNuancedModelId, equals('claude-sonnet-4-6'));
       expect(r.quickSource, equals(AdvisorModelSource.defaultPinned));
       expect(r.nuancedSource, equals(AdvisorModelSource.defaultPinned));
-      expect(r.sourceLabelForTier(AdvisorTier.quick), equals('Default'));
-      expect(r.sourceLabelForTier(AdvisorTier.nuanced), equals('Default'));
+      expect(r.sourceLabelForTier(LLMTier.quick), equals('Default'));
+      expect(r.sourceLabelForTier(LLMTier.nuanced), equals('Default'));
     });
 
     test('quick override flips quick to Override and leaves nuanced default',
@@ -261,7 +267,7 @@ void main() {
       expect(r.quickSource, equals(AdvisorModelSource.userOverride));
       expect(r.effectiveNuancedModelId, equals('claude-sonnet-4-6'));
       expect(r.nuancedSource, equals(AdvisorModelSource.defaultPinned));
-      expect(r.sourceLabelForTier(AdvisorTier.quick), equals('Override'));
+      expect(r.sourceLabelForTier(LLMTier.quick), equals('Override'));
     });
 
     test('nuanced override flips nuanced to Override and leaves quick default',
@@ -293,7 +299,7 @@ void main() {
     });
   });
 
-  group('G — ClaudeAnswerProvider honors injected routing', () {
+  group('G — ClaudeLLMProvider honors injected routing', () {
     Future<String> fakeFn({
       required String modelId,
       required String question,
@@ -302,12 +308,12 @@ void main() {
         modelId;
 
     test('default routing -> default model ids', () async {
-      final p = ClaudeAnswerProvider(answerFn: fakeFn);
-      expect((await p.answer(question: 'q', context: 'c')).modelId,
+      final p = ClaudeLLMProvider(completeFn: fakeFn);
+      expect((await p.complete(question: 'q', context: 'c')).modelId,
           equals('claude-haiku-4-5'));
       expect(
-          (await p.answer(
-                  question: 'q', context: 'c', tier: AdvisorTier.nuanced))
+          (await p.complete(
+                  question: 'q', context: 'c', tier: LLMTier.nuanced))
               .modelId,
           equals('claude-sonnet-4-6'));
     });
@@ -317,10 +323,10 @@ void main() {
         quickOverride: 'override-quick',
         nuancedOverride: 'override-nuanced',
       );
-      final p = ClaudeAnswerProvider(answerFn: fakeFn, routing: r);
-      expect(p.modelIdFor(AdvisorTier.quick), equals('override-quick'));
-      expect(p.modelIdFor(AdvisorTier.nuanced), equals('override-nuanced'));
-      expect((await p.answer(question: 'q', context: 'c')).modelId,
+      final p = ClaudeLLMProvider(completeFn: fakeFn, routing: r);
+      expect(p.modelIdFor(LLMTier.quick), equals('override-quick'));
+      expect(p.modelIdFor(LLMTier.nuanced), equals('override-nuanced'));
+      expect((await p.complete(question: 'q', context: 'c')).modelId,
           equals('override-quick'));
     });
   });

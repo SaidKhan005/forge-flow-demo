@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
 import 'services/business_date_authority_service.dart';
 import 'services/shift_data_source.dart';
@@ -227,15 +228,23 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _openSettings(BuildContext context) {
-    // In debug builds, wire the ADVISOR MODELS dev section by passing a
-    // live `AdvisorModelConfigService`. In release the section stays
-    // hidden because `SettingsScreen` only renders it when both
-    // `kDebugMode` and a service instance are present.
+    // In debug builds, wire the dev-only Settings sections by passing
+    // their respective services:
+    //   * `AdvisorModelConfigService` powers the ADVISOR MODELS section
+    //     (override editing + Anthropic online check).
+    //   * `AdvisorCorpusAdminService` powers the ADVISOR CORPUS section
+    //     (local-only Markdown preview + 11a.11b cloud-blocked
+    //     affordance).
+    // In release builds both stay hidden because `SettingsScreen` only
+    // renders each section when both `kDebugMode` and the matching
+    // service instance are present.
     final advisorConfig = kDebugMode ? AdvisorModelConfigService() : null;
+    final corpusAdmin = kDebugMode ? AdvisorCorpusAdminService() : null;
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           advisorModelConfigService: advisorConfig,
+          advisorCorpusAdminService: corpusAdmin,
         ),
         fullscreenDialog: true,
       ),

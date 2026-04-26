@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:forge_and_flow/domain/services/rerank_provider.dart';
 import 'package:forge_and_flow/services/voyage_embedding_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:yaml/yaml.dart';
@@ -376,20 +377,21 @@ class CorpusChunkPlanner {
     final chunks = <PlannedChunk>[];
     final lines = text.split('\n');
     final termPattern = RegExp(r'^-\s+\*\*(.+?):\*\*\s*(.+)$');
-    var termIndex = 0;
 
     for (var index = 0; index < lines.length; index += 1) {
       final match = termPattern.firstMatch(lines[index].trim());
       if (match == null) {
         continue;
       }
-      termIndex += 1;
       final term = match.group(1)!.trim();
       final definition = match.group(2)!.trim();
+      final contentHash = _sha256ForString('$term\n$definition');
       chunks.add(
         PlannedChunk(
-          chunkId:
-              '${document.docId}__term_${termIndex.toString().padLeft(3, '0')}',
+          chunkId: _contentAddressedChunkId(
+            docId: document.docId,
+            contentHash: contentHash,
+          ),
           docId: document.docId,
           sourcePath: document.sourcePath,
           chunkProfile: document.chunkProfile,
@@ -399,7 +401,7 @@ class CorpusChunkPlanner {
           endLine: index + 1,
           estimatedTokens: _estimateTokens('$term $definition'),
           riskLevel: document.riskLevel,
-          contentHash: _sha256ForString('$term\n$definition'),
+          contentHash: contentHash,
           text: definition,
         ),
       );
@@ -418,23 +420,18 @@ class CorpusChunkPlanner {
     final lines = text.split('\n');
     final sections = _markdownSections(document, lines);
     final chunks = <PlannedChunk>[];
-    final countersBySection = <String, int>{};
 
     for (final section in sections) {
       if (section.body.trim().isEmpty) {
         continue;
       }
 
-      final sectionKey = section.headingPath.join(' > ');
       final estimatedTokens = _estimateTokens(section.body);
       if (estimatedTokens <= 900) {
-        final index = (countersBySection[sectionKey] ?? 0) + 1;
-        countersBySection[sectionKey] = index;
         chunks.add(
           _plannedSectionChunk(
             document: document,
             section: section,
-            index: index,
             startLine: section.startLine,
             endLine: section.endLine,
             text: section.body,
@@ -444,13 +441,10 @@ class CorpusChunkPlanner {
       }
 
       for (final split in _splitLargeSection(section)) {
-        final index = (countersBySection[sectionKey] ?? 0) + 1;
-        countersBySection[sectionKey] = index;
         chunks.add(
           _plannedSectionChunk(
             document: document,
             section: section,
-            index: index,
             startLine: split.startLine,
             endLine: split.endLine,
             text: split.text,
@@ -465,15 +459,16 @@ class CorpusChunkPlanner {
   PlannedChunk _plannedSectionChunk({
     required CorpusDocument document,
     required _MarkdownSection section,
-    required int index,
     required int startLine,
     required int endLine,
     required String text,
   }) {
-    final sectionSlug = _slug(section.headingPath.join('_'));
+    final contentHash = _sha256ForString(text);
     return PlannedChunk(
-      chunkId:
-          '${document.docId}__${sectionSlug}_${index.toString().padLeft(3, '0')}',
+      chunkId: _contentAddressedChunkId(
+        docId: document.docId,
+        contentHash: contentHash,
+      ),
       docId: document.docId,
       sourcePath: document.sourcePath,
       chunkProfile: document.chunkProfile,
@@ -483,7 +478,7 @@ class CorpusChunkPlanner {
       endLine: endLine,
       estimatedTokens: _estimateTokens(text),
       riskLevel: document.riskLevel,
-      contentHash: _sha256ForString(text),
+      contentHash: contentHash,
       text: text,
     );
   }
@@ -924,9 +919,12 @@ class CorpusDbLoadPreparer {
     await File(
       p.join(output.path, loadFiles[1]),
     ).writeAsString(_sourceDocumentsSql(runId, documents));
+    final materializedDocIds = <String>[
+      for (final document in documents) document['doc_id'].toString(),
+    ]..sort();
     await File(
       p.join(output.path, loadFiles[2]),
-    ).writeAsString(_sourceChunksSql(runId, chunks));
+    ).writeAsString(_sourceChunksSql(runId, chunks, materializedDocIds));
     await File(
       p.join(output.path, loadFiles[3]),
     ).writeAsString(_graphNodeSeedsSql(runId, nodeSeeds));
@@ -1124,19 +1122,52 @@ on conflict (doc_id) do update set
     return buffer.toString();
   }
 
-  String _sourceChunksSql(String runId, List<Map<String, Object?>> records) {
+  String _sourceChunksSql(
+    String runId,
+    List<Map<String, Object?>> records,
+    List<String> materializedDocIds,
+  ) {
+    final docIds = materializedDocIds.toSet().toList()..sort();
+
     final buffer = StringBuffer('''
 -- Generated by tool/advisor_corpus prepare-load.
 -- Depends on 002_source_documents.sql.
+--
+-- 11a.11a active/inactive semantics. Chunk ids are content-addressed
+-- (chunk_id encodes the chunk content hash). When a doc is
+-- re-materialized, all of its prior chunks are first marked inactive;
+-- the upsert below then re-inserts (or re-activates) only the chunks
+-- whose content survives the new run. Old chunks stay in the table —
+-- never deleted — so old advisor recommendations remain replayable
+-- against the exact chunks they cited.
+--
+-- 11a.11b: the deactivation list is keyed off the materialized
+-- source-document records (the doc_ids that came through the
+-- manifest this run), not the current chunk records. A doc that
+-- materializes with zero chunks must still mark its prior chunks
+-- inactive — otherwise stale chunks would leak into search results
+-- because their parent doc no longer produces any active rows to
+-- shadow them.
 
 ''');
+
+    if (docIds.isNotEmpty) {
+      final inList = docIds.map(_textLiteral).join(', ');
+      buffer.writeln('''
+update public.advisor_source_chunks
+   set active = false,
+       updated_at = now()
+ where doc_id in ($inList);
+''');
+    }
+
     for (final record in records) {
       buffer.writeln('''
 insert into public.advisor_source_chunks (
   chunk_id, doc_id, ingestion_run_id, source_path, scope, restaurant_id,
   chunk_kind, chunk_profile, heading_path, start_line, end_line,
   estimated_tokens, risk_level, content_sha256, embedding_status,
-  embedding_model, text, provenance
+  embedding_model, text, provenance, active
 ) values (
   ${_textLiteral(record['chunk_id'])},
   ${_textLiteral(record['doc_id'])},
@@ -1155,7 +1186,8 @@ insert into public.advisor_source_chunks (
   ${_textLiteral(record['embedding_status'])},
   ${_nullableTextLiteral(record['embedding_model'])},
   ${_textLiteral(record['text'])},
-  ${_jsonLiteral(record['provenance'])}::jsonb
+  ${_jsonLiteral(record['provenance'])}::jsonb,
+  true
 )
 on conflict (chunk_id) do update set
   doc_id = excluded.doc_id,
@@ -1174,7 +1206,8 @@ on conflict (chunk_id) do update set
   embedding_status = excluded.embedding_status,
   embedding_model = excluded.embedding_model,
   text = excluded.text,
-  provenance = excluded.provenance;
+  provenance = excluded.provenance,
+  active = excluded.active;
 ''');
     }
     return buffer.toString();
@@ -1269,6 +1302,544 @@ class DbLoadPreparationResult {
   final int graphNodeSeedCount;
   final int graphEdgeHintCount;
   final List<String> loadFiles;
+}
+
+// ─── 7.57.4 AGE graph projection ─────────────────────────────────────────────
+//
+// CorpusAgeProjectionPreparer turns the staged graph node seeds and edge hints
+// into deterministic Apache AGE projection + smoke-traversal SQL artifacts.
+// Generated only — no DB mutation, no live API calls. The projection SQL is
+// idempotent (MERGE-based) and table-driven (reads from
+// public.advisor_graph_node_seeds and public.advisor_graph_edge_hints). When
+// Apache AGE is not available locally the same artifacts emit an explicit
+// AGE_BLOCKER RAISE NOTICE rather than failing silently or pretending success.
+
+const String advisorAgeGraphName = 'advisor_corpus';
+
+class CorpusAgeProjectionPreparer {
+  CorpusAgeProjectionPreparer({required Directory repoRoot})
+    : _repoRoot = repoRoot;
+
+  final Directory _repoRoot;
+
+  static const String projectionFileName = '006_age_projection.sql';
+  static const String smokeFileName = '007_age_smoke_traversal.sql';
+  static const String manifestFileName = 'age_projection_manifest.json';
+
+  Future<AgeProjectionPreparationResult> prepare({
+    String materializationDirectory = 'build/advisor_corpus',
+    String outputDirectory = 'build/advisor_corpus/age',
+  }) async {
+    final materialized = Directory(
+      p.join(_repoRoot.path, materializationDirectory),
+    );
+    final output = Directory(p.join(_repoRoot.path, outputDirectory));
+    output.createSync(recursive: true);
+
+    final summary = await _readJsonFile(
+      File(p.join(materialized.path, 'manifest_summary.json')),
+    );
+
+    final projectionRunId = _deterministicUuid(
+      'age_projection:${jsonEncode(summary)}',
+    );
+
+    final projectionSql = _projectionSql();
+    final smokeSql = _smokeTraversalSql();
+
+    await File(
+      p.join(output.path, projectionFileName),
+    ).writeAsString(projectionSql);
+    await File(p.join(output.path, smokeFileName)).writeAsString(smokeSql);
+
+    final expectedNodeSeedCount =
+        (summary['graph_node_seed_count'] as int?) ?? 0;
+    final expectedEdgeHintCount =
+        (summary['graph_edge_hint_count'] as int?) ?? 0;
+
+    final manifest = <String, Object?>{
+      'record_type': 'advisor_corpus_age_projection_manifest',
+      'preparer_version': 1,
+      'projection_run_id': projectionRunId,
+      'graph_name': advisorAgeGraphName,
+      'source_materialization_directory': materializationDirectory,
+      'apply_mode': 'not_applied_build_artifacts_only',
+      'projection_files': <Map<String, Object?>>[
+        <String, Object?>{
+          'order': 1,
+          'file': projectionFileName,
+          'role': 'projection',
+        },
+        <String, Object?>{
+          'order': 2,
+          'file': smokeFileName,
+          'role': 'smoke_traversal',
+        },
+      ],
+      'projection_inputs': <String, Object?>{
+        'graph_node_seed_table': 'public.advisor_graph_node_seeds',
+        'graph_edge_hint_table': 'public.advisor_graph_edge_hints',
+        'expected_node_types': const <String>['Document', 'Chunk'],
+        'expected_edge_types': const <String>['CONTAINS'],
+      },
+      'expected_counts_from_summary': <String, Object?>{
+        'graph_node_seeds': expectedNodeSeedCount,
+        'graph_edge_hints': expectedEdgeHintCount,
+      },
+      'smoke_traversal': <String, Object?>{
+        'goal': 'reach_cplh_bearing_chunk_via_graph',
+        'pattern': '(d:Document)-[:CONTAINS]->(c:Chunk)',
+        'cplh_filter':
+            'join with public.advisor_source_chunks; '
+            'case-insensitive match on chunk text or heading_path',
+      },
+      'blocker_path': <String, Object?>{
+        'condition':
+            "pg_available_extensions does not list extension name 'age'",
+        'behavior':
+            'projection and smoke files RAISE NOTICE with the AGE_BLOCKER '
+            'prefix and exit cleanly without mutating the database',
+      },
+      'notes': <String>[
+        'The currently materialized graph is Document/Chunk with CONTAINS edges only. Richer Metric / Chapter / Formula node types are not present in the current seeds; introducing them belongs to a future semantic-extraction slice, not this projection slice.',
+        'Vector-only retrieval remains the launch fallback insurance if local AGE cannot be enabled.',
+      ],
+    };
+
+    await File(p.join(output.path, manifestFileName)).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(manifest),
+    );
+
+    return AgeProjectionPreparationResult(
+      outputDirectory: output.path,
+      projectionRunId: projectionRunId,
+      graphName: advisorAgeGraphName,
+      projectionFiles: const <String>[projectionFileName, smokeFileName],
+      manifestFile: manifestFileName,
+      expectedNodeSeedCount: expectedNodeSeedCount,
+      expectedEdgeHintCount: expectedEdgeHintCount,
+    );
+  }
+
+  Future<Map<String, Object?>> _readJsonFile(File file) async {
+    if (!file.existsSync()) {
+      throw CorpusManifestException(
+        'Materialized file not found: ${file.path}',
+      );
+    }
+    return jsonDecode(await file.readAsString()) as Map<String, Object?>;
+  }
+
+  String _projectionSql() {
+    return '''
+-- Generated by tool/advisor_corpus prepare-age-projection.
+-- Idempotent Apache AGE graph projection from the advisor corpus staging
+-- tables to graph "$advisorAgeGraphName". Build artifact only. Do not apply
+-- without an explicit live-DB slice.
+--
+-- Reads:
+--   public.advisor_graph_node_seeds  (node_type in (Document, Chunk))
+--   public.advisor_graph_edge_hints  (edge_type CONTAINS)
+-- Writes (only when AGE is available):
+--   ag_catalog graph "$advisorAgeGraphName"
+--   public.advisor_graph_node_seeds.age_graph_name / age_vertex_id
+--   public.advisor_graph_edge_hints.age_graph_name / age_edge_id
+-- Blocker:
+--   AGE missing -> RAISE NOTICE 'AGE_BLOCKER: ...' and exit cleanly.
+
+do \$age_projection\$
+declare
+  age_present boolean;
+  graph_name text := '$advisorAgeGraphName';
+  rec record;
+  params_json jsonb;
+  cypher_query text;
+begin
+  select exists (
+    select 1 from pg_available_extensions where name = 'age'
+  ) into age_present;
+
+  if not age_present then
+    raise notice
+      'AGE_BLOCKER: Apache AGE extension is not available in this Postgres '
+      'instance. Advisor graph projection cannot proceed locally. Record this '
+      'blocker as the 7.57.4 acceptance evidence and continue with vector-only '
+      'retrieval as the launch fallback until AGE is provisioned.';
+    return;
+  end if;
+
+  execute 'create extension if not exists age';
+  execute \$age_load\$load 'age'\$age_load\$;
+  perform set_config('search_path', 'ag_catalog,"\$user",public', false);
+
+  if not exists (select 1 from ag_catalog.ag_graph where name = graph_name) then
+    perform ag_catalog.create_graph(graph_name);
+  end if;
+
+  -- Project Document vertices from public.advisor_graph_node_seeds.
+  for rec in
+    select node_id, source_doc_id, properties
+    from public.advisor_graph_node_seeds
+    where node_type = 'Document'
+    order by node_id
+  loop
+    params_json := jsonb_build_object(
+      'node_id', rec.node_id,
+      'source_doc_id', rec.source_doc_id,
+      'properties', rec.properties
+    );
+    execute format(
+      \$cy\$select * from cypher(%L, %L, %L) as (v agtype)\$cy\$,
+      graph_name,
+      'MERGE (v:Document {node_id: \$node_id}) '
+      'SET v.source_doc_id = \$source_doc_id, '
+      '    v.properties = \$properties '
+      'RETURN v',
+      params_json
+    );
+  end loop;
+
+  -- Project Chunk vertices from public.advisor_graph_node_seeds.
+  for rec in
+    select node_id, source_doc_id, source_chunk_id, properties
+    from public.advisor_graph_node_seeds
+    where node_type = 'Chunk'
+    order by node_id
+  loop
+    params_json := jsonb_build_object(
+      'node_id', rec.node_id,
+      'source_doc_id', rec.source_doc_id,
+      'source_chunk_id', rec.source_chunk_id,
+      'properties', rec.properties
+    );
+    execute format(
+      \$cy\$select * from cypher(%L, %L, %L) as (v agtype)\$cy\$,
+      graph_name,
+      'MERGE (v:Chunk {node_id: \$node_id}) '
+      'SET v.source_doc_id = \$source_doc_id, '
+      '    v.source_chunk_id = \$source_chunk_id, '
+      '    v.properties = \$properties '
+      'RETURN v',
+      params_json
+    );
+  end loop;
+
+  -- Stamp the projected vertex provenance back onto the seed table.
+  update public.advisor_graph_node_seeds n
+     set age_graph_name = graph_name,
+         age_vertex_id = n.node_id;
+
+  -- Project edges from public.advisor_graph_edge_hints. The edge type is
+  -- inlined into the Cypher string after a strict identifier check; values
+  -- are passed through the parameter map.
+  for rec in
+    select edge_id, edge_type, from_node_id, to_node_id, properties
+    from public.advisor_graph_edge_hints
+    order by edge_id
+  loop
+    if rec.edge_type !~ '^[A-Za-z_][A-Za-z0-9_]*\$' then
+      raise exception
+        'AGE_PROJECTION_INVALID_EDGE_TYPE: % (edge_id=%)',
+        rec.edge_type, rec.edge_id;
+    end if;
+    params_json := jsonb_build_object(
+      'edge_id', rec.edge_id,
+      'from_node_id', rec.from_node_id,
+      'to_node_id', rec.to_node_id,
+      'properties', rec.properties
+    );
+    cypher_query := format(
+      'MATCH (a {node_id: \$from_node_id}), (b {node_id: \$to_node_id}) '
+      'MERGE (a)-[r:%s {edge_id: \$edge_id}]->(b) '
+      'SET r.properties = \$properties '
+      'RETURN r',
+      rec.edge_type
+    );
+    execute format(
+      \$cy\$select * from cypher(%L, %L, %L) as (e agtype)\$cy\$,
+      graph_name, cypher_query, params_json
+    );
+  end loop;
+
+  update public.advisor_graph_edge_hints e
+     set age_graph_name = graph_name,
+         age_edge_id = e.edge_id;
+
+  raise notice
+    'AGE_PROJECTION_OK: graph="%" projected from '
+    'public.advisor_graph_node_seeds and public.advisor_graph_edge_hints.',
+    graph_name;
+end;
+\$age_projection\$;
+''';
+  }
+
+  String _smokeTraversalSql() {
+    return '''
+-- Generated by tool/advisor_corpus prepare-age-projection.
+-- Smoke traversal: reach a CPLH-bearing chunk through the projected
+-- Document -> CONTAINS -> Chunk shape using AGE Cypher, then verify the
+-- reached chunk's text or heading mentions CPLH by joining the source
+-- chunk row in public.advisor_source_chunks. Build artifact only.
+--
+-- Notes on shape:
+--   The current materialized graph contains Document and Chunk vertices
+--   and CONTAINS edges only. Richer Metric / Chapter / Formula nodes are
+--   not present in the current seeds. The smoke proves CPLH reachability
+--   honestly against this shape rather than inventing intermediate nodes.
+
+do \$age_smoke\$
+declare
+  age_present boolean;
+  graph_name text := '$advisorAgeGraphName';
+  document_chunk_pairs bigint;
+  cplh_bearing_chunks bigint;
+begin
+  select exists (
+    select 1 from pg_available_extensions where name = 'age'
+  ) into age_present;
+
+  if not age_present then
+    raise notice
+      'AGE_BLOCKER: smoke traversal cannot run because Apache AGE is not '
+      'available in this Postgres instance. Vector-only retrieval remains '
+      'the launch fallback until AGE is provisioned.';
+    return;
+  end if;
+
+  execute \$age_load\$load 'age'\$age_load\$;
+  perform set_config('search_path', 'ag_catalog,"\$user",public', false);
+
+  -- Step 1: count Document -> CONTAINS -> Chunk pairs reachable in the graph.
+  execute format(
+    \$cy\$select count(*) from cypher(%L, \$cypher\$
+      MATCH (d:Document)-[:CONTAINS]->(c:Chunk)
+      RETURN d.node_id, c.node_id
+    \$cypher\$) as (d agtype, c agtype)\$cy\$,
+    graph_name
+  ) into document_chunk_pairs;
+
+  -- Step 2: of the chunks reachable through the graph traversal, count those
+  -- whose source chunk row in public.advisor_source_chunks mentions CPLH in
+  -- text or heading_path (case-insensitive). The traversal -> SQL join is
+  -- the honest way to prove CPLH reachability with the current node shape.
+  execute format(
+    \$wrap\$
+      with reachable_chunks as (
+        select trim(both '"' from (c::text)) as chunk_node_id
+        from cypher(%L, \$cypher\$
+          MATCH (d:Document)-[:CONTAINS]->(c:Chunk)
+          RETURN c.node_id
+        \$cypher\$) as (c agtype)
+      )
+      select count(*)
+        from reachable_chunks r
+        join public.advisor_graph_node_seeds n
+          on n.node_id = r.chunk_node_id
+        join public.advisor_source_chunks ch
+          on ch.chunk_id = n.source_chunk_id
+        where lower(ch.text) like '%cplh%'
+           or exists (
+             select 1
+             from unnest(ch.heading_path) as h(label)
+             where lower(label) like '%cplh%'
+           )
+    \$wrap\$,
+    graph_name
+  ) into cplh_bearing_chunks;
+
+  raise notice
+    'AGE_SMOKE_OK: graph="%", document_chunk_pairs=%, '
+    'cplh_bearing_chunks=%.',
+    graph_name, document_chunk_pairs, cplh_bearing_chunks;
+
+  if cplh_bearing_chunks = 0 then
+    raise notice
+      'AGE_SMOKE_NOTE: zero CPLH-bearing chunks reached. The traversal '
+      'pattern itself executed cleanly; record this as evidence the graph '
+      'shape is honest about what the current corpus exposes.';
+  end if;
+end;
+\$age_smoke\$;
+''';
+  }
+}
+
+class AgeProjectionPreparationResult {
+  AgeProjectionPreparationResult({
+    required this.outputDirectory,
+    required this.projectionRunId,
+    required this.graphName,
+    required this.projectionFiles,
+    required this.manifestFile,
+    required this.expectedNodeSeedCount,
+    required this.expectedEdgeHintCount,
+  });
+
+  final String outputDirectory;
+  final String projectionRunId;
+  final String graphName;
+  final List<String> projectionFiles;
+  final String manifestFile;
+  final int expectedNodeSeedCount;
+  final int expectedEdgeHintCount;
+}
+
+// ─── 11a.9 Rerank smoke ──────────────────────────────────────────────────────
+//
+// CorpusRerankSmokeRunner takes vector-search-style candidate rows (the shape
+// produced by `public.advisor_search_chunks` from 11a.8) and routes them
+// through an injected `RerankProvider`. It does not retrieve candidates and
+// it does not answer questions — Voyage `rerank-2.5` orders the candidates,
+// the Claude answer runtime ships in a later slice, and AGE remains the
+// graph-first launch path with vector/rerank as fallback / candidate support.
+//
+// The runner is fake-testable: tests pass a `VoyageRerankProvider` constructed
+// with a fake gateway. No live HTTP/API calls and no API key are required.
+
+/// One vector-search candidate row consumed by the rerank smoke. Mirrors
+/// the columns advisor_search_chunks returns that the rerank stage cares
+/// about, plus the citation/provenance metadata that must survive into
+/// the reranked output for the Claude answer runtime.
+class CorpusVectorSearchCandidate {
+  const CorpusVectorSearchCandidate({
+    required this.chunkId,
+    required this.text,
+    required this.sourcePath,
+    required this.headingPath,
+    required this.contentSha256,
+    required this.provenance,
+    required this.similarity,
+    required this.distance,
+  });
+
+  final String chunkId;
+  final String text;
+  final String sourcePath;
+  final List<String> headingPath;
+  final String contentSha256;
+  final Map<String, Object?> provenance;
+  final double similarity;
+  final double distance;
+}
+
+/// One reranked output row. Carries the rerank rank/score AND the
+/// original vector similarity/distance AND the citation/provenance
+/// metadata pulled from the matching candidate row.
+class CorpusRerankSmokeRow {
+  const CorpusRerankSmokeRow({
+    required this.chunkId,
+    required this.rank,
+    required this.rerankScore,
+    required this.vectorSimilarity,
+    required this.vectorDistance,
+    required this.sourcePath,
+    required this.headingPath,
+    required this.contentSha256,
+    required this.provenance,
+  });
+
+  final String chunkId;
+
+  /// 0-based rank from the rerank provider (0 = top-scoring).
+  final int rank;
+
+  /// Provider-reported rerank score. Higher = more relevant.
+  final double rerankScore;
+
+  /// Original cosine similarity from advisor_search_chunks.
+  final double vectorSimilarity;
+
+  /// Original cosine distance from advisor_search_chunks.
+  final double vectorDistance;
+
+  final String sourcePath;
+  final List<String> headingPath;
+  final String contentSha256;
+  final Map<String, Object?> provenance;
+}
+
+/// Result of one rerank smoke run.
+class CorpusRerankSmokeResult {
+  const CorpusRerankSmokeResult({
+    required this.providerId,
+    required this.modelId,
+    required this.query,
+    required this.rows,
+  });
+
+  /// Provider id reported by the injected RerankProvider (e.g. `voyage`).
+  final String providerId;
+
+  /// Model id reported by the injected RerankProvider (e.g. `rerank-2.5`).
+  final String modelId;
+
+  /// Query text passed to the rerank stage.
+  final String query;
+
+  /// Candidate rows in rerank order. Empty when the input is empty.
+  final List<CorpusRerankSmokeRow> rows;
+}
+
+class CorpusRerankSmokeRunner {
+  CorpusRerankSmokeRunner({required RerankProvider rerankProvider})
+    : _rerankProvider = rerankProvider;
+
+  final RerankProvider _rerankProvider;
+
+  /// Run rerank against [candidates] for [query]. Empty candidates
+  /// short-circuit to an empty result without calling the provider.
+  /// Unknown / size-mismatched gateway responses propagate the
+  /// existing `RerankProvider` checks (e.g. `StateError`).
+  Future<CorpusRerankSmokeResult> run({
+    required String query,
+    required List<CorpusVectorSearchCandidate> candidates,
+  }) async {
+    if (candidates.isEmpty) {
+      return CorpusRerankSmokeResult(
+        providerId: _rerankProvider.providerId,
+        modelId: _rerankProvider.modelId,
+        query: query,
+        rows: const <CorpusRerankSmokeRow>[],
+      );
+    }
+
+    final rerankCandidates = <RerankCandidate>[
+      for (final candidate in candidates)
+        RerankCandidate(id: candidate.chunkId, text: candidate.text),
+    ];
+
+    final rerankResults = await _rerankProvider.rerank(
+      query,
+      rerankCandidates,
+    );
+
+    final byId = <String, CorpusVectorSearchCandidate>{
+      for (final candidate in candidates) candidate.chunkId: candidate,
+    };
+
+    final rows = <CorpusRerankSmokeRow>[
+      for (final result in rerankResults)
+        CorpusRerankSmokeRow(
+          chunkId: result.id,
+          rank: result.rank,
+          rerankScore: result.score,
+          vectorSimilarity: byId[result.id]!.similarity,
+          vectorDistance: byId[result.id]!.distance,
+          sourcePath: byId[result.id]!.sourcePath,
+          headingPath: byId[result.id]!.headingPath,
+          contentSha256: byId[result.id]!.contentSha256,
+          provenance: byId[result.id]!.provenance,
+        ),
+    ];
+
+    return CorpusRerankSmokeResult(
+      providerId: _rerankProvider.providerId,
+      modelId: _rerankProvider.modelId,
+      query: query,
+      rows: rows,
+    );
+  }
 }
 
 class CorpusEmbeddingJobPreparer {
@@ -1457,12 +2028,21 @@ class CorpusEmbeddingJobPreparer {
 -- Model: $model
 -- Dimensions: $dimensions
 --
+-- 11a.8 versioned-metadata note: every Voyage row written by
+-- execute-embeddings carries the legacy `embedding_model` column AND
+-- the provider-safe triple (`embedding_provider_id`,
+-- `embedding_model_id`, `embedding_dimension`) consumed by
+-- `public.advisor_search_chunks` and the HNSW partial index.
+--
 -- Expected successful row update shape:
 --
 -- update public.advisor_source_chunks
 -- set
 --   embedding_status = 'ready',
 --   embedding_model = '$model',
+--   embedding_provider_id = '$provider',
+--   embedding_model_id = '$model',
+--   embedding_dimension = $dimensions,
 --   embedding = '<$dimensions floats>'::vector($dimensions)
 -- where chunk_id = '<chunk_id>'
 --   and content_sha256 = '<content_sha256>';
@@ -1698,7 +2278,7 @@ class CorpusEmbeddingExecutor {
     const executionManifestFileName = 'embedding_execution_manifest.json';
     await File(
       p.join(outputDir.path, sqlFileName),
-    ).writeAsString(_embeddingUpdatesSql(model, dimensions, rows));
+    ).writeAsString(_embeddingUpdatesSql(provider, model, dimensions, rows));
 
     final executionManifest = <String, Object?>{
       'record_type': 'advisor_corpus_embedding_execution_manifest',
@@ -1815,6 +2395,7 @@ class CorpusEmbeddingExecutor {
   }
 
   String _embeddingUpdatesSql(
+    String provider,
     String model,
     int dimensions,
     List<_EmbeddingUpdateRow> rows,
@@ -1822,6 +2403,10 @@ class CorpusEmbeddingExecutor {
     final buffer = StringBuffer('''
 -- Generated by tool/advisor_corpus execute-embeddings.
 -- Applies Voyage embedding vectors to matching chunks by id + content hash.
+-- 11a.8: writes legacy embedding_model AND the provider/model/dimension
+-- triple consumed by public.advisor_search_chunks and the HNSW partial
+-- index. The triple keeps candidate retrieval provider-safe so future
+-- providers cannot silently mix into Voyage results.
 
 begin;
 
@@ -1832,6 +2417,9 @@ update public.advisor_source_chunks
 set
   embedding_status = 'ready',
   embedding_model = ${_textLiteral(model)},
+  embedding_provider_id = ${_textLiteral(provider)},
+  embedding_model_id = ${_textLiteral(model)},
+  embedding_dimension = $dimensions,
   embedding = ${_vectorLiteral(row.vector, dimensions)}
 where chunk_id = ${_textLiteral(row.chunkId)}
   and content_sha256 = ${_textLiteral(row.contentSha256)};
@@ -1925,6 +2513,17 @@ Future<String> sha256ForFile(File file) async {
   return sha256.convert(bytes).toString();
 }
 
+/// 11a.11a content-addressed chunk id. Doc-prefixed so identical
+/// chunk text in different docs produces different ids; the trailing
+/// 16 hex chars are the head of the chunk's sha256, so changing the
+/// chunk text changes the id while same-content reruns produce the
+/// same id (deterministic). 16 hex chars = 64 bits, far below any
+/// realistic per-doc collision probability.
+String _contentAddressedChunkId({
+  required String docId,
+  required String contentHash,
+}) => '${docId}__c_${contentHash.substring(0, 16)}';
+
 String _sha256ForString(String value) =>
     sha256.convert(utf8.encode(value)).toString();
 
@@ -1963,15 +2562,6 @@ String _textArrayLiteral(Object? value) {
 int _estimateTokens(String text) {
   final words = RegExp(r'\S+').allMatches(text).length;
   return (words * 4 / 3).ceil();
-}
-
-String _slug(String input) {
-  final slug = input
-      .toLowerCase()
-      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
-      .replaceAll(RegExp(r'_+'), '_')
-      .replaceAll(RegExp(r'^_|_$'), '');
-  return slug.isEmpty ? 'section' : slug;
 }
 
 String _stripMarkdownInline(String input) =>

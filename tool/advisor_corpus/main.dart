@@ -125,6 +125,42 @@ Future<void> main(List<String> args) async {
         stdout.writeln('Output: ${result.outputDirectory}');
         stdout.writeln('Mode: dry run, no API call, no DB mutation.');
         break;
+      case 'prepare-age-projection':
+        final materializationDirectory =
+            _option(args, 'materialized') ?? 'build/advisor_corpus';
+        final outputDirectory =
+            _option(args, 'output') ?? 'build/advisor_corpus/age';
+        final planner = CorpusChunkPlanner(repoRoot: repoRoot);
+        final plan = await planner.plan(validation.manifest);
+        final materializer = CorpusIngestionMaterializer(repoRoot: repoRoot);
+        await materializer.materialize(
+          manifest: validation.manifest,
+          plan: plan,
+          outputDirectory: materializationDirectory,
+        );
+        final preparer = CorpusAgeProjectionPreparer(repoRoot: repoRoot);
+        final result = await preparer.prepare(
+          materializationDirectory: materializationDirectory,
+          outputDirectory: outputDirectory,
+        );
+        stdout.writeln(
+          'Advisor corpus AGE projection prep OK: '
+          '${result.expectedNodeSeedCount} graph node seeds, '
+          '${result.expectedEdgeHintCount} graph edge hints '
+          '(generated SQL only; no DB mutation).',
+        );
+        stdout.writeln('Graph: ${result.graphName}');
+        stdout.writeln('Projection run ID: ${result.projectionRunId}');
+        stdout.writeln('Output: ${result.outputDirectory}');
+        stdout.writeln(
+          'Files: ${result.projectionFiles.join(', ')}, '
+          '${result.manifestFile}',
+        );
+        stdout.writeln(
+          'Blocker path: emits AGE_BLOCKER RAISE NOTICE when '
+          'pg_available_extensions does not list age.',
+        );
+        break;
       case 'execute-embeddings':
         final inputDirectory =
             _option(args, 'input') ?? 'build/advisor_corpus/embeddings';
@@ -170,7 +206,8 @@ Future<void> main(List<String> args) async {
         stderr.writeln('Unknown command: $command');
         stderr.writeln(
           'Usage: dart run tool/advisor_corpus/main.dart '
-          '[validate|plan-chunks|materialize|prepare-load|prepare-embeddings|execute-embeddings]',
+          '[validate|plan-chunks|materialize|prepare-load|'
+          'prepare-embeddings|execute-embeddings|prepare-age-projection]',
         );
         exitCode = 64;
     }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
 import '../state/app_refresh_coordinator.dart';
@@ -9,6 +10,7 @@ import '../services/shift_service.dart';
 import '../models/app_data_status.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
+import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_timing_authority_section.dart';
@@ -33,12 +35,26 @@ class SettingsScreen extends StatefulWidget {
   /// `advisorModelSectionEnabled`.
   final bool forceShowAdvisorModelSection;
 
+  /// Optional injected advisor corpus admin service for testability.
+  /// When null, the dev-only `ADVISOR CORPUS` section is hidden unless
+  /// the test-only force flag below is set. Tests pass a service
+  /// directly; debug builds wire one in their app shell to opt in.
+  final AdvisorCorpusAdminService? advisorCorpusAdminService;
+
+  /// Test-only override: when true, the `ADVISOR CORPUS` section
+  /// renders even outside `kDebugMode`. Production code never sets
+  /// this; in release builds the section is gated by
+  /// `advisorCorpusSectionEnabled`.
+  final bool forceShowAdvisorCorpusSection;
+
   const SettingsScreen({
     super.key,
     this.initialStatus,
     this.initialMockDate,
     this.advisorModelConfigService,
     this.forceShowAdvisorModelSection = false,
+    this.advisorCorpusAdminService,
+    this.forceShowAdvisorCorpusSection = false,
   });
 
   @override
@@ -257,6 +273,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: SettingsAdvisorModelSection(
                       service: widget.advisorModelConfigService ??
                           AdvisorModelConfigService(),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+          // ── ADVISOR CORPUS (dev-only) ────────────────────────────────
+          // Visibility:
+          //   * forceShowAdvisorCorpusSection (test-only override), OR
+          //   * kDebugMode AND a corpus admin service is explicitly
+          //     wired.
+          //
+          // Local-only scaffold. Cloud apply remains blocked until the
+          // 11a.11b prerequisites land. Tests pass both the service
+          // and (optionally) the force flag — keeps this surface out
+          // of every default Settings smoke test.
+          if (widget.forceShowAdvisorCorpusSection ||
+              (advisorCorpusSectionEnabled &&
+                  widget.advisorCorpusAdminService != null))
+            SliverMainAxisGroup(
+              slivers: [
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: StickySectionDelegate('ADVISOR CORPUS'),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: SettingsAdvisorCorpusSection(
+                      service: widget.advisorCorpusAdminService ??
+                          AdvisorCorpusAdminService(),
                     ),
                   ),
                 ),

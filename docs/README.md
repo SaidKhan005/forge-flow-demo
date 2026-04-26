@@ -34,7 +34,6 @@ Still-live lane docs grouped by phase family.
 
 Current live groups:
 
-- `docs/phases/post_11a7_stabilization_plan.md`
 - `docs/phases/phase_8/`
 - `docs/phases/phase_8_gate/`
 - `docs/phases/phase_8R/`

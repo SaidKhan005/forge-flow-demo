@@ -66,6 +66,85 @@ Accepted 2026-04-25.
   `test/wtd_variance_logic_test.dart`, and
   `test/variance_visual_widget_test.dart` (107 tests passed).
 
+### `7.57.3d` LLM Provider Rename + Capability
+
+Accepted 2026-04-25.
+
+- Renamed the advisor-specific answer seam to `LLMProvider.complete(...)`.
+- Renamed `AdvisorTier` / `AdvisorAnswer` to `LLMTier` / `LLMCompletion`.
+- Renamed `ClaudeAnswerProvider` to `ClaudeLLMProvider`.
+- Added `LLMProviderCapability.promptCaching`.
+- Preserved Haiku/Sonnet routing, default quick tier, dev overrides, Settings
+  model-routing behavior, and fake-gateway injection.
+- Verified by `dart analyze`,
+  `test/provider_abstraction_test.dart`, and
+  `test/settings_screen_widget_test.dart` (59 tests passed).
+
+`7.57.3` provider abstraction parent is accepted.
+
+### `7.57.4` AGE Projection Artifacts
+
+Accepted 2026-04-25.
+
+- Added deterministic `prepare-age-projection` artifacts for the advisor corpus:
+  AGE projection SQL, CPLH smoke-traversal SQL, and a projection manifest.
+- Projection reads from `public.advisor_graph_node_seeds` and
+  `public.advisor_graph_edge_hints`.
+- Generated SQL carries an explicit `AGE_BLOCKER` path when AGE is unavailable.
+- Codex local verification could not run Supabase because the `supabase` CLI is
+  unavailable in this environment; live AGE apply remains a pre-`11b` gate in an
+  AGE-enabled Supabase/Postgres environment.
+- Verified by `dart analyze` and `test/advisor_corpus_manifest_test.dart`
+  (21 tests passed).
+
+`7.57` stabilization is complete. `11a` resumes at `11a.8`.
+
+## 11a Accepted Detail
+
+### `11a.8` Vector Search Schema + Function
+
+Accepted 2026-04-25.
+
+- Added `supabase/migrations/202604250003_advisor_vector_search.sql`.
+- Added versioned embedding metadata columns on `advisor_source_chunks`:
+  `embedding_provider_id`, `embedding_model_id`, and `embedding_dimension`.
+- Added HNSW cosine partial index for ready Voyage `voyage-4-large`
+  `vector(1024)` rows.
+- Added `public.advisor_search_chunks(...)` for scoped top-K candidate
+  retrieval with citation/provenance metadata.
+- Updated generated embedding SQL to write both legacy `embedding_model` and
+  the provider/model/dimension triple.
+- Verified by `dart analyze` and `test/advisor_corpus_manifest_test.dart`
+  (22 tests passed).
+
+### `11a.9` Rerank Smoke Through Provider
+
+Accepted 2026-04-25.
+
+- Added a corpus rerank smoke runner that consumes vector-search-style
+  candidate rows.
+- Routed ordering through `RerankProvider` using fake-tested
+  `VoyageRerankProvider`.
+- Preserved chunk citation/provenance metadata plus original vector
+  similarity/distance.
+- Verified by `dart analyze`,
+  `test/advisor_corpus_manifest_test.dart`, and
+  `test/provider_abstraction_test.dart` (69 tests passed).
+
+### `11a.10a` Proxy Infrastructure Scaffold
+
+Accepted 2026-04-25.
+
+- Added `tool/advisor_proxy/` with a pure Dart, Cloud Run-ready HTTP scaffold.
+- Proxy config validates required secret names and keeps values out of
+  diagnostics/logging.
+- Added interface-based JWT verification, hard-fail-closed default verifier,
+  bearer extraction, and operator/location scope guard.
+- Added unauthenticated `GET /healthz` and protected `GET /v1/scope` smoke
+  route. No provider, Supabase, Firebase, or Flutter runtime calls.
+- Verified by `dart analyze` and `test/advisor_proxy_test.dart`
+  (21 tests passed).
+
 ## Archived Active Tracker Summaries (moved 2026-04-02)
 
 These summaries previously lived in the active tracker and were moved here to keep `PROJECT_TRACKER.md` focused on current work and next prompts.

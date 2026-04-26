@@ -11,8 +11,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../domain/services/advisor_answer_provider.dart';
 import '../../domain/services/advisor_model_routing.dart';
+import '../../domain/services/llm_provider.dart';
 import '../../services/advisor_model_config_service.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -174,10 +174,10 @@ class _AdvisorRoutingHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _row('QUICK', routing.effectiveQuickModelId,
-              routing.sourceLabelForTier(AdvisorTier.quick)),
+              routing.sourceLabelForTier(LLMTier.quick)),
           const SizedBox(height: 6),
           _row('NUANCED', routing.effectiveNuancedModelId,
-              routing.sourceLabelForTier(AdvisorTier.nuanced)),
+              routing.sourceLabelForTier(LLMTier.nuanced)),
         ],
       ),
     );

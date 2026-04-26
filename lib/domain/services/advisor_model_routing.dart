@@ -8,8 +8,8 @@
 // No I/O, no async, no SharedPreferences references. Persistence lives
 // in `AdvisorModelConfigService`.
 
-import 'advisor_answer_provider.dart';
 import 'advisor_provider_constants.dart';
+import 'llm_provider.dart';
 
 /// Provenance of a resolved advisor model id.
 enum AdvisorModelSource {
@@ -101,27 +101,27 @@ class AdvisorModelRouting {
   }
 
   /// Effective model id for [tier].
-  String modelIdForTier(AdvisorTier tier) {
+  String modelIdForTier(LLMTier tier) {
     switch (tier) {
-      case AdvisorTier.quick:
+      case LLMTier.quick:
         return effectiveQuickModelId;
-      case AdvisorTier.nuanced:
+      case LLMTier.nuanced:
         return effectiveNuancedModelId;
     }
   }
 
   /// Source of [tier]'s effective model id.
-  AdvisorModelSource sourceForTier(AdvisorTier tier) {
+  AdvisorModelSource sourceForTier(LLMTier tier) {
     switch (tier) {
-      case AdvisorTier.quick:
+      case LLMTier.quick:
         return quickSource;
-      case AdvisorTier.nuanced:
+      case LLMTier.nuanced:
         return nuancedSource;
     }
   }
 
   /// Display-friendly source label: `Default` or `Override`.
-  String sourceLabelForTier(AdvisorTier tier) {
+  String sourceLabelForTier(LLMTier tier) {
     switch (sourceForTier(tier)) {
       case AdvisorModelSource.defaultPinned:
         return 'Default';

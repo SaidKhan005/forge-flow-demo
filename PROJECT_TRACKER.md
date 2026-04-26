@@ -7,7 +7,7 @@ Execution model: We think, Claude codes
 ## Active Authority
 
 - `PROJECT_TRACKER.md`
-- `docs/phases/post_11a7_stabilization_plan.md`
+- `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 - `docs/DATA_ALIGNMENT_TRACKER.md` only when the slice is alignment-heavy
 - `docs/KNOWN_FAILING_TESTS.md` when a slice runs broad suites or hits a known red test
@@ -24,11 +24,19 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 ## Now
 
-- Current phase: `7.57` Stabilization, paused `11a` after `11a.7`.
-- Last accepted prompt: `7.57.3c` routed `StaticShiftDataSource` through
-  `MockReplayDataSourceProvider`.
-- Next slice prompt for Codex to generate: **`7.57.3d`**.
-- Active planning input: `docs/phases/post_11a7_stabilization_plan.md`.
+- Current phase: `11a` repo scaffold complete; paused for live infrastructure
+  sequencing decision.
+- Last accepted prompt: `11a.12c` enriched the local corpus admin preview with
+  ingestion-shaped metadata: normalized file/source identity, title preview,
+  heading count, estimated chunk count, and Settings display.
+- Next slice prompt for Codex to generate: **`11a.11c`** (cloud Supabase apply
+  + extension verify + AGE benchmark gate). Sequence locked 2026-04-25:
+  `11a.11c` → `11a.11d` → `11a.11e` (live infrastructure), then **Phase 11A
+  F&F Operations Console** (`11A.0` Flutter-for-Web bootstrap → `11A.1`
+  operator/location admin → `11A.2` pricing tier admin → `11A.3` corpus admin
+  → `11A.4` integration management → `11A.5` debug console → `11A.6`
+  observability dashboard), then resume the build cadence at `9.8`.
+- Active planning input: `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`.
 - Prompt loop: after each Claude report, Codex verifies repo truth, updates
   trackers, then generates the next prompt from updated tracker truth.
 - Current live-integration scope: one restaurant/location at launch, but
@@ -42,8 +50,9 @@ POS + Labor + Reservation Systems -> Canonical Operational Facts -> 60-Day Bench
 
 | Phase | Status | Current truth |
 | --- | --- | --- |
-| `7.57` | active | Structural stabilization. `7.57.0`, `7.57.1`, `7.57.2`, `7.57.3a`, `7.57.3b`, and `7.57.3c` accepted. Next: `7.57.3d`. |
-| `11a` | paused at `11a.7` | Corpus, chunking, local Supabase load, Voyage embeddings, and embedding load are landed. Resumes as `11a.8` after `7.57.4` accepts. |
+| `7.57` | complete | Stabilization accepted through `7.57.4`; completed plan archived. |
+| `11a` | repo scaffold complete; live sequencing pending | Corpus, chunking, local Supabase load, Voyage embeddings, embedding load, AGE projection artifacts, vector search, rerank smoke, proxy scaffold, proxy usage enforcement, replay-safe content-addressed chunks, cloud DB readiness blocker capture, local env-example hygiene, and the debug-wired corpus admin local preview scaffold are landed. Pause now to decide where to sequence live infrastructure work before real 11b advisor behavior. |
+| `11A` | queued (capital A) | F&F Operations Console — web/desktop admin backend. Foundation slices (`11A.0–6`) open after `11a.11c-e` close and before `9.8`; polish slices (`11A.7–10`) interleave post-`11b`. New phase added 2026-04-25; supersedes the earlier `11a.12` and `11a.13` Flutter-Settings framing. Plan: `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`. |
 | `7.58` | queued | Pre-11b behavioral alignment lane. Opens after `9.5`; closes before `11b.0`. |
 | `7.61` | queued | Pre-Phase-8 freshness audit. Opens after `10b`; closes before Phase 8. |
 
@@ -52,13 +61,44 @@ Completed phase history was moved to
 
 ## Current Slice Queue
 
-`7.57` remaining sequence:
+`11a` live-infrastructure sequence (locked 2026-04-25, `11a.11b`
+readiness audit closed):
 
-1. `7.57.3d` - rename advisor-specific answer provider seam to
-   general-purpose `LLMProvider` and expose prompt-caching capability.
-2. `7.57.4` - Apache AGE graph projection in the local Supabase/Postgres
-   container.
-3. Resume `11a.8` - vector search functions / indexes + smoke queries.
+1. **`11a.11c`** — Cloud Supabase migration apply + extension verify +
+   schema apply (full Tier 1 + Tier 1.5 schema in one atomic migration:
+   foundational identity tables, audit columns, `usage_logs`,
+   `usage_caps`, `proxy_requests` for idempotency, `feature_flags`,
+   `fx_rates`, vector versioning columns on embeddings, RLS policy
+   stubs, FK cascades, CHECK constraints) + AGE benchmark gate.
+2. **`11a.11d`** — Proxy counter table wiring + smoke test
+   (idempotency check, cap lookup, refusal payload, `/health` endpoint,
+   `/v1/` URL versioning, meta-only logging by default).
+3. **`11a.11e`** — Corpus + embedding live load via
+   `VoyageEmbeddingProvider`. Validates cost-reality estimate.
+
+Then **Phase 11A F&F Operations Console** (web/desktop admin
+backend; supersedes the earlier `11a.12` / `11a.13` Flutter-Settings
+framing):
+
+4. **`11A.0`** — Flutter for Web bootstrap; brand styling; route
+   shell; Firebase Auth integration; deploys at
+   `admin.forgeflow.app`.
+5. **`11A.1`** — Operator + location management (CRUD on
+   `operators`, `locations`, `users`, `operator_admins`).
+6. **`11A.2`** — Pricing tier admin (table editor for `usage_caps`
+   per `(operator_id, location_id, usage_class)` — replaces the
+   earlier `11a.13` scope).
+7. **`11A.3`** — Corpus admin (drag-and-drop markdown upload, diff
+   view, rollback — replaces the earlier `11a.12` scope).
+8. **`11A.4`** — Integration management (Anthropic / Voyage key
+   rotation, vendor connector status, FX-rate source).
+9. **`11A.5`** — Debug console (per-operator request log viewer).
+10. **`11A.6`** — Observability dashboard (system health, latency,
+    error rate, cost-by-operator, cap-event stream).
+
+Then resume the build cadence at **`9.8`** (compliance + commercial).
+Phase 11A polish slices (`11A.7–10`: feature flag admin, API version
+mgmt, audit log review, status page mgmt) interleave post-`11b`.
 
 ## Hard Gates
 
@@ -78,9 +118,51 @@ Completed phase history was moved to
   `VoyageEmbeddingProvider`.
 - `7.57.3c` StaticShiftDataSource mock-replay reads now route through
   `MockReplayDataSourceProvider`.
-- `7.57.3` provider abstraction must accept before `7.57.4`.
-- `7.57.4` AGE graph projection must accept before `11a.8` resumes and before
-  `11b` starts.
+- `7.57.3d` renamed the answer-provider seam to `LLMProvider` and exposed
+  prompt-caching capability; `7.57.3` parent provider abstraction is accepted.
+- `7.57.4` AGE projection artifacts accepted; Codex local environment lacks
+  Supabase CLI, so live AGE apply was not run here. Generated SQL carries an
+  explicit `AGE_BLOCKER` path and smoke traversal evidence; `7.57` is closed.
+- `11a.8` vector search schema/functions accepted: versioned embedding
+  metadata, HNSW cosine partial index, and `advisor_search_chunks` candidate
+  retrieval landed as generated SQL/build artifacts.
+- `11a.9` rerank smoke accepted: vector-search-style candidates now route
+  through `RerankProvider`, preserve citation metadata, and stay fake-tested
+  without live Voyage calls.
+- `11a.10a` proxy scaffold accepted: server-side config reads secret values by
+  name, JWT verification is interface-based, protected routes require
+  operator/location scope, and the Cloud Run-ready scaffold performs no live
+  provider or DB calls.
+- `11a.10b` proxy usage enforcement accepted: launch-tier request token cap,
+  per-minute rate cap, monthly cost cap, machine-readable refusal policy,
+  fail-closed counter-store seam, usage smoke route, and RLS-enabled usage
+  counter migration landed without live provider or DB calls.
+- `11a.11a` content-addressed corpus chunks accepted: chunk IDs now change when
+  content changes, same-content chunks across docs do not collide, load SQL
+  marks stale chunks inactive without deleting them, zero-current-chunk docs
+  still deactivate prior chunks, vector search filters to active chunks, and
+  embedding updates remain matched by `chunk_id` + `content_sha256`.
+- `11a.11b` cloud DB readiness audit accepted as blocker capture: the readiness
+  doc inventories all four advisor migrations, records that live apply is
+  blocked here by missing Supabase CLI/config/link/env and unverifiable target
+  extensions, and provides the later human apply/verification runbook. No live
+  DB apply was performed.
+- `security.env.1` env-example hygiene accepted: the ignored
+  `.env.local.example` now has placeholders only, remains ignored and
+  untracked, and the previous secret-looking Anthropic value requires human
+  rotation outside the repo if it was real.
+- `11a.12a` corpus admin local scaffold accepted: Settings now has an
+  injectable/dev-gated `ADVISOR CORPUS` surface backed by a pure local service
+  that previews pasted Markdown, rejects non-Markdown/blank content, and
+  surfaces the `11a.11b` cloud-load blocker without live calls.
+- `11a.12b` corpus admin debug wiring accepted: the debug app Settings route
+  now injects `AdvisorCorpusAdminService`, release/default hiding remains
+  gated, and the cloud-load control is disabled rather than clickable while
+  blocked.
+- `11a.12c` corpus admin preview metadata accepted: the local Settings preview
+  now exposes normalized file/source identity, deterministic title fallback,
+  heading count, estimated chunk count, and UI rendering while remaining
+  local-only with cloud load blocked.
 - All five `7.58` sub-slices must accept before `11b.0` opens.
 - Phase 9 RLS must be real and tested before `11b` ships to multiple
   operators.
@@ -88,8 +170,10 @@ Completed phase history was moved to
 
 ## Active Guardrails
 
-- Build cadence is sequential, not parallel:
-  `[7.57] -> 11a resume -> 9.8 -> 9 -> 10a -> 10.5 -> 9.5 -> [7.58] -> 11b -> 9.75 -> 11b.2 -> 10b -> [7.61] -> 8 -> 8R`.
+- Build cadence is sequential, not parallel (updated 2026-04-25 to
+  insert Phase 11A F&F Operations Console after 11a live infra and
+  before 9.8):
+  `[7.57] -> 11a.11c-e -> [11A.0-6 admin foundation + ops readiness] -> 9.8 -> 9 -> 10a -> 10.5 -> 9.5 -> [7.58] -> 11b -> 9.75 -> 11b.2 -> [11A.7-10 admin polish, interleave] -> 10b -> [7.61] -> 8 -> 8R`.
 - Demo mode persists forever. `kDemoMode = true` fills SQLite from
   `mock_integration_replay_seed.dart`; `kDemoMode = false` fills the same
   tables from vendor connectors. Same tables, read paths, UI, and advisor
@@ -124,7 +208,9 @@ Completed phase history was moved to
   Postgres RLS stays enabled on every operator-scoped table as the
   safety net underneath. Two-layer defense — repository wrapper is
   the primary protection, RLS is the backup. Decided 2026-04-25.
-- AGE graph projection must be verified before `11b` starts.
+- AGE projection artifacts are in repo. Before `11b` starts, run the generated
+  SQL in an AGE-enabled Supabase/Postgres environment or record the exact
+  provisioning blocker.
 - Production Anthropic/Voyage/vendor keys must stay server-side. Flutter
   release/App Store/Play Store builds must not receive real API keys via
   `--dart-define`; 11b/Phase 8 must use a backend gateway for production
@@ -140,19 +226,16 @@ Completed phase history was moved to
 - Service-layer split: `lib/data/` is legacy and frozen; `lib/services/` is
   runtime orchestration; `lib/domain/services/` is pure formula/domain logic
   with no I/O; state holders live in `lib/state/`.
+- Schema migrations on production use online-migration patterns:
+  `CREATE INDEX CONCURRENTLY` for indexes, two-step backfill for
+  non-null defaults (`ADD COLUMN` without default → batched
+  backfill → `SET DEFAULT`), `ADD CONSTRAINT ... NOT VALID` followed
+  by `VALIDATE CONSTRAINT` for new constraints on populated tables.
+  Long-locking migrations are forbidden once real operator data
+  exists. Decided 2026-04-25.
 
 ## Locked Future Tweaks
 
-- `11a.8`: default pgvector indexes to HNSW.
-- `11a.8`: vector versioning schema columns on the embeddings table.
-  Every embedded chunk row carries `embedding_provider_id` (e.g.
-  `voyage`), `embedding_model_id` (e.g. `voyage-4-large`), and
-  `embedding_dimension` (e.g. `1024`) from day one. Lands in `11a.8`
-  schema scope alongside vector-search functions and HNSW indexes.
-  Without these columns, mixed-provider retrieval breaks silently
-  during a future provider transition; with them, retrieval queries
-  scope by provider/model and provider swaps trigger a clean
-  re-embed of affected rows only. Decided 2026-04-25.
 - `7.57.3`: `LLMProvider.answer(..., tier)` routes `quick` -> Haiku
   and `nuanced` -> Sonnet; default `quick`. Renamed from
   `AdvisorAnswerProvider` per hard promise #8 (general-purpose AI
@@ -165,33 +248,174 @@ Completed phase history was moved to
   Two launch-blocking sub-slices:
   - `11a.10a` proxy infrastructure — Cloud Run service, key vault,
     JWT-auth, operator scoping. F&F's master Anthropic + Voyage
-    keys live here; client app never holds them.
-  - `11a.10b` per-operator enforcement — token budget, rate limit,
-    monthly cost cap with refusal policy, all configurable per
-    pricing tier. Includes a per-operator counter table for cap
-    enforcement; admin dashboards on top of it are flagged
-    (`11a.10c`, post-100-locations).
+    keys live here; client app never holds them. Health check
+    endpoint (`/health`) confirms DB + AGE + pgvector live so
+    Cloud Run liveness/readiness probes route correctly.
+  - `11a.10b` per-operator/location/usage-class enforcement.
+    Counter table (`usage_logs`) keyed on `(operator_id,
+    location_id, usage_class, period_start)` with `usage_class` as
+    `TEXT` for extensibility (Phase 12 workflow types, future
+    staff coaching, future onboarding agents — all reuse the same
+    table without schema migration). Cap table (`usage_caps`)
+    keyed on `(operator_id, location_id, usage_class)` with
+    `monthly_cap_usd` and `per_invocation_cap_usd` columns. Cap
+    values stored in USD; display layer converts to operator
+    currency at render time. Refusal policy returns clean error
+    with cap-status payload. Idempotency on every request via
+    `proxy_requests` table (UNIQUE on idempotency key, with
+    `request_type` column so Phase 12 tool calls reuse the same
+    table). Admin dashboards on top of these tables are flagged
+    separately (`11a.10c`, post-100-locations); editable Settings
+    UX lives in `11a.13`.
 - `11a.10d` provider fallback chains (capability, off by default) —
   Anthropic primary → secondary → OpenAI `gpt-4o-mini` fallback.
   Architecture supports it; implementation deferred until production
   data shows it's needed. Lighting it up requires a multi-week
   investment to integrate the second provider and prompt-tune. Q7
   default at launch is hard-fail with a clear error message.
-- `11a.11`: corpus chunks are content-addressed — chunk ID is a hash
-  of the chunk content. Any content change produces a new chunk ID;
-  old chunks stay in the corpus (marked inactive in the search
-  index, not deleted) so old advisor recommendations remain
-  replayable against the exact chunks they cited. Embedding regen
-  runs on chunks with new hashes only. Decided 2026-04-25.
-- `11a.12`: **Corpus admin UX in app settings.** Vanessa drops a
-  markdown file in a Settings page; the app ingests it, chunks it,
-  content-hashes the chunks, embeds new/changed chunks via Voyage,
-  writes to Postgres. Markdown only at MVP. Default scope is
-  operator-scoped corpus (hard promise #4); global F&F-shipped
-  corpus vs operator extensions is a separate decision when multi-
-  operator goes live. Slot locked 2026-04-25 (was previously `11a.x`
-  tbd); queued after `11a.11` cloud DB apply so the corpus pipeline
-  writes to production Postgres.
+- `11a.11a` landed content-addressed corpus chunks: chunk ID is doc-prefixed
+  and hash-based, any content change produces a new chunk ID, old chunks stay
+  in the corpus marked inactive rather than deleted, and advisor search filters
+  to active chunks. `11a.11b` owns cloud DB apply/readiness and exact blocker
+  capture if live apply is unavailable.
+- `11a.11b` landed the cloud DB readiness artifact at
+  `docs/phases/phase_11a/phase_11a_11b_cloud_db_apply_readiness.md`. Live apply
+  remains blocked until Supabase CLI/config/link/env and target extension
+  verification are available.
+- ~~`11a.12` corpus admin UX~~ — **superseded 2026-04-25** by
+  `11A.3` (corpus admin in the F&F Operations Console). Same
+  pipeline (markdown → chunks → content-hash → embed via Voyage →
+  Postgres), better surface (web/desktop drag-and-drop instead of
+  in-app Settings page).
+- ~~`11a.13` pricing tier admin Settings UX~~ — **superseded
+  2026-04-25** by `11A.2` (pricing tier admin in the F&F Operations
+  Console). Same scope (edit `usage_caps` per `(operator_id,
+  location_id, usage_class)` with audit columns), better surface.
+- **Phase 11A F&F Operations Console** (new phase decided
+  2026-04-25, supersedes the prior `11a.12` and `11a.13` Flutter-
+  Settings framing). Web/desktop admin backend hosted at
+  `admin.forgeflow.app` on a separate Cloud Run service. Tech
+  stack: **Flutter for Web** (reuses `app_theme.dart` brand,
+  single Dart codebase across mobile and web/desktop). Eleven
+  sub-slices total; foundation slices (`11A.0–6`) launch-blocking
+  before `11b`, polish slices (`11A.7–10`) post-launch. Full plan
+  at `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`.
+  Sub-slices:
+  - `11A.0` Flutter-for-Web bootstrap (route shell, Firebase Auth,
+    deployed Cloud Run service)
+  - `11A.1` Operator + location management
+  - `11A.2` Pricing tier admin (table editor for `usage_caps`)
+  - `11A.3` Corpus admin (drag-and-drop markdown, diff view,
+    rollback)
+  - `11A.4` Integration management (Anthropic / Voyage key
+    rotation, vendor connector status, FX-rate source)
+  - `11A.5` Debug console (per-operator request log viewer with
+    meta-by-default, full-content opt-in toggle)
+  - `11A.6` Observability dashboard (system health, latency p95/
+    p99, error rate, cost-by-operator, cap-event stream)
+  - `11A.7` Feature flag admin (edit `feature_flags` rows)
+  - `11A.8` API version management (deprecation tracking)
+  - `11A.9` Audit log review (`created_by`/`updated_by` queryable)
+  - `11A.10` Status page management (incident creation, post-
+    mortems, sync to public `status.forgeflow.app`)
+  - `11A.11` (optional, post-launch) Replay tool — re-run a past
+    request against current corpus + model
+- **`11a.11c` / `11a.11d` / `11a.11e` live infrastructure** (locked
+  sequence 2026-04-25, after `11a.11b` repo-scaffold readiness
+  audit accepted):
+  - `11a.11c` Cloud Supabase migration apply + extension verify +
+    AGE benchmark gate. **Region**: Canada-near (`ca-central-1`
+    preferred, `us-east-1` fallback). **Point-in-time recovery**:
+    enabled, 7-day retention. **Connection pooling**: Supavisor
+    transaction mode. **Extensions verified live**: AGE, pgvector.
+    **Schema applies atomically** (Tier 1 + Tier 1.5 schema
+    decisions, all in this slice's migration):
+    - Foundational identity tables: `operators`, `locations`,
+      `users`, `operator_admins`. RLS policy stubs dormant until
+      Phase 9 turns enforcement on.
+    - Operator-scoped fact tables carry `(operator_id, location_id)`
+      + audit columns (`created_at`, `updated_at` `TIMESTAMPTZ`
+      DEFAULT `now()`).
+    - `usage_logs` counter keyed `(operator_id, location_id,
+      usage_class, period_start)` with `usage_class` as `TEXT`.
+    - `usage_caps` cap table keyed `(operator_id, location_id,
+      usage_class)` with `monthly_cap_usd`, `per_invocation_cap_usd`,
+      `created_by`, `updated_by`.
+    - `proxy_requests` idempotency table (UNIQUE on key, with
+      `request_type` column for Phase 12 reuse).
+    - `feature_flags` table: `(flag_name TEXT, operator_id UUID
+      NULL, location_id UUID NULL, enabled BOOL)`. Powers Q12
+      retrieval-mode flag, Q8 streaming on/off when it lands,
+      Phase 12 workflow access per operator, anything needing
+      per-operator gating without redeploys.
+    - `fx_rates` table for daily FX snapshots (USD / CAD / others
+      as needed).
+    - CHECK constraints on cost/token columns (`>= 0`) and other
+      invariants (`business_date IS NOT NULL` where required).
+    - Foreign keys on every `(operator_id, location_id)` reference
+      with `ON DELETE CASCADE` (PIPEDA cascade-delete satisfies
+      operator deletion).
+    - Vector versioning columns on embeddings table:
+      `embedding_provider_id`, `embedding_model_id`,
+      `embedding_dimension` (locked earlier; ride the same
+      migration).
+    - RLS policy stubs on every operator-scoped table.
+    **AGE benchmark gate** runs as part of this slice with simulated
+    1K and 10K operator-scale synthetic data. p95 > 500ms triggers
+    Q12 fallback (vector-only mode flag becomes launch posture; AGE
+    paused for Neo4j-migration timeline).
+  - `11a.11d` Proxy counter table wiring + smoke test. Per-request
+    idempotency check (`proxy_requests` upsert by key); per-
+    `(operator_id, location_id, usage_class)` cap lookup; refusal
+    returns clean error with cap-status payload. **Health check
+    endpoint** (`/health`) deployed and responding. **API URL
+    versioning** locked: `/v1/...` at launch. **Per-request logging**
+    is meta-only by default (operator_id, location_id, usage_class,
+    token counts, latency, status — no question text, no answer
+    text); per-operator opt-in flag enables full-content logging
+    when needed for support cases. Smoke test simulates over-cap
+    operator without firing real provider calls.
+  - `11a.11e` Corpus + embedding live load via
+    `VoyageEmbeddingProvider` against production proxy. Content-
+    hashed chunk IDs preserve replay; embedding rows stamped with
+    provider/model/dimension metadata. AGE graph projection runs at
+    scale; validates the cost-reality estimate (~$0.05 for 233
+    chunks).
+- **Currency dual support (CAD default + USD)** (decided 2026-04-25).
+  All internal cost accounting in USD (F&F pays providers in USD).
+  `operators.preferred_currency` (CHAR(3), default 'CAD') selects
+  display currency. Daily FX snapshots in `fx_rates` table from a
+  cheap external service. Display layer (Settings UX, advisor cost
+  display, billing summaries) converts USD → operator currency at
+  render time. Subscription billing (Stripe etc., Phase 9.8) charges
+  in operator's currency.
+- **Feature flags table from day one** (decided 2026-04-25).
+  Schema: `(flag_name TEXT, operator_id UUID NULL, location_id UUID
+  NULL, enabled BOOL)`. Powers per-operator/per-location toggles
+  without redeploys. Use cases: Q12 retrieval-mode flag (AGE vs
+  vector-only), Q8 streaming on/off when it lands, Phase 12 workflow
+  access per pilot operator, output-sanitization allowlist
+  per-operator overrides, anything else needing gating.
+- **Idempotency on proxy writes** (decided 2026-04-25). Every
+  advisor-question and (future) tool-call request carries an
+  idempotency key (UUID from client). Proxy stores keys in
+  `proxy_requests` table with UNIQUE constraint. Retried requests
+  find prior result instead of re-executing. `request_type` column
+  generalizes the table for Phase 12 tool calls.
+- **API URL versioning convention** (decided 2026-04-25). Paths
+  under `/v1/...` at launch. Breaking changes ship at `/v2/...`;
+  `/v1/` remains live until explicit deprecation policy. Codified in
+  `CLAUDE.md` Proxy & API Conventions.
+- **Tier 3 schema defaults approved** (decided 2026-04-25):
+  - `FOREIGN KEY ... ON DELETE CASCADE` on every operator-scoped
+    table's references to `operators` and `locations`. Operator
+    cancellation cascades cleanly; PIPEDA "right to erasure"
+    satisfied. Foreign keys everywhere on `(operator_id, location_id)`
+    references — referential integrity, no orphan rows.
+  - Per-request logging meta-only by default (operator_id,
+    location_id, usage_class, token counts, latency, status). No
+    question text, no answer text, no operator-typed content. Per-
+    operator opt-in flag enables full-content logging for support.
 - Post-launch caching layer for repeat advisor questions (Q7 option
   B, deferred). When production data shows specific question
   classes recurring, add a cache so an Anthropic blip surfaces
@@ -345,6 +569,29 @@ opens.
   alert thresholds. Deferred 2026-04-25: too much overhead before
   100 locations. The counter table from `11a.10b` is enough for
   cost-cap enforcement until volume justifies the dashboard build.
+- **Pre-multi-operator launch — Day-one observability stack.**
+  Three small wires before any operator beyond Vanessa onboards.
+  (a) Sentry free tier for client + proxy error reporting.
+  (b) Supabase + Cloud Run built-in dashboards enabled. (c) Cap-
+  event notifications: when an operator hits monthly cap or rate
+  limit, the proxy emits an email or Slack webhook to F&F admin so
+  you decide whether to bump the cap or wait. Free tier services
+  cover all three. Decided 2026-04-25 as recommended for "really
+  good product shipped"; lands as part of Phase 9.8 commercial
+  scope or earlier if convenient.
+- **Pre-multi-operator launch — Status page** (e.g.
+  `status.forgeflow.app`). Trust signal for paid customers when
+  any vendor (Supabase, Cloud Run, Anthropic, Voyage) has an
+  outage. Free tier services exist (Statuspage.io, BetterStack).
+  Decided 2026-04-25.
+- **Customer support per-operator debug view** (admin route,
+  meta-only by default). When an operator emails support saying
+  "the advisor said something weird at 2:47pm," F&F admin needs a
+  way to find that exact request. Lists last N requests for a
+  given `operator_id` with metadata only by default; full content
+  visible only if the operator opted in via per-operator content-
+  logging flag. Lands as part of `11a.13` Settings admin UX or as
+  a small follow-up. Decided 2026-04-25.
 - **`11a.10d` (when production data justifies) — Provider fallback
   strategy.** Strategy specifics — Anthropic → OpenAI gpt-4o-mini,
   or Anthropic → Google Gemini Flash, or three-deep? Cost vs
@@ -373,7 +620,7 @@ opens.
 
 ## Active Planning Docs
 
-- `docs/phases/post_11a7_stabilization_plan.md`
+- `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`
 - `docs/contracts/phase_7_55_architecture_contract.md`
 - `docs/contracts/phase_7_55_current_state_freshness_contract.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`

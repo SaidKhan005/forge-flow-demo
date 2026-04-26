@@ -7,7 +7,7 @@ How Codex and Claude run the execution loop in this repo.
 Every prompt cycle follows this order:
 
 1. Codex reads tracker truth and only the active doc slice it needs.
-2. Codex generates a two-message prompt.
+2. Codex generates a three-block prompt.
 3. Claude implements only the scoped slice.
 4. Claude reports files, tests, acceptance, scope, and blockers.
 5. Codex verifies against repo truth, not just the report.
@@ -42,7 +42,7 @@ Use a long context block only when a phase opens or the architecture changes.
 After that, generate delta prompts:
 
 - `phase primer`: allowed to summarize goals, gates, and core docs.
-- `normal slice`: current run, plain-English goal, exact files/tasks/tests.
+- `normal slice`: human context block plus exact authority/files/tasks/tests.
 - `review-fix`: finding, exact files, exact tests, no phase recap.
 
 ## Prompt Rules
@@ -53,11 +53,17 @@ Before sending the prompt:
 - Include `Slice type` only for `closeout-verification`,
   `closeout-with-blockers`, or `audit`.
 - Visible authority list is 3 entries max and excludes stable docs by habit.
-- `Plain English:` immediately follows `This run is`.
+- `Plain English:` lives in Block 1 for the user, not in Claude's pasted
+  prompt.
 - Do not add a separate `Goal` section.
 - Do not include optional / "only if touched" files.
 - Files over 500 lines have method or region qualifiers.
-- Message 2 targets 40 lines for review-fixes, 50 for normal slices.
+- Blocks 2 and 3 together target 40 lines for review-fixes, 50 for normal
+  slices.
+- Deliver Block 1 separately as normal Markdown, then deliver Blocks 2 and 3
+  together in one fenced `text` block for one-click Claude copy/paste.
+- Never put Block 1 in Claude's paste block, and never split Blocks 2 and 3
+  into separate paste blocks.
 - Do not restate architecture already in `CLAUDE.md`.
 - Contract-bound slices include `Routing rules to mirror`: 2 or 3 rules max.
 - Move slices include Codex's import audit and analyzer-forced follow-ups.
@@ -90,43 +96,57 @@ Standing rules:
 - Codex updates trackers after verification, not before.
 - Tracker truth must never be ahead of repo truth.
 
-## Message 1 - Context
+## Slice Prompt Blocks
+
+Codex emits three blocks:
+
+- **Block 1 — Human Context:** plain-English summary, important context, and
+  current issue. Routing rules may appear here when useful for the user. The
+  user reads this and does not paste it to Claude.
+- **Block 2 - Tech Context:** authority files and hard constraints.
+- **Block 3 - Tasks:** files, implementation tasks, tests, acceptance.
+
+Blocks 2 and 3 are the full Claude contract. Do not rely on Block 1 for
+instructions Claude must follow.
+
+Deliver this as two visual parts:
+
+1. Block 1 appears as normal Markdown for the user. It starts with
+   `Plain English:` rather than a prompt-id line.
+2. Blocks 2 and 3 appear together inside one fenced `text` block. This is the
+   single paste payload for Claude.
 
 Use this shape:
 
+## Block 1 — Human Context
+
+Plain English: [1 to 3 concise sentences; include an example when helpful]
+
+Important context:
+- [only what helps the user understand the slice]
+
+Current issue:
+- [what is missing, stale, or broken]
+
+Routing rules to mirror:
+- [only when contract-bound and useful for the user; 2 or 3 rules max]
+
 ```text
+## Block 2 - Tech Context
+
 Authority files for this run:
 
 - [specific runtime files / tests]
 - [active phase doc section, only when needed]
-
-Important:
-- This run is [prompt id + scope]
-- Plain English: [1 to 3 concise sentences; include an example when helpful]
-- Do not update tracker markdown files in this run
-- Do not broaden scope
-```
-
-Use repo-root-relative paths. Add repo root only for external handoffs.
-Plain English orients; it does not re-teach architecture.
-
-## Message 2 - Implementation Prompt
-
-Use this shape:
-
-```text
-Current issues
-[what is missing, stale, or broken]
 
 Hard constraints
 - Do not change business logic, target math, or labor formulas unless that is the goal.
 - Do not add live vendor transport unless that is the goal.
 - Do not update trackers.
 - Do not commit unless explicitly asked.
+- Run only required tests; no courtesy CLI smoke runs unless explicitly scoped.
 
-Routing rules to mirror
-[only for contract-bound seams]
-- [doc/rule] - [one-line restatement]
+## Block 3 - Tasks
 
 Files to modify
 - [file or file - region/method]
@@ -147,6 +167,8 @@ Acceptance criteria
 
 When finished, report using the standard report format.
 ```
+
+Use repo-root-relative paths. Add repo root only for external handoffs.
 
 ## Visible Authority
 
@@ -292,6 +314,20 @@ Codex does not rerun Claude's tests by default. Rerun only when:
 
 Prefer the smallest targeted rerun.
 
+## In-Session Hygiene
+
+- For known large files, read by named region or offset/limit instead of full
+  file.
+- When adding to an existing test file, grep for the insertion anchor first
+  and offset/limit-read a window (~50 lines) around it. Full reads of
+  500+ line test files are the single most expensive avoidable cost.
+- Tail test output aggressively; the final pass/fail lines are usually enough.
+- Batch independent reads / greps in one tool call.
+- Skip courtesy CLI smokes when analyze and focused tests cover the contract.
+- Keep execution reports compact. Add reviewer notes only for real surprises.
+- Do not call or acknowledge TodoWrite. The prompt's task list is the source
+  of truth.
+
 ## Tracker Updates
 
 After accepting a slice:
@@ -344,6 +380,30 @@ Claude should report:
 
 Do not include `Out-of-scope touched: None` or similar boilerplate. Report
 out-of-scope touches only when there was something to explain.
+
+### Report Compression Rules
+
+The fields above are the contract. Past that, default to compression:
+
+- **Bare filenames over decorative markdown links.** `tool/x/y.dart: added
+  Z` is preferred over a `[y.dart](path:line)` link unless the user is
+  reviewing in a renderer that needs the link.
+- **No "Notes for reviewer" section** unless something genuinely
+  surprised you (a workaround, an unexpected blocker, a non-obvious
+  trade-off the diff alone does not explain).
+- **No "Out of scope (not touched)" list** when the prompt's hard
+  constraints already covered it. The `Scope check` yes/no flags above
+  are sufficient.
+- **No restating slice ID inside every section.** Once in the header
+  is enough; comments, test group names, and route notes can use it
+  but the report itself does not need to repeat it per bullet.
+- **No restating prompt language.** "I did not call live providers, I
+  did not change SQLite" wastes tokens; the constraint list above
+  already promised that. Flag exceptions, not compliance.
+
+The floor: tests run, acceptance ticked, files listed with a brief
+description, links to changed files (or bare paths). Cutting below this
+breaks the tracker advance loop or makes review hard.
 
 ## Do Not Cut
 
