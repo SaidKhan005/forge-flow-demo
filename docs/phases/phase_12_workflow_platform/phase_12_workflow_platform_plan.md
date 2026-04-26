@@ -106,7 +106,16 @@ Infrastructure:
 - `pg_cron` scheduled job runner inside Postgres (already allowlisted in
   `11a.11c.6`)
 - Cloud Scheduler triggers (alternative for non-Postgres-driven schedules)
-- `pgmq` workflow execution queue
+- **Workflow execution queue: `SELECT ... FOR UPDATE SKIP LOCKED`
+  against `workflow_runs`.** No `pgmq` extension — Azure DB Flexible
+  Server does not expose it (live-verified 2026-04-26 on
+  `forge-flow-staging-pg`; see
+  `docs/phases/phase_11a/phase_11a_decision_register.md` →
+  "Azure constraints discovered live 2026-04-26"). The batch poller
+  pattern below is the canonical in-DB queue mechanism for this
+  phase. HTTP-delivery queues (push to a Cloud Run sibling) use
+  **Google Cloud Tasks** — Cloud Tasks integrates natively with
+  Cloud Run, so there is no cross-cloud egress.
 - Cloud Run jobs sibling service for execution
 - `LLMProvider.submitBatch(requests)` extension (Anthropic Batch API)
 - Per-task caps wired into agent loop runtime (token / cost / tool-call /
@@ -303,7 +312,12 @@ computed answers serve 70-80% of recurring questions at $0 (lever 4).
 
 ## Dependencies
 
-- `11a.11c-e` complete (Azure DB live with AGE + pgvector + pgmq + pg_cron)
+- `11a.11c-e` complete (Azure DB live with AGE + pgvector + pg_cron +
+  pg_partman + pg_diskann + pg_stat_statements + pgcrypto). `pgmq` is
+  **not** required and is **not** on Azure's `azure.extensions`
+  allowlist; the workflow execution queue uses
+  `SELECT ... FOR UPDATE SKIP LOCKED` instead, with Cloud Tasks for
+  HTTP-delivery queues.
 - `11A.0-6` complete (admin console; pricing tier admin + cost telemetry
   surfaces working)
 - `11b` complete (advisor + Modular Adaptive RAG retrieval pattern proven)

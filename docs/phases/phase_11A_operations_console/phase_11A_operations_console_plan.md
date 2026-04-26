@@ -1,7 +1,7 @@
 # Phase 11A - F&F Operations Console
 
 Updated: 2026-04-26
-Status: Planned (opens after `11a.11c-e` close, including the
+Status: Active next (opens after accepted `11a.11c-e` close, including the
 `11a.11c.4-6` Postgres host migration to Azure)
 Owner: F&F admin / operations lane
 

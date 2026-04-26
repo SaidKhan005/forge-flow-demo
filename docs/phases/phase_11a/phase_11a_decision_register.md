@@ -210,8 +210,12 @@ Anything not user-facing real-time uses Anthropic's Message Batches API:
 - Vendor reconciliation (per-invoice, batched)
 - Marketing email drafts
 
-Pattern: pgmq queue → worker reads queue → submits batch to Anthropic →
-polls for results → writes to `workflow_runs.output_artifact_url`.
+Pattern: workflow row inserted to `workflow_runs` (status
+`AWAITING_BATCH`) → poller worker reads pending rows with
+`SELECT ... FOR UPDATE SKIP LOCKED` (no `pgmq`; Azure does not
+expose it) → submits batch to Anthropic → polls for results → writes
+to `workflow_runs.output_artifact_url`. Webhook-style HTTP delivery
+to downstream Cloud Run services uses Google Cloud Tasks.
 
 Saves: 50% on every async workflow run.
 Wired in: Phase 12.0 (workflow foundation prerequisite). `LLMProvider`
@@ -399,9 +403,12 @@ Locked 2026-04-26. Frame as a multi-quarter program, not a single phase.
 Sub-slices:
 
 - **12.0 Foundation**: `workflow_definitions`, `workflow_runs`,
-  `workflow_steps`, `workflow_audit_log` schema; pgmq queue; Cloud Run
-  jobs sibling service; scheduled trigger via `pg_cron` + Cloud
-  Scheduler; per-task caps. ~3-5 weeks.
+  `workflow_steps`, `workflow_audit_log` schema; in-DB queue via
+  `FOR UPDATE SKIP LOCKED` against `workflow_runs` (no `pgmq` —
+  Azure does not expose it); Cloud Tasks for HTTP-delivery to
+  downstream Cloud Run services; Cloud Run jobs sibling service for
+  execution; scheduled trigger via `pg_cron` + Cloud Scheduler;
+  per-task caps. ~3-5 weeks.
 - **12.1 Tool Registry**: catalog of read-only and write-tool functions
   with input/output JSON schemas; tool discovery API; per-operator
   tool allowlist. ~2-3 weeks.
@@ -557,6 +564,46 @@ RAG.
 - Base64 spotlighting increases injected-context token cost; accepted for MVP
   as a security trade-off.
 
+### Azure constraints discovered live 2026-04-26
+
+Live provisioning of `forge-flow-staging-pg` (Azure DB Flexible
+Server, PG 16, Canada Central, `Standard_B1ms`) surfaced two
+constraints that change the locked plan. These are factual host
+constraints, not preferences — both are now production guardrails.
+
+**`pgmq` is not on the Azure allowlist.** `SHOW azure.extensions` on
+the staging server returned `age, vector, pg_diskann, pg_cron,
+pg_partman, pg_stat_statements, pgcrypto` — `pgmq` is absent.
+Decision:
+
+- In-DB queues use `SELECT ... FOR UPDATE SKIP LOCKED` against a
+  plain workflow / job table (the Phase 12 batch poller already uses
+  this pattern; it stays). No `pgmq` API surface in any code path.
+- HTTP-delivery queues (where the consumer is a Cloud Run service
+  receiving a webhook-style push) use **Google Cloud Tasks**. F&F
+  already runs on Cloud Run, so Cloud Tasks integrates with zero
+  cross-cloud egress.
+- `pgmq` is not reintroduced unless a new live-hosting decision lands
+  (e.g., a future migration to a host that exposes it). The Phase 12
+  plan and CLAUDE.md guardrail both reflect this lock.
+
+**Built-in PgBouncer requires General Purpose or Memory Optimized
+tier.** Burstable B1ms does not expose Azure's built-in PgBouncer
+transaction-mode pooler. Decision:
+
+- **Production minimum SKU: General Purpose `Standard_D2ds_v5` or
+  higher.** This is no longer a preference; it is the SKU floor
+  required for built-in PgBouncer.
+- Staging may stay on Burstable (`Standard_B1ms` today) for cost
+  reasons, but staging then does not test pooling behavior. Pooling
+  rehearsal happens against a production-tier server before launch.
+
+A separate operational note: staging backup retention defaults to
+7 days on Burstable, while the production target is 35 days. The
+35-day retention is a pre-production checklist item — set
+`--backup-retention 35` at production provisioning time, before any
+operator data is written.
+
 ## Phase 11A And Admin Decisions
 
 - `11a.12` corpus admin and `11a.13` pricing tier admin are superseded by
@@ -614,6 +661,13 @@ and drop the HNSW index in the same migration. The corpus rebuild in
 `11a.11e` re-indexes regardless, so the swap is essentially free at this
 slice.
 
+Live result 2026-04-26: `pg_diskann` is available on Azure and a DiskANN
+candidate index can be created, but the live corpus is only 233 chunks. The
+planner correctly used sequential scan/top-N sort at that size, so this is not
+a meaningful production-scale DiskANN benchmark. Launch decision: keep HNSW as
+the authoritative live index. Re-benchmark DiskANN when corpus size reaches a
+meaningful scale.
+
 ### Lock 2: `pg_partman` for `usage_logs` partition maintenance
 
 Slice: `11a.11c.6` extensions allowlist + scheduled job.
@@ -623,12 +677,22 @@ partitions. Without maintenance, rows land in the default partition and
 performance degrades.
 
 Lock: add `pg_partman` to `azure.extensions` allowlist alongside
-`AGE`/`pgvector`/`pg_diskann`/`pgmq`/`pg_cron`/`pg_stat_statements`.
-After `usage_logs` parent table exists, register it with
-`partman.create_parent(...)` and schedule
-`SELECT partman.run_maintenance(p_analyze := true)` hourly via `pg_cron`.
+`AGE`/`pgvector`/`pg_diskann`/`pg_cron`/`pg_stat_statements`/`pgcrypto`.
+(`pgmq` is **not** on the Azure allowlist — live-verified 2026-04-26;
+the Phase 12 queue path uses `FOR UPDATE SKIP LOCKED` plus Cloud
+Tasks instead. See "Azure constraints discovered live 2026-04-26"
+in Cloud And Operations Constraints.)
+After `usage_logs` parent table exists, register it with pg_partman and
+schedule `SELECT public.run_maintenance(p_analyze := true)` hourly via
+`pg_cron`. Live Azure installed pg_partman functions into `public`, so the
+verified function names are `public.create_parent` and
+`public.run_maintenance`.
 Retention: 24 months hot; archive older partitions to GCS Coldline via a
 weekly export job.
+
+Live result 2026-04-26: staging and Production1 each have 1 pg_partman config
+row for `public.usage_logs` and 1 active `pg_cron` maintenance job targeting
+`forgeflow`.
 
 ### Lock 3: AGE index strategy
 
@@ -672,6 +736,11 @@ Lock:
   proxy injects per-request session variables (`app.current_operator_id`,
   `app.current_location_id`, `app.current_staff_id`) inside the request
   transaction; pooled connection reuse never carries tenant context.
+
+Live result 2026-04-26: the RLS-leading-column audit initially caught three
+identity indexes. `202604250007_advisor_rls_index_hardening.sql` changed
+`advisor_proxy_usage_counters` and `proxy_requests` to tenant-leading primary
+and idempotency keys. Staging and Production1 now report 0 audit violations.
 
 ### Lock 5: Materialized view UNIQUE INDEX requirement
 
@@ -763,11 +832,16 @@ Memorystore Redis if available).
 
 Slice: Phase 12.0 Foundation.
 
-Lock: explicit batch poller worker as a Cloud Run jobs sibling service:
+Lock: explicit batch poller worker as a Cloud Run jobs sibling service.
+Queue mechanism is `SELECT ... FOR UPDATE SKIP LOCKED` directly
+against `workflow_runs` (Azure does not expose `pgmq`; locked
+2026-04-26 — see "Azure constraints discovered live 2026-04-26"
+above):
 
 ```
 1. Worker reads `workflow_runs WHERE status='AWAITING_BATCH'`
    AND `batch_polled_at < now() - interval '1 minute'`
+   ... FOR UPDATE SKIP LOCKED LIMIT 50;
 2. Calls Anthropic batch endpoint with `batch_id`
 3. On batch completion:
    - Persists each result to `workflow_steps.result`

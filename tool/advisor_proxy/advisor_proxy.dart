@@ -1,11 +1,21 @@
 // Forge & Flow advisor proxy — pure scaffold.
 //
 // 11a.10a. The proxy is the trusted backend boundary where production
-// Anthropic / Voyage / Supabase keys live and where operator/location
-// scope is resolved from the caller's JWT before any retrieval or
-// provider call is made. Flutter clients never hold production keys —
-// they call this proxy with a user token, and the proxy fans out to
-// providers / Postgres on their behalf.
+// Anthropic / Voyage / Postgres credentials live and where
+// operator/location scope is resolved from the caller's JWT before
+// any retrieval or provider call is made. Flutter clients never hold
+// production keys — they call this proxy with a user token, and the
+// proxy fans out to providers / Postgres on their behalf.
+//
+// 11a.11c.5 retarget: the production Postgres host moved from Supabase
+// to Azure Database for PostgreSQL Flexible Server (see
+// `docs/phases/phase_11a/phase_11a_decision_register.md`). The secret
+// names this file declares are now generic Postgres connection
+// strings (`POSTGRES_URL`, `POSTGRES_ADMIN_URL`) so the same scaffold
+// runs against Azure, a local Docker dev container
+// (`docker-compose.dev.yml`), or any other PG host. Historical
+// references to Supabase in this codebase are preserved in archived
+// reports for traceability; the active host is generic Postgres.
 //
 // This file is pure logic only:
 //   - secret-name registry + config loader (values never logged)
@@ -14,7 +24,7 @@
 //   - testable HTTP route handler
 //
 // 11a.10a does NOT:
-//   - call Anthropic, Voyage, Supabase, Firebase, or any live service
+//   - call Anthropic, Voyage, Postgres, Firebase, or any live service
 //   - enforce token / rate / monthly cost budgets (that is 11a.10b)
 //   - wire the Flutter app runtime
 //
@@ -44,20 +54,27 @@ abstract class ProxySecretNames {
   /// Voyage API key for embeddings + rerank.
   static const String voyageApiKey = 'VOYAGE_API_KEY';
 
-  /// Supabase project URL the proxy reads/writes against.
-  static const String supabaseUrl = 'SUPABASE_URL';
+  /// Application-role Postgres connection string. The proxy uses this
+  /// for per-operator reads / writes that must respect RLS once Phase
+  /// 9 enforcement turns on. Generic libpq-format URI; works against
+  /// Azure Database for PostgreSQL Flexible Server, a local
+  /// Docker-Compose dev container, or any other PG host.
+  static const String postgresUrl = 'POSTGRES_URL';
 
-  /// Supabase service-role key used by the proxy to bypass RLS for
-  /// admin-scoped writes. Per-operator reads still go through RLS.
-  static const String supabaseServiceRoleKey = 'SUPABASE_SERVICE_ROLE_KEY';
+  /// Admin / deployment-role Postgres connection string. Used by the
+  /// proxy to bypass RLS for admin-scoped writes (counter increments,
+  /// idempotency upserts, cap reads) and by deployment runners to
+  /// apply migrations. Per-operator reads still go through
+  /// `postgresUrl` so RLS protects them.
+  static const String postgresAdminUrl = 'POSTGRES_ADMIN_URL';
 
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
     anthropicApiKey,
     voyageApiKey,
-    supabaseUrl,
-    supabaseServiceRoleKey,
+    postgresUrl,
+    postgresAdminUrl,
   ];
 }
 
@@ -547,10 +564,7 @@ class ProxyUsageGuard {
         code: 'usage_store_unavailable',
         statusCode: 503,
         message: 'usage counter store unavailable',
-        details: <String, Object?>{
-          'tier_id': tier.id,
-          'reason': error.message,
-        },
+        details: <String, Object?>{'tier_id': tier.id, 'reason': error.message},
       );
     } catch (_) {
       // Any other store-side failure (timeout, network, parse, postgres
@@ -611,9 +625,471 @@ class ProxyUsageGuard {
 // directly by binding an HttpServer to a random port and calling the
 // same handler the production entrypoint installs.
 
+// --- 11a.11d - accounting, idempotency, health, and LLM cost levers -------
+//
+// This layer is still local/fake-testable: it defines the contracts the real
+// Postgres + Anthropic wiring must satisfy without opening network sockets or
+// importing a DB driver. The default implementations fail closed.
+
+class ProxyUsageChargeEstimate {
+  const ProxyUsageChargeEstimate({
+    required this.tokenCount,
+    required this.costCents,
+  });
+
+  final int tokenCount;
+  final int costCents;
+}
+
+class ProxyUsageTelemetry {
+  const ProxyUsageTelemetry({
+    required this.queryClass,
+    required this.cacheHit,
+    required this.llmTier,
+    required this.modelUsed,
+    this.batchMode = false,
+    this.circuitState = 'closed',
+    this.fallbackUsed = 'none',
+  });
+
+  final String queryClass;
+  final bool cacheHit;
+  final String llmTier;
+  final String modelUsed;
+  final bool batchMode;
+  final String circuitState;
+  final String fallbackUsed;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'query_class': queryClass,
+    'cache_hit': cacheHit,
+    'llm_tier': llmTier,
+    'model_used': modelUsed,
+    'batch_mode': batchMode,
+    'circuit_state': circuitState,
+    'fallback_used': fallbackUsed,
+  };
+}
+
+class ProxyCapStatus {
+  const ProxyCapStatus({
+    required this.usageClass,
+    required this.monthlyCapCents,
+    required this.monthlyUsedCents,
+    required this.perInvocationCapCents,
+    required this.estimatedCostCents,
+  });
+
+  final String usageClass;
+  final int monthlyCapCents;
+  final int monthlyUsedCents;
+  final int perInvocationCapCents;
+  final int estimatedCostCents;
+
+  bool get perInvocationExceeded =>
+      perInvocationCapCents > 0 && estimatedCostCents > perInvocationCapCents;
+
+  bool get monthlyExceeded =>
+      monthlyCapCents > 0 &&
+      monthlyUsedCents + estimatedCostCents > monthlyCapCents;
+
+  bool get allowed => !perInvocationExceeded && !monthlyExceeded;
+
+  int get remainingMonthlyCents {
+    final remaining = monthlyCapCents - monthlyUsedCents;
+    return remaining < 0 ? 0 : remaining;
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'usage_class': usageClass,
+    'monthly_cap_cents': monthlyCapCents,
+    'monthly_used_cents': monthlyUsedCents,
+    'remaining_monthly_cents': remainingMonthlyCents,
+    'per_invocation_cap_cents': perInvocationCapCents,
+    'estimated_cost_cents': estimatedCostCents,
+    'per_invocation_exceeded': perInvocationExceeded,
+    'monthly_exceeded': monthlyExceeded,
+  };
+}
+
+abstract class ProxyAccountingStartResult {
+  const ProxyAccountingStartResult();
+}
+
+class ProxyAccountingReserved extends ProxyAccountingStartResult {
+  const ProxyAccountingReserved({required this.capStatus});
+
+  final ProxyCapStatus capStatus;
+}
+
+class ProxyAccountingReplayed extends ProxyAccountingStartResult {
+  const ProxyAccountingReplayed({required this.responsePayload});
+
+  final Map<String, Object?> responsePayload;
+}
+
+class ProxyAccountingRefused extends ProxyAccountingStartResult {
+  const ProxyAccountingRefused({required this.capStatus});
+
+  final ProxyCapStatus capStatus;
+}
+
+abstract class ProxyAccountingStore {
+  Future<ProxyAccountingStartResult> startRequest({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  });
+
+  Future<void> completeRequest({
+    required String idempotencyKey,
+    required Map<String, Object?> responsePayload,
+    required DateTime now,
+  });
+}
+
+class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
+  const ScaffoldFailingProxyAccountingStore();
+
+  @override
+  Future<ProxyAccountingStartResult> startRequest({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    throw StateError(
+      '11a.11d scaffold: real Postgres accounting store is not wired.',
+    );
+  }
+
+  @override
+  Future<void> completeRequest({
+    required String idempotencyKey,
+    required Map<String, Object?> responsePayload,
+    required DateTime now,
+  }) async {
+    throw StateError(
+      '11a.11d scaffold: real Postgres accounting store is not wired.',
+    );
+  }
+}
+
+abstract class ProxyHealthCheckStore {
+  Future<ProxyHealthStatus> check();
+}
+
+class ProxyHealthStatus {
+  const ProxyHealthStatus({
+    required this.postgresOk,
+    required this.ageOk,
+    required this.pgvectorOk,
+  });
+
+  final bool postgresOk;
+  final bool ageOk;
+  final bool pgvectorOk;
+
+  bool get ok => postgresOk && ageOk && pgvectorOk;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'postgres_select_1': postgresOk ? 'ok' : 'failed',
+    'age_cypher_match': ageOk ? 'ok' : 'failed',
+    'pgvector_similarity': pgvectorOk ? 'ok' : 'failed',
+  };
+}
+
+class ScaffoldFailingProxyHealthCheckStore implements ProxyHealthCheckStore {
+  const ScaffoldFailingProxyHealthCheckStore();
+
+  @override
+  Future<ProxyHealthStatus> check() async {
+    throw StateError(
+      '11a.11d scaffold: real Postgres health checks are not wired.',
+    );
+  }
+}
+
+enum ProxyLlmTier {
+  haiku('haiku'),
+  sonnet('sonnet');
+
+  const ProxyLlmTier(this.id);
+
+  final String id;
+}
+
+class ProxyLlmModelRouting {
+  const ProxyLlmModelRouting({
+    this.haikuModelId = 'claude-haiku-4-5',
+    this.sonnetModelId = 'claude-sonnet-4-6',
+  });
+
+  final String haikuModelId;
+  final String sonnetModelId;
+
+  String modelIdFor(ProxyLlmTier tier) =>
+      tier == ProxyLlmTier.haiku ? haikuModelId : sonnetModelId;
+}
+
+class SubscriptionLlmTierRouter {
+  const SubscriptionLlmTierRouter();
+
+  ProxyLlmTier tierFor({
+    required String subscriptionTier,
+    required String queryClass,
+  }) {
+    final subscription = subscriptionTier.trim().toLowerCase();
+    if (subscription == 'basic' ||
+        subscription == 'starter' ||
+        subscription == 'pilot' ||
+        subscription == 'launch') {
+      return ProxyLlmTier.haiku;
+    }
+
+    if (_requiresNuancedSynthesis(queryClass)) {
+      return ProxyLlmTier.sonnet;
+    }
+    return ProxyLlmTier.haiku;
+  }
+
+  static bool _requiresNuancedSynthesis(String queryClass) {
+    final normalized = queryClass.trim().toLowerCase();
+    return normalized == 'causal_chain' ||
+        normalized == 'recommendation' ||
+        normalized == 'advisor_synthesis' ||
+        normalized == 'workflow_action' ||
+        normalized == 'pnl_narrative';
+  }
+}
+
+class ProxyPromptBlock {
+  const ProxyPromptBlock({
+    required this.id,
+    required this.text,
+    required this.cacheBreakpoint,
+  });
+
+  final String id;
+  final String text;
+  final bool cacheBreakpoint;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'id': id,
+    'text': text,
+    'cache_breakpoint': cacheBreakpoint,
+  };
+}
+
+class ProxyLlmRequest {
+  const ProxyLlmRequest({
+    required this.question,
+    required this.promptBlocks,
+    required this.tier,
+    required this.modelId,
+    required this.cacheKey,
+    required this.maxOutputTokens,
+  });
+
+  final String question;
+  final List<ProxyPromptBlock> promptBlocks;
+  final ProxyLlmTier tier;
+  final String modelId;
+  final String cacheKey;
+  final int maxOutputTokens;
+}
+
+class ProxyLlmCompletion {
+  const ProxyLlmCompletion({
+    required this.text,
+    required this.modelId,
+    required this.tier,
+    required this.outputTokens,
+    required this.costCents,
+  });
+
+  final String text;
+  final String modelId;
+  final ProxyLlmTier tier;
+  final int outputTokens;
+  final int costCents;
+}
+
+abstract class ProxyLlmProvider {
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request);
+}
+
+class ScaffoldRejectingProxyLlmProvider implements ProxyLlmProvider {
+  const ScaffoldRejectingProxyLlmProvider();
+
+  @override
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
+    throw StateError('11a.11d scaffold: real Anthropic provider is not wired.');
+  }
+}
+
+class AdvisorPromptCacheBuilder {
+  const AdvisorPromptCacheBuilder();
+
+  List<ProxyPromptBlock> build({
+    required String corpusVersion,
+    required String methodologyContext,
+    required String toolDefinitions,
+    required String operatorContext,
+  }) {
+    return <ProxyPromptBlock>[
+      const ProxyPromptBlock(
+        id: 'system_prompt',
+        text:
+            'You are the Forge & Flow advisor. Ground answers in provided '
+            'context and stay recommendation-only.',
+        cacheBreakpoint: true,
+      ),
+      ProxyPromptBlock(
+        id: 'tool_definitions',
+        text: toolDefinitions,
+        cacheBreakpoint: true,
+      ),
+      ProxyPromptBlock(
+        id: 'corpus_context:$corpusVersion',
+        text: methodologyContext,
+        cacheBreakpoint: true,
+      ),
+      ProxyPromptBlock(
+        id: 'operator_context',
+        text: operatorContext,
+        cacheBreakpoint: false,
+      ),
+    ];
+  }
+
+  String cacheKeyForCorpusVersion(String corpusVersion) =>
+      'advisor-corpus:$corpusVersion';
+}
+
+class ProxyRequestLogPolicy {
+  const ProxyRequestLogPolicy({required this.fullContentLoggingEnabled});
+
+  const ProxyRequestLogPolicy.metaOnly() : fullContentLoggingEnabled = false;
+
+  final bool fullContentLoggingEnabled;
+
+  Map<String, Object?> buildEntry({
+    required OperatorContext operator,
+    required String usageClass,
+    required String queryClass,
+    required int tokenCount,
+    required int costCents,
+    required int statusCode,
+    String? question,
+    String? answer,
+  }) {
+    final entry = <String, Object?>{
+      'operator_id': operator.operatorId,
+      'location_id': operator.locationId,
+      'usage_class': usageClass,
+      'query_class': queryClass,
+      'token_count': tokenCount,
+      'cost_cents': costCents,
+      'status_code': statusCode,
+      'content_logging': fullContentLoggingEnabled ? 'full' : 'meta_only',
+    };
+    if (fullContentLoggingEnabled) {
+      entry['question'] = question;
+      entry['answer'] = answer;
+    }
+    return entry;
+  }
+}
+
+abstract class ProxyUsageLogSql {
+  ProxyUsageLogSql._();
+
+  static const String atomicUpsert = '''
+insert into public.usage_logs (
+  operator_id,
+  location_id,
+  usage_class,
+  period_start,
+  token_count,
+  cost_usd,
+  request_count,
+  query_class,
+  cache_hit,
+  llm_tier,
+  model_used,
+  batch_mode,
+  circuit_state,
+  fallback_used
+) values (
+  @operator_id,
+  @location_id,
+  @usage_class,
+  date_trunc('month', @request_time::timestamptz),
+  @token_count,
+  @cost_usd,
+  1,
+  @query_class,
+  @cache_hit,
+  @llm_tier,
+  @model_used,
+  @batch_mode,
+  @circuit_state,
+  @fallback_used
+)
+on conflict (
+  operator_id,
+  location_id,
+  usage_class,
+  period_start,
+  query_class,
+  cache_hit,
+  llm_tier,
+  model_used,
+  batch_mode,
+  circuit_state,
+  fallback_used
+) do update set
+  token_count = public.usage_logs.token_count + excluded.token_count,
+  cost_usd = public.usage_logs.cost_usd + excluded.cost_usd,
+  request_count = public.usage_logs.request_count + 1,
+  updated_at = now()
+returning token_count, cost_usd, request_count;
+''';
+
+  static const String idempotencyInsert = '''
+insert into public.proxy_requests (
+  idempotency_key,
+  request_type,
+  operator_id,
+  location_id,
+  usage_class,
+  response_payload
+) values (
+  @idempotency_key,
+  @request_type,
+  @operator_id,
+  @location_id,
+  @usage_class,
+  null
+)
+on conflict (operator_id, location_id, idempotency_key) do nothing
+returning request_id, response_payload;
+''';
+}
+
 const String healthPath = '/healthz';
+const String deepHealthPath = '/health';
 const String scopeSmokePath = '/v1/scope';
 const String usageSmokePath = '/v1/usage-smoke';
+const String advisorSmokePath = '/v1/advisor-smoke';
 
 /// Minimal request router. Routes:
 ///
@@ -628,13 +1104,49 @@ Future<void> routeRequest(
   HttpRequest request,
   ProxyRequestGuard authGuard, {
   ProxyUsageGuard? usageGuard,
+  ProxyAccountingStore? accountingStore,
+  ProxyHealthCheckStore? healthCheckStore,
+  ProxyLlmProvider? llmProvider,
+  ProxyRequestLogPolicy requestLogPolicy =
+      const ProxyRequestLogPolicy.metaOnly(),
+  DateTime Function()? now,
 }) async {
   final response = request.response;
+  final clock = now ?? DateTime.now;
   try {
     final path = request.uri.path;
 
     if (request.method == 'GET' && path == healthPath) {
       _writeJson(response, 200, <String, Object?>{'status': 'ok'});
+      return;
+    }
+
+    if (request.method == 'GET' && path == deepHealthPath) {
+      if (healthCheckStore == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'status': 'unavailable',
+          'error': 'health_check_not_configured',
+          'message': 'route requires a ProxyHealthCheckStore to be installed',
+        });
+        return;
+      }
+
+      ProxyHealthStatus status;
+      try {
+        status = await healthCheckStore.check();
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'status': 'unavailable',
+          'error': 'health_check_failed',
+          'message': 'proxy dependency health check failed',
+        });
+        return;
+      }
+
+      _writeJson(response, status.ok ? 200 : 503, <String, Object?>{
+        'status': status.ok ? 'ok' : 'unavailable',
+        ...status.toJson(),
+      });
       return;
     }
 
@@ -713,15 +1225,187 @@ Future<void> routeRequest(
         'cap_request_tokens': decision.tier.maxRequestTokens,
         'cap_requests_per_minute': decision.tier.maxRequestsPerMinute,
         'cap_monthly_cost_cents': decision.tier.maxMonthlyCostCents,
-        'remaining_requests_this_minute':
-            decision.remainingRequestsThisMinute,
-        'remaining_cost_cents_this_month':
-            decision.remainingCostCentsThisMonth,
+        'remaining_requests_this_minute': decision.remainingRequestsThisMinute,
+        'remaining_cost_cents_this_month': decision.remainingCostCentsThisMonth,
         'estimate_request_tokens': estimate.requestTokens,
         'note':
             '11a.10b smoke. No provider call performed. Counter store '
             'increment runs in a later slice once a real backend is wired.',
       });
+      return;
+    }
+
+    if (request.method == 'GET' && path == advisorSmokePath) {
+      if (accountingStore == null || llmProvider == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'advisor_smoke_not_configured',
+          'message': 'route requires ProxyAccountingStore and ProxyLlmProvider',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_idempotency_key',
+          'message': 'Idempotency-Key header is required',
+        });
+        return;
+      }
+
+      final params = request.uri.queryParameters;
+      final usageClass = _nonBlankOr(params['usage_class'], 'advisor_qa');
+      final queryClass = _nonBlankOr(
+        params['query_class'],
+        'methodology_lookup',
+      );
+      final subscriptionTier = _nonBlankOr(
+        params['subscription_tier'],
+        'basic',
+      );
+      final corpusVersion = _nonBlankOr(params['corpus_version'], 'launch_v1');
+      final question = _nonBlankOr(params['q'], 'advisor smoke question');
+      final estimate = ProxyUsageChargeEstimate(
+        tokenCount: int.tryParse(params['tokens'] ?? '') ?? 100,
+        costCents: int.tryParse(params['cost_cents'] ?? '') ?? 1,
+      );
+
+      const tierRouter = SubscriptionLlmTierRouter();
+      const modelRouting = ProxyLlmModelRouting();
+      const promptBuilder = AdvisorPromptCacheBuilder();
+      final llmTier = tierRouter.tierFor(
+        subscriptionTier: subscriptionTier,
+        queryClass: queryClass,
+      );
+      final modelId = modelRouting.modelIdFor(llmTier);
+      final telemetry = ProxyUsageTelemetry(
+        queryClass: queryClass,
+        cacheHit: false,
+        llmTier: llmTier.id,
+        modelUsed: modelId,
+      );
+
+      ProxyAccountingStartResult start;
+      try {
+        start = await accountingStore.startRequest(
+          idempotencyKey: idempotencyKey,
+          requestType: 'advisor_smoke',
+          operator: scope,
+          usageClass: usageClass,
+          telemetry: telemetry,
+          estimate: estimate,
+          now: clock().toUtc(),
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'accounting_store_unavailable',
+          'message': 'proxy accounting store unavailable',
+        });
+        return;
+      }
+
+      if (start is ProxyAccountingReplayed) {
+        _writeJson(response, 200, <String, Object?>{
+          ...start.responsePayload,
+          'idempotent_replay': true,
+        });
+        return;
+      }
+
+      if (start is ProxyAccountingRefused) {
+        _writeJson(response, 402, <String, Object?>{
+          'error': 'usage_cap_reached',
+          'message': 'usage cap reached before provider call',
+          'cap_status': start.capStatus.toJson(),
+        });
+        return;
+      }
+
+      final reserved = start as ProxyAccountingReserved;
+      final promptBlocks = promptBuilder.build(
+        corpusVersion: corpusVersion,
+        methodologyContext: 'launch methodology context placeholder',
+        toolDefinitions: 'advisor tool definitions placeholder',
+        operatorContext:
+            'operator=${scope.operatorId};location=${scope.locationId}',
+      );
+      ProxyLlmCompletion completion;
+      try {
+        completion = await llmProvider.complete(
+          ProxyLlmRequest(
+            question: question,
+            promptBlocks: promptBlocks,
+            tier: llmTier,
+            modelId: modelId,
+            cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
+            maxOutputTokens: PolicyTier.launch.maxOutputTokens,
+          ),
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'llm_provider_unavailable',
+          'message': 'LLM provider unavailable',
+        });
+        return;
+      }
+
+      final responsePayload = <String, Object?>{
+        'status': 'ok',
+        'operator_id': scope.operatorId,
+        'location_id': scope.locationId,
+        'usage_class': usageClass,
+        'query_class': queryClass,
+        'llm_tier': completion.tier.id,
+        'model_used': completion.modelId,
+        'cache_key': promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
+        'prompt_cache_breakpoints': <String>[
+          for (final block in promptBlocks)
+            if (block.cacheBreakpoint) block.id,
+        ],
+        'cap_status': reserved.capStatus.toJson(),
+        'answer': completion.text,
+        'idempotent_replay': false,
+        'request_log_preview': requestLogPolicy.buildEntry(
+          operator: scope,
+          usageClass: usageClass,
+          queryClass: queryClass,
+          tokenCount: estimate.tokenCount + completion.outputTokens,
+          costCents: estimate.costCents + completion.costCents,
+          statusCode: 200,
+          question: question,
+          answer: completion.text,
+        ),
+      };
+
+      try {
+        await accountingStore.completeRequest(
+          idempotencyKey: idempotencyKey,
+          responsePayload: responsePayload,
+          now: clock().toUtc(),
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'accounting_store_unavailable',
+          'message': 'proxy accounting store unavailable',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, responsePayload);
       return;
     }
 
@@ -743,4 +1427,10 @@ void _writeJson(
   response.statusCode = statusCode;
   response.headers.contentType = ContentType.json;
   response.write(jsonEncode(body));
+}
+
+String _nonBlankOr(String? raw, String fallback) {
+  final value = raw?.trim();
+  if (value == null || value.isEmpty) return fallback;
+  return value;
 }

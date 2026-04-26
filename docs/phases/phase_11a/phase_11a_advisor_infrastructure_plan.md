@@ -1,7 +1,7 @@
 # Phase 11a - Agentic Advisor Infrastructure
 
 Updated: 2026-04-26
-Status: Active - Azure/AGE live infrastructure sequence
+Status: Accepted - Azure/AGE live infrastructure sequence complete
 Owner: Future advisor infrastructure lane
 
 This is the compact active execution plan. Full pre-lean history is archived at
@@ -28,11 +28,13 @@ This is the compact active execution plan. Full pre-lean history is archived at
   default-on, tier routing, response cache + Memorystore (deferred to
   `11b.1`), pre-computed summaries (deferred to `11b.1`), Anthropic Batch
   API (deferred to Phase 12.0).
-- Next slice: `11a.11c.5`, code-only repo tooling re-target to Azure.
-- Next live slice: `11a.11c.6`, Azure provisioning, extension verification,
-  schema apply (incl. `chunk_context` column for Contextual Retrieval +
-  `tsvector` BM25 column on chunks), AGE projection apply, and AGE
-  benchmark.
+- Last accepted infrastructure action: `11a.11e` staging live retrieval
+  accepted end-to-end. Anthropic generated 233 chunk contexts, Voyage
+  refreshed 233 context-enriched embeddings, vector/rerank smokes passed, and
+  Claude answer smoke returned `end_turn`.
+- Current blocker: none inside 11a. Production remains intentionally empty;
+  production corpus/operator data load belongs to a later explicit cutover
+  gate.
 
 ## Fetch Notes
 
@@ -108,10 +110,53 @@ No operator-facing chat UI ships from 11a. Phase 11b owns that UX.
   for real admin UX by Phase 11A.
 - `11a.11c.4`: lean tracker / phase-doc recontextualization and Azure decision
   lock.
+- `11a.11c.5`: Supabase-to-Azure/Postgres code-only retarget accepted:
+  migrations now live under `db/migrations`, generic Postgres role bootstrap
+  exists, Supabase CLI assumptions are removed, and Postgres staging scripts +
+  local AGE/pgvector dev scaffold are in place.
+- `11a.11c.6` staging provision/apply partial accepted: Azure staging server
+  `forge-flow-staging-pg` in Canada Central is live on PG 16, connection
+  secrets live outside the repo at `$HOME\.forge_flow.staging.ps1`, AGE /
+  pgvector / pg_diskann / pg_partman / pg_stat_statements / pgcrypto are
+  installed in `forgeflow`, pg_cron is installed in `postgres`, all six
+  `db/migrations` applied, RLS tables verified, pgvector smoke passed, and AGE
+  Cypher smoke passed. `pgmq` is not exposed in this server's extension
+  allowlist; the queue path is now locked to `FOR UPDATE SKIP LOCKED` for
+  in-DB queues and Cloud Tasks for HTTP-delivery queues.
+- `11a.11c.6` live-constraint doc sweep accepted: `pgmq` is removed from
+  the required extension path, in-DB queues use `FOR UPDATE SKIP LOCKED`,
+  HTTP-delivery queues use Cloud Tasks, and PgBouncer is tied to a General
+  Purpose+ production tier.
+- `11a.11c.6a`: local schema-hardening migration/tests accepted. Added
+  `chunk_context`, `corpus_version`, BM25 `tsvector` + GIN index, usage
+  telemetry rollup dimensions, pg_partman maintenance scaffold, and
+  RLS-leading-index audit SQL. No live apply.
+- `11a.11c.6b`: local AGE projection artifacts/tests accepted. Added AGE
+  index strategy SQL, p95 benchmark harness, and DiskANN/HNSW decision harness
+  without applying live indexes or running live benchmarks.
+- `11a.11d`: local proxy counter / idempotency / health / cost-lever scaffold
+  accepted. Added `/health` dependency-check seam, `/v1/advisor-smoke`
+  idempotency/cap/provider scaffold, usage-log UPSERT SQL contract,
+  prompt-cache block builder, tier routing, and meta-only logging guard.
+  No live DB mutation or provider call.
+- `11a.11c.6/11a.11e` live DB follow-up: staging has the corpus loaded
+  (8 documents, 233 chunks), 233 ready Voyage embeddings, BM25 vectors
+  populated, AGE projection/index strategy applied, AGE smoke traversal
+  passing, vector/rerank smokes passing, AGE p95 benchmark passing, pg_partman
+  + pg_cron maintenance active, and RLS-leading-column audit at 0 violations.
+- `11a.production1`: Production1 Azure Postgres shell exists on General
+  Purpose `Standard_D2ds_v5`, 35-day backup retention, built-in PgBouncer
+  smoke passing, all migrations through
+  `202604250007_advisor_rls_index_hardening.sql` applied, RLS audit at
+  0 violations, and no operator/corpus data loaded.
+- Anthropic Contextual Retrieval context generation and Claude answer-runtime
+  smoke accepted after credits were added.
 
 ## Active Slice Contracts
 
 ### `11a.11c.5` - Repo Tooling Re-target To Azure
+
+Status: Accepted 2026-04-26.
 
 Code-only. No live DB calls.
 
@@ -138,7 +183,8 @@ Expected file families:
   migration for compatibility roles
 - `supabase/config.toml`
 - `docker-compose.dev.yml`
-- `scripts/supabase_*.ps1` -> `scripts/azure_pg_*.ps1`
+- `scripts/supabase_*.ps1` -> `scripts/postgres_staging_*.ps1` plus
+  `scripts/use_postgres_staging_env.ps1`
 - `tool/advisor_proxy/*`
 - `tool/advisor_corpus/*`
 - `lib/services/advisor_corpus_admin_service.dart`
@@ -163,6 +209,16 @@ Human setup for this slice:
 
 Live slice. Do not start until `11a.11c.5` accepts.
 
+Status: **accepted for 11a database infrastructure, with staging limitations**
+as of 2026-04-26. See
+`phase_11a_11c6_azure_staging_apply_result.md`,
+`phase_11a_11e_staging_live_load_result.md`, and
+`phase_11a_production1_provisioning_result.md`. Staging remains B1ms
+with 7-day backups and no built-in PgBouncer; Production1 closes the
+production-only gaps with General Purpose `Standard_D2ds_v5`, 35-day
+backup retention, and PgBouncer smoke passing. `pgmq` is not exposed
+in Azure; queues stay on `FOR UPDATE SKIP LOCKED` / Cloud Tasks.
+
 Setup:
 
 - Azure subscription/account with permission to create PostgreSQL Flexible
@@ -170,14 +226,32 @@ Setup:
 - Resource group for staging/prod.
 - Staging server in Canada Central, PG 16.
 - Production server in Canada Central, PG 16.
-- Staging may use Burstable B2s; production should use General Purpose D2s_v3
-  or higher unless the user explicitly chooses a lower-cost MVP tier.
-- `azure.extensions` allowlist: AGE, VECTOR, PG_DISKANN, PGMQ, PG_CRON,
-  PG_STAT_STATEMENTS.
-- `shared_preload_libraries`: AGE, pg_cron, pg_stat_statements.
+- **Production tier minimum: General Purpose (`Standard_D2ds_v5` or
+  higher).** Required because Azure's built-in PgBouncer transaction-
+  mode pooling is gated to General Purpose and Memory Optimized
+  tiers; Burstable does not expose it. Staging may continue on
+  Burstable (`Standard_B1ms` is in use today), but staging then does
+  not test PgBouncer behavior — pooling rehearsal happens against
+  production tier or above.
+- `azure.extensions` allowlist: `age`, `vector`, `pg_diskann`,
+  `pg_cron`, `pg_partman`, `pg_stat_statements`, `pgcrypto`. `pgmq`
+  is **not** in this list — live verification on the staging server
+  on 2026-04-26 confirmed Azure does not expose it. The Phase 12
+  queue path uses `SELECT ... FOR UPDATE SKIP LOCKED` for in-DB
+  queues and Cloud Tasks for HTTP-delivery queues; do not
+  reintroduce `pgmq` as a required extension without a new
+  live-hosting decision.
+- `shared_preload_libraries`: `age`, `pg_cron`, `pg_stat_statements`.
+  Live path uses `pg_cron` to call pg_partman hourly; no `pg_partman_bgw`
+  preload is required for the accepted path.
 - Firewall rule for Cloud Run egress IPs or Private Link.
-- PITR enabled, 35-day retention.
-- Built-in PgBouncer transaction pooling enabled.
+- PITR enabled. **Staging: 7-day retention is acceptable for the
+  partial slice.** Production: 35-day retention is a pre-production
+  checklist item that must land before any operator data is written;
+  apply via `--backup-retention 35` at provisioning time.
+- Built-in PgBouncer transaction pooling enabled — production only
+  (General Purpose+ tier requirement above). Staging on Burstable
+  B1ms skips pooling entirely.
 
 Verification:
 
@@ -186,8 +260,6 @@ Verification:
 - `CREATE EXTENSION IF NOT EXISTS vector;`
 - pgvector cosine smoke query.
 - `CREATE EXTENSION IF NOT EXISTS pg_diskann;` if available on selected tier.
-- `CREATE EXTENSION IF NOT EXISTS pgmq;` (Phase 12 prerequisite; verify
-  availability now to avoid surprises).
 - `CREATE EXTENSION IF NOT EXISTS pg_cron;` (precompute + scheduled
   workflow runner prerequisite).
 - `CREATE EXTENSION IF NOT EXISTS pg_partman;` (NEW per Lock 2 in
@@ -222,7 +294,7 @@ Verification:
   ```sql
   SELECT cron.schedule(
     'partman_maintenance', '0 * * * *',
-    $$SELECT partman.run_maintenance(p_analyze := true)$$
+    $$SELECT public.run_maintenance(p_analyze := true)$$
   );
   ```
 - Run AGE benchmark at 1K and 10K operator-scale synthetic data.
@@ -237,7 +309,10 @@ Acceptance:
 - pgvector is live and smoke-tested.
 - pg_diskann verified available (or documented as unavailable on chosen
   tier). DiskANN-vs-HNSW benchmark documented; chosen index live.
-- pgmq + pg_cron + pg_partman verified available.
+- pg_cron + pg_partman verified available. `pgmq` is **not** an
+  Azure extension on this host (live-verified 2026-04-26); the
+  Phase 12 queue path is locked to `FOR UPDATE SKIP LOCKED` for
+  in-DB queues and Cloud Tasks for HTTP-delivery queues, not pgmq.
 - AGE projection smoke traversal succeeds.
 - AGE indexes (BTree on id/start_id/end_id, GIN on hot property paths)
   applied to every vertex/edge table; documented.
@@ -250,9 +325,73 @@ Acceptance:
   index leads with `operator_id` or `(operator_id, location_id)`).
 - `pg_partman` registered for `usage_logs`; hourly maintenance scheduled.
 
+#### `11a.11c.6a` - Local Schema-Hardening Migration
+
+Status: Accepted 2026-04-26.
+
+Runs before AGE projection / benchmark work. Local-only; no Azure apply.
+
+Scope:
+
+- Add a new deterministic migration under `db/migrations/` for:
+  - `advisor_source_chunks.chunk_context TEXT`
+  - BM25 `tsvector` generated column + GIN index on `advisor_source_chunks`
+  - `advisor_source_chunks.corpus_version`
+  - cost/telemetry columns on `usage_logs`: `query_class`, `cache_hit`,
+    `llm_tier`, `model_used`, `batch_mode`, `circuit_state`,
+    `fallback_used`
+- Include SQL comments documenting Contextual Retrieval and cost telemetry.
+- Add pg_partman registration / cron-maintenance SQL scaffold if safe in a
+  migration, or a companion verification SQL doc if it must stay operator-run.
+- Add RLS/index audit SQL scaffold proving operator-scoped fact-table indexes
+  lead with `operator_id` or `(operator_id, location_id)`.
+- Add migration tests that assert the new columns, indexes, comments, and
+  audit/scaffold SQL are present.
+
+Acceptance:
+
+- Migration is local and deterministic; no live Azure/Postgres command.
+- Tests assert Contextual Retrieval columns and BM25 index.
+- Tests assert cost telemetry columns on `usage_logs`.
+- Tests assert pg_partman maintenance/audit SQL is represented.
+- Tests assert RLS-leading-column audit coverage exists.
+
+#### `11a.11c.6b` - AGE Projection + Benchmark + DiskANN Decision Harness
+
+Status: Accepted 2026-04-26.
+
+Local-first. Do not apply to live Azure until the generated artifacts and
+benchmark harness accept locally.
+
+Scope:
+
+- Locate existing `7.57.4` AGE projection artifacts and current advisor graph
+  seed/edge tables.
+- Produce deterministic SQL artifacts for AGE projection apply/smoke:
+  graph creation, vertex/edge label creation, seed projection, smoke traversal,
+  and cleanup/replay guidance.
+- Add AGE index strategy SQL for every projected vertex/edge table:
+  BTree on `id`, BTree on `start_id`/`end_id` for edges, and GIN on hot
+  property paths such as `Concept.name`.
+- Add a local benchmark harness/runbook for 1K and 10K synthetic
+  operator-scale AGE traversal, with pass thresholds preserved from the
+  parent gate (isolated p95 <= 500ms, 10x concurrent p95 <= 1000ms).
+- Add a DiskANN-vs-HNSW decision harness over `advisor_source_chunks` that
+  records candidate index DDL, benchmark inputs, and the decision report path;
+  do not drop HNSW in this slice.
+
+Acceptance:
+
+- Local artifacts are deterministic and tested.
+- AGE projection SQL includes indexes and smoke traversal.
+- Benchmark harness is runnable after live operator approval but is not run
+  by default.
+- DiskANN/HNSW decision harness is present and does not mutate live indexes.
+
 ### `11a.11d` - Proxy Counter Wiring + Smoke + Cost-Discipline Levers 1-2
 
-Runs after Azure DB is live.
+Status: Accepted 2026-04-26 as a local/fake-tested scaffold. Live Postgres
+store/provider execution remains gated.
 
 - Idempotency check on every proxy request using `proxy_requests`.
 - Atomic UPSERT into `usage_logs` with telemetry columns
@@ -277,16 +416,28 @@ Runs after Azure DB is live.
 
 ### `11a.11e` - Corpus + Embedding Live Load
 
+Status: Accepted 2026-04-26.
+See `phase_11a_11e_staging_live_load_result.md`.
+
 Runs after proxy/DB wiring is ready.
 
-- Corpus build pipeline runs against Azure-backed Postgres/proxy.
-- Pipeline is idempotent and resumable.
-- Voyage rate limits handled with backoff and jitter.
-- All current chunks load with content-addressed IDs preserved.
-- Embeddings stamped with provider/model/dimension.
-- AGE graph projection runs at production scale.
+- Corpus build pipeline ran against Azure-backed staging Postgres.
+- Pipeline load was idempotent with content-addressed IDs preserved.
+- Voyage rate limits were handled with small batches / delay under the
+  account's current reduced limit.
+- All current chunks loaded: 8 documents, 233 chunks.
+- Embeddings stamped with provider/model/dimension: 233 ready
+  `voyage-4-large` embeddings at 1024 dimensions.
+- AGE graph projection runs on staging and smoke traversal returns 233
+  Document -> Chunk pairs.
 - Vector search and Voyage rerank smoke queries return expected candidates.
-- Old inactive chunks remain available for replay.
+- Old inactive chunks remain available for replay through active/inactive
+  semantics.
+- Anthropic Contextual Retrieval context generation populated
+  `chunk_context` for all 233 active staging chunks.
+- Voyage embeddings were refreshed from context + text inputs.
+- Claude answer-runtime smoke returned `end_turn` with a citation-bearing
+  answer from the top reranked candidate.
 
 ## After `11a.11c-e`
 

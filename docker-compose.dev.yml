@@ -1,0 +1,45 @@
+# Phase 11a.11c.5 — Local Postgres dev scaffold for advisor retarget.
+#
+# This file is *not run* by the retarget slice. It exists so a future
+# slice (or a developer who wants to apply the migrations locally) has
+# a reproducible starting point for a Postgres 16 instance with both
+# Apache AGE and pgvector available — the two extension dependencies
+# the advisor migrations require.
+#
+# Usage (NOT executed by 11a.11c.5):
+#
+#   docker compose -f docker-compose.dev.yml up --build
+#   psql "postgres://forge:dev@localhost:5432/forge" \
+#        -v ON_ERROR_STOP=1 \
+#        -f db/migrations/202604250000_advisor_roles.sql
+#   # ...continue with 0001..0005 in lexicographic order...
+#
+# The connection string above is intentionally placed in plain text
+# because it points only at a local dev container; production
+# credentials live in Cloud Run env / Azure managed identity and never
+# touch this file.
+
+services:
+  forge_pg:
+    build:
+      context: ./db/dev
+      dockerfile: Dockerfile
+    image: forge-flow-pg-dev:latest
+    container_name: forge_pg_dev
+    environment:
+      # Local-dev-only credentials. Never used outside this compose
+      # file. Production credentials live in Cloud Run env / Azure
+      # managed identity.
+      POSTGRES_DB: forge
+      POSTGRES_USER: forge
+      POSTGRES_PASSWORD: dev
+    ports:
+      - "5432:5432"
+    volumes:
+      # Named volume so data survives `docker compose down`. Drop it
+      # with `docker volume rm forge_flow_demo_forge_pg_data` to start
+      # from scratch.
+      - forge_pg_data:/var/lib/postgresql/data
+
+volumes:
+  forge_pg_data:

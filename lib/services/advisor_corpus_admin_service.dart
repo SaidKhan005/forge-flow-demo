@@ -8,13 +8,18 @@
 //
 // Hard rules:
 //   * No file picker, no shell-out to `tool/advisor_corpus`, no live
-//     Anthropic / Voyage / Supabase / Firebase calls. Everything is in
-//     memory.
+//     Anthropic / Voyage / Postgres / Firebase calls. Everything is
+//     in memory.
 //   * The "load to cloud" path is intentionally blocked. Cloud apply
-//     depends on the 11a.11b prerequisites (Supabase CLI installed,
-//     project linked, env exported). Until those land, this service
-//     surfaces a blocked outcome that the UI renders as a disabled
-//     action with an explanatory message.
+//     depends on the 11a.11b prerequisites (a target Postgres host
+//     reachable, deployment role available, `POSTGRES_URL` /
+//     `POSTGRES_ADMIN_URL` env exported). Phase 11a.11c.5 retargeted
+//     the production Postgres host from Supabase to Azure Database
+//     for PostgreSQL Flexible Server; the readiness doc archives the
+//     prior Supabase preflight for traceability. Until 11a.11c.6
+//     provisions the Azure staging instance and the env names land,
+//     this service surfaces a blocked outcome that the UI renders as
+//     a disabled action with an explanatory message.
 //   * Token estimation is a simple deterministic heuristic
 //     (`(length / 4).ceil()`). Good enough for an admin preview; the
 //     real Voyage/Anthropic tokenizer is owned by the proxy, not the

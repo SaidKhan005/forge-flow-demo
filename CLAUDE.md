@@ -164,10 +164,18 @@ primary defense.
   parallel stacks. Phase 12 workflows, future Barrio staff
   coaching, and any future AI surface reuse the same plumbing.
 - **Postgres host = Azure DB Flexible Server, `Canada Central`,
-  PG 16.** Extensions: `AGE`, `pgvector`, `pg_diskann`, `pgmq`,
-  `pg_cron`, `pg_stat_statements`. Migrations in `db/migrations/`.
-  Direct `package:postgres` imports forbidden outside
+  PG 16.** Extensions: `AGE`, `pgvector`, `pg_diskann`,
+  `pg_cron`, `pg_partman`, `pg_stat_statements`, `pgcrypto`.
+  Migrations in `db/migrations/`. Direct `package:postgres`
+  imports forbidden outside
   `lib/infrastructure/persistence/postgres/`.
+- **`pgmq` is NOT an Azure extension on this host.** Live
+  verification on `forge-flow-staging-pg` (2026-04-26) showed
+  `pgmq` is not exposed in `azure.extensions`. Do not reintroduce
+  it as a required extension or as a Phase 12 prerequisite
+  without a new live-hosting decision. In-DB queues use
+  `SELECT ... FOR UPDATE SKIP LOCKED` against a plain workflow
+  table; HTTP-delivery queues use Cloud Tasks.
 - **Retrieval pattern**: Modular Adaptive Agentic RAG (Haiku
   classifier → SQL / Contextual Retrieval / AGE → Sonnet synthesis
   with prompt cache).

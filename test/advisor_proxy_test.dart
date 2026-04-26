@@ -23,15 +23,12 @@ import '../tool/advisor_proxy/advisor_proxy.dart';
 
 void main() {
   group('ProxyConfig.fromEnvironment', () {
-    Map<String, String> environmentWithAllSecrets({
-      String? port,
-    }) {
+    Map<String, String> environmentWithAllSecrets({String? port}) {
       return <String, String>{
         ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
         ProxySecretNames.voyageApiKey: 'placeholder-voyage',
-        ProxySecretNames.supabaseUrl: 'placeholder-supabase-url',
-        ProxySecretNames.supabaseServiceRoleKey:
-            'placeholder-service-role',
+        ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
+        ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
         if (port != null) 'PORT': port,
       };
     }
@@ -47,20 +44,15 @@ void main() {
         containsAll(<String>[
           ProxySecretNames.anthropicApiKey,
           ProxySecretNames.voyageApiKey,
-          ProxySecretNames.supabaseUrl,
-          ProxySecretNames.supabaseServiceRoleKey,
+          ProxySecretNames.postgresUrl,
+          ProxySecretNames.postgresAdminUrl,
         ]),
       );
-      expect(
-        config.hasSecretFor(ProxySecretNames.anthropicApiKey),
-        isTrue,
-      );
+      expect(config.hasSecretFor(ProxySecretNames.anthropicApiKey), isTrue);
     });
 
     test('defaults port to 8080 when PORT is missing or invalid', () {
-      final missing = ProxyConfig.fromEnvironment(
-        environmentWithAllSecrets(),
-      );
+      final missing = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
       final blank = ProxyConfig.fromEnvironment(
         environmentWithAllSecrets(port: '   '),
       );
@@ -89,8 +81,8 @@ void main() {
       final partial = <String, String>{
         ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
         // VOYAGE_API_KEY missing
-        ProxySecretNames.supabaseUrl: 'placeholder-url',
-        ProxySecretNames.supabaseServiceRoleKey: '   ', // blank counts
+        ProxySecretNames.postgresUrl: 'placeholder-url',
+        ProxySecretNames.postgresAdminUrl: '   ', // blank counts
       };
 
       Object? thrown;
@@ -106,7 +98,7 @@ void main() {
         error.missingSecretNames,
         containsAll(<String>[
           ProxySecretNames.voyageApiKey,
-          ProxySecretNames.supabaseServiceRoleKey,
+          ProxySecretNames.postgresAdminUrl,
         ]),
       );
       expect(
@@ -124,16 +116,13 @@ void main() {
       final environment = <String, String>{
         ProxySecretNames.anthropicApiKey: marker,
         ProxySecretNames.voyageApiKey: marker,
-        ProxySecretNames.supabaseUrl: marker,
-        ProxySecretNames.supabaseServiceRoleKey: marker,
+        ProxySecretNames.postgresUrl: marker,
+        ProxySecretNames.postgresAdminUrl: marker,
       };
 
       final config = ProxyConfig.fromEnvironment(environment);
       expect(config.toString(), isNot(contains(marker)));
-      expect(
-        config.toString(),
-        contains(ProxySecretNames.anthropicApiKey),
-      );
+      expect(config.toString(), contains(ProxySecretNames.anthropicApiKey));
 
       // Missing-secret exception path also must not leak partial values.
       Object? thrown;
@@ -149,26 +138,21 @@ void main() {
       expect(thrown.toString(), isNot(contains(marker)));
     });
 
-    test(
-      'secretFor returns the loaded value but is the only accessor that '
-      'returns it (callers must not log it)',
-      () {
-        final config = ProxyConfig.fromEnvironment(
-          environmentWithAllSecrets(),
-        );
+    test('secretFor returns the loaded value but is the only accessor that '
+        'returns it (callers must not log it)', () {
+      final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
 
-        // Smoke: the value comes back through the explicit accessor —
-        // no toString / no JSON / no iteration. Test reads it once and
-        // does not write it anywhere.
-        final value = config.secretFor(ProxySecretNames.anthropicApiKey);
-        expect(value.isNotEmpty, isTrue);
+      // Smoke: the value comes back through the explicit accessor —
+      // no toString / no JSON / no iteration. Test reads it once and
+      // does not write it anywhere.
+      final value = config.secretFor(ProxySecretNames.anthropicApiKey);
+      expect(value.isNotEmpty, isTrue);
 
-        expect(
-          () => config.secretFor('NEVER_REGISTERED_SECRET'),
-          throwsStateError,
-        );
-      },
-    );
+      expect(
+        () => config.secretFor('NEVER_REGISTERED_SECRET'),
+        throwsStateError,
+      );
+    });
   });
 
   group('extractBearerToken', () {
@@ -241,91 +225,82 @@ void main() {
       expect(thrown.message, contains('signature mismatch'));
     });
 
-    test(
-      'rejects verified token without operator scope (403)',
-      () async {
-        final guard = ProxyRequestGuard(
-          verifier: _FixedClaimsVerifier(
-            const ProxyJwtClaims(
-              userId: 'user_123',
-              operatorId: null,
-              locationId: 'loc_999',
-              roles: <String>[],
-            ),
+    test('rejects verified token without operator scope (403)', () async {
+      final guard = ProxyRequestGuard(
+        verifier: _FixedClaimsVerifier(
+          const ProxyJwtClaims(
+            userId: 'user_123',
+            operatorId: null,
+            locationId: 'loc_999',
+            roles: <String>[],
           ),
-        );
+        ),
+      );
 
-        ProxyAuthError? thrown;
-        try {
-          await guard.requireOperatorContext(
-            authorizationHeader: 'Bearer fake.token.value',
-          );
-        } on ProxyAuthError catch (error) {
-          thrown = error;
-        }
-        expect(thrown, isNotNull);
-        expect(thrown!.statusCode, equals(403));
-        expect(thrown.message, contains('operator'));
-      },
-    );
-
-    test(
-      'rejects verified token without location scope (403)',
-      () async {
-        final guard = ProxyRequestGuard(
-          verifier: _FixedClaimsVerifier(
-            const ProxyJwtClaims(
-              userId: 'user_123',
-              operatorId: 'op_777',
-              locationId: '',
-              roles: <String>['advisor.read'],
-            ),
-          ),
-        );
-
-        ProxyAuthError? thrown;
-        try {
-          await guard.requireOperatorContext(
-            authorizationHeader: 'Bearer fake.token.value',
-          );
-        } on ProxyAuthError catch (error) {
-          thrown = error;
-        }
-        expect(thrown, isNotNull);
-        expect(thrown!.statusCode, equals(403));
-      },
-    );
-
-    test(
-      'happy path returns scoped OperatorContext with userId / operator / '
-      'location / roles',
-      () async {
-        final guard = ProxyRequestGuard(
-          verifier: _FixedClaimsVerifier(
-            const ProxyJwtClaims(
-              userId: 'user_123',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read', 'methodology.read'],
-            ),
-          ),
-        );
-
-        final context = await guard.requireOperatorContext(
+      ProxyAuthError? thrown;
+      try {
+        await guard.requireOperatorContext(
           authorizationHeader: 'Bearer fake.token.value',
         );
+      } on ProxyAuthError catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isNotNull);
+      expect(thrown!.statusCode, equals(403));
+      expect(thrown.message, contains('operator'));
+    });
 
-        expect(context.userId, equals('user_123'));
-        expect(context.operatorId, equals('op_777'));
-        expect(context.locationId, equals('loc_999'));
-        expect(
-          context.roles,
-          equals(<String>['advisor.read', 'methodology.read']),
+    test('rejects verified token without location scope (403)', () async {
+      final guard = ProxyRequestGuard(
+        verifier: _FixedClaimsVerifier(
+          const ProxyJwtClaims(
+            userId: 'user_123',
+            operatorId: 'op_777',
+            locationId: '',
+            roles: <String>['advisor.read'],
+          ),
+        ),
+      );
+
+      ProxyAuthError? thrown;
+      try {
+        await guard.requireOperatorContext(
+          authorizationHeader: 'Bearer fake.token.value',
         );
-        expect(context.hasRole('advisor.read'), isTrue);
-        expect(context.hasRole('admin.write'), isFalse);
-      },
-    );
+      } on ProxyAuthError catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isNotNull);
+      expect(thrown!.statusCode, equals(403));
+    });
+
+    test('happy path returns scoped OperatorContext with userId / operator / '
+        'location / roles', () async {
+      final guard = ProxyRequestGuard(
+        verifier: _FixedClaimsVerifier(
+          const ProxyJwtClaims(
+            userId: 'user_123',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read', 'methodology.read'],
+          ),
+        ),
+      );
+
+      final context = await guard.requireOperatorContext(
+        authorizationHeader: 'Bearer fake.token.value',
+      );
+
+      expect(context.userId, equals('user_123'));
+      expect(context.operatorId, equals('op_777'));
+      expect(context.locationId, equals('loc_999'));
+      expect(
+        context.roles,
+        equals(<String>['advisor.read', 'methodology.read']),
+      );
+      expect(context.hasRole('advisor.read'), isTrue);
+      expect(context.hasRole('admin.write'), isFalse);
+    });
   });
 
   group('ProxyUsageGuard (11a.10b)', () {
@@ -336,52 +311,46 @@ void main() {
       roles: <String>['advisor.read'],
     );
 
-    test(
-      'PolicyTier.launch defaults are non-zero and machine-usable',
-      () {
-        const tier = PolicyTier.launch;
-        expect(tier.id, isNotEmpty);
-        expect(tier.maxRequestTokens, greaterThan(0));
-        expect(tier.maxRequestsPerMinute, greaterThan(0));
-        expect(tier.maxMonthlyCostCents, greaterThan(0));
-        expect(tier.requestTimeoutSeconds, greaterThan(0));
-        expect(tier.maxOutputTokens, greaterThan(0));
-      },
-    );
+    test('PolicyTier.launch defaults are non-zero and machine-usable', () {
+      const tier = PolicyTier.launch;
+      expect(tier.id, isNotEmpty);
+      expect(tier.maxRequestTokens, greaterThan(0));
+      expect(tier.maxRequestsPerMinute, greaterThan(0));
+      expect(tier.maxMonthlyCostCents, greaterThan(0));
+      expect(tier.requestTimeoutSeconds, greaterThan(0));
+      expect(tier.maxOutputTokens, greaterThan(0));
+    });
 
-    test(
-      'over-token request refuses BEFORE the store is queried',
-      () async {
-        final store = _RecordingStore();
-        final guard = ProxyUsageGuard(
-          store: store,
-          tierResolver: const FixedLaunchTierResolver(),
+    test('over-token request refuses BEFORE the store is queried', () async {
+      final store = _RecordingStore();
+      final guard = ProxyUsageGuard(
+        store: store,
+        tierResolver: const FixedLaunchTierResolver(),
+      );
+
+      UsageRefusal? thrown;
+      try {
+        await guard.requireAllowed(
+          operator: operatorScope(),
+          estimate: UsageEstimate(
+            requestTokens: PolicyTier.launch.maxRequestTokens + 1,
+          ),
         );
+      } on UsageRefusal catch (refusal) {
+        thrown = refusal;
+      }
 
-        UsageRefusal? thrown;
-        try {
-          await guard.requireAllowed(
-            operator: operatorScope(),
-            estimate: UsageEstimate(
-              requestTokens: PolicyTier.launch.maxRequestTokens + 1,
-            ),
-          );
-        } on UsageRefusal catch (refusal) {
-          thrown = refusal;
-        }
-
-        expect(thrown, isNotNull);
-        expect(thrown!.code, equals('request_too_large'));
-        expect(thrown.statusCode, equals(413));
-        expect(thrown.details['tier_id'], equals('launch'));
-        expect(
-          thrown.details['cap_request_tokens'],
-          equals(PolicyTier.launch.maxRequestTokens),
-        );
-        // Acceptance: refuse before any store/provider work.
-        expect(store.currentUsageCalls, equals(0));
-      },
-    );
+      expect(thrown, isNotNull);
+      expect(thrown!.code, equals('request_too_large'));
+      expect(thrown.statusCode, equals(413));
+      expect(thrown.details['tier_id'], equals('launch'));
+      expect(
+        thrown.details['cap_request_tokens'],
+        equals(PolicyTier.launch.maxRequestTokens),
+      );
+      // Acceptance: refuse before any store/provider work.
+      expect(store.currentUsageCalls, equals(0));
+    });
 
     test(
       'per-minute cap surfaces 429 rate_limited with machine-readable JSON',
@@ -422,74 +391,68 @@ void main() {
       },
     );
 
-    test(
-      'monthly cost cap surfaces 402 monthly_cap_reached',
-      () async {
-        final store = _FixedSnapshotStore(
-          snapshot: UsageSnapshot(
-            requestsThisMinute: 0,
-            costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
-            minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-            monthBucketStart: DateTime.utc(2026, 4, 1),
-          ),
-        );
-        final guard = ProxyUsageGuard(
-          store: store,
-          tierResolver: const FixedLaunchTierResolver(),
-        );
+    test('monthly cost cap surfaces 402 monthly_cap_reached', () async {
+      final store = _FixedSnapshotStore(
+        snapshot: UsageSnapshot(
+          requestsThisMinute: 0,
+          costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
+          minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+          monthBucketStart: DateTime.utc(2026, 4, 1),
+        ),
+      );
+      final guard = ProxyUsageGuard(
+        store: store,
+        tierResolver: const FixedLaunchTierResolver(),
+      );
 
-        UsageRefusal? thrown;
-        try {
-          await guard.requireAllowed(
-            operator: operatorScope(),
-            estimate: const UsageEstimate(requestTokens: 100),
-          );
-        } on UsageRefusal catch (refusal) {
-          thrown = refusal;
-        }
-
-        expect(thrown, isNotNull);
-        expect(thrown!.code, equals('monthly_cap_reached'));
-        expect(thrown.statusCode, equals(402));
-        expect(
-          thrown.details['cap_monthly_cost_cents'],
-          equals(PolicyTier.launch.maxMonthlyCostCents),
-        );
-      },
-    );
-
-    test(
-      'happy path returns tier + remaining budget',
-      () async {
-        final store = _FixedSnapshotStore(
-          snapshot: UsageSnapshot(
-            requestsThisMinute: 5,
-            costCentsThisMonth: 250,
-            minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-            monthBucketStart: DateTime.utc(2026, 4, 1),
-          ),
-        );
-        final guard = ProxyUsageGuard(
-          store: store,
-          tierResolver: const FixedLaunchTierResolver(),
-        );
-
-        final decision = await guard.requireAllowed(
+      UsageRefusal? thrown;
+      try {
+        await guard.requireAllowed(
           operator: operatorScope(),
           estimate: const UsageEstimate(requestTokens: 100),
         );
+      } on UsageRefusal catch (refusal) {
+        thrown = refusal;
+      }
 
-        expect(decision.tier.id, equals('launch'));
-        expect(
-          decision.remainingRequestsThisMinute,
-          equals(PolicyTier.launch.maxRequestsPerMinute - 5),
-        );
-        expect(
-          decision.remainingCostCentsThisMonth,
-          equals(PolicyTier.launch.maxMonthlyCostCents - 250),
-        );
-      },
-    );
+      expect(thrown, isNotNull);
+      expect(thrown!.code, equals('monthly_cap_reached'));
+      expect(thrown.statusCode, equals(402));
+      expect(
+        thrown.details['cap_monthly_cost_cents'],
+        equals(PolicyTier.launch.maxMonthlyCostCents),
+      );
+    });
+
+    test('happy path returns tier + remaining budget', () async {
+      final store = _FixedSnapshotStore(
+        snapshot: UsageSnapshot(
+          requestsThisMinute: 5,
+          costCentsThisMonth: 250,
+          minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+          monthBucketStart: DateTime.utc(2026, 4, 1),
+        ),
+      );
+      final guard = ProxyUsageGuard(
+        store: store,
+        tierResolver: const FixedLaunchTierResolver(),
+      );
+
+      final decision = await guard.requireAllowed(
+        operator: operatorScope(),
+        estimate: const UsageEstimate(requestTokens: 100),
+      );
+
+      expect(decision.tier.id, equals('launch'));
+      expect(
+        decision.remainingRequestsThisMinute,
+        equals(PolicyTier.launch.maxRequestsPerMinute - 5),
+      );
+      expect(
+        decision.remainingCostCentsThisMonth,
+        equals(PolicyTier.launch.maxMonthlyCostCents - 250),
+      );
+    });
 
     test(
       'ScaffoldFailingUsageCounterStore makes the guard fail closed (503)',
@@ -514,119 +477,277 @@ void main() {
         expect(thrown.statusCode, equals(503));
         expect(thrown.details['tier_id'], equals('launch'));
         // StateError reason is preserved (scaffold message is curated).
+        expect(thrown.details['reason'], contains('11a.10b scaffold'));
+      },
+    );
+
+    test('non-StateError store failures also fail closed (503) with a '
+        'generic reason that does not leak raw error contents', () async {
+      final guard = ProxyUsageGuard(
+        store: _BoomStore(
+          error: const FormatException(
+            'pretend-secret-bearing-detail '
+            'postgres://user:password@host:5432/db',
+          ),
+        ),
+        tierResolver: const FixedLaunchTierResolver(),
+      );
+
+      UsageRefusal? thrown;
+      try {
+        await guard.requireAllowed(
+          operator: operatorScope(),
+          estimate: const UsageEstimate(requestTokens: 100),
+        );
+      } on UsageRefusal catch (refusal) {
+        thrown = refusal;
+      }
+
+      expect(thrown, isNotNull);
+      expect(thrown!.code, equals('usage_store_unavailable'));
+      expect(thrown.statusCode, equals(503));
+      expect(thrown.details['tier_id'], equals('launch'));
+      expect(thrown.details['reason'], equals('unexpected store failure'));
+      // The raw exception payload (which would carry connection
+      // strings / secrets in real failures) must not be echoed.
+      final reasonText = thrown.details['reason'].toString();
+      expect(reasonText, isNot(contains('pretend-secret')));
+      expect(reasonText, isNot(contains('postgres://')));
+    });
+  });
+
+  group('Proxy accounting + cost levers (11a.11d)', () {
+    test('usage log SQL is an atomic telemetry-aware UPSERT', () {
+      final sql = ProxyUsageLogSql.atomicUpsert.toLowerCase();
+
+      expect(sql, contains('insert into public.usage_logs'));
+      expect(sql, contains('on conflict'));
+      expect(sql, contains('do update set'));
+      for (final column in <String>[
+        'query_class',
+        'cache_hit',
+        'llm_tier',
+        'model_used',
+        'batch_mode',
+        'circuit_state',
+        'fallback_used',
+      ]) {
+        expect(sql, contains(column));
+      }
+      expect(
+        sql,
+        contains(
+          'token_count = public.usage_logs.token_count + '
+          'excluded.token_count',
+        ),
+      );
+      expect(
+        ProxyUsageLogSql.idempotencyInsert.toLowerCase(),
+        contains('insert into public.proxy_requests'),
+      );
+      expect(
+        ProxyUsageLogSql.idempotencyInsert.toLowerCase(),
+        contains(
+          'on conflict (operator_id, location_id, idempotency_key) '
+          'do nothing',
+        ),
+      );
+    });
+
+    test('tier routing keeps Basic on Haiku and allows Premium+ nuanced '
+        'queries to Sonnet', () {
+      const router = SubscriptionLlmTierRouter();
+
+      expect(
+        router.tierFor(subscriptionTier: 'basic', queryClass: 'recommendation'),
+        equals(ProxyLlmTier.haiku),
+      );
+      expect(
+        router.tierFor(
+          subscriptionTier: 'premium',
+          queryClass: 'recommendation',
+        ),
+        equals(ProxyLlmTier.sonnet),
+      );
+      expect(
+        router.tierFor(
+          subscriptionTier: 'enterprise',
+          queryClass: 'methodology_lookup',
+        ),
+        equals(ProxyLlmTier.haiku),
+      );
+    });
+
+    test(
+      'prompt cache builder marks stable blocks and keys by corpus version',
+      () {
+        const builder = AdvisorPromptCacheBuilder();
+        final blocks = builder.build(
+          corpusVersion: 'launch_v1',
+          methodologyContext: 'stable corpus context',
+          toolDefinitions: 'stable tool definitions',
+          operatorContext: 'operator-specific context',
+        );
+
+        final cachedIds = <String>[
+          for (final block in blocks)
+            if (block.cacheBreakpoint) block.id,
+        ];
         expect(
-          thrown.details['reason'],
-          contains('11a.10b scaffold'),
+          cachedIds,
+          equals(<String>[
+            'system_prompt',
+            'tool_definitions',
+            'corpus_context:launch_v1',
+          ]),
+        );
+        expect(
+          blocks.singleWhere((b) => b.id == 'operator_context').cacheBreakpoint,
+          isFalse,
+        );
+        expect(
+          builder.cacheKeyForCorpusVersion('launch_v1'),
+          isNot(equals(builder.cacheKeyForCorpusVersion('launch_v2'))),
         );
       },
     );
 
-    test(
-      'non-StateError store failures also fail closed (503) with a '
-      'generic reason that does not leak raw error contents',
-      () async {
-        final guard = ProxyUsageGuard(
-          store: _BoomStore(
-            error: const FormatException(
-              'pretend-secret-bearing-detail '
-              'postgres://user:password@host:5432/db',
-            ),
-          ),
-          tierResolver: const FixedLaunchTierResolver(),
-        );
+    test('request logging is meta-only by default and full-content only on '
+        'explicit opt-in', () {
+      const operator = OperatorContext(
+        userId: 'user_1',
+        operatorId: 'op_1',
+        locationId: 'loc_1',
+        roles: <String>['advisor.read'],
+      );
+      final metaOnly = const ProxyRequestLogPolicy.metaOnly().buildEntry(
+        operator: operator,
+        usageClass: 'advisor_qa',
+        queryClass: 'methodology_lookup',
+        tokenCount: 120,
+        costCents: 2,
+        statusCode: 200,
+        question: 'sensitive question',
+        answer: 'sensitive answer',
+      );
+      expect(metaOnly['content_logging'], equals('meta_only'));
+      expect(metaOnly, isNot(containsPair('question', anything)));
+      expect(metaOnly, isNot(containsPair('answer', anything)));
 
-        UsageRefusal? thrown;
-        try {
-          await guard.requireAllowed(
-            operator: operatorScope(),
-            estimate: const UsageEstimate(requestTokens: 100),
+      final full = const ProxyRequestLogPolicy(fullContentLoggingEnabled: true)
+          .buildEntry(
+            operator: operator,
+            usageClass: 'advisor_qa',
+            queryClass: 'methodology_lookup',
+            tokenCount: 120,
+            costCents: 2,
+            statusCode: 200,
+            question: 'operator opted in question',
+            answer: 'operator opted in answer',
           );
-        } on UsageRefusal catch (refusal) {
-          thrown = refusal;
-        }
+      expect(full['content_logging'], equals('full'));
+      expect(full['question'], equals('operator opted in question'));
+      expect(full['answer'], equals('operator opted in answer'));
+    });
 
-        expect(thrown, isNotNull);
-        expect(thrown!.code, equals('usage_store_unavailable'));
-        expect(thrown.statusCode, equals(503));
-        expect(thrown.details['tier_id'], equals('launch'));
-        expect(
-          thrown.details['reason'],
-          equals('unexpected store failure'),
+    test(
+      'accounting fake reserves atomically under concurrent requests',
+      () async {
+        final store = _InMemoryAccountingStore(
+          capStatus: const ProxyCapStatus(
+            usageClass: 'advisor_qa',
+            monthlyCapCents: 1,
+            monthlyUsedCents: 0,
+            perInvocationCapCents: 1,
+            estimatedCostCents: 1,
+          ),
         );
-        // The raw exception payload (which would carry connection
-        // strings / secrets in real failures) must not be echoed.
-        final reasonText = thrown.details['reason'].toString();
-        expect(reasonText, isNot(contains('pretend-secret')));
-        expect(reasonText, isNot(contains('postgres://')));
+        final operator = _operatorContext();
+        final starts = await Future.wait(<Future<ProxyAccountingStartResult>>[
+          store.startRequest(
+            idempotencyKey: 'idem_a',
+            requestType: 'advisor_smoke',
+            operator: operator,
+            usageClass: 'advisor_qa',
+            telemetry: _telemetry(),
+            estimate: const ProxyUsageChargeEstimate(
+              tokenCount: 10,
+              costCents: 1,
+            ),
+            now: DateTime.utc(2026, 4, 26),
+          ),
+          store.startRequest(
+            idempotencyKey: 'idem_b',
+            requestType: 'advisor_smoke',
+            operator: operator,
+            usageClass: 'advisor_qa',
+            telemetry: _telemetry(),
+            estimate: const ProxyUsageChargeEstimate(
+              tokenCount: 10,
+              costCents: 1,
+            ),
+            now: DateTime.utc(2026, 4, 26),
+          ),
+        ]);
+
+        expect(starts.whereType<ProxyAccountingReserved>(), hasLength(1));
+        expect(starts.whereType<ProxyAccountingRefused>(), hasLength(1));
+        expect(store.monthlyUsedCents, equals(1));
       },
     );
   });
 
   group('Advisor proxy usage counters migration (11a.10b)', () {
-    test(
-      'creates the counter table with RLS, service-role policy, and '
-      'operator/location/tier/minute uniqueness',
-      () {
-        final migration = File(
-          'supabase/migrations/202604250004_advisor_proxy_usage_counters.sql',
-        ).readAsStringSync();
+    test('creates the counter table with RLS, service-role policy, and '
+        'operator/location/tier/minute uniqueness', () {
+      final migration = File(
+        'db/migrations/202604250004_advisor_proxy_usage_counters.sql',
+      ).readAsStringSync();
 
-        // Table + columns.
-        expect(
-          migration,
-          contains(
-            'create table if not exists public.advisor_proxy_usage_counters',
-          ),
-        );
-        expect(migration, contains('operator_id uuid not null'));
-        expect(migration, contains('location_id uuid not null'));
-        expect(migration, contains('tier_id text not null'));
-        expect(migration, contains('minute_bucket timestamptz not null'));
-        expect(migration, contains('month_bucket date not null'));
-        expect(
-          migration,
-          contains('request_count integer not null default 0'),
-        );
-        expect(migration, contains('token_count bigint not null default 0'));
-        expect(migration, contains('cost_cents bigint not null default 0'));
+      // Table + columns.
+      expect(
+        migration,
+        contains(
+          'create table if not exists public.advisor_proxy_usage_counters',
+        ),
+      );
+      expect(migration, contains('operator_id uuid not null'));
+      expect(migration, contains('location_id uuid not null'));
+      expect(migration, contains('tier_id text not null'));
+      expect(migration, contains('minute_bucket timestamptz not null'));
+      expect(migration, contains('month_bucket date not null'));
+      expect(migration, contains('request_count integer not null default 0'));
+      expect(migration, contains('token_count bigint not null default 0'));
+      expect(migration, contains('cost_cents bigint not null default 0'));
 
-        // Uniqueness over (operator, location, tier, period).
-        expect(
-          migration,
-          contains(
-            'unique (operator_id, location_id, tier_id, minute_bucket)',
-          ),
-        );
+      // Uniqueness over (operator, location, tier, period).
+      expect(
+        migration,
+        contains('unique (operator_id, location_id, tier_id, minute_bucket)'),
+      );
 
-        // Indexes for read paths.
-        expect(
-          migration,
-          contains('advisor_proxy_usage_counters_minute_idx'),
-        );
-        expect(
-          migration,
-          contains('advisor_proxy_usage_counters_month_idx'),
-        );
+      // Indexes for read paths.
+      expect(migration, contains('advisor_proxy_usage_counters_minute_idx'));
+      expect(migration, contains('advisor_proxy_usage_counters_month_idx'));
 
-        // Comments documenting bucket semantics.
-        expect(migration, contains('comment on table'));
-        expect(migration, contains('comment on column'));
-        expect(migration, contains('UTC minute'));
+      // Comments documenting bucket semantics.
+      expect(migration, contains('comment on table'));
+      expect(migration, contains('comment on column'));
+      expect(migration, contains('UTC minute'));
 
-        // RLS + service-role policy scaffold.
-        expect(
-          migration,
-          contains(
-            'alter table public.advisor_proxy_usage_counters enable row level security',
-          ),
-        );
-        expect(
-          migration,
-          contains('advisor_proxy_usage_counters_service_role_all'),
-        );
-        expect(migration, contains('to service_role'));
-      },
-    );
+      // RLS + service-role policy scaffold.
+      expect(
+        migration,
+        contains(
+          'alter table public.advisor_proxy_usage_counters enable row level security',
+        ),
+      );
+      expect(
+        migration,
+        contains('advisor_proxy_usage_counters_service_role_all'),
+      );
+      expect(migration, contains('to service_role'));
+    });
   });
 
   group('Advisor cloud foundation migration (11a.11c.1)', () {
@@ -634,7 +755,7 @@ void main() {
 
     setUpAll(() {
       migration = File(
-        'supabase/migrations/'
+        'db/migrations/'
         '202604250005_advisor_cloud_foundation.sql',
       ).readAsStringSync();
     });
@@ -648,10 +769,7 @@ void main() {
         migration,
         contains('create table if not exists public.locations'),
       );
-      expect(
-        migration,
-        contains('create table if not exists public.users'),
-      );
+      expect(migration, contains('create table if not exists public.users'));
       expect(
         migration,
         contains('create table if not exists public.operator_admins'),
@@ -664,336 +782,507 @@ void main() {
       () {
         expect(
           migration,
-          contains(
-            "preferred_currency char(3) not null default 'CAD'",
-          ),
+          contains("preferred_currency char(3) not null default 'CAD'"),
         );
-        expect(
-          migration,
-          contains('primary_location_id uuid null'),
-        );
+        expect(migration, contains('primary_location_id uuid null'));
         // FK is added after locations exists to break the cycle, and is
         // composite on (operator_id, primary_location_id) so an
         // operator's primary_location_id cannot point at another
         // operator's location.
-        expect(
-          migration,
-          contains('alter table public.operators'),
-        );
+        expect(migration, contains('alter table public.operators'));
         expect(
           migration,
           contains('add constraint operators_primary_location_fk'),
         );
         expect(
           migration,
-          contains(
-            'foreign key (operator_id, primary_location_id)',
-          ),
+          contains('foreign key (operator_id, primary_location_id)'),
         );
         expect(
           migration,
-          contains(
-            'references public.locations(operator_id, location_id)',
-          ),
+          contains('references public.locations(operator_id, location_id)'),
         );
         // ON DELETE SET NULL with a column list (PG15+) preserves
         // operator_id (NOT NULL on operators) when the referenced
         // location is deleted.
-        expect(
-          migration,
-          contains('on delete set null (primary_location_id)'),
-        );
+        expect(migration, contains('on delete set null (primary_location_id)'));
       },
     );
 
-    test(
-      'locations carries timezone NOT NULL and '
-      'business_day_rollover_hour with a 0-23 check',
-      () {
-        expect(migration, contains('timezone text not null'));
-        expect(
-          migration,
-          contains('business_day_rollover_hour integer'),
-        );
-        expect(
-          migration,
-          contains(
-            'check (business_day_rollover_hour between 0 and 23)',
-          ),
-        );
-      },
-    );
+    test('locations carries timezone NOT NULL and '
+        'business_day_rollover_hour with a 0-23 check', () {
+      expect(migration, contains('timezone text not null'));
+      expect(migration, contains('business_day_rollover_hour integer'));
+      expect(
+        migration,
+        contains('check (business_day_rollover_hour between 0 and 23)'),
+      );
+    });
 
-    test(
-      'users + operator_admins reference operators with cascade and use '
-      'a composite PK on operator_admins',
-      () {
-        expect(
-          migration,
-          contains(
-            'operator_id uuid not null references public.operators(operator_id)',
-          ),
-        );
-        // operator_admins composite PK so a user can admin multiple operators.
-        expect(
-          migration,
-          contains('primary key (user_id, operator_id)'),
-        );
-        expect(
-          migration,
-          contains('is_super_admin boolean not null default false'),
-        );
-      },
-    );
+    test('users + operator_admins reference operators with cascade and use '
+        'a composite PK on operator_admins', () {
+      expect(
+        migration,
+        contains(
+          'operator_id uuid not null references public.operators(operator_id)',
+        ),
+      );
+      // operator_admins composite PK so a user can admin multiple operators.
+      expect(migration, contains('primary key (user_id, operator_id)'));
+      expect(
+        migration,
+        contains('is_super_admin boolean not null default false'),
+      );
+    });
 
-    test(
-      'usage_logs is partitioned by period_start with composite PK and '
-      'non-negative checks',
-      () {
-        expect(
-          migration,
-          contains('create table if not exists public.usage_logs'),
-        );
-        expect(
-          migration,
-          contains('partition by range (period_start)'),
-        );
-        expect(
-          migration,
-          contains(
-            'primary key (operator_id, location_id, usage_class, period_start)',
-          ),
-        );
-        expect(migration, contains('check (token_count >= 0)'));
-        expect(migration, contains('check (cost_usd >= 0)'));
-        expect(migration, contains('check (request_count >= 0)'));
-        // At least a default partition catches writes outside any
-        // explicit month-specific partition.
-        expect(
-          migration,
-          contains(
-            'create table if not exists public.usage_logs_default',
-          ),
-        );
-        expect(
-          migration,
-          contains('partition of public.usage_logs default'),
-        );
-      },
-    );
+    test('usage_logs is partitioned by period_start with composite PK and '
+        'non-negative checks', () {
+      expect(
+        migration,
+        contains('create table if not exists public.usage_logs'),
+      );
+      expect(migration, contains('partition by range (period_start)'));
+      expect(
+        migration,
+        contains(
+          'primary key (operator_id, location_id, usage_class, period_start)',
+        ),
+      );
+      expect(migration, contains('check (token_count >= 0)'));
+      expect(migration, contains('check (cost_usd >= 0)'));
+      expect(migration, contains('check (request_count >= 0)'));
+      // At least a default partition catches writes outside any
+      // explicit month-specific partition.
+      expect(
+        migration,
+        contains('create table if not exists public.usage_logs_default'),
+      );
+      expect(migration, contains('partition of public.usage_logs default'));
+    });
 
-    test(
-      'usage_caps is keyed on (operator_id, location_id, usage_class) '
-      'with non-negative cap checks and nullable created_by/updated_by',
-      () {
-        expect(
-          migration,
-          contains('create table if not exists public.usage_caps'),
-        );
-        expect(
-          migration,
-          contains(
-            'primary key (operator_id, location_id, usage_class)',
-          ),
-        );
-        expect(migration, contains('check (monthly_cap_usd >= 0)'));
-        expect(
-          migration,
-          contains('check (per_invocation_cap_usd >= 0)'),
-        );
-        expect(migration, contains('created_by uuid null'));
-        expect(migration, contains('updated_by uuid null'));
-      },
-    );
+    test('usage_caps is keyed on (operator_id, location_id, usage_class) '
+        'with non-negative cap checks and nullable created_by/updated_by', () {
+      expect(
+        migration,
+        contains('create table if not exists public.usage_caps'),
+      );
+      expect(
+        migration,
+        contains('primary key (operator_id, location_id, usage_class)'),
+      );
+      expect(migration, contains('check (monthly_cap_usd >= 0)'));
+      expect(migration, contains('check (per_invocation_cap_usd >= 0)'));
+      expect(migration, contains('created_by uuid null'));
+      expect(migration, contains('updated_by uuid null'));
+    });
 
-    test(
-      'proxy_requests has unique idempotency_key, request_type, and '
-      'nullable response_payload jsonb',
-      () {
-        expect(
-          migration,
-          contains(
-            'create table if not exists public.proxy_requests',
-          ),
-        );
-        expect(
-          migration,
-          contains('idempotency_key text not null unique'),
-        );
-        expect(migration, contains('request_type text not null'));
-        expect(migration, contains('response_payload jsonb null'));
-      },
-    );
+    test('proxy_requests has unique idempotency_key, request_type, and '
+        'nullable response_payload jsonb', () {
+      expect(
+        migration,
+        contains('create table if not exists public.proxy_requests'),
+      );
+      expect(migration, contains('idempotency_key text not null unique'));
+      expect(migration, contains('request_type text not null'));
+      expect(migration, contains('response_payload jsonb null'));
+    });
 
-    test(
-      'feature_flags supports global / operator / location scopes via '
-      'three partial unique indexes (no duplicates per logical scope)',
-      () {
-        expect(
-          migration,
-          contains(
-            'create table if not exists public.feature_flags',
-          ),
-        );
-        // Three partial unique indexes cover the three logical scopes.
-        expect(
-          migration,
-          contains('feature_flags_global_scope_idx'),
-        );
-        expect(
-          migration,
-          contains('feature_flags_operator_scope_idx'),
-        );
-        expect(
-          migration,
-          contains('feature_flags_location_scope_idx'),
-        );
-        expect(
-          migration,
-          contains(
-            'where operator_id is null and location_id is null',
-          ),
-        );
-      },
-    );
+    test('feature_flags supports global / operator / location scopes via '
+        'three partial unique indexes (no duplicates per logical scope)', () {
+      expect(
+        migration,
+        contains('create table if not exists public.feature_flags'),
+      );
+      // Three partial unique indexes cover the three logical scopes.
+      expect(migration, contains('feature_flags_global_scope_idx'));
+      expect(migration, contains('feature_flags_operator_scope_idx'));
+      expect(migration, contains('feature_flags_location_scope_idx'));
+      expect(
+        migration,
+        contains('where operator_id is null and location_id is null'),
+      );
+    });
 
-    test(
-      'fx_rates is keyed on (base_currency, quote_currency, '
-      'as_of_date) with positive rate and currency-format checks',
-      () {
-        expect(
-          migration,
-          contains('create table if not exists public.fx_rates'),
-        );
-        expect(
-          migration,
-          contains(
-            'primary key (base_currency, quote_currency, as_of_date)',
-          ),
-        );
-        expect(migration, contains('check (rate > 0)'));
-        // Currency code shape check.
-        expect(
-          migration,
-          contains(r"check (base_currency ~ '^[A-Z]{3}$')"),
-        );
-        expect(
-          migration,
-          contains(r"check (quote_currency ~ '^[A-Z]{3}$')"),
-        );
-      },
-    );
+    test('fx_rates is keyed on (base_currency, quote_currency, '
+        'as_of_date) with positive rate and currency-format checks', () {
+      expect(migration, contains('create table if not exists public.fx_rates'));
+      expect(
+        migration,
+        contains('primary key (base_currency, quote_currency, as_of_date)'),
+      );
+      expect(migration, contains('check (rate > 0)'));
+      // Currency code shape check.
+      expect(migration, contains(r"check (base_currency ~ '^[A-Z]{3}$')"));
+      expect(migration, contains(r"check (quote_currency ~ '^[A-Z]{3}$')"));
+    });
 
-    test(
-      'every new table has RLS enabled and a service-role-only policy '
-      'stub',
-      () {
-        const expectedTables = <String>[
-          'operators',
-          'locations',
-          'users',
-          'operator_admins',
-          'usage_logs',
-          'usage_logs_default',
-          'usage_caps',
-          'proxy_requests',
-          'feature_flags',
-          'fx_rates',
-        ];
-        for (final table in expectedTables) {
-          expect(
-            migration,
-            contains(
-              'alter table public.$table enable row level security',
-            ),
-            reason: 'RLS must be enabled on $table',
-          );
-          expect(
-            migration,
-            contains('${table}_service_role_all'),
-            reason: 'service-role policy stub must exist for $table',
-          );
-        }
-        // Every policy stub targets the service_role role.
-        expect(migration, contains('to service_role'));
-      },
-    );
-
-    test(
-      'migration uses TIMESTAMPTZ throughout — no `timestamp without '
-      'time zone` (operator-scoped silent-DST hazard banned)',
-      () {
-        expect(
-          migration.toLowerCase().contains('timestamp without time zone'),
-          isFalse,
-          reason:
-              'TIMESTAMP WITHOUT TIME ZONE is banned in operator-scoped '
-              'tables — silent DST corruption is unrecoverable.',
-        );
-      },
-    );
-
-    test(
-      'locations carries an explicit `unique (operator_id, location_id)` '
-      'so composite FKs from operator-scoped tables have a target',
-      () {
+    test('every new table has RLS enabled and a service-role-only policy '
+        'stub', () {
+      const expectedTables = <String>[
+        'operators',
+        'locations',
+        'users',
+        'operator_admins',
+        'usage_logs',
+        'usage_logs_default',
+        'usage_caps',
+        'proxy_requests',
+        'feature_flags',
+        'fx_rates',
+      ];
+      for (final table in expectedTables) {
         expect(
           migration,
-          contains('unique (operator_id, location_id)'),
+          contains('alter table public.$table enable row level security'),
+          reason: 'RLS must be enabled on $table',
         );
-      },
-    );
-
-    test(
-      'every operator/location-scoped table references locations on '
-      'the (operator_id, location_id) pair — rejects (operator_a, '
-      'location_b) cross-tenant mismatches at the DB layer',
-      () {
-        // Composite FK clause: present once on each of usage_logs,
-        // usage_caps, proxy_requests, and feature_flags — at least
-        // four occurrences. Multi-line tolerant so layout changes
-        // don't make this brittle.
-        final composite = RegExp(
-          r'foreign key \(operator_id, location_id\)\s+'
-          r'references public\.locations\(operator_id, location_id\)',
-          multiLine: true,
-        );
-        expect(
-          composite.allMatches(migration).length,
-          greaterThanOrEqualTo(4),
-          reason:
-              'usage_logs / usage_caps / proxy_requests / feature_flags '
-              'must each declare the composite FK to locations.',
-        );
-      },
-    );
-
-    test(
-      'feature_flags rejects the malformed (location set, operator '
-      'NULL) shape via a CHECK constraint',
-      () {
         expect(
           migration,
-          contains(
-            'check (location_id is null or operator_id is not null)',
-          ),
+          contains('${table}_service_role_all'),
+          reason: 'service-role policy stub must exist for $table',
         );
-      },
-    );
+      }
+      // Every policy stub targets the service_role role.
+      expect(migration, contains('to service_role'));
+    });
 
-    test(
-      'feature_flags_location_scope_idx requires both operator_id and '
-      'location_id to be present (so duplicates of the malformed '
-      'shape cannot slip through)',
-      () {
+    test('migration uses TIMESTAMPTZ throughout — no `timestamp without '
+        'time zone` (operator-scoped silent-DST hazard banned)', () {
+      expect(
+        migration.toLowerCase().contains('timestamp without time zone'),
+        isFalse,
+        reason:
+            'TIMESTAMP WITHOUT TIME ZONE is banned in operator-scoped '
+            'tables — silent DST corruption is unrecoverable.',
+      );
+    });
+
+    test('locations carries an explicit `unique (operator_id, location_id)` '
+        'so composite FKs from operator-scoped tables have a target', () {
+      expect(migration, contains('unique (operator_id, location_id)'));
+    });
+
+    test('every operator/location-scoped table references locations on '
+        'the (operator_id, location_id) pair — rejects (operator_a, '
+        'location_b) cross-tenant mismatches at the DB layer', () {
+      // Composite FK clause: present once on each of usage_logs,
+      // usage_caps, proxy_requests, and feature_flags — at least
+      // four occurrences. Multi-line tolerant so layout changes
+      // don't make this brittle.
+      final composite = RegExp(
+        r'foreign key \(operator_id, location_id\)\s+'
+        r'references public\.locations\(operator_id, location_id\)',
+        multiLine: true,
+      );
+      expect(
+        composite.allMatches(migration).length,
+        greaterThanOrEqualTo(4),
+        reason:
+            'usage_logs / usage_caps / proxy_requests / feature_flags '
+            'must each declare the composite FK to locations.',
+      );
+    });
+
+    test('feature_flags rejects the malformed (location set, operator '
+        'NULL) shape via a CHECK constraint', () {
+      expect(
+        migration,
+        contains('check (location_id is null or operator_id is not null)'),
+      );
+    });
+
+    test('feature_flags_location_scope_idx requires both operator_id and '
+        'location_id to be present (so duplicates of the malformed '
+        'shape cannot slip through)', () {
+      expect(
+        migration,
+        contains('where operator_id is not null and location_id is not null'),
+      );
+    });
+  });
+
+  group('Advisor schema hardening migration (11a.11c.6a)', () {
+    late String migration;
+    late String normalizedMigration;
+    late String auditSql;
+    late List<String> migrationNames;
+
+    setUpAll(() {
+      migrationNames =
+          Directory('db/migrations')
+              .listSync()
+              .whereType<File>()
+              .map((file) => file.uri.pathSegments.last)
+              .where((name) => name.endsWith('.sql'))
+              .toList()
+            ..sort();
+      migration = File(
+        'db/migrations/'
+        '202604250006_advisor_contextual_retrieval_telemetry.sql',
+      ).readAsStringSync();
+      normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
+      auditSql = File(
+        'db/verification/'
+        '202604250006_advisor_schema_hardening_audits.sql',
+      ).readAsStringSync();
+    });
+
+    test('migration file is next in deterministic order', () {
+      expect(
+        migrationNames,
+        contains('202604250006_advisor_contextual_retrieval_telemetry.sql'),
+      );
+      expect(
+        migrationNames.indexOf(
+          '202604250006_advisor_contextual_retrieval_telemetry.sql',
+        ),
+        equals(
+          migrationNames.indexOf('202604250005_advisor_cloud_foundation.sql') +
+              1,
+        ),
+      );
+    });
+
+    test('adds Contextual Retrieval chunk columns and BM25 GIN index', () {
+      expect(migration, contains('alter table public.advisor_source_chunks'));
+      expect(
+        migration,
+        contains('add column if not exists chunk_context text'),
+      );
+      expect(
+        migration,
+        contains(
+          "add column if not exists corpus_version text not null default 'launch_v1'",
+        ),
+      );
+      expect(migration, contains('add column if not exists bm25_tsv tsvector'));
+      expect(migration, isNot(contains('generated always as')));
+      expect(
+        migration,
+        contains(
+          'Populated by deterministic load/update SQL because Postgres '
+          'generated columns require immutable expressions',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'create index if not exists advisor_source_chunks_bm25_tsv_idx '
+          'on public.advisor_source_chunks using gin (bm25_tsv) '
+          'where active = true',
+        ),
+      );
+      expect(
+        migration,
+        contains(
+          'comment on column public.advisor_source_chunks.chunk_context',
+        ),
+      );
+      expect(
+        migration,
+        contains(
+          'comment on column public.advisor_source_chunks.corpus_version',
+        ),
+      );
+      expect(
+        migration,
+        contains('comment on column public.advisor_source_chunks.bm25_tsv'),
+      );
+      expect(migration, contains('Anthropic Contextual Retrieval'));
+      expect(migration, contains('cache keys'));
+    });
+
+    test('usage telemetry columns are rollup dimensions, not loose fields', () {
+      const telemetryColumns = <String>[
+        'query_class',
+        'cache_hit',
+        'llm_tier',
+        'model_used',
+        'batch_mode',
+        'circuit_state',
+        'fallback_used',
+      ];
+      for (final column in telemetryColumns) {
         expect(
           migration,
-          contains(
-            'where operator_id is not null and location_id is not null',
-          ),
+          contains('add column if not exists $column'),
+          reason: 'missing usage_logs telemetry column $column',
         );
-      },
-    );
+        expect(
+          normalizedMigration,
+          contains('comment on column public.usage_logs.$column'),
+          reason: 'missing usage_logs telemetry comment for $column',
+        );
+      }
+      expect(
+        migration,
+        contains("query_class text not null default 'unknown'"),
+      );
+      expect(migration, contains('cache_hit boolean not null default false'));
+      expect(migration, contains("llm_tier text not null default 'unknown'"));
+      expect(migration, contains("model_used text not null default 'unknown'"));
+      expect(migration, contains('batch_mode boolean not null default false'));
+      expect(
+        migration,
+        contains("circuit_state text not null default 'closed'"),
+      );
+      expect(migration, contains("fallback_used text not null default 'none'"));
+      expect(
+        migration,
+        contains(
+          "check (circuit_state in ('closed', 'open', 'half_open', 'unknown'))",
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains('drop constraint if exists usage_logs_pkey'),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'add primary key ( operator_id, location_id, usage_class, '
+          'period_start, query_class, cache_hit, llm_tier, model_used, '
+          'batch_mode, circuit_state, fallback_used )',
+        ),
+        reason:
+            'usage_logs rollup key must include telemetry dimensions so '
+            'mixed model/cache/fallback rows do not collapse.',
+      );
+    });
+
+    test('pg_partman maintenance scaffold is represented safely', () {
+      expect(auditSql, contains('public.create_parent'));
+      expect(auditSql, contains("p_parent_table := 'public.usage_logs'"));
+      expect(auditSql, contains("p_control := 'period_start'"));
+      expect(auditSql, contains("p_interval := '1 month'"));
+      expect(auditSql, contains('p_default_table := false'));
+      expect(auditSql, contains('p_jobmon := false'));
+      expect(auditSql, contains('cron.schedule'));
+      expect(auditSql, contains('partman_maintenance'));
+      expect(auditSql, contains("0 * * * *"));
+      expect(auditSql, contains('public.run_maintenance'));
+      expect(auditSql, contains('p_analyze := true'));
+    });
+
+    test('RLS-leading-column index audit SQL exists', () {
+      expect(auditSql, contains('pg_index'));
+      expect(auditSql, contains('att.attname::text'));
+      expect(auditSql, contains('unnest(ix.indkey) with ordinality'));
+      expect(auditSql, contains("key_columns[1] = 'operator_id'"));
+      expect(
+        auditSql,
+        contains("key_columns[1:2] = array['operator_id', 'location_id']"),
+      );
+      expect(auditSql, contains("'usage_logs'"));
+      expect(auditSql, contains("'usage_caps'"));
+      expect(auditSql, contains("'proxy_requests'"));
+      expect(auditSql, contains("'advisor_proxy_usage_counters'"));
+      expect(auditSql, contains('violations'));
+    });
+
+    test('migration avoids pgmq and unzoned timestamps', () {
+      expect(migration.toLowerCase(), isNot(contains('pgmq')));
+      expect(
+        migration.toLowerCase(),
+        isNot(contains('timestamp without time zone')),
+      );
+    });
+  });
+
+  group('Advisor RLS index hardening migration (11a.11c.6 live fix)', () {
+    late String migration;
+    late String normalizedMigration;
+    late List<String> migrationNames;
+
+    setUpAll(() {
+      migrationNames =
+          Directory('db/migrations')
+              .listSync()
+              .whereType<File>()
+              .map((file) => file.uri.pathSegments.last)
+              .where((name) => name.endsWith('.sql'))
+              .toList()
+            ..sort();
+      migration = File(
+        'db/migrations/202604250007_advisor_rls_index_hardening.sql',
+      ).readAsStringSync();
+      normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
+    });
+
+    test('migration file follows the Contextual Retrieval telemetry migration',
+        () {
+      expect(
+        migrationNames,
+        contains('202604250007_advisor_rls_index_hardening.sql'),
+      );
+      expect(
+        migrationNames.indexOf('202604250007_advisor_rls_index_hardening.sql'),
+        equals(
+          migrationNames.indexOf(
+                '202604250006_advisor_contextual_retrieval_telemetry.sql',
+              ) +
+              1,
+        ),
+      );
+    });
+
+    test('advisor_proxy_usage_counters final primary key is tenant-leading',
+        () {
+      expect(
+        normalizedMigration,
+        contains(
+          'alter table public.advisor_proxy_usage_counters drop constraint '
+          'if exists advisor_proxy_usage_counters_pkey',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'add constraint advisor_proxy_usage_counters_pkey primary key '
+          '(operator_id, location_id, tier_id, minute_bucket)',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'advisor_proxy_usage_counters_counter_lookup_idx on '
+          'public.advisor_proxy_usage_counters (operator_id, location_id, '
+          'counter_id)',
+        ),
+      );
+    });
+
+    test('proxy_requests final primary and idempotency keys are tenant-leading',
+        () {
+      expect(
+        normalizedMigration,
+        contains(
+          'alter table public.proxy_requests drop constraint if exists '
+          'proxy_requests_idempotency_key_key',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'add constraint proxy_requests_pkey primary key '
+          '(operator_id, location_id, request_id)',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'add constraint proxy_requests_operator_location_idempotency_key_key '
+          'unique (operator_id, location_id, idempotency_key)',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'proxy_requests_operator_location_created_idx on '
+          'public.proxy_requests (operator_id, location_id, created_at)',
+        ),
+      );
+    });
   });
 
   group('ScaffoldRejectingJwtVerifier (hard-fail-closed default)', () {
@@ -1044,19 +1333,37 @@ void main() {
     late _SettableVerifier verifier;
     late Uri baseUri;
 
-    Future<void> spinUpServer({ProxyUsageGuard? usageGuard}) async {
+    Future<void> spinUpServer({
+      ProxyUsageGuard? usageGuard,
+      ProxyAccountingStore? accountingStore,
+      ProxyHealthCheckStore? healthCheckStore,
+      ProxyLlmProvider? llmProvider,
+      ProxyRequestLogPolicy requestLogPolicy =
+          const ProxyRequestLogPolicy.metaOnly(),
+    }) async {
       verifier = _SettableVerifier();
       final guard = ProxyRequestGuard(verifier: verifier);
       server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       // ignore: unawaited_futures
       server.listen((request) async {
         try {
-          await routeRequest(request, guard, usageGuard: usageGuard);
+          await routeRequest(
+            request,
+            guard,
+            usageGuard: usageGuard,
+            accountingStore: accountingStore,
+            healthCheckStore: healthCheckStore,
+            llmProvider: llmProvider,
+            requestLogPolicy: requestLogPolicy,
+            now: () => DateTime.utc(2026, 4, 26, 12),
+          );
         } catch (_) {
           try {
             request.response.statusCode = 500;
             await request.response.close();
-          } catch (_) {/* ignore */}
+          } catch (_) {
+            /* ignore */
+          }
         }
       });
       client = HttpClient();
@@ -1072,10 +1379,7 @@ void main() {
       await withRealHttp(() async {
         await spinUpServer();
         try {
-          final response = await _httpGet(
-            client,
-            baseUri.resolve(healthPath),
-          );
+          final response = await _httpGet(client, baseUri.resolve(healthPath));
           expect(response.statusCode, equals(200));
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(body['status'], equals('ok'));
@@ -1085,19 +1389,47 @@ void main() {
       });
     });
 
+    test('GET /health without a health store returns 503', () async {
+      await withRealHttp(() async {
+        await spinUpServer();
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(deepHealthPath),
+          );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('health_check_not_configured'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
     test(
-      'GET /v1/scope without Authorization returns 401',
+      'GET /health returns 200 only when Postgres, AGE, and pgvector pass',
       () async {
         await withRealHttp(() async {
-          await spinUpServer();
+          await spinUpServer(
+            healthCheckStore: const _FixedHealthStore(
+              ProxyHealthStatus(
+                postgresOk: true,
+                ageOk: true,
+                pgvectorOk: true,
+              ),
+            ),
+          );
           try {
             final response = await _httpGet(
               client,
-              baseUri.resolve(scopeSmokePath),
+              baseUri.resolve(deepHealthPath),
             );
-            expect(response.statusCode, equals(401));
+            expect(response.statusCode, equals(200));
             final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], isA<String>());
+            expect(body['status'], equals('ok'));
+            expect(body['postgres_select_1'], equals('ok'));
+            expect(body['age_cypher_match'], equals('ok'));
+            expect(body['pgvector_similarity'], equals('ok'));
           } finally {
             await shutDown();
           }
@@ -1105,25 +1437,61 @@ void main() {
       },
     );
 
-    test(
-      'GET /v1/scope with verifier failure returns 401',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer();
-          try {
-            verifier.errorMessage = 'expired token';
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(scopeSmokePath),
-              authorization: 'Bearer some.fake.token',
-            );
-            expect(response.statusCode, equals(401));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+    test('GET /health returns 503 when one dependency check fails', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          healthCheckStore: const _FixedHealthStore(
+            ProxyHealthStatus(postgresOk: true, ageOk: false, pgvectorOk: true),
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(deepHealthPath),
+          );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['status'], equals('unavailable'));
+          expect(body['age_cypher_match'], equals('failed'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/scope without Authorization returns 401', () async {
+      await withRealHttp(() async {
+        await spinUpServer();
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(scopeSmokePath),
+          );
+          expect(response.statusCode, equals(401));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], isA<String>());
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/scope with verifier failure returns 401', () async {
+      await withRealHttp(() async {
+        await spinUpServer();
+        try {
+          verifier.errorMessage = 'expired token';
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(scopeSmokePath),
+            authorization: 'Bearer some.fake.token',
+          );
+          expect(response.statusCode, equals(401));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
     test(
       'GET /v1/scope with verified-but-unscoped token returns 403',
@@ -1150,40 +1518,37 @@ void main() {
       },
     );
 
-    test(
-      'GET /v1/scope happy path returns 200 with operator/location echo '
-      'and notes the slice does not call providers',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer();
-          try {
-            verifier.claims = const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read'],
-            );
+    test('GET /v1/scope happy path returns 200 with operator/location echo '
+        'and notes the slice does not call providers', () async {
+      await withRealHttp(() async {
+        await spinUpServer();
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read'],
+          );
 
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(scopeSmokePath),
-              authorization: 'Bearer some.fake.token',
-            );
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(scopeSmokePath),
+            authorization: 'Bearer some.fake.token',
+          );
 
-            expect(response.statusCode, equals(200));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['user_id'], equals('user_x'));
-            expect(body['operator_id'], equals('op_777'));
-            expect(body['location_id'], equals('loc_999'));
-            expect(body['roles'], equals(<String>['advisor.read']));
-            expect(body['note'], contains('11a.10a'));
-            expect(body['note'], contains('No provider call performed'));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['user_id'], equals('user_x'));
+          expect(body['operator_id'], equals('op_777'));
+          expect(body['location_id'], equals('loc_999'));
+          expect(body['roles'], equals(<String>['advisor.read']));
+          expect(body['note'], contains('11a.10a'));
+          expect(body['note'], contains('No provider call performed'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
     test('unknown route returns 404', () async {
       await withRealHttp(() async {
@@ -1202,98 +1567,89 @@ void main() {
 
     // ── /v1/usage-smoke (11a.10b) ────────────────────────────────────────
 
-    test(
-      'GET /v1/usage-smoke without a usage guard returns 503',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer();
-          try {
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(usageSmokePath),
-            );
-            expect(response.statusCode, equals(503));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('usage_guard_not_configured'));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
-
-    test(
-      'GET /v1/usage-smoke without Authorization returns 401 even with '
-      'a configured usage guard',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer(
-            usageGuard: ProxyUsageGuard(
-              store: _FixedSnapshotStore(
-                snapshot: UsageSnapshot(
-                  requestsThisMinute: 0,
-                  costCentsThisMonth: 0,
-                  minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-                  monthBucketStart: DateTime.utc(2026, 4, 1),
-                ),
-              ),
-              tierResolver: const FixedLaunchTierResolver(),
-            ),
+    test('GET /v1/usage-smoke without a usage guard returns 503', () async {
+      await withRealHttp(() async {
+        await spinUpServer();
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(usageSmokePath),
           );
-          try {
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(usageSmokePath),
-            );
-            expect(response.statusCode, equals(401));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('usage_guard_not_configured'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
-    test(
-      'GET /v1/usage-smoke with a non-StateError store failure returns 503 '
-      'usage_store_unavailable without leaking raw error text',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer(
-            usageGuard: ProxyUsageGuard(
-              store: _BoomStore(
-                error: const FormatException(
-                  'pretend-secret-bearing-detail '
-                  'postgres://user:password@host:5432/db',
-                ),
+    test('GET /v1/usage-smoke without Authorization returns 401 even with '
+        'a configured usage guard', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          usageGuard: ProxyUsageGuard(
+            store: _FixedSnapshotStore(
+              snapshot: UsageSnapshot(
+                requestsThisMinute: 0,
+                costCentsThisMonth: 0,
+                minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+                monthBucketStart: DateTime.utc(2026, 4, 1),
               ),
-              tierResolver: const FixedLaunchTierResolver(),
             ),
+            tierResolver: const FixedLaunchTierResolver(),
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(usageSmokePath),
           );
-          try {
-            verifier.claims = const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read'],
-            );
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(usageSmokePath),
-              authorization: 'Bearer fake.token',
-            );
-            expect(response.statusCode, equals(503));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('usage_store_unavailable'));
-            expect(body['tier_id'], equals('launch'));
-            expect(body['reason'], equals('unexpected store failure'));
-            expect(response.body, isNot(contains('pretend-secret')));
-            expect(response.body, isNot(contains('postgres://')));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(401));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/usage-smoke with a non-StateError store failure returns 503 '
+        'usage_store_unavailable without leaking raw error text', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          usageGuard: ProxyUsageGuard(
+            store: _BoomStore(
+              error: const FormatException(
+                'pretend-secret-bearing-detail '
+                'postgres://user:password@host:5432/db',
+              ),
+            ),
+            tierResolver: const FixedLaunchTierResolver(),
+          ),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read'],
+          );
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(usageSmokePath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('usage_store_unavailable'));
+          expect(body['tier_id'], equals('launch'));
+          expect(body['reason'], equals('unexpected store failure'));
+          expect(response.body, isNot(contains('pretend-secret')));
+          expect(response.body, isNot(contains('postgres://')));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
     test(
       'GET /v1/usage-smoke with the scaffold-failing store returns 503',
@@ -1350,11 +1706,13 @@ void main() {
             final overTokens = PolicyTier.launch.maxRequestTokens + 1;
             final response = await _httpGet(
               client,
-              baseUri.resolve(usageSmokePath).replace(
-                queryParameters: <String, String>{
-                  'est_tokens': overTokens.toString(),
-                },
-              ),
+              baseUri
+                  .resolve(usageSmokePath)
+                  .replace(
+                    queryParameters: <String, String>{
+                      'est_tokens': overTokens.toString(),
+                    },
+                  ),
               authorization: 'Bearer fake.token',
             );
             expect(response.statusCode, equals(413));
@@ -1369,79 +1727,198 @@ void main() {
       },
     );
 
-    test(
-      'GET /v1/usage-smoke at the per-minute cap returns 429',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer(
-            usageGuard: ProxyUsageGuard(
-              store: _FixedSnapshotStore(
-                snapshot: UsageSnapshot(
-                  requestsThisMinute:
-                      PolicyTier.launch.maxRequestsPerMinute,
-                  costCentsThisMonth: 0,
-                  minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-                  monthBucketStart: DateTime.utc(2026, 4, 1),
-                ),
+    test('GET /v1/usage-smoke at the per-minute cap returns 429', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          usageGuard: ProxyUsageGuard(
+            store: _FixedSnapshotStore(
+              snapshot: UsageSnapshot(
+                requestsThisMinute: PolicyTier.launch.maxRequestsPerMinute,
+                costCentsThisMonth: 0,
+                minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+                monthBucketStart: DateTime.utc(2026, 4, 1),
               ),
-              tierResolver: const FixedLaunchTierResolver(),
             ),
+            tierResolver: const FixedLaunchTierResolver(),
+          ),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read'],
           );
-          try {
-            verifier.claims = const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read'],
-            );
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(usageSmokePath),
-              authorization: 'Bearer fake.token',
-            );
-            expect(response.statusCode, equals(429));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('rate_limited'));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(usageSmokePath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(429));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('rate_limited'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/usage-smoke at the monthly cost cap returns 402', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          usageGuard: ProxyUsageGuard(
+            store: _FixedSnapshotStore(
+              snapshot: UsageSnapshot(
+                requestsThisMinute: 0,
+                costCentsThisMonth: PolicyTier.launch.maxMonthlyCostCents,
+                minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+                monthBucketStart: DateTime.utc(2026, 4, 1),
+              ),
+            ),
+            tierResolver: const FixedLaunchTierResolver(),
+          ),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read'],
+          );
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(usageSmokePath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(402));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('monthly_cap_reached'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/usage-smoke happy path returns operator/location, tier, '
+        'timeout, max tokens, and remaining budget', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          usageGuard: ProxyUsageGuard(
+            store: _FixedSnapshotStore(
+              snapshot: UsageSnapshot(
+                requestsThisMinute: 5,
+                costCentsThisMonth: 250,
+                minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
+                monthBucketStart: DateTime.utc(2026, 4, 1),
+              ),
+            ),
+            tierResolver: const FixedLaunchTierResolver(),
+          ),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user_x',
+            operatorId: 'op_777',
+            locationId: 'loc_999',
+            roles: <String>['advisor.read'],
+          );
+
+          final response = await _httpGet(
+            client,
+            baseUri
+                .resolve(usageSmokePath)
+                .replace(
+                  queryParameters: <String, String>{'est_tokens': '256'},
+                ),
+            authorization: 'Bearer fake.token',
+          );
+
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['operator_id'], equals('op_777'));
+          expect(body['location_id'], equals('loc_999'));
+          expect(body['policy_tier'], equals('launch'));
+          expect(
+            body['request_timeout_seconds'],
+            equals(PolicyTier.launch.requestTimeoutSeconds),
+          );
+          expect(
+            body['max_output_tokens'],
+            equals(PolicyTier.launch.maxOutputTokens),
+          );
+          expect(
+            body['remaining_requests_this_minute'],
+            equals(PolicyTier.launch.maxRequestsPerMinute - 5),
+          );
+          expect(
+            body['remaining_cost_cents_this_month'],
+            equals(PolicyTier.launch.maxMonthlyCostCents - 250),
+          );
+          expect(body['estimate_request_tokens'], equals(256));
+          expect(body['note'], contains('11a.10b'));
+          expect(body['note'], contains('No provider call performed'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    // -- /v1/advisor-smoke (11a.11d) ---------------------------------------
+
+    test('GET /v1/advisor-smoke requires an idempotency key', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          accountingStore: _InMemoryAccountingStore.open(),
+          llmProvider: _RecordingLlmProvider(),
+        );
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('missing_idempotency_key'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
     test(
-      'GET /v1/usage-smoke at the monthly cost cap returns 402',
+      'GET /v1/advisor-smoke refuses over-cap before provider call',
       () async {
         await withRealHttp(() async {
+          final llm = _RecordingLlmProvider();
           await spinUpServer(
-            usageGuard: ProxyUsageGuard(
-              store: _FixedSnapshotStore(
-                snapshot: UsageSnapshot(
-                  requestsThisMinute: 0,
-                  costCentsThisMonth:
-                      PolicyTier.launch.maxMonthlyCostCents,
-                  minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-                  monthBucketStart: DateTime.utc(2026, 4, 1),
-                ),
+            accountingStore: _InMemoryAccountingStore(
+              capStatus: const ProxyCapStatus(
+                usageClass: 'advisor_qa',
+                monthlyCapCents: 1,
+                monthlyUsedCents: 1,
+                perInvocationCapCents: 1,
+                estimatedCostCents: 1,
               ),
-              tierResolver: const FixedLaunchTierResolver(),
             ),
+            llmProvider: llm,
           );
           try {
-            verifier.claims = const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read'],
-            );
+            verifier.claims = _claims();
             final response = await _httpGet(
               client,
-              baseUri.resolve(usageSmokePath),
+              baseUri.resolve(advisorSmokePath),
               authorization: 'Bearer fake.token',
+              headers: const <String, String>{
+                'Idempotency-Key': 'idem-overcap',
+              },
             );
             expect(response.statusCode, equals(402));
             final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('monthly_cap_reached'));
+            expect(body['error'], equals('usage_cap_reached'));
+            expect(body['cap_status'], isA<Map<String, Object?>>());
+            expect(llm.completeCalls, equals(0));
           } finally {
             await shutDown();
           }
@@ -1449,72 +1926,129 @@ void main() {
       },
     );
 
-    test(
-      'GET /v1/usage-smoke happy path returns operator/location, tier, '
-      'timeout, max tokens, and remaining budget',
-      () async {
-        await withRealHttp(() async {
-          await spinUpServer(
-            usageGuard: ProxyUsageGuard(
-              store: _FixedSnapshotStore(
-                snapshot: UsageSnapshot(
-                  requestsThisMinute: 5,
-                  costCentsThisMonth: 250,
-                  minuteBucketStart: DateTime.utc(2026, 4, 25, 12, 0),
-                  monthBucketStart: DateTime.utc(2026, 4, 1),
+    test('GET /v1/advisor-smoke happy path routes tier, caches stable prompt '
+        'blocks, writes accounting, and logs meta-only by default', () async {
+      await withRealHttp(() async {
+        final store = _InMemoryAccountingStore.open();
+        final llm = _RecordingLlmProvider();
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri
+                .resolve(advisorSmokePath)
+                .replace(
+                  queryParameters: <String, String>{
+                    'subscription_tier': 'premium',
+                    'query_class': 'recommendation',
+                    'corpus_version': 'launch_v2',
+                    'q': 'private operator question',
+                  },
                 ),
-              ),
-              tierResolver: const FixedLaunchTierResolver(),
-            ),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-happy'},
           );
-          try {
-            verifier.claims = const ProxyJwtClaims(
-              userId: 'user_x',
-              operatorId: 'op_777',
-              locationId: 'loc_999',
-              roles: <String>['advisor.read'],
-            );
 
-            final response = await _httpGet(
-              client,
-              baseUri.resolve(usageSmokePath).replace(
-                queryParameters: <String, String>{
-                  'est_tokens': '256',
-                },
-              ),
-              authorization: 'Bearer fake.token',
-            );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['llm_tier'], equals('sonnet'));
+          expect(body['model_used'], equals('claude-sonnet-4-6'));
+          expect(body['cache_key'], equals('advisor-corpus:launch_v2'));
+          expect(
+            body['prompt_cache_breakpoints'],
+            equals(<Object?>[
+              'system_prompt',
+              'tool_definitions',
+              'corpus_context:launch_v2',
+            ]),
+          );
+          expect(store.completeCalls, equals(1));
+          expect(llm.completeCalls, equals(1));
+          expect(llm.lastRequest!.tier, equals(ProxyLlmTier.sonnet));
+          final log = body['request_log_preview'] as Map<String, Object?>;
+          expect(log['content_logging'], equals('meta_only'));
+          expect(log, isNot(containsPair('question', anything)));
+          expect(log, isNot(containsPair('answer', anything)));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
-            expect(response.statusCode, equals(200));
-            final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['operator_id'], equals('op_777'));
-            expect(body['location_id'], equals('loc_999'));
-            expect(body['policy_tier'], equals('launch'));
-            expect(
-              body['request_timeout_seconds'],
-              equals(PolicyTier.launch.requestTimeoutSeconds),
-            );
-            expect(
-              body['max_output_tokens'],
-              equals(PolicyTier.launch.maxOutputTokens),
-            );
-            expect(
-              body['remaining_requests_this_minute'],
-              equals(PolicyTier.launch.maxRequestsPerMinute - 5),
-            );
-            expect(
-              body['remaining_cost_cents_this_month'],
-              equals(PolicyTier.launch.maxMonthlyCostCents - 250),
-            );
-            expect(body['estimate_request_tokens'], equals(256));
-            expect(body['note'], contains('11a.10b'));
-            expect(body['note'], contains('No provider call performed'));
-          } finally {
-            await shutDown();
-          }
-        });
-      },
-    );
+    test('GET /v1/advisor-smoke idempotent retry replays stored response '
+        'without a second provider call', () async {
+      await withRealHttp(() async {
+        final store = _InMemoryAccountingStore.open();
+        final llm = _RecordingLlmProvider();
+        await spinUpServer(accountingStore: store, llmProvider: llm);
+        try {
+          verifier.claims = _claims();
+          final uri = baseUri.resolve(advisorSmokePath);
+          final first = await _httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-retry'},
+          );
+          final second = await _httpGet(
+            client,
+            uri,
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-retry'},
+          );
+
+          expect(first.statusCode, equals(200));
+          expect(second.statusCode, equals(200));
+          final replay = jsonDecode(second.body) as Map<String, Object?>;
+          expect(replay['idempotent_replay'], isTrue);
+          expect(llm.completeCalls, equals(1));
+          expect(store.completeCalls, equals(1));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke can include full content only when the '
+        'operator logging policy opts in', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          accountingStore: _InMemoryAccountingStore.open(),
+          llmProvider: _RecordingLlmProvider(),
+          requestLogPolicy: const ProxyRequestLogPolicy(
+            fullContentLoggingEnabled: true,
+          ),
+        );
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri
+                .resolve(advisorSmokePath)
+                .replace(
+                  queryParameters: const <String, String>{
+                    'q': 'operator opted into content logging',
+                  },
+                ),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-full-log'},
+          );
+
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final log = body['request_log_preview'] as Map<String, Object?>;
+          expect(log['content_logging'], equals('full'));
+          expect(
+            log['question'],
+            equals('operator opted into content logging'),
+          );
+          expect(log['answer'], equals('fake advisor answer'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
 
     test(
       'GET /healthz still 200 unauthenticated when usage guard is installed',
@@ -1682,8 +2216,127 @@ class _FixedSnapshotStore implements ProxyUsageCounterStore {
     required String tierId,
     required DateTime now,
     required int costCentsToAdd,
-  }) async {/* no-op */}
+  }) async {
+    /* no-op */
+  }
 }
+
+class _FixedHealthStore implements ProxyHealthCheckStore {
+  const _FixedHealthStore(this.status);
+
+  final ProxyHealthStatus status;
+
+  @override
+  Future<ProxyHealthStatus> check() async => status;
+}
+
+class _RecordingLlmProvider implements ProxyLlmProvider {
+  int completeCalls = 0;
+  ProxyLlmRequest? lastRequest;
+
+  @override
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
+    completeCalls += 1;
+    lastRequest = request;
+    return ProxyLlmCompletion(
+      text: 'fake advisor answer',
+      modelId: request.modelId,
+      tier: request.tier,
+      outputTokens: 12,
+      costCents: 1,
+    );
+  }
+}
+
+class _InMemoryAccountingStore implements ProxyAccountingStore {
+  _InMemoryAccountingStore({required ProxyCapStatus capStatus})
+    : _monthlyCapCents = capStatus.monthlyCapCents,
+      _monthlyUsedCents = capStatus.monthlyUsedCents,
+      _perInvocationCapCents = capStatus.perInvocationCapCents;
+
+  factory _InMemoryAccountingStore.open() => _InMemoryAccountingStore(
+    capStatus: const ProxyCapStatus(
+      usageClass: 'advisor_qa',
+      monthlyCapCents: 5000,
+      monthlyUsedCents: 0,
+      perInvocationCapCents: 500,
+      estimatedCostCents: 1,
+    ),
+  );
+
+  final int _monthlyCapCents;
+  int _monthlyUsedCents;
+  final int _perInvocationCapCents;
+  final Map<String, Map<String, Object?>> _responses =
+      <String, Map<String, Object?>>{};
+
+  int startCalls = 0;
+  int completeCalls = 0;
+
+  int get monthlyUsedCents => _monthlyUsedCents;
+
+  @override
+  Future<ProxyAccountingStartResult> startRequest({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    startCalls += 1;
+    final existing = _responses[idempotencyKey];
+    if (existing != null) {
+      return ProxyAccountingReplayed(responsePayload: existing);
+    }
+
+    final status = ProxyCapStatus(
+      usageClass: usageClass,
+      monthlyCapCents: _monthlyCapCents,
+      monthlyUsedCents: _monthlyUsedCents,
+      perInvocationCapCents: _perInvocationCapCents,
+      estimatedCostCents: estimate.costCents,
+    );
+    if (!status.allowed) {
+      return ProxyAccountingRefused(capStatus: status);
+    }
+
+    _monthlyUsedCents += estimate.costCents;
+    return ProxyAccountingReserved(capStatus: status);
+  }
+
+  @override
+  Future<void> completeRequest({
+    required String idempotencyKey,
+    required Map<String, Object?> responsePayload,
+    required DateTime now,
+  }) async {
+    completeCalls += 1;
+    _responses[idempotencyKey] = Map<String, Object?>.from(responsePayload);
+  }
+}
+
+OperatorContext _operatorContext() => const OperatorContext(
+  userId: 'user_x',
+  operatorId: 'op_777',
+  locationId: 'loc_999',
+  roles: <String>['advisor.read'],
+);
+
+ProxyJwtClaims _claims() => const ProxyJwtClaims(
+  userId: 'user_x',
+  operatorId: 'op_777',
+  locationId: 'loc_999',
+  roles: <String>['advisor.read'],
+);
+
+ProxyUsageTelemetry _telemetry() => const ProxyUsageTelemetry(
+  queryClass: 'methodology_lookup',
+  cacheHit: false,
+  llmTier: 'haiku',
+  modelUsed: 'claude-haiku-4-5',
+);
 
 class _HttpResponseSnapshot {
   _HttpResponseSnapshot({required this.statusCode, required this.body});
@@ -1696,6 +2349,7 @@ Future<_HttpResponseSnapshot> _httpGet(
   HttpClient client,
   Uri uri, {
   String? authorization,
+  Map<String, String>? headers,
 }) async {
   final request = await client.getUrl(uri);
   // Disable connection reuse so a per-test HttpClient never picks up
@@ -1704,10 +2358,8 @@ Future<_HttpResponseSnapshot> _httpGet(
   if (authorization != null) {
     request.headers.set(HttpHeaders.authorizationHeader, authorization);
   }
+  headers?.forEach(request.headers.set);
   final response = await request.close();
   final body = await response.transform(utf8.decoder).join();
-  return _HttpResponseSnapshot(
-    statusCode: response.statusCode,
-    body: body,
-  );
+  return _HttpResponseSnapshot(statusCode: response.statusCode, body: body);
 }

@@ -202,12 +202,43 @@ Future<void> main(List<String> args) async {
         stdout.writeln('Output: ${result.outputDirectory}');
         stdout.writeln('Generated SQL only; no DB mutation by this command.');
         break;
+      case 'execute-contexts':
+        final materializationDirectory =
+            _option(args, 'materialized') ?? 'build/advisor_corpus';
+        final outputDirectory =
+            _option(args, 'output') ?? 'build/advisor_corpus/context';
+        final batchDelayMs = _intOption(args, 'batch-delay-ms') ?? 0;
+        final executor = CorpusContextExecutor(repoRoot: repoRoot);
+        final result = await executor.execute(
+          materializationDirectory: materializationDirectory,
+          outputDirectory: outputDirectory,
+          batchDelay: Duration(milliseconds: batchDelayMs),
+          onContextComplete: (completed, total) {
+            stdout.writeln('Context $completed/$total complete.');
+          },
+        );
+        stdout.writeln(
+          'Advisor corpus context execution OK: '
+          '${result.chunkCount} chunks.',
+        );
+        stdout.writeln(
+          'Contract: ${result.provider}/${result.model} '
+          '(${result.maxOutputTokens} max output tokens).',
+        );
+        stdout.writeln('Execution ID: ${result.executionId}');
+        stdout.writeln('Output: ${result.outputDirectory}');
+        stdout.writeln(
+          'Generated SQL + contextual embedding inputs only; '
+          'no DB mutation by this command.',
+        );
+        break;
       default:
         stderr.writeln('Unknown command: $command');
         stderr.writeln(
           'Usage: dart run tool/advisor_corpus/main.dart '
           '[validate|plan-chunks|materialize|prepare-load|'
-          'prepare-embeddings|execute-embeddings|prepare-age-projection]',
+          'prepare-embeddings|execute-embeddings|execute-contexts|'
+          'prepare-age-projection]',
         );
         exitCode = 64;
     }

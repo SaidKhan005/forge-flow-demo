@@ -6,8 +6,11 @@
 // in `advisor_proxy.dart::routeRequest` so tests drive the same
 // handler the production entrypoint installs.
 //
-// 11a.10a does not call Anthropic, Voyage, Supabase, or Firebase.
-// Live provider verifier / DB wiring lands in later proxy slices.
+// 11a.10a does not call Anthropic, Voyage, Postgres, or Firebase.
+// 11a.11c.5 retarget: the Postgres host moved from Supabase to Azure
+// Database for PostgreSQL Flexible Server; secret names are now
+// `POSTGRES_URL` / `POSTGRES_ADMIN_URL`. Live provider / DB wiring
+// lands in later proxy slices.
 
 import 'dart:io';
 
@@ -36,11 +39,11 @@ Future<void> main(List<String> args) async {
     store: const ScaffoldFailingUsageCounterStore(),
     tierResolver: const FixedLaunchTierResolver(),
   );
+  const accountingStore = ScaffoldFailingProxyAccountingStore();
+  const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
+  const llmProvider = ScaffoldRejectingProxyLlmProvider();
 
-  final server = await HttpServer.bind(
-    InternetAddress.anyIPv4,
-    config.port,
-  );
+  final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // Diagnostics line — names only, never values.
   stdout.writeln(
@@ -52,7 +55,14 @@ Future<void> main(List<String> args) async {
     // Each request is independent — failures in one must not crash
     // the listener loop.
     try {
-      await routeRequest(request, authGuard, usageGuard: usageGuard);
+      await routeRequest(
+        request,
+        authGuard,
+        usageGuard: usageGuard,
+        accountingStore: accountingStore,
+        healthCheckStore: healthCheckStore,
+        llmProvider: llmProvider,
+      );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');
     }

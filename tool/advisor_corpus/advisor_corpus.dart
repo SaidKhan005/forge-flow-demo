@@ -18,6 +18,11 @@ const advisorEmbeddingTokenizer = 'voyage';
 const advisorRerankProvider = 'voyage';
 const advisorRerankModel = 'rerank-2.5';
 const advisorAnswerRuntimeFamily = 'claude';
+const advisorContextProvider = 'anthropic';
+const advisorContextModel = 'claude-haiku-4-5';
+const advisorAnthropicMessagesEndpoint =
+    'https://api.anthropic.com/v1/messages';
+const advisorContextMaxOutputTokens = 120;
 const advisorEmbeddingInputType = 'document';
 const advisorEmbeddingOutputDtype = 'float';
 const advisorVoyageEmbeddingsEndpoint =
@@ -938,7 +943,7 @@ class CorpusDbLoadPreparer {
       'run_id': runId,
       'source_materialization_directory': materializationDirectory,
       'target_schema_migration':
-          'supabase/migrations/202604250001_advisor_corpus_storage_schema.sql',
+          'db/migrations/202604250001_advisor_corpus_storage_schema.sql',
       'apply_mode': 'not_applied_build_artifacts_only',
       'load_order': <Map<String, Object?>>[
         _loadStep(1, 'advisor_ingestion_runs', loadFiles[0], 1),
@@ -1167,7 +1172,7 @@ insert into public.advisor_source_chunks (
   chunk_id, doc_id, ingestion_run_id, source_path, scope, restaurant_id,
   chunk_kind, chunk_profile, heading_path, start_line, end_line,
   estimated_tokens, risk_level, content_sha256, embedding_status,
-  embedding_model, text, provenance, active
+  embedding_model, text, provenance, active, bm25_tsv
 ) values (
   ${_textLiteral(record['chunk_id'])},
   ${_textLiteral(record['doc_id'])},
@@ -1187,7 +1192,22 @@ insert into public.advisor_source_chunks (
   ${_nullableTextLiteral(record['embedding_model'])},
   ${_textLiteral(record['text'])},
   ${_jsonLiteral(record['provenance'])}::jsonb,
-  true
+  true,
+  setweight(
+    to_tsvector(
+      'english'::regconfig,
+      coalesce(array_to_string(${_textArrayLiteral(record['heading_path'])}, ' '), '')
+    ),
+    'A'
+  ) ||
+  setweight(
+    to_tsvector('english'::regconfig, ''),
+    'B'
+  ) ||
+  setweight(
+    to_tsvector('english'::regconfig, ${_textLiteral(record['text'])}),
+    'C'
+  )
 )
 on conflict (chunk_id) do update set
   doc_id = excluded.doc_id,
@@ -1207,7 +1227,8 @@ on conflict (chunk_id) do update set
   embedding_model = excluded.embedding_model,
   text = excluded.text,
   provenance = excluded.provenance,
-  active = excluded.active;
+  active = excluded.active,
+  bm25_tsv = excluded.bm25_tsv;
 ''');
     }
     return buffer.toString();
@@ -1324,6 +1345,11 @@ class CorpusAgeProjectionPreparer {
 
   static const String projectionFileName = '006_age_projection.sql';
   static const String smokeFileName = '007_age_smoke_traversal.sql';
+  static const String indexStrategyFileName = '008_age_index_strategy.sql';
+  static const String benchmarkHarnessFileName =
+      '009_age_benchmark_harness.sql';
+  static const String vectorDecisionFileName =
+      '010_vector_index_decision_harness.sql';
   static const String manifestFileName = 'age_projection_manifest.json';
 
   Future<AgeProjectionPreparationResult> prepare({
@@ -1346,11 +1372,23 @@ class CorpusAgeProjectionPreparer {
 
     final projectionSql = _projectionSql();
     final smokeSql = _smokeTraversalSql();
+    final indexStrategySql = _indexStrategySql();
+    final benchmarkHarnessSql = _benchmarkHarnessSql();
+    final vectorDecisionSql = _vectorDecisionSql();
 
     await File(
       p.join(output.path, projectionFileName),
     ).writeAsString(projectionSql);
     await File(p.join(output.path, smokeFileName)).writeAsString(smokeSql);
+    await File(
+      p.join(output.path, indexStrategyFileName),
+    ).writeAsString(indexStrategySql);
+    await File(
+      p.join(output.path, benchmarkHarnessFileName),
+    ).writeAsString(benchmarkHarnessSql);
+    await File(
+      p.join(output.path, vectorDecisionFileName),
+    ).writeAsString(vectorDecisionSql);
 
     final expectedNodeSeedCount =
         (summary['graph_node_seed_count'] as int?) ?? 0;
@@ -1375,6 +1413,21 @@ class CorpusAgeProjectionPreparer {
           'file': smokeFileName,
           'role': 'smoke_traversal',
         },
+        <String, Object?>{
+          'order': 3,
+          'file': indexStrategyFileName,
+          'role': 'age_index_strategy',
+        },
+        <String, Object?>{
+          'order': 4,
+          'file': benchmarkHarnessFileName,
+          'role': 'age_benchmark_harness',
+        },
+        <String, Object?>{
+          'order': 5,
+          'file': vectorDecisionFileName,
+          'role': 'vector_index_decision_harness',
+        },
       ],
       'projection_inputs': <String, Object?>{
         'graph_node_seed_table': 'public.advisor_graph_node_seeds',
@@ -1393,6 +1446,33 @@ class CorpusAgeProjectionPreparer {
             'join with public.advisor_source_chunks; '
             'case-insensitive match on chunk text or heading_path',
       },
+      'age_index_strategy': <String, Object?>{
+        'labels': const <String>['Document', 'Chunk', 'CONTAINS'],
+        'btree_required': const <String>[
+          'id on every vertex/edge table',
+          'start_id and end_id on every edge table',
+        ],
+        'gin_required': 'properties on every projected label table',
+        'hot_property_paths': const <String>[
+          'Document.node_id',
+          'Document.source_doc_id',
+          'Chunk.node_id',
+          'Chunk.source_chunk_id',
+          'CONTAINS.edge_id',
+        ],
+      },
+      'benchmark_gate': <String, Object?>{
+        'synthetic_operator_scales': const <int>[1000, 10000],
+        'isolated_p95_ms_max': 500,
+        'concurrent_10x_p95_ms_max': 1000,
+        'apply_mode': 'operator_run_after_live_approval',
+      },
+      'vector_index_decision': <String, Object?>{
+        'candidates': const <String>['HNSW', 'DiskANN'],
+        'existing_index': 'advisor_source_chunks_voyage_hnsw_idx',
+        'candidate_index': 'advisor_source_chunks_voyage_diskann_idx',
+        'rule': 'benchmark first; do not drop HNSW in artifact generation',
+      },
       'blocker_path': <String, Object?>{
         'condition':
             "pg_available_extensions does not list extension name 'age'",
@@ -1406,15 +1486,21 @@ class CorpusAgeProjectionPreparer {
       ],
     };
 
-    await File(p.join(output.path, manifestFileName)).writeAsString(
-      const JsonEncoder.withIndent('  ').convert(manifest),
-    );
+    await File(
+      p.join(output.path, manifestFileName),
+    ).writeAsString(const JsonEncoder.withIndent('  ').convert(manifest));
 
     return AgeProjectionPreparationResult(
       outputDirectory: output.path,
       projectionRunId: projectionRunId,
       graphName: advisorAgeGraphName,
-      projectionFiles: const <String>[projectionFileName, smokeFileName],
+      projectionFiles: const <String>[
+        projectionFileName,
+        smokeFileName,
+        indexStrategyFileName,
+        benchmarkHarnessFileName,
+        vectorDecisionFileName,
+      ],
       manifestFile: manifestFileName,
       expectedNodeSeedCount: expectedNodeSeedCount,
       expectedEdgeHintCount: expectedEdgeHintCount,
@@ -1452,7 +1538,6 @@ declare
   age_present boolean;
   graph_name text := '$advisorAgeGraphName';
   rec record;
-  params_json jsonb;
   cypher_query text;
 begin
   select exists (
@@ -1469,7 +1554,9 @@ begin
   end if;
 
   execute 'create extension if not exists age';
-  execute \$age_load\$load 'age'\$age_load\$;
+  -- Azure Flexible Server preloads AGE through shared_preload_libraries and
+  -- rejects explicit LOAD. Once the extension exists, setting search_path is
+  -- enough for cypher/agtype calls.
   perform set_config('search_path', 'ag_catalog,"\$user",public', false);
 
   if not exists (select 1 from ag_catalog.ag_graph where name = graph_name) then
@@ -1483,19 +1570,14 @@ begin
     where node_type = 'Document'
     order by node_id
   loop
-    params_json := jsonb_build_object(
-      'node_id', rec.node_id,
-      'source_doc_id', rec.source_doc_id,
-      'properties', rec.properties
-    );
+    cypher_query :=
+      'MERGE (v:Document {node_id: ' || quote_literal(rec.node_id) || '}) '
+      'SET v.source_doc_id = ' || quote_literal(rec.source_doc_id) || ' '
+      'RETURN v';
     execute format(
-      \$cy\$select * from cypher(%L, %L, %L) as (v agtype)\$cy\$,
+      \$cy\$select * from cypher(%L, \$cypher\$%s\$cypher\$) as (v agtype)\$cy\$,
       graph_name,
-      'MERGE (v:Document {node_id: \$node_id}) '
-      'SET v.source_doc_id = \$source_doc_id, '
-      '    v.properties = \$properties '
-      'RETURN v',
-      params_json
+      cypher_query
     );
   end loop;
 
@@ -1506,21 +1588,15 @@ begin
     where node_type = 'Chunk'
     order by node_id
   loop
-    params_json := jsonb_build_object(
-      'node_id', rec.node_id,
-      'source_doc_id', rec.source_doc_id,
-      'source_chunk_id', rec.source_chunk_id,
-      'properties', rec.properties
-    );
+    cypher_query :=
+      'MERGE (v:Chunk {node_id: ' || quote_literal(rec.node_id) || '}) '
+      'SET v.source_doc_id = ' || quote_literal(rec.source_doc_id) || ', '
+      '    v.source_chunk_id = ' || quote_literal(rec.source_chunk_id) || ' '
+      'RETURN v';
     execute format(
-      \$cy\$select * from cypher(%L, %L, %L) as (v agtype)\$cy\$,
+      \$cy\$select * from cypher(%L, \$cypher\$%s\$cypher\$) as (v agtype)\$cy\$,
       graph_name,
-      'MERGE (v:Chunk {node_id: \$node_id}) '
-      'SET v.source_doc_id = \$source_doc_id, '
-      '    v.source_chunk_id = \$source_chunk_id, '
-      '    v.properties = \$properties '
-      'RETURN v',
-      params_json
+      cypher_query
     );
   end loop;
 
@@ -1542,22 +1618,18 @@ begin
         'AGE_PROJECTION_INVALID_EDGE_TYPE: % (edge_id=%)',
         rec.edge_type, rec.edge_id;
     end if;
-    params_json := jsonb_build_object(
-      'edge_id', rec.edge_id,
-      'from_node_id', rec.from_node_id,
-      'to_node_id', rec.to_node_id,
-      'properties', rec.properties
-    );
     cypher_query := format(
-      'MATCH (a {node_id: \$from_node_id}), (b {node_id: \$to_node_id}) '
-      'MERGE (a)-[r:%s {edge_id: \$edge_id}]->(b) '
-      'SET r.properties = \$properties '
+      'MATCH (a {node_id: %s}), (b {node_id: %s}) '
+      'MERGE (a)-[r:%s {edge_id: %s}]->(b) '
       'RETURN r',
-      rec.edge_type
+      quote_literal(rec.from_node_id),
+      quote_literal(rec.to_node_id),
+      rec.edge_type,
+      quote_literal(rec.edge_id)
     );
     execute format(
-      \$cy\$select * from cypher(%L, %L, %L) as (e agtype)\$cy\$,
-      graph_name, cypher_query, params_json
+      \$cy\$select * from cypher(%L, \$cypher\$%s\$cypher\$) as (e agtype)\$cy\$,
+      graph_name, cypher_query
     );
   end loop;
 
@@ -1607,7 +1679,8 @@ begin
     return;
   end if;
 
-  execute \$age_load\$load 'age'\$age_load\$;
+  -- Azure Flexible Server rejects explicit LOAD for AGE; the staging server
+  -- preloads it through shared_preload_libraries.
   perform set_config('search_path', 'ag_catalog,"\$user",public', false);
 
   -- Step 1: count Document -> CONTAINS -> Chunk pairs reachable in the graph.
@@ -1638,11 +1711,11 @@ begin
           on n.node_id = r.chunk_node_id
         join public.advisor_source_chunks ch
           on ch.chunk_id = n.source_chunk_id
-        where lower(ch.text) like '%cplh%'
+        where lower(ch.text) like '%%cplh%%'
            or exists (
              select 1
              from unnest(ch.heading_path) as h(label)
-             where lower(label) like '%cplh%'
+              where lower(label) like '%%cplh%%'
            )
     \$wrap\$,
     graph_name
@@ -1661,6 +1734,229 @@ begin
   end if;
 end;
 \$age_smoke\$;
+''';
+  }
+
+  String _indexStrategySql() {
+    return '''
+-- Generated by tool/advisor_corpus prepare-age-projection.
+-- AGE index strategy for graph "$advisorAgeGraphName". Build artifact only.
+-- Do not apply without an explicit live-DB slice.
+--
+-- Current projected labels:
+--   vertices: Document, Chunk
+--   edges:    CONTAINS
+--
+-- Index lock:
+--   * BTree on id for every vertex/edge table
+--   * BTree on start_id and end_id for every edge table
+--   * GIN on properties for every projected label table
+--   * BTree expression indexes on hot property paths used by SQL-side
+--     smoke/benchmark joins. Future labels (Concept, WorkflowStep, Staff)
+--     must follow the same convention before they are trusted in hot paths.
+
+do \$age_index_strategy\$
+declare
+  age_present boolean;
+  graph_schema text := '$advisorAgeGraphName';
+begin
+  select exists (
+    select 1 from pg_available_extensions where name = 'age'
+  ) into age_present;
+
+  if not age_present then
+    raise notice
+      'AGE_BLOCKER: index strategy cannot apply because Apache AGE is not '
+      'available in this Postgres instance.';
+    return;
+  end if;
+
+  if not exists (
+    select 1 from information_schema.schemata where schema_name = graph_schema
+  ) then
+    raise notice
+      'AGE_INDEX_BLOCKER: graph schema "%" does not exist. Apply projection first.',
+      graph_schema;
+    return;
+  end if;
+
+  -- Document vertex table.
+  execute format(
+    'create index if not exists %I on %I.%I using btree (id)',
+    graph_schema || '_document_id_btree_idx',
+    graph_schema,
+    'Document'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using gin (properties)',
+    graph_schema || '_document_properties_gin_idx',
+    graph_schema,
+    'Document'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree ((ag_catalog.agtype_access_operator(VARIADIC ARRAY[properties, ''"node_id"''::ag_catalog.agtype])))',
+    graph_schema || '_document_node_id_property_idx',
+    graph_schema,
+    'Document'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree ((ag_catalog.agtype_access_operator(VARIADIC ARRAY[properties, ''"source_doc_id"''::ag_catalog.agtype])))',
+    graph_schema || '_document_source_doc_id_property_idx',
+    graph_schema,
+    'Document'
+  );
+
+  -- Chunk vertex table.
+  execute format(
+    'create index if not exists %I on %I.%I using btree (id)',
+    graph_schema || '_chunk_id_btree_idx',
+    graph_schema,
+    'Chunk'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using gin (properties)',
+    graph_schema || '_chunk_properties_gin_idx',
+    graph_schema,
+    'Chunk'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree ((ag_catalog.agtype_access_operator(VARIADIC ARRAY[properties, ''"node_id"''::ag_catalog.agtype])))',
+    graph_schema || '_chunk_node_id_property_idx',
+    graph_schema,
+    'Chunk'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree ((ag_catalog.agtype_access_operator(VARIADIC ARRAY[properties, ''"source_chunk_id"''::ag_catalog.agtype])))',
+    graph_schema || '_chunk_source_chunk_id_property_idx',
+    graph_schema,
+    'Chunk'
+  );
+
+  -- CONTAINS edge table.
+  execute format(
+    'create index if not exists %I on %I.%I using btree (id)',
+    graph_schema || '_contains_id_btree_idx',
+    graph_schema,
+    'CONTAINS'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree (start_id)',
+    graph_schema || '_contains_start_id_btree_idx',
+    graph_schema,
+    'CONTAINS'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree (end_id)',
+    graph_schema || '_contains_end_id_btree_idx',
+    graph_schema,
+    'CONTAINS'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using gin (properties)',
+    graph_schema || '_contains_properties_gin_idx',
+    graph_schema,
+    'CONTAINS'
+  );
+  execute format(
+    'create index if not exists %I on %I.%I using btree ((ag_catalog.agtype_access_operator(VARIADIC ARRAY[properties, ''"edge_id"''::ag_catalog.agtype])))',
+    graph_schema || '_contains_edge_id_property_idx',
+    graph_schema,
+    'CONTAINS'
+  );
+
+  raise notice 'AGE_INDEX_OK: graph="%" index strategy applied.', graph_schema;
+end;
+\$age_index_strategy\$;
+''';
+  }
+
+  String _benchmarkHarnessSql() {
+    return '''
+-- Generated by tool/advisor_corpus prepare-age-projection.
+-- AGE benchmark harness for graph "$advisorAgeGraphName".
+--
+-- Operator-run only after live approval. This file is not run by tests or by
+-- artifact generation. It documents the exact benchmark gate:
+--   * synthetic operator scales: 1K and 10K
+--   * isolated p95 <= 500 ms
+--   * 10x concurrent p95 <= 1000 ms
+--
+-- Recommended execution:
+--   1. Apply 006_age_projection.sql.
+--   2. Apply 008_age_index_strategy.sql.
+--   3. Use pgbench with the traversal below:
+--        pgbench --client=1  --time=60 --file=009_age_benchmark_harness.sql
+--        pgbench --client=10 --time=60 --file=009_age_benchmark_harness.sql
+--   4. Record p95 latency for 1K and 10K synthetic operator-scale fixtures in
+--      docs/phases/phase_11a/phase_11a_11c6b_age_benchmark_result.md.
+
+\\set operator_scale 1000
+
+set search_path = ag_catalog, "\$user", public;
+
+select *
+from cypher('$advisorAgeGraphName', \$\$
+  MATCH (d:Document)-[:CONTAINS]->(c:Chunk)
+  RETURN d.node_id, c.node_id
+  LIMIT 50
+\$\$) as (document_node_id agtype, chunk_node_id agtype);
+
+-- Pass/fail recording template:
+--   operator_scale=<1000|10000>
+--   clients=<1|10>
+--   p95_ms=<observed>
+--   pass = (clients=1 and p95_ms <= 500) or (clients=10 and p95_ms <= 1000)
+''';
+  }
+
+  String _vectorDecisionSql() {
+    return '''
+-- Generated by tool/advisor_corpus prepare-age-projection.
+-- DiskANN-vs-HNSW decision harness. Build artifact only; do not apply live
+-- without explicit approval. The existing HNSW index remains authoritative
+-- until a benchmark report chooses otherwise.
+
+-- Existing HNSW candidate (already created by 11a.8):
+--   public.advisor_source_chunks_voyage_hnsw_idx
+
+-- DiskANN candidate DDL for live benchmark. Keep HNSW in place while testing.
+-- Do NOT drop advisor_source_chunks_voyage_hnsw_idx in this slice.
+create index if not exists advisor_source_chunks_voyage_diskann_idx
+  on public.advisor_source_chunks
+  using diskann (embedding vector_cosine_ops)
+  where embedding_status = 'ready'
+    and embedding is not null
+    and embedding_provider_id = 'voyage'
+    and embedding_model_id = 'voyage-4-large'
+    and embedding_dimension = 1024
+    and active = true;
+
+comment on index public.advisor_source_chunks_voyage_diskann_idx is
+  '11a.11c.6b candidate DiskANN index for benchmark against advisor_source_chunks_voyage_hnsw_idx. Do not promote or drop HNSW until the decision report accepts.';
+
+-- Benchmark query shape shared by HNSW and DiskANN candidates.
+-- Before running, set query_embedding_1024 to a real 1024-dimensional
+-- pgvector literal from the same embedding provider/model, for example:
+--   \\set query_embedding_1024 '[0.0123,...]'
+explain (analyze, buffers, format json)
+select chunk_id, doc_id, source_path, heading_path, distance
+from public.advisor_search_chunks(
+  :'query_embedding_1024'::vector(1024),
+  'global_shared_methodology',
+  null,
+  'voyage',
+  'voyage-4-large',
+  1024,
+  20
+);
+
+-- Decision report path:
+--   docs/phases/phase_11a/phase_11a_11c6b_vector_index_decision.md
+--
+-- Required fields:
+--   corpus_rows, projected_rows_10k, projected_rows_100k,
+--   hnsw_p95_ms, diskann_p95_ms, recall_at_20, index_size_mb,
+--   chosen_index, rollback_plan.
 ''';
   }
 }
@@ -1809,10 +2105,7 @@ class CorpusRerankSmokeRunner {
         RerankCandidate(id: candidate.chunkId, text: candidate.text),
     ];
 
-    final rerankResults = await _rerankProvider.rerank(
-      query,
-      rerankCandidates,
-    );
+    final rerankResults = await _rerankProvider.rerank(query, rerankCandidates);
 
     final byId = <String, CorpusVectorSearchCandidate>{
       for (final candidate in candidates) candidate.chunkId: candidate,
@@ -2473,6 +2766,428 @@ class EmbeddingExecutionResult {
   final List<String> outputFiles;
 }
 
+abstract class AdvisorContextGateway {
+  Future<String> generateContext({
+    required String apiKey,
+    required String model,
+    required String documentTitle,
+    required String sourcePath,
+    required List<String> headingPath,
+    required String chunkText,
+  });
+}
+
+class AnthropicHttpContextGateway implements AdvisorContextGateway {
+  AnthropicHttpContextGateway({HttpClient? httpClient, Uri? endpoint})
+    : _httpClient = httpClient ?? HttpClient(),
+      _endpoint = endpoint ?? Uri.parse(advisorAnthropicMessagesEndpoint);
+
+  final HttpClient _httpClient;
+  final Uri _endpoint;
+
+  @override
+  Future<String> generateContext({
+    required String apiKey,
+    required String model,
+    required String documentTitle,
+    required String sourcePath,
+    required List<String> headingPath,
+    required String chunkText,
+  }) async {
+    final request = await _httpClient.postUrl(_endpoint);
+    request.headers
+      ..set(HttpHeaders.contentTypeHeader, 'application/json')
+      ..set('x-api-key', apiKey)
+      ..set('anthropic-version', '2023-06-01');
+
+    final heading = headingPath.isEmpty
+        ? '(no heading)'
+        : headingPath.join(' > ');
+    final body = <String, Object?>{
+      'model': model,
+      'max_tokens': advisorContextMaxOutputTokens,
+      'temperature': 0,
+      'system':
+          'You generate short retrieval context for a restaurant operations '
+          'advisor corpus. Return only the context text. No markdown, no '
+          'quotes, no citations, no preamble.',
+      'messages': <Map<String, Object?>>[
+        <String, Object?>{
+          'role': 'user',
+          'content':
+              'Create a 1-2 sentence, 50-100 token context that situates '
+              'this chunk for retrieval. Mention the document/section and '
+              'the operational topic, but do not add facts not present in '
+              'the chunk.\n\n'
+              'Document title: $documentTitle\n'
+              'Source path: $sourcePath\n'
+              'Heading path: $heading\n\n'
+              'Chunk:\n$chunkText',
+        },
+      ],
+    };
+
+    request.add(utf8.encode(jsonEncode(body)));
+    final response = await request.close();
+    final responseBody = await utf8.decodeStream(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw CorpusManifestException(
+        'Anthropic context request failed with status ${response.statusCode}: '
+        '${_safeProviderErrorMessage(responseBody)}',
+      );
+    }
+
+    final decoded = jsonDecode(responseBody) as Map<String, Object?>;
+    final content = decoded['content'];
+    if (content is! List) {
+      throw CorpusManifestException(
+        'Anthropic context response did not include a content array.',
+      );
+    }
+    final textParts = <String>[];
+    for (final part in content) {
+      if (part is Map<String, Object?> && part['type'] == 'text') {
+        final text = part['text']?.toString().trim();
+        if (text != null && text.isNotEmpty) {
+          textParts.add(text);
+        }
+      }
+    }
+    final context = textParts.join('\n').trim();
+    if (context.isEmpty) {
+      throw CorpusManifestException(
+        'Anthropic context response did not include non-empty text.',
+      );
+    }
+    return _normalizeGeneratedContext(context);
+  }
+}
+
+class CorpusContextExecutor {
+  CorpusContextExecutor({
+    required Directory repoRoot,
+    AdvisorContextGateway? gateway,
+  }) : _repoRoot = repoRoot,
+       _gateway = gateway ?? AnthropicHttpContextGateway();
+
+  final Directory _repoRoot;
+  final AdvisorContextGateway _gateway;
+
+  Future<ContextExecutionResult> execute({
+    String materializationDirectory = 'build/advisor_corpus',
+    String outputDirectory = 'build/advisor_corpus/context',
+    String? apiKey,
+    String provider = advisorContextProvider,
+    String model = advisorContextModel,
+    Duration batchDelay = Duration.zero,
+    void Function(int completed, int total)? onContextComplete,
+  }) async {
+    if (provider != advisorContextProvider) {
+      throw CorpusManifestException(
+        'Unsupported context provider: $provider. '
+        'Expected $advisorContextProvider.',
+      );
+    }
+    if (model != advisorContextModel) {
+      throw CorpusManifestException(
+        'Unsupported context model: $model. Expected $advisorContextModel.',
+      );
+    }
+    final resolvedApiKey = apiKey ?? Platform.environment['ANTHROPIC_API_KEY'];
+    if (resolvedApiKey == null || resolvedApiKey.trim().isEmpty) {
+      throw CorpusManifestException(
+        'ANTHROPIC_API_KEY is required to execute context generation.',
+      );
+    }
+
+    final materialized = Directory(
+      p.join(_repoRoot.path, materializationDirectory),
+    );
+    final output = Directory(p.join(_repoRoot.path, outputDirectory));
+    output.createSync(recursive: true);
+
+    final documents = await _readJsonLines(
+      File(p.join(materialized.path, 'source_documents.jsonl')),
+    );
+    final chunks = await _readJsonLines(
+      File(p.join(materialized.path, 'source_chunks.jsonl')),
+    );
+    final documentsById = <String, Map<String, Object?>>{
+      for (final document in documents) document['doc_id'].toString(): document,
+    };
+    chunks.sort(
+      (a, b) => a['chunk_id'].toString().compareTo(b['chunk_id'].toString()),
+    );
+
+    final contexts = <Map<String, Object?>>[];
+    final embeddingInputs = <Map<String, Object?>>[];
+    var estimatedTokenCount = 0;
+    for (var index = 0; index < chunks.length; index += 1) {
+      final chunk = chunks[index];
+      final docId = chunk['doc_id'].toString();
+      final document = documentsById[docId];
+      if (document == null) {
+        throw CorpusManifestException(
+          'Chunk ${chunk['chunk_id']} references missing document $docId.',
+        );
+      }
+      final headingPath = _stringList(chunk['heading_path']);
+      final context = await _gateway.generateContext(
+        apiKey: resolvedApiKey,
+        model: model,
+        documentTitle: document['title'].toString(),
+        sourcePath: chunk['source_path'].toString(),
+        headingPath: headingPath,
+        chunkText: chunk['text'].toString(),
+      );
+      final contextualInput = '$context\n\n${chunk['text']}';
+      final estimatedTokens = _estimateTokens(contextualInput);
+      estimatedTokenCount += estimatedTokens;
+      contexts.add(<String, Object?>{
+        'record_type': 'chunk_context',
+        'sequence': index + 1,
+        'provider': provider,
+        'model': model,
+        'max_output_tokens': advisorContextMaxOutputTokens,
+        'chunk_id': chunk['chunk_id'],
+        'doc_id': docId,
+        'source_path': chunk['source_path'],
+        'heading_path': headingPath,
+        'content_sha256': chunk['content_sha256'],
+        'context': context,
+      });
+      embeddingInputs.add(<String, Object?>{
+        'record_type': 'embedding_input',
+        'sequence': index + 1,
+        'provider': advisorEmbeddingProvider,
+        'model': advisorEmbeddingModel,
+        'dimensions': advisorEmbeddingDimensions,
+        'chunk_id': chunk['chunk_id'],
+        'doc_id': docId,
+        'source_path': chunk['source_path'],
+        'heading_path': headingPath,
+        'content_sha256': chunk['content_sha256'],
+        'estimated_tokens': estimatedTokens,
+        'input': contextualInput,
+        'context_provider': provider,
+        'context_model': model,
+      });
+      onContextComplete?.call(index + 1, chunks.length);
+      if (batchDelay > Duration.zero && index < chunks.length - 1) {
+        await Future<void>.delayed(batchDelay);
+      }
+    }
+
+    final executionId = _deterministicUuid(
+      jsonEncode(<String, Object?>{
+        'provider': provider,
+        'model': model,
+        'chunk_ids': contexts.map((row) => row['chunk_id']).toList(),
+        'content_hashes': contexts.map((row) => row['content_sha256']).toList(),
+      }),
+    );
+    final embeddingJobId = _deterministicUuid(
+      jsonEncode(<String, Object?>{
+        'context_execution_id': executionId,
+        'provider': advisorEmbeddingProvider,
+        'model': advisorEmbeddingModel,
+        'dimensions': advisorEmbeddingDimensions,
+        'chunk_ids': embeddingInputs.map((row) => row['chunk_id']).toList(),
+        'hashes': embeddingInputs.map((row) => row['content_sha256']).toList(),
+      }),
+    );
+
+    const contextFileName = 'chunk_contexts.jsonl';
+    const contextSqlFileName = 'chunk_context_updates.sql';
+    const manifestFileName = 'context_execution_manifest.json';
+    const embeddingInputFileName = 'embedding_inputs.jsonl';
+    const embeddingManifestFileName = 'embedding_job_manifest.json';
+    const embeddingTemplateFileName = 'embedding_update_template.sql';
+
+    await _writeJsonLines(output, contextFileName, contexts);
+    await _writeJsonLines(output, embeddingInputFileName, embeddingInputs);
+    await File(
+      p.join(output.path, contextSqlFileName),
+    ).writeAsString(_contextUpdatesSql(provider, model, contexts));
+    await File(p.join(output.path, embeddingTemplateFileName)).writeAsString(
+      CorpusEmbeddingJobPreparer(repoRoot: _repoRoot)._embeddingUpdateTemplate(
+        advisorEmbeddingProvider,
+        advisorEmbeddingModel,
+        advisorEmbeddingDimensions,
+      ),
+    );
+
+    final manifest = <String, Object?>{
+      'record_type': 'advisor_corpus_context_execution_manifest',
+      'execution_version': 1,
+      'execution_id': executionId,
+      'provider': provider,
+      'model': model,
+      'endpoint': advisorAnthropicMessagesEndpoint,
+      'max_output_tokens': advisorContextMaxOutputTokens,
+      'chunk_count': contexts.length,
+      'database_mutation': false,
+      'context_file': contextFileName,
+      'sql_update_file': contextSqlFileName,
+      'contextual_embedding_input_file': embeddingInputFileName,
+      'embedding_job_manifest_file': embeddingManifestFileName,
+      'notes':
+          'Anthropic Contextual Retrieval contexts generated. SQL and '
+          'contextual embedding inputs are generated artifacts only; no DB '
+          'mutation by this command.',
+    };
+    await File(
+      p.join(output.path, manifestFileName),
+    ).writeAsString(const JsonEncoder.withIndent('  ').convert(manifest));
+
+    final embeddingManifest = <String, Object?>{
+      'record_type': 'advisor_corpus_embedding_job_manifest',
+      'job_version': 1,
+      'job_id': embeddingJobId,
+      'provider': advisorEmbeddingProvider,
+      'model': advisorEmbeddingModel,
+      'dimensions': advisorEmbeddingDimensions,
+      'distance_metric': advisorEmbeddingDistanceMetric,
+      'tokenizer': advisorEmbeddingTokenizer,
+      'max_input_tokens': advisorEmbeddingMaxInputTokens,
+      'rerank_provider': advisorRerankProvider,
+      'rerank_model': advisorRerankModel,
+      'answer_runtime_family': advisorAnswerRuntimeFamily,
+      'planned_retrieval_pipeline': <String>[
+        'anthropic_contextual_retrieval_context_prepended',
+        'pgvector_cosine_candidate_retrieval',
+        'bm25_sparse_retrieval',
+        'rrf_fusion',
+        'voyage_rerank_2_5',
+        'claude_answer_runtime_with_provenance',
+      ],
+      'source_materialization_directory': materializationDirectory,
+      'context_execution_id': executionId,
+      'mode': 'contextual_embedding_inputs_no_api_call',
+      'database_mutation': false,
+      'api_key_required_for_execution': 'VOYAGE_API_KEY',
+      'embedding_status_before': 'ready',
+      'embedding_status_after_success': 'ready',
+      'input_file': embeddingInputFileName,
+      'update_template_file': embeddingTemplateFileName,
+      'chunk_count': embeddingInputs.length,
+      'estimated_token_count': estimatedTokenCount,
+      'notes':
+          'Prepared from Anthropic-generated chunk_context. Execute with '
+          'execute-embeddings to refresh dense vectors using context + text.',
+    };
+    await File(p.join(output.path, embeddingManifestFileName)).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(embeddingManifest),
+    );
+
+    return ContextExecutionResult(
+      outputDirectory: output.path,
+      executionId: executionId,
+      provider: provider,
+      model: model,
+      maxOutputTokens: advisorContextMaxOutputTokens,
+      chunkCount: contexts.length,
+      outputFiles: <String>[
+        manifestFileName,
+        contextFileName,
+        contextSqlFileName,
+        embeddingManifestFileName,
+        embeddingInputFileName,
+        embeddingTemplateFileName,
+      ],
+    );
+  }
+
+  Future<List<Map<String, Object?>>> _readJsonLines(File file) async {
+    if (!file.existsSync()) {
+      throw CorpusManifestException(
+        'Materialized corpus file not found: ${file.path}',
+      );
+    }
+    final records = <Map<String, Object?>>[];
+    final lines = await file.readAsLines();
+    for (final line in lines.where((line) => line.trim().isNotEmpty)) {
+      records.add(jsonDecode(line) as Map<String, Object?>);
+    }
+    return records;
+  }
+
+  Future<void> _writeJsonLines(
+    Directory output,
+    String fileName,
+    List<Map<String, Object?>> records,
+  ) async {
+    final buffer = StringBuffer();
+    for (final record in records) {
+      buffer.writeln(jsonEncode(record));
+    }
+    await File(p.join(output.path, fileName)).writeAsString(buffer.toString());
+  }
+
+  String _contextUpdatesSql(
+    String provider,
+    String model,
+    List<Map<String, Object?>> contexts,
+  ) {
+    final buffer = StringBuffer('''
+-- Generated by tool/advisor_corpus execute-contexts.
+-- Applies Anthropic Contextual Retrieval chunk_context rows by
+-- chunk_id + content hash, then rebuilds the BM25 tsvector so sparse
+-- retrieval sees heading_path + chunk_context + founder-authored text.
+
+begin;
+
+''');
+    for (final row in contexts) {
+      buffer.writeln('''
+update public.advisor_source_chunks
+   set chunk_context = ${_textLiteral(row['context'])},
+       bm25_tsv =
+         setweight(
+           to_tsvector(
+             'english'::regconfig,
+             coalesce(array_to_string(heading_path, ' '), '')
+           ),
+           'A'
+         ) ||
+         setweight(
+           to_tsvector('english'::regconfig, ${_textLiteral(row['context'])}),
+           'B'
+         ) ||
+         setweight(
+           to_tsvector('english'::regconfig, text),
+           'C'
+         ),
+       updated_at = now()
+ where chunk_id = ${_textLiteral(row['chunk_id'])}
+   and content_sha256 = ${_textLiteral(row['content_sha256'])};
+''');
+    }
+    buffer.writeln('commit;');
+    return buffer.toString();
+  }
+}
+
+class ContextExecutionResult {
+  ContextExecutionResult({
+    required this.outputDirectory,
+    required this.executionId,
+    required this.provider,
+    required this.model,
+    required this.maxOutputTokens,
+    required this.chunkCount,
+    required this.outputFiles,
+  });
+
+  final String outputDirectory;
+  final String executionId;
+  final String provider;
+  final String model;
+  final int maxOutputTokens;
+  final int chunkCount;
+  final List<String> outputFiles;
+}
+
 class CorpusManifestException implements Exception {
   CorpusManifestException(this.message);
 
@@ -2557,6 +3272,35 @@ String _textArrayLiteral(Object? value) {
     return "'{}'::text[]";
   }
   return 'array[${values.map(_textLiteral).join(', ')}]::text[]';
+}
+
+List<String> _stringList(Object? value) =>
+    ((value as List<Object?>?) ?? <Object?>[])
+        .map((item) => item.toString())
+        .toList(growable: false);
+
+String _normalizeGeneratedContext(String value) {
+  final normalized = value
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .replaceAll(RegExp(r'^["“”]+|["“”]+$'), '')
+      .trim();
+  if (normalized.isEmpty) {
+    throw CorpusManifestException('Generated context was blank.');
+  }
+  return normalized;
+}
+
+String _safeProviderErrorMessage(String body) {
+  try {
+    final decoded = jsonDecode(body) as Map<String, Object?>;
+    final error = decoded['error'];
+    if (error is Map<String, Object?>) {
+      return error['message']?.toString() ?? 'provider error';
+    }
+    return decoded['message']?.toString() ?? 'provider error';
+  } catch (_) {
+    return 'provider error';
+  }
 }
 
 int _estimateTokens(String text) {

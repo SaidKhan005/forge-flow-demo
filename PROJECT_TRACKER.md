@@ -49,12 +49,16 @@ Before each prompt:
 
 ## Prompt Fetch Map
 
-- `11a.11c.5`, `11a.11c.6`, `11a.11d`, `11a.11e`: read
+- `11a.11c.5`, `11a.11c.6*`, `11a.11d`, `11a.11e`: read
   `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`; add
   `docs/phases/phase_11a/phase_11a_decision_register.md` only when the prompt
   needs Azure/AGE rationale, fallback posture, or parked decisions.
 - `11A.*`: read
   `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`.
+- `cutover.*`: read
+  `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`;
+  add `phase_11a_decision_register.md` when the prompt needs cost
+  envelopes, tier choice, or dormancy rules.
 - `9.8`, `9`, `10a`, `10.5`, `9.5`, `7.58`, `11b`, `9.75`, `10b`, `7.61`,
   `8`, `8R`: read that phase's doc under `docs/phases/**` when it opens.
 
@@ -66,14 +70,24 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 
 ## Now
 
-- Current phase: `11a` live-infrastructure sequence is active.
+- Current phase: `11a` live-infrastructure sequence is accepted; move to
+  `9` Auth foundation next (sequence re-locked 2026-04-26 under "full
+  proper dev before launch — no shortcuts").
 - Postgres host: Azure DB Flexible Server, Canada Central, PG 16.
 - Retrieval pattern: Modular Adaptive Agentic RAG.
 - Cost discipline: 5 levers locked (Hard Promise #9).
-- Next slice for Claude: `11a.11c.5` repo tooling re-target to Azure
-  (code-only, no live apply).
-- Next live gate: `11a.11c.6` Azure provisioning + extension verify +
-  schema apply + AGE benchmark.
+- Last completed infrastructure action: `11a.11e` staging live retrieval
+  accepted end-to-end. Anthropic generated 233 chunk contexts, Voyage
+  refreshed 233 context-enriched embeddings, vector/rerank smokes passed, and
+  Claude answer smoke returned `end_turn`.
+- Current blocker: none inside 11a. Production1 is schema-provisioned and
+  intentionally empty; production data load remains a later explicit cutover
+  gate.
+- Next slice for Claude: `9.0` Auth foundation. `9` precedes `11A.0`
+  because the admin console acceptance criteria require a working
+  Firebase Auth gate, which Phase 9 owns. Notify the user before any
+  live Azure mutation, Voyage/Anthropic call, key/account request,
+  billing/account setup, or product decision.
 
 Architecture rationale, retrieval-pattern detail, cost levers, pricing tier
 numbers, dormancy rules, and parked decisions live in
@@ -82,18 +96,52 @@ prompt needs that depth.
 
 ## Current Slice Queue
 
-1. `11a.11c.5` - repo tooling re-target to Azure (code-only)
-2. `11a.11c.6` - Azure provisioning + extension verify + schema apply + AGE
-   benchmark
-3. `11a.11d` - proxy counter wiring + smoke; locks levers 1-2 (prompt
-   caching, tier routing)
-4. `11a.11e` - corpus + embedding live load; runs Contextual Retrieval
-   indexing
-5. `11A.0-6` - F&F Operations Console foundation
-6. Resume: `9.8 → 9 → 10a → 10.5 → 9.5 → 7.58 → 11b → 11b.1 (NEW
-   schema-foundation slice) → 9.75 → 11b.2 → 11A.7-10 → 10b → 7.61 → 8 →
-   8R → 8.5 (NEW external integrations) → 12.0-12.5 (workflow platform
-   program) → 12.x+`
+Locked 2026-04-26 under "full proper dev before launch — no shortcuts":
+the entire product (advisor + workflows + vendor data + compliance)
+ships before any operator goes live on production. No friend-beta, no
+demo-mode launch, no split-and-defer of compliance.
+
+**Pre-launch (in order):**
+
+1. `9` - Auth foundation (Firebase + Postgres roles + RLS enforcement).
+   Precedes `11A.0` because admin console acceptance requires a real
+   auth gate.
+2. `11A.0-6` - F&F Operations Console foundation.
+3. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
+4. `10a` - Shared state v1 (real-time `NOTIFY` -> Pub/Sub bridge).
+5. `10.5` - Live daypart shift.
+6. `9.5` - El Podio learning identity.
+7. `9.75` - Staff daily companion (Barrio shell).
+8. `7.61` - Freshness audit (Hard Gate before Phase 8).
+9. `8` - POS / labor transport.
+10. `8R` - Reservation transport.
+11. `8.5` - External integrations (QBO, Xero, Bill.com, Plaid).
+12. `11b` - Advisor UX (with real corpus + real operator data).
+13. `11b.1` - Schema-foundation sweep (consolidates everything
+    learned across `11A`, `9`, `7.58`, `10a`, `10.5`, `9.5`, `9.75`,
+    `8`, `8R`, `8.5`).
+14. `11b.2` - Causal queries (AGE traversal in advisor hot path).
+15. `12.0` - Workflow platform foundation.
+16. `12.1` - Tool registry.
+17. `12.2` - Plan-Then-Execute pattern.
+18. `12.3` - Approval gate.
+19. `12.4` - Weekly P&L workflow (flagship; depends on `8.5`).
+20. `12.5` - Workflow catalog.
+21. `11A.7-10` - Admin polish (feature flag admin, API version
+    management, audit log review, status page).
+22. `10b` - Full offline sync.
+23. `9.8` - Full compliance package: T&Cs + DPAs (Toast, 7shifts,
+    OpenTable, QBO/Xero/Bill.com/Plaid, Anthropic, Voyage, Microsoft
+    Azure, Google Cloud) + SOC2 inheritance memo + cyber-liability
+    insurance review. Lands last because every named processor is
+    now real and the chain is enumerable.
+24. `cutover.0-4` - Production cutover with the full product live.
+
+**Post-launch (additive, ongoing):**
+
+- `cutover.5` - Beta widening to additional operators.
+- `12.x+` - Additional workflow catalog entries (weekly close,
+  OT alert, schedule draft, etc., on demand).
 
 Slice scopes in their phase plans. Architecture rationale in
 `phase_11a_decision_register.md`.
@@ -103,13 +151,20 @@ Slice scopes in their phase plans. Architecture rationale in
 | Phase | Status | Plan |
 | --- | --- | --- |
 | `7.57` | complete | archived |
-| `11a` | active | `phase_11a_advisor_infrastructure_plan.md` |
-| `11A` | queued | `phase_11A_operations_console_plan.md` |
-| `11b` / `11b.1` (NEW) / `11b.2` | queued | `phase_11b/phase_11b_advisor_ux_plan.md` |
-| `9.8` | queued | `phase_9_8/phase_9_8_compliance_and_legal_plan.md` |
+| `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
+| `9` | active next | `phase_9/phase_9_auth_plan.md` |
+| `11A.0-6` | queued | `phase_11A_operations_console_plan.md` |
+| `7.58`, `7.61` | queued | their respective plans |
+| `10a`, `10.5` | queued | their respective plans |
+| `9.5`, `9.75` | queued | their respective plans |
+| `8`, `8R` | queued | their respective plans |
 | `8.5` (NEW) | queued | `phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` |
-| `12.0–12.5` (NEW program) | queued | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
-| `7.58`, `7.61`, `8`, `8R` | queued | their respective plans |
+| `11b` / `11b.1` (NEW) / `11b.2` | queued | `phase_11b/phase_11b_advisor_ux_plan.md` |
+| `12.0-12.5` (NEW program) | queued | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
+| `11A.7-10` | queued (post-flagship) | `phase_11A_operations_console_plan.md` |
+| `10b` | queued | `phase_10b/phase_10b_full_offline_sync_plan.md` |
+| `9.8` | queued (lands last; depends on full processor chain) | `phase_9_8/phase_9_8_compliance_and_legal_plan.md` |
+| `cutover.0-5` (NEW) | queued (final pre-launch slice) | `phase_production_cutover/phase_production_cutover_plan.md` |
 
 ## Hard Gates
 
@@ -147,7 +202,9 @@ Wording / rationale / numbers for each gate: `phase_11a_decision_register.md`.
   orchestration, `lib/domain/services/` pure domain logic, `lib/state/` state
   holders.
 - Production migrations use online-migration patterns once real operator data
-  exists.
+  exists. The transition point is `cutover.4` accepting; before that, production
+  schema is freely deterministic. Detail in
+  `phase_production_cutover/phase_production_cutover_plan.md`.
 
 ## Decision Locations
 
@@ -156,6 +213,7 @@ Wording / rationale / numbers for each gate: `phase_11a_decision_register.md`.
   design gaps: `phase_11a/phase_11a_decision_register.md`.
 - Active `11a` slice tasks: `phase_11a/phase_11a_advisor_infrastructure_plan.md`.
 - Operations Console: `phase_11A_operations_console/phase_11A_operations_console_plan.md`.
+- Production cutover: `phase_production_cutover/phase_production_cutover_plan.md`.
 - Phase 12 program: `phase_12_workflow_platform/phase_12_workflow_platform_plan.md`.
 - External integrations: `phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`.
 - Pre-lean history: `docs/archive/trackers/PROJECT_TRACKER_2026-04-26_PRE_LEAN_AZURE_PIVOT.md`.
