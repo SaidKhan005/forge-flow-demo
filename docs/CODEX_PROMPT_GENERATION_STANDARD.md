@@ -64,6 +64,17 @@ Before sending the prompt:
   together in one fenced `text` block for one-click Claude copy/paste.
 - Never put Block 1 in Claude's paste block, and never split Blocks 2 and 3
   into separate paste blocks.
+- Block 1 must include `Human prerequisites:` before the paste block. If the
+  slice may require keys, accounts, cloud projects, CLI installs, dashboard
+  setup, tokens, billing setup, or live-service access, name the exact human
+  action needed and whether it blocks this slice or the next one. If none are
+  needed, say `None for this slice`.
+- Inside `Human prerequisites:`, also include `Decision needed for this slice:`.
+  This names what the user must decide now based on documented constraints,
+  gates, guardrails, blockers, live-service availability, or architecture
+  trade-offs. If no decision is needed, say `No decision needed for this
+  slice`. Do not let Claude implicitly decide product, infrastructure, cost,
+  security, or sequencing trade-offs.
 - Do not restate architecture already in `CLAUDE.md`.
 - Contract-bound slices include `Routing rules to mirror`: 2 or 3 rules max.
 - Move slices include Codex's import audit and analyzer-forced follow-ups.
@@ -106,6 +117,12 @@ Codex emits three blocks:
 - **Block 2 - Tech Context:** authority files and hard constraints.
 - **Block 3 - Tasks:** files, implementation tasks, tests, acceptance.
 
+Block 1 always includes a `Human prerequisites:` subsection so the user knows
+whether keys, accounts, cloud setup, CLI installs, dashboard setup, tokens, or
+live-service access are needed before the current or next slice, and what
+decision the user must make now based on documented constraints, gates,
+guardrails, blockers, live-service availability, or architecture trade-offs.
+
 Blocks 2 and 3 are the full Claude contract. Do not rely on Block 1 for
 instructions Claude must follow.
 
@@ -127,6 +144,15 @@ Important context:
 
 Current issue:
 - [what is missing, stale, or broken]
+
+Human prerequisites:
+- Setup/access needed: [None for this slice, or exact
+  keys/accounts/cloud/CLI/dashboard setup the human must handle; say whether it
+  blocks this slice or a later slice]
+- Decision needed for this slice: [No decision needed for this slice, or the
+  exact user decision required by documented constraints, gates, guardrails,
+  blockers, live-service availability, architecture, cost, security, or
+  sequencing trade-offs; say whether it blocks this slice or a later slice]
 
 Routing rules to mirror:
 - [only when contract-bound and useful for the user; 2 or 3 rules max]

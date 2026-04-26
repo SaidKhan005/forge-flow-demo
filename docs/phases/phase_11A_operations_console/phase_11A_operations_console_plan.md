@@ -1,8 +1,11 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-04-25
-Status: Planned (opens after `11a.11c-e` close)
+Updated: 2026-04-26
+Status: Planned (opens after `11a.11c-e` close, including the
+`11a.11c.4-6` Postgres host migration to Azure)
 Owner: F&F admin / operations lane
+
+**2026-04-26 — Postgres host re-locked to Azure DB Flexible Server (Canada Central, PG 16).** Throughout this plan, "Supabase database" reads as "Azure Database for PostgreSQL Flexible Server". `11A.4` Integration management now manages Azure DB connection strings (in addition to Anthropic / Voyage keys) instead of Supabase project keys. `11A.6` Observability dashboard reads health + metrics from Azure Monitor (Postgres metrics) + Cloud Run + Anthropic / Voyage usage instead of Supabase + Cloud Run. Trigger: see `phase_9_auth_plan.md` 2026-04-26 banner.
 
 > Naming note: capital `A` distinguishes this phase (`11A`, the F&F
 > internal admin console) from `11a` (advisor infrastructure). They
@@ -12,8 +15,9 @@ Owner: F&F admin / operations lane
 
 ## Why This Exists
 
-`11a.11c-e` lights up the cloud infrastructure (Supabase, proxy
-backend, corpus). At that point, F&F has a working back-end stack
+`11a.11c-e` lights up the cloud infrastructure (Azure DB Flexible
+Server, proxy backend, corpus). At that point, F&F has a working
+back-end stack
 but no human-facing way to operate it. Onboarding a new operator
 means writing SQL by hand. Editing pricing means redeploying.
 Debugging a customer complaint means grep-ing Cloud Run logs.
@@ -58,8 +62,9 @@ flags, and audit logs from any browser without on-premise tooling.
   can replace the Flutter Web client without backend changes.
 
 Hosting: separate Cloud Run service from the proxy backend, at
-`admin.forgeflow.app` (or similar). Shares the Supabase database.
-~$0-15/month at idle.
+`admin.forgeflow.app` (or similar). Shares the Azure DB Flexible
+Server (Postgres) instance with the proxy backend. ~$0-15/month at
+idle (Cloud Run admin service); Azure DB cost shared with the proxy.
 
 ## Goal
 
@@ -96,13 +101,21 @@ Specifically:
   operator. Set per-location `timezone` (IANA picker) and
   `business_day_rollover_hour`. Replaces "manual SQL INSERT"
   as the new-operator onboarding path.
-- `11A.2` **Pricing tier admin.** Table editor for `usage_caps`
-  per `(operator_id, location_id, usage_class)`. Lists all
-  operators, their tiers, their per-location/per-usage-class
-  caps. Edit inline. Tier templates for quick onboarding
-  (Independent / Multi-unit / Franchise+ / Enterprise). Captures
-  `created_by` / `updated_by` audit columns. **Replaces the
-  earlier `11a.13` scope** (same UX, better surface).
+- `11A.2` **Pricing tier admin.** Table editor for `usage_caps` per
+  `(operator_id, location_id, staff_id NULL, workflow_id NULL,
+  usage_class)` (Hard Promise #9 metering axes). Lists all operators,
+  their tier, their cap rows. Edit inline. **Tier templates** for
+  one-click onboarding match the locked tier model in
+  `phase_11a_decision_register.md` Pricing Tier Model section:
+  Pilot / Starter / Premium / Elite / Pro / Enterprise. Each
+  template seeds:
+  - Per-class monthly caps (advisor_qa, coach_qa, workflow_*)
+  - Per-staff overrides where applicable
+  - Per-workflow allowances + overage pricing for Pro tier
+  - Subscription tier on `operators.subscription_tier` (drives
+    per-tier model routing in proxy)
+  Captures `created_by` / `updated_by` audit columns. **Replaces
+  the earlier `11a.13` scope** (same UX, broader metering axes).
 - `11A.3` **Corpus admin.** Drag-and-drop markdown upload.
   Per-chunk preview before commit. Diff view (what's new, what's
   changing, what's being inactivated). Rollback to prior corpus
@@ -129,10 +142,25 @@ Specifically:
 - `11A.6` **Observability dashboard.** System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
-  Cost-by-operator / location / usage_class. Cap-event stream
-  (incoming alerts when operators hit cap). Cloud Run instance
-  counts. Replaces "I'll figure out if something's broken from
-  raw logs" as the path.
+  Cap-event stream (incoming alerts when operators hit cap).
+  Cloud Run instance counts. Replaces "I'll figure out if
+  something's broken from raw logs" as the path.
+
+  **Cost telemetry surfaces** (Hard Promise #9 visibility):
+  - Total cost-by-(`operator_id` / `location_id` / `staff_id` /
+    `workflow_id` / `usage_class`)
+  - Cost-by-`query_class` (advisor_qa / coach_qa / wf_pl /
+    wf_schedule / etc.) — drives pricing-tier decisions
+  - Cache hit rate per `query_class` (lever 3 effectiveness)
+  - Model mix per `query_class` (Haiku vs Sonnet share — lever 2
+    effectiveness)
+  - Batch-mode share for async workloads (lever 5 effectiveness)
+  - Top-N most-expensive operators / staff / workflows over
+    rolling windows (1d / 7d / 30d)
+  - Operator dormancy state (last_active_at relative to now;
+    flag operators 30+ days silent for precompute skip)
+  - Per-tier margin estimate (revenue from `subscription_tier`
+    minus rolling cost = margin per operator)
 
 ### Polish (post-launch; can interleave with 11b.2 / 10b)
 
@@ -191,8 +219,8 @@ Phase 11A does not own:
 
 Required before Phase 11A can ship real:
 
-- `11a.11c-e` complete (cloud Supabase, proxy enforcement, corpus
-  loaded)
+- `11a.11c-e` complete (Azure DB Flexible Server live with AGE +
+  pgvector + pg_diskann verified, proxy enforcement, corpus loaded)
 - Firebase Authentication admin role configured
 - Cloud Run service slot reserved for `admin.forgeflow.app`
 - Brand assets in `lib/theme/` (already exist)
@@ -215,8 +243,8 @@ Required before Phase 11A can ship real:
 
 ## Adjacent Phases
 
-- `Phase 11a` lights up the cloud + proxy + corpus that 11A
-  manages
+- `Phase 11a` lights up the Azure DB Flexible Server + proxy +
+  corpus that 11A manages
 - `Phase 9` issues admin auth tokens
 - `Phase 9.8` provides the legal/compliance surfaces (T&Cs editor
   may live in 11A.10 or a 9.8 sub-slice)

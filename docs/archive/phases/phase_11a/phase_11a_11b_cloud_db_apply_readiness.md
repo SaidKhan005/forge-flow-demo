@@ -1,5 +1,13 @@
 # Phase 11a.11b — Cloud DB apply readiness
 
+> **SUPERSEDED 2026-04-26.** This audit catalogued Supabase
+> prerequisites for cloud apply. Postgres host pivoted to Azure DB
+> Flexible Server (`Canada Central`, PG 16) in `11a.11c.4-6`. The
+> migration inventory in this audit is still accurate (5 migrations,
+> all SQL portable); the apply mechanism (Supabase CLI / `db push`)
+> is replaced by `psql` against Azure DB. Retained as
+> Supabase-historical.
+
 **Status:** BLOCKED. Live apply cannot proceed from this environment.
 This document is a read-only preflight audit; no migrations were
 applied, no cloud DB was contacted, no provider call was made.

@@ -1,8 +1,10 @@
 # Phase 10b - Full Offline Sync (V2)
 
-Updated: 2026-04-23
+Updated: 2026-04-26
 Status: Planned, post-launch
 Owner: Future shared-state V2 lane
+
+**2026-04-26 — Postgres host re-locked to Azure DB Flexible Server.** Throughout this plan, "Supabase Postgres" reads as "Azure Database for PostgreSQL Flexible Server". Phase 10a's "Supabase Realtime" is replaced by a Postgres LISTEN/NOTIFY → WebSocket bridge in the Cloud Run proxy backend (see `phase_10a_shared_state_v1_plan.md` 2026-04-26 update). Phase 10b inherits the bridge — optimistic-concurrency layering still works the same way (version column + `updated_at` LWW comparator). "Supabase Realtime V2 migration" placeholder is now obsolete; the Phase 10b parallel concern is the proxy WebSocket bridge's evolution (e.g., per-row filtering, presence). Trigger and broader rationale: see `phase_9_auth_plan.md` 2026-04-26 banner.
 
 ## Decisions Locked (2026-04-23 review)
 
@@ -11,7 +13,7 @@ Owner: Future shared-state V2 lane
   pain points from the LWW + online-first pattern.
 - **Scope: layer over Phase 10a, do not replace.** 10b extends 10a's
   shared-state foundation; it does not rebuild it. Existing Postgres
-  tables, RLS policies, and Supabase Realtime integration remain; 10b
+  tables, RLS policies, and proxy WebSocket bridge remain; 10b
   adds optimistic-concurrency, richer offline support, and conflict UI
   on top.
 - **Trigger to start 10b work:** any one of:
@@ -40,8 +42,8 @@ Phase 10b owns:
   - Read includes row version (`version` column or `updated_at`
     timestamp)
   - Write conditional on version match (Postgres transaction with
-    version check, or Supabase client `update().eq('version', v)`
-    pattern)
+    version check via the proxy backend repository, e.g.,
+    `UPDATE ... WHERE id = $1 AND version = $2`)
   - On version mismatch, client receives rejection and handles via
     conflict resolution path
 - **Offline write queue with reconciliation:**
@@ -71,7 +73,7 @@ Adjacent work that may land here:
 
 - Performance optimization on large per-operator datasets (pagination,
   selective subscriptions)
-- Supabase Realtime V2 migration if relevant at the time
+- Proxy WebSocket bridge enhancements (per-row filtering, presence, server-side fan-out optimizations) if production data justifies
 - Cross-device edit-conflict analytics (measure how often conflicts
   actually happen; informs whether 10b was worth building when)
 
@@ -137,7 +139,7 @@ Required before Phase 10b can ship real:
 
 - [phase_10a_shared_state_v1_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md)
 - Postgres transaction and optimistic concurrency documentation
-- Supabase client write patterns for versioned updates
+- Postgres optimistic-concurrency / version-column patterns
 
 ## Placeholder Notes
 

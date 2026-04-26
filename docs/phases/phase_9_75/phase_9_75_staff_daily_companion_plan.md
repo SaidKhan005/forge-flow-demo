@@ -23,10 +23,13 @@ Product label: Barrio V1.1
   here's the methodology" half. Mental model: upload new content -> graph
   expands -> advisor finds new connections.
 
-  - Corpus storage location: locked by Phase 11a to Supabase Postgres
-    (same project as Phase 9 / 10a / 11a). Founder-authored Markdown
-    remains the ingestion source of truth before it is loaded into the
-    graph.
+  - Corpus storage location: locked by Phase 11a to Azure Database
+    for PostgreSQL Flexible Server (Canada Central, PG 16; same
+    instance as Phase 9 / 10a / 11a). Re-locked 2026-04-26 from
+    Supabase to Azure DB because Apache AGE for graph traversal is
+    GA on Azure but unavailable on Supabase. Founder-authored
+    Markdown remains the ingestion source of truth before it is
+    loaded into the graph.
   - Timing: Phase 11a's retrieval infrastructure closes ahead of 9.75
     per the sequential build cadence locked 2026-04-25
     (`7.57 -> 11a -> 9.8 -> 9 -> 10a -> 10.5 -> 9.5 -> [7.58] -> 11b

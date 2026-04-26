@@ -1,10 +1,18 @@
 # Phase 9 Auth Plan
 
-Updated: 2026-04-23
+Updated: 2026-04-26
 Owner: Codex planning / tracker truth
 Purpose: define the final auth, role, permission, and persistent-session architecture for Forge & Flow and Barrio before Phase 9 implementation begins.
 
-Last review: 2026-04-23 - Backend stack pivoted from Firebase/Firestore to Firebase Auth + Supabase Postgres + Cloud Run. Firebase Auth retained as the identity layer (mature Flutter SDK, officially supported OIDC integration with Supabase). Supabase Postgres becomes the data layer for profiles, roles, permissions, and all application state. Phase 9.5 (El Podio Learning Identity) remains extracted at `docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md`.
+Last review: 2026-04-23 - Backend stack pivoted from Firebase/Firestore to Firebase Auth + Postgres + Cloud Run. Firebase Auth retained as the identity layer (mature Flutter SDK). Postgres becomes the data layer for profiles, roles, permissions, and all application state. Phase 9.5 (El Podio Learning Identity) remains extracted at `docs/phases/phase_9_5/phase_9_5_el_podio_learning_identity_plan.md`.
+
+**2026-04-26 — Postgres host re-locked to Azure DB Flexible Server.** Throughout this plan, "Supabase Postgres" reads as "Azure Database for PostgreSQL Flexible Server (Canada Central, PG 16)". Trigger: Apache AGE for Phase 11a is GA on Azure DB but unavailable on Supabase. Mechanical impact on Phase 9:
+- JWT verification path: Supabase's native OIDC third-party-auth integration for Firebase JWTs is replaced by **Cloud Run proxy backend verifying Firebase JWTs via Firebase Admin SDK and injecting user identity into the Postgres session as a session variable** (e.g., `SET LOCAL app.current_user_id = ...`, `SET LOCAL app.current_restaurant_id = ...`); RLS policies read from the session variables. Same security guarantee, different mechanism.
+- Service-role concept: Supabase's `service_role` is replaced by a dedicated Postgres role (`forge_admin`) with `BYPASSRLS` that the proxy backend uses for admin paths only.
+- Local dev: Supabase Docker stack is replaced by a Postgres + AGE + pgvector Docker compose (`docker-compose.dev.yml`). Firebase Auth emulator unchanged.
+- Edge Functions: replaced by Cloud Run admin endpoints (`/v1/admin/*` routes on the proxy backend).
+- All other Phase 9 decisions (one Firebase project, single-instance Postgres, Forge & Flow + Barrio share auth, login required, etc.) are unchanged.
+The exhaustive Supabase→Azure naming sweep through this doc lands in `11a.11c.5`. Reading guidance until then: treat "Supabase" mentions in the body as "Azure DB Flexible Server" per this banner.
 
 ## Decisions Locked (2026-04-23 review)
 

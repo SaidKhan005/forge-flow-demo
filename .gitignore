@@ -34,6 +34,19 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Node local tooling
+node_modules/
+
+# Supabase local state (Supabase tooling retired 2026-04-26 in favor of
+# Azure DB Flexible Server + plain Postgres Docker compose; entry kept
+# during the 11a.11c.5 transition so any leftover .temp/ doesn't get
+# committed before the supabase/ folder is removed)
+supabase/.temp/
+
+# Azure local state (Azure CLI cache, psql session artifacts)
+.azure/
+*.psql_history
+
 # Symbolication related
 app.*.symbols
 
@@ -52,7 +65,8 @@ android/app/upload-keystore.jks
 # Local database
 *.db
 
-# Local secrets
+# Local secrets. Keep `.env.local` private and untracked; do not delete or
+# commit it in future changes because local Supabase/provider setup depends on it.
 .env
 .env.local
 .env.*.local

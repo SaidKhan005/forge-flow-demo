@@ -511,8 +511,14 @@ tr:nth-child(even) td {
     The plain-English and technical reference for how Forge &amp; Flow is built - every decision, every layer, every reason. Study notes for the founder.
   </div>
   <div class="cover-meta">
-    <span>Updated 2026-04-25</span>
+    <span>Updated 2026-04-25 (banner addendum 2026-04-26)</span>
     <span>Pre-launch · Phase 7.57</span>
+  </div>
+  <div style="margin-top: 24px; padding: 18px 22px; background: #FFF6EC; border: 2px solid #CC7A3E; border-radius: 8px; max-width: 720px; margin-left: auto; margin-right: auto;">
+    <strong style="color: #CC7A3E; display: block; margin-bottom: 6px;">2026-04-26 Architecture Update — Postgres Host</strong>
+    <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #333;">
+      The Postgres host has been re-locked from <em>Supabase</em> to <em>Microsoft Azure Database for PostgreSQL Flexible Server</em> (region: <code>Canada Central</code>, version: PG 16). Trigger: Apache AGE (the graph extension that powers the advisor's knowledge-graph traversal) is generally available on Azure DB Flexible Server but is not on Supabase's curated extension allowlist. Throughout this guide, every mention of "Supabase" (database, hosting, extensions, migration tooling) reads as "Azure Database for PostgreSQL Flexible Server." pgvector behavior is unchanged. <code>pg_diskann</code> becomes available as a future-proofing option. The conceptual architecture, RLS pattern, repository pattern, and runtime contract are all unchanged. Authoritative source: <code>PROJECT_TRACKER.md</code> Active Guardrails + <code>docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md</code>.
+    </p>
   </div>
 </div>
 

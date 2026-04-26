@@ -1,10 +1,12 @@
 # Phase 9.5 - El Podio Learning Identity
 
-Updated: 2026-04-23
+Updated: 2026-04-26
 Status: Planned
 Owner: Future El Podio learning lane
 
-Last review: 2026-04-23 - Backend stack pivoted from Firestore to Supabase Postgres alongside Phase 9. Leaderboard tables use RLS policies for per-operator scoping; JWT claims from Firebase Auth drive the scoping.
+Last review: 2026-04-23 - Backend stack pivoted from Firestore to Postgres alongside Phase 9. Leaderboard tables use RLS policies for per-operator scoping; JWT claims from Firebase Auth drive the scoping.
+
+**2026-04-26 — Postgres host re-locked to Azure DB Flexible Server (Canada Central, PG 16).** Throughout this plan, "Supabase Postgres" reads as "Azure Database for PostgreSQL Flexible Server". Trigger and mechanical impact: see `phase_9_auth_plan.md` 2026-04-26 banner. RLS pattern unchanged — same Postgres RLS policies, same JWT-derived `restaurant_id` scoping; the JWT verification + session-variable injection layer moves from Supabase's built-in path to the Cloud Run proxy backend.
 
 ## Goal
 

@@ -35,10 +35,12 @@ Every slice respects these. Origin:
 4. **Per-operator isolation is non-negotiable.** RLS-ready schema
    from day one (see RLS-Ready Schema). Phase 9 enforces. `11b` does
    not ship multi-operator before then.
-5. **AGE graph projection ships before `11b`.** Landed in `7.57.4`;
-   live apply still requires an AGE-enabled Supabase/Postgres environment.
-   Graph traversal is the launch differentiator, not vector-only
-   retrieval.
+5. **AGE infrastructure live before `11b`; retrieval is Modular
+   Adaptive Agentic RAG.** Schema landed in `7.57.4`; live apply at
+   `11a.11c.6`. Advisor `11b` launches with Anthropic Contextual
+   Retrieval; AGE traversal lights up incrementally (`11b.2` causal,
+   Phase 12 workflows + coaching). Detail:
+   `docs/phases/phase_11a/phase_11a_decision_register.md`.
 6. **Advisor speaks in recommendations, not commands.** Decided
    2026-04-25: F&F provides advisory information; operator decides
    whether to act. F&F never acts on the operator's behalf in the
@@ -49,10 +51,17 @@ Every slice respects these. Origin:
    for local development only. Production keys live in Cloud Run
    env / KMS.
 8. **AI infrastructure is general-purpose.** `LLMProvider`,
-   `EmbeddingProvider`, `RerankProvider`, `DataSourceProvider` are
-   not advisor-specific. The advisor (11b) is one consumer;
-   workflow automation (Phase 12 post-launch) will be another with
-   the same plumbing.
+   `EmbeddingProvider`, `RerankProvider`, `DataSourceProvider`,
+   and (Phase 8.5) `IntegrationProvider` are not advisor-specific.
+   The advisor (11b) is one consumer; workflow automation (Phase 12
+   post-launch) will be another with the same plumbing.
+9. **AI cost is metered by class.** Every AI surface carries
+   `usage_class`; meterable per `(operator_id, location_id,
+   staff_id NULL, workflow_id NULL, usage_class)` in `usage_logs` +
+   `usage_caps`. No flat-rate AI at scale. Five cost-discipline
+   levers (prompt caching, tier routing, response cache, precomputed
+   summaries, batch API) keep margin 75-95%. Concrete tiers + caps:
+   `docs/phases/phase_11a/phase_11a_decision_register.md`.
 
 ## Workflow
 
@@ -131,6 +140,16 @@ code reads/writes operator-scoped Postgres tables only through
 Postgres RLS is the backup safety net under the repository, not the
 primary defense.
 
+**RLS performance discipline (locked 2026-04-26):**
+- Every fact-table index has `operator_id` (or `(operator_id,
+  location_id)`) as the leading column. Indexes leading with anything
+  else (e.g., `business_date`) are forbidden on operator-scoped tables.
+  Without this, RLS policy evaluation is two orders of magnitude
+  slower. CI lint enforces.
+- Proxy session-variable injection uses `SET LOCAL` (transaction-scoped),
+  never `SET` (session-scoped). Pooled connection reuse must not carry
+  tenant context across requests.
+
 ## Proxy & API Conventions
 
 - API URL versioning: `/v1/...` paths today; `/v2/...` when
@@ -144,6 +163,21 @@ primary defense.
   provider abstractions + counter/caps + feature flags). No
   parallel stacks. Phase 12 workflows, future Barrio staff
   coaching, and any future AI surface reuse the same plumbing.
+- **Postgres host = Azure DB Flexible Server, `Canada Central`,
+  PG 16.** Extensions: `AGE`, `pgvector`, `pg_diskann`, `pgmq`,
+  `pg_cron`, `pg_stat_statements`. Migrations in `db/migrations/`.
+  Direct `package:postgres` imports forbidden outside
+  `lib/infrastructure/persistence/postgres/`.
+- **Retrieval pattern**: Modular Adaptive Agentic RAG (Haiku
+  classifier → SQL / Contextual Retrieval / AGE → Sonnet synthesis
+  with prompt cache).
+- **Real-time pattern**: Postgres `NOTIFY` → Cloud Pub/Sub →
+  WebSocket bridge in proxy (Phase 10a builds it).
+- **Cost-discipline levers default-on**: prompt caching, tier
+  routing, response cache, precomputed summaries, batch API.
+
+Architecture detail and rationale:
+`docs/phases/phase_11a/phase_11a_decision_register.md`.
 
 ## Testing
 

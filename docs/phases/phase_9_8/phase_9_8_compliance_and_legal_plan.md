@@ -1,8 +1,10 @@
 # Phase 9.8 - Compliance, Privacy, and Legal
 
-Updated: 2026-04-23
+Updated: 2026-04-26
 Status: Planned
 Owner: Future compliance/legal lane
+
+**2026-04-26 — Postgres host re-locked to Microsoft Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16).** Replaces Supabase. Mechanical impact on Phase 9.8: covered processor chain swaps Supabase out, Microsoft Azure in. SOC 2 / ISO 27001 inheritance docs reference Azure attestations instead of Supabase. DPA signed with Microsoft (existing customer agreement covers Azure DB) instead of Supabase. Data residency for Canadian operators unchanged (both `ca-central-1` Montreal on Supabase and `Canada Central` Toronto on Azure are Canadian-resident — Quebec PIPEDA / Ontario PHIPA compliance posture preserved). Cyber-liability insurance review now references Azure DB. See `phase_9_auth_plan.md` 2026-04-26 banner for the trigger and broader rationale.
 
 ## Decisions Locked (2026-04-23 review)
 
@@ -20,7 +22,7 @@ Owner: Future compliance/legal lane
   identity processor is no longer hypothetical.
 
 - **Covered processor chain for V1:** Firebase Auth (identity),
-  Supabase (Postgres, Realtime, Storage), Google Cloud Run (agent runtime),
+  Microsoft Azure (Database for PostgreSQL Flexible Server in `Canada Central` — primary data layer), Google Cloud Run (agent runtime),
   Toast (POS), 7shifts (Labor), OpenTable (Reservation).
 
 - **Privacy policy freshness is launch-blocking.** The current
@@ -48,7 +50,7 @@ Phase 9.8 owns:
 - **Privacy policy update** covering the real data processors in the
   production chain:
   - Firebase Auth
-  - Supabase Postgres / Realtime / Storage
+  - Microsoft Azure Database for PostgreSQL Flexible Server
   - Google Cloud Run
   - Toast
   - 7shifts
@@ -60,7 +62,7 @@ Phase 9.8 owns:
   above
 
 - **SOC2 inheritance documentation**
-  - Supabase SOC2 Type II attestation context
+  - Microsoft Azure Database for PostgreSQL Flexible Server SOC 2 / ISO 27001 attestation context
   - Firebase / Google Cloud compliance inheritance context
   - Forge & Flow's own documented posture layered on top of those vendors
 

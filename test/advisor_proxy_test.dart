@@ -629,6 +629,373 @@ void main() {
     );
   });
 
+  group('Advisor cloud foundation migration (11a.11c.1)', () {
+    late String migration;
+
+    setUpAll(() {
+      migration = File(
+        'supabase/migrations/'
+        '202604250005_advisor_cloud_foundation.sql',
+      ).readAsStringSync();
+    });
+
+    test('creates the four foundational identity tables', () {
+      expect(
+        migration,
+        contains('create table if not exists public.operators'),
+      );
+      expect(
+        migration,
+        contains('create table if not exists public.locations'),
+      );
+      expect(
+        migration,
+        contains('create table if not exists public.users'),
+      );
+      expect(
+        migration,
+        contains('create table if not exists public.operator_admins'),
+      );
+    });
+
+    test(
+      'operators carries preferred_currency CAD default and a deferred '
+      'composite primary_location_id FK that pins same-operator ownership',
+      () {
+        expect(
+          migration,
+          contains(
+            "preferred_currency char(3) not null default 'CAD'",
+          ),
+        );
+        expect(
+          migration,
+          contains('primary_location_id uuid null'),
+        );
+        // FK is added after locations exists to break the cycle, and is
+        // composite on (operator_id, primary_location_id) so an
+        // operator's primary_location_id cannot point at another
+        // operator's location.
+        expect(
+          migration,
+          contains('alter table public.operators'),
+        );
+        expect(
+          migration,
+          contains('add constraint operators_primary_location_fk'),
+        );
+        expect(
+          migration,
+          contains(
+            'foreign key (operator_id, primary_location_id)',
+          ),
+        );
+        expect(
+          migration,
+          contains(
+            'references public.locations(operator_id, location_id)',
+          ),
+        );
+        // ON DELETE SET NULL with a column list (PG15+) preserves
+        // operator_id (NOT NULL on operators) when the referenced
+        // location is deleted.
+        expect(
+          migration,
+          contains('on delete set null (primary_location_id)'),
+        );
+      },
+    );
+
+    test(
+      'locations carries timezone NOT NULL and '
+      'business_day_rollover_hour with a 0-23 check',
+      () {
+        expect(migration, contains('timezone text not null'));
+        expect(
+          migration,
+          contains('business_day_rollover_hour integer'),
+        );
+        expect(
+          migration,
+          contains(
+            'check (business_day_rollover_hour between 0 and 23)',
+          ),
+        );
+      },
+    );
+
+    test(
+      'users + operator_admins reference operators with cascade and use '
+      'a composite PK on operator_admins',
+      () {
+        expect(
+          migration,
+          contains(
+            'operator_id uuid not null references public.operators(operator_id)',
+          ),
+        );
+        // operator_admins composite PK so a user can admin multiple operators.
+        expect(
+          migration,
+          contains('primary key (user_id, operator_id)'),
+        );
+        expect(
+          migration,
+          contains('is_super_admin boolean not null default false'),
+        );
+      },
+    );
+
+    test(
+      'usage_logs is partitioned by period_start with composite PK and '
+      'non-negative checks',
+      () {
+        expect(
+          migration,
+          contains('create table if not exists public.usage_logs'),
+        );
+        expect(
+          migration,
+          contains('partition by range (period_start)'),
+        );
+        expect(
+          migration,
+          contains(
+            'primary key (operator_id, location_id, usage_class, period_start)',
+          ),
+        );
+        expect(migration, contains('check (token_count >= 0)'));
+        expect(migration, contains('check (cost_usd >= 0)'));
+        expect(migration, contains('check (request_count >= 0)'));
+        // At least a default partition catches writes outside any
+        // explicit month-specific partition.
+        expect(
+          migration,
+          contains(
+            'create table if not exists public.usage_logs_default',
+          ),
+        );
+        expect(
+          migration,
+          contains('partition of public.usage_logs default'),
+        );
+      },
+    );
+
+    test(
+      'usage_caps is keyed on (operator_id, location_id, usage_class) '
+      'with non-negative cap checks and nullable created_by/updated_by',
+      () {
+        expect(
+          migration,
+          contains('create table if not exists public.usage_caps'),
+        );
+        expect(
+          migration,
+          contains(
+            'primary key (operator_id, location_id, usage_class)',
+          ),
+        );
+        expect(migration, contains('check (monthly_cap_usd >= 0)'));
+        expect(
+          migration,
+          contains('check (per_invocation_cap_usd >= 0)'),
+        );
+        expect(migration, contains('created_by uuid null'));
+        expect(migration, contains('updated_by uuid null'));
+      },
+    );
+
+    test(
+      'proxy_requests has unique idempotency_key, request_type, and '
+      'nullable response_payload jsonb',
+      () {
+        expect(
+          migration,
+          contains(
+            'create table if not exists public.proxy_requests',
+          ),
+        );
+        expect(
+          migration,
+          contains('idempotency_key text not null unique'),
+        );
+        expect(migration, contains('request_type text not null'));
+        expect(migration, contains('response_payload jsonb null'));
+      },
+    );
+
+    test(
+      'feature_flags supports global / operator / location scopes via '
+      'three partial unique indexes (no duplicates per logical scope)',
+      () {
+        expect(
+          migration,
+          contains(
+            'create table if not exists public.feature_flags',
+          ),
+        );
+        // Three partial unique indexes cover the three logical scopes.
+        expect(
+          migration,
+          contains('feature_flags_global_scope_idx'),
+        );
+        expect(
+          migration,
+          contains('feature_flags_operator_scope_idx'),
+        );
+        expect(
+          migration,
+          contains('feature_flags_location_scope_idx'),
+        );
+        expect(
+          migration,
+          contains(
+            'where operator_id is null and location_id is null',
+          ),
+        );
+      },
+    );
+
+    test(
+      'fx_rates is keyed on (base_currency, quote_currency, '
+      'as_of_date) with positive rate and currency-format checks',
+      () {
+        expect(
+          migration,
+          contains('create table if not exists public.fx_rates'),
+        );
+        expect(
+          migration,
+          contains(
+            'primary key (base_currency, quote_currency, as_of_date)',
+          ),
+        );
+        expect(migration, contains('check (rate > 0)'));
+        // Currency code shape check.
+        expect(
+          migration,
+          contains(r"check (base_currency ~ '^[A-Z]{3}$')"),
+        );
+        expect(
+          migration,
+          contains(r"check (quote_currency ~ '^[A-Z]{3}$')"),
+        );
+      },
+    );
+
+    test(
+      'every new table has RLS enabled and a service-role-only policy '
+      'stub',
+      () {
+        const expectedTables = <String>[
+          'operators',
+          'locations',
+          'users',
+          'operator_admins',
+          'usage_logs',
+          'usage_logs_default',
+          'usage_caps',
+          'proxy_requests',
+          'feature_flags',
+          'fx_rates',
+        ];
+        for (final table in expectedTables) {
+          expect(
+            migration,
+            contains(
+              'alter table public.$table enable row level security',
+            ),
+            reason: 'RLS must be enabled on $table',
+          );
+          expect(
+            migration,
+            contains('${table}_service_role_all'),
+            reason: 'service-role policy stub must exist for $table',
+          );
+        }
+        // Every policy stub targets the service_role role.
+        expect(migration, contains('to service_role'));
+      },
+    );
+
+    test(
+      'migration uses TIMESTAMPTZ throughout — no `timestamp without '
+      'time zone` (operator-scoped silent-DST hazard banned)',
+      () {
+        expect(
+          migration.toLowerCase().contains('timestamp without time zone'),
+          isFalse,
+          reason:
+              'TIMESTAMP WITHOUT TIME ZONE is banned in operator-scoped '
+              'tables — silent DST corruption is unrecoverable.',
+        );
+      },
+    );
+
+    test(
+      'locations carries an explicit `unique (operator_id, location_id)` '
+      'so composite FKs from operator-scoped tables have a target',
+      () {
+        expect(
+          migration,
+          contains('unique (operator_id, location_id)'),
+        );
+      },
+    );
+
+    test(
+      'every operator/location-scoped table references locations on '
+      'the (operator_id, location_id) pair — rejects (operator_a, '
+      'location_b) cross-tenant mismatches at the DB layer',
+      () {
+        // Composite FK clause: present once on each of usage_logs,
+        // usage_caps, proxy_requests, and feature_flags — at least
+        // four occurrences. Multi-line tolerant so layout changes
+        // don't make this brittle.
+        final composite = RegExp(
+          r'foreign key \(operator_id, location_id\)\s+'
+          r'references public\.locations\(operator_id, location_id\)',
+          multiLine: true,
+        );
+        expect(
+          composite.allMatches(migration).length,
+          greaterThanOrEqualTo(4),
+          reason:
+              'usage_logs / usage_caps / proxy_requests / feature_flags '
+              'must each declare the composite FK to locations.',
+        );
+      },
+    );
+
+    test(
+      'feature_flags rejects the malformed (location set, operator '
+      'NULL) shape via a CHECK constraint',
+      () {
+        expect(
+          migration,
+          contains(
+            'check (location_id is null or operator_id is not null)',
+          ),
+        );
+      },
+    );
+
+    test(
+      'feature_flags_location_scope_idx requires both operator_id and '
+      'location_id to be present (so duplicates of the malformed '
+      'shape cannot slip through)',
+      () {
+        expect(
+          migration,
+          contains(
+            'where operator_id is not null and location_id is not null',
+          ),
+        );
+      },
+    );
+  });
+
   group('ScaffoldRejectingJwtVerifier (hard-fail-closed default)', () {
     test('rejects every token with a verification error', () {
       const verifier = ScaffoldRejectingJwtVerifier();
