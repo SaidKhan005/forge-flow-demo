@@ -37,7 +37,7 @@ closed or explicitly resolved in the follow-up closure section below.
 - Database: `forgeflow`
 
 The local connection file is outside the repo at
-`$HOME\.forge_flow.staging.ps1`. It sets `POSTGRES_URL` and
+`$HOME\.forge_flow\forge_flow.secrets.ps1`. It sets `POSTGRES_URL` and
 `POSTGRES_ADMIN_URL` and must not be committed or pasted into chat.
 
 ## Server Parameters

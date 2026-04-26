@@ -2,13 +2,13 @@
 #
 # Replaces scripts/use_supabase_staging_env.ps1. Helper for a developer
 # to source POSTGRES_URL and POSTGRES_ADMIN_URL into the current shell
-# from their local secret store.
+# from the unified local secret store.
 #
 # Hard rules:
 #   * This script does NOT read .env.local, .env.local.example, or
 #     any other repo file for values. The values must come from a
 #     local secret store (1Password CLI, Azure Key Vault CLI, or a
-#     gitignored shell profile fragment outside the repo).
+#     shell profile fragment outside the repo).
 #   * This script does NOT echo secret values. It only confirms which
 #     env names ended up exposed in the calling shell.
 #   * Sourcing pattern (PowerShell): dot-source so the assignments
@@ -19,18 +19,21 @@
 #     PowerShell session; `return` exits this script's scope only.
 #
 # Wiring path (operator implements once, locally):
-#   1. Generate a non-repo file (e.g. `~\.forge_flow.staging.ps1`)
-#      that sets `$env:POSTGRES_URL = '...'` and
-#      `$env:POSTGRES_ADMIN_URL = '...'`. That file lives outside the
-#      repo and is the ONLY place the values appear in plain text.
-#   2. Point `FORGE_FLOW_STAGING_ENV_FILE` at it (export it from your
-#      shell profile so it persists across sessions).
+#   1. Keep local secrets in `$HOME\.forge_flow\forge_flow.secrets.ps1`.
+#      That file lives outside the repo and is the ONLY plain-text env
+#      loader for provider, Postgres, and Firebase local secrets.
+#   2. Optionally point `FORGE_FLOW_STAGING_ENV_FILE` at a different
+#      local secret loader. If unset, this script defaults to the
+#      unified Forge Flow path.
 #   3. Dot-source this script; it sources the operator's file and
 #      reports the env names that became available.
 
 $ErrorActionPreference = 'Stop'
 
 $envFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_STAGING_ENV_FILE')
+if ([string]::IsNullOrWhiteSpace($envFile)) {
+  $envFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+}
 
 if ([string]::IsNullOrWhiteSpace($envFile)) {
   Write-Warning 'FORGE_FLOW_STAGING_ENV_FILE: MISSING'

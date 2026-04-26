@@ -168,6 +168,7 @@ Future<AnthropicModelCheckResult> defaultAnthropicOnlineCheck({
   if (_kAnthropicApiKey.isEmpty) {
     return const AnthropicModelCheckResult.cannotCheck(
       'ANTHROPIC_API_KEY not provided. Re-launch with '
+      'scripts/run_flutter_dev.ps1 -App forgeflow, or pass '
       '--dart-define=ANTHROPIC_API_KEY=...',
     );
   }

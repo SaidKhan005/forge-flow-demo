@@ -20,6 +20,23 @@ $ErrorActionPreference = 'Stop'
 
 $required = @('POSTGRES_URL', 'POSTGRES_ADMIN_URL')
 
+$needsLoad = $false
+foreach ($name in $required) {
+  if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+    $needsLoad = $true
+  }
+}
+
+if ($needsLoad) {
+  $envFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_STAGING_ENV_FILE')
+  if ([string]::IsNullOrWhiteSpace($envFile)) {
+    $envFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+  }
+  if (Test-Path -LiteralPath $envFile) {
+    . $envFile
+  }
+}
+
 $missing = @()
 foreach ($name in $required) {
   $value = [Environment]::GetEnvironmentVariable($name)
@@ -34,7 +51,7 @@ foreach ($name in $required) {
 Write-Host '---'
 if ($missing.Count -gt 0) {
   Write-Host "BLOCKED - $($missing.Count) required env name(s) missing: $($missing -join ', ')"
-  Write-Host 'Run scripts/use_postgres_staging_env.ps1 first to source them from your local secret store.'
+  Write-Host 'Run scripts/use_forge_flow_secrets.ps1 first, or check $HOME\.forge_flow\forge_flow.secrets.ps1.'
   exit 1
 }
 

@@ -534,8 +534,9 @@ RAG.
 ## Security And Safety Posture
 
 - No vendor/provider secrets in Flutter.
-- `.env.local` is private, ignored, untracked, and not a source of committed
-  truth.
+- Local secrets are consolidated outside the repo in
+  `$HOME/.forge_flow/forge_flow.secrets.ps1`; `.env.local` remains ignored
+  if recreated, but is not the source of truth.
 - Advisor posture is recommendation-only. F&F provides advisory information;
   operators decide whether to act.
 - Prompt-injection MVP stack:
@@ -603,6 +604,117 @@ A separate operational note: staging backup retention defaults to
 35-day retention is a pre-production checklist item — set
 `--backup-retention 35` at production provisioning time, before any
 operator data is written.
+
+## Phase 9 Architecture Lock (2026-04-26)
+
+Five product decisions locked after deep research + codebase inventory
+on 2026-04-26 under the "no shortcuts" launch model. Detail:
+`phase_9/phase_9_auth_plan.md`. The user-approved full Phase 9 decision set
+lives in `phase_9/phase_9_decision_lock_2026-04-26.md`.
+
+**1. Identity layer: Firebase Identity Platform tier (not Firebase Auth
+standard).** Required for MFA enforcement and future blocking-function
+hooks. Free up to 50k MAU; ~$0.0055/MAU above. Live setup note
+(2026-04-26): Identity Platform staging is enabled and TOTP MFA is
+enabled. Official Identity Platform docs list email/password, phone,
+federated/OIDC/SAML, and custom-auth integration paths, and the TOTP MFA
+docs describe TOTP as a supported MFA factor; they do not expose a
+first-party WebAuthn/passkey provider surface. Decision: Phase 9 launches
+with email/password + TOTP MFA. Passkeys are a future follow-up, not a
+launch gate, unless Firebase / Identity Platform exposes an official
+supported passkey path before cutover.
+
+**2. Permission model: enriched RBAC at launch.** Custom roles, deny
+rules (deny wins over allow), location-scoped grants, time-bound grants
+(`valid_from` / `valid_until`). Six seeded roles: `super_admin`
+(F&F), `ff_support` (F&F support staff), `operator_owner`,
+`operator_manager`, `operator_supervisor`, `operator_staff`. ~80
+frozen permission keys in code-defined catalog. ReBAC graph permissions
+(OpenFGA / SpiceDB) deferred to Phase 12 workflow approval chains where
+graph relationships actually pay off; ReBAC at launch is over-engineering
+for the multi-tenant org-hierarchy + custom-role surface.
+
+**3. SSO / SAML / SCIM: WorkOS, deferred.** Lights up at first
+Enterprise-tier customer demand. Don't build SAML in-house; WorkOS at
+$125/mo/connection. The `users.external_id` column lands in 9.0 as a
+zero-cost forward-compat hook; no other Phase 9 work blocks on this.
+
+**4. MFA enforcement policy.** Required for all admin users
+(super_admin, ff_support, operator_owner, operator_manager) at every
+subscription tier. Required for all users (including operator_supervisor,
+operator_staff) at Premium tier and above. Pilot / Starter tiers may
+opt staff users out. Read from `operators.subscription_tier`. Cost:
+zero (Identity Platform free tier covers MFA enforcement). Security
+posture for launch: TOTP via Identity Platform, with SMS deprecated per
+NIST SP 800-63B-4. Passkeys remain desirable but are not a launch gate
+without an official Firebase / Identity Platform support surface.
+
+**Auth email decision (2026-04-26).** Use Firebase action links with
+Forge & Flow branded web pages for invite, verification, password reset,
+and MFA-related action flows. Firebase continues to own the secure action
+codes; Forge & Flow owns the user-facing pages and copy. Built-in
+Firebase subject/body template customization is not a launch blocker.
+
+**Additional Phase 9 decisions accepted 2026-04-26.** Local Firebase ID-token
+verification via Firebase public keys/JWKS is the default request path; live
+revocation checks are reserved for sensitive operations. Tiny Firebase custom
+claims are allowed (`operator_id`, `is_super_admin`, `is_ff_support`,
+`roles_version`) while Postgres remains source of truth. Staging auth smoke
+uses `auth-smoke@forgeflow.dev`. Live staging RLS flip is approved once
+integration tests are ready. `forge_admin` BYPASSRLS is allowed only for admin
+paths and every bypass is audited. Step-up auth freshness is 5 minutes. MFA
+recovery uses 10 single-use hashed codes and MFA removal requires step-up plus
+a 24-hour delay. Password policy follows NIST style, HIBP k-anonymity screening
+is on, Cloud Armor + reCAPTCHA are on for brute-force protection, and paid
+VPN/Tor reputation vendors are deferred. Invites expire after 7 days. Only F&F
+`super_admin` can create users without invite. Auth/security audit retention is
+7 years. Operator owners may create/edit operator-scoped custom roles; seeded
+roles remain protected. Deny rules are supported and deny wins. `ff_support`
+sees assigned operators/locations only. Admin UX is dense operational tables,
+filters, and audit drilldowns; CSV audit export is allowed for authorized admins
+and every export is audited.
+
+**5. GDPR right-to-erasure: redact-don't-delete with break-glass.**
+PII columns redacted across `users`, `auth_events_audit`, `auth_sessions`
+on erasure request; operational record (event_id, actor_user_id,
+event_type, occurred_at) preserved under GDPR Art. 17(3) carve-out for
+operational records. Procedure requires paired-approval (two F&F
+super_admins, both with step-up MFA). Hard-delete reserved for legal-
+hold release scenarios only. Documented runbook lands with 9.8.
+
+**Phase 9 sub-slice plan: `9.0` through `9.9`.**
+
+| Slice | Scope |
+|---|---|
+| `9.0` | Auth schema foundation (single migration) |
+| `9.1` | Firebase Identity Platform setup + JWT verifier wiring |
+| `9.2` | Repository pattern + SET LOCAL + RLS enforcement live |
+| `9.3` | Login + persistent session + step-up auth + Flutter wiring |
+| `9.4` | MFA enrollment + enforcement (TOTP + recovery codes; passkeys future follow-up if officially supported) |
+| `9.5` | Password policy + HIBP + brute-force + Cloud Armor |
+| `9.6` | Role + permission system runtime |
+| `9.7` | Permission enforcement runtime + Forge & Flow + Barrio gates |
+| `9.8` | Admin user lifecycle + GDPR erasure |
+| `9.9` | Admin role console UX (inside `admin.forgeflow.app`) |
+
+Estimated total: 12-15 weeks. Future extensions slot in
+`9-future-1` through `9-future-7` (see phase plan).
+
+**Schema lock: 9.0 adds 11 new tables + extends 2 existing.**
+New: `roles`, `permission_keys`, `role_permissions`, `user_roles`,
+`auth_sessions`, `auth_events_audit`, `mfa_factors`, `tncs_acceptances`,
+`password_history`, `auth_invites`, `role_audit_log`,
+`external_identity_links`. Extends: `users` (firebase_uid, external_id,
+status enum, soft-delete, roles_version, profile fields), `operator_admins`
+(scope_type enum + valid_until). Append-only enforcement on
+`auth_events_audit` and `role_audit_log` via `REVOKE DELETE, UPDATE`
+from `service_role`.
+
+**Sequence lock: 9.0-9.9 ships before 11A.0** (admin console
+acceptance gate requires real auth) **and before any other pre-launch
+phase.** Production schema flexibility remains open through `cutover.4`,
+so any pre-launch phase that wants to extend Phase 9 schema can do so
+additively without online-migration discipline.
 
 ## Phase 11A And Admin Decisions
 

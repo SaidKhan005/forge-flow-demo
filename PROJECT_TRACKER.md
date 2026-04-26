@@ -59,7 +59,12 @@ Before each prompt:
   `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`;
   add `phase_11a_decision_register.md` when the prompt needs cost
   envelopes, tier choice, or dormancy rules.
-- `9.8`, `9`, `10a`, `10.5`, `9.5`, `7.58`, `11b`, `9.75`, `10b`, `7.61`,
+- `9.0-9.9`: read `docs/phases/phase_9/phase_9_auth_plan.md`; add
+  `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md` when the prompt
+  touches any user-owned Phase 9 choice; add `phase_11a_decision_register.md`
+  when the prompt needs Phase 9 architecture-lock rationale, RLS performance
+  discipline, or repository-pattern detail.
+- `9.8`, `10a`, `10.5`, `9.5`, `7.58`, `11b`, `9.75`, `10b`, `7.61`,
   `8`, `8R`: read that phase's doc under `docs/phases/**` when it opens.
 
 ## North Star
@@ -80,14 +85,32 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   accepted end-to-end. Anthropic generated 233 chunk contexts, Voyage
   refreshed 233 context-enriched embeddings, vector/rerank smokes passed, and
   Claude answer smoke returned `end_turn`.
-- Current blocker: none inside 11a. Production1 is schema-provisioned and
-  intentionally empty; production data load remains a later explicit cutover
-  gate.
-- Next slice for Claude: `9.0` Auth foundation. `9` precedes `11A.0`
-  because the admin console acceptance criteria require a working
-  Firebase Auth gate, which Phase 9 owns. Notify the user before any
-  live Azure mutation, Voyage/Anthropic call, key/account request,
-  billing/account setup, or product decision.
+- Last completed auth action: `9.0` Auth schema foundation accepted locally,
+  on staging, and on Production1. The 9.0 migration added the auth/RBAC/audit
+  schema, permission catalog, baseline roles, and tenant-leading indexes.
+- Current auth setup state: staging Firebase project `forge-flow-staging`
+  exists, is billing-enabled, is upgraded to Identity Platform, has both
+  Android apps, both iOS bundle IDs, and the admin web app registered. Email /
+  password and TOTP MFA are enabled; SMS/phone auth is disabled. Local secrets
+  are consolidated outside the repo in `$HOME/.forge_flow/`; the canonical
+  loader is `$HOME/.forge_flow/forge_flow.secrets.ps1`, and the Firebase Admin
+  SDK JSON sits beside it as `$HOME/.forge_flow/firebase-staging-adminsdk.json`.
+  Phase 9 launch MFA decision: email/password + TOTP ship first; passkeys are
+  a future follow-up unless an official Firebase / Identity Platform passkey
+  surface appears. Auth email decision: use Firebase action links with branded
+  Forge & Flow web pages, so Firebase subject/body template customization is
+  not a launch blocker. Flutter/Gradle/iOS runtime wiring is still pending.
+  Full Phase 9 decision set is locked in
+  `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
+- Next slice for Claude: `9.1` Firebase Identity Platform setup closeout +
+  JWT verifier wiring, with explicit handling of the passkey/email-template
+  gaps. `9.0-9.9` precedes `11A.0`
+  because admin console acceptance requires a real auth gate. Phase 9
+  re-scoped 2026-04-26 to meet 2026 industry standards under
+  "no shortcuts" launch model — full plan in
+  `phase_9/phase_9_auth_plan.md`. Notify the user before any live
+  Azure mutation, Voyage/Anthropic/Firebase call, key/account
+  request, billing/account setup, or product decision.
 
 Architecture rationale, retrieval-pattern detail, cost levers, pricing tier
 numbers, dormancy rules, and parked decisions live in
@@ -103,9 +126,13 @@ demo-mode launch, no split-and-defer of compliance.
 
 **Pre-launch (in order):**
 
-1. `9` - Auth foundation (Firebase + Postgres roles + RLS enforcement).
-   Precedes `11A.0` because admin console acceptance requires a real
-   auth gate.
+1. `9.0-9.9` - Auth, identity, permissions, audit (10 sub-slices,
+   ~12-15 weeks). Re-scoped 2026-04-26 to meet 2026 industry
+   standards: Firebase Identity Platform tier, TOTP MFA at launch,
+   NIST SP 800-63B-4 password policy, HIBP screening, append-only
+   audit log, GDPR redact-don't-delete, enriched RBAC with deny
+   rules + time-bound + location-scoped grants. Precedes `11A.0`
+   because admin console acceptance requires a real auth gate.
 2. `11A.0-6` - F&F Operations Console foundation.
 3. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
 4. `10a` - Shared state v1 (real-time `NOTIFY` -> Pub/Sub bridge).
@@ -152,7 +179,7 @@ Slice scopes in their phase plans. Architecture rationale in
 | --- | --- | --- |
 | `7.57` | complete | archived |
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
-| `9` | active next | `phase_9/phase_9_auth_plan.md` |
+| `9.0-9.9` | active (`9.0` accepted; `9.1` next) | `phase_9/phase_9_auth_plan.md` |
 | `11A.0-6` | queued | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
@@ -220,8 +247,10 @@ Wording / rationale / numbers for each gate: `phase_11a_decision_register.md`.
 
 ## Notes
 
-- `.env.local` is the canonical private local env file. It is ignored,
-  untracked, and must not be committed or deleted.
+- `$HOME/.forge_flow/forge_flow.secrets.ps1` is the canonical private local
+  env loader. It is outside the repo and must not be committed or pasted.
+  `.env.local` remains ignored if recreated, but is no longer the source of
+  truth for local keys.
 - Supabase reports under `docs/archive/phases/phase_11a/phase_11a_11b*` and
   `phase_11a_11c2/11c3*` are historical after the Azure pivot.
 - If an active prompt seems to require a key, account, cloud project, CLI,

@@ -20,7 +20,7 @@ No secret values are recorded here.
 - SKU/tier: `Standard_D2ds_v5`, General Purpose
 - Database: `forgeflow`
 - Backup retention: 35 days
-- Local non-repo env file: `C:\Users\saidu\.forge_flow.production1.ps1`
+- Local non-repo env file: `C:\Users\saidu\.forge_flow\forge_flow.secrets.ps1`
 
 Production uses General Purpose because Azure's built-in PgBouncer is not
 available on Burstable staging tier.
@@ -81,4 +81,3 @@ Verification artifact:
 - No production AGE projection data.
 - No Cloud Run/proxy production traffic.
 - No operator/customer data.
-

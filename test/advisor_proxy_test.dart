@@ -1285,6 +1285,617 @@ void main() {
     });
   });
 
+  group('Phase 9 auth schema foundation migration (9.0)', () {
+    late String migration;
+    late String normalizedMigration;
+    late List<String> migrationNames;
+    late String permissionKeysSource;
+    late String catalogContract;
+
+    const newAuthTables = <String>[
+      'permission_keys',
+      'roles',
+      'role_permissions',
+      'user_roles',
+      'auth_sessions',
+      'mfa_factors',
+      'tncs_acceptances',
+      'password_history',
+      'auth_invites',
+      'auth_events_audit',
+      'role_audit_log',
+      'external_identity_links',
+    ];
+
+    const baselineRoleKeys = <String>[
+      'super_admin',
+      'ff_support',
+      'operator_owner',
+      'operator_manager',
+      'operator_supervisor',
+      'operator_staff',
+    ];
+
+    setUpAll(() {
+      migrationNames =
+          Directory('db/migrations')
+              .listSync()
+              .whereType<File>()
+              .map((file) => file.uri.pathSegments.last)
+              .where((name) => name.endsWith('.sql'))
+              .toList()
+            ..sort();
+      migration = File(
+        'db/migrations/202604250008_auth_schema_foundation.sql',
+      ).readAsStringSync();
+      normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
+      permissionKeysSource = File(
+        'lib/auth/permission_keys.dart',
+      ).readAsStringSync();
+      catalogContract = File(
+        'docs/contracts/auth_permission_key_catalog.md',
+      ).readAsStringSync();
+    });
+
+    test('migration is the next deterministic file after 11a.11c.6 hardening',
+        () {
+      expect(
+        migrationNames,
+        contains('202604250008_auth_schema_foundation.sql'),
+      );
+      expect(
+        migrationNames.indexOf('202604250008_auth_schema_foundation.sql'),
+        equals(
+          migrationNames.indexOf(
+                '202604250007_advisor_rls_index_hardening.sql',
+              ) +
+              1,
+        ),
+      );
+    });
+
+    test('every new auth table is created with `if not exists`', () {
+      for (final table in newAuthTables) {
+        expect(
+          migration,
+          contains('create table if not exists public.$table'),
+          reason: 'missing create table for $table',
+        );
+      }
+    });
+
+    test('users table is extended with the 9.0 auth + identity columns', () {
+      const expectedColumns = <String>[
+        'firebase_uid uuid not null default gen_random_uuid()',
+        'external_id text null',
+        "status text not null default 'invited'",
+        'deleted_at timestamptz null',
+        'roles_version integer not null default 0',
+        'mfa_required boolean not null default false',
+        'last_login_at timestamptz null',
+        'last_active_at timestamptz null',
+        'password_set_at timestamptz null',
+        'email_verified_at timestamptz null',
+        'first_name text null',
+        'last_name text null',
+        'display_name text null',
+        'primary_role_id uuid null',
+        'preferred_locale text null',
+        'avatar_url text null',
+      ];
+      for (final column in expectedColumns) {
+        expect(
+          migration,
+          contains('add column if not exists $column'),
+          reason: 'missing users column $column',
+        );
+      }
+      // status check covers the documented lifecycle states.
+      for (final state in <String>[
+        'invited',
+        'active',
+        'suspended',
+        'dormant_30',
+        'dormant_60',
+        'dormant_90',
+        'deleted',
+      ]) {
+        expect(
+          migration,
+          contains("'$state'"),
+          reason: 'missing users.status state $state',
+        );
+      }
+      // firebase_uid uniqueness + primary_role_id FK to roles.
+      expect(
+        migration,
+        contains('add constraint users_firebase_uid_key unique (firebase_uid)'),
+      );
+      expect(
+        migration,
+        contains('add constraint users_external_id_key unique (external_id)'),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'add constraint users_primary_role_fk foreign key '
+          '(primary_role_id) references public.roles(role_id) '
+          'on delete set null',
+        ),
+      );
+    });
+
+    test('operator_admins is extended and gets a composite scope-location FK',
+        () {
+      expect(migration, contains('add column if not exists scope_type text'));
+      // scope_type is added nullable, backfilled, then SET NOT NULL so
+      // existing rows do not violate NOT NULL on first apply.
+      expect(
+        normalizedMigration,
+        contains('alter column scope_type set not null'),
+      );
+      for (final scope in <String>[
+        'super_admin',
+        'ff_support',
+        'operator_owner',
+        'operator_manager',
+      ]) {
+        expect(
+          migration,
+          contains("'$scope'"),
+          reason: 'missing operator_admins.scope_type value $scope',
+        );
+      }
+      expect(
+        migration,
+        contains('add column if not exists scope_location_id uuid null'),
+      );
+      expect(
+        migration,
+        contains(
+          'add column if not exists valid_from timestamptz not null '
+          'default now()',
+        ),
+      );
+      expect(
+        migration,
+        contains('add column if not exists valid_until timestamptz null'),
+      );
+      // Composite FK rejects (operator_a, location_b) cross-tenant
+      // mismatches at the DB layer.
+      expect(
+        normalizedMigration,
+        contains(
+          'add constraint operator_admins_scope_location_fk foreign key '
+          '(operator_id, scope_location_id) references '
+          'public.locations(operator_id, location_id) on delete cascade',
+        ),
+      );
+    });
+
+    test('legacy users.role column is migrated into user_roles and dropped',
+        () {
+      // The DO block guards the backfill on column existence so re-runs
+      // after the column was already dropped are safe.
+      expect(
+        migration,
+        contains(
+          "where table_schema = 'public'\n       and table_name = 'users'\n"
+          "       and column_name = 'role'",
+        ),
+      );
+      expect(migration, contains('insert into public.user_roles'));
+      expect(
+        migration,
+        contains('alter table public.users drop column role'),
+      );
+    });
+
+    test('roles uses partial unique indexes to handle null operator_id', () {
+      // Plain UNIQUE treats NULL as distinct, so global (operator_id IS
+      // NULL) seeded roles need a separate partial unique index from
+      // operator-scoped custom roles.
+      expect(
+        normalizedMigration,
+        contains(
+          'create unique index if not exists roles_operator_role_key_idx '
+          'on public.roles (operator_id, role_key) where operator_id '
+          'is not null',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'create unique index if not exists roles_global_role_key_idx '
+          'on public.roles (role_key) where operator_id is null',
+        ),
+      );
+    });
+
+    test(
+      'user_roles_active_grant_idx is tenant-leading and supports the same '
+      'user holding the same role across different operators',
+      () {
+        // Tenant-leading composite blocks duplicate active grants within
+        // one (operator, user, role, location) scope while permitting
+        // the same user to hold the same role across different
+        // operators. COALESCE collapses NULL location_id (operator-wide
+        // grant) into a single uniqueness slot.
+        expect(
+          normalizedMigration,
+          contains(
+            'create unique index if not exists user_roles_active_grant_idx '
+            'on public.user_roles ( operator_id, user_id, role_id, '
+            "coalesce(location_id, '00000000-0000-0000-0000-000000000000'"
+            '::uuid) ) where revoked_at is null',
+          ),
+        );
+        // The drop-then-create pattern is required so a re-apply over the
+        // pre-fix shape (where the index led with user_id) replaces it
+        // rather than skipping via `if not exists`.
+        expect(
+          normalizedMigration,
+          contains('drop index if exists public.user_roles_active_grant_idx'),
+        );
+        // Regression guard: the old user_id-leading composite must not
+        // resurface. A revert to the pre-fix shape would fail this check
+        // because operator_id would no longer be the first column.
+        expect(
+          normalizedMigration,
+          isNot(
+            contains(
+              'user_roles_active_grant_idx on public.user_roles '
+              '( user_id, role_id,',
+            ),
+          ),
+        );
+      },
+    );
+
+    test(
+      'auth_events_audit actor/target lookup indexes lead with operator_id',
+      () {
+        // Tenant-leading actor lookup. The pre-fix shape led with
+        // actor_user_id and ignored operator_id, which forced RLS to
+        // re-filter on every probe.
+        expect(
+          normalizedMigration,
+          contains(
+            'create index if not exists auth_events_audit_actor_occurred_idx '
+            'on public.auth_events_audit '
+            '(operator_id, actor_user_id, occurred_at desc) '
+            'where operator_id is not null and actor_user_id is not null',
+          ),
+        );
+        // Tenant-leading target lookup, same shape contract.
+        expect(
+          normalizedMigration,
+          contains(
+            'create index if not exists auth_events_audit_target_occurred_idx '
+            'on public.auth_events_audit '
+            '(operator_id, target_user_id, occurred_at desc) '
+            'where operator_id is not null and target_user_id is not null',
+          ),
+        );
+        // Regression guards: the pre-fix user_id-leading shapes must
+        // not resurface. Reverting either index to leading with the
+        // user-id column alone would fail these checks.
+        expect(
+          normalizedMigration,
+          isNot(
+            contains(
+              'auth_events_audit_actor_occurred_idx on '
+              'public.auth_events_audit (actor_user_id, occurred_at desc)',
+            ),
+          ),
+        );
+        expect(
+          normalizedMigration,
+          isNot(
+            contains(
+              'auth_events_audit_target_occurred_idx on '
+              'public.auth_events_audit (target_user_id, occurred_at desc)',
+            ),
+          ),
+        );
+        // The global `operator_id is null` partial index must remain so
+        // system-wide events (Firebase JWKS rotations, etc.) stay
+        // queryable by occurred_at without leaking into the
+        // per-operator lookup indexes.
+        expect(
+          normalizedMigration,
+          contains(
+            'create index if not exists auth_events_audit_global_occurred_idx '
+            'on public.auth_events_audit (occurred_at desc) '
+            'where operator_id is null',
+          ),
+        );
+      },
+    );
+
+    test(
+      'operator-scoped tables carry tenant-leading indexes per RLS '
+      'performance discipline',
+      () {
+        const tenantLeadingIndexes = <String>[
+          'user_roles_tenant_lookup_idx on public.user_roles (operator_id, location_id, user_id)',
+          'tncs_acceptances_operator_user_idx on public.tncs_acceptances (operator_id, user_id, accepted_at)',
+          'auth_invites_operator_expires_idx on public.auth_invites (operator_id, expires_at)',
+          'auth_events_audit_operator_occurred_idx on public.auth_events_audit (operator_id, occurred_at desc) where operator_id is not null',
+          'external_identity_links_operator_user_idx on public.external_identity_links (operator_id, user_id)',
+          'users_operator_status_idx on public.users (operator_id, status) where deleted_at is null',
+        ];
+        for (final fragment in tenantLeadingIndexes) {
+          expect(
+            normalizedMigration,
+            contains(fragment),
+            reason: 'missing tenant-leading index fragment: $fragment',
+          );
+        }
+      },
+    );
+
+    test('external_identity_links carries vendor-scoped composite UNIQUE '
+        'partials (NOT auth source-of-truth, but per-vendor identity is '
+        'unique within an operator)', () {
+      expect(
+        normalizedMigration,
+        contains(
+          'create unique index if not exists external_identity_links_labor_idx '
+          'on public.external_identity_links '
+          '(operator_id, vendor, labor_employee_id) where '
+          'labor_employee_id is not null',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'create unique index if not exists external_identity_links_pos_idx '
+          'on public.external_identity_links '
+          '(operator_id, vendor, pos_employee_id) where '
+          'pos_employee_id is not null',
+        ),
+      );
+    });
+
+    test('every new auth table has RLS enabled and a service-role policy stub',
+        () {
+      for (final table in newAuthTables) {
+        expect(
+          migration,
+          contains('alter table public.$table enable row level security'),
+          reason: 'RLS must be enabled on $table',
+        );
+        // Either a `*_service_role_all` stub (writable) or the
+        // append-only INSERT/SELECT split for audit tables. Both
+        // forms include the table name as a policy-name prefix.
+        expect(
+          migration,
+          contains('${table}_service_role_'),
+          reason: 'service-role policy stub must exist for $table',
+        );
+      }
+      // Every policy stub targets the service_role role.
+      expect(migration, contains('to service_role'));
+    });
+
+    test('audit tables are append-only by grant shape', () {
+      // auth_events_audit: REVOKE UPDATE, DELETE FROM PUBLIC + service_role;
+      // GRANT INSERT, SELECT TO service_role.
+      expect(
+        normalizedMigration,
+        contains(
+          'revoke update, delete on public.auth_events_audit from public',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'revoke update, delete on public.auth_events_audit from service_role',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'grant insert, select on public.auth_events_audit to service_role',
+        ),
+      );
+      // role_audit_log: same grant shape.
+      expect(
+        normalizedMigration,
+        contains(
+          'revoke update, delete on public.role_audit_log from public',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'revoke update, delete on public.role_audit_log from service_role',
+        ),
+      );
+      expect(
+        normalizedMigration,
+        contains(
+          'grant insert, select on public.role_audit_log to service_role',
+        ),
+      );
+      // The RLS policy stubs for the audit tables are SELECT/INSERT
+      // only — no FOR ALL stub that would tempt a future change to
+      // also grant UPDATE / DELETE.
+      expect(
+        migration,
+        contains('auth_events_audit_service_role_append_only'),
+      );
+      expect(migration, contains('auth_events_audit_service_role_select'));
+      expect(migration, contains('role_audit_log_service_role_append_only'));
+      expect(migration, contains('role_audit_log_service_role_select'));
+    });
+
+    test('six baseline roles are seeded with deterministic UUIDs', () {
+      expect(migration, contains('insert into public.roles'));
+      for (final key in baselineRoleKeys) {
+        expect(
+          migration,
+          contains("'$key'"),
+          reason: 'baseline role $key must be seeded',
+        );
+      }
+      // is_seeded = true; super_admin and ff_support are not editable.
+      expect(migration, contains('true, false'));
+      expect(migration, contains("'F&F Super Admin'"));
+      expect(migration, contains("'F&F Support'"));
+    });
+
+    test('permission catalog seed is a single insert into permission_keys '
+        'and includes one key per documented category', () {
+      expect(
+        migration,
+        contains('insert into public.permission_keys'),
+      );
+      // Sample one key per category to confirm coverage.
+      const samplePerCategory = <String, String>{
+        'product': 'product.forgeflow.access',
+        'forgeflow': 'forgeflow.shift.view',
+        'barrio': 'barrio.handbook.view',
+        'admin': 'admin.users.view',
+        'billing': 'billing.invoice.view',
+        'integration': 'integration.toast.view',
+        'workflow': 'workflow.catalog.view',
+      };
+      samplePerCategory.forEach((category, key) {
+        expect(
+          migration,
+          contains("'$key'"),
+          reason: 'category $category sample key $key not seeded',
+        );
+      });
+    });
+
+    test('every key from PermissionKeys.all is seeded into permission_keys',
+        () {
+      // Pull `'literal'` strings out of the constants file. The
+      // PermissionKeys class is constants-only so every quoted literal
+      // is a permission key (or a baseline role key). Filtering on
+      // the catalog category prefixes keeps role-key strings out.
+      final keyPattern = RegExp(r"'([a-z][a-z0-9_]*\.[a-z0-9_.]+)'");
+      final keys = keyPattern
+          .allMatches(permissionKeysSource)
+          .map((m) => m.group(1)!)
+          .where(
+            (key) =>
+                key.startsWith('product.') ||
+                key.startsWith('forgeflow.') ||
+                key.startsWith('barrio.') ||
+                key.startsWith('admin.') ||
+                key.startsWith('billing.') ||
+                key.startsWith('integration.') ||
+                key.startsWith('workflow.'),
+          )
+          .toSet();
+      // Sanity floor — the constants file must declare at least the
+      // ~80 keys the plan calls for. If this trips, the constants
+      // file lost coverage somewhere.
+      expect(
+        keys.length,
+        greaterThanOrEqualTo(75),
+        reason:
+            'PermissionKeys.dart should declare ~80 permission keys; '
+            'found ${keys.length}',
+      );
+      // Every key declared in constants must be seeded by the migration.
+      for (final key in keys) {
+        expect(
+          migration,
+          contains("'$key'"),
+          reason: 'PermissionKeys constant $key not seeded by migration',
+        );
+      }
+    });
+
+    test('MFA-required keys are flagged in the migration with requires_mfa '
+        'true and documented in the catalog contract', () {
+      const mfaRequiredKeys = <String>[
+        'admin.users.erase_pii',
+        'admin.roles.edit_seeded',
+        'admin.pricing_tier.edit',
+        'billing.subscription.manage',
+        'billing.payment_method.manage',
+        'billing.usage_caps.edit',
+        'integration.key_rotate',
+      ];
+      for (final key in mfaRequiredKeys) {
+        // The seed row for an MFA-required key carries `true, true` at
+        // the (requires_mfa, frozen) tail of the values tuple.
+        final escapedKey = RegExp.escape(key);
+        final pattern = RegExp(
+          "'$escapedKey',[\\s\\S]*?true,\\s*true\\b",
+        );
+        expect(
+          pattern.hasMatch(migration),
+          isTrue,
+          reason: 'MFA-required key $key not flagged with requires_mfa=true',
+        );
+        expect(
+          catalogContract,
+          contains(key),
+          reason:
+              'MFA-required key $key missing from catalog contract doc',
+        );
+      }
+    });
+
+    test('role grants seed super_admin with every key and other roles with '
+        'enumerated key lists', () {
+      // super_admin gets every key via cross join + role_key filter.
+      expect(
+        normalizedMigration,
+        contains(
+          'insert into public.role_permissions (role_id, permission_key, '
+          "effect) select r.role_id, pk.key, 'allow' from public.roles r "
+          'cross join public.permission_keys pk where r.role_key = '
+          "'super_admin' and r.operator_id is null",
+        ),
+      );
+      // Other roles have an enumerated `pk.key in (...)` list.
+      for (final roleKey in <String>[
+        'ff_support',
+        'operator_owner',
+        'operator_manager',
+        'operator_supervisor',
+        'operator_staff',
+      ]) {
+        expect(
+          migration,
+          contains("where r.role_key = '$roleKey'"),
+          reason: 'role-permission seed missing for $roleKey',
+        );
+      }
+    });
+
+    test('migration uses TIMESTAMPTZ throughout — no `timestamp without '
+        'time zone` (operator-scoped silent-DST hazard banned)', () {
+      expect(
+        migration.toLowerCase().contains('timestamp without time zone'),
+        isFalse,
+        reason:
+            'TIMESTAMP WITHOUT TIME ZONE is banned in operator-scoped '
+            'tables — silent DST corruption is unrecoverable.',
+      );
+    });
+
+    test('migration does not introduce pgmq, Firebase config, or live calls',
+        () {
+      // pgmq is not exposed by Azure flexible server; the queue-provider
+      // choice is locked to FOR UPDATE SKIP LOCKED + Cloud Tasks (see
+      // CLAUDE.md). The 9.0 schema must not reintroduce it.
+      expect(migration.toLowerCase(), isNot(contains('pgmq')));
+      // 9.0 is schema-only/local-first. Firebase wiring belongs to 9.1.
+      expect(migration.toLowerCase(), isNot(contains('firebase_admin')));
+      expect(migration.toLowerCase(), isNot(contains('http://')));
+      expect(migration.toLowerCase(), isNot(contains('https://')));
+    });
+  });
+
   group('ScaffoldRejectingJwtVerifier (hard-fail-closed default)', () {
     test('rejects every token with a verification error', () {
       const verifier = ScaffoldRejectingJwtVerifier();

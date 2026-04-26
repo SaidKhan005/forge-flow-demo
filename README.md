@@ -72,6 +72,17 @@ flutter run --flavor forgeflow -t lib/main_forgeflow.dart
 flutter run --flavor barrio -t lib/main_barrio.dart
 ```
 
+Local dev with the Anthropic Settings check enabled:
+
+```powershell
+scripts/run_flutter_dev.ps1 -App forgeflow
+scripts/run_flutter_dev.ps1 -App barrio
+```
+
+That launcher reads `$HOME\.forge_flow\forge_flow.secrets.ps1` and passes the
+local dev-only `ANTHROPIC_API_KEY` as a Flutter `--dart-define`. Production
+provider keys remain server-side only.
+
 If multiple devices are connected, specify one explicitly:
 
 ```bash

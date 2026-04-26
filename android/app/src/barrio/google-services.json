@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "78630909582",
+    "project_id": "forge-flow-staging",
+    "storage_bucket": "forge-flow-staging.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:78630909582:android:d5caef2a0517fa9d3a7bdf",
+        "android_client_info": {
+          "package_name": "com.forgeflow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJuMWfaUNdKS7Cp4Upjur7uLHaFPSgf00"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:78630909582:android:790e46a2be47018d3a7bdf",
+        "android_client_info": {
+          "package_name": "com.forgeflow.barrio"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJuMWfaUNdKS7Cp4Upjur7uLHaFPSgf00"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

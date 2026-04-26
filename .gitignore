@@ -65,14 +65,22 @@ android/app/upload-keystore.jks
 # Local database
 *.db
 
-# Local secrets. Keep `.env.local` private and untracked; do not delete or
-# commit it in future changes because local Supabase/provider setup depends on it.
+# Local secrets. The canonical local secret loader lives outside the repo at
+# `$HOME/.forge_flow/forge_flow.secrets.ps1`; `.env.local` remains ignored
+# if recreated for ad-hoc tooling.
 .env
 .env.local
 .env.*.local
 .env.example
 .env.*.example
 .env.local.example
+
+# Firebase / Google Cloud private service-account material.
+# Public client configs (`google-services.json`, `GoogleService-Info.plist`,
+# `web/firebase-config.js`) may be committed; Admin SDK key JSON must not.
+.forge_flow/
+*firebase*service-account*.json
+*firebase*adminsdk*.json
 
 # Large binary assets
 docs/internal/barrio/barrio_legado_business_plan.pdf

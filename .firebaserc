@@ -1,0 +1,6 @@
+{
+  "projects": {
+    "default": "forge-flow-staging",
+    "staging": "forge-flow-staging"
+  }
+}
