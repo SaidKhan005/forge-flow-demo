@@ -33,22 +33,31 @@ Owner: Future shared-state lane
   `written_by_uid`, `written_at`, and the prior value, so disputes are
   resolvable after the fact.
 
-- **Real-time sync: proxy WebSocket bridge over Postgres LISTEN/NOTIFY
-  + client polling fallback.** Locked 2026-04-26 (was "Supabase
-  Realtime" prior; Azure DB does not bundle a Realtime equivalent, so
-  Phase 10a builds a thin LISTEN/NOTIFY → WebSocket bridge in the
-  Cloud Run proxy backend that already exists for `11a.10`. The bridge
-  uses native Postgres `LISTEN <channel>` / `NOTIFY <channel>, payload`
-  triggered on every shared-state table mutation, fans out to
-  authenticated WebSocket clients filtered by `restaurant_id` from the
-  Firebase JWT claim). Fallback channel is client-side polling every
+- **Real-time sync: durable `event_outbox` → Pub/Sub → WebSocket bridge
+  + client polling fallback.** Locked 2026-04-26, refined
+  2026-04-27 by Q22 / item 33 of
+  `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`
+  (was "Supabase Realtime" prior; Azure DB does not bundle a Realtime
+  equivalent). The contract is in
+  `docs/contracts/event_outbox_contract.md`. **NOTIFY is a wake-up
+  signal only — never the source of truth.** Producers enqueue rows
+  in `public.event_outbox` inside the same transaction as their
+  business write; the bridge worker in the Cloud Run proxy backend
+  shards by operator, claims durable rows via
+  `EventOutboxRepository.claimBatch(...)` (`SELECT … FOR UPDATE SKIP
+  LOCKED` against the tenant-leading index), publishes to Cloud
+  Pub/Sub, and only then marks `delivered_at`. The bridge MUST NOT
+  bypass `event_outbox` and route straight off the
+  `pg_notify('event_outbox', …)` envelope — Postgres drops
+  notifications under queue pressure, so a NOTIFY-only bridge would
+  lose events. Fallback channel is client-side polling every
   30-60 seconds. If the WebSocket bridge degrades or the connection
   drops, the client keeps working from cache and catches up via
   polling. This belt-and-suspenders pattern is resilient to brief
-  bridge outages. Cloud Run WebSocket lifetime cap (~60 minutes idle)
-  is acceptable; clients reconnect transparently. Alternative
-  considered and rejected: managed WebSocket service (Pusher / Ably) —
-  adds a vendor in T&Cs without architectural benefit.
+  bridge outages. Cloud Run WebSocket lifetime cap (~60 minutes
+  idle) is acceptable; clients reconnect transparently. Alternative
+  considered and rejected: managed WebSocket service (Pusher / Ably)
+  — adds a vendor in T&Cs without architectural benefit.
 
 - **Device-local SQLite stays as cache, not source of truth.** Reads
   served from local SQLite cache; writes route through the proxy
@@ -236,9 +245,10 @@ write path:
   client → proxy backend (/v1/...) → Azure DB Postgres (RLS-scoped by JWT)
   ↳ Postgres trigger sets updated_at server timestamp
   ↳ audit_trail row appended
-  ↳ Postgres NOTIFY shared_state:<restaurant_id>:<table>, <payload>
-  ↳ proxy LISTEN handler fans out to WebSocket subscribers for this
-    restaurant_id
+  ↳ producer enqueues one row in public.event_outbox in the SAME
+    transaction (operator_id + dotted topic + JSON-object payload);
+    the AFTER INSERT trigger fires pg_notify('event_outbox', ...) as
+    a wake-up signal only
   ↳ local SQLite cache updated on write success
 
 read path (hot):
@@ -248,13 +258,29 @@ read path (cold / startup):
   client → proxy backend → Azure DB Postgres bulk query (RLS-scoped)
   ↳ hydrate SQLite cache
 
+bridge path (Phase 10a worker):
+  worker LISTEN 'event_outbox' (wake-up only) + 60s scheduled poll
+  ↳ for each operator shard: runInTenantContext(operator_id) →
+    EventOutboxRepository.claimBatch(...) issues SELECT ... FOR
+    UPDATE SKIP LOCKED + lease + delivered_at IS NULL filter, stamps
+    picked_up_at = now(), returns rows ordered by id ascending
+  ↳ for each claimed row: publish payload to the matching Cloud
+    Pub/Sub topic (routed by the row's `topic` namespace)
+  ↳ on Pub/Sub ack: write delivered_at = now()
+  ↳ on graceful Pub/Sub failure: increment attempt_count, write
+    last_error_at + last_error, re-NULL picked_up_at
+  ↳ on worker crash between claim-commit and Pub/Sub ack: lease
+    expires (default 5 min), another worker re-claims
+
 subscribe path:
-  client → proxy WebSocket /v1/realtime?restaurant_id=...
-  ↳ proxy authenticates Firebase JWT, registers LISTEN on relevant
-    Postgres channels, fans out NOTIFY events to this connection
-  ↳ client receives event with (restaurant_id, table, op, pk, updated_at):
-     update SQLite cache (refetch row by pk)
-     invalidate dependent read models
+  client → proxy WebSocket /v1/realtime?operator_id=...
+  ↳ proxy authenticates Firebase JWT, subscribes to operator-scoped
+    Pub/Sub topics; payloads come from the bridge's published
+    event_outbox rows
+  ↳ client receives event payload (carries operator_id + topic +
+    event_id for dedupe + occurred_at + the bits the producer chose
+    to ship): update SQLite cache (refetch row by pk if needed),
+    invalidate dependent read models
 
 fallback path (if WebSocket bridge degrades):
   client polls proxy backend every 30-60 seconds for updated_at
@@ -274,6 +300,10 @@ Rules:
 - Audit trail is append-only; never mutate or delete audit rows
 - The WebSocket bridge is best-effort; the app must work correctly
   even if the bridge is offline for minutes
+- `event_outbox` is the source of truth for fan-out events; the
+  bridge MUST claim through `EventOutboxRepository.claimBatch(...)`
+  and treat `pg_notify('event_outbox', ...)` as a wake-up signal
+  only — no direct LISTEN-fan-out path may bypass the outbox
 
 ## Dependencies
 
@@ -284,8 +314,14 @@ Required before Phase 10a can ship real:
   backend's session-variable injection)
 - Azure DB Flexible Server (Postgres) instance provisioned (same
   instance as Phase 9, 9.5; provisioned in `11a.11c.6`)
-- Postgres triggers + LISTEN/NOTIFY channels defined on shared-state
-  tables; WebSocket bridge implemented in Cloud Run proxy backend
+- `public.event_outbox` table + repository (lands in Phase 9.0Σ.e
+  / B26; contract in `docs/contracts/event_outbox_contract.md`).
+  Producers enqueue rows in the same transaction as the business
+  write; the AFTER INSERT trigger fires `pg_notify('event_outbox',
+  …)` as a wake-up signal only. Bridge worker (this phase) claims
+  durable rows via `EventOutboxRepository.claimBatch(...)` and
+  publishes to Cloud Pub/Sub. No direct `LISTEN` → fan-out path
+  may bypass the outbox.
 - Initial RLS policies written and tested against cross-operator
   access attempts
 

@@ -607,16 +607,49 @@ void main() {
             'of truth so the next implementer does not bypass the '
             'outbox',
       );
-      // Old plan said `shared_state.{operator_id}.{table}` topic
-      // shape; new contract uses dotted namespaces (auth.session.*
-      // etc.). Make sure the old shape is gone so the next reader
-      // does not implement it.
-      expect(
-        body,
-        isNot(contains('shared_state.{operator_id}.{table}')),
-        reason: 'old per-table topic shape is superseded by the '
-            'event_outbox topic-namespace contract',
-      );
+    });
+
+    test('Phase 10a plan no longer instructs a direct shared_state '
+        'NOTIFY bridge anywhere (round-3 fix — the locked-decision, '
+        'runtime-contract, and dependencies sections all previously '
+        'repeated the old direct flow even after the main bridge '
+        'section was rewritten)', () {
+      final body = plan.readAsStringSync();
+      // Each pattern below is a phrase that USED to direct a Phase 10a
+      // implementer to bypass event_outbox by routing fan-out
+      // straight off Postgres LISTEN/NOTIFY against shared-state
+      // tables. They MUST stay out of the plan or a careful reader
+      // could still pick the wrong design.
+      final forbidden = <RegExp>{
+        // Old per-table channel naming.
+        RegExp(r'shared_state\.\{operator_id\}\.\{table\}',
+            caseSensitive: false),
+        RegExp(r'NOTIFY\s+shared_state[:\s]', caseSensitive: false),
+        // Old "thin LISTEN/NOTIFY → WebSocket bridge" claim that the
+        // bridge is a direct fan-out, not an outbox consumer.
+        RegExp(r'LISTEN/NOTIFY\s*(?:→|->|to)\s*WebSocket',
+            caseSensitive: false),
+        RegExp(r'thin\s+LISTEN/NOTIFY', caseSensitive: false),
+        // Old per-table-mutation NOTIFY trigger description.
+        RegExp(r'triggered on every shared.state.*mutation',
+            caseSensitive: false),
+        // Old subscribe-path description that registered LISTEN
+        // handlers per-channel rather than reading event_outbox.
+        RegExp(r'LISTEN\s+on\s+relevant\s+Postgres\s+channels',
+            caseSensitive: false),
+        // Old dependency line that named LISTEN/NOTIFY channels on
+        // shared-state tables as the trigger surface.
+        RegExp(r'LISTEN/NOTIFY\s+channels\s+defined\s+on\s+shared.state',
+            caseSensitive: false),
+      };
+      for (final pattern in forbidden) {
+        expect(
+          pattern.hasMatch(body),
+          isFalse,
+          reason: 'Phase 10a plan still contains direct-NOTIFY '
+              'language matching: ${pattern.pattern}',
+        );
+      }
     });
   });
 }
