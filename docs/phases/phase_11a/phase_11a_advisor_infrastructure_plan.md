@@ -164,8 +164,9 @@ to `11A.0`.
   `scripts/use_postgres_staging_env.ps1`, `docker-compose.dev.yml`,
   `tool/advisor_proxy/`, `tool/advisor_corpus/`, and related tests.
 - `11a.11c.6`: Azure staging/prod schema accepted with staging limitations
-  documented in `phase_11a_11c6_azure_staging_apply_result.md` and production
-  closure documented in `phase_11a_production1_provisioning_result.md`.
+  documented in `docs/archive/phases/phase_11a/phase_11a_11c6_azure_staging_apply_result.md`
+  and production closure documented in
+  `docs/archive/phases/phase_11a/phase_11a_production1_provisioning_result.md`.
 - `11a.11c.6a-b`: schema hardening, Contextual Retrieval telemetry,
   RLS-leading-index hardening, AGE projection/index artifacts, benchmark
   harness, and DiskANN/HNSW decision harness accepted. Current source of truth:
@@ -177,7 +178,7 @@ to `11A.0`.
   `test/advisor_proxy_test.dart`.
 - `11a.11e`: staging live corpus, Contextual Retrieval, embedding refresh,
   AGE, vector/rerank, and Claude smoke accepted. Current source of truth:
-  `phase_11a_11e_staging_live_load_result.md`.
+  `docs/archive/phases/phase_11a/phase_11a_11e_staging_live_load_result.md`.
 
 ## After `11a.11c-e`
 

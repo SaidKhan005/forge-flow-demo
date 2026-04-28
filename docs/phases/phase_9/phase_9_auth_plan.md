@@ -217,8 +217,8 @@ auth audit:**
 ### `9.0` Auth Schema Foundation (~3-5 days)
 
 **Status:** Accepted 2026-04-26. Local tests passed; migration applied and
-verified on staging + Production1. Result doc:
-`phase_9_0_auth_schema_live_apply_result.md`.
+verified on staging + Production1. Result doc (archived):
+`docs/archive/phases/phase_9/phase_9_0_auth_schema_live_apply_result.md`.
 
 **Single deterministic migration.** Local-first; applies cleanly to
 staging and production1.

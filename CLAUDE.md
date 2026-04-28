@@ -55,13 +55,9 @@ Every slice respects these. Origin:
    and (Phase 8.5) `IntegrationProvider` are not advisor-specific.
    The advisor (11b) is one consumer; workflow automation (Phase 12
    post-launch) will be another with the same plumbing.
-9. **AI cost is metered by class.** Every AI surface carries
-   `usage_class`; meterable per `(operator_id, location_id,
-   staff_id NULL, workflow_id NULL, usage_class)` in `usage_logs` +
-   `usage_caps`. No flat-rate AI at scale. Five cost-discipline
-   levers (prompt caching, tier routing, response cache, precomputed
-   summaries, batch API) keep margin 75-95%. Concrete tiers + caps:
-   `docs/phases/phase_11a/phase_11a_decision_register.md`.
+9. **AI cost is metered by class.** No flat-rate AI at scale.
+   `usage_caps` two-slot key + 5 cost-discipline levers keep margin
+   75-95%. Detail: decision register + scalability decisions doc.
 
 ## Workflow
 
@@ -156,6 +152,11 @@ primary defense.
   never `SET` (session-scoped). Pooled connection reuse must not carry
   tenant context across requests.
 
+**RLS UUID wrappers (item 4):** policies use four `STABLE LEAKPROOF
+PARALLEL SAFE` wrapper functions; bare `current_setting()` reads are
+forbidden, CI lint enforces. Lands in 9.0Σ.b; gates all later
+fact-table policies. Detail: scalability decisions doc.
+
 ## Proxy & API Conventions
 
 - API URL versioning: `/v1/...` paths today; `/v2/...` when
@@ -185,13 +186,23 @@ primary defense.
 - **Retrieval pattern**: Modular Adaptive Agentic RAG (Haiku
   classifier → SQL / Contextual Retrieval / AGE → Sonnet synthesis
   with prompt cache).
-- **Real-time pattern**: Postgres `NOTIFY` → Cloud Pub/Sub →
-  WebSocket bridge in proxy (Phase 10a builds it).
-- **Cost-discipline levers default-on**: prompt caching, tier
-  routing, response cache, precomputed summaries, batch API.
+- **Real-time pattern**: `NOTIFY` → Pub/Sub → WebSocket bridge
+  (Phase 10a). `event_outbox` is the durable backbone (item 33);
+  lands 9.0Σ.e.
+- **Service principals (item 14):** non-human actors authenticate
+  with `sp:`-prefixed JWTs; `audit_logs.actor_kind` never NULL.
+  Lands 9.0Σ.d.
+- **Hash-chained audit log (item 13):** SHA-256 chain via
+  `pgcrypto`, `pg_partman` per-operator/day, daily Azure Blob
+  immutable anchor. Lands 9.0Σ.f.
+- **Cost-discipline levers default-on:** prompt caching with
+  `"ttl":"1h"` pin (item 12), tier routing, response cache,
+  precomputed summaries, batch API.
 
 Architecture detail and rationale:
-`docs/phases/phase_11a/phase_11a_decision_register.md`.
+`docs/phases/phase_11a/phase_11a_decision_register.md`. Locked
+scalability decisions (35 items):
+`docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`.
 
 ## Testing
 

@@ -304,7 +304,7 @@ After this phase closes:
   T&Cs surface that `cutover.2` records acceptance against
 - `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` — UX phase
   whose acceptance gates `cutover.0`
-- `docs/phases/phase_11a/phase_11a_production1_provisioning_result.md`
-  — current production1 state baseline
-- `docs/phases/phase_11a/phase_11a_11e_staging_live_load_result.md`
-  — staging load result that `cutover.1` mirrors against production
+- `docs/archive/phases/phase_11a/phase_11a_production1_provisioning_result.md`
+  — current production1 state baseline (archived)
+- `docs/archive/phases/phase_11a/phase_11a_11e_staging_live_load_result.md`
+  — staging load result that `cutover.1` mirrors against production (archived)

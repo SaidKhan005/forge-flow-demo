@@ -2,6 +2,10 @@
 
 How Codex and Claude run the execution loop in this repo.
 
+For a compact copy/paste generator built from this standard, use
+`docs/CODEX_LEAN_PROMPT_GENERATOR.md`. This file remains the authority;
+the lean generator is the quick-start tool.
+
 ## Operating Loop
 
 Every prompt cycle follows this order:
@@ -16,6 +20,25 @@ Every prompt cycle follows this order:
 
 If the user pivots into architecture, workflow, or docs cleanup, pause prompt
 sequencing until that cleanup is handled.
+
+## Lean Authority Law
+
+`PROJECT_TRACKER.md` and `CLAUDE.md` must stay lean.
+
+- `PROJECT_TRACKER.md` is a routing map: current phase, next slice, fetch map,
+  hard gates, and pointers to active docs. It is not the full plan.
+- `CLAUDE.md` is a guardrail map: durable repo rules and non-negotiables. It
+  is not the place for per-slice execution detail.
+- Per-slice detail, rationale, backlogs, acceptance history, and heavyweight
+  context live in linked phase docs under `docs/phases/**`.
+- Before generating a prompt, refactor context mentally into:
+  tracker/CLAUDE = lean pointers and laws; linked phase docs = weight-bearing
+  slice context.
+- Do not paste phase-doc weight back into `PROJECT_TRACKER.md` or `CLAUDE.md`
+  unless it is a durable routing rule, durable guardrail, or current hard gate.
+- Prompt cycles may create temporary checkpoint/backlog docs for Claude's
+  mega-prompt execution. Those docs carry transient weight until the phase
+  slice accepts, then tracker truth is updated leanly.
 
 ## Preflight
 
@@ -76,6 +99,8 @@ Before sending the prompt:
   slice`. Do not let Claude implicitly decide product, infrastructure, cost,
   security, or sequencing trade-offs.
 - Do not restate architecture already in `CLAUDE.md`.
+- Do not move per-slice detail into `PROJECT_TRACKER.md` or `CLAUDE.md`;
+  reference the active phase doc instead.
 - Contract-bound slices include `Routing rules to mirror`: 2 or 3 rules max.
 - Move slices include Codex's import audit and analyzer-forced follow-ups.
 - Use `Files to leave alone` only for real carve-outs.

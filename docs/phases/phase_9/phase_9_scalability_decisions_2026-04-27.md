@@ -532,14 +532,35 @@ source records, and affected reports.
     dimensions, late data, idempotency, freshness UI, rebuild strategy, error
     handling, and observability are locked in the Q3 section above.
 
-36. **Tracker rollout pass - Pending implementation.** PROJECT_TRACKER.md must
-    pick up the reconciled decisions: Phase 9.0 schema additions, Q1 internal
-    admin/dev model, Q3 rollups, Q4/Q5 launch/deferred identity decisions,
-    Q7/Q8 isolation/region hooks, Q9/Q10 audit/DR, Q11/Q12 AI provider and
-    embedding abstractions, Q16 integration mapping, Q19/Q20 health panels,
-    Q21 deletion/redaction, Q22 outbox bridge, Quebec future-market gates,
-    MarginEdge/R365 inbound, PCI PAN exclusion, Anthropic TTL pin, CMK
-    cutover.0a, and Phase 12 service-principal dependency.
+36. **Tracker rollout pass - Implemented 2026-04-28.** PROJECT_TRACKER.md and
+    `phase_9_execution_backlog.md` absorbed the reconciled decisions on
+    2026-04-28. PROJECT_TRACKER.md gained ten new 9.0Σ sub-slices
+    (9.0Σ.b RLS UUID wrappers, 9.0Σ.c org_units ltree + data_region,
+    9.0Σ.d service_principals + sp: JWT prefix + actor_kind,
+    9.0Σ.e event_outbox foundation, 9.0Σ.f hash-chained audit_logs +
+    Azure Blob anchor, 9.0Σ.g usage_caps two-slot key, 9.0Σ.h
+    advisor_conversation_log, 9.0Σ.i canonical graph_nodes/graph_edges,
+    9.0Σ.j vector indexing scoping HNSW/DiskANN, 9.0Σ.k rollups
+    foundation + aggregation_state + pg_cron) inserted before 11A.0-6,
+    plus two cutover sub-slices (cutover.0a CMK at provisioning,
+    cutover.0b 14-row Tier-M perf-gate). Phase 8 restored MarginEdge/R365
+    inbound (Decision F); Phase 8.5 narrowed to QBO/Xero/Bill.com/Plaid +
+    outbound finance only; Phase 9.8 expanded with ZDR/TTL/PCI/CMK
+    attestations and Quebec future-market gates; Phase 12 carries
+    explicit `(depends on 9.0Σ.d service_principals)` annotation. All
+    9.0Σ slices are queued (no repo code yet) per CLAUDE.md
+    "tracker truth cannot move ahead of repo truth." Hard Gates section
+    expanded with twelve new scalability lock gates (wrapper functions
+    + lint, org_units depth ≤ 6, usage_caps two-slot key, audit_logs
+    hash chain, PCI PAN exclusion, prompt-cache TTL, CMK at
+    provisioning, AGE tripwires 3M/4M, HNSW/DiskANN tripwires 5M/8M,
+    14-row perf matrix gate, service_principals before Phase 12,
+    MarginEdge/R365 in Phase 8). `phase_9_execution_backlog.md` gained
+    parcels B23-B32 mapping each 9.0Σ sub-slice to concrete migration
+    file naming (`db/migrations/202604XXXXXX_phase_9_0sigma_<letter>_…`)
+    with scope, files-likely, and gate. CLAUDE.md updated additively
+    with wrapper-function names, prompt-cache TTL pin, and
+    service_principals/event_outbox/audit_logs hash-chain references.
 
 ### Status Tracker
 
@@ -580,7 +601,7 @@ source records, and affected reports.
 | 33 | Q22 NOTIFY/outbox/Pub/Sub | Locked | 2026-04-27 |
 | 34 | Q3.2 Storage form | Locked | 2026-04-27 |
 | 35 | Q3.3-Q3.10 remaining | Locked | 2026-04-27 |
-| 36 | Tracker rollout pass | Pending implementation | - |
+| 36 | Tracker rollout pass | Implemented | 2026-04-28 |
 
 ---
 

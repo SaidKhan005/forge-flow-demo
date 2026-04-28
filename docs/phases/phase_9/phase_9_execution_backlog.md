@@ -1,14 +1,17 @@
 # Phase 9 Execution Backlog
 
-Updated: 2026-04-27.
+Updated: 2026-04-28.
 
 Purpose: track real follow-up work discovered during the automated Phase 9
 slice loop. This keeps recurring stale review findings separate from actual
 remaining execution gates.
 
-Decision source: `phase_9_decision_lock_2026-04-26.md`.
+Decision source: `phase_9_decision_lock_2026-04-26.md` and the 35-item lock
+in `phase_9_scalability_decisions_2026-04-27.md` (absorbed 2026-04-28; B23-B32
+parcels below).
 
-Current checkpoint: `phase_9_context_checkpoint.md`.
+Pre-2026-04-28 checkpoint archived at
+`docs/archive/phases/phase_9/phase_9_context_checkpoint.md`.
 
 ## Not Backlog: Stale Findings Already Resolved
 
@@ -675,6 +678,324 @@ Work:
   evidence.
 - Keep the runbook aligned with `ErasureRedactionTemplate`.
 
+### B23 - 9.0Σ.b RLS UUID Wrapper Functions
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 4.
+
+Status: queued.
+
+Needed before: any operator-scoped RLS policy added after 2026-04-28; gates
+all future fact-table policies + the `9.0g` `usage_caps` two-slot key
+rewrite.
+
+Work:
+
+- Add SQL functions `app_current_operator()`, `app_current_location()`,
+  `app_current_actor_user()`, `app_acting_as_operator()`. All declared
+  `RETURNS uuid LANGUAGE sql STABLE LEAKPROOF PARALLEL SAFE` and reading
+  the corresponding `app.*` GUC via `current_setting(..., true)` with a
+  NULL-safe cast.
+- Migration in `db/migrations/`. Backfill existing 12 auth-table RLS
+  policies + the cloud-foundation policies to call the wrappers instead
+  of bare `current_setting(...)::uuid` literals.
+- Add CI lint that fails if a new policy references
+  `current_setting('app.current_operator_id'...)` or any other bare
+  `app.*` GUC literal in operator-scoped policies; only the wrapper
+  functions are allowed. The lint must run in `analysis_options.yaml`
+  / pre-commit / GitHub Actions.
+- Apply on staging; verify 12 auth-table policies still bypass for
+  `forge_admin` and deny on bogus tenant.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_b_rls_wrappers.sql`
+- `db/migrations/202604XXXXXX_phase_9_0sigma_b_rewrite_existing_policies.sql`
+- `analysis_options.yaml` lint config (or a dedicated tool script).
+
+Gate: post-apply staging smoke must show every operator-scoped policy
+calling a wrapper, and the lint must reject a synthetic violator commit.
+
+### B24 - 9.0Σ.c org_units ltree + data_region
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` items 1, 19.
+
+Status: queued.
+
+Needed before: any code path that consumes corp/region/district/location
+hierarchy — internal admin/dev access surface (Q1), franchisee billing
+rollups (`9.0g`), and multi-region future-proofing (Q8).
+
+Work:
+
+- Migration creating `org_units(id uuid pk, operator_id uuid, parent_id
+  uuid, unit_type text check (unit_type in
+  ('corp','region','district','location_group')), path ltree, name text,
+  created_at timestamptz, ...)`.
+- GiST index on `path`; depth ≤ 6 enforced by check constraint or
+  trigger.
+- Add `data_region` column on `operators` (default `'CA-CENTRAL'`).
+- Repository: `OrgUnitsRepository extends OperatorScopedRepository`.
+- Backfill: every existing operator gets a single root `corp` row
+  during the migration.
+- Verify on staging + Production1 (subject to live-mutation approval
+  per Phase 9 lock).
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_c_org_units.sql`
+- `lib/infrastructure/persistence/postgres/repositories/org_units_repository.dart`
+- Tests under `test/`.
+
+Gate: GiST index present; depth-6 constraint rejects depth-7 inserts;
+RLS reads bypass-RLS for `forge_admin`, deny cross-tenant.
+
+### B25 - 9.0Σ.d service_principals + sp: JWT prefix + actor_kind
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 14.
+
+Status: queued.
+
+Needed before: any Phase 12 workflow tool call. Workflows act as a
+service principal, not a human user; without `actor_kind` separation
+in `audit_logs` and `auth_events_audit`, machine-driven mutations
+masquerade as their human owner.
+
+Work:
+
+- Migration creating `service_principals(id uuid pk, operator_id uuid,
+  name text, scopes jsonb, created_at timestamptz, revoked_at
+  timestamptz null, ...)` with tenant-leading PK index.
+- JWT issuance path that prefixes the subject with `sp:` (so the
+  proxy verifier can route to the SP path instead of the user path).
+- Add `actor_kind text check (actor_kind in ('user','service'))` to
+  `audit_logs` (created in B26) and to `auth_events_audit`.
+- Repository: `ServicePrincipalsRepository extends
+  OperatorScopedRepository`.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_d_service_principals.sql`
+- `lib/infrastructure/persistence/postgres/repositories/service_principals_repository.dart`
+- Proxy verifier extension in `tool/advisor_proxy/`.
+
+Gate: a `sp:` JWT issued for one operator cannot read another operator's
+rows (RLS); audit row carries `actor_kind='service'`.
+
+### B26 - 9.0Σ.e event_outbox foundation
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 33 (Q22).
+
+Status: queued.
+
+Needed before: real-time bridge in `10a` (the Pub/Sub leg). The
+foundation lands in `9.0Σ`; the Pub/Sub bridge + WebSocket leg complete
+in Phase 10a.
+
+Work:
+
+- Migration creating `event_outbox(id bigserial pk, operator_id uuid,
+  topic text, payload jsonb, created_at timestamptz, picked_up_at
+  timestamptz null, ...)` with `(operator_id, picked_up_at NULLS FIRST,
+  id)` index.
+- `pg_notify` trigger on insert (channel `event_outbox`).
+- Worker contract documented; consumer worker itself is Phase 10a.
+- `SELECT ... FOR UPDATE SKIP LOCKED` claim path established.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_e_event_outbox.sql`
+- `lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart`
+- Doc in `docs/contracts/` describing topic shape + retry policy.
+
+Gate: insert fires NOTIFY; tenant-leading index present; RLS denies
+cross-tenant reads.
+
+### B27 - 9.0Σ.f Hash-chained audit_logs + Azure Blob anchor
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 13.
+
+Status: queued.
+
+Needed before: `9.8` compliance package (audit-tamper attestation
+requires hash chaining); any operator-facing audit review surface in
+`11A.7-10`.
+
+Work:
+
+- Migration creating `audit_logs` with `prev_row_hash bytea`,
+  `row_hash bytea` (computed via `pgcrypto` digest of canonical
+  payload). Per-operator/day partitions via `pg_partman`.
+- Add `actor_kind` (paired with B25).
+- Daily job (Cloud Run scheduled task) writes the day's final
+  `row_hash` value to Azure Blob with immutability lock + retention.
+- Verifier script that walks the chain and confirms the Blob anchor
+  on demand.
+- Hard rule: `audit_logs` is grant-shape append-only (no UPDATE,
+  no DELETE for any role except `forge_admin` break-glass with a
+  paired runbook entry).
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_f_audit_logs.sql`
+- `tool/audit_anchor/` Cloud Run job source.
+- `runbooks/audit_chain_verify_runbook.md`.
+
+Gate: insert computes `row_hash` from
+`prev_row_hash || canonical_payload`; partition rotation present;
+Blob anchor written daily with immutability lock.
+
+### B28 - 9.0Σ.g usage_caps two-slot key migration
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 6.
+
+Status: queued.
+
+Needed before: franchisee billing rollups, internal F&F dev/admin
+class metering, any cap surface that distinguishes who pays from who
+consumes.
+
+Work:
+
+- Migration evolving `usage_caps` PK to
+  `(billing_owner_org_unit_id, scoped_org_unit_id, location_id,
+  staff_id, workflow_id, usage_class)` with `usage_class text not null`.
+- Same key shape on `usage_logs` (B6 in the existing PROJECT_TRACKER
+  language) so cap-vs-actual reconciliation joins are 1:1.
+- Online-migration friendly: ADD column → backfill → constraint flip,
+  not a destructive recreate (CLAUDE.md cutover.4-and-after rule).
+- Wire `9.0c` `org_units` so the FK is enforced.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_g_usage_caps_two_slot_a_add.sql`
+- `db/migrations/202604XXXXXX_phase_9_0sigma_g_usage_caps_two_slot_b_backfill.sql`
+- `db/migrations/202604XXXXXX_phase_9_0sigma_g_usage_caps_two_slot_c_pk_flip.sql`
+- `lib/services/advisor/usage_*.dart` updates.
+
+Gate: PK shape matches; tenant-leading index; cap-vs-actual join is
+single-pass; RLS bypass for `forge_admin`.
+
+### B29 - 9.0Σ.h advisor_conversation_log
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 5.
+
+Status: queued.
+
+Needed before: live advisor turns in `11b` (no advisor goes live
+without raw-conversation persistence under audit-privacy gating).
+
+Work:
+
+- Migration creating `advisor_conversation_log(id uuid pk, operator_id
+  uuid, location_id uuid, user_id uuid, conversation_id uuid,
+  turn_index int, role text, content_encrypted bytea, content_iv bytea,
+  usage_class text, created_at timestamptz, ...)` with tenant-leading
+  PK index.
+- Encryption-at-rest via `pgcrypto` (key reference, not raw key, in
+  the row) — pairs with `cutover.0a` CMK.
+- Audit-privacy gate: read access requires the matching audit-privacy
+  role + a paired audit row.
+- RLS policy mirrors fact tables.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_h_advisor_conversation_log.sql`
+- `lib/infrastructure/persistence/postgres/repositories/advisor_conversation_log_repository.dart`.
+
+Gate: encrypted at rest; reads require audit-privacy role; cross-tenant
+read denied; tokens never appear in `toString()`.
+
+### B30 - 9.0Σ.i Canonical graph_nodes / graph_edges
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 30.
+
+Status: queued.
+
+Needed before: AGE projection rebuild story; `11b.2` causal traversal.
+The AGE projection must be rebuildable without re-extracting from
+source-of-truth corpus.
+
+Work:
+
+- Migration creating `graph_nodes` and `graph_edges` operator-scoped
+  tables (canonical projection; AGE label graph rebuilt from these).
+- Tripwire telemetry (yellow 3M nodes / red 4M) emitted to the
+  health surface (Q19 — tracked separately under `11A.0-6` graph
+  panel).
+- Rebuild script that drops the AGE label graph and re-projects from
+  `graph_nodes`/`graph_edges`.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_i_graph_canonical.sql`
+- `tool/graph_projection/` rebuild source.
+
+Gate: rebuild from canonical produces a label graph byte-equivalent
+to the current AGE projection on staging; tripwire metric exposed.
+
+### B31 - 9.0Σ.j Vector index scoping (HNSW default; DiskANN installed)
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` item 31.
+
+Status: queued.
+
+Needed before: `11b` advisor retrieval at scale; switch trigger
+documented well before Tier-M.
+
+Work:
+
+- Confirm pgvector HNSW indexes are tenant-leading (already enforced
+  in `202604260002_advisor_rls_index_hardening.sql`).
+- Install `pg_diskann` extension on staging + Production1 (per
+  CLAUDE.md Proxy & API Conventions list).
+- Document switch trigger: yellow at 5M vectors per index, red at 8M.
+  Include observability for index size + p50/p95 query time.
+- DO NOT default DiskANN; only HNSW is on the hot path until trigger
+  fires.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_j_diskann_install.sql`
+  (install only, no index creation).
+- `docs/phases/phase_9/phase_9_vector_index_switch_trigger.md`.
+
+Gate: HNSW remains default; DiskANN extension present and CREATE
+INDEX path verified on a throwaway table; tripwire metric exposed.
+
+### B32 - 9.0Σ.k Rollups foundation (aggregation_state + grain set + pg_cron)
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` items 32, 34, 35.
+
+Status: queued.
+
+Needed before: every operator-facing dashboard surface. Without rollups,
+dashboard p95 collapses on Tier-M.
+
+Work:
+
+- Migration creating `aggregation_state(rollup_table text, grain text,
+  last_processed_seq bigint, updated_at timestamptz)` keyed
+  `(rollup_table, grain)`.
+- Physical rollup tables for each grain in the locked set: `daypart`,
+  `business_day`, `week`, `accounting_period`, `month`, `quarter`,
+  `year`. (Materialized views are internal helpers only — Q3.2 lock.)
+- `pg_cron` job: 60s hot path (daypart + business_day), 300s cold
+  path (week and longer).
+- Idempotent worker: claim via `last_processed_seq`; advance after
+  each successful batch.
+- Late-data + rebuild + freshness + observability per Q3.3-Q3.10
+  locks.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_k_aggregation_state.sql`
+- `db/migrations/202604XXXXXX_phase_9_0sigma_k_rollup_tables.sql`
+- `db/migrations/202604XXXXXX_phase_9_0sigma_k_pg_cron_jobs.sql`
+- `lib/services/rollups/` worker logic.
+
+Gate: rollups idempotent across retried runs; freshness surfaced to
+dashboards; rebuild from raw under documented runbook.
+
 ### B22 - 9.9 Admin Console Kernel Test Failure - RESOLVED
 
 Source: Codex verification after `9.8`.
@@ -710,7 +1031,7 @@ Phase 9 tranche 2 framework (B4/B5/B6) is complete on 2026-04-27:
 integrated through `AuthSessionNotifier`.
 
 Database closeout is also complete on staging and Production1 (see
-`phase_9_live_database_closeout_result.md`).
+`docs/archive/phases/phase_9/phase_9_live_database_closeout_result.md`).
 
 Proxy session-ledger endpoint shipped on 2026-04-27 (see B6 / B8
 above): four POST routes (`/v1/auth/session/login` / `refresh` /

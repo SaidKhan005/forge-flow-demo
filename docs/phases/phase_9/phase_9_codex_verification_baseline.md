@@ -10,7 +10,8 @@ Decision source: `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 
 Architecture source: `docs/phases/phase_9/phase_9_auth_plan.md`.
 
-Compact handoff source: `docs/phases/phase_9/phase_9_context_checkpoint.md`.
+Compact handoff source (archived 2026-04-28):
+`docs/archive/phases/phase_9/phase_9_context_checkpoint.md`.
 
 ## Current Auth State
 
@@ -36,7 +37,7 @@ Compact handoff source: `docs/phases/phase_9/phase_9_context_checkpoint.md`.
 
 These findings should not be re-raised unless the repo regresses:
 
-- `docs/phases/phase_11a/phase_11a_11c6_azure_staging_apply_result.md`
+- `docs/archive/phases/phase_11a/phase_11a_11c6_azure_staging_apply_result.md`
   records the staging 7-day backup gap, B1ms PgBouncer limitation,
   Production1 35-day backup posture, and Production1 PgBouncer smoke.
 - `scripts/use_postgres_staging_env.ps1` failure paths use `return`, not
@@ -74,10 +75,10 @@ Notable untracked Phase 9/Firebase files:
 
 - `db/migrations/202604250008_auth_schema_foundation.sql`
 - `docs/contracts/auth_permission_key_catalog.md`
-- `docs/phases/phase_9/phase_9_0_auth_schema_live_apply_result.md`
-- `docs/phases/phase_9/phase_9_1_firebase_setup_preflight.md`
-- `docs/phases/phase_9/phase_9_1_identity_provider_decision_gate.md`
-- `docs/phases/phase_9/phase_9_context_checkpoint.md`
+- `docs/archive/phases/phase_9/phase_9_0_auth_schema_live_apply_result.md`
+- `docs/archive/phases/phase_9/phase_9_1_firebase_setup_preflight.md`
+- `docs/archive/phases/phase_9/phase_9_1_identity_provider_decision_gate.md`
+- `docs/archive/phases/phase_9/phase_9_context_checkpoint.md`
 - `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`
 - `lib/auth/`
 - `.firebaserc`
@@ -95,7 +96,7 @@ slice. Codex should compare diffs directly after Claude reports.
 
 When Claude returns a final Phase 9 automation report:
 
-1. Read `docs/phases/phase_9/phase_9_context_checkpoint.md`.
+1. Read `docs/archive/phases/phase_9/phase_9_context_checkpoint.md` (archived).
 2. Inspect changed files directly with `git diff -- <file>` and `rg`.
 3. Confirm each slice acceptance criterion against repo content.
 4. Confirm tests match the report; rerun only the smallest needed set if
