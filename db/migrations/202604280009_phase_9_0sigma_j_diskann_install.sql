@@ -1,0 +1,56 @@
+-- Phase 9.0Σ.j — install pg_diskann extension only (B31 in
+-- `phase_9_execution_backlog.md`, item 31 / Q20 in
+-- `phase_9_scalability_decisions_2026-04-27.md`).
+--
+-- Q20 locked the HNSW → DiskANN switch posture on 2026-04-27: HNSW
+-- stays default for active corpora and remains the advisor retrieval
+-- hot path. DiskANN is installed but dormant until Vector Index Health
+-- triggers fire (yellow at 5M vectors per searchable embedding space,
+-- red at 8M with projected growth crossing 10M, sustained latency
+-- regression, rebuild windows blown, memory pressure, repeated
+-- timeouts, unacceptable recall, or operationally unsafe rebuilds —
+-- see `docs/phases/phase_9/phase_9_vector_index_switch_trigger.md`).
+--
+-- Scope of THIS migration:
+--   * Install the `pg_diskann` extension if available, so the
+--     CREATE INDEX path is reachable when a non-destructive cutover
+--     is later approved.
+--
+-- NOT in scope (explicit non-goals so future readers do not relax
+-- this slice):
+--   * No CREATE INDEX statement of any kind.
+--   * No throwaway / sample / smoke DiskANN index against a scratch
+--     table — Q20 cutover validation runs through shadow query +
+--     benchmark + canary routing on real corpus data, not in this
+--     migration.
+--   * No retrieval function changes. `public.advisor_search_chunks`
+--     and the HNSW partial index from
+--     `202604250003_advisor_vector_search.sql` continue to serve
+--     candidate retrieval unchanged.
+--   * No RLS policy changes. Wrapper-function policy rule
+--     (`app_current_operator()` etc.) stays intact for any future
+--     DiskANN index, exactly as for HNSW.
+--   * No live database commands. Live apply to staging /
+--     Production1 happens only through the approved Phase 9 migration
+--     path; this file is the artifact that path will run.
+--
+-- The `pg_diskann` extension is in the Azure DB Flexible Server
+-- allow-list per CLAUDE.md "Proxy & API Conventions" extension list
+-- (alongside `AGE`, `pgvector`, `pg_cron`, `pg_partman`,
+-- `pg_stat_statements`, `pgcrypto`). Using `if not exists` keeps the
+-- migration idempotent across environments where the extension may
+-- already be enabled.
+--
+-- Posture summary (kept here in -- comments so this migration is
+-- strictly extension-install-only — no executable SQL beyond the
+-- single CREATE EXTENSION below):
+--   * HNSW remains the default vector index and the advisor
+--     retrieval hot path.
+--   * DiskANN is dormant until Vector Index Health triggers fire and
+--     a non-destructive shadow / benchmark / canary cutover is
+--     approved.
+--   * See `docs/phases/phase_9/phase_9_vector_index_switch_trigger.md`
+--     for Q20 yellow / red thresholds, observability fields, and the
+--     14-day rollback window.
+
+create extension if not exists pg_diskann;

@@ -3652,6 +3652,304 @@ void main() {
       });
     });
   });
+
+  group(
+    'Phase 9.0Σ.g usage_caps two-slot key migration (B28 / item 6)',
+    () {
+      // Migration/schema-only assertions — the deep coverage of the
+      // ADD / BACKFILL / CONSTRAINT FLIP shape lives in
+      // `test/phase_9_0sigma_g_usage_caps_two_slot_test.dart`. The
+      // assertions in this group exist so that a regression in the
+      // proxy hot-zone (this test file's primary subject) cannot land
+      // a sibling regression in the migration order or accidentally
+      // re-introduce the legacy usage_caps PK in a later migration.
+      late List<String> migrationNames;
+      late String addSql;
+      late String flipSql;
+      late String cloudFoundationSql;
+
+      setUpAll(() {
+        migrationNames =
+            Directory('db/migrations')
+                .listSync()
+                .whereType<File>()
+                .map((file) => file.uri.pathSegments.last)
+                .where((name) => name.endsWith('.sql'))
+                .toList()
+              ..sort();
+        addSql = File(
+          'db/migrations/'
+          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+        ).readAsStringSync().replaceAll('\r\n', '\n');
+        flipSql = File(
+          'db/migrations/'
+          '202604280006_c_phase_9_0sigma_g_'
+          'usage_caps_two_slot_constraint_flip.sql',
+        ).readAsStringSync().replaceAll('\r\n', '\n');
+        cloudFoundationSql = File(
+          'db/migrations/202604250005_advisor_cloud_foundation.sql',
+        ).readAsStringSync().replaceAll('\r\n', '\n');
+      });
+
+      test('three migration files exist with the locked filenames', () {
+        // ignore: lines_longer_than_80_chars
+        const flipName = '202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql';
+        const expected = <String>[
+          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+          '202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql',
+          flipName,
+        ];
+        for (final name in expected) {
+          expect(
+            migrationNames,
+            contains(name),
+            reason: 'Phase 9.0Σ.g requires migration $name',
+          );
+        }
+      });
+
+      test('migration files are ordered ADD → BACKFILL → CONSTRAINT FLIP',
+          () {
+        final addIdx = migrationNames.indexOf(
+          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+        );
+        final backfillIdx = migrationNames.indexOf(
+          '202604280006_b_phase_9_0sigma_g_'
+          'usage_caps_two_slot_backfill.sql',
+        );
+        final flipIdx = migrationNames.indexOf(
+          '202604280006_c_phase_9_0sigma_g_'
+          'usage_caps_two_slot_constraint_flip.sql',
+        );
+        expect(addIdx, greaterThanOrEqualTo(0));
+        expect(backfillIdx, greaterThan(addIdx));
+        expect(flipIdx, greaterThan(backfillIdx));
+      });
+
+      test('legacy 202604250005 usage_caps PK is unchanged — the flip '
+          'lives only in 9.0Σ.g step c', () {
+        // Tripwire: if a hand edited the cloud-foundation migration to
+        // bake the new key shape directly into the legacy file (which
+        // the slice constraint forbids), this assertion would catch it.
+        expect(
+          cloudFoundationSql,
+          contains('primary key (operator_id, location_id, usage_class)'),
+        );
+        expect(
+          cloudFoundationSql.contains('billing_owner_org_unit_id'),
+          isFalse,
+        );
+        expect(cloudFoundationSql.contains('scoped_org_unit_id'), isFalse);
+      });
+
+      test(
+        'add migration introduces the four cap-shape columns on usage_caps '
+        'and usage_logs as nullable',
+        () {
+          for (final table in <String>['usage_caps', 'usage_logs']) {
+            for (final column in <String>[
+              'billing_owner_org_unit_id uuid;',
+              'scoped_org_unit_id uuid;',
+              'staff_id uuid null;',
+              'workflow_id uuid null;',
+            ]) {
+              expect(
+                addSql,
+                contains(
+                  'alter table public.$table\n'
+                  '  add column if not exists $column',
+                ),
+                reason:
+                    '$table.$column must be added by the ADD migration',
+              );
+            }
+          }
+        },
+      );
+
+      test('flip migration drops legacy PKs and attaches tenant-leading '
+          'surrogate PKs', () {
+        expect(
+          flipSql,
+          contains('drop constraint if exists usage_caps_pkey'),
+        );
+        expect(
+          flipSql,
+          contains(
+            'add constraint usage_caps_pkey\n'
+            '  primary key (operator_id, cap_id);',
+          ),
+        );
+        expect(
+          flipSql,
+          contains('drop constraint if exists usage_logs_pkey'),
+        );
+        expect(
+          flipSql,
+          contains(
+            'add constraint usage_logs_pkey\n'
+            '  primary key (operator_id, log_id, period_start);',
+          ),
+        );
+      });
+
+      test('flip migration encodes the lock 6 logical key as UNIQUE NULLS '
+          'NOT DISTINCT on usage_caps and the matching reconciliation '
+          'key on usage_logs', () {
+        // Cap-side: lock 6 shape, tenant-leading.
+        expect(flipSql, contains('usage_caps_two_slot_uq'));
+        expect(flipSql, contains('unique nulls not distinct ('));
+        expect(
+          flipSql,
+          contains(
+            '    operator_id,\n'
+            '    billing_owner_org_unit_id,\n'
+            '    scoped_org_unit_id,\n'
+            '    location_id,\n'
+            '    staff_id,\n'
+            '    workflow_id,\n'
+            '    usage_class\n'
+            '  );',
+          ),
+        );
+        // Log-side: cap-shape prefix + period_start + telemetry tail.
+        expect(flipSql, contains('usage_logs_two_slot_rollup_uq'));
+        expect(flipSql, contains('    period_start,'));
+        expect(flipSql, contains('    query_class,'));
+        expect(flipSql, contains('    cache_hit,'));
+        expect(flipSql, contains('    llm_tier,'));
+        expect(flipSql, contains('    model_used,'));
+        expect(flipSql, contains('    batch_mode,'));
+        expect(flipSql, contains('    circuit_state,'));
+        expect(flipSql, contains('    fallback_used'));
+      });
+
+      test('flip migration attaches composite FKs to '
+          'org_units(operator_id, id) for both billing-owner and '
+          'scoped-org slots on both tables', () {
+        const fkConstraints = <String>[
+          'usage_caps_billing_owner_org_unit_fk',
+          'usage_caps_scoped_org_unit_fk',
+          'usage_logs_billing_owner_org_unit_fk',
+          'usage_logs_scoped_org_unit_fk',
+        ];
+        for (final name in fkConstraints) {
+          expect(
+            flipSql,
+            contains('add constraint $name'),
+            reason: 'composite FK $name must be attached in the flip',
+          );
+        }
+        expect(
+          flipSql,
+          contains('references public.org_units(operator_id, id)'),
+        );
+      });
+
+      test('flip migration adds tenant-leading reconciliation index on '
+          'usage_logs (cap-shape only, no telemetry tail)', () {
+        expect(
+          flipSql,
+          contains(
+            'create index if not exists '
+            'usage_logs_cap_reconciliation_idx\n'
+            '  on public.usage_logs (\n'
+            '    operator_id,\n'
+            '    billing_owner_org_unit_id,\n'
+            '    scoped_org_unit_id,\n'
+            '    location_id,\n'
+            '    staff_id,\n'
+            '    workflow_id,\n'
+            '    usage_class\n'
+            '  );',
+          ),
+        );
+      });
+
+      test('flip migration grants service_role + forge_admin DML and adds '
+          'no forge_admin RLS policy', () {
+        for (final table in <String>[
+          'usage_caps',
+          'usage_logs',
+          'usage_logs_default',
+        ]) {
+          for (final role in <String>['service_role', 'forge_admin']) {
+            expect(
+              flipSql,
+              contains(
+                'grant select, insert, update, delete on public.$table '
+                'to $role',
+              ),
+              reason: '$table must grant DML to $role',
+            );
+          }
+        }
+        // No CREATE POLICY ... TO forge_admin in this slice (lock).
+        final forgeAdminPolicy = RegExp(
+          r'create policy [^;]*to forge_admin',
+          caseSensitive: false,
+        );
+        expect(forgeAdminPolicy.hasMatch(flipSql), isFalse);
+      });
+
+      test('the slice introduces no DDL for actor_kind, sp:-prefixed '
+          'JWT, audit_logs, or service_principals (those belong to '
+          'disjoint slices)', () {
+        // DDL-pattern guards rather than prose substrings — a comment
+        // that names the out-of-scope term ("does not touch
+        // actor_kind") is allowed; an actual column declaration is not.
+        for (final sql in <String>[addSql, flipSql]) {
+          final actorKindDdl = RegExp(
+            r'\b(?:add column[^;]*\bactor_kind|actor_kind\s+text)\b',
+            caseSensitive: false,
+          );
+          expect(actorKindDdl.hasMatch(sql), isFalse);
+
+          final servicePrincipalsTable = RegExp(
+            r'\b(?:create table|references)[^;]*\bservice_principals\b',
+            caseSensitive: false,
+          );
+          expect(servicePrincipalsTable.hasMatch(sql), isFalse);
+
+          final spPrefix = RegExp(
+            r'''['"]sp:''',
+            caseSensitive: false,
+          );
+          expect(spPrefix.hasMatch(sql), isFalse);
+
+          final auditLogDdl = RegExp(
+            r'\b(?:create table|alter table|references)[^;]*'
+            r'\b(?:audit_logs|auth_events_audit)\b',
+            caseSensitive: false,
+          );
+          expect(auditLogDdl.hasMatch(sql), isFalse);
+        }
+      });
+
+      test('the slice did not invent lib/services/advisor/usage_*.dart',
+          () {
+        final advisorDir = Directory('lib/services/advisor');
+        if (!advisorDir.existsSync()) return;
+        final usageFiles = advisorDir
+            .listSync(recursive: true)
+            .whereType<File>()
+            .map((file) => file.uri.pathSegments.last)
+            .where(
+              (name) =>
+                  name.startsWith('usage_') && name.endsWith('.dart'),
+            )
+            .toList();
+        expect(
+          usageFiles,
+          isEmpty,
+          reason:
+              'Block 3 task 4 forbids inventing usage_*.dart in this '
+              'slice; the missing seam is a documented follow-up. '
+              'Found: $usageFiles',
+        );
+      });
+    },
+  );
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
