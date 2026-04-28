@@ -1,8 +1,13 @@
 # Phase 9 - Auth, Identity, Permissions, Audit
 
-Updated: 2026-04-26
-Status: Active next (sequence locked under "full proper dev before launch
-- no shortcuts" 2026-04-26)
+Updated: 2026-04-28
+Status: Live-closeout active. `9.0Σ.b-k` scalability foundation merged
+into master 2026-04-28 via `fe14b31`; B21 GDPR erasure runbook polish
+landed in the same merge. Remaining live-closeout work is human-gated
+(Cloud Armor enforcement flip, Production1 migration apply for the new
+`...0004`-`...0010` slots, iOS device-matrix expansion). The 35-item lock
+in `phase_9_scalability_decisions_2026-04-27.md` supersedes any framework
+text below that conflicts with a Q-locked item.
 Owner: Phase 9 auth lane
 
 This is the comprehensive Phase 9 plan. The pre-rewrite version is

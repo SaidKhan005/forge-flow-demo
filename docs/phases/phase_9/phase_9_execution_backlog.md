@@ -39,13 +39,17 @@ Do not re-open these unless the repo regresses:
 
 ## Scalability Foundation Progress
 
-As of 2026-04-28, B23 / `9.0Σ.b`, B24 / `9.0Σ.c`, and B26 / `9.0Σ.e` are
-complete and double-checked in the local line. B25 / `9.0Σ.d` exists
-upstream/parallel and must be fast-forward verified in this live-closeout
-worktree before it counts as local evidence. B27-B32 remain queued, but are
-paused behind the 9 live-closeout stability freeze. Do not start `9.0Σ.f` or
-later feature slices until maintenance/backlog/test status stays green and the
-remaining live-closeout gates are explicitly cleared.
+As of 2026-04-28, B23-B32 (`9.0Σ.b-k`) plus B21 (GDPR erasure runbook
+polish) are merged into master via `fe14b31`. The local repo state matches
+the merged tip; no fast-forward verification remains pending. `9.0Σ.d.1`
+sp:-prefixed JWT verifier is verified in repo at
+`tool/advisor_proxy/advisor_proxy.dart` lines 353-462. Remaining live-
+closeout work is human-gated (Cloud Armor enforcement flip, Production1
+migration apply, iOS device-matrix expansion). Live apply of the 11 new
+migrations (`...0004`-`...0010` slots) on staging + Production1 is queued
+under the live-mutation gate. New gaps surfaced by the parallel-merge audit
+are tracked as B33 (usage_logs two-slot mirror) and B34 (audit_logs
+attribution contract clarification) below.
 
 ## Captured Before Next Feature Addition
 
@@ -88,7 +92,7 @@ remaining live-closeout gates are explicitly cleared.
   runtime config now deploys as Secret Manager-backed env refs. No values were
   copied into docs.
 - Backlog alignment note: local `master` is behind `origin/master`; the
-  service-principal 9.0Σ.d commit exists upstream/parallel, but the current
+  service-principal 9.0Σ.d schema/repo is merged into master via `fe14b31`; the current
   dirty live-closeout worktree does not contain the `service_principals`
   migration/repository yet. Keep the existing 9.0Σ.d.1 fast-forward
   verification queued after live-closeout changes are safely merged.
@@ -1077,7 +1081,7 @@ Local live-closeout note:
 
 - Current dirty local `master` is behind `origin/master`, and the
   `service_principals` migration/repository/test from upstream commit
-  `49699ad` are not present in this worktree yet. Keep 9.0Σ.d.1 verification
+  `49699ad` is now merged into master via `fe14b31`. The 9.0Σ.d.1 verification
   queued after the live-closeout branch is committed/fast-forwarded.
 
 ### B26 - 9.0Σ.e event_outbox foundation
@@ -1350,6 +1354,74 @@ Resolution:
   smoke coverage, Codex reran the focused Phase 9 sweep again:
   -> 357/357 passed.
 
+### B33 - 9.0Σ.g.2 usage_logs two-slot key migration (Q3.1 mirror)
+
+Source: `phase_9_scalability_decisions_2026-04-27.md` Q3.1 lock and the
+parallel-merge audit 2026-04-28.
+
+Status: queued (paused behind the 9 live-closeout stability freeze).
+
+Needed before: any cap-vs-actual reconciliation join in `11A.2` pricing
+console, `9.8` billing audit, or rollup totals that join `usage_caps` and
+`usage_logs`. The B28 (`9.0Σ.g`) usage_caps two-slot pivot landed without a
+matching pivot on `usage_logs` (still single-slot at
+`(operator_id, location_id, usage_class, period_start)` per the 2026-04-25
+advisor cloud-foundation migration). Without B33, joins between the two
+tables fall back to multi-step lookups instead of single-pass.
+
+Work:
+
+- Migration evolving `usage_logs` PK to mirror `usage_caps`:
+  `(billing_owner_org_unit_id, scoped_org_unit_id, location_id,
+  staff_id, workflow_id, usage_class, period_start)`.
+- Online-migration pattern: ADD columns -> backfill -> constraint flip
+  (same shape as B28).
+- Wire `9.0Σ.c` `org_units` FK on the new key columns.
+- Update `lib/services/advisor/usage_*.dart` consumers to write the new
+  key shape.
+
+Files (likely):
+
+- `db/migrations/202604XXXXXX_a/b/c_phase_9_0sigma_g2_usage_logs_two_slot_*.sql`
+
+Gate: cap-vs-actual reconciliation joins are 1:1; tenant-leading index;
+RLS bypass for `forge_admin`; existing usage rows preserved across the
+constraint flip.
+
+### B34 - audit_logs.actor_principal_id vs auth_events_audit.actor_service_principal_id contract
+
+Source: parallel-merge audit 2026-04-28.
+
+Status: documentation gap; no code change required if the contract is
+explicit.
+
+Observed: `audit_logs.actor_principal_id` is `text null` (in
+`202604280005_phase_9_0sigma_f_audit_logs.sql`) while
+`auth_events_audit.actor_service_principal_id` is `uuid null` (in
+`202604280013_phase_9_audit_actor_kind_live_repair.sql`). The two columns
+serve overlapping but non-identical attribution roles -- `audit_logs`
+generalizes any future principal kind via `text`,
+`auth_events_audit` constrains to the service-principal UUID specifically.
+The naming and type divergence is intentional but undocumented; cross-
+table queries must coerce types or join via the typed column.
+
+Work:
+
+- Add a contract paragraph in a new
+  `docs/contracts/audit_attribution_contract.md` recording:
+  - `audit_logs` uses `actor_principal_id text` to allow non-uuid
+    principal kinds (`webhook:`, `cron:`, future) as the platform extends.
+  - `auth_events_audit` uses `actor_service_principal_id uuid` because
+    auth events only ever attribute to service principals.
+  - Query patterns: cross-table queries must coerce types or join via
+    the typed column.
+- Cross-link from `phase_9_scalability_decisions_2026-04-27.md` item 14
+  (service_principals) and item 13 (hash-chained audit logs).
+
+Gate: contract exists; cross-link from the two relevant locked-decision
+items; integration test that both attribution paths write expected
+shapes for a single conceptual event.
+
 ## Current Next Step
 
 Phase 9 tranche 2 framework (B4/B5/B6) is complete on 2026-04-27:
@@ -1385,8 +1457,9 @@ Current local code state on 2026-04-28:
   has passed (see `phase_9_in_app_auth_smoke_result.md`).
 - Auth-operation, password-change, and MFA/recovery local route/schema
   foundations are in this dirty live-closeout worktree and covered by focused
-  tests. The service-principal 9.0Σ.d foundation exists upstream/parallel, but
-  this worktree still needs the queued fast-forward verification. The
+  tests. The service-principal 9.0Σ.d foundation is merged into master via
+  `fe14b31`; the sp: JWT verifier is verified at
+  `tool/advisor_proxy/advisor_proxy.dart` lines 353-462. The
   MFA/recovery route bundle now has a local Identity Toolkit REST adapter for
   live TOTP enrollment.
 - `tool/advisor_proxy/main.dart` now installs the production Phase 9 route
@@ -1404,7 +1477,7 @@ Current local code state on 2026-04-28:
 - Corrected-deploy fresh invite-create smoke passed on
   `forge-flow-staging-proxy-00013-zx8`; see
   `phase_9_corrected_deploy_invite_create_retry_result.md`.
-- Next live-closeout work is queued `9.0Σ.d.1` fast-forward verification and
+- Next live-closeout work is the human-gated triple (Cloud Armor enforcement, iOS device matrix, and
   Production1 only if explicitly approved.
 - Cloud Armor preview-log review/enforcement, route-level reCAPTCHA token
   enforcement, advisor accounting/usage/health live-store wiring, and
