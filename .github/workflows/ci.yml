@@ -21,5 +21,8 @@ jobs:
       - name: Analyze
         run: flutter analyze --fatal-infos
 
+      - name: RLS policy lint
+        run: dart run tool/rls_policy_lint.dart
+
       - name: Test
         run: flutter test

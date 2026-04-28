@@ -1,0 +1,19 @@
+# Phase 9.0Σ.b RLS policy lint allowlist.
+#
+# Each entry is the basename of a `db/migrations/*.sql` file whose
+# CREATE POLICY bodies are explicitly superseded by a later
+# wrapper-using rewrite migration. The lint skips these files without
+# reading their bodies. New entries require a paired comment line
+# naming the rewriter migration that supersedes them.
+#
+# Adding a migration here does NOT exempt the migration from review;
+# it only confirms that the on-disk DDL has already been replaced by a
+# wrapper-using policy in a later migration that the runner applies in
+# order. Removing a migration here is fine once the historical file
+# itself is deleted or rewritten.
+#
+# Format: one filename per line. Lines starting with `#` and blank
+# lines are ignored.
+
+# Superseded by 202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql.
+202604260000_auth_rls_per_tenant_policies.sql
