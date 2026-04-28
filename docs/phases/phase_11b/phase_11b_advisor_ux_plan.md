@@ -4,6 +4,25 @@ Updated: 2026-04-25
 Status: Planned
 Owner: Future advisor UX lane
 
+## 2026-04-28 - Phase 9 Foundation Dependencies
+
+`9.0Σ.h` `advisor_conversation_log` table is merged via `fe14b31` (B29 in
+`phase_9_execution_backlog.md`). Before any advisor turn writes a row:
+
+- B46 (queued): encryption-key reference + audit-privacy permission gate
+  must land. CMK provisioning (`cutover.0a`) must be live before
+  encrypted writes start.
+- The audit-privacy role + paired audit-on-read pattern is documented in
+  `docs/contracts/advisor_conversation_log_contract.md` once B46 lands.
+
+`11b.2` causal traversal depends on `9.0Σ.i` graph_canonical (B30
+merged) plus the tripwire metric exposure + projection rebuild runbook
+in B44 (queued). Read both before drafting `11b.2` prompts.
+
+`11b` advisor retrieval depends on `9.0Σ.j` pgvector HNSW (B31 merged)
+plus B47 Health surface + filtered-search benchmark (queued); the
+HNSW->DiskANN switch trigger doc names exact thresholds.
+
 ## Goal
 
 Ship the agentic advisor as an operator-facing product: a stateless agent

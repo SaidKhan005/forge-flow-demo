@@ -1422,6 +1422,475 @@ Gate: contract exists; cross-link from the two relevant locked-decision
 items; integration test that both attribution paths write expected
 shapes for a single conceptual event.
 
+### B35 - Production1 migration apply runbook for 9.0Σ.b-k slots
+
+Source: parallel-merge audit 2026-04-28.
+
+Status: queued. Required before any Production1 mutation for the 11 new
+migrations (`...0004`-`...0010` + `...0011`-`...0013`).
+
+Needed before: applying the 11 new 9.0Σ migrations to Production1.
+
+Work:
+
+- Create `runbooks/phase_9_production1_migration_apply_runbook.md` covering:
+  - Apply order (timestamp + dependency: `...0004 (.d)` before `...0013`
+    live-repair; `...0006_a/b/c (.g)` strict ABC; `...0010_a/b/c (.k)`
+    strict ABC).
+  - Pre-apply state snapshot (current schema sample + row counts on every
+    operator-scoped table).
+  - Verification queries per migration (RLS policy presence, index
+    existence, column existence, FK enforcement, tenant-leading discipline).
+  - Backout steps (reverse migration files where possible; data-preserving
+    rollback for the two-slot constraint flips).
+  - Health checks post-apply (negative-tenant smoke, forge_admin BYPASSRLS
+    smoke).
+  - Cloud Armor enforcement flip checklist (paired with B16).
+  - Live-mutation gate sign-off pattern.
+
+Files:
+
+- `runbooks/phase_9_production1_migration_apply_runbook.md`
+
+Gate: runbook exists; reviewed by ops; explicit Production1 sign-off
+recorded before each apply.
+
+### B36 - Cross-tenant RLS isolation integration test sweep
+
+Source: parallel-merge audit 2026-04-28.
+
+Status: queued.
+
+Needed before: Production1 migration apply (B35).
+
+Work:
+
+- Add integration test suite at
+  `test/phase_9_0sigma_rls_isolation_sweep_test.dart` covering all 11 new
+  operator-scoped tables: `audit_logs`, 7 rollup tables (daypart through
+  year), `advisor_conversation_log`, `service_principals`, `event_outbox`,
+  `graph_nodes`, `graph_edges`.
+- Each table asserts:
+  - Tenant A cannot SELECT Tenant B rows (RLS denies).
+  - Tenant A cannot INSERT under Tenant B's `operator_id`.
+  - Tenant A cannot UPDATE/DELETE Tenant B rows.
+  - `forge_admin` BYPASSRLS works for emergency reads.
+  - service_role uses tenant-leading indexes (verify via EXPLAIN).
+
+Files:
+
+- `test/phase_9_0sigma_rls_isolation_sweep_test.dart`
+
+Gate: 11 tables × 4 cases × 2 directions = 88 assertions; all pass against
+staging Postgres.
+
+### B37 - audit_logs hash-chain end-to-end verifier test (extends B27)
+
+Source: parallel-merge audit 2026-04-28.
+
+Status: queued (pairs with B27 implementation).
+
+Needed before: cutover.0 pre-flight; SOC2 readiness.
+
+Work:
+
+- E2E test that:
+  - Inserts 100 synthetic audit rows across 3 operators on 2 chain dates.
+  - Walks the chain via `prev_row_hash || canonical_payload` digest.
+  - Verifies the digest matches at every link.
+  - Verifies the daily Blob anchor (when `tool/audit_anchor/` runs) writes
+    the day's final hash with immutability lock.
+  - Verifies `forge_admin` break-glass UPDATE produces an audit-trail of its
+    own (paired runbook entry).
+  - Catches a synthetic tamper (a single byte flip in a payload) at the
+    next chain walk.
+
+Files:
+
+- `test/phase_9_0sigma_f_audit_chain_e2e_test.dart`
+- `tool/audit_anchor/test/anchor_e2e_test.dart`
+
+Gate: chain walks pass; anchor writes immutable Blob; verifier catches
+tamper.
+
+### B38 - Rollup pg_cron Tier-M load test (cutover.0b row 8) (extends B32)
+
+Source: parallel-merge audit 2026-04-28; pairs with cutover.0b row 8.
+
+Status: queued.
+
+Needed before: cutover.0b launch blocker clears.
+
+Work:
+
+- Build synthetic Tier-M load: 500 operators × 200 locations × 90 days of
+  business_day rows.
+- Trigger the locked `pg_cron` jobs (60s hot grains, 300s cold grains) on
+  staging.
+- Measure: p50/p95/p99 latency, queue depth, freshness lag, claim
+  contention, `aggregation_state` advancement.
+- Document acceptable thresholds + alert tripwires.
+- Capture results in
+  `docs/phases/phase_9/phase_9_rollups_tierm_load_result.md`.
+
+Files:
+
+- `tool/rollups_load_test/synth_seed.dart`
+- `docs/phases/phase_9/phase_9_rollups_tierm_load_result.md`
+
+Gate: p95 latency under threshold; no missed cron windows; freshness lag
+within locked SLO; cutover.0b row 8 clears.
+
+### B39 - recovery_code_attempt_store class hierarchy refactor
+
+Source: parallel-merge audit 2026-04-28; code smell flag.
+
+Status: queued (low priority; not blocking 9.10).
+
+Needed before: Phase 12 workflow auth (where service-principal vs user
+attribution matters more).
+
+Observed: `recovery_code_attempt_store.dart` extends
+`OperatorScopedRepository` but uses `withSystem()` for execution because
+the `recovery_code_attempts` table is per-user (RLS via
+`app_current_actor_user()`), not per-tenant. The class hierarchy is
+misleading.
+
+Work:
+
+- Introduce `UserScopedRepository<T>` base for per-user (not per-tenant)
+  tables.
+- Document the three repository classes in
+  `lib/infrastructure/persistence/postgres/repositories/README.md`:
+  - `OperatorScopedRepository` (operator-scoped tables, RLS via
+    `app_current_operator()`).
+  - `UserScopedRepository` (user-scoped tables, RLS via
+    `app_current_actor_user()`).
+  - `SystemRepository` (cross-tenant infra; uses BYPASSRLS via forge_admin).
+- Migrate `recovery_code_attempt_store` to `UserScopedRepository`.
+- No migration change required (RLS policy stays the same).
+
+Files:
+
+- `lib/infrastructure/persistence/postgres/repositories/user_scoped_repository.dart`
+- `lib/infrastructure/persistence/postgres/repositories/recovery_code_attempt_store.dart`
+- Test updates.
+
+Gate: tests pass; class hierarchy is self-documenting; future user-scoped
+tables (per-user notifications, per-user MFA factors, etc.) have a clear
+home.
+
+### B40 - Cross-link 202604280013 hotfix in B25
+
+Source: parallel-merge audit 2026-04-28.
+
+Status: queued (small doc fix).
+
+Needed before: Production1 apply (so the apply order is unambiguous).
+
+Work:
+
+- Update `### B25 - 9.0Σ.d service_principals` to cross-link
+  `202604280013_phase_9_audit_actor_kind_live_repair.sql` as a paired
+  hotfix that adds `actor_service_principal_id uuid` to `auth_events_audit`
+  for staging deploy resilience.
+- Note that `actor_kind` ADD in 0013 is `if not exists` no-op when 0004 has
+  already run; 0013 is idempotent on fresh installs.
+- Apply order: 0004 first; 0013 anywhere after.
+
+Files:
+
+- `docs/phases/phase_9/phase_9_execution_backlog.md` (B25 cross-link).
+
+Gate: cross-link present; readers understand 0013 is a hotfix, not a
+duplicate of 0004.
+
+### B41 - service_principal JWT issuance proxy route (Phase 12 prerequisite)
+
+Source: parallel-merge audit 2026-04-28; extends B25.
+
+Status: queued (decoupled from .d schema work; needed for Phase 12).
+
+Needed before: Phase 12.0 workflow platform foundation.
+
+Observed: the `sp:`-prefixed JWT verifier exists at
+`tool/advisor_proxy/advisor_proxy.dart` lines 353-462, but no proxy
+endpoint issues these JWTs yet. Phase 12 cannot ship without an issuer.
+
+Work:
+
+- Add proxy POST route `/v1/admin/service-principals/{id}/jwt` that:
+  - Verifies caller has `admin.workflows.manage` permission via
+    `ProxyAdminPermissionGuard`.
+  - Loads service_principal by id (operator-scoped).
+  - Issues short-lived `sp:`-prefixed JWT via the existing
+    `ServicePrincipalJwtIssuer` class.
+  - Returns `{jwt, expires_at}`.
+- Audit row written to `auth_events_audit` with `actor_kind='service'` and
+  `actor_service_principal_id` set to the issued principal.
+- Idempotency-Key support via `proxy_requests`.
+- Rate-limit: 100 issuances/hour per service_principal (tunable).
+
+Files:
+
+- `tool/advisor_proxy/advisor_proxy.dart` (add route).
+- `lib/services/auth/proxy_service_principal_issuance_gateway.dart` (Flutter
+  client).
+- `test/proxy_service_principal_issuance_test.dart`.
+
+Gate: route returns valid `sp:` JWT; audit row written; idempotency works;
+rate-limit enforced; verifier path in same file accepts the issued JWT
+end-to-end.
+
+### B42 - Proxy /health contract expansion for 9.0Σ.f-k surfaces
+
+Source: parallel-merge audit 2026-04-28; 11A.5/11A.6 prerequisite.
+
+Status: queued (cheaper to define now while proxy is hot).
+
+Needed before: 11A.5 graph health surface; 11A.6 observability dashboard.
+
+Work:
+
+- Expand `/v1/admin/health/full` (or new) endpoint to expose:
+  - `audit_chain_lag_seconds` (B27 anchor freshness).
+  - `vector_index_size_per_corpus` per HNSW index (B31 / B47).
+  - `graph_node_count`, `graph_edge_count`, `graph_high_degree_count`,
+    `graph_p95_traversal_latency_ms` (B30 / B44 tripwires).
+  - `rollup_freshness_per_grain` (B32 / B45 freshness).
+  - `event_outbox_undelivered_count`, `event_outbox_lag_seconds` (B26 /
+    Phase 10a).
+  - `usage_caps_breach_count` (cap enforcement health).
+  - All scoped by operator/region for `forge_admin` cross-operator views.
+- Document the contract in `docs/contracts/proxy_health_contract.md`.
+
+Files:
+
+- `tool/advisor_proxy/advisor_proxy.dart` (add route).
+- `docs/contracts/proxy_health_contract.md`.
+- `test/proxy_health_test.dart`.
+
+Gate: contract doc exists; route returns all locked metrics; 11A.6
+dashboard wires to it cleanly; permission-gated to F&F internal roles.
+
+### B43 - audit_anchor Cloud Run scheduler deploy config (extends B27)
+
+Source: parallel-merge audit 2026-04-28; pairs with B27.
+
+Status: queued.
+
+Needed before: SOC2 / cutover.0 pre-flight.
+
+Work:
+
+- Add Cloud Run scheduled-job YAML for `tool/audit_anchor/`.
+- Schedule: daily at 23:55 UTC; per-operator partition iteration.
+- Environment: KMS access for Blob immutability lock; Postgres connection
+  via Secret Manager.
+- Smoke: scheduled run completes; Blob written with immutability lock and
+  retention.
+- Extend `runbooks/audit_chain_verify_runbook.md` (already exists) with
+  the deploy procedure + rotation pattern.
+
+Files:
+
+- `infrastructure/cloud_run/audit_anchor_job.yaml`
+- `scripts/deploy_audit_anchor_job.ps1`
+- Updates to `runbooks/audit_chain_verify_runbook.md`.
+
+Gate: scheduled job runs daily; Blob anchor present; immutability enforced;
+audit chain verifier walks forward to anchor cleanly.
+
+### B44 - graph_canonical tripwire metric exposure + projection rebuild runbook (extends B30)
+
+Source: parallel-merge audit 2026-04-28; extends B30.
+
+Status: queued.
+
+Needed before: 11b.2 advisor causal traversal; 11A.5 Graph Health surface.
+
+Work:
+
+- Expose graph tripwire metrics via B42 `/health` route:
+  - `graph_active_edges_count` (yellow at 3M / red at 4M per Q19).
+  - `graph_p95_traversal_latency_ms`.
+  - `graph_timeout_rate`.
+  - `graph_high_degree_count`.
+  - `graph_last_projection_build_seconds_ago`.
+- Write `runbooks/graph_projection_rebuild_runbook.md` covering:
+  - Drop AGE label graph.
+  - Re-project from canonical `graph_nodes` / `graph_edges`.
+  - Validate byte-equivalence vs. previous projection.
+  - Cut over (non-destructive: dual-projection during rebuild).
+  - Rollback path.
+
+Files:
+
+- Updates to `tool/advisor_proxy/advisor_proxy.dart` (`/health` route).
+- `runbooks/graph_projection_rebuild_runbook.md`.
+
+Gate: metrics flow to 11A.5 dashboard; rebuild runbook tested on staging
+with synthetic projection; non-destructive rollover verified.
+
+### B45 - rollup worker leasing + freshness UI (extends B32)
+
+Source: parallel-merge audit 2026-04-28; extends B32.
+
+Status: queued.
+
+Needed before: 11A.6 observability dashboard; cutover.0 pre-flight.
+
+Work:
+
+- Implement worker leasing in `lib/services/rollups/rollup_worker.dart`:
+  - Lease claim via `aggregation_state` row + `last_processed_seq`.
+  - Lease expiry / takeover after configurable window.
+  - Retry / dead-letter behavior on persistent failure.
+- Expose freshness state via B42 `/health`:
+  - `rollup_freshness_per_grain` (last successful `computed_at` per
+    `(rollup_table, grain)`).
+  - `rollup_failed_jobs_count`.
+  - `rollup_quarantined_source_records_count`.
+- Build freshness label primitive that all rollup-backed UI surfaces
+  consume:
+  - "Updated just now" / "Updated 5 minutes ago" / "Data delayed".
+  - Stale-data warning when threshold exceeded.
+
+Files:
+
+- `lib/services/rollups/rollup_worker.dart` (refactor).
+- `lib/services/rollups/rollup_freshness.dart` (new).
+- Updates to `tool/advisor_proxy/advisor_proxy.dart` (`/health`).
+- `test/phase_9_0sigma_k_rollup_lease_test.dart`.
+
+Gate: lease takeover works under simulated worker crash; freshness labels
+accurate; Health surface populated; UI primitive consumed by at least one
+dashboard.
+
+### B46 - advisor_conversation_log encryption-key + audit-privacy gate (extends B29)
+
+Source: parallel-merge audit 2026-04-28; extends B29; cutover.0a CMK
+pairing.
+
+Status: queued.
+
+Needed before: 11b advisor turns going live; 9.8 compliance package.
+
+Observed: B29's migration creates `advisor_conversation_log` with
+`content_encrypted bytea` + `content_iv bytea` columns, but the encryption
+key reference and audit-privacy permission gate are not yet wired. 11b
+cannot consume the table without them.
+
+Work:
+
+- Add `audit_privacy_role` permission key + grant pattern (operator-scoped
+  + F&F-internal) to a new permission-keys migration.
+- Encryption-key reference: store CMK key ID on the row (paired with
+  `cutover.0a` provisioning).
+- Enforce in
+  `lib/infrastructure/persistence/postgres/repositories/advisor_conversation_log_repository.dart`:
+  - Read access requires the matching audit-privacy role at request time.
+  - Each read produces a paired audit row capturing reader + reason +
+    records-read count.
+- Document the redaction ledger + retention policy in
+  `docs/contracts/advisor_conversation_log_contract.md`.
+
+Files:
+
+- `db/migrations/202604XXXXXX_phase_9_0sigma_h2_audit_privacy_role.sql`.
+- `docs/contracts/advisor_conversation_log_contract.md`.
+- Updates to
+  `lib/infrastructure/persistence/postgres/repositories/advisor_conversation_log_repository.dart`.
+
+Gate: read-access requires role; audit trail captures every read; CMK key
+reference present; redaction ledger documented.
+
+### B47 - vector index Health surface + filtered-search benchmark (extends B31)
+
+Source: parallel-merge audit 2026-04-28; extends B31.
+
+Status: queued.
+
+Needed before: 11A.5 Vector Index Health surface; HNSW→DiskANN switch
+decision (Q20).
+
+Observed: B31 landed extension install only. The Q20 switch trigger
+documentation exists, but no metric exposure or filtered-search benchmark
+is in repo.
+
+Work:
+
+- Expose vector index Health metrics via B42 `/health` route:
+  - `vector_index_size_per_corpus` (yellow at 5M / red at 8M per Q20).
+  - `vector_index_p95_query_latency_ms`.
+  - `vector_index_filtered_search_recall_score`.
+  - `vector_index_rebuild_status`.
+  - `vector_index_growth_projection_90d`.
+- Document the HNSW→DiskANN switch decision flow in
+  `docs/phases/phase_9/phase_9_vector_index_switch_trigger.md` (already
+  exists; extend with concrete trigger thresholds + canary procedure +
+  14-day rollback window).
+- Add filtered-search benchmark in
+  `test/phase_9_0sigma_j_vector_filtered_search_test.dart` covering scoped
+  HNSW filter pushdown.
+
+Files:
+
+- Updates to `tool/advisor_proxy/advisor_proxy.dart` (`/health`).
+- Updates to `phase_9_vector_index_switch_trigger.md`.
+- `test/phase_9_0sigma_j_vector_filtered_search_test.dart`.
+
+Gate: metrics flow to 11A.5; filtered-search benchmark passes on synthetic
+data; switch-trigger doc names exact thresholds + canary procedure.
+
+## Cross-Reference Map (B-items by 9.0Σ surface)
+
+The 2026-04-28 parallel-merge audit identified follow-on work for several
+already-merged 9.0Σ slices. Future slice prompts should consult this map
+to avoid duplicate or conflicting work.
+
+| 9.0Σ surface | Status | Follow-on B-items |
+| --- | --- | --- |
+| `9.0Σ.b` RLS UUID wrappers (B23) | merged | (none) |
+| `9.0Σ.c` org_units (B24) | merged | B33 (usage_logs mirror), B45 (rollup worker FK) |
+| `9.0Σ.d` service_principals (B25) | merged | B40 (hotfix cross-link), B41 (issuance route — Phase 12 prerequisite) |
+| `9.0Σ.e` event_outbox (B26) | merged | (10a consumer worker; foundation handed off) |
+| `9.0Σ.f` audit_logs hash chain (B27) | queued | B37 (verifier E2E test), B43 (Cloud Run anchor deploy) |
+| `9.0Σ.g` usage_caps two-slot (B28) | merged | B33 (usage_logs mirror — Q3.1 dependency) |
+| `9.0Σ.h` advisor_conversation_log (B29) | queued | B46 (encryption + audit-privacy gate — 11b prerequisite) |
+| `9.0Σ.i` graph_canonical (B30) | merged | B44 (tripwire metrics + rebuild runbook) |
+| `9.0Σ.j` vector index install (B31) | merged | B47 (Health surface + filtered-search benchmark) |
+| `9.0Σ.k` rollups foundation (B32) | merged | B38 (Tier-M load test — cutover.0b row 8), B45 (worker leasing + freshness UI) |
+| `B21` GDPR runbook polish | merged | (none) |
+| `B33` usage_logs two-slot mirror | queued | (Q3.1 dependency — pairs with B28) |
+| `B34` audit attribution contract | queued | (documentation gap) |
+| `B35` Production1 apply runbook | queued | (gates Production1 mutation) |
+| `B36` cross-tenant RLS isolation test sweep | queued | (gates B35) |
+| `B39` recovery_code_attempt_store refactor | queued | (code smell) |
+| `B42` proxy `/health` expansion | queued | (11A.5/11A.6 prerequisite; consumed by B44/B45/B47) |
+
+Cross-phase implications (slices in OTHER phase docs that depend on the
+above):
+
+- **Phase 10a shared-state v1:** Pub/Sub bridge consumer worker for
+  `event_outbox` (B26 foundation merged; consumer is 10a's first slice).
+- **Phase 11A.5 Graph Health surface:** depends on B42 + B44.
+- **Phase 11A.5 Vector Index Health surface:** depends on B42 + B47.
+- **Phase 11A.6 observability dashboard:** depends on B42 + B45.
+- **Phase 11A.7-10 audit log review:** depends on B27 + B37 + B43.
+- **Phase 11b advisor UX:** depends on B46 (advisor_conversation_log
+  encryption + audit-privacy gate).
+- **Phase 11b.2 advisor causal traversal:** depends on B30 + B44 (graph
+  rebuild + tripwire surface).
+- **Phase 12.0 workflow platform foundation:** depends on B41 (sp: JWT
+  issuance proxy route).
+- **`cutover.0a` CMK at provisioning:** pairs with B46
+  (advisor_conversation_log encryption-key reference).
+- **`cutover.0b` perf-gate matrix row 8:** depends on B38 (rollup Tier-M
+  load test).
+- **Phase 9.8 compliance package:** depends on B27 + B37 (audit chain) and
+  B46 (advisor conversation redaction ledger).
+
 ## Current Next Step
 
 Phase 9 tranche 2 framework (B4/B5/B6) is complete on 2026-04-27:

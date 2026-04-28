@@ -4,6 +4,22 @@ Updated: 2026-04-26
 Status: Planned, ready to build against the locked stack
 Owner: Future shared-state lane
 
+## 2026-04-28 - Phase 9 Foundation Available
+
+`9.0Σ.e` event_outbox foundation is merged into master via `fe14b31`:
+
+- Migration: `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`
+- Repository:
+  `lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart`
+- Contract: `docs/contracts/event_outbox_contract.md`
+
+The transactional outbox + `pg_notify` wake-up is the durable substrate.
+This phase's first slice is the Pub/Sub bridge consumer worker — read
+the contract above plus `phase_9_execution_backlog.md` B26 (foundation)
+before drafting prompts. Health metrics for outbox lag /
+undelivered-count are queued in `phase_9_execution_backlog.md` B42 (proxy
+`/health` expansion).
+
 ## Decisions Locked (2026-04-23 review; backend updated 2026-04-26)
 
 - **Scope: V1, not V2.** Phase 10a ships shared-state infrastructure

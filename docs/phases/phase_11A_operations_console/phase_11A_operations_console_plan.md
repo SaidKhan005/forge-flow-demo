@@ -5,6 +5,25 @@ Status: Active next (opens after accepted `11a.11c-e` close, including the
 `11a.11c.4-6` Postgres host migration to Azure)
 Owner: F&F admin / operations lane
 
+## 2026-04-28 - Phase 9 Foundation Dependencies
+
+`11A.5` Graph/Vector Health and `11A.6` observability dashboard depend on
+the proxy `/health` contract expansion in `phase_9_execution_backlog.md`
+B42 (queued). The expansion exposes per-surface metrics from the 9.0Σ
+foundation series:
+
+- `audit_chain_lag_seconds` (B27 audit_logs hash chain).
+- `vector_index_size_per_corpus`, latency, recall (B47 vector index Health).
+- `graph_node_count`, `graph_edge_count`, traversal latency (B44 graph
+  tripwires).
+- `rollup_freshness_per_grain` (B45 rollup worker leasing + freshness UI).
+- `event_outbox_undelivered_count`, lag (B26 / Phase 10a).
+- `usage_caps_breach_count`.
+
+`11A.7-10` audit log review depends on B27 (audit_logs hash chain
+foundation) plus B37 (verifier E2E test) and B43 (Cloud Run anchor
+deploy).
+
 **2026-04-26 — Postgres host re-locked to Azure DB Flexible Server (Canada Central, PG 16).** Throughout this plan, "Supabase database" reads as "Azure Database for PostgreSQL Flexible Server". `11A.4` Integration management now manages Azure DB connection strings (in addition to Anthropic / Voyage keys) instead of Supabase project keys. `11A.6` Observability dashboard reads health + metrics from Azure Monitor (Postgres metrics) + Cloud Run + Anthropic / Voyage usage instead of Supabase + Cloud Run. Trigger: see `phase_9_auth_plan.md` 2026-04-26 banner.
 
 > Naming note: capital `A` distinguishes this phase (`11A`, the F&F

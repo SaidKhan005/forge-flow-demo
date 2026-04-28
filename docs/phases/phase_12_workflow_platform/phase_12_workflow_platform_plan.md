@@ -4,6 +4,23 @@ Updated: 2026-04-26
 Status: Planned (multi-quarter program, opens after `8.5` close)
 Owner: Future workflow automation lane
 
+## 2026-04-28 - Phase 9 Foundation Dependencies
+
+`12.0` workflow platform foundation depends on:
+
+- `9.0Σ.d` `service_principals` table (merged via `fe14b31`; B25 in
+  `phase_9_execution_backlog.md`).
+- `9.0Σ.d.1` `sp:`-prefixed JWT verifier (verified at
+  `tool/advisor_proxy/advisor_proxy.dart` lines 353-462).
+- B41 `service_principal` JWT issuance proxy route (queued — Phase 12
+  prerequisite). Without B41, workflows have no way to obtain an SP JWT
+  to act as a non-human principal.
+
+Workflows authenticate as service principals; the audit trail uses
+`actor_kind='service'` per `auth_events_audit` and `actor_principal_id`
+per `audit_logs` (see B34 in `phase_9_execution_backlog.md` for the
+attribution-naming contract).
+
 This is the active execution plan for Phase 12. Architecture rationale, cost
 posture, and pricing implications live in
 `docs/phases/phase_11a/phase_11a_decision_register.md` (Phase 12 Workflow
