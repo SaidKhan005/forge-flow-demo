@@ -105,8 +105,10 @@ create table if not exists public.org_units (
   -- (operator_id, parent_id) → (operator_id, id), forbidding a
   -- cross-tenant parent pointer at the database layer.
   unique (operator_id, id),
-  -- One root per operator. Splitting the hierarchy (two roots in
-  -- the same tenant) is forbidden by Q2.
+  -- No two nodes in the same operator share an ltree path. The
+  -- single-root-per-operator invariant is a separate partial unique
+  -- index below — `unique (operator_id, path)` alone would not
+  -- prevent two roots with different path labels.
   unique (operator_id, path),
   -- Item 1 / Q2 depth cap: 6 levels max. `nlevel(path)` returns
   -- the number of labels in an ltree value (root = 1).
@@ -162,6 +164,21 @@ create index if not exists org_units_operator_unit_type_idx
 
 create index if not exists org_units_path_gist_idx
   on public.org_units using gist (path);
+
+-- Single-root-per-operator invariant. The `unique (operator_id, path)`
+-- table constraint above only forbids duplicate paths; without this
+-- partial index, two root rows with different path labels (e.g.
+-- `acme` and `acme_branch`) would both pass it. PG cannot encode
+-- `WHERE parent_id IS NULL` as a table-level UNIQUE constraint, so
+-- the invariant lands as a partial unique index here.
+--
+-- Tenant-leading by construction (one column, `operator_id`); the
+-- partial predicate restricts the index to root rows so non-root
+-- rows incur no maintenance cost.
+
+create unique index if not exists org_units_one_root_per_operator_uq
+  on public.org_units (operator_id)
+  where parent_id is null;
 
 -- ─── updated_at trigger ────────────────────────────────────────────
 --

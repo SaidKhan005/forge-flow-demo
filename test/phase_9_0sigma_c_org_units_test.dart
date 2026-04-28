@@ -150,6 +150,24 @@ void main() {
       );
     });
 
+    test('single-root-per-operator partial unique index enforces the '
+        'invariant the migration comments promise', () {
+      // `unique (operator_id, path)` alone does not enforce one-root —
+      // two roots with different path labels (e.g. `acme` and
+      // `acme_branch`) would both pass it. The partial unique index
+      // is the one DDL gate that closes the door.
+      final sql = migration();
+      expect(
+        sql,
+        contains(
+          'create unique index if not exists '
+          'org_units_one_root_per_operator_uq\n'
+          '  on public.org_units (operator_id)\n'
+          '  where parent_id is null',
+        ),
+      );
+    });
+
     test('updated_at trigger reuses the cloud-foundation function', () {
       final sql = migration();
       expect(sql, contains('org_units_set_updated_at'));
