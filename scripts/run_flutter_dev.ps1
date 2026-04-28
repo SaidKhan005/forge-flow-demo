@@ -4,6 +4,7 @@
 #   scripts/run_flutter_dev.ps1 -App forgeflow
 #   scripts/run_flutter_dev.ps1 -App barrio -Device chrome
 #   scripts/run_flutter_dev.ps1 -App forgeflow -PrintCommandOnly
+#   scripts/run_flutter_dev.ps1 -App forgeflow -UseFirebaseAuth
 #
 # This is for local development only. Production provider keys stay server-side.
 
@@ -14,6 +15,8 @@ param(
   [string] $Device,
 
   [switch] $NoProviderKeys,
+
+  [switch] $UseFirebaseAuth,
 
   [switch] $PrintCommandOnly,
 
@@ -61,6 +64,22 @@ if (-not $NoProviderKeys) {
   $argsList += "--dart-define=ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
 }
 
+if ($UseFirebaseAuth) {
+  if ($App -ne 'forgeflow') {
+    Write-Warning '-UseFirebaseAuth is currently wired for the Forge Flow app entrypoint.'
+    exit 1
+  }
+  if ([string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
+    Write-Warning 'FORGE_FLOW_PROXY_BASE_URI is missing from the unified local secrets file.'
+    Write-Host "Expected it in: $secretsFile"
+    Write-Host 'Run scripts/deploy_staging_proxy.ps1 or add the deployed proxy URI outside the repo.'
+    exit 1
+  }
+
+  $argsList += '--dart-define=FORGE_FLOW_USE_FIREBASE_AUTH=true'
+  $argsList += "--dart-define=FORGE_FLOW_PROXY_BASE_URI=$env:FORGE_FLOW_PROXY_BASE_URI"
+}
+
 if ($FlutterArgs.Count -gt 0) {
   $argsList += $FlutterArgs
 }
@@ -69,6 +88,8 @@ if ($PrintCommandOnly) {
   $sanitized = foreach ($arg in $argsList) {
     if ($arg.StartsWith('--dart-define=ANTHROPIC_API_KEY=')) {
       '--dart-define=ANTHROPIC_API_KEY=***'
+    } elseif ($arg.StartsWith('--dart-define=FORGE_FLOW_PROXY_BASE_URI=')) {
+      '--dart-define=FORGE_FLOW_PROXY_BASE_URI=***'
     } else {
       $arg
     }

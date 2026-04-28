@@ -181,17 +181,17 @@ void main() {
   // ── B: notification icon is actionable ────────────────────────────────
 
   group('B — notification entrypoint is actionable', () {
-    testWidgets('notification icon is inside a tappable IconButton',
+    testWidgets('notification icon is inside a tappable control',
         (tester) async {
       await tester.pumpWidget(_buildAppShell());
       await tester.pump();
 
-      final iconButton = find.ancestor(
+      final tappableControl = find.ancestor(
         of: find.byIcon(Icons.notifications_none_outlined),
-        matching: find.byType(IconButton),
+        matching: find.byType(InkWell),
       );
-      expect(iconButton, findsOneWidget,
-          reason: 'notification icon should be wrapped in an IconButton');
+      expect(tappableControl, findsOneWidget,
+          reason: 'notification icon should be wrapped in a tappable control');
     });
   });
 }

@@ -28,13 +28,16 @@
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
 //   - admin.*         (25 keys) admin actions
+//   - team.*          (12 keys) operator-self-service team management
+//                                (added 9.0a; consumed by 9.10 operator-
+//                                facing Settings → Team UX)
 //   - billing.*       (5 keys)  billing-related actions
 //   - integration.*   (9 keys)  integration management
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 81 keys. Some keys are flagged MFA-required via
-// PermissionKeys.requiresMfa; the migration mirrors that in the
-// permission_keys.requires_mfa column.
+// Total: 93 keys (81 baseline + 12 team.* added in 9.0a). Some keys
+// are flagged MFA-required via PermissionKeys.requiresMfa; the
+// migration mirrors that in the permission_keys.requires_mfa column.
 
 /// Frozen permission key catalog. See file header for invariants.
 class PermissionKeys {
@@ -114,6 +117,23 @@ class PermissionKeys {
   static const String adminStatusPagePublish = 'admin.status_page.publish';
   static const String adminDebugConsoleView = 'admin.debug_console.view';
   static const String adminSessionForceLogout = 'admin.session.force_logout';
+
+  // ─── team.* (12) ──────────────────────────────────────────────────
+  // Added 9.0a (2026-04-27). Operator-self-service team management;
+  // consumed by 9.10 Settings → Team UX. Distinct from admin.* which
+  // gates F&F-side admin paths.
+  static const String teamUsersView = 'team.users.view';
+  static const String teamUsersInvite = 'team.users.invite';
+  static const String teamUsersDeactivate = 'team.users.deactivate';
+  static const String teamUsersReactivate = 'team.users.reactivate';
+  static const String teamUsersSoftDelete = 'team.users.soft_delete';
+  static const String teamUsersResetPassword = 'team.users.reset_password';
+  static const String teamRolesView = 'team.roles.view';
+  static const String teamRolesCreateCustom = 'team.roles.create_custom';
+  static const String teamRolesAssign = 'team.roles.assign';
+  static const String teamRolesRevoke = 'team.roles.revoke';
+  static const String teamAuditLogView = 'team.audit_log.view';
+  static const String teamSessionForceLogout = 'team.session.force_logout';
 
   // ─── billing.* (5) ────────────────────────────────────────────────
   static const String billingInvoiceView = 'billing.invoice.view';
@@ -210,6 +230,18 @@ class PermissionKeys {
     adminStatusPagePublish,
     adminDebugConsoleView,
     adminSessionForceLogout,
+    teamUsersView,
+    teamUsersInvite,
+    teamUsersDeactivate,
+    teamUsersReactivate,
+    teamUsersSoftDelete,
+    teamUsersResetPassword,
+    teamRolesView,
+    teamRolesCreateCustom,
+    teamRolesAssign,
+    teamRolesRevoke,
+    teamAuditLogView,
+    teamSessionForceLogout,
     billingInvoiceView,
     billingSubscriptionManage,
     billingPaymentMethodManage,

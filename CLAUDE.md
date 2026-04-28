@@ -88,7 +88,13 @@ Every slice respects these. Origin:
 - `lib/domain/services/` — pure formulas, no I/O.
 - `lib/state/` — new state holders.
 - `lib/dev/` — demo and dev-only material.
-- `lib/infrastructure/persistence/sqlite/` — DB helpers.
+- `lib/auth/` — frozen permission key catalog (constants only,
+  no runtime wiring; mirrors the 9.0 migration seed and
+  `docs/contracts/auth_permission_key_catalog.md`).
+- `lib/infrastructure/persistence/sqlite/` — SQLite DB helpers.
+- `lib/infrastructure/persistence/postgres/` — only place raw
+  `package:postgres` imports are allowed; CI lint enforces. Lands
+  with the 9.2 repository-pattern slice.
 
 ## Architecture Guardrails
 

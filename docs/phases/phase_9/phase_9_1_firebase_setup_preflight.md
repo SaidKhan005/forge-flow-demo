@@ -31,7 +31,7 @@ under the non-repo `$HOME/.forge_flow/` folder.
 | Admin SDK service account | PRESENT: `forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com` |
 | Admin SDK service account role | `roles/identitytoolkit.admin` |
 | Admin SDK service account smoke | PASSED: service account can read Identity Platform config |
-| Cloud Run Admin API | ENABLED on `forge-flow-staging`; no Cloud Run service deployed in this setup |
+| Cloud Run staging proxy | DEPLOYED as `forge-flow-staging-proxy`; prerequisite readiness passed on `/readyz` |
 | Android public config | PRESENT at `android/app/src/forgeflow/google-services.json` and `android/app/src/barrio/google-services.json` |
 | iOS public config | GENERATED at `ios/Runner/Firebase/GoogleService-Info-ForgeFlow.plist` and `ios/Runner/Firebase/GoogleService-Info-Barrio.plist`; Xcode project wiring still pending |
 | Web public config | PRESENT at `web/firebase-config.js` |
@@ -47,7 +47,8 @@ under the non-repo `$HOME/.forge_flow/` folder.
 | `lib/firebase_options.dart` | MISSING. FlutterFire generation remains a runtime wiring task. |
 | Android Gradle Firebase plugin | MISSING. Client build wiring remains a runtime wiring task. |
 | iOS Xcode/Pod wiring | MISSING. Config files exist, but Xcode scheme/configuration wiring is pending and likely needs a macOS session. |
-| JWT verifier runtime code | MISSING. The proxy still uses the scaffold rejecting verifier until 9.1 code work replaces it. |
+| JWT verifier runtime code | PRESENT (framework). `tool/advisor_proxy/advisor_proxy.dart` now ships `FirebaseProxyJwtVerifier`, `FirebaseSecureTokenJwksSource`, the `JwksKeySource` / `JwtRs256SignatureValidator` seams, and `ScaffoldFailingRs256SignatureValidator` (fail-closed default). `main.dart` swaps to the Firebase verifier when `FIREBASE_PROJECT_ID` is set; without it, the scaffold rejecter stays in place. |
+| Production RS256 backend | RESOLVED in Phase 9 live-closeout tranche 1. `PointyCastleRs256SignatureValidator` is wired in `tool/advisor_proxy/main.dart` when `FIREBASE_PROJECT_ID` is present, and a live staging Firebase ID-token smoke passed against the securetoken JWKS. The scaffold rejecter remains the fail-closed default when Firebase config is absent. |
 
 ## Secret Layout
 
@@ -126,12 +127,18 @@ Admin SDK material.
 
 These are not done by this preflight:
 
-- `tool/advisor_proxy/advisor_proxy.dart` - replace
-  `ScaffoldRejectingJwtVerifier` with a real Firebase verifier.
-- `tool/advisor_proxy/main.dart` - wire the real verifier.
-- Auth event logging into `auth_events_audit`.
-- Tenant-context resolution: `firebase_uid -> users -> operator/location/status`.
-- FlutterFire/Gradle/iOS wiring for client apps.
+- `tool/advisor_proxy/advisor_proxy.dart` - DONE for the verifier
+  framework and production RS256 backend:
+  `FirebaseProxyJwtVerifier`, `JwksKeySource`,
+  `JwtRs256SignatureValidator`, `FirebaseSecureTokenJwksSource`, and
+  `PointyCastleRs256SignatureValidator` ship behind the existing
+  `ProxyJwtVerifier` seam.
+- `tool/advisor_proxy/main.dart` - DONE: swaps the scaffold rejecter
+  for `FirebaseProxyJwtVerifier` with the pointycastle validator when
+  `FIREBASE_PROJECT_ID` is set.
+- Auth event logging into `auth_events_audit` - PENDING (Phase 9.3).
+- Tenant-context resolution: `firebase_uid -> users -> operator/location/status` - PENDING (Phase 9.2).
+- FlutterFire/Gradle/iOS wiring for client apps - PENDING (Phase 9.3).
 
 ## Local Verification
 
@@ -145,7 +152,8 @@ These are not done by this preflight:
 
 ## Sequencing Note
 
-`9.1` may proceed to runtime wiring. The database half is ready (`9.0` is
-applied on staging and Production1), and the identity-provider setup is usable
-for email/password + TOTP + JWT verification. Passkeys are not a current launch
-gate while Firebase / Identity Platform lacks an official supported path.
+`9.1` identity-provider setup and JWT verification are complete for the current
+launch path. The database half is ready (`9.0` is applied on staging and
+Production1), and the identity-provider setup is usable for email/password +
+TOTP + JWT verification. Passkeys are not a current launch gate while Firebase /
+Identity Platform lacks an official supported path.

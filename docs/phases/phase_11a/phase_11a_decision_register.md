@@ -682,11 +682,12 @@ operational records. Procedure requires paired-approval (two F&F
 super_admins, both with step-up MFA). Hard-delete reserved for legal-
 hold release scenarios only. Documented runbook lands with 9.8.
 
-**Phase 9 sub-slice plan: `9.0` through `9.9`.**
+**Phase 9 sub-slice plan: `9.0` through `9.10` (12 sub-slices).**
 
 | Slice | Scope |
 |---|---|
 | `9.0` | Auth schema foundation (single migration) |
+| `9.0a` | Multi-location scale-flow extensions (NEW 2026-04-26): `user_roles.scope_type`, `users.primary_location_id`, `operators.region`, plus 12 `team.*` permission keys for the operator-facing team UX |
 | `9.1` | Firebase Identity Platform setup + JWT verifier wiring |
 | `9.2` | Repository pattern + SET LOCAL + RLS enforcement live |
 | `9.3` | Login + persistent session + step-up auth + Flutter wiring |
@@ -695,10 +696,35 @@ hold release scenarios only. Documented runbook lands with 9.8.
 | `9.6` | Role + permission system runtime |
 | `9.7` | Permission enforcement runtime + Forge & Flow + Barrio gates |
 | `9.8` | Admin user lifecycle + GDPR erasure |
-| `9.9` | Admin role console UX (inside `admin.forgeflow.app`) |
+| `9.9` | F&F admin role console UX (inside `admin.forgeflow.app`) |
+| `9.10` | **Operator-facing Settings → Team UX** (NEW 2026-04-26) inside the Forge & Flow / Barrio operator app. Distinct surface from `9.9`. Toast Web / Square Dashboard / 7shifts admin-style operator-self-service team management |
 
-Estimated total: 12-15 weeks. Future extensions slot in
+Estimated total: 13-17 weeks (was 12-15 before the 2026-04-26
+multi-location audit additions). Future extensions slot in
 `9-future-1` through `9-future-7` (see phase plan).
+
+**Multi-location audit additions (2026-04-26).** Research on Oracle
+Simphony, Toast, Square, Lightspeed, and 7shifts surfaced two
+additions for franchise-scale auth that became part of the locked
+Phase 9 scope:
+
+1. **Schema extensions (`9.0a`)** — `user_roles.scope_type` ENUM
+   (`operator_wide` / `location`) makes the grant-scope explicit
+   instead of inferring from `location_id IS NULL` (Toast's
+   group-vs-location distinction). `users.primary_location_id`
+   denormalization saves a join on every page load. `operators.region`
+   reserves multi-region forward-compat. Plus 12 net-new `team.*`
+   permission keys consumed by `9.10`. Cheap to add now while
+   production1 is empty; expensive after `cutover.4`.
+
+2. **Operator-self-service surface (`9.10`)** — the user's stated
+   requirement for "ux in settings and also in the next slice"
+   distinguishes between F&F super-admin tools (`9.9`,
+   `admin.forgeflow.app`) and operator-self-service team management
+   (`9.10`, inside the operator app). 9.10 lets `operator_owner` /
+   `operator_manager` invite, assign roles, scope to locations,
+   time-bound grants, and view audit log without F&F intervention.
+   Mobile read-mostly; desktop / tablet full-edit (Toast pattern).
 
 **Schema lock: 9.0 adds 11 new tables + extends 2 existing.**
 New: `roles`, `permission_keys`, `role_permissions`, `user_roles`,

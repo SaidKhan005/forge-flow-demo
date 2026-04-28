@@ -1,13 +1,38 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
+import 'services/auth_login_service.dart';
+import 'services/auth/auth_session_ledger_writer.dart';
+import 'services/secure_session_storage.dart';
 import 'services/target_cycle_service.dart';
 import 'services/wage_standard_context_service.dart';
+import 'state/auth_session_notifier.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 
 /// Shared Forge & Flow app bootstrap used by both standalone and host shells.
-Future<void> bootstrapAndRunApp(Widget app) async {
+///
+/// 9.3 wires a single [AuthSessionNotifier] above whichever app
+/// shell the caller passes in, so the embedded Forge & Flow surface
+/// inside Barrio reuses the same live session as standalone Barrio
+/// (HP #9 from the Phase 9 product boundary rules — "Forge & Flow
+/// inside Barrio uses the live Barrio session; no second login").
+///
+/// Production callers pass real [authLoginService] /
+/// [secureSessionStorage] / [authSessionLedgerWriter] implementations
+/// once `firebase_auth`, `flutter_secure_storage`, and the Postgres
+/// pool land in their respective slices. Defaults are fail-closed
+/// scaffold implementations so a misconfigured deploy surfaces a
+/// clear "no auth backend wired" error rather than silently allowing.
+Future<void> bootstrapAndRunApp(
+  Widget app, {
+  AuthLoginService? authLoginService,
+  SecureSessionStorage? secureSessionStorage,
+  AuthSessionLedgerWriter? authSessionLedgerWriter,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -36,5 +61,34 @@ Future<void> bootstrapAndRunApp(Widget app) async {
   await TargetCycleService.instance
       .hydrateBenchmarkHonestyFromActiveCycle(restaurantId);
 
-  runApp(app);
+  final loginService =
+      authLoginService ?? const ScaffoldFailingAuthLoginService();
+  final storage =
+      secureSessionStorage ?? ScaffoldFailingSecureSessionStorage();
+  // B6: ledger writer defaults to scaffold-failing so a production
+  // deploy that wires Firebase + secure storage but forgets the
+  // Postgres-backed RepositoryAuthSessionLedgerWriter surfaces a
+  // clear "no auth ledger wired" error rather than silently dropping
+  // auth_sessions rows. The notifier fails sign-in closed when the
+  // login ledger cannot be recorded, while refresh/sign-out remain
+  // log-and-continue to preserve low-friction session UX.
+  final ledgerWriter =
+      authSessionLedgerWriter ??
+      const ScaffoldFailingAuthSessionLedgerWriter();
+  final authNotifier = AuthSessionNotifier(
+    loginService: loginService,
+    storage: storage,
+    ledgerWriter: ledgerWriter,
+  );
+  // Fire-and-forget rehydrate. The AuthGate renders the loading
+  // state until rehydrate resolves; the notifier handles storage
+  // failures internally and falls through to "unauthenticated".
+  unawaited(authNotifier.rehydrate());
+
+  runApp(
+    ChangeNotifierProvider<AuthSessionNotifier>.value(
+      value: authNotifier,
+      child: app,
+    ),
+  );
 }

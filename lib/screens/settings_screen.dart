@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/app_data_status.dart';
 import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
+import '../services/shift_service.dart';
+import '../services/team/team_invite_form_controller.dart';
+import '../services/team/team_scope_visibility_policy.dart';
+import '../services/team/team_users_list_controller.dart';
 import '../state/app_refresh_coordinator.dart';
 import '../state/restaurant_scope_notifier.dart';
-import '../services/shift_service.dart';
-import '../models/app_data_status.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_advisor_corpus_section.dart';
@@ -15,6 +18,8 @@ import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
+import 'team/team_settings_entrypoint.dart';
+import 'team/team_settings_section.dart';
 
 class SettingsScreen extends StatefulWidget {
   /// Optional injected status for testability. When null, loads from service.
@@ -47,6 +52,24 @@ class SettingsScreen extends StatefulWidget {
   /// `advisorCorpusSectionEnabled`.
   final bool forceShowAdvisorCorpusSection;
 
+  /// Team Settings actor snapshot. Production passes this once the
+  /// Phase 9 permission snapshot bridge carries role + location scope.
+  /// Null means the Team tab stays hidden.
+  final TeamScopeActor? teamActor;
+
+  /// Test/dev hooks for the Team settings surface. Production leaves
+  /// these null until the proxy endpoints bind to the controllers.
+  final TeamUsersListController? teamUsersListController;
+  final TeamInviteFormController? teamInviteFormController;
+  final List<TeamUserListItem> teamUsers;
+  final List<TeamRoleOption> teamRoleOptions;
+  final List<TeamLocationOption> teamLocationOptions;
+  final TeamInviteSubmitter? onTeamInviteSubmitted;
+
+  /// Test-only override: when true, renders Team with an owner-shaped
+  /// actor even when no runtime actor snapshot is installed.
+  final bool forceShowTeamSection;
+
   const SettingsScreen({
     super.key,
     this.initialStatus,
@@ -55,6 +78,14 @@ class SettingsScreen extends StatefulWidget {
     this.forceShowAdvisorModelSection = false,
     this.advisorCorpusAdminService,
     this.forceShowAdvisorCorpusSection = false,
+    this.teamActor,
+    this.teamUsersListController,
+    this.teamInviteFormController,
+    this.teamUsers = const <TeamUserListItem>[],
+    this.teamRoleOptions = TeamSettingsSection.defaultRoleOptions,
+    this.teamLocationOptions = const <TeamLocationOption>[],
+    this.onTeamInviteSubmitted,
+    this.forceShowTeamSection = false,
   });
 
   @override
@@ -97,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       context.read<AppRefreshCoordinator>().refreshAll();
     } catch (_) {
-      // Coordinator may not be in scope during widget tests
+      // Coordinator may not be in scope during widget tests.
     }
     await _loadStatus();
     await _loadMockDate();
@@ -111,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       context.read<AppRefreshCoordinator>().refreshAfterWrite();
     } catch (_) {
-      // Coordinator may not be in scope during widget tests
+      // Coordinator may not be in scope during widget tests.
     }
     await _loadStatus();
     await _loadMockDate();
@@ -121,204 +152,298 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
     final restaurantDisplayName = restaurant?.displayName ?? 'Restaurant';
-    return Scaffold(
-      backgroundColor: AppColors.backgroundDeep,
-      appBar: AppBar(
-        backgroundColor: AppColors.backgroundDeep,
-        foregroundColor: AppColors.textPrimary,
-        elevation: 0,
-        title: Text('Settings', style: AppTextStyles.display20()),
-        leading: IconButton(
-          icon: const Icon(Icons.close, size: 20),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-      ),
-      body: CustomScrollView(
-        cacheExtent: 9999,
-        slivers: [
-          // ── Restaurant hero ──────────────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: SettingsRestaurantHero(name: restaurantDisplayName),
-            ),
-          ),
+    final showAdvisorModels =
+        widget.forceShowAdvisorModelSection ||
+        (advisorModelSectionEnabled &&
+            widget.advisorModelConfigService != null);
+    final showAdvisorCorpus =
+        widget.forceShowAdvisorCorpusSection ||
+        (advisorCorpusSectionEnabled &&
+            widget.advisorCorpusAdminService != null);
+    final effectiveTeamActor =
+        widget.teamActor ?? (widget.forceShowTeamSection ? _debugTeamActor : null);
+    final showTeam =
+        effectiveTeamActor != null &&
+        (widget.forceShowTeamSection ||
+            TeamScopeVisibilityPolicy.canSeeTeamNav(effectiveTeamActor));
+    final tabs = <_SettingsTabSpec>[
+      ..._baseSettingsTabs,
+      if (showTeam) _teamSettingsTab,
+      _developerSettingsTab,
+    ];
 
-          // ── DATA STATUS ──────────────────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('DATA STATUS'),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+    return DefaultTabController(
+      length: tabs.length,
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundDeep,
+        appBar: AppBar(
+          backgroundColor: AppColors.backgroundDeep,
+          foregroundColor: AppColors.textPrimary,
+          elevation: 0,
+          title: Text('Settings', style: AppTextStyles.display20()),
+          leading: IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(56),
+            child: _SettingsTabBar(tabs: tabs),
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _SettingsTabScrollView(
+              tabId: 'data',
+              slivers: [
+                _restaurantHeroSliver(restaurantDisplayName),
+                _settingsSection(
+                  title: 'DATA STATUS',
                   child: SettingsDataStatusSection(status: _status),
                 ),
-              ),
-            ],
-          ),
-
-          // ── MOCK REPLAY ──────────────────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('MOCK REPLAY'),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                _settingsSection(
+                  title: 'MOCK REPLAY',
                   child: SettingsMockReplaySection(
                     mockReplayDate: () => _mockReplayDate,
                     onAfterWrite: _refreshAfterWrite,
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          // ── DATA MANAGEMENT ──────────────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('DATA MANAGEMENT'),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                _settingsSection(
+                  title: 'DATA MANAGEMENT',
                   child: SettingsDataManagementSection(
                     onAfterWrite: _refreshAfterWrite,
                   ),
                 ),
-              ),
-            ],
-          ),
-
-          // ── TIMING AUTHORITY ─────────────────────────────────────────
-          if (restaurant != null)
-            SliverMainAxisGroup(
+                _settingsFooterSliver(restaurantDisplayName),
+              ],
+            ),
+            _SettingsTabScrollView(
+              tabId: 'authority',
               slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: StickySectionDelegate('TIMING AUTHORITY'),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                _restaurantHeroSliver(restaurantDisplayName),
+                if (restaurant != null)
+                  _settingsSection(
+                    title: 'TIMING AUTHORITY',
                     child: TimingAuthoritySection(
                       restaurantId: restaurant.restaurantId,
                     ),
                   ),
-                ),
-              ],
-            ),
-
-          // ── WAGE AUTHORITY ───────────────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('WAGE AUTHORITY'),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                _settingsSection(
+                  title: 'WAGE AUTHORITY',
                   child: WageAuthoritySection(onChanged: _refreshAppState),
                 ),
+                _settingsFooterSliver(restaurantDisplayName),
+              ],
+            ),
+            if (showTeam)
+              _SettingsTabScrollView(
+                tabId: 'team',
+                slivers: [
+                  _restaurantHeroSliver(restaurantDisplayName),
+                  _settingsSection(
+                    title: 'TEAM',
+                    child: TeamSettingsEntrypoint(
+                      actor: effectiveTeamActor,
+                      child: TeamSettingsSection(
+                        actor: effectiveTeamActor,
+                        users: widget.teamUsers,
+                        roleOptions: widget.teamRoleOptions,
+                        locationOptions: widget.teamLocationOptions,
+                        usersController: widget.teamUsersListController,
+                        inviteFormController: widget.teamInviteFormController,
+                        onInviteSubmitted: widget.onTeamInviteSubmitted,
+                      ),
+                    ),
+                  ),
+                  _settingsFooterSliver(restaurantDisplayName),
+                ],
               ),
-            ],
-          ),
-
-          // ── AUDIT ────────────────────────────────────────────────────
-          SliverMainAxisGroup(
-            slivers: [
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: StickySectionDelegate('AUDIT'),
-              ),
-              const SliverToBoxAdapter(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 16),
-                  child: SettingsAuditSection(),
-                ),
-              ),
-            ],
-          ),
-
-          // ── ADVISOR MODELS (dev-only) ────────────────────────────────
-          // Visibility:
-          //   * forceShowAdvisorModelSection (test-only override), OR
-          //   * kDebugMode AND a config service is explicitly wired.
-          //
-          // Production debug builds wire `advisorModelConfigService` in
-          // their app shell to opt in. Tests must pass both the service
-          // and (optionally) the force flag — this keeps the section
-          // out of test scenarios that haven't initialized
-          // SharedPreferences.
-          if (widget.forceShowAdvisorModelSection ||
-              (advisorModelSectionEnabled &&
-                  widget.advisorModelConfigService != null))
-            SliverMainAxisGroup(
+            _SettingsTabScrollView(
+              tabId: 'developer',
               slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: StickySectionDelegate('ADVISOR MODELS'),
+                _restaurantHeroSliver(restaurantDisplayName),
+                _settingsSection(
+                  title: 'AUDIT',
+                  child: const SettingsAuditSection(),
                 ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                if (showAdvisorModels)
+                  _settingsSection(
+                    title: 'ADVISOR MODELS',
                     child: SettingsAdvisorModelSection(
-                      service: widget.advisorModelConfigService ??
+                      service:
+                          widget.advisorModelConfigService ??
                           AdvisorModelConfigService(),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-          // ── ADVISOR CORPUS (dev-only) ────────────────────────────────
-          // Visibility:
-          //   * forceShowAdvisorCorpusSection (test-only override), OR
-          //   * kDebugMode AND a corpus admin service is explicitly
-          //     wired.
-          //
-          // Local-only scaffold. Cloud apply remains blocked until the
-          // 11a.11b prerequisites land. Tests pass both the service
-          // and (optionally) the force flag — keeps this surface out
-          // of every default Settings smoke test.
-          if (widget.forceShowAdvisorCorpusSection ||
-              (advisorCorpusSectionEnabled &&
-                  widget.advisorCorpusAdminService != null))
-            SliverMainAxisGroup(
-              slivers: [
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: StickySectionDelegate('ADVISOR CORPUS'),
-                ),
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                if (showAdvisorCorpus)
+                  _settingsSection(
+                    title: 'ADVISOR CORPUS',
                     child: SettingsAdvisorCorpusSection(
-                      service: widget.advisorCorpusAdminService ??
+                      service:
+                          widget.advisorCorpusAdminService ??
                           AdvisorCorpusAdminService(),
                     ),
                   ),
-                ),
+                _settingsFooterSliver(restaurantDisplayName),
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
-          // ── Footer ───────────────────────────────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-              child: SettingsFooter(restaurantName: restaurantDisplayName),
-            ),
+const List<_SettingsTabSpec> _baseSettingsTabs = [
+  _SettingsTabSpec(id: 'data', label: 'Data', icon: Icons.storage_rounded),
+  _SettingsTabSpec(
+    id: 'authority',
+    label: 'Authority',
+    icon: Icons.tune_rounded,
+  ),
+];
+
+const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
+  id: 'team',
+  label: 'Team',
+  icon: Icons.group_outlined,
+);
+
+const _SettingsTabSpec _developerSettingsTab = _SettingsTabSpec(
+  id: 'developer',
+  label: 'Developer',
+  icon: Icons.terminal_rounded,
+);
+
+const TeamScopeActor _debugTeamActor = TeamScopeActor(
+  actorRoles: <String>{'operator_owner'},
+  actorOperatorId: 'debug-operator',
+  actorAssignedLocationIds: <String>{},
+  actorPermissions: <String>{
+    'team.users.view',
+    'team.users.invite',
+    'team.users.update',
+    'team.roles.assign',
+  },
+);
+
+class _SettingsTabSpec {
+  final String id;
+  final String label;
+  final IconData icon;
+
+  const _SettingsTabSpec({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
+}
+
+class _SettingsTabBar extends StatelessWidget {
+  final List<_SettingsTabSpec> tabs;
+
+  const _SettingsTabBar({required this.tabs});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: AppColors.sunset.withValues(alpha: 0.2),
+            width: 1,
           ),
+        ),
+      ),
+      child: TabBar(
+        isScrollable: false,
+        labelStyle: AppTextStyles.mono12(color: AppColors.sunsetDark),
+        unselectedLabelStyle: AppTextStyles.mono12(color: AppColors.textMuted),
+        indicatorColor: AppColors.sunset,
+        indicatorWeight: 3,
+        labelColor: AppColors.sunsetDark,
+        unselectedLabelColor: AppColors.textMuted,
+        dividerColor: Colors.transparent,
+        tabs: [
+          for (final tab in tabs)
+            Tab(
+              key: Key('settings_tab_${tab.id}'),
+              height: 48,
+              child: _SettingsTabLabel(tab: tab),
+            ),
         ],
       ),
     );
   }
+}
+
+class _SettingsTabLabel extends StatelessWidget {
+  final _SettingsTabSpec tab;
+
+  const _SettingsTabLabel({required this.tab});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(tab.icon, size: 16),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(tab.label, overflow: TextOverflow.ellipsis, maxLines: 1),
+        ),
+      ],
+    );
+  }
+}
+
+class _SettingsTabScrollView extends StatelessWidget {
+  final String tabId;
+  final List<Widget> slivers;
+
+  const _SettingsTabScrollView({required this.tabId, required this.slivers});
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomScrollView(
+      key: PageStorageKey<String>('settings_${tabId}_scroll'),
+      cacheExtent: 9999,
+      slivers: slivers,
+    );
+  }
+}
+
+Widget _restaurantHeroSliver(String restaurantDisplayName) {
+  return SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: SettingsRestaurantHero(name: restaurantDisplayName),
+    ),
+  );
+}
+
+Widget _settingsSection({required String title, required Widget child}) {
+  return SliverMainAxisGroup(
+    slivers: [
+      SliverPersistentHeader(
+        pinned: true,
+        delegate: StickySectionDelegate(title),
+      ),
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: child,
+        ),
+      ),
+    ],
+  );
+}
+
+Widget _settingsFooterSliver(String restaurantDisplayName) {
+  return SliverToBoxAdapter(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
+      child: SettingsFooter(restaurantName: restaurantDisplayName),
+    ),
+  );
 }

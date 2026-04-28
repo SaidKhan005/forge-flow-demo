@@ -18,7 +18,7 @@ explicitly reopens an item.
 | iOS verification | Windows-side proxy/web/Android work may proceed; Xcode/iOS verification defers to a macOS session and must be reported honestly. |
 | Live RLS flip | Approve live staging RLS flip once integration tests are ready. |
 | Admin bypass role | Use tightly scoped `forge_admin` BYPASSRLS role for admin paths; every bypass use must be audited. |
-| MFA enforcement | Admin users require MFA at every tier. All users require MFA at Premium / Pro / Enterprise. Pilot / Starter staff MFA remains optional. |
+| MFA enforcement | Admin roles require MFA at every tier. Staff-level users do not have mandatory MFA by subscription tier; they may opt in, and sensitive actions can still require fresh auth. |
 | Step-up freshness | Sensitive actions require `auth_time` freshness under 5 minutes. |
 | Recovery codes | Generate 10 single-use recovery codes, display once, hash at rest. |
 | MFA removal | MFA removal requires step-up auth plus a 24-hour delay. |

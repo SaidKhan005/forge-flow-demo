@@ -15,4 +15,3 @@ Removed entries live in git history; do not keep a "resolved" section here.
 | File | Notes | Discovered | Owning slice |
 |------|-------|------------|--------------|
 | `test/labor_model_boh_sales_test.dart` | 2 failing cases | 2026-04-24 | tbd |
-| `test/notification_entrypoint_test.dart` | 1 failing case | 2026-04-24 | tbd |

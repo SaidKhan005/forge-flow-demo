@@ -19,35 +19,51 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
+import 'package:forge_and_flow/screens/team/team_settings_section.dart';
 import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
+import 'package:forge_and_flow/services/team/team_scope_visibility_policy.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool _includePrunedLabelGroups() => false;
+
+const TeamScopeActor _settingsTeamOwnerActor = TeamScopeActor(
+  actorRoles: <String>{'operator_owner'},
+  actorOperatorId: 'op-1',
+  actorAssignedLocationIds: <String>{},
+  actorPermissions: <String>{'team.users.view', 'team.users.invite'},
+);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = false;
 
   group('Settings screen smoke', () {
-    testWidgets('current status renders in the DATA STATUS section',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(
-            importStatus: 'completed',
-            timestamp: '2026-03-30T10:00:00',
+    testWidgets('current status renders in the DATA STATUS section', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(
+              importStatus: 'completed',
+              timestamp: '2026-03-30T10:00:00',
+            ),
           ),
         ),
-      ));
+      );
       await tester.pump();
 
+      expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
+      expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
+      expect(find.byKey(const Key('settings_tab_developer')), findsOneWidget);
       expect(find.text('DATA STATUS'), findsOneWidget);
       expect(find.text('CURRENT'), findsOneWidget);
     });
 
-    testWidgets('core Settings sections and mock replay anchors render',
-        (tester) async {
+    testWidgets('core Settings sections and mock replay anchors render', (
+      tester,
+    ) async {
       await _reseedDemoForWidgetTest(tester);
 
       await tester.pumpWidget(
@@ -78,311 +94,423 @@ void main() {
       expect(find.text('DATA MANAGEMENT', skipOffstage: false), findsOneWidget);
       await _scrollToText(tester, 'TIMING AUTHORITY');
 
-      expect(find.text('TIMING AUTHORITY', skipOffstage: false), findsOneWidget);
-      expect(find.text('America/St_Johns'), findsOneWidget);
-    });
-  });
-
-  if (_includePrunedLabelGroups()) group('Settings DATA STATUS section', () {
-    testWidgets('shows CURRENT when status is current', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(
-            importStatus: 'completed',
-            timestamp: '2026-03-30T10:00:00',
-          ),
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('DATA STATUS'), findsOneWidget);
-      expect(find.text('CURRENT'), findsOneWidget);
-    });
-
-    testWidgets('shows IMPORT FAILED when status is failedImport',
-        (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.failedImport(
-            errorSummary: 'Connection timeout',
-            timestamp: '2026-03-30T09:00:00',
-          ),
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('IMPORT FAILED'), findsOneWidget);
-    });
-
-    testWidgets('shows NO DATA when status is noData', (tester) async {
-      await tester.pumpWidget(const MaterialApp(
-        home: SettingsScreen(initialStatus: AppDataStatus.noData),
-      ));
-      await tester.pump();
-
-      expect(find.text('NO DATA'), findsOneWidget);
-    });
-
-    testWidgets('shows HISTORICAL ONLY when status is historicalOnly',
-        (tester) async {
-      await tester.pumpWidget(const MaterialApp(
-        home: SettingsScreen(initialStatus: AppDataStatus.historicalOnly),
-      ));
-      await tester.pump();
-
-      expect(find.text('HISTORICAL ONLY'), findsOneWidget);
-    });
-
-    testWidgets('shows STALE when status is stale', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.stale(
-            timestamp: '2026-03-28T10:00:00',
-          ),
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('STALE'), findsOneWidget);
-    });
-
-    testWidgets('Clear All Data description text is correct', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-        ),
-      ));
-      await tester.pump();
-      await _scrollToText(tester, 'Clear All Data');
-
       expect(
-        find.textContaining(
-            'keeping restaurant scope and connector settings'),
+        find.text('TIMING AUTHORITY', skipOffstage: false),
         findsOneWidget,
       );
+      expect(find.text('America/St_Johns'), findsOneWidget);
+    });
+
+    testWidgets('Team tab is hidden by default', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('settings_tab_team')), findsNothing);
+      expect(find.text('TEAM', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('Team tab renders for an allowed actor', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsTeamOwnerActor,
+            teamUsers: const <TeamUserListItem>[
+              TeamUserListItem(
+                userId: 'user-1',
+                email: 'jane@example.test',
+                displayName: 'Jane Owner',
+                roleId: 'operator_owner',
+                roleLabel: 'Owner',
+                status: 'active',
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('settings_tab_team')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('TEAM', skipOffstage: false), findsOneWidget);
+      expect(
+        find.byKey(const Key('team_settings_section'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('Jane Owner', skipOffstage: false), findsOneWidget);
     });
   });
+
+  if (_includePrunedLabelGroups())
+    group('Settings DATA STATUS section', () {
+      testWidgets('shows CURRENT when status is current', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(
+                importStatus: 'completed',
+                timestamp: '2026-03-30T10:00:00',
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('DATA STATUS'), findsOneWidget);
+        expect(find.text('CURRENT'), findsOneWidget);
+      });
+
+      testWidgets('shows IMPORT FAILED when status is failedImport', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.failedImport(
+                errorSummary: 'Connection timeout',
+                timestamp: '2026-03-30T09:00:00',
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('IMPORT FAILED'), findsOneWidget);
+      });
+
+      testWidgets('shows NO DATA when status is noData', (tester) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: SettingsScreen(initialStatus: AppDataStatus.noData),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('NO DATA'), findsOneWidget);
+      });
+
+      testWidgets('shows HISTORICAL ONLY when status is historicalOnly', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          const MaterialApp(
+            home: SettingsScreen(initialStatus: AppDataStatus.historicalOnly),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('HISTORICAL ONLY'), findsOneWidget);
+      });
+
+      testWidgets('shows STALE when status is stale', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.stale(
+                timestamp: '2026-03-28T10:00:00',
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('STALE'), findsOneWidget);
+      });
+
+      testWidgets('Clear All Data description text is correct', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(initialStatus: AppDataStatus.current()),
+          ),
+        );
+        await tester.pump();
+        await _scrollToText(tester, 'Clear All Data');
+
+        expect(
+          find.textContaining(
+            'keeping restaurant scope and connector settings',
+          ),
+          findsOneWidget,
+        );
+      });
+    });
 
   // ── Section organization (7.55m.6) ──────────────────────────────────
 
-  if (_includePrunedLabelGroups()) group('Settings section labels (7.55m.6)', () {
-    testWidgets('shows MOCK REPLAY section label', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('MOCK REPLAY'), findsOneWidget);
-    });
-
-    testWidgets('shows DATA MANAGEMENT section label', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('DATA MANAGEMENT'), findsOneWidget);
-    });
-  });
-
-  if (_includePrunedLabelGroups()) group('Settings timing authority section', () {
-    testWidgets('shows persisted restaurant timing settings', (tester) async {
-      await _reseedDemoForWidgetTest(tester);
-
-      await tester.pumpWidget(
-        MultiProvider(
-          providers: [
-            ChangeNotifierProvider<RestaurantScopeNotifier>(
-              create: (_) => RestaurantScopeNotifier.fromRestaurant(
-                const RestaurantLocation(
-                  restaurantId: 'demo_restaurant_001',
-                  displayName: 'Forge & Flow',
-                  businessTimezone: 'America/St_Johns',
-                  createdAt: '2026-03-30T10:00:00Z',
-                  updatedAt: '2026-03-30T10:00:00Z',
-                ),
-              ),
-            ),
-          ],
-          child: MaterialApp(
+  if (_includePrunedLabelGroups())
+    group('Settings section labels (7.55m.6)', () {
+      testWidgets('shows MOCK REPLAY section label', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
             home: SettingsScreen(
               initialStatus: AppDataStatus.current(),
               initialMockDate: '2026-03-27',
             ),
           ),
-        ),
-      );
-      await _pumpForAsync(tester);
-      await _scrollToText(tester, 'TIMING AUTHORITY');
+        );
+        await tester.pump();
 
-      expect(find.text('TIMING AUTHORITY'), findsOneWidget);
-      expect(find.text('America/St_Johns'), findsOneWidget);
-      expect(find.text('Business Day Starts'), findsOneWidget);
-      expect(find.text('Week Starts'), findsOneWidget);
-      expect(find.text('Lunch'), findsOneWidget);
-      expect(find.text('Dinner'), findsOneWidget);
-      expect(find.text('Late Night'), findsOneWidget);
+        expect(find.text('MOCK REPLAY'), findsOneWidget);
+      });
+
+      testWidgets('shows DATA MANAGEMENT section label', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('DATA MANAGEMENT'), findsOneWidget);
+      });
     });
-  });
+
+  if (_includePrunedLabelGroups())
+    group('Settings timing authority section', () {
+      testWidgets('shows persisted restaurant timing settings', (tester) async {
+        await _reseedDemoForWidgetTest(tester);
+
+        await tester.pumpWidget(
+          MultiProvider(
+            providers: [
+              ChangeNotifierProvider<RestaurantScopeNotifier>(
+                create: (_) => RestaurantScopeNotifier.fromRestaurant(
+                  const RestaurantLocation(
+                    restaurantId: 'demo_restaurant_001',
+                    displayName: 'Forge & Flow',
+                    businessTimezone: 'America/St_Johns',
+                    createdAt: '2026-03-30T10:00:00Z',
+                    updatedAt: '2026-03-30T10:00:00Z',
+                  ),
+                ),
+              ),
+            ],
+            child: MaterialApp(
+              home: SettingsScreen(
+                initialStatus: AppDataStatus.current(),
+                initialMockDate: '2026-03-27',
+              ),
+            ),
+          ),
+        );
+        await _pumpForAsync(tester);
+        await _scrollToText(tester, 'TIMING AUTHORITY');
+
+        expect(find.text('TIMING AUTHORITY'), findsOneWidget);
+        expect(find.text('America/St_Johns'), findsOneWidget);
+        expect(find.text('Business Day Starts'), findsOneWidget);
+        expect(find.text('Week Starts'), findsOneWidget);
+        expect(find.text('Lunch'), findsOneWidget);
+        expect(find.text('Dinner'), findsOneWidget);
+        expect(find.text('Late Night'), findsOneWidget);
+      });
+    });
 
   // ── Mock replay controls ──────────────────────────────────────────────
 
-  if (_includePrunedLabelGroups()) group('Settings mock replay controls', () {
-    testWidgets('shows Mock Business Date label', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
+  if (_includePrunedLabelGroups())
+    group('Settings mock replay controls', () {
+      testWidgets('shows Mock Business Date label', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await tester.pump();
 
-      expect(find.text('Mock Business Date'), findsOneWidget);
+        expect(find.text('Mock Business Date'), findsOneWidget);
+      });
+
+      testWidgets('shows formatted mock date when provided', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('Fri, Mar 27, 2026'), findsOneWidget);
+      });
+
+      testWidgets('shows Reset Mock Scenario action', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('Reset Mock Scenario'), findsOneWidget);
+      });
+
+      testWidgets('shows Advance Mock Day action', (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(find.text('Advance Mock Day'), findsOneWidget);
+        expect(
+          find.text('Move mock business date forward one day'),
+          findsOneWidget,
+        );
+      });
     });
-
-    testWidgets('shows formatted mock date when provided', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('Fri, Mar 27, 2026'), findsOneWidget);
-    });
-
-    testWidgets('shows Reset Mock Scenario action', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('Reset Mock Scenario'), findsOneWidget);
-    });
-
-    testWidgets('shows Advance Mock Day action', (tester) async {
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await tester.pump();
-
-      expect(find.text('Advance Mock Day'), findsOneWidget);
-      expect(find.text('Move mock business date forward one day'),
-          findsOneWidget);
-    });
-  });
 
   // ── Wage mix panel read-only shape (7.55p.5f1a) ──────────────────────
 
   group('Settings data alignment audit plan authority', () {
     testWidgets(
-        'audit panel stays on the strict locked-plan path when the snapshot '
-        'is missing', (tester) async {
-      await _reseedDemoForWidgetTest(tester);
+      'audit panel stays on the strict locked-plan path when the snapshot '
+      'is missing',
+      (tester) async {
+        await _reseedDemoForWidgetTest(tester);
 
-      await tester.runAsync(() async {
-        final db = await SqliteDatabase.instance.database;
-        await db.delete('weekly_plan_snapshots');
+        await tester.runAsync(() async {
+          final db = await SqliteDatabase.instance.database;
+          await db.delete('weekly_plan_snapshots');
 
-        // Sanity: the live plan path still resolves, but the audit panel
-        // must not use it as a competing authority path.
-        final livePlan =
-            await SchedulePlanReadService.instance.getCurrentWeeklyPlan();
-        expect(livePlan, isNotNull);
-        expect(await db.query('weekly_plan_snapshots'), isEmpty);
-      });
+          // Sanity: the live plan path still resolves, but the audit panel
+          // must not use it as a competing authority path.
+          final livePlan = await SchedulePlanReadService.instance
+              .getCurrentWeeklyPlan();
+          expect(livePlan, isNotNull);
+          expect(await db.query('weekly_plan_snapshots'), isEmpty);
+        });
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Data Alignment Audit');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await _pumpForAsync(tester);
+        await _scrollToText(tester, 'Data Alignment Audit');
 
-      await tester.tap(find.text('Data Alignment Audit'));
-      await _pumpUntilFound(
-        tester,
-        find.text('SCHEDULE FORECAST', skipOffstage: false),
-      );
+        await tester.tap(find.text('Data Alignment Audit'));
+        await _pumpUntilFound(
+          tester,
+          find.text('SCHEDULE FORECAST', skipOffstage: false),
+        );
 
-      expect(find.textContaining('LIVE RESOLVED'), findsNothing);
-      expect(find.text('SCHEDULE FORECAST', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('SCHEDULE PLAN', skipOffstage: false), findsOneWidget);
-      expect(find.text('Not resolved', skipOffstage: false),
-          findsAtLeastNWidgets(2));
+        expect(find.textContaining('LIVE RESOLVED'), findsNothing);
+        expect(
+          find.text('SCHEDULE FORECAST', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(find.text('SCHEDULE PLAN', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('Not resolved', skipOffstage: false),
+          findsAtLeastNWidgets(2),
+        );
 
-      // 7.55r item 4 Tier 3: provenance section degrades honestly in the
-      // no-snapshot state (does not fabricate a locked-week identity).
-      expect(find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
-          findsOneWidget);
-      expect(find.text('No current-week snapshot resolved', skipOffstage: false),
-          findsOneWidget);
+        // 7.55r item 4 Tier 3: provenance section degrades honestly in the
+        // no-snapshot state (does not fabricate a locked-week identity).
+        expect(
+          find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.text('No current-week snapshot resolved', skipOffstage: false),
+          findsOneWidget,
+        );
 
-      await tester.runAsync(() async {
-        final db = await SqliteDatabase.instance.database;
-        expect(await db.query('weekly_plan_snapshots'), isEmpty,
+        await tester.runAsync(() async {
+          final db = await SqliteDatabase.instance.database;
+          expect(
+            await db.query('weekly_plan_snapshots'),
+            isEmpty,
             reason:
                 'expanding the audit panel must not auto-generate a locked '
-                'snapshot through the live plan path');
-      });
-    });
+                'snapshot through the live plan path',
+          );
+        });
+      },
+    );
 
     testWidgets(
-        'audit panel exposes locked-week / target-cycle provenance rows '
-        'when a snapshot exists', (tester) async {
-      await _reseedDemoForWidgetTest(tester);
+      'audit panel exposes locked-week / target-cycle provenance rows '
+      'when a snapshot exists',
+      (tester) async {
+        await _reseedDemoForWidgetTest(tester);
 
-      // Prime a locked weekly plan via the auto-generating read path so
-      // the audit panel has a snapshot to read from. Uses the same
-      // authority seam a production first-render would take.
-      await tester.runAsync(() async {
-        await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
-      });
+        // Prime a locked weekly plan via the auto-generating read path so
+        // the audit panel has a snapshot to read from. Uses the same
+        // authority seam a production first-render would take.
+        await tester.runAsync(() async {
+          await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
+        });
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Data Alignment Audit');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await _pumpForAsync(tester);
+        await _scrollToText(tester, 'Data Alignment Audit');
 
-      await tester.tap(find.text('Data Alignment Audit'));
-      await _pumpUntilFound(
-        tester,
-        find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
-      );
+        await tester.tap(find.text('Data Alignment Audit'));
+        await _pumpUntilFound(
+          tester,
+          find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+        );
 
-      expect(find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
-          findsOneWidget);
-      // Labels rendered by the provenance rows. Asserting the labels
-      // rather than the resolved values keeps the test robust to seed
-      // timing drift.
-      expect(find.text('WEEK KEY', skipOffstage: false), findsOneWidget);
-      expect(find.text('WEEK SPAN', skipOffstage: false), findsOneWidget);
-      expect(find.text('SNAPSHOT ID', skipOffstage: false), findsOneWidget);
-      expect(find.text('TARGET CYCLE ID', skipOffstage: false), findsOneWidget);
-      expect(find.text('EFFECTIVE WINDOW', skipOffstage: false), findsOneWidget);
-      expect(find.text('CALIBRATION WINDOW', skipOffstage: false),
-          findsOneWidget);
-    });
+        expect(
+          find.text('LOCKED WEEK PROVENANCE', skipOffstage: false),
+          findsOneWidget,
+        );
+        // Labels rendered by the provenance rows. Asserting the labels
+        // rather than the resolved values keeps the test robust to seed
+        // timing drift.
+        expect(find.text('WEEK KEY', skipOffstage: false), findsOneWidget);
+        expect(find.text('WEEK SPAN', skipOffstage: false), findsOneWidget);
+        expect(find.text('SNAPSHOT ID', skipOffstage: false), findsOneWidget);
+        expect(
+          find.text('TARGET CYCLE ID', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.text('EFFECTIVE WINDOW', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.text('CALIBRATION WINDOW', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
 
     // ── 7.56c.1 — grouped audit-check sections render ───────────────────
     //
@@ -392,20 +520,21 @@ void main() {
     // header + group titles for the populated-snapshot path so the
     // grouped audit is wired through the read service end to end.
 
-    testWidgets(
-        'audit panel renders 7.56c.1 grouped audit-check sections '
+    testWidgets('audit panel renders 7.56c.1 grouped audit-check sections '
         'with summary lines', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       await tester.runAsync(() async {
         await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
       });
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Data Alignment Audit');
 
@@ -416,8 +545,10 @@ void main() {
       );
 
       // Overall AUDIT CHECKS header is present with a summary line.
-      expect(find.textContaining('AUDIT CHECKS —', skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.textContaining('AUDIT CHECKS —', skipOffstage: false),
+        findsOneWidget,
+      );
 
       // Each canonical group title is rendered with an aligned/drifted/
       // unavailable summary suffix.
@@ -434,9 +565,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining(
-            'LOCKED PLAN <-> PROJECTION',
-            skipOffstage: false),
+        find.textContaining('LOCKED PLAN <-> PROJECTION', skipOffstage: false),
         findsOneWidget,
       );
       expect(
@@ -445,8 +574,7 @@ void main() {
       );
     });
 
-    testWidgets(
-        'audit panel grouped sections degrade to unavailable when no '
+    testWidgets('audit panel grouped sections degrade to unavailable when no '
         'snapshot exists', (tester) async {
       await _reseedDemoForWidgetTest(tester);
 
@@ -455,12 +583,14 @@ void main() {
         await db.delete('weekly_plan_snapshots');
       });
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Data Alignment Audit');
 
@@ -472,9 +602,7 @@ void main() {
 
       // Group titles still render even when the snapshot path is empty.
       expect(
-        find.textContaining(
-            'LOCKED PLAN <-> PROJECTION',
-            skipOffstage: false),
+        find.textContaining('LOCKED PLAN <-> PROJECTION', skipOffstage: false),
         findsOneWidget,
       );
 
@@ -489,19 +617,21 @@ void main() {
   });
 
   group('Settings wage mix panel (7.55p.5f1a)', () {
-    testWidgets(
-        'panel is a read-only summary + single Edit Wage Mix action',
-        (tester) async {
+    testWidgets('panel is a read-only summary + single Edit Wage Mix action', (
+      tester,
+    ) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
       await _deleteAllWageRows(tester, restaurantId);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Edit Wage Mix');
 
@@ -529,25 +659,25 @@ void main() {
       expect(find.text('FALLBACK ROLES'), findsNothing);
     });
 
-    testWidgets('empty mix shows Config Default warning on the panel',
-        (tester) async {
+    testWidgets('empty mix shows Config Default warning on the panel', (
+      tester,
+    ) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
       await _deleteAllWageRows(tester, restaurantId);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Edit Wage Mix');
 
-      expect(
-        find.textContaining('No roles configured'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('No roles configured'), findsOneWidget);
       expect(find.text('Config Default'), findsOneWidget);
     });
   });
@@ -559,8 +689,7 @@ void main() {
   // replace the earlier repo-seeded shape tests.
 
   group('Whole-mix editor real save path (7.55p.5f1a)', () {
-    testWidgets(
-        'complete FOH+BOH mix entered through the editor persists and '
+    testWidgets('complete FOH+BOH mix entered through the editor persists and '
         'updates ActiveTargetProfile wages', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
@@ -568,12 +697,14 @@ void main() {
       // Pre-sync so the profile starts with config defaults.
       await _syncWagesToActiveProfile(tester);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Edit Wage Mix');
 
@@ -646,25 +777,27 @@ void main() {
       final expectedBoh = 22.75 / profile.targetSPLH * 100;
       expect(profile.theoreticalFohLaborPct, closeTo(expectedFoh, 0.01));
       expect(profile.theoreticalBohLaborPct, closeTo(expectedBoh, 0.01));
-      expect(profile.theoreticalLaborPct,
-          closeTo(expectedFoh + expectedBoh, 0.01));
+      expect(
+        profile.theoreticalLaborPct,
+        closeTo(expectedFoh + expectedBoh, 0.01),
+      );
     });
 
-    testWidgets(
-        'manager-only mix entered through the editor stays honest: '
-        'saves the row but authority remains Config Default',
-        (tester) async {
+    testWidgets('manager-only mix entered through the editor stays honest: '
+        'saves the row but authority remains Config Default', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
       await _deleteAllWageRows(tester, restaurantId);
       await _syncWagesToActiveProfile(tester);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Edit Wage Mix');
 
@@ -725,37 +858,42 @@ void main() {
       expect(find.text('App Configured'), findsNothing);
     });
 
-    testWidgets(
-        'removing an existing row in the editor deletes it on save '
+    testWidgets('removing an existing row in the editor deletes it on save '
         'and degrades authority honestly', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
       await _deleteAllWageRows(tester, restaurantId);
       // Seed a complete mix first.
       await tester.runAsync(() async {
-        await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-          restaurantId: restaurantId,
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 16.00,
-          weightedHours: 30,
-        ));
-        await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-          restaurantId: restaurantId,
-          roleName: 'Line Cook',
-          laborBucket: 'boh',
-          hourlyRate: 20.00,
-          weightedHours: 35,
-        ));
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 16.00,
+            weightedHours: 30,
+          ),
+        );
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 20.00,
+            weightedHours: 35,
+          ),
+        );
       });
       await _syncWagesToActiveProfile(tester);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
       await _scrollToText(tester, 'Edit Wage Mix');
 
@@ -788,100 +926,113 @@ void main() {
     });
 
     testWidgets(
-        'clearing an existing row field drops the stale persisted row on save',
-        (tester) async {
-      await _reseedDemoForWidgetTest(tester);
-      final restaurantId = await _getActiveRestaurantId(tester);
-      await _deleteAllWageRows(tester, restaurantId);
-      await tester.runAsync(() async {
-        await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-          restaurantId: restaurantId,
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 16.00,
-          weightedHours: 30,
-        ));
-        await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-          restaurantId: restaurantId,
-          roleName: 'Line Cook',
-          laborBucket: 'boh',
-          hourlyRate: 20.00,
-          weightedHours: 35,
-        ));
-      });
-      await _syncWagesToActiveProfile(tester);
+      'clearing an existing row field drops the stale persisted row on save',
+      (tester) async {
+        await _reseedDemoForWidgetTest(tester);
+        final restaurantId = await _getActiveRestaurantId(tester);
+        await _deleteAllWageRows(tester, restaurantId);
+        await tester.runAsync(() async {
+          await SqliteWageRoleRowRepository.instance.upsertRow(
+            WageRoleRow(
+              restaurantId: restaurantId,
+              roleName: 'Server',
+              laborBucket: 'foh',
+              hourlyRate: 16.00,
+              weightedHours: 30,
+            ),
+          );
+          await SqliteWageRoleRowRepository.instance.upsertRow(
+            WageRoleRow(
+              restaurantId: restaurantId,
+              roleName: 'Line Cook',
+              laborBucket: 'boh',
+              hourlyRate: 20.00,
+              weightedHours: 35,
+            ),
+          );
+        });
+        await _syncWagesToActiveProfile(tester);
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await _pumpForAsync(tester);
+        await _scrollToText(tester, 'Edit Wage Mix');
 
-      await tester.tap(find.text('Edit Wage Mix'));
-      await _pumpUntilFound(tester, find.text('Add FOH role'));
+        await tester.tap(find.text('Edit Wage Mix'));
+        await _pumpUntilFound(tester, find.text('Add FOH role'));
 
-      final fields = find.byType(TextField);
-      expect(fields, findsNWidgets(6));
+        final fields = find.byType(TextField);
+        expect(fields, findsNWidgets(6));
 
-      // Clear the persisted BOH role name to make that draft invalid.
-      await tester.enterText(fields.at(3), '');
-      await _pumpForAsync(tester);
+        // Clear the persisted BOH role name to make that draft invalid.
+        await tester.enterText(fields.at(3), '');
+        await _pumpForAsync(tester);
 
-      await tester.tap(find.text('Save Wage Mix'));
-      await _pumpForDbAsync(tester);
+        await tester.tap(find.text('Save Wage Mix'));
+        await _pumpForDbAsync(tester);
 
-      // The stale BOH row should be deleted instead of silently preserved.
-      final rows = await _getWageRows(tester, restaurantId);
-      expect(rows.length, 1);
-      expect(rows.first.laborBucket, 'foh');
-      expect(rows.first.roleName, 'Server');
+        // The stale BOH row should be deleted instead of silently preserved.
+        final rows = await _getWageRows(tester, restaurantId);
+        expect(rows.length, 1);
+        expect(rows.first.laborBucket, 'foh');
+        expect(rows.first.roleName, 'Server');
 
-      final ctx = await _resolveWageContext(tester, restaurantId);
-      expect(ctx.source, WageStandardSource.configFallback);
-    });
+        final ctx = await _resolveWageContext(tester, restaurantId);
+        expect(ctx.source, WageStandardSource.configFallback);
+      },
+    );
   });
 
   // ── 7.55q.9 — Reset Target Cycle (Admin) tile renders + opens dialog ──
 
   group('Settings 7.55q.9 admin reset tile', () {
-    if (_includePrunedLabelGroups()) testWidgets('Reset Target Cycle (Admin) tile renders with admin '
-        'description', (tester) async {
-      await _reseedDemoForWidgetTest(tester);
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-        ),
-      ));
-      await _pumpForAsync(tester);
+    if (_includePrunedLabelGroups())
+      testWidgets('Reset Target Cycle (Admin) tile renders with admin '
+          'description', (tester) async {
+        await _reseedDemoForWidgetTest(tester);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        );
+        await _pumpForAsync(tester);
 
-      // Settings screen is long — match offstage and use the file's
-      // established scroll helper so suite ordering doesn't make the
-      // assertion flaky.
-      expect(
-        find.text('Reset Target Cycle (Admin)', skipOffstage: false),
-        findsOneWidget,
-      );
-      expect(
-        find.textContaining(
+        // Settings screen is long — match offstage and use the file's
+        // established scroll helper so suite ordering doesn't make the
+        // assertion flaky.
+        expect(
+          find.text('Reset Target Cycle (Admin)', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining(
             'Clears manager override + rebuilds the active 60-day',
-            skipOffstage: false),
-        findsOneWidget,
-      );
-    });
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      });
 
     testWidgets('tapping Reset Target Cycle (Admin) opens a confirm '
         'dialog with Cancel + Reset actions', (tester) async {
       await _reseedDemoForWidgetTest(tester);
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+          ),
         ),
-      ));
+      );
       await _pumpForAsync(tester);
 
       // Use the file's established scroll helper to bring the tile
@@ -900,7 +1051,8 @@ void main() {
       expect(find.text('Reset target cycle?'), findsOneWidget);
       expect(
         find.textContaining(
-            'Clears the persisted manager override and the active'),
+          'Clears the persisted manager override and the active',
+        ),
         findsOneWidget,
       );
       expect(find.text('Cancel'), findsAtLeastNWidgets(1));
@@ -955,12 +1107,55 @@ Future<void> _pumpUntilFound(
 }
 
 Future<void> _scrollToText(WidgetTester tester, String text) async {
+  final tabId = _settingsTabIdForText(text);
+  await _openSettingsTab(tester, tabId);
   await tester.scrollUntilVisible(
     find.text(text, skipOffstage: false),
     250,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: _settingsScrollable(tabId),
   );
   await _pumpForAsync(tester);
+}
+
+Future<void> _openSettingsTab(WidgetTester tester, String tabId) async {
+  final tab = find.byKey(Key('settings_tab_$tabId'));
+  if (tab.evaluate().isEmpty) return;
+  await tester.tap(tab);
+  await _pumpForAsync(tester);
+}
+
+Finder _settingsScrollable(String tabId) {
+  return find
+      .descendant(
+        of: find.byKey(PageStorageKey<String>('settings_${tabId}_scroll')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+}
+
+String _settingsTabIdForText(String text) {
+  const authorityTargets = {
+    'TIMING AUTHORITY',
+    'WAGE AUTHORITY',
+    'Edit Wage Mix',
+  };
+  const developerTargets = {
+    'Data Alignment Audit',
+    'ADVISOR MODELS',
+    'ADVISOR CORPUS',
+  };
+  if (authorityTargets.contains(text)) return 'authority';
+  if (developerTargets.contains(text)) return 'developer';
+  return 'data';
+}
+
+String _settingsTabIdForKey(Key key) {
+  if (key == const Key('advisor_check_button') ||
+      key == const Key('advisor_corpus_preview_button') ||
+      key == const Key('advisor_corpus_cloud_load_button')) {
+    return 'developer';
+  }
+  return 'data';
 }
 
 Future<void> _reseedDemoForWidgetTest(WidgetTester tester) async {
@@ -1013,8 +1208,9 @@ Future<ActiveTargetProfile?> _getActiveTargetProfile(
   String restaurantId,
 ) async {
   return (await tester.runAsync<ActiveTargetProfile?>(() async {
-    return SqliteTargetProfileRepository.instance
-        .getActiveTargetProfile(restaurantId);
+    return SqliteTargetProfileRepository.instance.getActiveTargetProfile(
+      restaurantId,
+    );
   }))!;
 }
 
@@ -1024,14 +1220,16 @@ Future<void> _pumpAdvisorSettings(
   WidgetTester tester, {
   required AdvisorModelConfigService service,
 }) async {
-  await tester.pumpWidget(MaterialApp(
-    home: SettingsScreen(
-      initialStatus: AppDataStatus.current(),
-      initialMockDate: '2026-03-27',
-      advisorModelConfigService: service,
-      forceShowAdvisorModelSection: true,
+  await tester.pumpWidget(
+    MaterialApp(
+      home: SettingsScreen(
+        initialStatus: AppDataStatus.current(),
+        initialMockDate: '2026-03-27',
+        advisorModelConfigService: service,
+        forceShowAdvisorModelSection: true,
+      ),
     ),
-  ));
+  );
   // Section bodies use FutureBuilders / async loads — drain them so no
   // timers leak into subsequent tests in the same file.
   await tester.pump();
@@ -1044,162 +1242,196 @@ void _advisorSectionTests() {
       SharedPreferences.setMockInitialValues({});
     });
 
-    testWidgets('renders pinned defaults and Voyage read-only values',
-        (tester) async {
+    testWidgets('renders pinned defaults and Voyage read-only values', (
+      tester,
+    ) async {
       final svc = AdvisorModelConfigService(
-        onlineCheckFn: ({
-          required String quickModelId,
-          required String nuancedModelId,
-        }) async =>
-            const AnthropicModelCheckResult.cannotCheck('test default'),
+        onlineCheckFn:
+            ({
+              required String quickModelId,
+              required String nuancedModelId,
+            }) async =>
+                const AnthropicModelCheckResult.cannotCheck('test default'),
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
       await _scrollToText(tester, 'ADVISOR MODELS');
 
       expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
-      expect(find.textContaining('claude-haiku-4-5', skipOffstage: false),
-          findsWidgets);
-      expect(find.textContaining('claude-sonnet-4-6', skipOffstage: false),
-          findsWidgets);
-      expect(find.byKey(const Key('advisor_voyage_pinned'), skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('voyage-4-large', skipOffstage: false),
-          findsWidgets);
-      expect(find.textContaining('rerank-2.5', skipOffstage: false),
-          findsWidgets);
+      expect(
+        find.textContaining('claude-haiku-4-5', skipOffstage: false),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining('claude-sonnet-4-6', skipOffstage: false),
+        findsWidgets,
+      );
+      expect(
+        find.byKey(const Key('advisor_voyage_pinned'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('voyage-4-large', skipOffstage: false),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining('rerank-2.5', skipOffstage: false),
+        findsWidgets,
+      );
     });
 
-    testWidgets('Reset Defaults and Check Anthropic Models actions render',
-        (tester) async {
+    testWidgets('Reset Defaults and Check Anthropic Models actions render', (
+      tester,
+    ) async {
       final svc = AdvisorModelConfigService(
-        onlineCheckFn: ({
-          required String quickModelId,
-          required String nuancedModelId,
-        }) async =>
-            const AnthropicModelCheckResult.cannotCheck('test default'),
+        onlineCheckFn:
+            ({
+              required String quickModelId,
+              required String nuancedModelId,
+            }) async =>
+                const AnthropicModelCheckResult.cannotCheck('test default'),
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
       await _scrollToText(tester, 'ADVISOR MODELS');
 
-      expect(find.byKey(const Key('advisor_reset_button'), skipOffstage: false),
-          findsOneWidget);
-      expect(find.byKey(const Key('advisor_check_button'), skipOffstage: false),
-          findsOneWidget);
-      expect(find.byKey(const Key('advisor_quick_override_field'),
-              skipOffstage: false),
-          findsOneWidget);
-      expect(find.byKey(const Key('advisor_nuanced_override_field'),
-              skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.byKey(const Key('advisor_reset_button'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('advisor_check_button'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('advisor_quick_override_field'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('advisor_nuanced_override_field'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('Check action surfaces injected fake result text',
-        (tester) async {
+    testWidgets('Check action surfaces injected fake result text', (
+      tester,
+    ) async {
       final svc = AdvisorModelConfigService(
-        onlineCheckFn: ({
-          required String quickModelId,
-          required String nuancedModelId,
-        }) async =>
-            const AnthropicModelCheckResult(
-          status: AnthropicModelCheckStatus.available,
-          message: 'fake-up-to-date-message',
-        ),
+        onlineCheckFn:
+            ({
+              required String quickModelId,
+              required String nuancedModelId,
+            }) async => const AnthropicModelCheckResult(
+              status: AnthropicModelCheckStatus.available,
+              message: 'fake-up-to-date-message',
+            ),
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
       // Scroll the check button itself onto the visible region before tap.
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('advisor_check_button')),
-        250,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump(const Duration(milliseconds: 50));
+      await _scrollKeyIntoView(tester, const Key('advisor_check_button'));
 
       await tester.tap(find.byKey(const Key('advisor_check_button')));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.textContaining('fake-up-to-date-message', skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.textContaining('fake-up-to-date-message', skipOffstage: false),
+        findsOneWidget,
+      );
       // Up-to-date branch (status=available + updateAvailable=false).
       expect(find.text('UP TO DATE', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets(
-        'UPDATE AVAILABLE label and candidate rows render when fake reports update',
-        (tester) async {
-      final svc = AdvisorModelConfigService(
-        onlineCheckFn: ({
-          required String quickModelId,
-          required String nuancedModelId,
-        }) async =>
-            const AnthropicModelCheckResult(
-          status: AnthropicModelCheckStatus.available,
-          message: 'newer same-family seen',
-          seenModelIds: [
-            'claude-haiku-4-5',
-            'claude-sonnet-4-6',
-            'claude-sonnet-4-7',
-          ],
-          updateAvailable: true,
-          latestNuancedCandidate: 'claude-sonnet-4-7',
-        ),
-      );
+      'UPDATE AVAILABLE label and candidate rows render when fake reports update',
+      (tester) async {
+        final svc = AdvisorModelConfigService(
+          onlineCheckFn:
+              ({
+                required String quickModelId,
+                required String nuancedModelId,
+              }) async => const AnthropicModelCheckResult(
+                status: AnthropicModelCheckStatus.available,
+                message: 'newer same-family seen',
+                seenModelIds: [
+                  'claude-haiku-4-5',
+                  'claude-sonnet-4-6',
+                  'claude-sonnet-4-7',
+                ],
+                updateAvailable: true,
+                latestNuancedCandidate: 'claude-sonnet-4-7',
+              ),
+        );
 
-      await _pumpAdvisorSettings(tester, service: svc);
-      await tester.scrollUntilVisible(
-        find.byKey(const Key('advisor_check_button')),
-        250,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.pump(const Duration(milliseconds: 50));
+        await _pumpAdvisorSettings(tester, service: svc);
+        await _scrollKeyIntoView(tester, const Key('advisor_check_button'));
 
-      await tester.tap(find.byKey(const Key('advisor_check_button')));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.byKey(const Key('advisor_check_button')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
 
-      expect(find.text('UPDATE AVAILABLE', skipOffstage: false),
-          findsOneWidget);
-      expect(
-          find.byKey(const Key('advisor_check_nuanced_candidate'),
-              skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('claude-sonnet-4-7', skipOffstage: false),
-          findsWidgets);
-    });
+        expect(
+          find.text('UPDATE AVAILABLE', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(
+            const Key('advisor_check_nuanced_candidate'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.textContaining('claude-sonnet-4-7', skipOffstage: false),
+          findsWidgets,
+        );
+      },
+    );
 
     testWidgets(
-        'real debug route renders ADVISOR MODELS without forceShow (kDebugMode + service)',
-        (tester) async {
-      // Mirrors what `forge_flow_app.dart::_openSettings` does in debug:
-      // pushes a SettingsScreen with `advisorModelConfigService` set but
-      // no force flag. The section gate (kDebugMode && service != null)
-      // should render the section in this configuration.
-      final svc = AdvisorModelConfigService(
-        onlineCheckFn: ({
-          required String quickModelId,
-          required String nuancedModelId,
-        }) async =>
-            const AnthropicModelCheckResult.cannotCheck(
-                'real-route-test no-network'),
-      );
+      'real debug route renders ADVISOR MODELS without forceShow (kDebugMode + service)',
+      (tester) async {
+        // Mirrors what `forge_flow_app.dart::_openSettings` does in debug:
+        // pushes a SettingsScreen with `advisorModelConfigService` set but
+        // no force flag. The section gate (kDebugMode && service != null)
+        // should render the section in this configuration.
+        final svc = AdvisorModelConfigService(
+          onlineCheckFn:
+              ({
+                required String quickModelId,
+                required String nuancedModelId,
+              }) async => const AnthropicModelCheckResult.cannotCheck(
+                'real-route-test no-network',
+              ),
+        );
 
-      await tester.pumpWidget(MaterialApp(
-        home: SettingsScreen(
-          initialStatus: AppDataStatus.current(),
-          initialMockDate: '2026-03-27',
-          advisorModelConfigService: svc,
-          // forceShowAdvisorModelSection deliberately omitted
-        ),
-      ));
-      await tester.pump();
-      await tester.pumpAndSettle();
-      await _scrollToText(tester, 'ADVISOR MODELS');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              advisorModelConfigService: svc,
+              // forceShowAdvisorModelSection deliberately omitted
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pumpAndSettle();
+        await _scrollToText(tester, 'ADVISOR MODELS');
 
-      expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
-    });
+        expect(
+          find.text('ADVISOR MODELS', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
   });
 }
 
@@ -1209,19 +1441,23 @@ Future<void> _pumpAdvisorCorpusSettings(
   WidgetTester tester, {
   required AdvisorCorpusAdminService service,
 }) async {
-  await tester.pumpWidget(MaterialApp(
-    home: SettingsScreen(
-      initialStatus: AppDataStatus.current(),
-      initialMockDate: '2026-03-27',
-      advisorCorpusAdminService: service,
-      forceShowAdvisorCorpusSection: true,
+  await tester.pumpWidget(
+    MaterialApp(
+      home: SettingsScreen(
+        initialStatus: AppDataStatus.current(),
+        initialMockDate: '2026-03-27',
+        advisorCorpusAdminService: service,
+        forceShowAdvisorCorpusSection: true,
+      ),
     ),
-  ));
+  );
   await tester.pump();
   await tester.pumpAndSettle();
 }
 
 Future<void> _scrollKeyIntoView(WidgetTester tester, Key key) async {
+  final tabId = _settingsTabIdForKey(key);
+  await _openSettingsTab(tester, tabId);
   // scrollUntilVisible needs the default `skipOffstage: true` so it
   // keeps scrolling until the widget is actually on stage. Passing
   // `skipOffstage: false` would short-circuit on the first frame
@@ -1229,15 +1465,16 @@ Future<void> _scrollKeyIntoView(WidgetTester tester, Key key) async {
   await tester.scrollUntilVisible(
     find.byKey(key),
     100,
-    scrollable: find.byType(Scrollable).first,
+    scrollable: _settingsScrollable(tabId),
   );
   await _pumpForAsync(tester);
 }
 
 void _advisorCorpusSectionTests() {
   group('Settings ADVISOR CORPUS section (dev-only)', () {
-    testWidgets('renders header, fields, actions, and blocked cloud row',
-        (tester) async {
+    testWidgets('renders header, fields, actions, and blocked cloud row', (
+      tester,
+    ) async {
       await _pumpAdvisorCorpusSettings(
         tester,
         service: AdvisorCorpusAdminService(),
@@ -1246,32 +1483,49 @@ void _advisorCorpusSectionTests() {
 
       expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsOneWidget);
       expect(
-          find.byKey(const Key('advisor_corpus_header'), skipOffstage: false),
-          findsOneWidget);
+        find.byKey(const Key('advisor_corpus_header'), skipOffstage: false),
+        findsOneWidget,
+      );
       expect(
-          find.byKey(const Key('advisor_corpus_file_name_field'),
-              skipOffstage: false),
-          findsOneWidget);
+        find.byKey(
+          const Key('advisor_corpus_file_name_field'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       expect(
-          find.byKey(const Key('advisor_corpus_markdown_field'),
-              skipOffstage: false),
-          findsOneWidget);
+        find.byKey(
+          const Key('advisor_corpus_markdown_field'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       expect(
-          find.byKey(const Key('advisor_corpus_preview_button'),
-              skipOffstage: false),
-          findsOneWidget);
+        find.byKey(
+          const Key('advisor_corpus_preview_button'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       expect(
-          find.byKey(const Key('advisor_corpus_cloud_load_button'),
-              skipOffstage: false),
-          findsOneWidget);
+        find.byKey(
+          const Key('advisor_corpus_cloud_load_button'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
       expect(
-          find.byKey(const Key('advisor_corpus_cloud_blocked'),
-              skipOffstage: false),
-          findsOneWidget);
+        find.byKey(
+          const Key('advisor_corpus_cloud_blocked'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
     });
 
-    testWidgets('valid Markdown preview surfaces the local-only summary',
-        (tester) async {
+    testWidgets('valid Markdown preview surfaces the local-only summary', (
+      tester,
+    ) async {
       final service = AdvisorCorpusAdminService();
       await _pumpAdvisorCorpusSettings(tester, service: service);
       await _scrollKeyIntoView(
@@ -1284,17 +1538,25 @@ void _advisorCorpusSectionTests() {
       // EditableText focus path, which is unreliable for off-stage
       // multi-line fields in the test viewport.
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_file_name_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = 'sample.md';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          'sample.md';
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_markdown_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = '# Heading\n\nBody line one.\nBody line two.\n';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          '# Heading\n\nBody line one.\nBody line two.\n';
 
       await _scrollKeyIntoView(
         tester,
@@ -1305,72 +1567,100 @@ void _advisorCorpusSectionTests() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(
-        find.byKey(const Key('advisor_corpus_preview_result'),
-            skipOffstage: false),
+        find.byKey(
+          const Key('advisor_corpus_preview_result'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('PREVIEW LOCAL ONLY', skipOffstage: false),
-          findsOneWidget);
-      // Ingestion-shaped fields rendered in the result row.
-      expect(find.textContaining('file · sample.md', skipOffstage: false),
-          findsOneWidget);
       expect(
-          find.textContaining(
-              'source · docs/Knowledge_graph_docs/sample.md',
-              skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('title · Heading', skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('headings · 1', skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('lines · 5', skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('est chunks · 1', skipOffstage: false),
-          findsOneWidget);
-      expect(find.textContaining('preview_local_only', skipOffstage: false),
-          findsOneWidget);
+        find.textContaining('PREVIEW LOCAL ONLY', skipOffstage: false),
+        findsOneWidget,
+      );
+      // Ingestion-shaped fields rendered in the result row.
+      expect(
+        find.textContaining('file · sample.md', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining(
+          'source · docs/Knowledge_graph_docs/sample.md',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('title · Heading', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('headings · 1', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('lines · 5', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('est chunks · 1', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('preview_local_only', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
-    testWidgets(
-      'preview falls back to file-name stem when no H1 is present',
-      (tester) async {
-        final service = AdvisorCorpusAdminService();
-        await _pumpAdvisorCorpusSettings(tester, service: service);
-        await _scrollKeyIntoView(
-          tester,
-          const Key('advisor_corpus_preview_button'),
-        );
+    testWidgets('preview falls back to file-name stem when no H1 is present', (
+      tester,
+    ) async {
+      final service = AdvisorCorpusAdminService();
+      await _pumpAdvisorCorpusSettings(tester, service: service);
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
 
-        tester
-            .widget<TextField>(
-                find.byKey(const Key('advisor_corpus_file_name_field'),
-                    skipOffstage: false))
-            .controller!
-            .text = 'Wage_Standards.md';
-        tester
-            .widget<TextField>(
-                find.byKey(const Key('advisor_corpus_markdown_field'),
-                    skipOffstage: false))
-            .controller!
-            .text = '## Sub-only heading\n\nbody text\n';
+      tester
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          'Wage_Standards.md';
+      tester
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          '## Sub-only heading\n\nbody text\n';
 
-        await _scrollKeyIntoView(
-          tester,
-          const Key('advisor_corpus_preview_button'),
-        );
-        await tester
-            .tap(find.byKey(const Key('advisor_corpus_preview_button')));
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 50));
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_preview_button'),
+      );
+      await tester.tap(find.byKey(const Key('advisor_corpus_preview_button')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
 
-        // Title falls back to the file-name stem (no `.md`); the H2
-        // line is counted in `headings` but does not become the title.
-        expect(find.textContaining('title · Wage_Standards',
-            skipOffstage: false), findsOneWidget);
-        expect(find.textContaining('headings · 1', skipOffstage: false),
-            findsOneWidget);
-      },
-    );
+      // Title falls back to the file-name stem (no `.md`); the H2
+      // line is counted in `headings` but does not become the title.
+      expect(
+        find.textContaining('title · Wage_Standards', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('headings · 1', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'preview normalizes a backslash-prefixed file path to its basename',
@@ -1383,41 +1673,53 @@ void _advisorCorpusSectionTests() {
         );
 
         tester
-            .widget<TextField>(
-                find.byKey(const Key('advisor_corpus_file_name_field'),
-                    skipOffstage: false))
-            .controller!
-            .text = r'C:\some\path\Wage_Standards.md';
+                .widget<TextField>(
+                  find.byKey(
+                    const Key('advisor_corpus_file_name_field'),
+                    skipOffstage: false,
+                  ),
+                )
+                .controller!
+                .text =
+            r'C:\some\path\Wage_Standards.md';
         tester
-            .widget<TextField>(
-                find.byKey(const Key('advisor_corpus_markdown_field'),
-                    skipOffstage: false))
-            .controller!
-            .text = '# Wages\n\nbody\n';
+                .widget<TextField>(
+                  find.byKey(
+                    const Key('advisor_corpus_markdown_field'),
+                    skipOffstage: false,
+                  ),
+                )
+                .controller!
+                .text =
+            '# Wages\n\nbody\n';
 
         await _scrollKeyIntoView(
           tester,
           const Key('advisor_corpus_preview_button'),
         );
-        await tester
-            .tap(find.byKey(const Key('advisor_corpus_preview_button')));
+        await tester.tap(
+          find.byKey(const Key('advisor_corpus_preview_button')),
+        );
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(
-            find.textContaining('file · Wage_Standards.md',
-                skipOffstage: false),
-            findsOneWidget);
+          find.textContaining('file · Wage_Standards.md', skipOffstage: false),
+          findsOneWidget,
+        );
         expect(
-            find.textContaining(
-                'source · docs/Knowledge_graph_docs/Wage_Standards.md',
-                skipOffstage: false),
-            findsOneWidget);
+          find.textContaining(
+            'source · docs/Knowledge_graph_docs/Wage_Standards.md',
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
       },
     );
 
-    testWidgets('non-.md filename is rejected with a UI-visible error',
-        (tester) async {
+    testWidgets('non-.md filename is rejected with a UI-visible error', (
+      tester,
+    ) async {
       final service = AdvisorCorpusAdminService();
       await _pumpAdvisorCorpusSettings(tester, service: service);
       await _scrollKeyIntoView(
@@ -1426,17 +1728,25 @@ void _advisorCorpusSectionTests() {
       );
 
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_file_name_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = 'sample.txt';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          'sample.txt';
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_markdown_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = '# Heading\n';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          '# Heading\n';
 
       await _scrollKeyIntoView(
         tester,
@@ -1447,17 +1757,22 @@ void _advisorCorpusSectionTests() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(
-        find.byKey(const Key('advisor_corpus_preview_error'),
-            skipOffstage: false),
+        find.byKey(
+          const Key('advisor_corpus_preview_error'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('PREVIEW REJECTED', skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+        findsOneWidget,
+      );
       expect(find.textContaining('.md', skipOffstage: false), findsWidgets);
     });
 
-    testWidgets('blank Markdown is rejected with a UI-visible error',
-        (tester) async {
+    testWidgets('blank Markdown is rejected with a UI-visible error', (
+      tester,
+    ) async {
       final service = AdvisorCorpusAdminService();
       await _pumpAdvisorCorpusSettings(tester, service: service);
       await _scrollKeyIntoView(
@@ -1466,17 +1781,25 @@ void _advisorCorpusSectionTests() {
       );
 
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_file_name_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = 'sample.md';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_file_name_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          'sample.md';
       tester
-          .widget<TextField>(
-              find.byKey(const Key('advisor_corpus_markdown_field'),
-                  skipOffstage: false))
-          .controller!
-          .text = '   \n  \t\n';
+              .widget<TextField>(
+                find.byKey(
+                  const Key('advisor_corpus_markdown_field'),
+                  skipOffstage: false,
+                ),
+              )
+              .controller!
+              .text =
+          '   \n  \t\n';
 
       await _scrollKeyIntoView(
         tester,
@@ -1487,89 +1810,105 @@ void _advisorCorpusSectionTests() {
       await tester.pump(const Duration(milliseconds: 50));
 
       expect(
-        find.byKey(const Key('advisor_corpus_preview_error'),
-            skipOffstage: false),
+        find.byKey(
+          const Key('advisor_corpus_preview_error'),
+          skipOffstage: false,
+        ),
         findsOneWidget,
       );
-      expect(find.textContaining('PREVIEW REJECTED', skipOffstage: false),
-          findsOneWidget);
+      expect(
+        find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+        findsOneWidget,
+      );
     });
 
-    testWidgets(
-      'cloud-load button is non-interactive (onPressed == null)',
-      (tester) async {
-        await _pumpAdvisorCorpusSettings(
-          tester,
-          service: AdvisorCorpusAdminService(),
-        );
+    testWidgets('cloud-load button is non-interactive (onPressed == null)', (
+      tester,
+    ) async {
+      await _pumpAdvisorCorpusSettings(
+        tester,
+        service: AdvisorCorpusAdminService(),
+      );
+      await _scrollKeyIntoView(
+        tester,
+        const Key('advisor_corpus_cloud_load_button'),
+      );
 
-        // The blocked row + disabled button are both always rendered.
-        // The button is greyed out because `onPressed: null` — no tap
-        // attempt is possible from this slice forward.
-        final button = tester.widget<TextButton>(find.byKey(
-            const Key('advisor_corpus_cloud_load_button'),
-            skipOffstage: false));
-        expect(button.onPressed, isNull);
+      // The blocked row + disabled button are both always rendered.
+      // The button is greyed out because `onPressed: null` — no tap
+      // attempt is possible from this slice forward.
+      final button = tester.widget<TextButton>(
+        find.byKey(
+          const Key('advisor_corpus_cloud_load_button'),
+          skipOffstage: false,
+        ),
+      );
+      expect(button.onPressed, isNull);
 
-        expect(
-          find.byKey(const Key('advisor_corpus_cloud_blocked'),
-              skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(find.textContaining('CLOUD LOAD · BLOCKED', skipOffstage: false),
-            findsOneWidget);
-        expect(find.textContaining('11a.11b', skipOffstage: false),
-            findsOneWidget);
-      },
-    );
+      expect(
+        find.byKey(
+          const Key('advisor_corpus_cloud_blocked'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('CLOUD LOAD · BLOCKED', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('11a.11b', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'real debug route renders ADVISOR CORPUS without forceShow '
-      '(kDebugMode + service)',
-      (tester) async {
-        // Mirrors what `forge_flow_app.dart::_openSettings` does in
-        // debug: pushes a SettingsScreen with `advisorCorpusAdminService`
-        // set but no force flag. The section gate
-        // (kDebugMode && service != null) should render the section.
-        await tester.pumpWidget(MaterialApp(
+    testWidgets('real debug route renders ADVISOR CORPUS without forceShow '
+        '(kDebugMode + service)', (tester) async {
+      // Mirrors what `forge_flow_app.dart::_openSettings` does in
+      // debug: pushes a SettingsScreen with `advisorCorpusAdminService`
+      // set but no force flag. The section gate
+      // (kDebugMode && service != null) should render the section.
+      await tester.pumpWidget(
+        MaterialApp(
           home: SettingsScreen(
             initialStatus: AppDataStatus.current(),
             initialMockDate: '2026-03-27',
             advisorCorpusAdminService: AdvisorCorpusAdminService(),
             // forceShowAdvisorCorpusSection deliberately omitted
           ),
-        ));
-        await tester.pump();
-        await tester.pumpAndSettle();
-        await _scrollToText(tester, 'ADVISOR CORPUS');
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
+      await _scrollToText(tester, 'ADVISOR CORPUS');
 
-        expect(find.text('ADVISOR CORPUS', skipOffstage: false),
-            findsOneWidget);
-        expect(
-          find.byKey(const Key('advisor_corpus_cloud_blocked'),
-              skipOffstage: false),
-          findsOneWidget,
-        );
-      },
-    );
+      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsOneWidget);
+      expect(
+        find.byKey(
+          const Key('advisor_corpus_cloud_blocked'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
 
-    testWidgets(
-      'is hidden by default — no force flag, no service injected',
-      (tester) async {
-        await tester.pumpWidget(MaterialApp(
+    testWidgets('is hidden by default — no force flag, no service injected', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
           home: SettingsScreen(
             initialStatus: AppDataStatus.current(),
             initialMockDate: '2026-03-27',
             // forceShowAdvisorCorpusSection deliberately omitted
             // advisorCorpusAdminService deliberately omitted
           ),
-        ));
-        await tester.pump();
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pump();
+      await tester.pumpAndSettle();
 
-        expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsNothing);
-      },
-    );
+      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsNothing);
+    });
   });
 }
-

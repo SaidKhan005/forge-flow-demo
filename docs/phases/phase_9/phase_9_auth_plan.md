@@ -42,9 +42,10 @@ Five product decisions locked alongside the slice plan:
    where graph relationships actually pay off.
 3. **SSO / SAML / SCIM: WorkOS, deferred** to first Enterprise-tier
    customer demand. Don't build SAML in-house; WorkOS at $125/mo/connection.
-4. **MFA enforcement policy**: required for all admin users at every
-   tier; required for all users (staff included) at Premium tier and
-   above. Lower tiers (Pilot, Starter) make MFA optional for staff.
+4. **MFA enforcement policy**: required for admin roles at every
+   tier. Staff-level users do not have mandatory MFA by subscription
+   tier; they may opt in, and sensitive actions can still require
+   fresh auth.
 5. **GDPR right-to-erasure**: redact-don't-delete with documented runbook
    and break-glass approval. Operational record carve-out under GDPR
    Art. 17(3); preserves audit integrity. Hard-delete is reserved for
@@ -189,10 +190,29 @@ Plus the locked architectural rules already in CLAUDE.md:
   redaction is logged to `auth_events_audit` (append-only, INSERT only,
   DELETE / UPDATE revoked from `service_role`).
 
-## Sub-Slice Sequence (9.0 → 9.9)
+## Sub-Slice Sequence (9.0 → 9.10)
 
-Sequential. Do not start the next slice until the prior accepts.
-Estimated total: 12-15 weeks.
+Sequential by default. Do not start the next slice until the prior
+accepts. `9.0a` is a small additive migration that can run anytime
+after `9.0` accepts; it must complete before `cutover.4` (production
+schema flexibility ends there). Estimated total: 13-17 weeks (was
+12-15 before the multi-location audit additions).
+
+**Additions logged 2026-04-26 from the multi-location franchise
+auth audit:**
+
+- `9.0a` — three small schema columns (`user_roles.scope_type`,
+  `users.primary_location_id`, `operators.region`) plus 12 net-new
+  `team.*` permission keys. Surfaces from the audit recommendation
+  to formalize "operator-wide vs location-scoped" grants instead of
+  inferring from `location_id IS NULL`, and to forward-reserve
+  region for future multi-region multi-tenancy.
+- `9.10` — operator-facing Settings → Team UX inside the Forge &
+  Flow / Barrio operator app. Distinct from `9.9` (F&F super-admin
+  console at `admin.forgeflow.app`). Covers the user's stated
+  requirement: operator-self-service team management without F&F
+  intervention. Toast Web / Square Dashboard / 7shifts admin-style
+  experience inside the operator's own app.
 
 ### `9.0` Auth Schema Foundation (~3-5 days)
 
@@ -230,10 +250,23 @@ staging and production1.
     `(operator_id, user_id, role_id, coalesce(location_id, sentinel))`
     where `revoked_at IS NULL` (partial index)
 - `auth_sessions` — own-ledger of Firebase sessions
-  - `session_id UUID PK, user_id UUID FK, refresh_token_hash TEXT,
+  - `session_id UUID PK, user_id UUID FK, token_hash TEXT,
     ip INET, user_agent TEXT, device_fingerprint TEXT NULL,
     geo_country CHAR(2) NULL, created_at, last_seen_at, revoked_at
     NULL, revoked_reason TEXT NULL`
+  - `token_hash` is the SHA-256 hex digest of the credential token
+    associated with the session row. Today the writer hashes the live
+    Firebase **ID token** because `firebase_auth` does not surface the
+    underlying refresh token. The column was renamed from
+    `refresh_token_hash` on 2026-04-27 (Codex audit-fix F4) so the
+    column name does not over-promise. The hash stably identifies the
+    row across refreshes within an ID-token lifetime and lets
+    `auth_events_audit` joins reference the session without leaking
+    token material — but it does **not** detect refresh-token reuse
+    on its own. When a future slice has access to a true refresh
+    token (server-issued opaque session token), it can land the real
+    refresh-token hash in the same column without changing the
+    contract.
 - `auth_events_audit` — append-only audit log
   - `event_id UUID PK, actor_user_id UUID FK NULL, target_user_id
     UUID FK NULL, operator_id UUID NULL, location_id UUID NULL,
@@ -346,6 +379,95 @@ indexes per Lock 4 on every operator-scoped row.
   loaded; all `(operator_id, ...)` leading indexes present per Lock 4
   audit query
 - No live runtime change; identity layer not yet wired
+
+### `9.0a` Multi-location scale-flow extensions (~2-3 days)
+
+Added 2026-04-26 after the multi-location / franchise auth research
+surfaced three small-but-cheap-now / expensive-later schema additions
+plus the `team.*` permission key category needed by `9.10` operator-
+facing Settings → Team UX. Runs anytime after `9.0` accepts; must run
+before `cutover.4` (production schema flexibility ends there).
+
+**Single deterministic migration** under `db/migrations/` (suggested
+filename `202604260002_phase_9_0a_scope_extensions.sql` or next
+available). Local-first; applies cleanly to staging and production1
+(both still empty of operator data — additive cost is near-zero).
+
+**Schema additions:**
+
+- `user_roles.scope_type TEXT NOT NULL` CHECK in
+  (`'operator_wide'`, `'location'`) — explicit scope marker; today
+  "operator-wide" is inferred from `location_id IS NULL`, fragile and
+  breaks indexing. Backfill: rows with `location_id IS NULL` →
+  `'operator_wide'`; non-null → `'location'`. Pattern matches Toast's
+  group-vs-location grant distinction and 7shifts' multi-location
+  manager pattern.
+- `users.primary_location_id UUID NULL` with FK
+  `(operator_id, primary_location_id) → locations(operator_id,
+  location_id)` — denormalized default-context for operator-app
+  greeting "Welcome back, you're at Yorkville" and as the default
+  filter on team / shift / variance screens. Saves a join on every
+  page load. Trigger updates it when `user_roles` changes (most
+  recent active location-scoped grant wins; falls back to
+  `operators.primary_location_id`).
+- `operators.region TEXT NULL` — multi-region forward-compat. Most
+  B2B SaaS evolve to regional multi-tenancy; reserve column now even
+  if single-region today. Cheap to add empty; expensive to backfill
+  later.
+
+**Seed additions: `team.*` permission keys** (~10 keys) — consumed by
+`9.10` operator-facing Settings → Team UX. The team category lives
+alongside `admin.*` in the catalog but is operator-self-service-
+scoped: an `operator_owner` can manage team without `admin.*` keys
+that gate F&F-side admin paths.
+
+- `team.users.view` — view operator's user list
+- `team.users.invite` — create invites for own operator
+- `team.users.deactivate` — suspend a user in own operator
+- `team.users.reactivate` — reactivate a suspended user
+- `team.users.soft_delete` — soft-delete a user in own operator
+- `team.users.reset_password` — admin-initiated password reset for
+  a team member
+- `team.roles.view` — view operator's role list
+- `team.roles.create_custom` — create operator-scoped custom role
+  (mirrors `admin.roles.create_custom` but scoped to own operator)
+- `team.roles.assign` — grant role to user within own operator
+- `team.roles.revoke` — revoke role from user
+- `team.audit_log.view` — view audit log scoped to own operator
+- `team.session.force_logout` — force-logout a user's sessions
+
+**Seed updates:** add `team.*` keys to baseline role grants:
+- `super_admin` already gets every key (cross-join seed handles this)
+- `operator_owner` gets all `team.*` keys
+- `operator_manager` gets `team.users.view`, `team.users.invite`,
+  `team.users.reactivate`, `team.users.reset_password`,
+  `team.roles.view`, `team.roles.assign`, `team.roles.revoke`,
+  `team.audit_log.view`, `team.session.force_logout` (manager-tier
+  team management; cannot create custom roles or soft-delete users)
+- Other baseline roles get nothing in `team.*`
+
+**Mirror updates required (catalog discipline):**
+- `lib/auth/permission_keys.dart` — add 12 new constants + add to
+  `PermissionKeys.all`
+- `docs/contracts/auth_permission_key_catalog.md` — document each new
+  key
+- `lib/auth/role_management_policy.dart` — extend
+  `RoleManagementPolicy.evaluateGrantAction` to honor the
+  `'team.*'` keys (operator_manager can grant team perms within own
+  operator + location)
+
+**Acceptance:**
+
+- Migration applies cleanly to local, staging, production1
+- Tests verify: `user_roles.scope_type` populated correctly on
+  backfilled rows; CHECK constraint enforced; `users.primary_location_id`
+  composite FK rejects cross-tenant location; `operators.region`
+  column exists; 12 new `team.*` permission keys seeded; baseline
+  role grants extended per spec
+- `lib/auth/permission_keys.dart` updated; `PermissionKeys.all`
+  size goes from 81 → 93
+- `docs/contracts/auth_permission_key_catalog.md` updated
+- No live runtime change; UX consumers land in `9.10`
 
 ### `9.1` Firebase Identity Platform setup + JWT verifier wiring (~5-7 days)
 
@@ -532,9 +654,9 @@ perform the live staging RLS flip once integration tests are ready.
 - MFA enforcement policy (the locked decision):
   - **All admin users (super_admin, ff_support, operator_owner,
     operator_manager) must enroll MFA at every tier**
-  - **All users (including operator_supervisor + operator_staff)
-    must enroll MFA at Premium / Pro / Enterprise tier**
-  - Pilot / Starter operators may opt staff-level users out
+  - Staff-level users do not have mandatory MFA by subscription tier
+  - Operators may let staff opt in, and sensitive actions can still
+    require fresh auth
   - Read from `operators.subscription_tier`
   - Login refused if `mfa_required = true` and no enrolled factor;
     user routed to enrollment flow
@@ -550,7 +672,7 @@ perform the live staging RLS flip once integration tests are ready.
 - Passkeys remain documented as not launch-blocking unless official Firebase /
   Identity Platform support appears before cutover
 - Recovery codes single-use; hashed at rest
-- MFA enforcement triggers at correct tiers
+- MFA enforcement triggers for admin roles without forcing staff by tier
 - MFA-removal-delay enforced; audit trail complete
 - Recovery code rate limit triggers
 
@@ -803,7 +925,7 @@ surface.
   - sub-second response on indexed queries
 - MFA enforcement policy editor:
   - per-tier defaults (locked: super_admin / ff_support / owner /
-    manager require MFA; Premium+ require MFA for all)
+    manager require MFA; staff MFA remains optional by tier)
   - per-operator override (super_admin only)
 - Scope visibility:
   - super_admin sees all operators in dropdown
@@ -817,6 +939,143 @@ surface.
   `roles_version` bump
 - Per-scope visibility enforced (ff_support cannot see other
   operators)
+
+### `9.10` Operator-facing Settings → Team UX (~7-10 days)
+
+**Status (2026-04-27):** Material UI foundation accepted. The
+operator-facing Settings tab now renders behind an injected
+`TeamScopeActor` and stays hidden by default. It includes list filters,
+dense user rows, and the first invite form. Proxy-backed data/actions,
+actor snapshot bridge, role detail, and audit detail views remain live
+follow-ups.
+
+Added 2026-04-26 after the multi-location / franchise auth audit
+identified that `9.9` covers the F&F super-admin console
+(`admin.forgeflow.app`) but **not** the operator-self-service team-
+management surface inside the operator's own Forge & Flow / Barrio
+app. This is the Toast Web / Square Dashboard / 7shifts admin-style
+experience inside the operator app itself: invite users, assign
+roles, scope to locations, time-bound grants, view audit log, all
+without F&F intervention.
+
+Depends on: `9.0a` (team.* permission keys), `9.6` (role management
+runtime), `9.7` (PermissionGate primitive), `9.8` (admin user
+lifecycle services).
+
+**Surface — Forge & Flow operator app (mobile + desktop):**
+
+- Top-level **Team** nav for multi-location operators (operator has
+  >1 location); **Settings → Team** entry-point for single-location
+  operators
+- Gated by `team.users.view` — invisible to operator_supervisor and
+  operator_staff
+- Read-mostly on mobile + emergency revoke; full edit on desktop /
+  tablet (matches Toast pattern)
+
+**Screens:**
+
+- **Team Overview** (Locations × Roles matrix dashboard):
+  - Rows = locations (this operator's locations only)
+  - Columns = role tiers (operator_owner, operator_manager,
+    operator_supervisor, operator_staff, custom)
+  - Cells = count of active users in that (location, role) bucket
+  - "Pending invites" lane; "Last 7 days activity" lane
+- **Users list:**
+  - Filter by location / role / status / last-active / has-MFA /
+    invite-pending
+  - Per-user row: avatar, display_name, primary_location, primary_role,
+    last_active_at, MFA badge, status badge
+  - Actions: view detail, edit roles, deactivate, reactivate,
+    soft-delete, reset password, force-logout-all-sessions
+- **User detail page:**
+  - Profile (first_name, last_name, display_name, email, avatar,
+    preferred_locale)
+  - Active role grants table (role / location / valid_from /
+    valid_until / granted_by); revoke action per row
+  - Add-role surface: role + location multi-select + valid_until
+    date picker
+  - Activity tab: per-user audit log slice (last login, role
+    changes, deactivations) — read-only; queries
+    `auth_events_audit` filtered to this `target_user_id` within
+    own operator
+- **Invite flow** (single-screen modal):
+  - Email + role + locations multi-select + optional message +
+    optional valid_until
+  - **Three-tier scope picker** per grant: "All current and future
+    locations" / "Specific locations (chips)" / "Single location"
+    (the Square pattern; maps to `user_roles.scope_type`)
+  - Bulk invite: paste email list, assign role + scope, submit;
+    diff preview before commit, partial-success allowed
+  - Sends Firebase magic-link via 9.8 invite service
+- **Roles list (operator-scoped):**
+  - List of seeded roles (read-only) + operator's custom roles
+    (editable for `operator_owner`)
+  - Create custom role flow (clone-and-edit a seeded role; rename;
+    edit role-permission matrix)
+  - Delete custom role (gated; rejects if active grants — must
+    revoke first)
+- **Role-permission matrix editor** (operator_owner only):
+  - Same dense controller from 9.9 (`RolePermissionMatrixController`)
+    consumed in operator-app context
+  - Rows = permission keys (grouped by category); columns = this
+    operator's custom roles; cells = allow / deny / inherit
+  - Diff vs baseline; revert all
+- **Audit log viewer (own operator):**
+  - Same controller as 9.9 (`AuditLogCsvExport`) but filtered to
+    own operator
+  - CSV export gated by `team.audit_log.view`; every export emits
+    an audit event
+- **Role-grant scope visibility (Simphony-style):**
+  - `operator_owner` sees and manages all team in own operator,
+    across all locations
+  - `operator_manager` (with `team.*` perms) sees and manages only
+    users at locations where the manager has an active role grant
+  - `operator_supervisor` and `operator_staff` cannot see Team nav
+
+**Permission gates** (consumes `9.0a` `team.*` keys):
+
+- `team.users.view` — Team nav + screens visible
+- `team.users.invite` — invite flow visible
+- `team.users.deactivate` — deactivate action visible
+- `team.users.reactivate` — reactivate action visible
+- `team.users.soft_delete` — soft-delete action visible (operator_owner only by default)
+- `team.users.reset_password` — reset-password action visible
+- `team.roles.view` — Roles list visible
+- `team.roles.create_custom` — create custom role action (operator_owner only)
+- `team.roles.assign` — add-role surface visible
+- `team.roles.revoke` — revoke-role surface visible
+- `team.audit_log.view` — audit log tab + export visible
+- `team.session.force_logout` — force-logout action visible
+
+Sensitive actions (`team.users.soft_delete`, `team.roles.create_custom`,
+`team.users.reset_password`) layer step-up auth via the
+`PermissionGate` MFA-fresh check from 9.7.
+
+**Mobile vs desktop UX rule:**
+
+- Mobile: read-mostly. Allowed actions: view team, view user, view
+  audit log, force-logout-emergency. Edit/grant/revoke routes
+  redirect to "open on tablet/desktop" with deep link.
+- Desktop / tablet (web view of operator app, or larger Flutter
+  layouts): full edit + grant + revoke + role matrix.
+
+**Acceptance:**
+
+- operator_owner can invite a user, scope to a specific location,
+  set valid_until 14 days out, and revoke before expiry — all from
+  inside the Forge & Flow app, no F&F admin involvement
+- operator_manager (with `team.*` perms granted) can manage users
+  at their own assigned locations only
+- operator_supervisor + operator_staff cannot see Team nav
+- All actions write `auth_events_audit` rows visible in the
+  operator's own audit log viewer
+- Locations × Roles matrix loads in <500ms for an operator with up
+  to 50 locations and 500 users (uses `user_roles_tenant_lookup_idx`
+  composite index from 9.0)
+- Mobile shows read-mostly view; edit actions deep-link to desktop
+- Materialized `user_effective_permissions` view considered as
+  perf optimization if 50+ location operators see >500ms first-paint;
+  not built unless metrics demand
 
 ## Future Extensions (Out of Phase 9 Scope)
 
@@ -878,7 +1137,16 @@ unchanged.
 - Permission enforcement on Forge & Flow + Barrio screens / actions
 - Admin user lifecycle (invite, deactivate, soft-delete, reset)
 - GDPR right-to-erasure procedure
-- Admin role console UX inside `admin.forgeflow.app`
+- Admin role console UX inside `admin.forgeflow.app` (F&F super-admin
+  / ff_support audience; 9.9)
+- **Operator-facing Settings → Team UX inside the Forge & Flow /
+  Barrio operator app** (operator_owner / operator_manager audience;
+  9.10) — separate surface from 9.9; covers operator-self-service
+  team management
+- **Multi-location scale-flow extensions** (9.0a): `user_roles.scope_type`
+  enum, `users.primary_location_id` denormalization,
+  `operators.region` forward-compat, and `team.*` permission key
+  category
 
 **Phase 9 does NOT own:**
 

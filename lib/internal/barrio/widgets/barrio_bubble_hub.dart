@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'barrio_destination_scaffold.dart';
+import '../routes/barrio_destination_visibility_resolver.dart';
 import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
 
@@ -123,11 +124,20 @@ class BarrioBubbleHub extends StatefulWidget {
   final ValueChanged<BarrioDestination> onDestinationTap;
   final BarrioPreviewRole previewRole;
 
+  /// B18: production hook for the live permission system.
+  /// When non-null, the resolver overrides the legacy
+  /// `previewRole.isIntendedFor(dest)` decision per destination.
+  /// Production wires `PermissionContextBarrioVisibilityResolver`
+  /// (over `PermissionContext`); dev / preview leaves this null
+  /// so the chip-driven preview-role still works.
+  final BarrioDestinationVisibilityResolver? visibilityResolver;
+
   const BarrioBubbleHub({
     super.key,
     required this.destinations,
     required this.onDestinationTap,
     this.previewRole = BarrioPreviewRole.admin,
+    this.visibilityResolver,
   });
 
   @override
@@ -422,7 +432,13 @@ class _BarrioBubbleHubState extends State<BarrioBubbleHub>
     final left = position.dx - radius;
     final top = position.dy - radius;
 
-    final isIntended = widget.previewRole.isIntendedFor(dest);
+    // B18: prefer the production visibility resolver when wired,
+    // otherwise fall back to the preview-role tier so dev / preview
+    // shells still respect the chip selection.
+    final resolver = widget.visibilityResolver;
+    final isIntended = resolver != null
+        ? resolver.isVisible(dest)
+        : widget.previewRole.isIntendedFor(dest);
     final isDimmed = !isIntended && !dest.comingSoon;
     final isPressed = _pressedIds.contains(dest.id);
 

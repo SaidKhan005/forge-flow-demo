@@ -167,6 +167,7 @@
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
+				F9A000000000000000000001 /* Copy Firebase Config */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 			);
@@ -242,6 +243,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		F9A000000000000000000001 /* Copy Firebase Config */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow.plist",
+				"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio.plist",
+			);
+			name = "Copy Firebase Config";
+			outputPaths = (
+				"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\ncase \"${PRODUCT_BUNDLE_IDENTIFIER}\" in\n  com.forgeflow.barrio)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-Barrio.plist\"\n    ;;\n  *)\n    FIREBASE_PLIST=\"${PROJECT_DIR}/Runner/Firebase/GoogleService-Info-ForgeFlow.plist\"\n    ;;\nesac\nif [ ! -f \"$FIREBASE_PLIST\" ]; then\n  echo \"Missing Firebase plist: $FIREBASE_PLIST\" >&2\n  exit 1\nfi\ncp \"$FIREBASE_PLIST\" \"${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist\"\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;

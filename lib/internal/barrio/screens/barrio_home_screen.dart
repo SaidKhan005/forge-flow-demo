@@ -2,9 +2,13 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
+import '../../../state/auth_session_notifier.dart';
+import '../routes/barrio_destination_visibility_resolver.dart';
 import '../routes/barrio_destinations.dart';
 import '../routes/barrio_preview_role.dart';
 import '../routes/barrio_route_map.dart';
+import '../../../state/permission_context.dart';
 import '../widgets/barrio_destination_scaffold.dart';
 import '../widgets/barrio_bubble_hub.dart';
 import 'el_podio_screen.dart';
@@ -24,8 +28,38 @@ class BarrioHomeScreen extends StatefulWidget {
 
 class _BarrioHomeScreenState extends State<BarrioHomeScreen>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  BarrioPreviewRole _previewRole = BarrioPreviewRole.admin;
+  // Phase 9.3: when an auth session is live, the preview role is
+  // derived from `BarrioPreviewRole.fromAuthRoles(session.roles)`.
+  // This local override is used in two cases:
+  //
+  //   1. Dev / preview mode (no AuthSessionNotifier in the tree).
+  //   2. The role chips below — preserved as a dev-only override so
+  //      design and learning surfaces keep their preview tooling.
+  //
+  // Real permission gating (allow / deny across catalog keys) lands
+  // in 9.7. 9.3 only wires the read direction so authenticated
+  // sessions feed the existing preview surface.
+  BarrioPreviewRole? _previewRoleOverride;
   bool _animationsEnabled = true;
+
+  BarrioPreviewRole _resolvePreviewRole(BuildContext context) {
+    final override = _previewRoleOverride;
+    if (override != null) return override;
+    AuthSessionNotifier? notifier;
+    try {
+      notifier = Provider.of<AuthSessionNotifier>(context, listen: true);
+    } on ProviderNotFoundException {
+      notifier = null;
+    }
+    if (notifier == null) {
+      return BarrioPreviewRole.admin;
+    }
+    final session = notifier.session;
+    if (session == null) {
+      return BarrioPreviewRole.admin;
+    }
+    return BarrioPreviewRole.fromAuthRoles(session.roles);
+  }
 
   // Colour-temperature scrim breathing — 12s loop shifting the bottom
   // gradient between warm golden (#1A0A00) and cool midnight (#0A0A1A).
@@ -179,8 +213,9 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
                   children: [
                     RepaintBoundary(
                       child: _BarrioHeader(
-                        previewRole: _previewRole,
-                        onRoleChanged: (r) => setState(() => _previewRole = r),
+                        previewRole: _resolvePreviewRole(context),
+                        onRoleChanged: (r) =>
+                            setState(() => _previewRoleOverride = r),
                       ),
                     ),
                     RepaintBoundary(
@@ -199,15 +234,42 @@ class _BarrioHomeScreenState extends State<BarrioHomeScreen>
                       child: Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                         child: RepaintBoundary(
-                          child: BarrioBubbleHub(
-                            destinations: homeDestinations,
-                            previewRole: _previewRole,
-                            onDestinationTap: (dest) =>
-                                BarrioRouteMap.navigateTo(
-                                  context,
-                                  dest,
-                                  previewRole: _previewRole,
-                                ),
+                          child: Builder(
+                            builder: (innerCtx) {
+                              final role = _resolvePreviewRole(innerCtx);
+                              // B18: when a PermissionContext is wired
+                              // by production bootstrap, prefer the
+                              // permission-runtime resolver over the
+                              // preview-role tier; otherwise leave
+                              // null so the chip-driven preview-role
+                              // still works in dev / demo.
+                              PermissionContext? permissionContext;
+                              try {
+                                permissionContext =
+                                    Provider.of<PermissionContext>(
+                                      innerCtx,
+                                      listen: true,
+                                    );
+                              } on ProviderNotFoundException {
+                                permissionContext = null;
+                              }
+                              final resolver = permissionContext != null
+                                  ? PermissionContextBarrioVisibilityResolver(
+                                      context: permissionContext,
+                                    )
+                                  : null;
+                              return BarrioBubbleHub(
+                                destinations: homeDestinations,
+                                previewRole: role,
+                                visibilityResolver: resolver,
+                                onDestinationTap: (dest) =>
+                                    BarrioRouteMap.navigateTo(
+                                      innerCtx,
+                                      dest,
+                                      previewRole: role,
+                                    ),
+                              );
+                            },
                           ),
                         ),
                       ),

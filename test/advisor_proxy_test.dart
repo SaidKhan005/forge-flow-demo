@@ -16,8 +16,11 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:pointycastle/pointycastle.dart' as pc;
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
 
@@ -1209,80 +1212,88 @@ void main() {
       normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
     });
 
-    test('migration file follows the Contextual Retrieval telemetry migration',
-        () {
-      expect(
-        migrationNames,
-        contains('202604250007_advisor_rls_index_hardening.sql'),
-      );
-      expect(
-        migrationNames.indexOf('202604250007_advisor_rls_index_hardening.sql'),
-        equals(
+    test(
+      'migration file follows the Contextual Retrieval telemetry migration',
+      () {
+        expect(
+          migrationNames,
+          contains('202604250007_advisor_rls_index_hardening.sql'),
+        );
+        expect(
           migrationNames.indexOf(
-                '202604250006_advisor_contextual_retrieval_telemetry.sql',
-              ) +
-              1,
-        ),
-      );
-    });
+            '202604250007_advisor_rls_index_hardening.sql',
+          ),
+          equals(
+            migrationNames.indexOf(
+                  '202604250006_advisor_contextual_retrieval_telemetry.sql',
+                ) +
+                1,
+          ),
+        );
+      },
+    );
 
-    test('advisor_proxy_usage_counters final primary key is tenant-leading',
-        () {
-      expect(
-        normalizedMigration,
-        contains(
-          'alter table public.advisor_proxy_usage_counters drop constraint '
-          'if exists advisor_proxy_usage_counters_pkey',
-        ),
-      );
-      expect(
-        normalizedMigration,
-        contains(
-          'add constraint advisor_proxy_usage_counters_pkey primary key '
-          '(operator_id, location_id, tier_id, minute_bucket)',
-        ),
-      );
-      expect(
-        normalizedMigration,
-        contains(
-          'advisor_proxy_usage_counters_counter_lookup_idx on '
-          'public.advisor_proxy_usage_counters (operator_id, location_id, '
-          'counter_id)',
-        ),
-      );
-    });
+    test(
+      'advisor_proxy_usage_counters final primary key is tenant-leading',
+      () {
+        expect(
+          normalizedMigration,
+          contains(
+            'alter table public.advisor_proxy_usage_counters drop constraint '
+            'if exists advisor_proxy_usage_counters_pkey',
+          ),
+        );
+        expect(
+          normalizedMigration,
+          contains(
+            'add constraint advisor_proxy_usage_counters_pkey primary key '
+            '(operator_id, location_id, tier_id, minute_bucket)',
+          ),
+        );
+        expect(
+          normalizedMigration,
+          contains(
+            'advisor_proxy_usage_counters_counter_lookup_idx on '
+            'public.advisor_proxy_usage_counters (operator_id, location_id, '
+            'counter_id)',
+          ),
+        );
+      },
+    );
 
-    test('proxy_requests final primary and idempotency keys are tenant-leading',
-        () {
-      expect(
-        normalizedMigration,
-        contains(
-          'alter table public.proxy_requests drop constraint if exists '
-          'proxy_requests_idempotency_key_key',
-        ),
-      );
-      expect(
-        normalizedMigration,
-        contains(
-          'add constraint proxy_requests_pkey primary key '
-          '(operator_id, location_id, request_id)',
-        ),
-      );
-      expect(
-        normalizedMigration,
-        contains(
-          'add constraint proxy_requests_operator_location_idempotency_key_key '
-          'unique (operator_id, location_id, idempotency_key)',
-        ),
-      );
-      expect(
-        normalizedMigration,
-        contains(
-          'proxy_requests_operator_location_created_idx on '
-          'public.proxy_requests (operator_id, location_id, created_at)',
-        ),
-      );
-    });
+    test(
+      'proxy_requests final primary and idempotency keys are tenant-leading',
+      () {
+        expect(
+          normalizedMigration,
+          contains(
+            'alter table public.proxy_requests drop constraint if exists '
+            'proxy_requests_idempotency_key_key',
+          ),
+        );
+        expect(
+          normalizedMigration,
+          contains(
+            'add constraint proxy_requests_pkey primary key '
+            '(operator_id, location_id, request_id)',
+          ),
+        );
+        expect(
+          normalizedMigration,
+          contains(
+            'add constraint proxy_requests_operator_location_idempotency_key_key '
+            'unique (operator_id, location_id, idempotency_key)',
+          ),
+        );
+        expect(
+          normalizedMigration,
+          contains(
+            'proxy_requests_operator_location_created_idx on '
+            'public.proxy_requests (operator_id, location_id, created_at)',
+          ),
+        );
+      },
+    );
   });
 
   group('Phase 9 auth schema foundation migration (9.0)', () {
@@ -1337,22 +1348,24 @@ void main() {
       ).readAsStringSync();
     });
 
-    test('migration is the next deterministic file after 11a.11c.6 hardening',
-        () {
-      expect(
-        migrationNames,
-        contains('202604250008_auth_schema_foundation.sql'),
-      );
-      expect(
-        migrationNames.indexOf('202604250008_auth_schema_foundation.sql'),
-        equals(
-          migrationNames.indexOf(
-                '202604250007_advisor_rls_index_hardening.sql',
-              ) +
-              1,
-        ),
-      );
-    });
+    test(
+      'migration is the next deterministic file after 11a.11c.6 hardening',
+      () {
+        expect(
+          migrationNames,
+          contains('202604250008_auth_schema_foundation.sql'),
+        );
+        expect(
+          migrationNames.indexOf('202604250008_auth_schema_foundation.sql'),
+          equals(
+            migrationNames.indexOf(
+                  '202604250007_advisor_rls_index_hardening.sql',
+                ) +
+                1,
+          ),
+        );
+      },
+    );
 
     test('every new auth table is created with `if not exists`', () {
       for (final table in newAuthTables) {
@@ -1425,71 +1438,75 @@ void main() {
       );
     });
 
-    test('operator_admins is extended and gets a composite scope-location FK',
-        () {
-      expect(migration, contains('add column if not exists scope_type text'));
-      // scope_type is added nullable, backfilled, then SET NOT NULL so
-      // existing rows do not violate NOT NULL on first apply.
-      expect(
-        normalizedMigration,
-        contains('alter column scope_type set not null'),
-      );
-      for (final scope in <String>[
-        'super_admin',
-        'ff_support',
-        'operator_owner',
-        'operator_manager',
-      ]) {
+    test(
+      'operator_admins is extended and gets a composite scope-location FK',
+      () {
+        expect(migration, contains('add column if not exists scope_type text'));
+        // scope_type is added nullable, backfilled, then SET NOT NULL so
+        // existing rows do not violate NOT NULL on first apply.
+        expect(
+          normalizedMigration,
+          contains('alter column scope_type set not null'),
+        );
+        for (final scope in <String>[
+          'super_admin',
+          'ff_support',
+          'operator_owner',
+          'operator_manager',
+        ]) {
+          expect(
+            migration,
+            contains("'$scope'"),
+            reason: 'missing operator_admins.scope_type value $scope',
+          );
+        }
         expect(
           migration,
-          contains("'$scope'"),
-          reason: 'missing operator_admins.scope_type value $scope',
+          contains('add column if not exists scope_location_id uuid null'),
         );
-      }
-      expect(
-        migration,
-        contains('add column if not exists scope_location_id uuid null'),
-      );
-      expect(
-        migration,
-        contains(
-          'add column if not exists valid_from timestamptz not null '
-          'default now()',
-        ),
-      );
-      expect(
-        migration,
-        contains('add column if not exists valid_until timestamptz null'),
-      );
-      // Composite FK rejects (operator_a, location_b) cross-tenant
-      // mismatches at the DB layer.
-      expect(
-        normalizedMigration,
-        contains(
-          'add constraint operator_admins_scope_location_fk foreign key '
-          '(operator_id, scope_location_id) references '
-          'public.locations(operator_id, location_id) on delete cascade',
-        ),
-      );
-    });
+        expect(
+          migration,
+          contains(
+            'add column if not exists valid_from timestamptz not null '
+            'default now()',
+          ),
+        );
+        expect(
+          migration,
+          contains('add column if not exists valid_until timestamptz null'),
+        );
+        // Composite FK rejects (operator_a, location_b) cross-tenant
+        // mismatches at the DB layer.
+        expect(
+          normalizedMigration,
+          contains(
+            'add constraint operator_admins_scope_location_fk foreign key '
+            '(operator_id, scope_location_id) references '
+            'public.locations(operator_id, location_id) on delete cascade',
+          ),
+        );
+      },
+    );
 
-    test('legacy users.role column is migrated into user_roles and dropped',
-        () {
-      // The DO block guards the backfill on column existence so re-runs
-      // after the column was already dropped are safe.
-      expect(
-        migration,
-        contains(
-          "where table_schema = 'public'\n       and table_name = 'users'\n"
-          "       and column_name = 'role'",
-        ),
-      );
-      expect(migration, contains('insert into public.user_roles'));
-      expect(
-        migration,
-        contains('alter table public.users drop column role'),
-      );
-    });
+    test(
+      'legacy users.role column is migrated into user_roles and dropped',
+      () {
+        // The DO block guards the backfill on column existence so re-runs
+        // after the column was already dropped are safe.
+        expect(
+          migration,
+          contains(
+            "where table_schema = 'public'\n       and table_name = 'users'\n"
+            "       and column_name = 'role'",
+          ),
+        );
+        expect(migration, contains('insert into public.user_roles'));
+        expect(
+          migration,
+          contains('alter table public.users drop column role'),
+        );
+      },
+    );
 
     test('roles uses partial unique indexes to handle null operator_id', () {
       // Plain UNIQUE treats NULL as distinct, so global (operator_id IS
@@ -1512,45 +1529,42 @@ void main() {
       );
     });
 
-    test(
-      'user_roles_active_grant_idx is tenant-leading and supports the same '
-      'user holding the same role across different operators',
-      () {
-        // Tenant-leading composite blocks duplicate active grants within
-        // one (operator, user, role, location) scope while permitting
-        // the same user to hold the same role across different
-        // operators. COALESCE collapses NULL location_id (operator-wide
-        // grant) into a single uniqueness slot.
-        expect(
-          normalizedMigration,
+    test('user_roles_active_grant_idx is tenant-leading and supports the same '
+        'user holding the same role across different operators', () {
+      // Tenant-leading composite blocks duplicate active grants within
+      // one (operator, user, role, location) scope while permitting
+      // the same user to hold the same role across different
+      // operators. COALESCE collapses NULL location_id (operator-wide
+      // grant) into a single uniqueness slot.
+      expect(
+        normalizedMigration,
+        contains(
+          'create unique index if not exists user_roles_active_grant_idx '
+          'on public.user_roles ( operator_id, user_id, role_id, '
+          "coalesce(location_id, '00000000-0000-0000-0000-000000000000'"
+          '::uuid) ) where revoked_at is null',
+        ),
+      );
+      // The drop-then-create pattern is required so a re-apply over the
+      // pre-fix shape (where the index led with user_id) replaces it
+      // rather than skipping via `if not exists`.
+      expect(
+        normalizedMigration,
+        contains('drop index if exists public.user_roles_active_grant_idx'),
+      );
+      // Regression guard: the old user_id-leading composite must not
+      // resurface. A revert to the pre-fix shape would fail this check
+      // because operator_id would no longer be the first column.
+      expect(
+        normalizedMigration,
+        isNot(
           contains(
-            'create unique index if not exists user_roles_active_grant_idx '
-            'on public.user_roles ( operator_id, user_id, role_id, '
-            "coalesce(location_id, '00000000-0000-0000-0000-000000000000'"
-            '::uuid) ) where revoked_at is null',
+            'user_roles_active_grant_idx on public.user_roles '
+            '( user_id, role_id,',
           ),
-        );
-        // The drop-then-create pattern is required so a re-apply over the
-        // pre-fix shape (where the index led with user_id) replaces it
-        // rather than skipping via `if not exists`.
-        expect(
-          normalizedMigration,
-          contains('drop index if exists public.user_roles_active_grant_idx'),
-        );
-        // Regression guard: the old user_id-leading composite must not
-        // resurface. A revert to the pre-fix shape would fail this check
-        // because operator_id would no longer be the first column.
-        expect(
-          normalizedMigration,
-          isNot(
-            contains(
-              'user_roles_active_grant_idx on public.user_roles '
-              '( user_id, role_id,',
-            ),
-          ),
-        );
-      },
-    );
+        ),
+      );
+    });
 
     test(
       'auth_events_audit actor/target lookup indexes lead with operator_id',
@@ -1613,27 +1627,24 @@ void main() {
       },
     );
 
-    test(
-      'operator-scoped tables carry tenant-leading indexes per RLS '
-      'performance discipline',
-      () {
-        const tenantLeadingIndexes = <String>[
-          'user_roles_tenant_lookup_idx on public.user_roles (operator_id, location_id, user_id)',
-          'tncs_acceptances_operator_user_idx on public.tncs_acceptances (operator_id, user_id, accepted_at)',
-          'auth_invites_operator_expires_idx on public.auth_invites (operator_id, expires_at)',
-          'auth_events_audit_operator_occurred_idx on public.auth_events_audit (operator_id, occurred_at desc) where operator_id is not null',
-          'external_identity_links_operator_user_idx on public.external_identity_links (operator_id, user_id)',
-          'users_operator_status_idx on public.users (operator_id, status) where deleted_at is null',
-        ];
-        for (final fragment in tenantLeadingIndexes) {
-          expect(
-            normalizedMigration,
-            contains(fragment),
-            reason: 'missing tenant-leading index fragment: $fragment',
-          );
-        }
-      },
-    );
+    test('operator-scoped tables carry tenant-leading indexes per RLS '
+        'performance discipline', () {
+      const tenantLeadingIndexes = <String>[
+        'user_roles_tenant_lookup_idx on public.user_roles (operator_id, location_id, user_id)',
+        'tncs_acceptances_operator_user_idx on public.tncs_acceptances (operator_id, user_id, accepted_at)',
+        'auth_invites_operator_expires_idx on public.auth_invites (operator_id, expires_at)',
+        'auth_events_audit_operator_occurred_idx on public.auth_events_audit (operator_id, occurred_at desc) where operator_id is not null',
+        'external_identity_links_operator_user_idx on public.external_identity_links (operator_id, user_id)',
+        'users_operator_status_idx on public.users (operator_id, status) where deleted_at is null',
+      ];
+      for (final fragment in tenantLeadingIndexes) {
+        expect(
+          normalizedMigration,
+          contains(fragment),
+          reason: 'missing tenant-leading index fragment: $fragment',
+        );
+      }
+    });
 
     test('external_identity_links carries vendor-scoped composite UNIQUE '
         'partials (NOT auth source-of-truth, but per-vendor identity is '
@@ -1658,26 +1669,28 @@ void main() {
       );
     });
 
-    test('every new auth table has RLS enabled and a service-role policy stub',
-        () {
-      for (final table in newAuthTables) {
-        expect(
-          migration,
-          contains('alter table public.$table enable row level security'),
-          reason: 'RLS must be enabled on $table',
-        );
-        // Either a `*_service_role_all` stub (writable) or the
-        // append-only INSERT/SELECT split for audit tables. Both
-        // forms include the table name as a policy-name prefix.
-        expect(
-          migration,
-          contains('${table}_service_role_'),
-          reason: 'service-role policy stub must exist for $table',
-        );
-      }
-      // Every policy stub targets the service_role role.
-      expect(migration, contains('to service_role'));
-    });
+    test(
+      'every new auth table has RLS enabled and a service-role policy stub',
+      () {
+        for (final table in newAuthTables) {
+          expect(
+            migration,
+            contains('alter table public.$table enable row level security'),
+            reason: 'RLS must be enabled on $table',
+          );
+          // Either a `*_service_role_all` stub (writable) or the
+          // append-only INSERT/SELECT split for audit tables. Both
+          // forms include the table name as a policy-name prefix.
+          expect(
+            migration,
+            contains('${table}_service_role_'),
+            reason: 'service-role policy stub must exist for $table',
+          );
+        }
+        // Every policy stub targets the service_role role.
+        expect(migration, contains('to service_role'));
+      },
+    );
 
     test('audit tables are append-only by grant shape', () {
       // auth_events_audit: REVOKE UPDATE, DELETE FROM PUBLIC + service_role;
@@ -1703,9 +1716,7 @@ void main() {
       // role_audit_log: same grant shape.
       expect(
         normalizedMigration,
-        contains(
-          'revoke update, delete on public.role_audit_log from public',
-        ),
+        contains('revoke update, delete on public.role_audit_log from public'),
       );
       expect(
         normalizedMigration,
@@ -1722,10 +1733,7 @@ void main() {
       // The RLS policy stubs for the audit tables are SELECT/INSERT
       // only — no FOR ALL stub that would tempt a future change to
       // also grant UPDATE / DELETE.
-      expect(
-        migration,
-        contains('auth_events_audit_service_role_append_only'),
-      );
+      expect(migration, contains('auth_events_audit_service_role_append_only'));
       expect(migration, contains('auth_events_audit_service_role_select'));
       expect(migration, contains('role_audit_log_service_role_append_only'));
       expect(migration, contains('role_audit_log_service_role_select'));
@@ -1748,10 +1756,7 @@ void main() {
 
     test('permission catalog seed is a single insert into permission_keys '
         'and includes one key per documented category', () {
-      expect(
-        migration,
-        contains('insert into public.permission_keys'),
-      );
+      expect(migration, contains('insert into public.permission_keys'));
       // Sample one key per category to confirm coverage.
       const samplePerCategory = <String, String>{
         'product': 'product.forgeflow.access',
@@ -1771,46 +1776,48 @@ void main() {
       });
     });
 
-    test('every key from PermissionKeys.all is seeded into permission_keys',
-        () {
-      // Pull `'literal'` strings out of the constants file. The
-      // PermissionKeys class is constants-only so every quoted literal
-      // is a permission key (or a baseline role key). Filtering on
-      // the catalog category prefixes keeps role-key strings out.
-      final keyPattern = RegExp(r"'([a-z][a-z0-9_]*\.[a-z0-9_.]+)'");
-      final keys = keyPattern
-          .allMatches(permissionKeysSource)
-          .map((m) => m.group(1)!)
-          .where(
-            (key) =>
-                key.startsWith('product.') ||
-                key.startsWith('forgeflow.') ||
-                key.startsWith('barrio.') ||
-                key.startsWith('admin.') ||
-                key.startsWith('billing.') ||
-                key.startsWith('integration.') ||
-                key.startsWith('workflow.'),
-          )
-          .toSet();
-      // Sanity floor — the constants file must declare at least the
-      // ~80 keys the plan calls for. If this trips, the constants
-      // file lost coverage somewhere.
-      expect(
-        keys.length,
-        greaterThanOrEqualTo(75),
-        reason:
-            'PermissionKeys.dart should declare ~80 permission keys; '
-            'found ${keys.length}',
-      );
-      // Every key declared in constants must be seeded by the migration.
-      for (final key in keys) {
+    test(
+      'every key from PermissionKeys.all is seeded into permission_keys',
+      () {
+        // Pull `'literal'` strings out of the constants file. The
+        // PermissionKeys class is constants-only so every quoted literal
+        // is a permission key (or a baseline role key). Filtering on
+        // the catalog category prefixes keeps role-key strings out.
+        final keyPattern = RegExp(r"'([a-z][a-z0-9_]*\.[a-z0-9_.]+)'");
+        final keys = keyPattern
+            .allMatches(permissionKeysSource)
+            .map((m) => m.group(1)!)
+            .where(
+              (key) =>
+                  key.startsWith('product.') ||
+                  key.startsWith('forgeflow.') ||
+                  key.startsWith('barrio.') ||
+                  key.startsWith('admin.') ||
+                  key.startsWith('billing.') ||
+                  key.startsWith('integration.') ||
+                  key.startsWith('workflow.'),
+            )
+            .toSet();
+        // Sanity floor — the constants file must declare at least the
+        // ~80 keys the plan calls for. If this trips, the constants
+        // file lost coverage somewhere.
         expect(
-          migration,
-          contains("'$key'"),
-          reason: 'PermissionKeys constant $key not seeded by migration',
+          keys.length,
+          greaterThanOrEqualTo(75),
+          reason:
+              'PermissionKeys.dart should declare ~80 permission keys; '
+              'found ${keys.length}',
         );
-      }
-    });
+        // Every key declared in constants must be seeded by the migration.
+        for (final key in keys) {
+          expect(
+            migration,
+            contains("'$key'"),
+            reason: 'PermissionKeys constant $key not seeded by migration',
+          );
+        }
+      },
+    );
 
     test('MFA-required keys are flagged in the migration with requires_mfa '
         'true and documented in the catalog contract', () {
@@ -1827,9 +1834,7 @@ void main() {
         // The seed row for an MFA-required key carries `true, true` at
         // the (requires_mfa, frozen) tail of the values tuple.
         final escapedKey = RegExp.escape(key);
-        final pattern = RegExp(
-          "'$escapedKey',[\\s\\S]*?true,\\s*true\\b",
-        );
+        final pattern = RegExp("'$escapedKey',[\\s\\S]*?true,\\s*true\\b");
         expect(
           pattern.hasMatch(migration),
           isTrue,
@@ -1838,8 +1843,7 @@ void main() {
         expect(
           catalogContract,
           contains(key),
-          reason:
-              'MFA-required key $key missing from catalog contract doc',
+          reason: 'MFA-required key $key missing from catalog contract doc',
         );
       }
     });
@@ -1883,17 +1887,19 @@ void main() {
       );
     });
 
-    test('migration does not introduce pgmq, Firebase config, or live calls',
-        () {
-      // pgmq is not exposed by Azure flexible server; the queue-provider
-      // choice is locked to FOR UPDATE SKIP LOCKED + Cloud Tasks (see
-      // CLAUDE.md). The 9.0 schema must not reintroduce it.
-      expect(migration.toLowerCase(), isNot(contains('pgmq')));
-      // 9.0 is schema-only/local-first. Firebase wiring belongs to 9.1.
-      expect(migration.toLowerCase(), isNot(contains('firebase_admin')));
-      expect(migration.toLowerCase(), isNot(contains('http://')));
-      expect(migration.toLowerCase(), isNot(contains('https://')));
-    });
+    test(
+      'migration does not introduce pgmq, Firebase config, or live calls',
+      () {
+        // pgmq is not exposed by Azure flexible server; the queue-provider
+        // choice is locked to FOR UPDATE SKIP LOCKED + Cloud Tasks (see
+        // CLAUDE.md). The 9.0 schema must not reintroduce it.
+        expect(migration.toLowerCase(), isNot(contains('pgmq')));
+        // 9.0 is schema-only/local-first. Firebase wiring belongs to 9.1.
+        expect(migration.toLowerCase(), isNot(contains('firebase_admin')));
+        expect(migration.toLowerCase(), isNot(contains('http://')));
+        expect(migration.toLowerCase(), isNot(contains('https://')));
+      },
+    );
   });
 
   group('ScaffoldRejectingJwtVerifier (hard-fail-closed default)', () {
@@ -1924,6 +1930,475 @@ void main() {
     });
   });
 
+  group('ProxyConfig.firebaseProjectId (9.1)', () {
+    Map<String, String> environmentWithAllSecrets({String? projectId}) {
+      return <String, String>{
+        ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+        ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+        ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
+        ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
+        if (projectId != null) ProxyConfigNames.firebaseProjectId: projectId,
+      };
+    }
+
+    test('FIREBASE_PROJECT_ID absent -> null and proxy config still loads', () {
+      final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+      expect(config.firebaseProjectId, isNull);
+      // Required secrets still validated; project ID is optional.
+      expect(
+        config.loadedSecretNames,
+        containsAll(<String>[
+          ProxySecretNames.anthropicApiKey,
+          ProxySecretNames.voyageApiKey,
+          ProxySecretNames.postgresUrl,
+          ProxySecretNames.postgresAdminUrl,
+        ]),
+      );
+    });
+
+    test('FIREBASE_PROJECT_ID blank -> null (treated like absent)', () {
+      final config = ProxyConfig.fromEnvironment(
+        environmentWithAllSecrets(projectId: '   '),
+      );
+      expect(config.firebaseProjectId, isNull);
+    });
+
+    test('FIREBASE_PROJECT_ID present -> loaded and trimmed', () {
+      final config = ProxyConfig.fromEnvironment(
+        environmentWithAllSecrets(projectId: '  forge-flow-staging  '),
+      );
+      expect(config.firebaseProjectId, equals('forge-flow-staging'));
+    });
+
+    test('toString reports firebase_project_id by SET/UNSET marker only', () {
+      const projectId = 'forge-flow-staging';
+      final unset = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+      final set = ProxyConfig.fromEnvironment(
+        environmentWithAllSecrets(projectId: projectId),
+      );
+      expect(unset.toString(), contains('firebase_project_id: unset'));
+      expect(set.toString(), contains('firebase_project_id: set'));
+      // Even though the project ID is a public identifier we keep the
+      // toString convention to "names-only" so log audit grep stays
+      // simple — no value should appear in toString.
+      expect(set.toString(), isNot(contains(projectId)));
+    });
+  });
+
+  group('ScaffoldFailingRs256SignatureValidator (9.1 fail-closed default)', () {
+    test('throws StateError on every call so production fails closed', () {
+      const validator = ScaffoldFailingRs256SignatureValidator();
+      expect(
+        () => validator.verify(
+          signedInput: Uint8List.fromList(<int>[1, 2, 3]),
+          signature: Uint8List.fromList(<int>[4, 5, 6]),
+          keyMaterial: const JwtKeyMaterial(
+            pemX509Certificate: 'placeholder-cert',
+            kid: 'kid-x',
+          ),
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
+      'integrated with FirebaseProxyJwtVerifier surfaces as 401 path',
+      () async {
+        // The verifier catches StateError from the validator and
+        // re-throws as ProxyJwtVerificationError so the request guard
+        // returns 401 instead of bubbling up as a 500. This is the
+        // fail-closed contract: a misconfigured RSA backend must never
+        // turn into a silent allow OR a leaky 500.
+        final verifier = FirebaseProxyJwtVerifier(
+          projectId: 'forge-flow-staging',
+          keySource: _FixedJwksKeySource(<String, JwtKeyMaterial>{
+            'kid-x': const JwtKeyMaterial(
+              pemX509Certificate: 'placeholder',
+              kid: 'kid-x',
+            ),
+          }),
+          signatureValidator: const ScaffoldFailingRs256SignatureValidator(),
+          now: () => DateTime.utc(2026, 4, 26, 12),
+        );
+        final token = _firebaseTestToken(
+          kid: 'kid-x',
+          projectId: 'forge-flow-staging',
+          sub: 'user_abc',
+          issuedAt: DateTime.utc(2026, 4, 26, 11, 59),
+          expiresAt: DateTime.utc(2026, 4, 26, 13),
+        );
+
+        ProxyJwtVerificationError? thrown;
+        try {
+          await verifier.verify(token);
+        } on ProxyJwtVerificationError catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isNotNull);
+        expect(thrown!.message, contains('signature verification unavailable'));
+      },
+    );
+  });
+
+  group('PointyCastleRs256SignatureValidator (9.1 live crypto)', () {
+    test(
+      'verifies a real RS256 signature from x509 certificate key material',
+      () {
+        const validator = PointyCastleRs256SignatureValidator();
+        final signedInput = Uint8List.fromList(utf8.encode('header.payload'));
+        final signature = _signRs256(signedInput, _rsaFixturePrivateKey());
+
+        expect(
+          validator.verify(
+            signedInput: signedInput,
+            signature: signature,
+            keyMaterial: JwtKeyMaterial(
+              pemX509Certificate: _rsaFixtureCertificatePem(),
+              kid: 'fixture-kid',
+            ),
+          ),
+          isTrue,
+        );
+      },
+    );
+
+    test('returns false for a tampered RS256 signature', () {
+      const validator = PointyCastleRs256SignatureValidator();
+      final signedInput = Uint8List.fromList(utf8.encode('header.payload'));
+      final signature = _signRs256(signedInput, _rsaFixturePrivateKey());
+      signature[signature.length - 1] ^= 0x01;
+
+      expect(
+        validator.verify(
+          signedInput: signedInput,
+          signature: signature,
+          keyMaterial: JwtKeyMaterial(
+            pemX509Certificate: _rsaFixtureCertificatePem(),
+            kid: 'fixture-kid',
+          ),
+        ),
+        isFalse,
+      );
+    });
+
+    test('throws a non-State error for malformed PEM so verifier returns '
+        'generic signature failure', () {
+      const validator = PointyCastleRs256SignatureValidator();
+      expect(
+        () => validator.verify(
+          signedInput: Uint8List.fromList(<int>[1, 2, 3]),
+          signature: Uint8List.fromList(<int>[4, 5, 6]),
+          keyMaterial: const JwtKeyMaterial(
+            pemX509Certificate: 'not a pem block',
+            kid: 'bad-kid',
+          ),
+        ),
+        throwsA(isA<FormatException>()),
+      );
+    });
+  });
+
+  group('FirebaseProxyJwtVerifier (9.1 local Firebase ID-token verifier)', () {
+    const projectId = 'forge-flow-staging';
+    final fixedNow = DateTime.utc(2026, 4, 26, 12);
+    const goodKid = 'kid-good';
+    final keySource = _FixedJwksKeySource(<String, JwtKeyMaterial>{
+      goodKid: const JwtKeyMaterial(
+        pemX509Certificate: 'placeholder-cert',
+        kid: goodKid,
+      ),
+    });
+
+    FirebaseProxyJwtVerifier buildVerifier({
+      JwtRs256SignatureValidator? signatureValidator,
+      JwksKeySource? overrideKeySource,
+      DateTime? now,
+    }) {
+      return FirebaseProxyJwtVerifier(
+        projectId: projectId,
+        keySource: overrideKeySource ?? keySource,
+        signatureValidator:
+            signatureValidator ?? const _AlwaysAcceptRs256Validator(),
+        now: () => now ?? fixedNow,
+      );
+    }
+
+    test(
+      'happy path returns ProxyJwtClaims projected from custom claims',
+      () async {
+        final verifier = buildVerifier();
+        final token = _firebaseTestToken(
+          kid: goodKid,
+          projectId: projectId,
+          sub: 'user_abc',
+          operatorId: 'op_777',
+          locationId: 'loc_999',
+          isSuperAdmin: false,
+          isFfSupport: false,
+          rolesVersion: 7,
+          issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+          expiresAt: fixedNow.add(const Duration(hours: 1)),
+          authTime: fixedNow.subtract(const Duration(minutes: 2)),
+        );
+
+        final claims = await verifier.verify(token);
+        expect(claims.userId, equals('user_abc'));
+        expect(claims.operatorId, equals('op_777'));
+        expect(claims.locationId, equals('loc_999'));
+        expect(claims.roles, equals(<String>['roles_version:7']));
+      },
+    );
+
+    test(
+      'happy path resolves super_admin + ff_support flags into roles',
+      () async {
+        final verifier = buildVerifier();
+        final token = _firebaseTestToken(
+          kid: goodKid,
+          projectId: projectId,
+          sub: 'user_admin',
+          operatorId: 'op_777',
+          locationId: 'loc_999',
+          isSuperAdmin: true,
+          isFfSupport: true,
+          rolesVersion: 1,
+          issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+          expiresAt: fixedNow.add(const Duration(hours: 1)),
+        );
+
+        final claims = await verifier.verify(token);
+        expect(claims.roles, contains('super_admin'));
+        expect(claims.roles, contains('ff_support'));
+        expect(claims.roles, contains('roles_version:1'));
+      },
+    );
+
+    test('rejects malformed JWT with fewer than 3 segments', () async {
+      final verifier = buildVerifier();
+      await _expectVerifierError(
+        verifier.verify('not.a-jwt'),
+        contains('malformed JWT'),
+      );
+    });
+
+    test('rejects unsupported alg (HS256)', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        algOverride: 'HS256',
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('unsupported JWT alg'),
+      );
+    });
+
+    test('rejects token with missing kid header', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: '',
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('missing kid'),
+      );
+    });
+
+    test('rejects wrong issuer', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        issuerOverride: 'https://securetoken.google.com/wrong-project',
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('unexpected issuer'),
+      );
+    });
+
+    test('rejects wrong audience', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        audienceOverride: 'wrong-audience',
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('unexpected audience'),
+      );
+    });
+
+    test('rejects expired token (exp before now beyond leeway)', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(hours: 2)),
+        expiresAt: fixedNow.subtract(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('JWT expired'),
+      );
+    });
+
+    test('rejects future iat (iat ahead of now beyond leeway)', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.add(const Duration(hours: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 2)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('iat is in the future'),
+      );
+    });
+
+    test('rejects future auth_time when present', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+        authTime: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('auth_time is in the future'),
+      );
+    });
+
+    test('rejects missing sub', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: '',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(verifier.verify(token), contains('sub'));
+    });
+
+    test('rejects unknown kid (no JWK in source for given kid)', () async {
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: 'kid-unknown',
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('no matching JWK'),
+      );
+    });
+
+    test('rejects invalid signature (validator returns false)', () async {
+      final verifier = buildVerifier(
+        signatureValidator: const _AlwaysRejectRs256Validator(),
+      );
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+      );
+      await _expectVerifierError(
+        verifier.verify(token),
+        contains('signature did not verify'),
+      );
+    });
+
+    test(
+      'rejects invalid signature (validator throws non-State error)',
+      () async {
+        // Real RSA backends may surface format/parse failures as
+        // arbitrary exceptions. The verifier must NOT propagate the
+        // raw exception (could carry internal state); it surfaces a
+        // generic "signature verification failed" reason instead.
+        final verifier = buildVerifier(
+          signatureValidator: const _BoomRs256Validator(),
+        );
+        final token = _firebaseTestToken(
+          kid: goodKid,
+          projectId: projectId,
+          sub: 'user_abc',
+          issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+          expiresAt: fixedNow.add(const Duration(hours: 1)),
+        );
+        await _expectVerifierError(
+          verifier.verify(token),
+          contains('signature verification failed'),
+        );
+      },
+    );
+
+    test('rejects header that is not valid base64url', () async {
+      final verifier = buildVerifier();
+      const badToken = 'not-base64!!.payload.signature';
+      await _expectVerifierError(
+        verifier.verify(badToken),
+        contains('header is not valid base64url'),
+      );
+    });
+
+    test('verified token without operator scope still surfaces as 403 via '
+        'request guard', () async {
+      // The verifier returns claims with operator_id NULL when the
+      // custom claim is absent. ProxyRequestGuard then rejects as
+      // 403 because the scope contract requires both operator and
+      // location. Cross-tenant denial happens at the scope/RLS layer
+      // (9.2+); the verifier itself is scope-agnostic.
+      final verifier = buildVerifier();
+      final token = _firebaseTestToken(
+        kid: goodKid,
+        projectId: projectId,
+        sub: 'user_abc',
+        issuedAt: fixedNow.subtract(const Duration(minutes: 1)),
+        expiresAt: fixedNow.add(const Duration(hours: 1)),
+        operatorId: null,
+        locationId: null,
+      );
+      final guard = ProxyRequestGuard(verifier: verifier);
+
+      ProxyAuthError? thrown;
+      try {
+        await guard.requireOperatorContext(
+          authorizationHeader: 'Bearer $token',
+        );
+      } on ProxyAuthError catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isNotNull);
+      expect(thrown!.statusCode, equals(403));
+    });
+  });
+
   group('HTTP scaffold (routeRequest via local HttpServer)', () {
     // Flutter's test environment installs a global HttpOverrides that
     // returns 400 for any real HTTP call. Temporarily clear it for
@@ -1949,6 +2424,8 @@ void main() {
       ProxyAccountingStore? accountingStore,
       ProxyHealthCheckStore? healthCheckStore,
       ProxyLlmProvider? llmProvider,
+      AuthSessionLedgerWriter? authSessionLedgerWriter,
+      bool trustProxyAuditHeaders = false,
       ProxyRequestLogPolicy requestLogPolicy =
           const ProxyRequestLogPolicy.metaOnly(),
     }) async {
@@ -1965,6 +2442,8 @@ void main() {
             accountingStore: accountingStore,
             healthCheckStore: healthCheckStore,
             llmProvider: llmProvider,
+            authSessionLedgerWriter: authSessionLedgerWriter,
+            trustProxyAuditHeaders: trustProxyAuditHeaders,
             requestLogPolicy: requestLogPolicy,
             now: () => DateTime.utc(2026, 4, 26, 12),
           );
@@ -1986,14 +2465,16 @@ void main() {
       await server.close(force: true);
     }
 
-    test('GET /healthz returns 200 ok and is unauthenticated', () async {
+    test('GET /healthz and /readyz return 200 ok unauthenticated', () async {
       await withRealHttp(() async {
         await spinUpServer();
         try {
-          final response = await _httpGet(client, baseUri.resolve(healthPath));
-          expect(response.statusCode, equals(200));
-          final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['status'], equals('ok'));
+          for (final path in <String>[healthPath, readinessPath]) {
+            final response = await _httpGet(client, baseUri.resolve(path));
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['status'], equals('ok'));
+          }
         } finally {
           await shutDown();
         }
@@ -2662,7 +3143,7 @@ void main() {
     });
 
     test(
-      'GET /healthz still 200 unauthenticated when usage guard is installed',
+      'GET /readyz still 200 unauthenticated when usage guard is installed',
       () async {
         await withRealHttp(() async {
           await spinUpServer(
@@ -2674,7 +3155,7 @@ void main() {
           try {
             final response = await _httpGet(
               client,
-              baseUri.resolve(healthPath),
+              baseUri.resolve(readinessPath),
             );
             expect(response.statusCode, equals(200));
             final body = jsonDecode(response.body) as Map<String, Object?>;
@@ -2685,6 +3166,484 @@ void main() {
         });
       },
     );
+
+    // ─── Phase 9 B6 — auth-session ledger endpoints ───────────────────
+    //
+    // Coverage matrix (per route):
+    //   * happy path: writer received the right scope + body fields,
+    //     response carries the documented narrow JSON shape.
+    //   * 503 when no writer is wired (route was reached but ledger
+    //     dependency is missing — analogous to /v1/usage-smoke 503).
+    //   * 503 when the writer throws (no error stack leaks past the
+    //     proxy boundary).
+    //   * 401 / 403 / 400 for missing auth / bad scope / malformed
+    //     body (covered by the cross-route guard tests above plus
+    //     dedicated body-validation cases here).
+    //   * verifies the request never echoes the bearer token or the
+    //     `token_hash` value through the response body.
+
+    test(
+      'POST /v1/auth/session/login without writer wired returns 503',
+      () async {
+        await withRealHttp(() async {
+          await spinUpServer();
+          try {
+            // Verifier returns a valid scope so the route reaches the
+            // writer-not-wired branch instead of failing on auth.
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'u',
+              operatorId: 'op',
+              locationId: 'loc',
+              roles: <String>[],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionLoginPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'token_hash': 'h'},
+            );
+            expect(response.statusCode, equals(503));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('auth_session_ledger_not_configured'));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST /v1/auth/session/login without Authorization returns 401',
+      () async {
+        await withRealHttp(() async {
+          await spinUpServer(
+            authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+          );
+          try {
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionLoginPath),
+              body: const <String, Object?>{'token_hash': 'h'},
+            );
+            expect(response.statusCode, equals(401));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test('POST /v1/auth/session/login with verified-but-unscoped token '
+        'returns 403', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+        );
+        try {
+          // operator/location scope absent — request guard rejects 403.
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: null,
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'token_hash': 'h'},
+          );
+          expect(response.statusCode, equals(403));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/login rejects empty body with 400 '
+        'malformed_json_body', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('malformed_json_body'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/login rejects body without token_hash '
+        'with 400 missing_token_hash', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'wrong': 'field'},
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('missing_token_hash'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/login trusted-ingress mode: writer receives '
+        'operator/location/user from claims + IP/UA/geo from headers, '
+        'response carries session_id + scope, no token leak', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger(
+          loginSessionIds: <String>['session-from-proxy'],
+        );
+        await spinUpServer(
+          authSessionLedgerWriter: ledger,
+          trustProxyAuditHeaders: true,
+        );
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user-uuid',
+            operatorId: 'operator-uuid',
+            locationId: 'location-uuid',
+            roles: <String>['operator_owner'],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer placeholder.id.token',
+            body: const <String, Object?>{'token_hash': 'sha256-hex-hash'},
+            headers: const <String, String>{
+              'X-Forwarded-For': '203.0.113.7, 10.0.0.1',
+              'User-Agent': 'forge-and-flow-test/1.0',
+              'X-Country': 'ca',
+            },
+          );
+
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['session_id'], equals('session-from-proxy'));
+          expect(body['user_id'], equals('user-uuid'));
+          expect(body['operator_id'], equals('operator-uuid'));
+          expect(body['location_id'], equals('location-uuid'));
+          // Acceptance: response body NEVER echoes the bearer token
+          // or the token_hash value (no leak through the proxy
+          // boundary even when the client accidentally logs the
+          // response body).
+          final bodyJson = response.body;
+          expect(bodyJson.contains('placeholder.id.token'), isFalse);
+          expect(bodyJson.contains('sha256-hex-hash'), isFalse);
+
+          // Acceptance: writer received the right login row.
+          expect(ledger.logins, hasLength(1));
+          final login = ledger.logins.single;
+          expect(login.userId, equals('user-uuid'));
+          expect(login.operatorId, equals('operator-uuid'));
+          expect(login.locationId, equals('location-uuid'));
+          expect(login.tokenHash, equals('sha256-hex-hash'));
+          // Acceptance: enrichment context resolved server-side from
+          // request headers — leftmost X-Forwarded-For entry is the
+          // client IP, X-Country is uppercased to 2-char ISO code.
+          expect(login.context.ip, equals('203.0.113.7'));
+          expect(login.context.userAgent, equals('forge-and-flow-test/1.0'));
+          expect(login.context.geoCountry, equals('CA'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/login default mode ignores spoofable '
+        'forwarded IP and geo headers', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger(
+          loginSessionIds: <String>['session-from-proxy'],
+        );
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user-uuid',
+            operatorId: 'operator-uuid',
+            locationId: 'location-uuid',
+            roles: <String>['operator_owner'],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer placeholder.id.token',
+            body: const <String, Object?>{'token_hash': 'sha256-hex-hash'},
+            headers: const <String, String>{
+              'X-Forwarded-For': '203.0.113.7, 10.0.0.1',
+              'User-Agent': 'forge-and-flow-test/1.0',
+              'X-Country': 'ca',
+            },
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(ledger.logins, hasLength(1));
+          final context = ledger.logins.single.context;
+          expect(context.userAgent, equals('forge-and-flow-test/1.0'));
+          expect(context.ip, isNot(equals('203.0.113.7')));
+          expect(context.geoCountry, isNull);
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/login: writer error becomes 503 '
+        'auth_session_ledger_unavailable with no stack leak', () async {
+      await withRealHttp(() async {
+        final ledger = _ThrowingAuthSessionLedger(
+          error: StateError('postgres connection refused: secret://blob'),
+        );
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionLoginPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'token_hash': 'h'},
+          );
+          expect(response.statusCode, equals(503));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('auth_session_ledger_unavailable'));
+          // Acceptance: the underlying StateError message (which
+          // could carry connection strings or secrets) does NOT
+          // surface in the HTTP body.
+          expect(response.body.contains('secret://blob'), isFalse);
+          expect(
+            response.body.contains('postgres connection refused'),
+            isFalse,
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/refresh happy path: writer receives '
+        'sessionId from body and scope from token', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger();
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user-uuid',
+            operatorId: 'operator-uuid',
+            locationId: 'location-uuid',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionRefreshPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'session_id': 'session-uuid'},
+          );
+
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['ok'], isTrue);
+          expect(ledger.refreshes, hasLength(1));
+          expect(ledger.refreshes.single.sessionId, equals('session-uuid'));
+          expect(ledger.refreshes.single.userId, equals('user-uuid'));
+          expect(ledger.refreshes.single.operatorId, equals('operator-uuid'));
+          expect(ledger.refreshes.single.locationId, equals('location-uuid'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test(
+      'POST /v1/auth/session/refresh rejects body without session_id',
+      () async {
+        await withRealHttp(() async {
+          await spinUpServer(
+            authSessionLedgerWriter: _RecordingAuthSessionLedger(),
+          );
+          try {
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'u',
+              operatorId: 'op',
+              locationId: 'loc',
+              roles: <String>[],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authSessionRefreshPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_session_id'));
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
+
+    test('POST /v1/auth/session/revoke happy path: writer receives '
+        'sessionId + reason', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger();
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user-uuid',
+            operatorId: 'operator-uuid',
+            locationId: 'location-uuid',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionRevokePath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'session_id': 'session-uuid',
+              'reason': 'user_signed_out_this_session',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          expect(ledger.revokes, hasLength(1));
+          expect(ledger.revokes.single.sessionId, equals('session-uuid'));
+          expect(
+            ledger.revokes.single.reason,
+            equals('user_signed_out_this_session'),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/revoke without reason defaults to '
+        'user_signed_out_this_session', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger();
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionRevokePath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'session_id': 'session-uuid'},
+          );
+          expect(response.statusCode, equals(200));
+          expect(
+            ledger.revokes.single.reason,
+            equals('user_signed_out_this_session'),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/revoke-all happy path: writer revokes for '
+        'verified user, response carries revoked_count', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger(revokeAllReturnCount: 3);
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'user-uuid',
+            operatorId: 'operator-uuid',
+            locationId: 'location-uuid',
+            roles: <String>[],
+          );
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionRevokeAllPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'reason': 'user_signed_out_all_sessions',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['ok'], isTrue);
+          expect(body['revoked_count'], equals(3));
+          expect(ledger.revokeAlls, hasLength(1));
+          expect(ledger.revokeAlls.single.userId, equals('user-uuid'));
+          expect(
+            ledger.revokeAlls.single.reason,
+            equals('user_signed_out_all_sessions'),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('POST /v1/auth/session/revoke-all tolerates empty body and '
+        'defaults reason to user_signed_out_all_sessions', () async {
+      await withRealHttp(() async {
+        final ledger = _RecordingAuthSessionLedger();
+        await spinUpServer(authSessionLedgerWriter: ledger);
+        try {
+          verifier.claims = const ProxyJwtClaims(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            roles: <String>[],
+          );
+          // No body sent — exercises the allowEmpty: true branch in
+          // _readJsonBody.
+          final response = await _httpPost(
+            client,
+            baseUri.resolve(authSessionRevokeAllPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          expect(
+            ledger.revokeAlls.single.reason,
+            equals('user_signed_out_all_sessions'),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
   });
 }
 
@@ -2973,4 +3932,405 @@ Future<_HttpResponseSnapshot> _httpGet(
   final response = await request.close();
   final body = await response.transform(utf8.decoder).join();
   return _HttpResponseSnapshot(statusCode: response.statusCode, body: body);
+}
+
+/// POST helper for the Phase 9 B6 auth-session endpoint tests. Sends
+/// [body] as JSON when supplied, or an empty body when [body] is null
+/// (used by the /revoke-all "default reason" test).
+Future<_HttpResponseSnapshot> _httpPost(
+  HttpClient client,
+  Uri uri, {
+  String? authorization,
+  Map<String, Object?>? body,
+  Map<String, String>? headers,
+}) async {
+  final request = await client.postUrl(uri);
+  request.persistentConnection = false;
+  request.headers.contentType = ContentType.json;
+  if (authorization != null) {
+    request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  }
+  headers?.forEach(request.headers.set);
+  if (body != null) {
+    final encoded = utf8.encode(jsonEncode(body));
+    request.contentLength = encoded.length;
+    request.add(encoded);
+  } else {
+    request.contentLength = 0;
+  }
+  final response = await request.close();
+  final responseBody = await response.transform(utf8.decoder).join();
+  return _HttpResponseSnapshot(
+    statusCode: response.statusCode,
+    body: responseBody,
+  );
+}
+
+// ─── 9.1 — Firebase verifier test helpers ────────────────────────────────────
+
+pc.RSAPublicKey _rsaFixturePublicKey() => pc.RSAPublicKey(
+  BigInt.parse(
+    '20620915813302906913761247666337410938401372343750709187749515126790853245302593205328533062154315527282056175455193812046134139935830222032257750866653461677566720508752544506266533943725970345491747964654489405936145559121373664620352701801574863309087932865304205561439525871868738640172656811470047745445089832193075388387376667722031640892525639171016297098395245887609359882693921643396724693523583076582208970794545581164952427577506035951122669158313095779596666008591745562008787129160302313244329988240795948461701615228062848622019620094307696506764461083870202605984497833670577046553861732258592935325691',
+  ),
+  BigInt.parse('65537'),
+);
+
+pc.RSAPrivateKey _rsaFixturePrivateKey() => pc.RSAPrivateKey(
+  BigInt.parse(
+    '20620915813302906913761247666337410938401372343750709187749515126790853245302593205328533062154315527282056175455193812046134139935830222032257750866653461677566720508752544506266533943725970345491747964654489405936145559121373664620352701801574863309087932865304205561439525871868738640172656811470047745445089832193075388387376667722031640892525639171016297098395245887609359882693921643396724693523583076582208970794545581164952427577506035951122669158313095779596666008591745562008787129160302313244329988240795948461701615228062848622019620094307696506764461083870202605984497833670577046553861732258592935325691',
+  ),
+  BigInt.parse(
+    '11998058528661160053642124235359844880039079149364512302169225182946866898849176558365314596732660324493329967536772364327680348872134489319530228055102152992797567579226269544119435926913937183793755182388650533700918602627770886358900914370472445911502526145837923104029967812779021649252540542517598618021899291933220000807916271555680217608559770825469218984818060775562259820009637370696396889812317991880425127772801187664191059506258517954313903362361211485802288635947903604738301101038823790599295749578655834195416886345569976295245464597506584866355976650830539380175531900288933412328525689718517239330305',
+  ),
+  BigInt.parse(
+    '144173682842817587002196172066264549138375068078359231382946906898412792452632726597279520229873489736777248181678202636100459215718497240474064366927544074501134727745837254834206456400508719134610847814227274992298238973375146473350157304285346424982280927848339601514720098577525635486320547905945936448443',
+  ),
+  BigInt.parse(
+    '143028293421514654659358549214971921584534096938352096320458818956414890934365483375293202045679474764569937266017713262196941957149321696805368542065644090886347646782188634885321277533175667840285448510687854061424867903968633218073060468434469761149335255007464091258725753837522484082998329871306803923137',
+  ),
+);
+
+Uint8List _signRs256(Uint8List message, pc.RSAPrivateKey privateKey) {
+  final random = pc.SecureRandom('Fortuna')
+    ..seed(pc.KeyParameter(Uint8List.fromList(List<int>.filled(32, 7))));
+  final signer = pc.Signer('SHA-256/RSA')
+    ..init(
+      true,
+      pc.ParametersWithRandom(
+        pc.PrivateKeyParameter<pc.RSAPrivateKey>(privateKey),
+        random,
+      ),
+    );
+  return (signer.generateSignature(message) as pc.RSASignature).bytes;
+}
+
+String _rsaFixtureCertificatePem() {
+  final publicKey = _rsaFixturePublicKey();
+  final rsaAlgorithm = pc.ASN1Sequence(
+    elements: <pc.ASN1Object>[
+      pc.ASN1ObjectIdentifier(<int>[1, 2, 840, 113549, 1, 1, 1]),
+      pc.ASN1Null(),
+    ],
+  );
+  final rsaPublicKey = pc.ASN1Sequence(
+    elements: <pc.ASN1Object>[
+      pc.ASN1Integer(publicKey.modulus),
+      pc.ASN1Integer(publicKey.publicExponent),
+    ],
+  ).encode();
+  final subjectPublicKeyInfo = pc.ASN1Sequence(
+    elements: <pc.ASN1Object>[
+      rsaAlgorithm,
+      pc.ASN1BitString(stringValues: rsaPublicKey),
+    ],
+  );
+  final tbsCertificate = pc.ASN1Sequence(
+    elements: <pc.ASN1Object>[
+      pc.ASN1Integer(BigInt.one),
+      rsaAlgorithm,
+      pc.ASN1Sequence(elements: <pc.ASN1Object>[]),
+      pc.ASN1Sequence(elements: <pc.ASN1Object>[]),
+      pc.ASN1Sequence(elements: <pc.ASN1Object>[]),
+      subjectPublicKeyInfo,
+    ],
+  );
+  final certificate = pc.ASN1Sequence(
+    elements: <pc.ASN1Object>[
+      tbsCertificate,
+      rsaAlgorithm,
+      pc.ASN1BitString(stringValues: <int>[0]),
+    ],
+  ).encode();
+  return _pemBlock('CERTIFICATE', certificate);
+}
+
+String _pemBlock(String label, Uint8List bytes) {
+  final encoded = base64Encode(bytes);
+  final lines = <String>[];
+  for (var i = 0; i < encoded.length; i += 64) {
+    final end = i + 64 > encoded.length ? encoded.length : i + 64;
+    lines.add(encoded.substring(i, end));
+  }
+  return '-----BEGIN $label-----\n'
+      '${lines.join('\n')}\n'
+      '-----END $label-----';
+}
+
+class _FixedJwksKeySource implements JwksKeySource {
+  _FixedJwksKeySource(this._keys);
+
+  final Map<String, JwtKeyMaterial> _keys;
+
+  @override
+  Future<JwtKeyMaterial?> publicKeyFor(String kid) async => _keys[kid];
+}
+
+class _AlwaysAcceptRs256Validator implements JwtRs256SignatureValidator {
+  const _AlwaysAcceptRs256Validator();
+
+  @override
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  }) {
+    return true;
+  }
+}
+
+class _AlwaysRejectRs256Validator implements JwtRs256SignatureValidator {
+  const _AlwaysRejectRs256Validator();
+
+  @override
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  }) {
+    return false;
+  }
+}
+
+class _BoomRs256Validator implements JwtRs256SignatureValidator {
+  const _BoomRs256Validator();
+
+  @override
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  }) {
+    throw FormatException('placeholder format failure');
+  }
+}
+
+/// Builds a test Firebase ID token (header.payload.signature) using
+/// raw base64url encoding. The signature segment is a placeholder
+/// non-empty value because tests inject a [JwtRs256SignatureValidator]
+/// that does not actually inspect the bytes.
+String _firebaseTestToken({
+  String kid = 'kid-good',
+  String? algOverride,
+  String projectId = 'forge-flow-staging',
+  String? issuerOverride,
+  Object? audienceOverride,
+  String sub = 'user_abc',
+  String? operatorId = 'op_777',
+  String? locationId = 'loc_999',
+  bool isSuperAdmin = false,
+  bool isFfSupport = false,
+  int? rolesVersion,
+  required DateTime issuedAt,
+  required DateTime expiresAt,
+  DateTime? authTime,
+}) {
+  final headerJson = <String, Object?>{
+    'alg': algOverride ?? 'RS256',
+    if (kid.isNotEmpty) 'kid': kid,
+    'typ': 'JWT',
+  };
+  final payloadJson = <String, Object?>{
+    'iss': issuerOverride ?? 'https://securetoken.google.com/$projectId',
+    'aud': audienceOverride ?? projectId,
+    if (sub.isNotEmpty) 'sub': sub,
+    'iat': issuedAt.toUtc().millisecondsSinceEpoch ~/ 1000,
+    'exp': expiresAt.toUtc().millisecondsSinceEpoch ~/ 1000,
+    if (authTime != null)
+      'auth_time': authTime.toUtc().millisecondsSinceEpoch ~/ 1000,
+    if (operatorId != null) 'operator_id': operatorId,
+    if (locationId != null) 'location_id': locationId,
+    if (isSuperAdmin) 'is_super_admin': true,
+    if (isFfSupport) 'is_ff_support': true,
+    if (rolesVersion != null) 'roles_version': rolesVersion,
+  };
+  final headerSegment = _base64UrlEncodeJson(headerJson);
+  final payloadSegment = _base64UrlEncodeJson(payloadJson);
+  // Signature segment: placeholder non-empty bytes — the test
+  // signature validator never inspects them.
+  final signatureSegment = base64Url
+      .encode(<int>[0x01, 0x02, 0x03, 0x04])
+      .replaceAll('=', '');
+  return '$headerSegment.$payloadSegment.$signatureSegment';
+}
+
+String _base64UrlEncodeJson(Map<String, Object?> data) {
+  final bytes = utf8.encode(jsonEncode(data));
+  return base64Url.encode(bytes).replaceAll('=', '');
+}
+
+Future<void> _expectVerifierError(
+  Future<ProxyJwtClaims> future,
+  Matcher messageMatcher,
+) async {
+  ProxyJwtVerificationError? thrown;
+  try {
+    await future;
+  } on ProxyJwtVerificationError catch (error) {
+    thrown = error;
+  }
+  expect(
+    thrown,
+    isNotNull,
+    reason: 'expected ProxyJwtVerificationError but verify() returned',
+  );
+  expect(thrown!.message, messageMatcher);
+}
+
+// ─── Phase 9 B6 — auth-session ledger test fakes ─────────────────────
+
+/// Records every call into the writer so route tests can assert what
+/// the proxy delegated. Login responses carry a queued list of
+/// session_ids so a single fake can drive multiple sequential logins.
+class _RecordingAuthSessionLedger implements AuthSessionLedgerWriter {
+  _RecordingAuthSessionLedger({
+    List<String>? loginSessionIds,
+    int revokeAllReturnCount = 0,
+  }) : _loginSessionIds = List<String>.from(
+         loginSessionIds ?? const <String>['session-test-default'],
+       ),
+       _revokeAllReturnCount = revokeAllReturnCount;
+
+  final List<String> _loginSessionIds;
+  final int _revokeAllReturnCount;
+
+  final List<AuthSessionLedgerLogin> logins = <AuthSessionLedgerLogin>[];
+  final List<
+    ({String sessionId, String userId, String operatorId, String locationId})
+  >
+  refreshes =
+      <
+        ({
+          String sessionId,
+          String userId,
+          String operatorId,
+          String locationId,
+        })
+      >[];
+  final List<
+    ({
+      String sessionId,
+      String userId,
+      String operatorId,
+      String locationId,
+      String reason,
+    })
+  >
+  revokes =
+      <
+        ({
+          String sessionId,
+          String userId,
+          String operatorId,
+          String locationId,
+          String reason,
+        })
+      >[];
+  final List<
+    ({String userId, String operatorId, String locationId, String reason})
+  >
+  revokeAlls =
+      <
+        ({String userId, String operatorId, String locationId, String reason})
+      >[];
+
+  @override
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    logins.add(login);
+    if (_loginSessionIds.isEmpty) return 'session-test-default';
+    return _loginSessionIds.removeAt(0);
+  }
+
+  @override
+  Future<void> recordRefresh({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    refreshes.add((
+      sessionId: sessionId,
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
+    ));
+  }
+
+  @override
+  Future<void> revokeSession({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    revokes.add((
+      sessionId: sessionId,
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
+      reason: reason,
+    ));
+  }
+
+  @override
+  Future<int> revokeAllSessionsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    revokeAlls.add((
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
+      reason: reason,
+    ));
+    return _revokeAllReturnCount;
+  }
+}
+
+/// Throws [error] from every method. Lets the route tests assert that
+/// the proxy NEVER lets a writer's raw exception text leak into the
+/// HTTP response (defense-in-depth for connection strings, secrets,
+/// or stack-trace fragments that real Postgres errors can carry).
+class _ThrowingAuthSessionLedger implements AuthSessionLedgerWriter {
+  _ThrowingAuthSessionLedger({required this.error});
+
+  final Object error;
+
+  @override
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    throw error;
+  }
+
+  @override
+  Future<void> recordRefresh({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {
+    throw error;
+  }
+
+  @override
+  Future<void> revokeSession({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    throw error;
+  }
+
+  @override
+  Future<int> revokeAllSessionsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    throw error;
+  }
 }

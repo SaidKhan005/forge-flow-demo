@@ -38,6 +38,10 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:pointycastle/pointycastle.dart' as pc;
 
 // ─── Secret name registry ────────────────────────────────────────────────────
 //
@@ -78,6 +82,23 @@ abstract class ProxySecretNames {
   ];
 }
 
+// ─── Non-secret config name registry (9.1) ───────────────────────────────────
+//
+// Public, non-secret config values that are still loaded from env at
+// process start. Kept separate from [ProxySecretNames] because these
+// are safe to log by name + value (project IDs, region names, etc.).
+
+abstract class ProxyConfigNames {
+  ProxyConfigNames._();
+
+  /// Firebase project ID for Identity Platform JWT verification (9.1).
+  /// Optional: when missing, the proxy keeps the fail-closed
+  /// scaffold rejecter and never accepts a token. When present,
+  /// [FirebaseProxyJwtVerifier] is wired and validates issuer +
+  /// audience against this project ID.
+  static const String firebaseProjectId = 'FIREBASE_PROJECT_ID';
+}
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 class ProxyConfigError implements Exception {
@@ -91,11 +112,22 @@ class ProxyConfigError implements Exception {
 }
 
 class ProxyConfig {
-  ProxyConfig._({required this.port, required Map<String, String> secrets})
-    : _secrets = Map<String, String>.unmodifiable(secrets);
+  ProxyConfig._({
+    required this.port,
+    required Map<String, String> secrets,
+    required this.firebaseProjectId,
+  }) : _secrets = Map<String, String>.unmodifiable(secrets);
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
   final int port;
+
+  /// Firebase Identity Platform project ID (9.1). Optional. Null /
+  /// blank → JWT verification stays in the fail-closed scaffold mode
+  /// (no real Firebase tokens are accepted). Non-null →
+  /// [FirebaseProxyJwtVerifier] is wired and uses this project ID to
+  /// validate the `iss` (`https://securetoken.google.com/<id>`) and
+  /// `aud` (`<id>`) claims on every Firebase ID token.
+  final String? firebaseProjectId;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -107,6 +139,10 @@ class ProxyConfig {
   /// name in [ProxySecretNames.required] resolves to a non-blank value.
   /// Throws [ProxyConfigError] otherwise — the exception carries the
   /// missing names but never any captured values.
+  ///
+  /// `FIREBASE_PROJECT_ID` is loaded as an optional non-secret config
+  /// value: missing/blank keeps the fail-closed scaffold verifier;
+  /// present opts the proxy in to real Firebase JWT verification.
   factory ProxyConfig.fromEnvironment(Map<String, String> environment) {
     final missing = <String>[];
     final loaded = <String, String>{};
@@ -127,7 +163,17 @@ class ProxyConfig {
       );
     }
     final port = _parsePort(environment['PORT']);
-    return ProxyConfig._(port: port, secrets: loaded);
+    final firebaseProjectIdRaw =
+        environment[ProxyConfigNames.firebaseProjectId];
+    final firebaseProjectId =
+        (firebaseProjectIdRaw == null || firebaseProjectIdRaw.trim().isEmpty)
+        ? null
+        : firebaseProjectIdRaw.trim();
+    return ProxyConfig._(
+      port: port,
+      secrets: loaded,
+      firebaseProjectId: firebaseProjectId,
+    );
   }
 
   static int _parsePort(String? raw) {
@@ -163,11 +209,17 @@ class ProxyConfig {
       List<String>.unmodifiable(_secrets.keys);
 
   /// Diagnostics-only string. Includes the port and the *names* of
-  /// loaded secrets. Never includes any secret value.
+  /// loaded secrets. Never includes any secret value. Also reports
+  /// whether `FIREBASE_PROJECT_ID` is loaded by name only — the
+  /// project ID itself is a public identifier so it is safe to log,
+  /// but [toString] keeps to the same name-only convention as the
+  /// secrets to make accidental log-leakage audits trivial.
   @override
   String toString() =>
       'ProxyConfig(port: $port, '
-      'loaded_secret_names: ${loadedSecretNames.join(', ')})';
+      'loaded_secret_names: ${loadedSecretNames.join(', ')}, '
+      'firebase_project_id: '
+      '${firebaseProjectId == null ? 'unset' : 'set'})';
 }
 
 // ─── JWT verification interface ──────────────────────────────────────────────
@@ -227,6 +279,602 @@ class ScaffoldRejectingJwtVerifier implements ProxyJwtVerifier {
       '11a.10a scaffold: live JWT verifier is not wired yet — '
       'this verifier rejects all tokens to fail closed.',
     );
+  }
+}
+
+// ─── 9.1 — Firebase ID token verifier ───────────────────────────────────────
+//
+// The 11a.10a scaffold ships [ScaffoldRejectingJwtVerifier] so a
+// misconfigured production deploy fails closed. Phase 9.1 replaces it
+// (when [ProxyConfig.firebaseProjectId] is set) with
+// [FirebaseProxyJwtVerifier], which verifies Firebase Identity
+// Platform ID tokens locally using injected key source +
+// signature validator + clock — no live Firebase call per request.
+//
+// Tenant-context resolver (`firebase_uid → users → location/status`)
+// lands in 9.2; until then, the verifier reads operator/location
+// scope from the Firebase custom claims directly. Only the tiny
+// custom-claim set locked for Phase 9 is honored here:
+// `operator_id`, `location_id`, `is_super_admin`, `is_ff_support`,
+// `roles_version` (under 200 bytes total per the decision lock).
+//
+// Production crypto wiring (the RSA primitive) is delegated to
+// [JwtRs256SignatureValidator] so the verifier framework can be
+// unit-tested with fakes today and the cryptographic backend
+// (e.g. pointycastle) can be plugged in without changing the seam.
+// The default [ScaffoldFailingRs256SignatureValidator] keeps
+// production fail-closed if the backend is not yet wired.
+
+/// Opaque public-key material handed from a [JwksKeySource] to a
+/// [JwtRs256SignatureValidator]. The format (PEM-encoded x509
+/// certificate, raw modulus/exponent, etc.) is implementation
+/// defined; the verifier itself never inspects it.
+class JwtKeyMaterial {
+  const JwtKeyMaterial({required this.pemX509Certificate, required this.kid});
+
+  /// Firebase securetoken endpoint returns PEM-encoded x509
+  /// certificates keyed by `kid`. Production validators parse this
+  /// to extract the embedded RSA public key.
+  final String pemX509Certificate;
+
+  /// Key ID this material was published under. Carried alongside the
+  /// material so audit / diagnostic code can correlate verification
+  /// failures to the specific key without reaching back into the
+  /// source map.
+  final String kid;
+}
+
+/// RS256 signature primitive seam. Tests inject deterministic fakes
+/// (always-accept, always-reject) so [FirebaseProxyJwtVerifier] can
+/// be exercised without bringing in an RSA library. Production
+/// wires a real implementation (e.g. backed by `pointycastle`).
+abstract class JwtRs256SignatureValidator {
+  /// Returns true iff the RSASSA-PKCS1-v1_5 signature over
+  /// [signedInput] (raw bytes of `<header>.<payload>`) verifies
+  /// against the public key embedded in [keyMaterial] using SHA-256.
+  /// Implementations must never throw on a merely-invalid signature
+  /// — return false instead. They may throw [StateError] when the
+  /// validator itself is not configured / installed; the verifier
+  /// catches that and surfaces it as a generic verification failure
+  /// so production stays fail-closed when the RSA backend is
+  /// missing.
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  });
+}
+
+/// Default fail-closed validator shipped with the 9.1 scaffold.
+/// Throws [StateError] on every call so production deploys that
+/// forget to wire a real RSA backend reject every Firebase token at
+/// the verifier seam (visible to the guard as a 401, never as a
+/// silent allow).
+class ScaffoldFailingRs256SignatureValidator
+    implements JwtRs256SignatureValidator {
+  const ScaffoldFailingRs256SignatureValidator();
+
+  @override
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  }) {
+    throw StateError(
+      '9.1 scaffold: real RSA signature validator is not wired — '
+      'install a JwtRs256SignatureValidator implementation backed by '
+      'a proven RSA library (e.g. pointycastle) before serving real '
+      'Firebase tokens.',
+    );
+  }
+}
+
+/// Production RS256 validator for Firebase ID-token signatures.
+///
+/// Firebase publishes signing keys as PEM x509 certificates keyed by
+/// JWT `kid`; this validator extracts the RSA public key from the
+/// certificate's SubjectPublicKeyInfo and verifies
+/// RSASSA-PKCS1-v1_5/SHA-256 via pointycastle. It also accepts a
+/// PEM `PUBLIC KEY` block so tests and local diagnostics can pin a
+/// bare SPKI without fabricating an entire certificate.
+class PointyCastleRs256SignatureValidator
+    implements JwtRs256SignatureValidator {
+  const PointyCastleRs256SignatureValidator();
+
+  @override
+  bool verify({
+    required Uint8List signedInput,
+    required Uint8List signature,
+    required JwtKeyMaterial keyMaterial,
+  }) {
+    final publicKey = _rsaPublicKeyFromPem(keyMaterial.pemX509Certificate);
+    final signer = pc.Signer('SHA-256/RSA')
+      ..init(false, pc.PublicKeyParameter<pc.RSAPublicKey>(publicKey));
+    try {
+      return signer.verifySignature(
+        signedInput,
+        pc.RSASignature(Uint8List.fromList(signature)),
+      );
+    } on ArgumentError {
+      return false;
+    }
+  }
+
+  static pc.RSAPublicKey _rsaPublicKeyFromPem(String pem) {
+    final parsed = _decodePem(pem);
+    if (parsed.label == 'CERTIFICATE') {
+      return _rsaPublicKeyFromCertificateDer(parsed.bytes);
+    }
+    if (parsed.label == 'PUBLIC KEY') {
+      return _rsaPublicKeyFromSubjectPublicKeyInfo(parsed.bytes);
+    }
+    throw FormatException('unsupported PEM block: ${parsed.label}');
+  }
+
+  static pc.RSAPublicKey _rsaPublicKeyFromCertificateDer(Uint8List der) {
+    final certificate = _readAsn1Sequence(der, 'certificate');
+    final elements = certificate.elements;
+    if (elements == null || elements.isEmpty) {
+      throw const FormatException('certificate has no tbsCertificate');
+    }
+    final tbsCertificate = elements.first;
+    if (tbsCertificate is! pc.ASN1Sequence) {
+      throw const FormatException(
+        'certificate tbsCertificate is not a sequence',
+      );
+    }
+    final subjectPublicKeyInfo = _findSubjectPublicKeyInfo(tbsCertificate);
+    if (subjectPublicKeyInfo == null) {
+      throw const FormatException(
+        'certificate missing RSA SubjectPublicKeyInfo',
+      );
+    }
+    return _rsaPublicKeyFromSubjectPublicKeyInfoSequence(subjectPublicKeyInfo);
+  }
+
+  static pc.RSAPublicKey _rsaPublicKeyFromSubjectPublicKeyInfo(Uint8List der) {
+    return _rsaPublicKeyFromSubjectPublicKeyInfoSequence(
+      _readAsn1Sequence(der, 'SubjectPublicKeyInfo'),
+    );
+  }
+
+  static pc.ASN1Sequence? _findSubjectPublicKeyInfo(pc.ASN1Sequence sequence) {
+    final elements = sequence.elements;
+    if (elements == null) return null;
+    for (final element in elements) {
+      if (element is pc.ASN1Sequence && _looksLikeRsaSpki(element)) {
+        return element;
+      }
+      if (element is pc.ASN1Sequence) {
+        final nested = _findSubjectPublicKeyInfo(element);
+        if (nested != null) return nested;
+      }
+    }
+    return null;
+  }
+
+  static bool _looksLikeRsaSpki(pc.ASN1Sequence sequence) {
+    final elements = sequence.elements;
+    if (elements == null || elements.length != 2) return false;
+    final algorithm = elements[0];
+    final subjectPublicKey = elements[1];
+    if (algorithm is! pc.ASN1Sequence ||
+        subjectPublicKey is! pc.ASN1BitString) {
+      return false;
+    }
+    final algorithmElements = algorithm.elements;
+    if (algorithmElements == null || algorithmElements.isEmpty) return false;
+    final oid = algorithmElements.first;
+    return oid is pc.ASN1ObjectIdentifier &&
+        oid.objectIdentifierAsString == '1.2.840.113549.1.1.1';
+  }
+
+  static pc.RSAPublicKey _rsaPublicKeyFromSubjectPublicKeyInfoSequence(
+    pc.ASN1Sequence spki,
+  ) {
+    if (!_looksLikeRsaSpki(spki)) {
+      throw const FormatException('SubjectPublicKeyInfo is not RSA');
+    }
+    final bitString = spki.elements![1] as pc.ASN1BitString;
+    final keyBytes = bitString.stringValues;
+    if (keyBytes == null || keyBytes.isEmpty) {
+      throw const FormatException('RSA public key bit string is empty');
+    }
+    final keySequence = _readAsn1Sequence(
+      Uint8List.fromList(keyBytes),
+      'RSA public key',
+    );
+    final elements = keySequence.elements;
+    if (elements == null ||
+        elements.length < 2 ||
+        elements[0] is! pc.ASN1Integer ||
+        elements[1] is! pc.ASN1Integer) {
+      throw const FormatException('RSA public key sequence is malformed');
+    }
+    final modulus = (elements[0] as pc.ASN1Integer).integer;
+    final exponent = (elements[1] as pc.ASN1Integer).integer;
+    if (modulus == null || exponent == null) {
+      throw const FormatException('RSA public key values are missing');
+    }
+    return pc.RSAPublicKey(modulus, exponent);
+  }
+
+  static pc.ASN1Sequence _readAsn1Sequence(Uint8List bytes, String name) {
+    final dynamic object;
+    try {
+      object = pc.ASN1Parser(bytes).nextObject();
+    } catch (_) {
+      throw FormatException('$name is not valid DER');
+    }
+    if (object is! pc.ASN1Sequence) {
+      throw FormatException('$name is not an ASN.1 sequence');
+    }
+    return object;
+  }
+
+  static _PemBlock _decodePem(String pem) {
+    final lines = LineSplitter.split(pem)
+        .map((line) => line.trim())
+        .where((line) => line.isNotEmpty)
+        .toList(growable: false);
+    if (lines.length < 3 ||
+        !lines.first.startsWith('-----BEGIN ') ||
+        !lines.first.endsWith('-----') ||
+        !lines.last.startsWith('-----END ') ||
+        !lines.last.endsWith('-----')) {
+      throw const FormatException('invalid PEM block');
+    }
+    final label = lines.first
+        .substring('-----BEGIN '.length, lines.first.length - '-----'.length)
+        .trim();
+    final endLabel = lines.last
+        .substring('-----END '.length, lines.last.length - '-----'.length)
+        .trim();
+    if (label != endLabel) {
+      throw const FormatException('PEM begin/end labels do not match');
+    }
+    try {
+      return _PemBlock(
+        label: label,
+        bytes: Uint8List.fromList(
+          base64Decode(lines.sublist(1, lines.length - 1).join()),
+        ),
+      );
+    } catch (_) {
+      throw const FormatException('PEM body is not valid base64');
+    }
+  }
+}
+
+class _PemBlock {
+  const _PemBlock({required this.label, required this.bytes});
+
+  final String label;
+  final Uint8List bytes;
+}
+
+/// Returns the public-key material a Firebase ID token was signed
+/// under, looked up by the JWT header `kid`. Implementations cache
+/// internally and honor upstream cache control where relevant; the
+/// verifier delegates entirely so tests can pin the key map.
+abstract class JwksKeySource {
+  /// Returns the material for [kid] or null when no matching key
+  /// exists in the upstream JWKS. Null means "unknown kid", which
+  /// the verifier treats as a hard-reject (no retry).
+  Future<JwtKeyMaterial?> publicKeyFor(String kid);
+}
+
+/// Production [JwksKeySource] that pulls Firebase ID-token signing
+/// certificates from the documented securetoken endpoint and caches
+/// the response in-memory. The cache TTL prefers the upstream
+/// `Cache-Control: max-age=…` header and falls back to
+/// [defaultTtl] when the header is missing or unparseable.
+///
+/// Endpoint: `https://www.googleapis.com/robot/v1/metadata/x509/`
+/// `securetoken@system.gserviceaccount.com` (Firebase ID tokens).
+/// Tests can pin a different URL + injected [HttpClient] + clock so
+/// no real network call happens.
+class FirebaseSecureTokenJwksSource implements JwksKeySource {
+  FirebaseSecureTokenJwksSource({
+    Uri? endpoint,
+    HttpClient? httpClient,
+    DateTime Function()? now,
+    Duration defaultTtl = const Duration(hours: 6),
+  }) : _endpoint = endpoint ?? Uri.parse(_defaultEndpoint),
+       _httpClient = httpClient ?? HttpClient(),
+       _now = now ?? DateTime.now,
+       _defaultTtl = defaultTtl;
+
+  static const String _defaultEndpoint =
+      'https://www.googleapis.com/robot/v1/metadata/x509/'
+      'securetoken@system.gserviceaccount.com';
+
+  final Uri _endpoint;
+  final HttpClient _httpClient;
+  final DateTime Function() _now;
+  final Duration _defaultTtl;
+
+  Map<String, JwtKeyMaterial>? _cache;
+  DateTime? _cacheExpiresAt;
+
+  @override
+  Future<JwtKeyMaterial?> publicKeyFor(String kid) async {
+    final now = _now();
+    final cache = _cache;
+    final expiresAt = _cacheExpiresAt;
+    if (cache != null && expiresAt != null && now.isBefore(expiresAt)) {
+      return cache[kid];
+    }
+    await _refresh(now);
+    return _cache?[kid];
+  }
+
+  Future<void> _refresh(DateTime now) async {
+    final HttpClientResponse response;
+    try {
+      final request = await _httpClient.getUrl(_endpoint);
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+      response = await request.close();
+    } catch (error) {
+      throw ProxyJwtVerificationError(
+        'JWKS fetch failed: ${error.runtimeType}',
+      );
+    }
+    if (response.statusCode != 200) {
+      // Drain so the underlying socket is reusable.
+      await response.drain<void>();
+      throw ProxyJwtVerificationError(
+        'JWKS fetch failed: status ${response.statusCode}',
+      );
+    }
+    final body = await response.transform(utf8.decoder).join();
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(body);
+    } catch (_) {
+      throw ProxyJwtVerificationError('JWKS response is not valid JSON');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw ProxyJwtVerificationError('JWKS response is not a JSON object');
+    }
+    final entries = <String, JwtKeyMaterial>{};
+    decoded.forEach((kid, value) {
+      if (value is String && value.isNotEmpty) {
+        entries[kid] = JwtKeyMaterial(pemX509Certificate: value, kid: kid);
+      }
+    });
+    _cache = entries;
+    final maxAge = _maxAgeFromCacheControl(
+      response.headers.value(HttpHeaders.cacheControlHeader),
+    );
+    _cacheExpiresAt = now.add(maxAge ?? _defaultTtl);
+  }
+
+  static Duration? _maxAgeFromCacheControl(String? header) {
+    if (header == null || header.isEmpty) return null;
+    for (final part in header.split(',')) {
+      final trimmed = part.trim().toLowerCase();
+      if (trimmed.startsWith('max-age=')) {
+        final value = int.tryParse(trimmed.substring('max-age='.length).trim());
+        if (value != null && value > 0) {
+          return Duration(seconds: value);
+        }
+      }
+    }
+    return null;
+  }
+}
+
+/// Local Firebase ID-token verifier. Replaces
+/// [ScaffoldRejectingJwtVerifier] in production wiring when
+/// [ProxyConfig.firebaseProjectId] is set. Validates:
+///
+///   - Header `alg = RS256` and `kid` is a non-empty string.
+///   - `iss = https://securetoken.google.com/<projectId>`.
+///   - `aud = <projectId>`.
+///   - `exp > now - leeway` (token not expired).
+///   - `iat <= now + leeway` (token not from the future).
+///   - `auth_time <= now + leeway` when present.
+///   - `sub` is a non-empty string (Firebase UID).
+///   - JWKS lookup by `kid` succeeds (no unknown-kid silent allow).
+///   - Injected RSA validator verifies the signature.
+///
+/// On success, projects the tiny Phase 9 custom-claim set onto
+/// [ProxyJwtClaims]: `operator_id`, `location_id`, `is_super_admin`,
+/// `is_ff_support`, `roles_version`. Tenant-context resolution to
+/// Postgres (status check, default location lookup) lands in 9.2.
+class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
+  FirebaseProxyJwtVerifier({
+    required this.projectId,
+    required JwksKeySource keySource,
+    required JwtRs256SignatureValidator signatureValidator,
+    DateTime Function()? now,
+    Duration leeway = const Duration(seconds: 30),
+  }) : _keySource = keySource,
+       _signatureValidator = signatureValidator,
+       _now = now ?? DateTime.now,
+       _leeway = leeway;
+
+  final String projectId;
+  final JwksKeySource _keySource;
+  final JwtRs256SignatureValidator _signatureValidator;
+  final DateTime Function() _now;
+  final Duration _leeway;
+
+  String get _expectedIssuer => 'https://securetoken.google.com/$projectId';
+
+  @override
+  Future<ProxyJwtClaims> verify(String bearerToken) async {
+    final parts = bearerToken.split('.');
+    if (parts.length != 3) {
+      throw ProxyJwtVerificationError(
+        'malformed JWT: expected 3 dot-separated segments',
+      );
+    }
+    final headerJson = _decodeJwtSegment(parts[0], 'header');
+    final payloadJson = _decodeJwtSegment(parts[1], 'payload');
+    final signatureBytes = _base64UrlDecodeBytes(parts[2], 'signature');
+
+    final alg = headerJson['alg'];
+    if (alg != 'RS256') {
+      throw ProxyJwtVerificationError(
+        'unsupported JWT alg: ${alg is String ? alg : '(missing)'}',
+      );
+    }
+    final dynamic kidRaw = headerJson['kid'];
+    if (kidRaw is! String || kidRaw.isEmpty) {
+      throw ProxyJwtVerificationError('JWT header missing kid');
+    }
+    final kid = kidRaw;
+
+    final issuer = payloadJson['iss'];
+    if (issuer != _expectedIssuer) {
+      throw ProxyJwtVerificationError(
+        'unexpected issuer (expected Firebase project issuer)',
+      );
+    }
+    final audience = payloadJson['aud'];
+    if (audience != projectId) {
+      throw ProxyJwtVerificationError(
+        'unexpected audience (expected Firebase project ID)',
+      );
+    }
+
+    final now = _now();
+    final exp = _readEpochSecondsClaim(payloadJson, 'exp');
+    if (exp == null) {
+      throw ProxyJwtVerificationError('JWT missing exp claim');
+    }
+    if (now.isAfter(exp.add(_leeway))) {
+      throw ProxyJwtVerificationError('JWT expired');
+    }
+    final iat = _readEpochSecondsClaim(payloadJson, 'iat');
+    if (iat == null) {
+      throw ProxyJwtVerificationError('JWT missing iat claim');
+    }
+    if (iat.isAfter(now.add(_leeway))) {
+      throw ProxyJwtVerificationError('JWT iat is in the future');
+    }
+    final authTime = _readEpochSecondsClaim(payloadJson, 'auth_time');
+    if (authTime != null && authTime.isAfter(now.add(_leeway))) {
+      throw ProxyJwtVerificationError('JWT auth_time is in the future');
+    }
+
+    final dynamic subRaw = payloadJson['sub'];
+    if (subRaw is! String || subRaw.isEmpty) {
+      throw ProxyJwtVerificationError('JWT sub missing or empty');
+    }
+    final sub = subRaw;
+
+    final keyMaterial = await _keySource.publicKeyFor(kid);
+    if (keyMaterial == null) {
+      throw ProxyJwtVerificationError('no matching JWK for kid');
+    }
+
+    final signedInputBytes = Uint8List.fromList(
+      utf8.encode('${parts[0]}.${parts[1]}'),
+    );
+    final bool signatureValid;
+    try {
+      signatureValid = _signatureValidator.verify(
+        signedInput: signedInputBytes,
+        signature: signatureBytes,
+        keyMaterial: keyMaterial,
+      );
+    } on StateError catch (_) {
+      // RSA backend not wired — fail closed at the verifier boundary
+      // so the guard still returns 401, never a 500 leak. The
+      // detailed StateError message stays in process logs.
+      throw ProxyJwtVerificationError('signature verification unavailable');
+    } catch (_) {
+      throw ProxyJwtVerificationError('signature verification failed');
+    }
+    if (!signatureValid) {
+      throw ProxyJwtVerificationError('JWT signature did not verify');
+    }
+
+    return ProxyJwtClaims(
+      userId: _readOptionalString(payloadJson, 'user_id') ?? sub,
+      operatorId: _readOptionalString(payloadJson, 'operator_id'),
+      locationId: _readOptionalString(payloadJson, 'location_id'),
+      roles: _resolveRoles(payloadJson),
+    );
+  }
+
+  static Map<String, Object?> _decodeJwtSegment(String segment, String name) {
+    final bytes = _base64UrlDecodeBytes(segment, name);
+    final String json;
+    try {
+      json = utf8.decode(bytes);
+    } catch (_) {
+      throw ProxyJwtVerificationError('JWT $name is not valid UTF-8');
+    }
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(json);
+    } catch (_) {
+      throw ProxyJwtVerificationError('JWT $name is not valid JSON');
+    }
+    if (decoded is! Map<String, dynamic>) {
+      throw ProxyJwtVerificationError('JWT $name is not a JSON object');
+    }
+    return Map<String, Object?>.from(decoded);
+  }
+
+  static Uint8List _base64UrlDecodeBytes(String input, String name) {
+    var padded = input;
+    final remainder = padded.length % 4;
+    if (remainder != 0) {
+      padded = padded + '=' * (4 - remainder);
+    }
+    try {
+      return Uint8List.fromList(base64Url.decode(padded));
+    } catch (_) {
+      throw ProxyJwtVerificationError('JWT $name is not valid base64url');
+    }
+  }
+
+  static DateTime? _readEpochSecondsClaim(
+    Map<String, Object?> payload,
+    String claim,
+  ) {
+    final raw = payload[claim];
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
+    }
+    if (raw is double) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        (raw * 1000).round(),
+        isUtc: true,
+      );
+    }
+    return null;
+  }
+
+  static String? _readOptionalString(Map<String, Object?> payload, String key) {
+    final raw = payload[key];
+    if (raw is String && raw.isNotEmpty) return raw;
+    return null;
+  }
+
+  static List<String> _resolveRoles(Map<String, Object?> payload) {
+    // Phase 9 custom-claim policy keeps the JWT under 200 bytes, so
+    // the verifier projects only boolean role flags + roles_version
+    // here. Full RBAC resolution (deny-wins, role bundles, custom
+    // roles) lives in 9.6 and runs against Postgres after the guard
+    // has resolved scope.
+    final roles = <String>[];
+    if (payload['is_super_admin'] == true) {
+      roles.add('super_admin');
+    }
+    if (payload['is_ff_support'] == true) {
+      roles.add('ff_support');
+    }
+    final rolesVersion = payload['roles_version'];
+    if (rolesVersion is int) {
+      roles.add('roles_version:$rolesVersion');
+    }
+    return roles;
   }
 }
 
@@ -1086,17 +1734,49 @@ returning request_id, response_payload;
 }
 
 const String healthPath = '/healthz';
+const String readinessPath = '/readyz';
 const String deepHealthPath = '/health';
 const String scopeSmokePath = '/v1/scope';
 const String usageSmokePath = '/v1/usage-smoke';
 const String advisorSmokePath = '/v1/advisor-smoke';
 
+// Phase 9 live-closeout B6 — auth-session ledger endpoints. The Flutter
+// app holds no Postgres credentials; every `auth_sessions` mutation
+// flows through these routes. The proxy verifies the Firebase ID token
+// (server-side, via [ProxyRequestGuard.requireOperatorContext]),
+// extracts operator/location/user from the verified claims, and
+// delegates to an injected [AuthSessionLedgerWriter] (production
+// binding wraps `AuthSessionsRepository` over the tenant transaction
+// wrapper).
+const String authSessionLoginPath = '/v1/auth/session/login';
+const String authSessionRefreshPath = '/v1/auth/session/refresh';
+const String authSessionRevokePath = '/v1/auth/session/revoke';
+const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
+
 /// Minimal request router. Routes:
 ///
-///   - GET /healthz         -> 200 (unauthenticated)
+///   - GET /healthz         -> 200 (unauthenticated, local compatibility)
+///   - GET /readyz          -> 200 (unauthenticated, Cloud Run public check)
 ///   - GET /v1/scope        -> 200 with operator/location scope (auth-gated)
 ///   - GET /v1/usage-smoke  -> auth + scope + usage guard, returns tier
 ///                             policy + remaining budget metadata
+///   - POST /v1/auth/session/login       -> auth-gated. Records an
+///                              `auth_sessions` row via the injected
+///                              [AuthSessionLedgerWriter] and returns
+///                              the issued session_id. Body:
+///                              `{token_hash}`. User-Agent is stored
+///                              as soft metadata; forwarded IP/geo
+///                              headers are ignored unless trusted
+///                              ingress mode is explicitly enabled.
+///   - POST /v1/auth/session/refresh     -> auth-gated. Updates
+///                              `last_seen_at`. Body: `{session_id}`.
+///   - POST /v1/auth/session/revoke      -> auth-gated. Sets
+///                              `revoked_at` for one row. Body:
+///                              `{session_id, reason}`.
+///   - POST /v1/auth/session/revoke-all  -> auth-gated. Sets
+///                              `revoked_at` for every active session
+///                              owned by the verified user. Body:
+///                              `{reason}`. Returns `{revoked_count}`.
 ///
 /// Anything else -> 404. No live external calls — the smoke routes
 /// only echo back resolved scope and budget metadata.
@@ -1107,6 +1787,8 @@ Future<void> routeRequest(
   ProxyAccountingStore? accountingStore,
   ProxyHealthCheckStore? healthCheckStore,
   ProxyLlmProvider? llmProvider,
+  AuthSessionLedgerWriter? authSessionLedgerWriter,
+  bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
   DateTime Function()? now,
@@ -1116,7 +1798,8 @@ Future<void> routeRequest(
   try {
     final path = request.uri.path;
 
-    if (request.method == 'GET' && path == healthPath) {
+    if (request.method == 'GET' &&
+        (path == healthPath || path == readinessPath)) {
       _writeJson(response, 200, <String, Object?>{'status': 'ok'});
       return;
     }
@@ -1409,6 +2092,302 @@ Future<void> routeRequest(
       return;
     }
 
+    // ─── Phase 9 B6 — auth-session ledger endpoints ─────────────────────
+    //
+    // Every endpoint below:
+    //   1. Verifies the Firebase ID token via the existing auth guard
+    //      (operator + location scope must resolve).
+    //   2. Reads the JSON body (tolerating a missing/empty body for
+    //      revoke-all where only `reason` is required).
+    //   3. Resolves enrichment context. User-Agent is soft client
+    //      metadata; forwarded IP/geo are used only when trusted
+    //      ingress mode is explicitly enabled.
+    //   4. Calls the injected [AuthSessionLedgerWriter]. The
+    //      production binding is `RepositoryAuthSessionLedgerWriter`
+    //      over `AuthSessionsRepository`; the scaffold default fails
+    //      closed with a 503 so a misconfigured deploy surfaces the
+    //      gap instead of silently dropping ledger rows.
+    //   5. Returns narrow JSON: `session_id` (login),
+    //      `{ok: true}` (refresh / revoke), `{revoked_count}`
+    //      (revoke-all). NEVER echoes the bearer token, the
+    //      `token_hash`, or any error stack.
+
+    if (request.method == 'POST' && path == authSessionLoginPath) {
+      if (authSessionLedgerWriter == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_not_configured',
+          'message':
+              'route requires an AuthSessionLedgerWriter to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final tokenHash = _nonBlankString(body['token_hash']);
+      if (tokenHash == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_token_hash',
+          'message': 'request body must include a non-empty token_hash field',
+        });
+        return;
+      }
+
+      final ledgerContext = _resolveLedgerContextFromHeaders(
+        request,
+        trustProxyAuditHeaders: trustProxyAuditHeaders,
+      );
+
+      String sessionId;
+      try {
+        sessionId = await authSessionLedgerWriter.recordLogin(
+          AuthSessionLedgerLogin(
+            userId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            tokenHash: tokenHash,
+            context: ledgerContext,
+          ),
+        );
+      } catch (_) {
+        // Fail closed with a calm message — no error stack leaks past
+        // this boundary. The client surfaces this to the user as a
+        // "try again in a moment" banner via
+        // `AuthLoginFailure(code: 'ledger_unavailable')`.
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_unavailable',
+          'message': 'auth session ledger is unavailable; please retry',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, <String, Object?>{
+        'session_id': sessionId,
+        // Echo the resolved scope so the client can sanity-check it
+        // matches the local AuthSession before persisting the envelope.
+        'user_id': scope.userId,
+        'operator_id': scope.operatorId,
+        'location_id': scope.locationId,
+      });
+      return;
+    }
+
+    if (request.method == 'POST' && path == authSessionRefreshPath) {
+      if (authSessionLedgerWriter == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_not_configured',
+          'message':
+              'route requires an AuthSessionLedgerWriter to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final sessionId = _nonBlankString(body['session_id']);
+      if (sessionId == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_session_id',
+          'message': 'request body must include a non-empty session_id field',
+        });
+        return;
+      }
+
+      try {
+        await authSessionLedgerWriter.recordRefresh(
+          sessionId: sessionId,
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_unavailable',
+          'message': 'auth session ledger is unavailable; please retry',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, <String, Object?>{'ok': true});
+      return;
+    }
+
+    if (request.method == 'POST' && path == authSessionRevokePath) {
+      if (authSessionLedgerWriter == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_not_configured',
+          'message':
+              'route requires an AuthSessionLedgerWriter to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final sessionId = _nonBlankString(body['session_id']);
+      if (sessionId == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_session_id',
+          'message': 'request body must include a non-empty session_id field',
+        });
+        return;
+      }
+      // Reason defaults to user_signed_out_this_session so a client
+      // that omits it (e.g. early integration) still produces an
+      // auditable revoke row instead of an empty `revoked_reason`.
+      final reason =
+          _nonBlankString(body['reason']) ?? 'user_signed_out_this_session';
+
+      try {
+        await authSessionLedgerWriter.revokeSession(
+          sessionId: sessionId,
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          reason: reason,
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_unavailable',
+          'message': 'auth session ledger is unavailable; please retry',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, <String, Object?>{'ok': true});
+      return;
+    }
+
+    if (request.method == 'POST' && path == authSessionRevokeAllPath) {
+      if (authSessionLedgerWriter == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_not_configured',
+          'message':
+              'route requires an AuthSessionLedgerWriter to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final reason =
+          _nonBlankString(body['reason']) ?? 'user_signed_out_all_sessions';
+
+      int revoked;
+      try {
+        revoked = await authSessionLedgerWriter.revokeAllSessionsForUser(
+          userId: scope.userId,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          reason: reason,
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_session_ledger_unavailable',
+          'message': 'auth session ledger is unavailable; please retry',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, <String, Object?>{
+        'ok': true,
+        'revoked_count': revoked,
+      });
+      return;
+    }
+
     _writeJson(response, 404, <String, Object?>{
       'error': 'not found',
       'method': request.method,
@@ -1417,6 +2396,89 @@ Future<void> routeRequest(
   } finally {
     await response.close();
   }
+}
+
+/// Resolves [AuthSessionLedgerContext] enrichment fields.
+///
+/// By default the proxy ignores forwarded IP / country headers because
+/// direct clients can spoof them. The deployment may opt into trusting
+/// those headers only after ingress is configured to strip and overwrite
+/// them before traffic reaches this process.
+///
+/// `User-Agent` is always client-supplied soft metadata; it is useful
+/// for support/debugging but must not be treated as a trusted security
+/// signal.
+AuthSessionLedgerContext _resolveLedgerContextFromHeaders(
+  HttpRequest request, {
+  required bool trustProxyAuditHeaders,
+}) {
+  String? ip = request.connectionInfo?.remoteAddress.address;
+  String? geoCountry;
+
+  if (trustProxyAuditHeaders) {
+    final xff = request.headers.value('X-Forwarded-For');
+    if (xff != null) {
+      final first = xff.split(',').first.trim();
+      if (first.isNotEmpty) ip = first;
+    }
+
+    geoCountry = request.headers.value('X-Country');
+    geoCountry ??= request.headers.value('X-AppEngine-Country');
+    if (geoCountry != null) {
+      final trimmed = geoCountry.trim().toUpperCase();
+      geoCountry = trimmed.length == 2 ? trimmed : null;
+    }
+  }
+
+  return AuthSessionLedgerContext(
+    ip: ip,
+    userAgent: request.headers.value(HttpHeaders.userAgentHeader),
+    geoCountry: geoCountry,
+  );
+}
+
+/// Reads + decodes a JSON object body. Returns `{}` when [allowEmpty]
+/// is true and the body is empty (used by /revoke-all where the body
+/// is optional). Throws [_MalformedJsonBodyError] otherwise.
+Future<Map<String, Object?>> _readJsonBody(
+  HttpRequest request, {
+  bool allowEmpty = false,
+}) async {
+  // `utf8.decodeStream` accepts `Stream<List<int>>` directly so we
+  // don't fight type inference between Utf8Decoder and StreamTransformer
+  // on the typed Uint8List stream the dart:io request exposes.
+  final raw = await utf8.decodeStream(request);
+  if (raw.isEmpty) {
+    if (allowEmpty) return <String, Object?>{};
+    throw _MalformedJsonBodyError('request body is empty');
+  }
+  dynamic decoded;
+  try {
+    decoded = jsonDecode(raw);
+  } on FormatException catch (error) {
+    throw _MalformedJsonBodyError('JSON parse failed: ${error.message}');
+  }
+  if (decoded is! Map) {
+    throw _MalformedJsonBodyError('JSON body must be an object');
+  }
+  return Map<String, Object?>.from(decoded);
+}
+
+/// Returns [value] cast to a non-empty trimmed string, or null when
+/// the input is missing, the wrong type, or a blank string. Used by
+/// the auth-session endpoints to validate body fields without leaking
+/// the actual value into log paths.
+String? _nonBlankString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return null;
+  return trimmed;
+}
+
+class _MalformedJsonBodyError implements Exception {
+  _MalformedJsonBodyError(this.message);
+
+  final String message;
 }
 
 void _writeJson(

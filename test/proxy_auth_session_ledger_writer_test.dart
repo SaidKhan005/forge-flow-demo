@@ -1,0 +1,601 @@
+// Phase 9 live-closeout B6 — ProxyAuthSessionLedgerWriter unit tests.
+//
+// Coverage matrix:
+//   * `recordLogin`: builds the right URL + headers (Authorization
+//     bearer + Idempotency-Key + JSON content-type), body carries
+//     only `token_hash`, returns the proxy's `session_id`.
+//   * `recordRefresh` / `revokeSession` / `revokeAllSessionsForUser`:
+//     correct URLs, body shape, parses `revoked_count`.
+//   * Failure surfaces: non-200 maps to ProxyAuthSessionLedgerError
+//     with the proxy's error code; transport failures map to
+//     `transport_error`; missing ID token maps to `no_id_token`.
+//   * Backwards-compat sanity: writer's path constants must exactly
+//     match the proxy route constants exported from
+//     advisor_proxy.dart so the wire contract stays in sync.
+//   * No live HTTP — every test injects an in-memory
+//     ProxyHttpJsonClient fake.
+
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/proxy_auth_session_ledger_writer.dart';
+
+import '../tool/advisor_proxy/advisor_proxy.dart' as proxy;
+
+void main() {
+  final baseUri = Uri.parse('https://forge-flow-proxy.example.com');
+
+  group('ProxyAuthSessionLedgerWriter — recordLogin', () {
+    test(
+      'POSTs token_hash to /v1/auth/session/login with Authorization '
+      'bearer + Idempotency-Key, returns session_id from the response',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'session-from-proxy',
+              'user_id': 'u',
+              'operator_id': 'op',
+              'location_id': 'loc',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'live-id-token',
+          httpClient: fake,
+          idempotencyKeyFactory: () => 'idempotency-test-1',
+        );
+
+        final id = await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'sha256-hex-hash',
+          ),
+        );
+        expect(id, equals('session-from-proxy'));
+
+        final call = fake.calls.single;
+        // Acceptance: URL targets the documented proxy route.
+        expect(
+          call.url.toString(),
+          equals('https://forge-flow-proxy.example.com/v1/auth/session/login'),
+        );
+        // Acceptance: Authorization carries the live ID token; the
+        // raw token never appears in any other header / body field.
+        // Header key matches the dart:io HttpHeaders constant
+        // (`authorization` — lowercase by HTTP/2 convention).
+        expect(
+          call.headers[HttpHeaders.authorizationHeader],
+          equals('Bearer live-id-token'),
+        );
+        expect(call.headers['Idempotency-Key'], equals('idempotency-test-1'));
+        // Acceptance: body carries only `token_hash`; audit enrichment
+        // is owned by the proxy and its configured ingress trust mode.
+        expect(call.body.keys, equals(<String>{'token_hash'}));
+        expect(call.body['token_hash'], equals('sha256-hex-hash'));
+      },
+    );
+
+    test('non-200 response maps to ProxyAuthSessionLedgerError with the '
+        "proxy's error code + status code", () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 503,
+          body: <String, Object?>{
+            'error': 'auth_session_ledger_unavailable',
+            'message': 'auth session ledger is unavailable; please retry',
+          },
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      final error = thrown! as ProxyAuthSessionLedgerError;
+      expect(error.code, equals('auth_session_ledger_unavailable'));
+      expect(error.statusCode, equals(503));
+    });
+
+    test('200 with malformed body (no session_id) maps to '
+        'malformed_response error', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'wrong': 'shape'},
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      expect(
+        (thrown! as ProxyAuthSessionLedgerError).code,
+        equals('malformed_response'),
+      );
+    });
+
+    test('200 with missing scope echo maps to malformed_response', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'session_id': 'session-from-proxy'},
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      final error = thrown! as ProxyAuthSessionLedgerError;
+      expect(error.code, equals('malformed_response'));
+      expect(error.message.contains('session-from-proxy'), isFalse);
+    });
+
+    test('200 with mismatched scope echo maps to scope_mismatch', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'session_id': 'session-from-proxy',
+            'user_id': 'DIFFERENT',
+            'operator_id': 'op',
+            'location_id': 'loc',
+          },
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      final error = thrown! as ProxyAuthSessionLedgerError;
+      expect(error.code, equals('scope_mismatch'));
+      expect(error.message.contains('DIFFERENT'), isFalse);
+    });
+
+    test('null ID token maps to no_id_token before any HTTP call', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'session_id': 'unused'},
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => null,
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      expect(
+        (thrown! as ProxyAuthSessionLedgerError).code,
+        equals('no_id_token'),
+      );
+      // Acceptance: writer NEVER hit the HTTP transport because the
+      // missing token is a hard-fail-before-network condition.
+      expect(fake.calls, isEmpty);
+    });
+
+    test('transport-level error maps to transport_error without leaking '
+        'the underlying exception text', () async {
+      final fake = _FakeProxyHttpJsonClient.throwsOnEveryCall(
+        StateError('connect ECONNREFUSED secret://blob'),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      final error = thrown! as ProxyAuthSessionLedgerError;
+      expect(error.code, equals('transport_error'));
+      // Acceptance: the StateError's message (which could carry a
+      // connection string or secret) does NOT surface in the error
+      // message routed back through the writer.
+      expect(error.message.contains('secret://blob'), isFalse);
+      expect(error.message.contains('connect ECONNREFUSED'), isFalse);
+    });
+  });
+
+  group('ProxyAuthSessionLedgerWriter — recordRefresh / revoke', () {
+    test(
+      'recordRefresh POSTs session_id to /v1/auth/session/refresh',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{'ok': true},
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        await writer.recordRefresh(
+          sessionId: 'session-uuid',
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+        );
+
+        final call = fake.calls.single;
+        expect(
+          call.url.toString(),
+          equals(
+            'https://forge-flow-proxy.example.com/v1/auth/session/refresh',
+          ),
+        );
+        expect(
+          call.body,
+          equals(<String, Object?>{'session_id': 'session-uuid'}),
+        );
+      },
+    );
+
+    test(
+      'revokeSession POSTs session_id + reason to /v1/auth/session/revoke',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{'ok': true},
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        await writer.revokeSession(
+          sessionId: 'session-uuid',
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+          reason: 'user_signed_out_this_session',
+        );
+
+        final call = fake.calls.single;
+        expect(
+          call.url.toString(),
+          equals('https://forge-flow-proxy.example.com/v1/auth/session/revoke'),
+        );
+        expect(
+          call.body,
+          equals(<String, Object?>{
+            'session_id': 'session-uuid',
+            'reason': 'user_signed_out_this_session',
+          }),
+        );
+      },
+    );
+
+    test('revokeAllSessionsForUser POSTs reason to /v1/auth/session/revoke-all '
+        'and returns revoked_count from response', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'revoked_count': 3},
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'token',
+        httpClient: fake,
+      );
+
+      final count = await writer.revokeAllSessionsForUser(
+        userId: 'u',
+        operatorId: 'op',
+        locationId: 'loc',
+        reason: 'user_signed_out_all_sessions',
+      );
+      expect(count, equals(3));
+
+      final call = fake.calls.single;
+      expect(
+        call.url.toString(),
+        equals(
+          'https://forge-flow-proxy.example.com/v1/auth/session/revoke-all',
+        ),
+      );
+      expect(
+        call.body,
+        equals(<String, Object?>{'reason': 'user_signed_out_all_sessions'}),
+      );
+    });
+
+    test(
+      'revokeAllSessionsForUser returns 0 when revoked_count is missing',
+      () async {
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{'ok': true},
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        final count = await writer.revokeAllSessionsForUser(
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+          reason: 'r',
+        );
+        expect(count, equals(0));
+      },
+    );
+  });
+
+  group('ProxyAuthSessionLedgerWriter — wire-contract sanity', () {
+    test(
+      'writer endpoint paths match the proxy route constants exactly',
+      () async {
+        // The writer can't import from `tool/` (lib/ → tool/ would
+        // pull the proxy module into the Flutter binary), so it
+        // declares its own path constants. This test asserts both
+        // sides agree byte-for-byte. If either constant changes the
+        // wire contract is broken and this guard fires.
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'x',
+              'user_id': 'u',
+              'operator_id': 'op',
+              'location_id': 'loc',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+        await writer.recordRefresh(
+          sessionId: 's',
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+        );
+        await writer.revokeSession(
+          sessionId: 's',
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+          reason: 'r',
+        );
+        await writer.revokeAllSessionsForUser(
+          userId: 'u',
+          operatorId: 'op',
+          locationId: 'loc',
+          reason: 'r',
+        );
+
+        expect(
+          fake.calls.map((c) => c.url.path).toList(),
+          equals(<String>[
+            proxy.authSessionLoginPath,
+            proxy.authSessionRefreshPath,
+            proxy.authSessionRevokePath,
+            proxy.authSessionRevokeAllPath,
+          ]),
+        );
+      },
+    );
+
+    test(
+      'default idempotency-key factory generates non-blank distinct values',
+      () async {
+        // Sanity: two consecutive logins through the default factory
+        // produce different Idempotency-Key values, so a future proxy
+        // slice that integrates `proxy_requests` can dedupe replays
+        // without the client baking in collisions.
+        final fake = _FakeProxyHttpJsonClient(
+          respondWith: const ProxyHttpJsonResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'session_id': 'x',
+              'user_id': 'u',
+              'operator_id': 'op',
+              'location_id': 'loc',
+            },
+          ),
+        );
+        final writer = ProxyAuthSessionLedgerWriter(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'token',
+          httpClient: fake,
+        );
+
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+        await writer.recordLogin(
+          const AuthSessionLedgerLogin(
+            userId: 'u',
+            operatorId: 'op',
+            locationId: 'loc',
+            tokenHash: 'h',
+          ),
+        );
+
+        final keys = fake.calls
+            .map((c) => c.headers['Idempotency-Key'])
+            .whereType<String>()
+            .toList();
+        expect(keys, hasLength(2));
+        expect(keys.first.isNotEmpty, isTrue);
+        expect(keys.last.isNotEmpty, isTrue);
+        expect(keys.first, isNot(equals(keys.last)));
+      },
+    );
+  });
+
+  group('ScaffoldFailingProxyHttpJsonClient', () {
+    test('every call throws so a misconfigured deploy fails closed', () async {
+      const transport = ScaffoldFailingProxyHttpJsonClient();
+      await expectLater(
+        transport.postJson(
+          url: Uri.parse('https://example.com'),
+          headers: const <String, String>{},
+          body: const <String, Object?>{},
+        ),
+        throwsStateError,
+      );
+    });
+  });
+}
+
+class _RecordedHttpCall {
+  _RecordedHttpCall({
+    required this.url,
+    required this.headers,
+    required this.body,
+  });
+
+  final Uri url;
+  final Map<String, String> headers;
+  final Map<String, Object?> body;
+}
+
+class _FakeProxyHttpJsonClient implements ProxyHttpJsonClient {
+  _FakeProxyHttpJsonClient({required ProxyHttpJsonResponse respondWith})
+    : _respondWith = respondWith,
+      _throwError = null;
+
+  _FakeProxyHttpJsonClient.throwsOnEveryCall(Object error)
+    : _respondWith = null,
+      _throwError = error;
+
+  final ProxyHttpJsonResponse? _respondWith;
+  final Object? _throwError;
+
+  final List<_RecordedHttpCall> calls = <_RecordedHttpCall>[];
+
+  @override
+  Future<ProxyHttpJsonResponse> postJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) async {
+    calls.add(_RecordedHttpCall(url: url, headers: headers, body: body));
+    final error = _throwError;
+    if (error != null) throw error;
+    return _respondWith!;
+  }
+}

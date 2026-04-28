@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-26
+Updated: 2026-04-27
 Owner: You
 Execution model: We think, Claude codes
 
@@ -19,6 +19,10 @@ Primary active docs:
   parked follow-ups, soft constraints, and AGE/Azure rationale.
 - `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
   - capital-A admin console plan.
+- `docs/phases/phase_9/phase_9_auth_plan.md` - Phase 9 framework and live
+  auth acceptance plan.
+- `docs/phases/phase_9/phase_9_execution_backlog.md` - Phase 9 live-closeout
+  parcels that remain after framework acceptance.
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md` - prompt shape and human
   prerequisite / decision-block rules.
 - `docs/DATA_ALIGNMENT_TRACKER.md` only for alignment-heavy slices.
@@ -59,7 +63,9 @@ Before each prompt:
   `docs/phases/phase_production_cutover/phase_production_cutover_plan.md`;
   add `phase_11a_decision_register.md` when the prompt needs cost
   envelopes, tier choice, or dormancy rules.
-- `9.0-9.9`: read `docs/phases/phase_9/phase_9_auth_plan.md`; add
+- `9.live-closeout`, `9.0-9.10` (incl. `9.0a`): read
+  `docs/phases/phase_9/phase_9_auth_plan.md` and
+  `docs/phases/phase_9/phase_9_execution_backlog.md`; add
   `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md` when the prompt
   touches any user-owned Phase 9 choice; add `phase_11a_decision_register.md`
   when the prompt needs Phase 9 architecture-lock rationale, RLS performance
@@ -75,9 +81,9 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 
 ## Now
 
-- Current phase: `11a` live-infrastructure sequence is accepted; move to
-  `9` Auth foundation next (sequence re-locked 2026-04-26 under "full
-  proper dev before launch — no shortcuts").
+- Current phase: `9` Auth framework is complete; move through Phase 9
+  live-closeout parcels before `11A.0-6` (sequence re-locked 2026-04-26
+  under "full proper dev before launch - no shortcuts").
 - Postgres host: Azure DB Flexible Server, Canada Central, PG 16.
 - Retrieval pattern: Modular Adaptive Agentic RAG.
 - Cost discipline: 5 levers locked (Hard Promise #9).
@@ -85,9 +91,30 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   accepted end-to-end. Anthropic generated 233 chunk contexts, Voyage
   refreshed 233 context-enriched embeddings, vector/rerank smokes passed, and
   Claude answer smoke returned `end_turn`.
-- Last completed auth action: `9.0` Auth schema foundation accepted locally,
-  on staging, and on Production1. The 9.0 migration added the auth/RBAC/audit
-  schema, permission catalog, baseline roles, and tenant-leading indexes.
+- Last completed auth action: Phase 9 in-app auth smoke prerequisites are
+  READY as of 2026-04-27. The staging proxy is deployed, `/readyz` passes,
+  the non-repo secrets loader carries the proxy URI and smoke-user password,
+  and Cloud Run has `FIREBASE_PROJECT_ID`, `POSTGRES_URL`, and
+  `POSTGRES_ADMIN_URL`. The proxy session-ledger endpoint also shipped on
+  2026-04-27. Four POST routes
+  (`/v1/auth/session/login` / `refresh` / `revoke` / `revoke-all`) on
+  `tool/advisor_proxy/advisor_proxy.dart`, all auth-gated through the
+  existing Firebase verifier path and delegating to an injected
+  `AuthSessionLedgerWriter`; matching `ProxyAuthSessionLedgerWriter`
+  in `lib/services/auth/` drives the routes from the Flutter app via
+  `dart:io HttpClient`. `firebase_auth_runtime_bindings.dart` accepts
+  an optional `proxyBaseUri` and entrypoints read
+  `FORGE_FLOW_PROXY_BASE_URI` from `--dart-define`; without it the
+  bootstrap falls back to the scaffold-failing default and sign-in
+  fails closed with a calm `ledger_unavailable` message. Focused
+  Phase 9 sweep passed `566/566` (+33 new tests: 13 server-side
+  route + 12 client-writer + the prior tranche's audit-fix tests).
+  Prior accepted slices (database closeout live on staging and
+  Production1; Firebase app wiring behind `FORGE_FLOW_USE_FIREBASE_AUTH`;
+  staging Firebase credential + `auth_sessions` smoke; Settings -> Team
+  permission-gated Material UI foundation) remain accepted. Result
+  docs: `docs/phases/phase_9/phase_9_live_database_closeout_result.md`
+  and `docs/phases/phase_9/phase_9_live_runtime_closeout_result.md`.
 - Current auth setup state: staging Firebase project `forge-flow-staging`
   exists, is billing-enabled, is upgraded to Identity Platform, has both
   Android apps, both iOS bundle IDs, and the admin web app registered. Email /
@@ -99,18 +126,31 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   a future follow-up unless an official Firebase / Identity Platform passkey
   surface appears. Auth email decision: use Firebase action links with branded
   Forge & Flow web pages, so Firebase subject/body template customization is
-  not a launch blocker. Flutter/Gradle/iOS runtime wiring is still pending.
+  not a launch blocker. FlutterFire + secure-storage packages are installed;
+  Android Gradle wiring is verified; iOS config-copy wiring is written but
+  awaits a macOS build check. Proxy session-ledger endpoint shipped
+  2026-04-27 (four POST routes + Flutter `ProxyAuthSessionLedgerWriter`);
+  proxy boot now wires `RepositoryAuthSessionLedgerWriter` over
+  `PackagePostgresPool` with `POSTGRES_URL`, so the four
+  `/v1/auth/session/*` routes are ready to write real Postgres rows
+  when deployed.
   Full Phase 9 decision set is locked in
   `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
-- Next slice for Claude: `9.1` Firebase Identity Platform setup closeout +
-  JWT verifier wiring, with explicit handling of the passkey/email-template
-  gaps. `9.0-9.9` precedes `11A.0`
-  because admin console acceptance requires a real auth gate. Phase 9
-  re-scoped 2026-04-26 to meet 2026 industry standards under
-  "no shortcuts" launch model — full plan in
-  `phase_9/phase_9_auth_plan.md`. Notify the user before any live
-  Azure mutation, Voyage/Anthropic/Firebase call, key/account
-  request, billing/account setup, or product decision.
+- Next slice: run the `auth-smoke@forgeflow.dev` in-app login/logout smoke
+  through the deployed staging proxy. 2026-04-27 prerequisite closeout is
+  READY: the unified secrets file loads, the smoke password is present,
+  `FORGE_FLOW_PROXY_BASE_URI` is present outside the repo, Cloud Run service
+  `forge-flow-staging-proxy` is deployed with `FIREBASE_PROJECT_ID`,
+  `POSTGRES_URL`, and `POSTGRES_ADMIN_URL`, and the app can launch with
+  `FORGE_FLOW_USE_FIREBASE_AUTH=true` plus the proxy base URI define. Result
+  doc: `docs/phases/phase_9/phase_9_in_app_auth_smoke_prereq_result.md`.
+  Do not ask the user to paste secrets in chat; the URL/password must flow
+  through the non-repo secrets file or Cloud Run state.
+  After the smoke passes, group role/admin, lifecycle, password, MFA,
+  and recovery-code endpoints as one or more audited proxy slices.
+  Notify the user before any live Firebase account mutation,
+  key/account request, billing/account setup, provider call, or
+  product decision.
 
 Architecture rationale, retrieval-pattern detail, cost levers, pricing tier
 numbers, dormancy rules, and parked decisions live in
@@ -126,43 +166,53 @@ demo-mode launch, no split-and-defer of compliance.
 
 **Pre-launch (in order):**
 
-1. `9.0-9.9` - Auth, identity, permissions, audit (10 sub-slices,
-   ~12-15 weeks). Re-scoped 2026-04-26 to meet 2026 industry
-   standards: Firebase Identity Platform tier, TOTP MFA at launch,
-   NIST SP 800-63B-4 password policy, HIBP screening, append-only
-   audit log, GDPR redact-don't-delete, enriched RBAC with deny
-   rules + time-bound + location-scoped grants. Precedes `11A.0`
-   because admin console acceptance requires a real auth gate.
-2. `11A.0-6` - F&F Operations Console foundation.
-3. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
-4. `10a` - Shared state v1 (real-time `NOTIFY` -> Pub/Sub bridge).
-5. `10.5` - Live daypart shift.
-6. `9.5` - El Podio learning identity.
-7. `9.75` - Staff daily companion (Barrio shell).
-8. `7.61` - Freshness audit (Hard Gate before Phase 8).
-9. `8` - POS / labor transport.
-10. `8R` - Reservation transport.
-11. `8.5` - External integrations (QBO, Xero, Bill.com, Plaid).
-12. `11b` - Advisor UX (with real corpus + real operator data).
-13. `11b.1` - Schema-foundation sweep (consolidates everything
+1. `9.live-closeout` - Phase 9 live-closeout parcels from
+   `phase_9_execution_backlog.md`. Database closeout, Firebase SDK/app
+   wiring, staging credential/session smoke, and Settings -> Team Material UI
+   foundation are complete. Continue with the proxy auth endpoint tranche
+   (session ledger first), then Cloud Armor / reCAPTCHA and remaining live MFA
+   / password / lifecycle bindings.
+2. `9.10` - Operator-facing Settings -> Team UX inside the Forge & Flow /
+   Barrio operator app. Kernel + first Material UI foundation are complete;
+   proxy-backed data/actions and dense role/audit detail views remain under
+   `9.live-closeout`.
+3. `9.0a` - Multi-location scale-flow additions logged
+   2026-04-26 from the franchise auth audit:
+   - Live migrations are applied and verified on staging + Production1.
+   - `user_roles.scope_type`, `users.primary_location_id`,
+     `operators.region`, 12 `team.*` permission keys, and the
+     super_admin team-grant audit fix are live.
+   - Detail in `phase_9/phase_9_auth_plan.md` sub-slices 9.0a + 9.10.
+4. `11A.0-6` - F&F Operations Console foundation.
+5. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
+6. `10a` - Shared state v1 (real-time `NOTIFY` -> Pub/Sub bridge).
+7. `10.5` - Live daypart shift.
+8. `9.5` - El Podio learning identity.
+9. `9.75` - Staff daily companion (Barrio shell).
+10. `7.61` - Freshness audit (Hard Gate before Phase 8).
+11. `8` - POS / labor transport.
+12. `8R` - Reservation transport.
+13. `8.5` - External integrations (QBO, Xero, Bill.com, Plaid).
+14. `11b` - Advisor UX (with real corpus + real operator data).
+15. `11b.1` - Schema-foundation sweep (consolidates everything
     learned across `11A`, `9`, `7.58`, `10a`, `10.5`, `9.5`, `9.75`,
     `8`, `8R`, `8.5`).
-14. `11b.2` - Causal queries (AGE traversal in advisor hot path).
-15. `12.0` - Workflow platform foundation.
-16. `12.1` - Tool registry.
-17. `12.2` - Plan-Then-Execute pattern.
-18. `12.3` - Approval gate.
-19. `12.4` - Weekly P&L workflow (flagship; depends on `8.5`).
-20. `12.5` - Workflow catalog.
-21. `11A.7-10` - Admin polish (feature flag admin, API version
+16. `11b.2` - Causal queries (AGE traversal in advisor hot path).
+17. `12.0` - Workflow platform foundation.
+18. `12.1` - Tool registry.
+19. `12.2` - Plan-Then-Execute pattern.
+20. `12.3` - Approval gate.
+21. `12.4` - Weekly P&L workflow (flagship; depends on `8.5`).
+22. `12.5` - Workflow catalog.
+23. `11A.7-10` - Admin polish (feature flag admin, API version
     management, audit log review, status page).
-22. `10b` - Full offline sync.
-23. `9.8` - Full compliance package: T&Cs + DPAs (Toast, 7shifts,
+23. `10b` - Full offline sync.
+24. `9.8` - Full compliance package: T&Cs + DPAs (Toast, 7shifts,
     OpenTable, QBO/Xero/Bill.com/Plaid, Anthropic, Voyage, Microsoft
     Azure, Google Cloud) + SOC2 inheritance memo + cyber-liability
     insurance review. Lands last because every named processor is
     now real and the chain is enumerable.
-24. `cutover.0-4` - Production cutover with the full product live.
+25. `cutover.0-4` - Production cutover with the full product live.
 
 **Post-launch (additive, ongoing):**
 
@@ -179,7 +229,7 @@ Slice scopes in their phase plans. Architecture rationale in
 | --- | --- | --- |
 | `7.57` | complete | archived |
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
-| `9.0-9.9` | active (`9.0` accepted; `9.1` next) | `phase_9/phase_9_auth_plan.md` |
+| `9.0-9.10` (incl. `9.0a`) | framework complete; live-closeout active; database closeout, Firebase SDK/app wiring, staging credential/session smoke, and 9.10 Material UI foundation accepted | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `11A.0-6` | queued | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |

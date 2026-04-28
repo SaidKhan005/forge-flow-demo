@@ -136,6 +136,48 @@ Sensitive keys carry `requires_mfa = true`.
 | `admin.debug_console.view` | View internal debug console. | — |
 | `admin.session.force_logout` | Force-revoke all sessions for a user. | — |
 
+### `team.*` (12)
+
+Operator self-service team management. Distinct from `admin.*` —
+`team.*` keys gate the operator-facing Settings → Team UX (lands in
+9.10) and let an `operator_owner` manage their own users / roles
+without touching F&F-side admin paths.
+
+Added 2026-04-27 by the 9.0a multi-location scale-flow extensions
+slice. None require MFA at the catalog level; the launch tier
+treats team management as low-friction so a single operator
+admin can run a small team without a step-up gate per action.
+
+| Key | Description | MFA |
+|---|---|---|
+| `team.users.view` | View the operator's user list. | — |
+| `team.users.invite` | Create invites for users in own operator. | — |
+| `team.users.deactivate` | Suspend a user in own operator. | — |
+| `team.users.reactivate` | Reactivate a suspended user. | — |
+| `team.users.soft_delete` | Soft-delete a user in own operator. | — |
+| `team.users.reset_password` | Admin-initiated password reset for a team member. | — |
+| `team.roles.view` | View the operator's role list. | — |
+| `team.roles.create_custom` | Create operator-scoped custom role. | — |
+| `team.roles.assign` | Grant role to user within own operator. | — |
+| `team.roles.revoke` | Revoke role from user within own operator. | — |
+| `team.audit_log.view` | View audit log scoped to own operator. | — |
+| `team.session.force_logout` | Force-logout a user's sessions within own operator. | — |
+
+Baseline grants seeded by 9.0a:
+
+- `super_admin` gets every key in the catalog. The 9.0 seed grants all
+  original keys, and the 9.0a audit-fix migration grants the later `team.*`
+  keys.
+- `operator_owner` gets ALL `team.*` keys.
+- `operator_manager` gets the manager-tier subset:
+  `team.users.view`, `team.users.invite`, `team.users.reactivate`,
+  `team.users.reset_password`, `team.roles.view`,
+  `team.roles.assign`, `team.roles.revoke`, `team.audit_log.view`,
+  `team.session.force_logout`. Manager **cannot** create custom
+  roles or soft-delete users (locked).
+- `operator_supervisor` and `operator_staff` get nothing in
+  `team.*`.
+
 ### `billing.*` (5)
 
 Operator billing actions. All money-moving keys require MFA.
