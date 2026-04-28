@@ -78,18 +78,17 @@ so an executor can verify before running:
 | Table.column | Action | Path |
 | --- | --- | --- |
 | `users.email` | Replace with `redacted-{user_id}@deleted.local` | App-runtime (`UsersRepository.redactPii`) |
-| `users.firebase_uid` | **Preserved** (link integrity to Firebase) | n/a |
+| `users.firebase_uid_retain` | Directive flag `true`. The `users.firebase_uid` column is intentionally **preserved** (link integrity to Firebase). | n/a |
 | `users.first_name` | Set to NULL | App-runtime (`UsersRepository.redactPii`) |
 | `users.last_name` | Set to NULL | App-runtime (`UsersRepository.redactPii`) |
 | `users.display_name` | Set to NULL | App-runtime (`UsersRepository.redactPii`) |
 | `users.avatar_url` | Set to NULL | App-runtime (`UsersRepository.redactPii`) |
-| `users.preferred_locale` | Set to NULL | App-runtime (`UsersRepository.redactPii`) |
 | `auth_events_audit.ip` | Set to NULL | **Break-glass DBA** (see below) |
 | `auth_events_audit.user_agent` | Set to NULL | **Break-glass DBA** (see below) |
 | `auth_events_audit.event_payload` | Strip `email`, `first_name`, `last_name`, `display_name`, `avatar_url` keys via `jsonb` `-` operator | **Break-glass DBA** (see below) |
 | `auth_sessions.ip` | Set to NULL | App-runtime (`AuthSessionsRepository`) |
 | `auth_sessions.user_agent` | Set to NULL | App-runtime (`AuthSessionsRepository`) |
-| `password_history.*` | DELETE every row for the user | App-runtime (`PasswordHistoryRepository.clearForUser`) |
+| `password_history.cleared` | Directive flag `true`. DELETE every `password_history` row for the user. | App-runtime (`PasswordHistoryRepository.clearForUser`) |
 | `mfa_factors.factor_metadata` | Strip the AAGUID key from the JSONB value | App-runtime (`MfaFactorsRepository`) |
 
 `auth_events_audit` rows are **append-only at the grant shape** —
