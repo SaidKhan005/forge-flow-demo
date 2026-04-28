@@ -21,11 +21,33 @@ if (-not (Test-Path -LiteralPath $envFile)) {
 
 . $envFile
 
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('FIREBASE_WEB_API_KEY'))) {
+  $googleServicesPath = Join-Path $repoRoot 'android\app\src\forgeflow\google-services.json'
+  if (Test-Path -LiteralPath $googleServicesPath) {
+    $googleServices = Get-Content -LiteralPath $googleServicesPath -Raw |
+      ConvertFrom-Json
+    foreach ($client in @($googleServices.client)) {
+      foreach ($apiKey in @($client.api_key)) {
+        $key = [string] $apiKey.current_key
+        if (-not [string]::IsNullOrWhiteSpace($key)) {
+          [Environment]::SetEnvironmentVariable('FIREBASE_WEB_API_KEY', $key, 'Process')
+          break
+        }
+      }
+      if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('FIREBASE_WEB_API_KEY'))) {
+        break
+      }
+    }
+  }
+}
+
 foreach ($name in @(
   'POSTGRES_URL',
   'POSTGRES_ADMIN_URL',
   'POSTGRES_PRODUCTION_ADMIN_URL',
   'FIREBASE_PROJECT_ID',
+  'FIREBASE_WEB_API_KEY',
   'GOOGLE_APPLICATION_CREDENTIALS',
   'ANTHROPIC_API_KEY',
   'VOYAGE_API_KEY'

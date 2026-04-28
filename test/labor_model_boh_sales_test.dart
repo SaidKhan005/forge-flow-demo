@@ -55,6 +55,7 @@ void main() {
         targetSPLH: targetSPLH,
         fohWage: 16.50,
         bohWage: 21.35,
+        historicalWeeklyAvgCovers: covers,
       );
 
       final expectedSales = covers * targetPPA;
@@ -75,6 +76,7 @@ void main() {
         targetSPLH: 180.0,
         fohWage: 16.50,
         bohWage: 21.35,
+        historicalWeeklyAvgCovers: covers,
       );
 
       expect(notifier.forecastedSales, equals(covers * targetPPA));
@@ -89,6 +91,7 @@ void main() {
         targetSPLH: 180.0,
         fohWage: 16.50,
         bohWage: 21.35,
+        historicalWeeklyAvgCovers: 1200,
       );
 
       final views = notifier.adjustedDayViews;

@@ -82,7 +82,8 @@ void main() {
         nextBegin: const FirebaseMfaTotpBeginPayload(
           factorId: 'fb-factor-1',
           secretBase32: 'JBSWY3DPEHPK3PXP',
-          otpAuthUrl: 'otpauth://totp/Forge%20%26%20Flow:u@example.test?secret=...',
+          otpAuthUrl:
+              'otpauth://totp/Forge%20%26%20Flow:u@example.test?secret=...',
         ),
         nextConfirm: confirmOutcome,
       );
@@ -95,18 +96,20 @@ void main() {
       );
     }
 
-    test('beginTotpEnrollment forwards adapter payload into TotpEnrollmentSetup',
-        () async {
-      final service = buildService();
-      final setup = await service.beginTotpEnrollment(
-        userId: 'u',
-        userEmail: 'u@example.test',
-        issuerName: 'Forge & Flow',
-      );
-      expect(setup.factorId, equals('fb-factor-1'));
-      expect(setup.secretBase32, equals('JBSWY3DPEHPK3PXP'));
-      expect(setup.otpAuthUrl, contains('otpauth://totp/'));
-    });
+    test(
+      'beginTotpEnrollment forwards adapter payload into TotpEnrollmentSetup',
+      () async {
+        final service = buildService();
+        final setup = await service.beginTotpEnrollment(
+          userId: 'u',
+          userEmail: 'u@example.test',
+          issuerName: 'Forge & Flow',
+        );
+        expect(setup.factorId, equals('fb-factor-1'));
+        expect(setup.secretBase32, equals('JBSWY3DPEHPK3PXP'));
+        expect(setup.otpAuthUrl, contains('otpauth://totp/'));
+      },
+    );
 
     test('confirmTotpEnrollment Succeeded -> N plaintext + N hashed codes '
         'with the firebase_factor_uid carried through', () async {
@@ -132,8 +135,11 @@ void main() {
       // XXXX-XXXX-XXXX shape so the display-once UI can render
       // without further processing.
       for (final code in payload.recoveryCodesPlaintext) {
-        expect(RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(code), isTrue,
-            reason: 'code "$code" did not match canonical shape');
+        expect(
+          RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(code),
+          isTrue,
+          reason: 'code "$code" did not match canonical shape',
+        );
       }
       // Acceptance: all hashes share the same salt (per-user salt
       // contract from recovery_code_hasher.dart).
@@ -158,23 +164,26 @@ void main() {
       expect(payload.factorId, equals('session-factor-x'));
     });
 
-    test('confirmTotpEnrollment Failed -> MfaEnrollmentConfirmFailure preserves '
-        'code + message', () async {
-      final service = buildService(
-        confirmOutcome: const FirebaseMfaConfirmFailed(
-          code: 'totp_otp_mismatch',
-          message: 'Code did not match. Try again.',
-        ),
-      );
-      final result = await service.confirmTotpEnrollment(
-        factorId: 'fb-factor-1',
-        oneTimeCode: '000000',
-      );
-      expect(result, isA<MfaEnrollmentConfirmFailure>());
-      final f = result as MfaEnrollmentConfirmFailure;
-      expect(f.code, equals('totp_otp_mismatch'));
-      expect(f.message, equals('Code did not match. Try again.'));
-    });
+    test(
+      'confirmTotpEnrollment Failed -> MfaEnrollmentConfirmFailure preserves '
+      'code + message',
+      () async {
+        final service = buildService(
+          confirmOutcome: const FirebaseMfaConfirmFailed(
+            code: 'totp_otp_mismatch',
+            message: 'Code did not match. Try again.',
+          ),
+        );
+        final result = await service.confirmTotpEnrollment(
+          factorId: 'fb-factor-1',
+          oneTimeCode: '000000',
+        );
+        expect(result, isA<MfaEnrollmentConfirmFailure>());
+        final f = result as MfaEnrollmentConfirmFailure;
+        expect(f.code, equals('totp_otp_mismatch'));
+        expect(f.message, equals('Code did not match. Try again.'));
+      },
+    );
   });
 
   group('MfaFactorsRepository (B12 — fake Postgres)', () {
@@ -200,8 +209,8 @@ void main() {
       expect(params['user_id'], equals(_validUserId));
       // Metadata is bound as serialized JSON so the JSON shape lands
       // in factor_metadata::jsonb verbatim.
-      final metaJson = jsonDecode(params['metadata'] as String)
-          as Map<String, Object?>;
+      final metaJson =
+          jsonDecode(params['metadata'] as String) as Map<String, Object?>;
       expect(metaJson['firebase_factor_uid'], equals('firebase-totp-uid-9'));
       expect(metaJson['issuer'], equals('Forge & Flow'));
     });
@@ -222,8 +231,8 @@ void main() {
 
       expect(id, equals(_validFactorId));
       final params = pool.transactions.single.parameters.last;
-      final meta = jsonDecode(params['metadata'] as String)
-          as Map<String, Object?>;
+      final meta =
+          jsonDecode(params['metadata'] as String) as Map<String, Object?>;
       expect(meta['salt'], isA<String>());
       expect(meta['hash'], isA<String>());
     });
@@ -322,10 +331,7 @@ void main() {
     test('rate-limits within the 1-minute window', () async {
       final store = InMemoryRecoveryCodeAttemptStore();
       var now = DateTime.utc(2026, 4, 26, 12);
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
       await limiter.recordAttempt(userId: _validUserId);
       now = now.add(const Duration(seconds: 30));
       final decision = await limiter.check(userId: _validUserId);
@@ -339,10 +345,7 @@ void main() {
     test('allows again past the 1-minute window', () async {
       final store = InMemoryRecoveryCodeAttemptStore();
       var now = DateTime.utc(2026, 4, 26, 12);
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
       await limiter.recordAttempt(userId: _validUserId);
       now = now.add(const Duration(minutes: 1, seconds: 1));
       expect(
@@ -354,10 +357,7 @@ void main() {
     test('blocks after 5 attempts in the 24h window', () async {
       final store = InMemoryRecoveryCodeAttemptStore();
       var now = DateTime.utc(2026, 4, 26, 0);
-      final limiter = RecoveryCodeAttemptLimiter(
-        store: store,
-        now: () => now,
-      );
+      final limiter = RecoveryCodeAttemptLimiter(store: store, now: () => now);
       // Spread 5 attempts across the 24h window, each beyond the
       // 1-minute rate limit so only the daily budget triggers.
       for (var i = 0; i < 5; i++) {
@@ -372,25 +372,27 @@ void main() {
       expect(resets, equals(DateTime.utc(2026, 4, 27, 0)));
     });
 
-    test('ScaffoldFailingRecoveryCodeAttemptStore throws on every method',
-        () async {
-      const store = ScaffoldFailingRecoveryCodeAttemptStore();
-      await expectLater(
-        store.recentAttempts(
-          userId: _validUserId,
-          now: DateTime.utc(2026, 4, 26),
-          window: const Duration(hours: 24),
-        ),
-        throwsStateError,
-      );
-      await expectLater(
-        store.recordAttempt(
-          userId: _validUserId,
-          at: DateTime.utc(2026, 4, 26),
-        ),
-        throwsStateError,
-      );
-    });
+    test(
+      'ScaffoldFailingRecoveryCodeAttemptStore throws on every method',
+      () async {
+        const store = ScaffoldFailingRecoveryCodeAttemptStore();
+        await expectLater(
+          store.recentAttempts(
+            userId: _validUserId,
+            now: DateTime.utc(2026, 4, 26),
+            window: const Duration(hours: 24),
+          ),
+          throwsStateError,
+        );
+        await expectLater(
+          store.recordAttempt(
+            userId: _validUserId,
+            at: DateTime.utc(2026, 4, 26),
+          ),
+          throwsStateError,
+        );
+      },
+    );
   });
 
   group('RecoveryCodeConsumer (B13)', () {
@@ -457,56 +459,60 @@ void main() {
       );
     });
 
-    test('invalid code: returns Invalid AND still records the attempt',
-        () async {
-      final pool = _MfaFactorsPool(
-        returningFactorId: _validFactorId,
-        recoveryCodeRows: const <PostgresRow>[],
-      );
-      final attempts = InMemoryRecoveryCodeAttemptStore();
-      final consumer = buildConsumer(pool: pool, attemptStore: attempts);
+    test(
+      'invalid code: returns Invalid AND still records the attempt',
+      () async {
+        final pool = _MfaFactorsPool(
+          returningFactorId: _validFactorId,
+          recoveryCodeRows: const <PostgresRow>[],
+        );
+        final attempts = InMemoryRecoveryCodeAttemptStore();
+        final consumer = buildConsumer(pool: pool, attemptStore: attempts);
 
-      final result = await consumer.consume(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        userId: _validUserId,
-        rawCode: 'XXXX-YYYY-ZZZZ',
-      );
-
-      expect(result, isA<RecoveryCodeInvalid>());
-      expect(
-        await attempts.recentAttempts(
+        final result = await consumer.consume(
+          operatorId: _validOpId,
+          locationId: _validLocId,
           userId: _validUserId,
-          now: DateTime.utc(2026, 4, 26, 12),
-          window: const Duration(hours: 24),
-        ),
-        hasLength(1),
-      );
-    });
+          rawCode: 'XXXX-YYYY-ZZZZ',
+        );
 
-    test('rate limited: returns RateLimited without touching the repository',
-        () async {
-      final pool = _MfaFactorsPool(returningFactorId: _validFactorId);
-      final attempts = InMemoryRecoveryCodeAttemptStore();
-      // Burn the per-minute slot.
-      await attempts.recordAttempt(
-        userId: _validUserId,
-        at: DateTime.utc(2026, 4, 26, 11, 59, 30),
-      );
-      final consumer = buildConsumer(pool: pool, attemptStore: attempts);
+        expect(result, isA<RecoveryCodeInvalid>());
+        expect(
+          await attempts.recentAttempts(
+            userId: _validUserId,
+            now: DateTime.utc(2026, 4, 26, 12),
+            window: const Duration(hours: 24),
+          ),
+          hasLength(1),
+        );
+      },
+    );
 
-      final result = await consumer.consume(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        userId: _validUserId,
-        rawCode: 'AAAA-BBBB-CCCC',
-      );
+    test(
+      'rate limited: returns RateLimited without touching the repository',
+      () async {
+        final pool = _MfaFactorsPool(returningFactorId: _validFactorId);
+        final attempts = InMemoryRecoveryCodeAttemptStore();
+        // Burn the per-minute slot.
+        await attempts.recordAttempt(
+          userId: _validUserId,
+          at: DateTime.utc(2026, 4, 26, 11, 59, 30),
+        );
+        final consumer = buildConsumer(pool: pool, attemptStore: attempts);
 
-      expect(result, isA<RecoveryCodeRateLimited>());
-      // Acceptance: no SQL was executed because the limiter
-      // short-circuited before the consumer reached the repo.
-      expect(pool.transactions, isEmpty);
-    });
+        final result = await consumer.consume(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          userId: _validUserId,
+          rawCode: 'AAAA-BBBB-CCCC',
+        );
+
+        expect(result, isA<RecoveryCodeRateLimited>());
+        // Acceptance: no SQL was executed because the limiter
+        // short-circuited before the consumer reached the repo.
+        expect(pool.transactions, isEmpty);
+      },
+    );
 
     test('daily budget exceeded: returns DailyBudgetExceeded', () async {
       final pool = _MfaFactorsPool(returningFactorId: _validFactorId);
@@ -585,6 +591,7 @@ class _FakeFirebaseMfaClient implements FirebaseMfaClient {
 
   @override
   Future<FirebaseMfaTotpBeginPayload> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
@@ -595,8 +602,10 @@ class _FakeFirebaseMfaClient implements FirebaseMfaClient {
 
   @override
   Future<FirebaseMfaConfirmOutcome> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   }) async {
     confirmCalls += 1;
     return nextConfirm ??
@@ -608,6 +617,7 @@ class _FakeFirebaseMfaClient implements FirebaseMfaClient {
 
   @override
   Future<void> unenrollFactor({
+    String authorizationIdToken = '',
     required String userId,
     required String factorId,
   }) async {
@@ -686,8 +696,7 @@ class _MfaFactorsTransaction extends PostgresTransaction {
         <String, Object?>{'factor_id': id},
       ];
     }
-    if (sql.contains('select factor_id') &&
-        sql.contains('from mfa_factors')) {
+    if (sql.contains('select factor_id') && sql.contains('from mfa_factors')) {
       return recoveryCodeRows;
     }
     return <PostgresRow>[];

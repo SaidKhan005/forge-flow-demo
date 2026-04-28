@@ -3,6 +3,10 @@
 Status: BLOCKED.
 Generated: 2026-04-27.
 
+2026-04-28 note: superseded by the prerequisite and passed smoke reports.
+Do not use this historical blocked report as the current deploy contract. The
+Phase 9 production route bootstrap now also requires `FIREBASE_WEB_API_KEY`.
+
 ## Requested Smoke
 
 Run the live in-app auth smoke for the dedicated staging user:
@@ -20,13 +24,14 @@ values, tokens, passwords, connection strings, or proxy URLs were printed.
 | `FIREBASE_PROJECT_ID` | PRESENT |
 | `POSTGRES_URL` | PRESENT |
 | `POSTGRES_ADMIN_URL` | PRESENT |
+| `FIREBASE_WEB_API_KEY` | NOT CHECKED IN 2026-04-27; ADDED TO NEXT-DEPLOY CONTRACT ON 2026-04-28 |
 | `FIREBASE_AUTH_SMOKE_PASSWORD` | PRESENT |
 | `FORGE_FLOW_PROXY_BASE_URI` | MISSING |
 | `FORGE_FLOW_STAGING_PROXY_URL` | MISSING |
 | `FORGE_FLOW_PROXY_URL` | MISSING |
 | Cloud Run service in project `forge-flow-staging` | MISSING |
 | Deployed staging proxy URL | MISSING |
-| Proxy deployed with `FIREBASE_PROJECT_ID`, `POSTGRES_URL`, `POSTGRES_ADMIN_URL` | NOT VERIFIABLE - no deployed service |
+| Proxy deployed with `FIREBASE_PROJECT_ID`, `POSTGRES_URL`, `POSTGRES_ADMIN_URL`, `FIREBASE_WEB_API_KEY` | NOT VERIFIABLE - no deployed service |
 
 ## Commands Run
 
@@ -62,6 +67,7 @@ through the non-repo secrets file. The next smoke expects:
   - `FIREBASE_PROJECT_ID`
   - `POSTGRES_URL`
   - `POSTGRES_ADMIN_URL`
+  - `FIREBASE_WEB_API_KEY` (added to the next-deploy contract on 2026-04-28)
 
 Then launch the app with:
 

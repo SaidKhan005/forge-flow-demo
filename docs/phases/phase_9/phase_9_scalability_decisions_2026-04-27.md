@@ -547,9 +547,10 @@ source records, and affected reports.
     inbound (Decision F); Phase 8.5 narrowed to QBO/Xero/Bill.com/Plaid +
     outbound finance only; Phase 9.8 expanded with ZDR/TTL/PCI/CMK
     attestations and Quebec future-market gates; Phase 12 carries
-    explicit `(depends on 9.0Σ.d service_principals)` annotation. All
-    9.0Σ slices are queued (no repo code yet) per CLAUDE.md
-    "tracker truth cannot move ahead of repo truth." Hard Gates section
+    explicit `(depends on 9.0Σ.d service_principals)` annotation. At rollout
+    time all 9.0Σ slices were queued per CLAUDE.md "tracker truth cannot move
+    ahead of repo truth"; implementation progress is now tracked in
+    `phase_9_execution_backlog.md` and PROJECT_TRACKER.md. Hard Gates section
     expanded with twelve new scalability lock gates (wrapper functions
     + lint, org_units depth ≤ 6, usage_caps two-slot key, audit_logs
     hash chain, PCI PAN exclusion, prompt-cache TTL, CMK at
@@ -561,6 +562,19 @@ source records, and affected reports.
     with scope, files-likely, and gate. CLAUDE.md updated additively
     with wrapper-function names, prompt-cache TTL pin, and
     service_principals/event_outbox/audit_logs hash-chain references.
+
+37. **9.0Σ.b/c/e implementation progress - Implemented 2026-04-28.**
+    B23 / 9.0Σ.b RLS UUID wrappers, B24 / 9.0Σ.c org_units ltree +
+    data_region, and B26 / 9.0Σ.e event_outbox foundation are complete and
+    double-checked in the repo.
+
+38. **9.0Σ.d service-principal foundation - Upstream/parallel 2026-04-28.**
+    B25 / 9.0Σ.d service_principals + `sp:` JWT prefix + `actor_kind` exists
+    in upstream/parallel commit `49699ad`. The current dirty live-closeout
+    worktree has the proxy JWT helper code and a narrow
+    `auth_events_audit.actor_kind` live repair, but does not yet contain the
+    `service_principals` migration/repository/test. Fast-forward and verify
+    9.0Σ.d.1 before treating B25 as local evidence here.
 
 ### Status Tracker
 
@@ -602,6 +616,8 @@ source records, and affected reports.
 | 34 | Q3.2 Storage form | Locked | 2026-04-27 |
 | 35 | Q3.3-Q3.10 remaining | Locked | 2026-04-27 |
 | 36 | Tracker rollout pass | Implemented | 2026-04-28 |
+| 37 | 9.0Σ.b/c/e implementation progress | Implemented | 2026-04-28 |
+| 38 | 9.0Σ.d service-principal foundation | Implemented | 2026-04-28 |
 
 ---
 

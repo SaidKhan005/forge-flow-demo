@@ -1,0 +1,78 @@
+name: Apple Platform Verification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  macos-host-tests:
+    name: macOS host tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Show Apple toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          flutter --version
+
+      - name: Focused auth and MFA tests
+        run: >
+          flutter test
+          test/auth_session_test.dart
+          test/mfa_test.dart
+          test/proxy_mfa_operations_gateway_test.dart
+
+      - name: macOS project status
+        run: |
+          if [ -d macos ]; then
+            flutter build macos --debug
+          else
+            echo "::notice::No Flutter macOS app project is tracked; macOS verification is limited to host/toolchain tests."
+          fi
+
+  ios-simulator-build:
+    name: iOS simulator build (${{ matrix.flavor }})
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - flavor: ForgeFlow
+            target: lib/main_forgeflow.dart
+          - flavor: Barrio
+            target: lib/main_barrio.dart
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Verify iOS schemes and plists
+        run: |
+          xcodebuild -list -project ios/Runner.xcodeproj
+          plutil -lint ios/Runner/Info.plist
+          plutil -lint ios/Runner/Firebase/GoogleService-Info-ForgeFlow.plist
+          plutil -lint ios/Runner/Firebase/GoogleService-Info-Barrio.plist
+
+      - name: Build iOS simulator app
+        run: >
+          flutter build ios
+          --simulator
+          --debug
+          --flavor ${{ matrix.flavor }}
+          -t ${{ matrix.target }}
+          --dart-define=FORGE_FLOW_USE_FIREBASE_AUTH=true

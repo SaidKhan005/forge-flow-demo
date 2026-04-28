@@ -52,9 +52,7 @@ sealed class FirebaseMfaConfirmOutcome {
 /// proxy will persist on the `mfa_factors.factor_metadata` column
 /// (e.g. `{"firebase_factor_uid": "abc", "issuer": "Forge & Flow"}`).
 class FirebaseMfaConfirmSucceeded extends FirebaseMfaConfirmOutcome {
-  const FirebaseMfaConfirmSucceeded({
-    required this.factorMetadata,
-  });
+  const FirebaseMfaConfirmSucceeded({required this.factorMetadata});
 
   final Map<String, Object?> factorMetadata;
 }
@@ -77,6 +75,7 @@ abstract class FirebaseMfaClient {
   /// Begins TOTP enrollment for [userId]. Returns the secret + the
   /// otpauth URL the UI renders as a QR.
   Future<FirebaseMfaTotpBeginPayload> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
@@ -85,14 +84,17 @@ abstract class FirebaseMfaClient {
   /// Confirms enrollment by exchanging the first OTP from the user's
   /// authenticator app for a permanent enrolled factor.
   Future<FirebaseMfaConfirmOutcome> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   });
 
   /// Removes a previously enrolled factor (Firebase-side). The
   /// proxy then writes `mfa_factors.revoked_at` for the local row.
   /// Used by the 24-hour-delayed MFA removal flow (`MfaRemovalService`).
   Future<void> unenrollFactor({
+    String authorizationIdToken = '',
     required String userId,
     required String factorId,
   });
@@ -107,6 +109,7 @@ class ScaffoldFailingFirebaseMfaClient implements FirebaseMfaClient {
 
   @override
   Future<FirebaseMfaTotpBeginPayload> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
@@ -116,14 +119,17 @@ class ScaffoldFailingFirebaseMfaClient implements FirebaseMfaClient {
 
   @override
   Future<FirebaseMfaConfirmOutcome> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   }) async {
     throw StateError(_message);
   }
 
   @override
   Future<void> unenrollFactor({
+    String authorizationIdToken = '',
     required String userId,
     required String factorId,
   }) async {

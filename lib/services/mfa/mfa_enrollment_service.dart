@@ -59,7 +59,10 @@ class MfaEnrollmentConfirmSuccess extends MfaEnrollmentConfirmResult {
 }
 
 class MfaEnrollmentConfirmFailure extends MfaEnrollmentConfirmResult {
-  const MfaEnrollmentConfirmFailure({required this.code, required this.message});
+  const MfaEnrollmentConfirmFailure({
+    required this.code,
+    required this.message,
+  });
   final String code;
   final String message;
 }
@@ -70,6 +73,7 @@ abstract class MfaEnrollmentService {
   /// user scans, and then calls [confirmTotpEnrollment] with the
   /// first OTP the OTP app produces.
   Future<TotpEnrollmentSetup> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
@@ -81,8 +85,10 @@ abstract class MfaEnrollmentService {
   /// [mfa_factors] (server-side), and returns the plaintext +
   /// hashes for the display-once UI.
   Future<MfaEnrollmentConfirmResult> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   });
 }
 
@@ -93,6 +99,7 @@ class ScaffoldFailingMfaEnrollmentService implements MfaEnrollmentService {
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
@@ -106,11 +113,11 @@ class ScaffoldFailingMfaEnrollmentService implements MfaEnrollmentService {
 
   @override
   Future<MfaEnrollmentConfirmResult> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   }) async {
-    throw StateError(
-      '9.4 scaffold: real MfaEnrollmentService is not wired.',
-    );
+    throw StateError('9.4 scaffold: real MfaEnrollmentService is not wired.');
   }
 }

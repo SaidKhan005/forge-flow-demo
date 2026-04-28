@@ -27,10 +27,10 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  // 9.1 live-closeout: when FIREBASE_PROJECT_ID is set, swap the
-  // scaffold rejecter for the local Firebase ID-token verifier with
-  // a pointycastle-backed RS256 validator.
-  // Without FIREBASE_PROJECT_ID the proxy keeps the scaffold rejecter.
+  // 9.1 live-closeout: FIREBASE_PROJECT_ID selects the local Firebase
+  // ID-token verifier with a pointycastle-backed RS256 validator.
+  // Phase 9 production route bindings below also require it; missing
+  // config exits before the proxy binds a port.
   final ProxyJwtVerifier verifier;
   final firebaseProjectId = config.firebaseProjectId;
   if (firebaseProjectId != null) {
@@ -43,6 +43,14 @@ Future<void> main(List<String> args) async {
     verifier = const ScaffoldRejectingJwtVerifier();
   }
   final authGuard = ProxyRequestGuard(verifier: verifier);
+  ProxyProductionBindings productionBindings;
+  try {
+    productionBindings = buildProxyProductionBindings(config);
+  } on ProxyConfigError catch (error) {
+    stderr.writeln('advisor proxy startup failed: ${error.message}');
+    exitCode = 78;
+    return;
+  }
 
   // 11a.10b: usage guard installed at boot with the scaffold-failing
   // counter store + fixed launch-tier resolver. Real Postgres-backed
@@ -55,13 +63,6 @@ Future<void> main(List<String> args) async {
   const accountingStore = ScaffoldFailingProxyAccountingStore();
   const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
   const llmProvider = ScaffoldRejectingProxyLlmProvider();
-  // Phase 9 B6: auth-session ledger endpoints now use the real
-  // tenant-scoped Postgres writer. Construction is lazy with respect
-  // to the database: no connection opens until a request attempts to
-  // record / refresh / revoke an auth session. Request-time failures
-  // still collapse to 503 in routeRequest.
-  final authSessionLedgerWriter = buildAuthSessionLedgerWriter(config);
-
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // Diagnostics line — names only, never values. Reports whether the
@@ -72,7 +73,12 @@ Future<void> main(List<String> args) async {
     'advisor proxy listening on port ${config.port} '
     '(loaded secret names: ${config.loadedSecretNames.join(', ')}, '
     'firebase_verifier: ${firebaseProjectId == null ? 'scaffold' : 'firebase'}, '
-    'auth_session_ledger: postgres)',
+    'auth_session_ledger: postgres, '
+    'permission_snapshot: postgres, '
+    'admin_permission_guard: postgres, '
+    'auth_operations: postgres, '
+    'password_change: postgres, '
+    'mfa_operations: postgres_identitytoolkit_firebase_mfa)',
   );
 
   await for (final request in server) {
@@ -86,7 +92,13 @@ Future<void> main(List<String> args) async {
         accountingStore: accountingStore,
         healthCheckStore: healthCheckStore,
         llmProvider: llmProvider,
-        authSessionLedgerWriter: authSessionLedgerWriter,
+        authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
+        permissionSnapshotResolver:
+            productionBindings.permissionSnapshotResolver,
+        adminPermissionGuard: productionBindings.adminPermissionGuard,
+        authOperationsGateway: productionBindings.authOperationsGateway,
+        passwordChangeGateway: productionBindings.passwordChangeGateway,
+        mfaOperationsGateway: productionBindings.mfaOperationsGateway,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');

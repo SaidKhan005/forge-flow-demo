@@ -4,6 +4,8 @@
 //
 //   event_id uuid pk default gen_random_uuid()
 //   actor_user_id uuid null
+//   actor_kind text not null default 'user'
+//   actor_service_principal_id uuid null
 //   target_user_id uuid null
 //   operator_id uuid null
 //   location_id uuid null
@@ -57,6 +59,8 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     required String locationId,
     required String eventType,
     String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
     String? targetUserId,
     Map<String, Object?> payload = const <String, Object?>{},
     String? ip,
@@ -72,16 +76,20 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'insert into auth_events_audit ('
-        'actor_user_id, target_user_id, operator_id, location_id, '
+        'actor_user_id, actor_kind, actor_service_principal_id, '
+        'target_user_id, operator_id, location_id, '
         'event_type, event_payload, ip, user_agent, '
         'geo_country, request_id) '
-        'values (@actor_user_id::uuid, @target_user_id::uuid, '
+        'values (@actor_user_id::uuid, @actor_kind, '
+        '@actor_service_principal_id::uuid, @target_user_id::uuid, '
         '@operator_id::uuid, @location_id::uuid, @event_type, '
         '@payload::jsonb, @ip::inet, @user_agent, @geo_country, '
         '@request_id::uuid) '
         'returning event_id::text as event_id',
         parameters: <String, Object?>{
           'actor_user_id': actorUserId,
+          'actor_kind': actorKind,
+          'actor_service_principal_id': actorServicePrincipalId,
           'target_user_id': targetUserId,
           'operator_id': operatorId,
           'location_id': locationId,

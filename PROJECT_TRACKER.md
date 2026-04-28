@@ -23,6 +23,23 @@ Primary active docs:
   auth acceptance plan.
 - `docs/phases/phase_9/phase_9_execution_backlog.md` - Phase 9 live-closeout
   parcels that remain after framework acceptance.
+- `docs/phases/phase_9/phase_9_password_change_orchestration_result.md` -
+  signed-in password-change orchestration and staging live-smoke result.
+- `docs/phases/phase_9/phase_9_mfa_recovery_proxy_result.md` - local
+  MFA/recovery proxy route foundation and remaining live MFA gates.
+- `docs/phases/phase_9/phase_9_proxy_bootstrap_binding_reconciliation_result.md`
+  - local production-entrypoint binding reconciliation for Phase 9 routes.
+- `docs/phases/phase_9/phase_9_corrected_deploy_invite_create_retry_result.md`
+  - staging invite-create retry closeout for the corrected deploy.
+- `docs/phases/phase_9/phase_9_maintenance_stability_sweep_result.md` -
+  maintenance-only sweep proving analyzer/tests/known-fails/smoke credential
+  are stable before new feature work.
+- `docs/phases/phase_9/phase_9_live_closeout_cloud_mfa_platform_result.md` -
+  staging Identity Toolkit MFA, Secret Manager proxy config, Cloud Armor /
+  reCAPTCHA edge, and iOS/macOS live-closeout status.
+- `9.0Σ.d` service-principal schema/JWT/audit foundation exists
+  upstream/parallel in commit `49699ad`; current live-closeout worktree still
+  needs fast-forward verification before treating it as local evidence.
 - `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md` - 35
   locked scalability decisions (Q1-Q22 + Q3.1-Q3.10) absorbed into the
   pre-launch sequence on 2026-04-28. Freshest architecture direction;
@@ -102,14 +119,49 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 
 ## Now
 
-- **Current phase:** `9` live-closeout, then 9.0Σ.b-k (queued), then
-  `11A.0-6`. Sequence realigned 2026-04-28 to absorb the 35 4-27 locks
-  + perf-audit CONDITIONAL PASS. Detail per slice in its phase doc.
-- **Next slice:** Phase 9 in-app auth smoke (`auth-smoke@forgeflow.dev`
-  login/logout through the deployed staging proxy). Prereq state +
-  result docs: `phase_9/phase_9_auth_plan.md` +
-  `phase_9/phase_9_in_app_auth_smoke_prereq_result.md`. Do not paste
-  secrets in chat; flow through `$HOME/.forge_flow/forge_flow.secrets.ps1`.
+- **Current phase:** `9` live-closeout stability freeze. No new feature
+  addition starts until the maintenance/backlog/test baseline remains green
+  and the remaining live-closeout gates are explicitly cleared. The
+  `9.0Σ.f-k` queue remains planned after local `9.0Σ.b/c/e` plus
+  upstream/parallel `9.0Σ.d` fast-forward verification, but is paused behind
+  this freeze.
+- **Next slice:** live-closeout stability gates are green on staging/local/GitHub.
+  Continue only with regression/backlog capture, queued `9.0Σ.d.1`
+  fast-forward verification, and Production1 work only if explicitly approved.
+  Corrected-deploy invite-create retry
+  passed on `forge-flow-staging-proxy-00013-zx8`. Identity Toolkit MFA adapter
+  and Secret Manager-backed proxy config are deployed on
+  `forge-flow-staging-proxy-00017-pcz`; disposable-user proxy TOTP begin,
+  confirm, recovery-code consume, recovery-attempt ledger, and cleanup passed.
+- **Cloud/platform status:** staging has a Cloud Armor/reCAPTCHA-ready external
+  HTTP(S) load-balancer path for `staging-api.feflow.org` on reserved IP
+  `34.54.204.29`, backed by a serverless NEG for `forge-flow-staging-proxy`.
+  The Cloud Armor WAF rule is preview-only; reCAPTCHA Enterprise key
+  `6LeBDc8sAAAAAO7QL0_qelJwl-f4QmCEktP-qlM4` is staging-scoped. Porkbun DNS
+  now resolves `staging-api.feflow.org` as
+  `A staging-api -> 34.54.204.29`; the managed certificate is `ACTIVE`, and
+  HTTPS `/readyz` passes on the real hostname. Cloud Armor preview probes log
+  preview-only WAF matches without enforcement. GitHub Apple run
+  `25078391954` passed macOS host tests and both ForgeFlow/Barrio iOS simulator
+  builds after pinning the iOS deployment target to 15.0.
+- **Maintenance baseline:** full local analyzer/test suite is green after the
+  Secret Manager, edge, recovery ledger, and tracker repairs. The dedicated
+  staging smoke password was reset/reconfirmed and
+  `$HOME/.forge_flow/forge_flow.secrets.ps1` updated; password sign-in and
+  proxy permission snapshot pass.
+- **Parallel scalability queue:** paused during the live-closeout stability
+  freeze. `9.0Σ.b` RLS UUID wrappers, `9.0Σ.c`
+  org_units ltree + data_region, and `9.0Σ.e` event_outbox foundation are
+  complete in the local line. `9.0Σ.d` service_principals + `sp:` JWT prefix
+  + `actor_kind` exists upstream/parallel but still needs the queued
+  fast-forward verification in this live-closeout worktree. Do not start
+  `9.0Σ.f-k` until the freeze is explicitly lifted.
+- **9.0Σ.d.1 follow-up (queued):** verify the `sp:`-prefixed JWT verifier in
+  `tool/advisor_proxy/` aligns end-to-end with the worktree's
+  `service_principals` schema/repo once the live-closeout commits and the
+  parallel-merge fast-forward both land. Held back from `9.0Σ.d` to avoid
+  colliding with Codex's live-closeout proxy edits; captured 2026-04-28 by
+  parallel-merge audit.
 - **Notify the user before** any live Firebase mutation, key/account
   request, billing setup, provider call, or product decision.
 
@@ -128,17 +180,25 @@ ships before any operator goes live on production. No friend-beta, no
 demo-mode launch, no split-and-defer of compliance.
 
 Realigned 2026-04-28 to absorb the 35 locked scalability decisions and
-the CONDITIONAL PASS perf audit. Ten 9.0Σ sub-slices land before
-`11A.0-6`; two new cutover sub-slices gate launch.
+the CONDITIONAL PASS perf audit. The 9.0Σ foundation series lands before
+`11A.0-6` (b/c/e complete locally, d upstream/parallel verification queued,
+f-k queued), but new feature additions are paused while the 9 live-closeout
+stability freeze is active. Two new cutover sub-slices gate launch.
 
 **Pre-launch (in order):**
 
 1. `9.live-closeout` - Phase 9 live-closeout parcels from
    `phase_9_execution_backlog.md`. Database closeout, Firebase SDK/app
-   wiring, staging credential/session smoke, and Settings -> Team Material UI
-   foundation are complete. Continue with the proxy auth endpoint tranche
-   (session ledger first), then Cloud Armor / reCAPTCHA and remaining live MFA
-   / password / lifecycle bindings.
+   wiring, staging credential/session smoke, Settings -> Team Material UI
+   foundation, proxy auth-operation route contracts, password-change
+   orchestration, MFA/recovery local endpoints, and production bootstrap
+   binding reconciliation are complete. Corrected-deploy invite-create retry
+   passed on staging. Identity Toolkit MFA adapter and Secret Manager-backed
+   proxy config are deployed on staging; disposable-user proxy TOTP begin,
+   confirm, recovery-code consume, recovery-attempt ledger, and cleanup passed.
+   Staging Cloud Armor/reCAPTCHA edge resources exist in preview/smoke form,
+   DNS resolves, the managed certificate is active, HTTPS `/readyz` passes,
+   preview WAF logs are reviewed, and GitHub Apple verification passed.
 2. `9.10` - Operator-facing Settings -> Team UX inside the Forge & Flow /
    Barrio operator app. Kernel + first Material UI foundation are complete;
    proxy-backed data/actions and dense role/audit detail views remain under
@@ -150,11 +210,13 @@ the CONDITIONAL PASS perf audit. Ten 9.0Σ sub-slices land before
      `operators.region`, 12 `team.*` permission keys, and the
      super_admin team-grant audit fix are live.
    - Detail in `phase_9/phase_9_auth_plan.md` sub-slices 9.0a + 9.10.
-4. **9.0Σ.b-k** — Ten queued scalability foundation sub-slices
-   absorbing the 4-27 locks before any consumer touches them.
-   `9.0b` RLS UUID wrappers, `9.0c` org_units ltree + data_region,
-   `9.0d` service_principals, `9.0e` event_outbox, `9.0f`
-   hash-chained audit_logs, `9.0g` usage_caps two-slot,
+4. **9.0Σ.b-k** — Scalability foundation sub-slices absorbing the
+   4-27 locks before any consumer touches them. `9.0b` RLS UUID wrappers,
+   `9.0c` org_units ltree + data_region, and `9.0e` event_outbox are complete
+   locally; `9.0d` service_principals exists upstream/parallel and needs
+   fast-forward verification in this worktree. Remaining work is queued but
+   paused behind the live-closeout stability freeze: `9.0f`
+   hash-chained audit_logs + Azure Blob anchor, `9.0g` usage_caps two-slot,
    `9.0h` advisor_conversation_log, `9.0i` graph_nodes/edges,
    `9.0j` vector indexing, `9.0k` rollups foundation. Per-slice
    scope, files, and gate: `phase_9_execution_backlog.md` parcels
@@ -162,8 +224,8 @@ the CONDITIONAL PASS perf audit. Ten 9.0Σ sub-slices land before
    `phase_9_scalability_decisions_2026-04-27.md`.
 5. `11A.0-6` - F&F Operations Console foundation.
 6. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
-7. `10a` - Shared state v1 (real-time `NOTIFY` -> Pub/Sub bridge —
-   completes the `9.0e` outbox by adding the Cloud Pub/Sub leg).
+7. `10a` - Shared state v1 (`event_outbox` -> Pub/Sub/WebSocket bridge;
+   `NOTIFY` is wake-up only and never the source of truth).
 8. `10.5` - Live daypart shift.
 9. `9.5` - El Podio learning identity.
 10. `9.75` - Staff daily companion (Barrio shell).
@@ -178,6 +240,7 @@ the CONDITIONAL PASS perf audit. Ten 9.0Σ sub-slices land before
     learned across `11A`, `9`, `7.58`, `10a`, `10.5`, `9.5`, `9.75`,
     `8`, `8R`, `8.5`).
 17. `11b.2` - Causal queries (AGE traversal in advisor hot path).
+
 18. `12.0` - Workflow platform foundation (depends on `9.0d`
     `service_principals`).
 19. `12.1` - Tool registry.
@@ -185,6 +248,7 @@ the CONDITIONAL PASS perf audit. Ten 9.0Σ sub-slices land before
 21. `12.3` - Approval gate.
 22. `12.4` - Weekly P&L workflow (flagship; depends on `8.5`).
 23. `12.5` - Workflow catalog.
+
 24. `11A.7-10` - Admin polish (feature flag admin, API version
     management, audit log review, status page).
 25. `10b` - Full offline sync.
@@ -213,7 +277,7 @@ Slice scopes in their phase plans. Architecture rationale in
 | `7.57` | complete | archived |
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | live-closeout active | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
-| `9.0Σ.b-k` | queued | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
+| `9.0Σ.b-k` | paused by live-closeout stability freeze; b/c/e complete locally, d upstream verification queued, f-k queued | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
 | `11A.0-6` | queued | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |

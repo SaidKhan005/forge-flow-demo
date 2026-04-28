@@ -40,7 +40,14 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
+import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
+import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
+import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
+import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
 // ─── Secret name registry ────────────────────────────────────────────────────
@@ -72,6 +79,12 @@ abstract class ProxySecretNames {
   /// `postgresUrl` so RLS protects them.
   static const String postgresAdminUrl = 'POSTGRES_ADMIN_URL';
 
+  /// Firebase Web API key used by Identity Toolkit password
+  /// verification and account sign-up endpoints. This is server-side
+  /// config for the proxy; clients continue to talk only to Firebase
+  /// SDK / proxy surfaces, never to the Admin choreography directly.
+  static const String firebaseWebApiKey = 'FIREBASE_WEB_API_KEY';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -79,6 +92,7 @@ abstract class ProxySecretNames {
     voyageApiKey,
     postgresUrl,
     postgresAdminUrl,
+    firebaseWebApiKey,
   ];
 }
 
@@ -92,11 +106,16 @@ abstract class ProxyConfigNames {
   ProxyConfigNames._();
 
   /// Firebase project ID for Identity Platform JWT verification (9.1).
-  /// Optional: when missing, the proxy keeps the fail-closed
-  /// scaffold rejecter and never accepts a token. When present,
-  /// [FirebaseProxyJwtVerifier] is wired and validates issuer +
-  /// audience against this project ID.
+  /// Optional at raw config-parse time so unit/scaffold contexts can still
+  /// construct [ProxyConfig]. The production Phase 9 bootstrap requires this
+  /// before binding a port because the live auth routes need the Firebase
+  /// Admin / Identity Toolkit client.
   static const String firebaseProjectId = 'FIREBASE_PROJECT_ID';
+
+  /// Optional Firebase Auth action continue URL. Used by the server-side
+  /// password-reset sender when present.
+  static const String firebaseEmailActionContinueUrl =
+      'FIREBASE_EMAIL_ACTION_CONTINUE_URL';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -116,18 +135,22 @@ class ProxyConfig {
     required this.port,
     required Map<String, String> secrets,
     required this.firebaseProjectId,
+    required this.firebaseEmailActionContinueUrl,
   }) : _secrets = Map<String, String>.unmodifiable(secrets);
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
   final int port;
 
-  /// Firebase Identity Platform project ID (9.1). Optional. Null /
-  /// blank → JWT verification stays in the fail-closed scaffold mode
-  /// (no real Firebase tokens are accepted). Non-null →
-  /// [FirebaseProxyJwtVerifier] is wired and uses this project ID to
-  /// validate the `iss` (`https://securetoken.google.com/<id>`) and
-  /// `aud` (`<id>`) claims on every Firebase ID token.
+  /// Firebase Identity Platform project ID (9.1). Optional at config-load
+  /// time for tests and scaffold-only callers. The production proxy bootstrap
+  /// rejects null / blank before exposing Phase 9 auth routes; non-null lets
+  /// [FirebaseProxyJwtVerifier] validate the `iss`
+  /// (`https://securetoken.google.com/<id>`) and `aud` (`<id>`) claims on
+  /// every Firebase ID token.
   final String? firebaseProjectId;
+
+  /// Optional action URL used by Identity Toolkit email actions.
+  final String? firebaseEmailActionContinueUrl;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -141,8 +164,9 @@ class ProxyConfig {
   /// missing names but never any captured values.
   ///
   /// `FIREBASE_PROJECT_ID` is loaded as an optional non-secret config
-  /// value: missing/blank keeps the fail-closed scaffold verifier;
-  /// present opts the proxy in to real Firebase JWT verification.
+  /// value here. Production route binding validation happens in
+  /// `buildProxyProductionBindings`, which requires it before live auth
+  /// routes are exposed.
   factory ProxyConfig.fromEnvironment(Map<String, String> environment) {
     final missing = <String>[];
     final loaded = <String, String>{};
@@ -169,10 +193,17 @@ class ProxyConfig {
         (firebaseProjectIdRaw == null || firebaseProjectIdRaw.trim().isEmpty)
         ? null
         : firebaseProjectIdRaw.trim();
+    final firebaseActionUrlRaw =
+        environment[ProxyConfigNames.firebaseEmailActionContinueUrl];
+    final firebaseEmailActionContinueUrl =
+        (firebaseActionUrlRaw == null || firebaseActionUrlRaw.trim().isEmpty)
+        ? null
+        : firebaseActionUrlRaw.trim();
     return ProxyConfig._(
       port: port,
       secrets: loaded,
       firebaseProjectId: firebaseProjectId,
+      firebaseEmailActionContinueUrl: firebaseEmailActionContinueUrl,
     );
   }
 
@@ -219,7 +250,9 @@ class ProxyConfig {
       'ProxyConfig(port: $port, '
       'loaded_secret_names: ${loadedSecretNames.join(', ')}, '
       'firebase_project_id: '
-      '${firebaseProjectId == null ? 'unset' : 'set'})';
+      '${firebaseProjectId == null ? 'unset' : 'set'}, '
+      'firebase_email_action_continue_url: '
+      '${firebaseEmailActionContinueUrl == null ? 'unset' : 'set'})';
 }
 
 // ─── JWT verification interface ──────────────────────────────────────────────
@@ -232,6 +265,10 @@ class ProxyJwtClaims {
     required this.operatorId,
     required this.locationId,
     required this.roles,
+    this.actorKind = 'user',
+    this.servicePrincipalId,
+    this.rolesVersion,
+    this.lastFreshAuthAt,
   });
 
   final String userId;
@@ -247,6 +284,14 @@ class ProxyJwtClaims {
   final String? locationId;
 
   final List<String> roles;
+  final String actorKind;
+  final String? servicePrincipalId;
+
+  final int? rolesVersion;
+
+  /// Firebase `auth_time` projected to UTC. Admin routes use this for
+  /// fresh-auth / MFA freshness checks.
+  final DateTime? lastFreshAuthAt;
 }
 
 class ProxyJwtVerificationError implements Exception {
@@ -305,10 +350,212 @@ class ScaffoldRejectingJwtVerifier implements ProxyJwtVerifier {
 // The default [ScaffoldFailingRs256SignatureValidator] keeps
 // production fail-closed if the backend is not yet wired.
 
-/// Opaque public-key material handed from a [JwksKeySource] to a
-/// [JwtRs256SignatureValidator]. The format (PEM-encoded x509
-/// certificate, raw modulus/exponent, etc.) is implementation
-/// defined; the verifier itself never inspects it.
+/// Issues short-lived `sp:` JWTs for service-principal actors.
+class ServicePrincipalJwtIssuer {
+  const ServicePrincipalJwtIssuer({required this.sharedSecret});
+
+  final String sharedSecret;
+
+  String issue({
+    required String servicePrincipalId,
+    required String operatorId,
+    required String locationId,
+    required List<String> scopes,
+    required DateTime issuedAt,
+    Duration ttl = const Duration(minutes: 15),
+  }) {
+    final expiresAt = issuedAt.toUtc().add(ttl);
+    final header = _base64UrlJson(const <String, Object?>{
+      'alg': 'HS256',
+      'typ': 'JWT',
+    });
+    final payload = _base64UrlJson(<String, Object?>{
+      'sub': 'sp:$servicePrincipalId',
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'scopes': scopes,
+      'iat': issuedAt.toUtc().millisecondsSinceEpoch ~/ 1000,
+      'exp': expiresAt.millisecondsSinceEpoch ~/ 1000,
+    });
+    final signedInput = '$header.$payload';
+    final signature = _base64UrlBytes(_hmac(signedInput, sharedSecret));
+    return '$signedInput.$signature';
+  }
+}
+
+class ServicePrincipalJwtVerifier implements ProxyJwtVerifier {
+  ServicePrincipalJwtVerifier({
+    required this.sharedSecret,
+    DateTime Function()? now,
+    Duration leeway = const Duration(seconds: 30),
+  }) : _now = now ?? DateTime.now,
+       _leeway = leeway;
+
+  final String sharedSecret;
+  final DateTime Function() _now;
+  final Duration _leeway;
+
+  @override
+  Future<ProxyJwtClaims> verify(String bearerToken) async {
+    final parts = bearerToken.split('.');
+    if (parts.length != 3) {
+      throw ProxyJwtVerificationError(
+        'malformed service principal JWT: expected 3 segments',
+      );
+    }
+    final header = _decodeJwtSegment(parts[0], 'header');
+    final payload = _decodeJwtSegment(parts[1], 'payload');
+    if (header['alg'] != 'HS256') {
+      throw ProxyJwtVerificationError('unsupported service principal JWT alg');
+    }
+
+    final expected = _hmac('${parts[0]}.${parts[1]}', sharedSecret);
+    final actual = _base64UrlDecodeBytes(parts[2], 'signature');
+    if (!_constantTimeEquals(expected, actual)) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT signature did not verify',
+      );
+    }
+
+    final sub = _readString(payload, 'sub');
+    if (sub == null || !sub.startsWith('sp:')) {
+      throw ProxyJwtVerificationError('service principal JWT sub missing sp:');
+    }
+    final servicePrincipalId = sub.substring(3);
+    if (!_uuidPattern.hasMatch(servicePrincipalId)) {
+      throw ProxyJwtVerificationError('service principal JWT sub malformed');
+    }
+    final operatorId = _readString(payload, 'operator_id');
+    final locationId = _readString(payload, 'location_id');
+    if (operatorId == null || locationId == null) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT missing operator or location scope',
+      );
+    }
+
+    final now = _now();
+    final exp = _readEpochSeconds(payload, 'exp');
+    final iat = _readEpochSeconds(payload, 'iat');
+    if (exp == null || iat == null) {
+      throw ProxyJwtVerificationError('service principal JWT missing exp/iat');
+    }
+    if (now.isAfter(exp.add(_leeway))) {
+      throw ProxyJwtVerificationError('service principal JWT expired');
+    }
+    if (iat.isAfter(now.add(_leeway))) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT iat is in the future',
+      );
+    }
+
+    final scopes = payload['scopes'];
+    return ProxyJwtClaims(
+      userId: servicePrincipalId,
+      operatorId: operatorId,
+      locationId: locationId,
+      roles: <String>[
+        'service_principal',
+        if (scopes is List)
+          for (final scope in scopes.whereType<String>()) 'sp_scope:$scope',
+      ],
+      actorKind: 'service',
+      servicePrincipalId: servicePrincipalId,
+    );
+  }
+
+  static Map<String, Object?> _decodeJwtSegment(String segment, String name) {
+    final bytes = _base64UrlDecodeBytes(segment, name);
+    final dynamic decoded;
+    try {
+      decoded = jsonDecode(utf8.decode(bytes));
+    } catch (_) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT $name is not valid JSON',
+      );
+    }
+    if (decoded is! Map) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT $name is not an object',
+      );
+    }
+    return Map<String, Object?>.from(decoded);
+  }
+
+  static String? _readString(Map<String, Object?> payload, String key) {
+    final raw = payload[key];
+    if (raw is String && raw.isNotEmpty) return raw;
+    return null;
+  }
+
+  static DateTime? _readEpochSeconds(Map<String, Object?> payload, String key) {
+    final raw = payload[key];
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw * 1000, isUtc: true);
+    }
+    return null;
+  }
+
+  static Uint8List _base64UrlDecodeBytes(String input, String name) {
+    var padded = input;
+    final remainder = padded.length % 4;
+    if (remainder != 0) padded = padded + '=' * (4 - remainder);
+    try {
+      return Uint8List.fromList(base64Url.decode(padded));
+    } catch (_) {
+      throw ProxyJwtVerificationError(
+        'service principal JWT $name is not valid base64url',
+      );
+    }
+  }
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  );
+}
+
+class CompositeProxyJwtVerifier implements ProxyJwtVerifier {
+  const CompositeProxyJwtVerifier(this.verifiers);
+
+  final List<ProxyJwtVerifier> verifiers;
+
+  @override
+  Future<ProxyJwtClaims> verify(String bearerToken) async {
+    ProxyJwtVerificationError? lastError;
+    for (final verifier in verifiers) {
+      try {
+        return await verifier.verify(bearerToken);
+      } on ProxyJwtVerificationError catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError ??
+        ProxyJwtVerificationError('no proxy JWT verifier is configured');
+  }
+}
+
+String _base64UrlJson(Map<String, Object?> data) {
+  return _base64UrlBytes(Uint8List.fromList(utf8.encode(jsonEncode(data))));
+}
+
+String _base64UrlBytes(List<int> bytes) {
+  return base64Url.encode(bytes).replaceAll('=', '');
+}
+
+Uint8List _hmac(String signedInput, String secret) {
+  return Uint8List.fromList(
+    Hmac(sha256, utf8.encode(secret)).convert(utf8.encode(signedInput)).bytes,
+  );
+}
+
+bool _constantTimeEquals(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  var diff = 0;
+  for (var i = 0; i < a.length; i++) {
+    diff |= a[i] ^ b[i];
+  }
+  return diff == 0;
+}
+
 class JwtKeyMaterial {
   const JwtKeyMaterial({required this.pemX509Certificate, required this.kid});
 
@@ -794,10 +1041,16 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
     }
 
     return ProxyJwtClaims(
-      userId: _readOptionalString(payloadJson, 'user_id') ?? sub,
+      userId:
+          _readOptionalString(payloadJson, 'postgres_user_id') ??
+          _readOptionalString(payloadJson, 'user_id') ??
+          sub,
       operatorId: _readOptionalString(payloadJson, 'operator_id'),
       locationId: _readOptionalString(payloadJson, 'location_id'),
       roles: _resolveRoles(payloadJson),
+      actorKind: 'user',
+      rolesVersion: _readOptionalInt(payloadJson, 'roles_version'),
+      lastFreshAuthAt: authTime,
     );
   }
 
@@ -857,6 +1110,13 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
     return null;
   }
 
+  static int? _readOptionalInt(Map<String, Object?> payload, String key) {
+    final raw = payload[key];
+    if (raw is int) return raw;
+    if (raw is String) return int.tryParse(raw);
+    return null;
+  }
+
   static List<String> _resolveRoles(Map<String, Object?> payload) {
     // Phase 9 custom-claim policy keeps the JWT under 200 bytes, so
     // the verifier projects only boolean role flags + roles_version
@@ -904,14 +1164,23 @@ class OperatorContext {
     required this.operatorId,
     required this.locationId,
     required this.roles,
+    this.actorKind = 'user',
+    this.servicePrincipalId,
+    this.rolesVersion = 0,
+    this.lastFreshAuthAt,
   });
 
   final String userId;
   final String operatorId;
   final String locationId;
   final List<String> roles;
+  final String actorKind;
+  final String? servicePrincipalId;
+  final int rolesVersion;
+  final DateTime? lastFreshAuthAt;
 
   bool hasRole(String role) => roles.contains(role);
+  bool get isServicePrincipal => actorKind == 'service';
 }
 
 class ProxyAuthError implements Exception {
@@ -978,7 +1247,20 @@ class ProxyRequestGuard {
       operatorId: operatorId,
       locationId: locationId,
       roles: claims.roles,
+      actorKind: claims.actorKind,
+      servicePrincipalId: claims.servicePrincipalId,
+      rolesVersion: claims.rolesVersion ?? _rolesVersionFromRoles(claims.roles),
+      lastFreshAuthAt: claims.lastFreshAuthAt,
     );
+  }
+
+  static int _rolesVersionFromRoles(List<String> roles) {
+    for (final role in roles) {
+      if (!role.startsWith('roles_version:')) continue;
+      final parsed = int.tryParse(role.substring('roles_version:'.length));
+      if (parsed != null) return parsed;
+    }
+    return 0;
   }
 }
 
@@ -1740,6 +2022,18 @@ const String scopeSmokePath = '/v1/scope';
 const String usageSmokePath = '/v1/usage-smoke';
 const String advisorSmokePath = '/v1/advisor-smoke';
 
+// Phase 9 live-closeout - auth operations / permission snapshot routes.
+const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
+const String authPasswordChangePath = '/v1/auth/password/change';
+const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
+const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
+const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
+const String adminAuthInvitesPath = '/v1/admin/auth/invites';
+const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
+const String adminAuthUsersPrefix = '/v1/admin/auth/users/';
+const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
+const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+
 // Phase 9 live-closeout B6 — auth-session ledger endpoints. The Flutter
 // app holds no Postgres credentials; every `auth_sessions` mutation
 // flows through these routes. The proxy verifies the Firebase ID token
@@ -1752,6 +2046,56 @@ const String authSessionLoginPath = '/v1/auth/session/login';
 const String authSessionRefreshPath = '/v1/auth/session/refresh';
 const String authSessionRevokePath = '/v1/auth/session/revoke';
 const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
+
+class ProxyPermissionSnapshot {
+  const ProxyPermissionSnapshot({
+    required this.userId,
+    required this.operatorId,
+    required this.locationId,
+    required this.rolesVersion,
+    required this.evaluatedAt,
+    required this.permissions,
+    this.requiresMfaKeys = const <String>{},
+  });
+
+  final String userId;
+  final String operatorId;
+  final String locationId;
+  final int rolesVersion;
+  final DateTime evaluatedAt;
+  final Map<String, PermissionEffect> permissions;
+  final Set<String> requiresMfaKeys;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'user_id': userId,
+    'operator_id': operatorId,
+    'location_id': locationId,
+    'roles_version': rolesVersion,
+    'evaluated_at': evaluatedAt.toUtc().toIso8601String(),
+    'permissions': permissions.map(
+      (key, value) =>
+          MapEntry(key, value == PermissionEffect.allow ? 'allow' : 'deny'),
+    ),
+    'requires_mfa': requiresMfaKeys.toList(growable: false)..sort(),
+  };
+}
+
+abstract class ProxyPermissionSnapshotResolver {
+  Future<ProxyPermissionSnapshot> load(OperatorContext scope);
+}
+
+class ScaffoldFailingProxyPermissionSnapshotResolver
+    implements ProxyPermissionSnapshotResolver {
+  const ScaffoldFailingProxyPermissionSnapshotResolver();
+
+  @override
+  Future<ProxyPermissionSnapshot> load(OperatorContext scope) {
+    throw StateError(
+      'Phase 9 permission snapshot resolver is not wired; bind the '
+      'repository-backed resolver before exposing live Team actions.',
+    );
+  }
+}
 
 /// Minimal request router. Routes:
 ///
@@ -1788,6 +2132,11 @@ Future<void> routeRequest(
   ProxyHealthCheckStore? healthCheckStore,
   ProxyLlmProvider? llmProvider,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
+  ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
+  AuthOperationsGateway? authOperationsGateway,
+  ProxyAdminPermissionGuard? adminPermissionGuard,
+  PasswordChangeGateway? passwordChangeGateway,
+  MfaOperationsGateway? mfaOperationsGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -2112,6 +2461,472 @@ Future<void> routeRequest(
     //      (revoke-all). NEVER echoes the bearer token, the
     //      `token_hash`, or any error stack.
 
+    if (request.method == 'GET' && path == authPermissionsSnapshotPath) {
+      if (permissionSnapshotResolver == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'permission_snapshot_not_configured',
+          'message':
+              'route requires a ProxyPermissionSnapshotResolver to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+
+      try {
+        final snapshot = await permissionSnapshotResolver.load(scope);
+        _writeJson(response, 200, snapshot.toJson());
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'permission_snapshot_unavailable',
+          'message': 'permission snapshot is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
+    if (request.method == 'POST' && path == authPasswordChangePath) {
+      if (passwordChangeGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'password_change_not_configured',
+          'message': 'route requires a PasswordChangeGateway to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final currentPassword = _nonBlankString(body['current_password']);
+      final newPassword = _nonBlankString(body['new_password']);
+      if (currentPassword == null || newPassword == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_password_fields',
+          'message':
+              'request body must include current_password and new_password',
+        });
+        return;
+      }
+
+      try {
+        final result = await passwordChangeGateway.changePassword(
+          PasswordChangeCommand(
+            actorUserId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            currentPassword: currentPassword,
+            newPassword: newPassword,
+          ),
+        );
+        _writeJson(response, 200, <String, Object?>{
+          'ok': true,
+          'hibp_unavailable': result.hibpUnavailable,
+        });
+      } on PasswordChangeRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+          'rejections': error.rejections,
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'password_change_unavailable',
+          'message': 'password change is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
+    if (_isMfaOperation(path, request.method)) {
+      if (mfaOperationsGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'mfa_operations_not_configured',
+          'message': 'route requires an MfaOperationsGateway to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+      final authorizationIdToken = extractBearerToken(
+        request.headers.value(HttpHeaders.authorizationHeader),
+      );
+      if (authorizationIdToken == null) {
+        _writeJson(response, 401, <String, Object?>{
+          'error': 'missing_or_malformed_authorization',
+          'message': 'MFA routes require a Firebase ID token',
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        if (request.method == 'POST' && path == authMfaTotpBeginPath) {
+          final userEmail = _nonBlankString(body['user_email']);
+          if (userEmail == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_user_email',
+              'message': 'request body must include user_email',
+            });
+            return;
+          }
+          final setup = await mfaOperationsGateway.beginTotpEnrollment(
+            MfaTotpBeginCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              authorizationIdToken: authorizationIdToken,
+              userEmail: userEmail,
+              issuerName:
+                  _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'factor_id': setup.factorId,
+            'secret_base32': setup.secretBase32,
+            'otp_auth_url': setup.otpAuthUrl,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMfaTotpConfirmPath) {
+          final factorId = _nonBlankString(body['factor_id']);
+          final oneTimeCode = _nonBlankString(body['one_time_code']);
+          if (factorId == null || oneTimeCode == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_totp_confirm_fields',
+              'message': 'factor_id and one_time_code are required',
+            });
+            return;
+          }
+          final completed = await mfaOperationsGateway.confirmTotpEnrollment(
+            MfaTotpConfirmCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              authorizationIdToken: authorizationIdToken,
+              factorId: factorId,
+              oneTimeCode: oneTimeCode,
+              issuerName:
+                  _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'factor_id': completed.factorId,
+            'recovery_codes': completed.recoveryCodesPlaintext,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMfaRecoveryConsumePath) {
+          final rawCode = _nonBlankString(body['recovery_code']);
+          if (rawCode == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_recovery_code',
+              'message': 'request body must include recovery_code',
+            });
+            return;
+          }
+          final completed = await mfaOperationsGateway.consumeRecoveryCode(
+            RecoveryCodeConsumeCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              rawCode: rawCode,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'factor_id': completed.factorId,
+          });
+          return;
+        }
+      } on MfaOperationRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+          if (error.retryAfter != null)
+            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
+          if (error.resetsAt != null)
+            'resets_at': error.resetsAt!.toUtc().toIso8601String(),
+        });
+        return;
+      } on IdentityToolkitFirebaseMfaError catch (error) {
+        stderr.writeln(
+          'advisor proxy MFA Identity Toolkit error: '
+          'code=${error.code} status=${error.statusCode ?? 'n/a'}',
+        );
+        _writeJson(response, 503, <String, Object?>{
+          'error': error.code,
+          'message': 'MFA operation is unavailable; please retry',
+        });
+        return;
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'mfa_operations_unavailable',
+          'message': 'MFA operation is unavailable; please retry',
+        });
+        return;
+      }
+    }
+
+    if (_isAdminAuthOperation(path, request.method)) {
+      if (authOperationsGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_operations_not_configured',
+          'message': 'route requires an AuthOperationsGateway to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+
+      Future<bool> requirePermission(String permissionKey) {
+        return _requireAdminPermissionOrWrite(
+          response: response,
+          guard: adminPermissionGuard,
+          scope: scope,
+          permissionKey: permissionKey,
+          requestedAt: clock().toUtc(),
+        );
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        if (request.method == 'POST' && path == adminAuthInvitesPath) {
+          if (!await requirePermission('team.users.invite')) return;
+          final email = _nonBlankString(body['email']);
+          final roleId = _nonBlankString(body['role_id']);
+          final scopeType = _nonBlankString(body['scope_type']);
+          if (email == null || roleId == null || scopeType == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_invite_fields',
+              'message': 'email, role_id, and scope_type are required',
+            });
+            return;
+          }
+          final created = await authOperationsGateway.createInvite(
+            TeamInviteCreateCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              email: email,
+              roleId: roleId,
+              scopeType: scopeType,
+              targetLocationId: _nonBlankString(body['location_id']),
+            ),
+          );
+          _writeJson(response, 201, <String, Object?>{
+            'invite_id': created.inviteId,
+            'expires_at': created.expiresAt.toUtc().toIso8601String(),
+          });
+          return;
+        }
+
+        if (request.method == 'DELETE' &&
+            path.startsWith(adminAuthInvitePrefix)) {
+          if (!await requirePermission('team.users.invite')) return;
+          final inviteId = _pathSuffix(path, adminAuthInvitePrefix);
+          if (inviteId == null) {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'not found',
+              'method': request.method,
+              'path': path,
+            });
+            return;
+          }
+          final revoked = await authOperationsGateway.revokeInvite(
+            TeamInviteRevokeCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              inviteId: inviteId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'revoked': revoked.revoked,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path.startsWith(adminAuthUsersPrefix)) {
+          final action = _userActionFromPath(path);
+          if (action == null) {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'not found',
+              'method': request.method,
+              'path': path,
+            });
+            return;
+          }
+          final permissionKey = switch (action.action) {
+            'suspend' => 'team.users.deactivate',
+            'reactivate' => 'team.users.reactivate',
+            'soft-delete' => 'team.users.soft_delete',
+            'reset-password' => 'team.users.reset_password',
+            _ => null,
+          };
+          if (permissionKey == null) {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'not found',
+              'method': request.method,
+              'path': path,
+            });
+            return;
+          }
+          if (!await requirePermission(permissionKey)) return;
+          if (action.action == 'reset-password') {
+            await authOperationsGateway.requestPasswordReset(
+              TeamPasswordResetCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                targetUserId: action.userId,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{'ok': true});
+            return;
+          }
+
+          final command = TeamUserStatusCommand(
+            actorUserId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            targetUserId: action.userId,
+            reason: _nonBlankString(body['reason']) ?? action.action,
+          );
+          final updated = switch (action.action) {
+            'suspend' => await authOperationsGateway.suspendUser(command),
+            'reactivate' => await authOperationsGateway.reactivateUser(command),
+            'soft-delete' => await authOperationsGateway.softDeleteUser(
+              command,
+            ),
+            _ => throw StateError('unreachable action'),
+          };
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'updated': updated.updated,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == adminAuthRoleGrantsPath) {
+          if (!await requirePermission('team.roles.assign')) return;
+          final targetUserId = _nonBlankString(body['user_id']);
+          final roleId = _nonBlankString(body['role_id']);
+          final scopeType = _nonBlankString(body['scope_type']);
+          if (targetUserId == null || roleId == null || scopeType == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_role_grant_fields',
+              'message': 'user_id, role_id, and scope_type are required',
+            });
+            return;
+          }
+          final created = await authOperationsGateway.createRoleGrant(
+            TeamRoleGrantCreateCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              targetUserId: targetUserId,
+              roleId: roleId,
+              scopeType: scopeType,
+              targetLocationId: _nonBlankString(body['location_id']),
+              reason: _nonBlankString(body['reason']),
+            ),
+          );
+          _writeJson(response, 201, <String, Object?>{
+            'user_role_id': created.userRoleId,
+          });
+          return;
+        }
+
+        if (request.method == 'DELETE' &&
+            path.startsWith(adminAuthRoleGrantPrefix)) {
+          if (!await requirePermission('team.roles.revoke')) return;
+          final userRoleId = _pathSuffix(path, adminAuthRoleGrantPrefix);
+          final targetUserId = _nonBlankString(body['user_id']);
+          if (userRoleId == null || targetUserId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_role_grant_revoke_fields',
+              'message': 'role grant id in path and user_id body are required',
+            });
+            return;
+          }
+          final revoked = await authOperationsGateway.revokeRoleGrant(
+            TeamRoleGrantRevokeCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              userRoleId: userRoleId,
+              targetUserId: targetUserId,
+              reason: _nonBlankString(body['reason']),
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'revoked': revoked.revoked,
+          });
+          return;
+        }
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_operations_unavailable',
+          'message': 'auth operation is unavailable; please retry',
+        });
+        return;
+      }
+    }
+
     if (request.method == 'POST' && path == authSessionLoginPath) {
       if (authSessionLedgerWriter == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -2396,6 +3211,138 @@ Future<void> routeRequest(
   } finally {
     await response.close();
   }
+}
+
+Future<OperatorContext?> _resolveOperatorContextOrWrite(
+  HttpRequest request,
+  HttpResponse response,
+  ProxyRequestGuard authGuard,
+) async {
+  try {
+    return await authGuard.requireOperatorContext(
+      authorizationHeader: request.headers.value(
+        HttpHeaders.authorizationHeader,
+      ),
+    );
+  } on ProxyAuthError catch (error) {
+    _writeJson(response, error.statusCode, <String, Object?>{
+      'error': error.message,
+    });
+    return null;
+  }
+}
+
+bool _isAdminAuthOperation(String path, String method) {
+  if (method == 'POST' && path == adminAuthInvitesPath) return true;
+  if (method == 'DELETE' && path.startsWith(adminAuthInvitePrefix)) {
+    return true;
+  }
+  if (method == 'POST' && path.startsWith(adminAuthUsersPrefix)) return true;
+  if (method == 'POST' && path == adminAuthRoleGrantsPath) return true;
+  if (method == 'DELETE' && path.startsWith(adminAuthRoleGrantPrefix)) {
+    return true;
+  }
+  return false;
+}
+
+bool _isMfaOperation(String path, String method) {
+  if (method != 'POST') return false;
+  return path == authMfaTotpBeginPath ||
+      path == authMfaTotpConfirmPath ||
+      path == authMfaRecoveryConsumePath;
+}
+
+Future<bool> _requireAdminPermissionOrWrite({
+  required HttpResponse response,
+  required ProxyAdminPermissionGuard? guard,
+  required OperatorContext scope,
+  required String permissionKey,
+  required DateTime requestedAt,
+}) async {
+  if (guard == null) {
+    _writeJson(response, 503, <String, Object?>{
+      'error': 'admin_permission_guard_not_configured',
+      'message': 'route requires a ProxyAdminPermissionGuard to be installed',
+    });
+    return false;
+  }
+
+  final decision = await guard.evaluate(
+    ProxyAdminGuardContext(
+      actorUserId: scope.userId,
+      operatorId: scope.operatorId,
+      locationId: scope.locationId,
+      lastFreshAuthAt:
+          scope.lastFreshAuthAt ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      requestedPermissionKey: permissionKey,
+      requestedAt: requestedAt,
+    ),
+  );
+
+  switch (decision) {
+    case ProxyAdminAllowed():
+      return true;
+    case ProxyAdminDeniedDefault():
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'permission_denied',
+        'message': 'permission denied',
+        'permission_key': permissionKey,
+      });
+      return false;
+    case ProxyAdminDeniedExplicit(:final matchedRoleId):
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'permission_denied',
+        'message': 'permission denied',
+        'permission_key': permissionKey,
+        'matched_role_id': matchedRoleId,
+      });
+      return false;
+    case ProxyAdminMfaStaleAuth(:final refreshAfter):
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'mfa_freshness_required',
+        'message': 'fresh authentication is required',
+        'refresh_after': refreshAfter.toUtc().toIso8601String(),
+      });
+      return false;
+    case ProxyAdminChallengeRequired():
+      _writeJson(response, 403, <String, Object?>{
+        'error': 'recaptcha_challenge_required',
+        'message': 'additional verification is required',
+      });
+      return false;
+    case ProxyAdminRejected(:final reasonCode):
+      _writeJson(response, 403, <String, Object?>{
+        'error': reasonCode,
+        'message': 'request rejected by admin guard',
+      });
+      return false;
+  }
+}
+
+String? _pathSuffix(String path, String prefix) {
+  if (!path.startsWith(prefix)) return null;
+  final suffix = path.substring(prefix.length);
+  if (suffix.isEmpty || suffix.contains('/')) return null;
+  return Uri.decodeComponent(suffix);
+}
+
+_UserAction? _userActionFromPath(String path) {
+  if (!path.startsWith(adminAuthUsersPrefix)) return null;
+  final rest = path.substring(adminAuthUsersPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts.any((part) => part.isEmpty)) return null;
+  return _UserAction(
+    userId: Uri.decodeComponent(parts[0]),
+    action: Uri.decodeComponent(parts[1]),
+  );
+}
+
+class _UserAction {
+  const _UserAction({required this.userId, required this.action});
+
+  final String userId;
+  final String action;
 }
 
 /// Resolves [AuthSessionLedgerContext] enrichment fields.

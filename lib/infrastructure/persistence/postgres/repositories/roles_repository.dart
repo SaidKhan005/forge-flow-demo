@@ -76,6 +76,42 @@ class RolesRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Resolve a visible role key to its UUID. Operator-scoped custom roles win
+  /// over global seeded roles when both expose the same key.
+  Future<String> roleIdForVisibleKey({
+    required String operatorId,
+    required String locationId,
+    required String roleKey,
+    required String actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<String>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select role_id::text as role_id '
+        'from roles '
+        'where role_key = @role_key '
+        'and deleted_at is null '
+        'and (operator_id = @operator_id::uuid or operator_id is null) '
+        'order by case when operator_id = @operator_id::uuid then 0 else 1 end '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'role_key': roleKey,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError('role key is not visible to this operator');
+      }
+      final id = rows.single['role_id'];
+      if (id is String && id.isNotEmpty) return id;
+      throw StateError('roles lookup returned a malformed role_id');
+    });
+  }
+
   /// INSERT a new operator-scoped role. Returns the freshly minted
   /// `role_id`. The proxy validates `RoleManagementPolicy` BEFORE
   /// invoking this — the repo trusts its caller.

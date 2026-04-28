@@ -7,7 +7,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/repository_password_change_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
 import '../tool/advisor_proxy/proxy_bootstrap.dart';
@@ -22,6 +25,7 @@ void main() {
         ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
         ProxySecretNames.postgresAdminUrl:
             'postgres://admin-role.example/forgeflow',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
       });
       final pool = _RecordingPostgresPool(
         returningSessionId: '11111111-1111-4111-8111-111111111111',
@@ -78,6 +82,113 @@ void main() {
       );
       expect(insertCall.parameters['ip'], equals('127.0.0.1'));
       expect(insertCall.parameters['geo_country'], equals('CA'));
+    });
+  });
+
+  group('buildProxyProductionBindings', () {
+    test('assembles all live-closeout route bindings without opening '
+        'database connections', () {
+      final config = ProxyConfig.fromEnvironment(const <String, String>{
+        ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+        ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+        ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+        ProxySecretNames.postgresAdminUrl:
+            'postgres://admin-role.example/forgeflow',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
+      });
+      final appPool = _RecordingPostgresPool(
+        returningSessionId: '11111111-1111-4111-8111-111111111111',
+      );
+      final adminPool = _RecordingPostgresPool(
+        returningSessionId: '22222222-2222-4222-8222-222222222222',
+      );
+      final poolsByConnectionString = <String, _RecordingPostgresPool>{
+        'postgres://app-role.example/forgeflow': appPool,
+        'postgres://admin-role.example/forgeflow': adminPool,
+      };
+      final capturedConnectionStrings = <String>[];
+
+      final bindings = buildProxyProductionBindings(
+        config,
+        postgresPoolFactory: (connectionString) {
+          capturedConnectionStrings.add(connectionString);
+          final pool = poolsByConnectionString[connectionString];
+          if (pool == null) {
+            throw StateError('unexpected connection string');
+          }
+          return pool;
+        },
+      );
+
+      expect(
+        bindings.authSessionLedgerWriter,
+        isA<RepositoryAuthSessionLedgerWriter>(),
+      );
+      expect(
+        bindings.permissionSnapshotResolver,
+        isA<RepositoryProxyPermissionSnapshotResolver>(),
+      );
+      expect(
+        bindings.adminPermissionGuard,
+        isA<RepositoryProxyAdminPermissionGuard>(),
+      );
+      expect(
+        bindings.authOperationsGateway,
+        isA<RepositoryAuthOperationsGateway>(),
+      );
+      expect(
+        bindings.passwordChangeGateway,
+        isA<RepositoryPasswordChangeGateway>(),
+      );
+      expect(
+        bindings.mfaOperationsGateway,
+        isA<RepositoryMfaOperationsGateway>(),
+      );
+      expect(
+        capturedConnectionStrings,
+        equals(<String>[
+          'postgres://app-role.example/forgeflow',
+          'postgres://admin-role.example/forgeflow',
+        ]),
+      );
+      expect(appPool.beginTransactionCount, equals(0));
+      expect(adminPool.beginTransactionCount, equals(0));
+    });
+
+    test('requires FIREBASE_PROJECT_ID before constructing database pools', () {
+      final config = ProxyConfig.fromEnvironment(const <String, String>{
+        ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+        ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+        ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+        ProxySecretNames.postgresAdminUrl:
+            'postgres://admin-role.example/forgeflow',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+      });
+      var poolFactoryCalls = 0;
+
+      Object? thrown;
+      try {
+        buildProxyProductionBindings(
+          config,
+          postgresPoolFactory: (connectionString) {
+            poolFactoryCalls++;
+            return _RecordingPostgresPool(
+              returningSessionId: '33333333-3333-4333-8333-333333333333',
+            );
+          },
+        );
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown, isA<ProxyConfigError>());
+      final error = thrown! as ProxyConfigError;
+      expect(
+        error.missingSecretNames,
+        contains(ProxyConfigNames.firebaseProjectId),
+      );
+      expect(poolFactoryCalls, equals(0));
     });
   });
 }

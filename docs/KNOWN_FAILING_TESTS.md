@@ -14,4 +14,4 @@ Removed entries live in git history; do not keep a "resolved" section here.
 
 | File | Notes | Discovered | Owning slice |
 |------|-------|------------|--------------|
-| `test/labor_model_boh_sales_test.dart` | 2 failing cases | 2026-04-24 | tbd |
+| _None_ | Full suite green on 2026-04-28 (`flutter test` passed 2323/2323). | 2026-04-28 | n/a |

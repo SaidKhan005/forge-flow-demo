@@ -51,8 +51,69 @@ class MfaFactorRecord {
   bool get isActive => revokedAt == null;
 }
 
+class MfaEnrollmentPersistenceResult {
+  const MfaEnrollmentPersistenceResult({
+    required this.totpFactorId,
+    required this.recoveryCodeFactorIds,
+  });
+
+  final String totpFactorId;
+  final List<String> recoveryCodeFactorIds;
+}
+
 class MfaFactorsRepository extends OperatorScopedRepository {
   MfaFactorsRepository(super.tenantWrapper);
+
+  /// Persist one confirmed TOTP factor and its generated recovery-code rows in
+  /// a single tenant-scoped transaction. The plaintext recovery codes never
+  /// reach this layer; each row receives only `{salt, hash}` metadata.
+  Future<MfaEnrollmentPersistenceResult> insertTotpEnrollment({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String firebaseFactorUid,
+    required List<Map<String, Object?>> hashedRecoveryCodes,
+    String issuerName = 'Forge & Flow',
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    final totpMetadata = <String, Object?>{
+      'firebase_factor_uid': firebaseFactorUid,
+      'issuer': issuerName,
+    };
+    return withTenant<MfaEnrollmentPersistenceResult>(ctx, (exec) async {
+      final totpRows = await exec.query(
+        'insert into mfa_factors (user_id, factor_type, factor_metadata) '
+        "values (@user_id::uuid, 'totp', @metadata::jsonb) "
+        'returning factor_id::text as factor_id',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'metadata': jsonEncode(totpMetadata),
+        },
+      );
+      final totpFactorId = _projectFactorId(totpRows);
+      final recoveryFactorIds = <String>[];
+      for (final hashedCode in hashedRecoveryCodes) {
+        final recoveryRows = await exec.query(
+          'insert into mfa_factors (user_id, factor_type, factor_metadata) '
+          "values (@user_id::uuid, 'recovery_code', @metadata::jsonb) "
+          'returning factor_id::text as factor_id',
+          parameters: <String, Object?>{
+            'user_id': userId,
+            'metadata': jsonEncode(hashedCode),
+          },
+        );
+        recoveryFactorIds.add(_projectFactorId(recoveryRows));
+      }
+      return MfaEnrollmentPersistenceResult(
+        totpFactorId: totpFactorId,
+        recoveryCodeFactorIds: List<String>.unmodifiable(recoveryFactorIds),
+      );
+    });
+  }
 
   /// INSERT a new TOTP factor row. Returns the freshly generated
   /// `factor_id`. The [firebaseFactorUid] is the Firebase
@@ -141,10 +202,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         'and user_id = @user_id::uuid '
         "and factor_type = 'recovery_code' "
         'and revoked_at is null',
-        parameters: <String, Object?>{
-          'factor_id': factorId,
-          'user_id': userId,
-        },
+        parameters: <String, Object?>{'factor_id': factorId, 'user_id': userId},
       );
     });
   }
@@ -169,10 +227,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         'and user_id = @user_id::uuid '
         "and factor_type = 'totp' "
         'and revoked_at is null',
-        parameters: <String, Object?>{
-          'factor_id': factorId,
-          'user_id': userId,
-        },
+        parameters: <String, Object?>{'factor_id': factorId, 'user_id': userId},
       );
     });
   }
@@ -202,9 +257,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         "and factor_type = 'recovery_code' "
         'and revoked_at is null '
         'order by enrolled_at',
-        parameters: <String, Object?>{
-          'user_id': userId,
-        },
+        parameters: <String, Object?>{'user_id': userId},
       );
       return rows.map(_projectRow).toList(growable: false);
     });

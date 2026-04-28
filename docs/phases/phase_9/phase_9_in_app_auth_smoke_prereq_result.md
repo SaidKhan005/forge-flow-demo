@@ -3,6 +3,10 @@
 Status: PREREQUISITES READY.
 Generated: 2026-04-27.
 
+2026-04-28 note: this prerequisite report predates the Phase 9 production
+route binding bundle. The later auth-operation/password/MFA bootstrap also
+requires Cloud Run env `FIREBASE_WEB_API_KEY` before the next proxy deploy.
+
 ## Scope
 
 Prepared the live staging proxy prerequisites for the dedicated in-app smoke user:
@@ -24,6 +28,7 @@ printed in the result.
 | Cloud Run env `FIREBASE_PROJECT_ID` | PRESENT |
 | Cloud Run env `POSTGRES_URL` | PRESENT |
 | Cloud Run env `POSTGRES_ADMIN_URL` | PRESENT |
+| Cloud Run env `FIREBASE_WEB_API_KEY` | ADDED TO NEXT-DEPLOY CONTRACT ON 2026-04-28 |
 | App launch define `FORGE_FLOW_USE_FIREBASE_AUTH=true` | AVAILABLE |
 | App launch define `FORGE_FLOW_PROXY_BASE_URI=<deployed-proxy-url>` | AVAILABLE |
 

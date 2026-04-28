@@ -46,11 +46,7 @@ void main() {
       };
       for (final entry in expected.entries) {
         final body = _extractFunctionBody(wrapperSql, entry.key);
-        expect(
-          body,
-          isNotNull,
-          reason: 'wrapper ${entry.key} not declared',
-        );
+        expect(body, isNotNull, reason: 'wrapper ${entry.key} not declared');
         expect(
           body,
           contains('returns uuid'),
@@ -63,22 +59,30 @@ void main() {
         );
         expect(
           body,
-          contains('stable leakproof parallel safe'),
-          reason: '${entry.key} must be STABLE LEAKPROOF PARALLEL SAFE '
+          contains('stable parallel safe'),
+          reason: '${entry.key} must be STABLE PARALLEL SAFE',
+        );
+        expect(
+          wrapperSql,
+          contains('alter function public.${entry.key}() leakproof;'),
+          reason:
+              '${entry.key} must be marked LEAKPROOF after creation '
               '(item 4 locked posture)',
         );
         expect(
           body,
-          contains("nullif(current_setting('${entry.value}', true), '')"
-              '::uuid'),
-          reason: '${entry.key} must read ${entry.value} via NULL-safe '
+          contains(
+            "nullif(current_setting('${entry.value}', true), '')"
+            '::uuid',
+          ),
+          reason:
+              '${entry.key} must read ${entry.value} via NULL-safe '
               'cast so missing/empty GUCs collapse to NULL',
         );
       }
     });
 
-    test('grants EXECUTE on every wrapper to service_role and forge_admin',
-        () {
+    test('grants EXECUTE on every wrapper to service_role and forge_admin', () {
       const wrapperNames = <String>[
         'app_current_operator',
         'app_current_location',
@@ -88,16 +92,22 @@ void main() {
       for (final name in wrapperNames) {
         expect(
           wrapperSql,
-          contains('grant execute on function public.$name() '
-              'to service_role'),
-          reason: '$name must be EXECUTE-able by service_role for '
+          contains(
+            'grant execute on function public.$name() '
+            'to service_role',
+          ),
+          reason:
+              '$name must be EXECUTE-able by service_role for '
               'tenant runtime',
         );
         expect(
           wrapperSql,
-          contains('grant execute on function public.$name() '
-              'to forge_admin'),
-          reason: '$name must be EXECUTE-able by forge_admin so the '
+          contains(
+            'grant execute on function public.$name() '
+            'to forge_admin',
+          ),
+          reason:
+              '$name must be EXECUTE-able by forge_admin so the '
               'BYPASSRLS escape hatch can still evaluate predicates',
         );
       }
@@ -111,7 +121,8 @@ void main() {
       expect(
         wrapperSql.toLowerCase(),
         isNot(contains('security definer')),
-        reason: 'wrappers must run with caller privileges (default '
+        reason:
+            'wrappers must run with caller privileges (default '
             'SECURITY INVOKER)',
       );
     });
@@ -140,28 +151,30 @@ void main() {
         'auth_events_audit_append_insert': 'public.auth_events_audit',
         'role_audit_log_per_tenant_select': 'public.role_audit_log',
         'role_audit_log_append_insert': 'public.role_audit_log',
-        'external_identity_links_per_tenant':
-            'public.external_identity_links',
+        'external_identity_links_per_tenant': 'public.external_identity_links',
       };
       for (final entry in policiesFromOriginal.entries) {
         expect(
           rewriteSql,
-          contains('drop policy if exists "${entry.key}" '
-              'on ${entry.value}'),
-          reason: 'rewrite must drop ${entry.key} so the new wrapper '
+          contains(
+            'drop policy if exists "${entry.key}" '
+            'on ${entry.value}',
+          ),
+          reason:
+              'rewrite must drop ${entry.key} so the new wrapper '
               'version replaces the bare-GUC version atomically',
         );
         expect(
           rewriteSql,
           contains('create policy "${entry.key}"'),
-          reason: 'rewrite must recreate ${entry.key} through '
+          reason:
+              'rewrite must recreate ${entry.key} through '
               'wrappers',
         );
       }
     });
 
-    test('rewrite policy bodies contain no bare current_setting calls',
-        () {
+    test('rewrite policy bodies contain no bare current_setting calls', () {
       // The whole point of the slice — every operator-scoped policy
       // body in the rewrite must read GUCs through wrappers only.
       // Use the policy-aware lint runner so comments / prose that
@@ -176,7 +189,8 @@ void main() {
       expect(
         result.isClean,
         isTrue,
-        reason: 'rewrite policy bodies must not contain bare app.* '
+        reason:
+            'rewrite policy bodies must not contain bare app.* '
             'current_setting calls; violations: ${result.violations}',
       );
     });
@@ -190,22 +204,21 @@ void main() {
       expect(rewriteSql, contains('app_current_actor_user()'));
     });
 
-    test(
-      'preserves auth-events-audit append-only WITH CHECK shape',
-      () {
-        // The 9.2 policy used `with check (true)` so failed-login
-        // rows still write even when tenant resolution fails. The
-        // wrapper rewrite must keep that exact shape — narrowing to
-        // a tenant predicate would silently drop pre-tenant audit
-        // rows.
-        expect(
-          rewriteSql,
-          contains('create policy "auth_events_audit_append_insert"\n'
-              '  on public.auth_events_audit for insert to service_role\n'
-              '  with check (true);'),
-        );
-      },
-    );
+    test('preserves auth-events-audit append-only WITH CHECK shape', () {
+      // The 9.2 policy used `with check (true)` so failed-login
+      // rows still write even when tenant resolution fails. The
+      // wrapper rewrite must keep that exact shape — narrowing to
+      // a tenant predicate would silently drop pre-tenant audit
+      // rows.
+      expect(
+        rewriteSql,
+        contains(
+          'create policy "auth_events_audit_append_insert"\n'
+          '  on public.auth_events_audit for insert to service_role\n'
+          '  with check (true);',
+        ),
+      );
+    });
   });
 
   group('rls_policy_lint', () {
@@ -240,10 +253,7 @@ create policy "new_table_per_tenant"
       ).run();
       expect(result.isClean, isFalse);
       expect(result.violations, hasLength(1));
-      expect(
-        result.violations.single.policyName,
-        'new_table_per_tenant',
-      );
+      expect(result.violations.single.policyName, 'new_table_per_tenant');
       expect(
         result.violations.single.fileName,
         '202604290000_new_table_policies.sql',
@@ -257,9 +267,7 @@ create policy "old_per_tenant"
   using (operator_id = current_setting('app.operator_id', true)::uuid);
 ''';
       final result = RlsPolicyLintRunner(
-        files: <String, String>{
-          '202604010000_legacy_policies.sql': violator,
-        },
+        files: <String, String>{'202604010000_legacy_policies.sql': violator},
         allowlist: const <String>{'202604010000_legacy_policies.sql'},
       ).run();
       expect(result.isClean, isTrue);
@@ -299,15 +307,14 @@ create policy "stub_service_role_all"
   using (true) with check (true);
 ''';
       final result = RlsPolicyLintRunner(
-        files: <String, String>{
-          '202604010001_stub_policies.sql': docOnly,
-        },
+        files: <String, String>{'202604010001_stub_policies.sql': docOnly},
         allowlist: const <String>{},
       ).run();
       expect(
         result.isClean,
         isTrue,
-        reason: 'lint must only inspect CREATE POLICY bodies, not '
+        reason:
+            'lint must only inspect CREATE POLICY bodies, not '
             'free-form comments or prose',
       );
     });

@@ -59,10 +59,12 @@
 create or replace function public.app_current_operator()
 returns uuid
 language sql
-stable leakproof parallel safe
+stable parallel safe
 as $$
   select nullif(current_setting('app.operator_id', true), '')::uuid;
 $$;
+
+alter function public.app_current_operator() leakproof;
 
 comment on function public.app_current_operator() is
   'Phase 9.0Σ.b — returns the active operator UUID from the app.operator_id GUC. '
@@ -75,10 +77,12 @@ comment on function public.app_current_operator() is
 create or replace function public.app_current_location()
 returns uuid
 language sql
-stable leakproof parallel safe
+stable parallel safe
 as $$
   select nullif(current_setting('app.location_id', true), '')::uuid;
 $$;
+
+alter function public.app_current_location() leakproof;
 
 comment on function public.app_current_location() is
   'Phase 9.0Σ.b — returns the active location UUID from the app.location_id GUC. '
@@ -88,10 +92,12 @@ comment on function public.app_current_location() is
 create or replace function public.app_current_actor_user()
 returns uuid
 language sql
-stable leakproof parallel safe
+stable parallel safe
 as $$
   select nullif(current_setting('app.user_id', true), '')::uuid;
 $$;
+
+alter function public.app_current_actor_user() leakproof;
 
 comment on function public.app_current_actor_user() is
   'Phase 9.0Σ.b — returns the actor user UUID from the app.user_id GUC. '
@@ -111,10 +117,12 @@ comment on function public.app_current_actor_user() is
 create or replace function public.app_acting_as_operator()
 returns uuid
 language sql
-stable leakproof parallel safe
+stable parallel safe
 as $$
   select nullif(current_setting('app.acting_as_operator_id', true), '')::uuid;
 $$;
+
+alter function public.app_acting_as_operator() leakproof;
 
 comment on function public.app_acting_as_operator() is
   'Phase 9.0Σ.b — returns the impersonated/target operator UUID from the '

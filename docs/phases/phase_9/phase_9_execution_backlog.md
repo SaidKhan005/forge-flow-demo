@@ -37,6 +37,75 @@ Do not re-open these unless the repo regresses:
   `operators.region`, 12 `team.*` keys, and the super_admin team-grant
   audit-fix migration.
 
+## Scalability Foundation Progress
+
+As of 2026-04-28, B23 / `9.0Σ.b`, B24 / `9.0Σ.c`, and B26 / `9.0Σ.e` are
+complete and double-checked in the local line. B25 / `9.0Σ.d` exists
+upstream/parallel and must be fast-forward verified in this live-closeout
+worktree before it counts as local evidence. B27-B32 remain queued, but are
+paused behind the 9 live-closeout stability freeze. Do not start `9.0Σ.f` or
+later feature slices until maintenance/backlog/test status stays green and the
+remaining live-closeout gates are explicitly cleared.
+
+## Captured Before Next Feature Addition
+
+2026-04-28 repo/backlog sweep:
+
+- User directive for this checkpoint: no new feature additions until this
+  phase is 100% stable. Use this section and
+  `phase_9_maintenance_stability_sweep_result.md` as the maintenance baseline;
+  keep B27-B32 paused while any regression, smoke, or live-closeout blocker is
+  open.
+
+- Retried the current non-repo `FIREBASE_AUTH_SMOKE_EMAIL` /
+  `FIREBASE_AUTH_SMOKE_PASSWORD` Firebase password sign-in before proceeding.
+  It initially returned Firebase `INVALID_LOGIN_CREDENTIALS` before any proxy
+  mutation. Maintenance then reset/reconfirmed the dedicated staging smoke
+  user's Firebase password, updated `$HOME/.forge_flow/forge_flow.secrets.ps1`,
+  and verified password sign-in plus deployed proxy permission snapshot.
+  Snapshot verification returned 80 permissions with `team.users.view=allow`
+  and `team.users.invite=allow`.
+- Older B6/B8/B14/B15/B17/B19/B20/B21 backlog text has been reconciled with
+  the 2026-04-28 live auth-operation, password-change, bootstrap, and runbook
+  result docs below. Remaining live-closeout gates are green on
+  staging/local/GitHub, with explicit Production1 approval still required for
+  any Production1 mutation. Final local analyzer/test gates are green after the
+  staging repairs and tracker updates.
+- Live MFA adapter gap narrowed on 2026-04-28: the proxy now has an Identity
+  Toolkit REST MFA adapter, focused tests, and staging revision
+  `forge-flow-staging-proxy-00017-pcz` deployed with Secret Manager-backed
+  runtime config. Direct provider start/finalize/withdraw cleanup passed; proxy
+  password sign-in, permission snapshot, TOTP begin/confirm, recovery-code
+  consume, recovery-attempt ledger, and cleanup passed against a disposable
+  staging user.
+- Cloud Armor/reCAPTCHA was provisioned on staging after explicit approval:
+  reserved IP `34.54.204.29`, serverless NEG/backend service, preview-only
+  Cloud Armor WAF rule, HTTP(S) forwarding, and reCAPTCHA Enterprise score key
+  `6LeBDc8sAAAAAO7QL0_qelJwl-f4QmCEktP-qlM4` for
+  `staging-api.feflow.org`. HTTP edge `/readyz` smokes via forced resolve pass.
+  DNS and managed certificate issuance remain pending.
+- Security hygiene follow-up closed for staging proxy deploy config: sensitive
+  runtime config now deploys as Secret Manager-backed env refs. No values were
+  copied into docs.
+- Backlog alignment note: local `master` is behind `origin/master`; the
+  service-principal 9.0Σ.d commit exists upstream/parallel, but the current
+  dirty live-closeout worktree does not contain the `service_principals`
+  migration/repository yet. Keep the existing 9.0Σ.d.1 fast-forward
+  verification queued after live-closeout changes are safely merged.
+- Focused analyzer initially caught a stale wrapper signature in
+  `lib/services/auth/invited_user_activation_ledger_writer.dart`
+  (`authorizationIdToken` was still being forwarded after the
+  `AuthSessionLedgerWriter` seam narrowed). The wrapper now mirrors the current
+  seam; follow-up analyzer is clean.
+- `docs/KNOWN_FAILING_TESTS.md` still owns the unrelated
+  `test/labor_model_boh_sales_test.dart` failures. Maintenance fixed the stale
+  test fixture to pass explicit demand (`historicalWeeklyAvgCovers`) under the
+  current honest-demand contract. The known-failing list is now empty.
+- Broad local gates after maintenance:
+  `flutter analyze --fatal-infos` reported no issues, `flutter test` passed
+  2323/2323, `dart run tool/rls_policy_lint.dart` reported clean, and
+  `git diff --check` reported only CRLF normalization warnings.
+
 ## Backlog Items
 
 ### Covered Framework Slices
@@ -175,9 +244,11 @@ Resolution (SDK/app wiring):
 - Android Gradle wiring was verified for Forge & Flow and Barrio debug
   builds with and without the Firebase auth define.
 
-Pending follow-up:
+Evidence:
 
-- iOS config-copy wiring is written, but must be verified on macOS.
+- GitHub Apple run `25078391954` passed macOS host tests plus ForgeFlow and
+  Barrio iOS simulator builds after the iOS deployment target was raised to
+  15.0 for Firebase Auth.
 - Web/admin runtime still needs a Dart `FirebaseOptions` binding before a
   browser launch.
 - Full in-app login needs the proxy session-ledger endpoint; the app must not
@@ -219,16 +290,18 @@ Resolution (SDK/app wiring):
 
 Pending follow-up:
 
-- iOS Keychain behavior still needs a macOS/device build check.
+- GitHub Apple run `25078391954` passed the macOS host test lane. Device-only
+  keychain behavior still belongs to later physical-device QA, but the
+  macOS/Xcode runner gate is closed for this live-closeout slice.
 
 ### B6 - Auth Session Ledger Writes
 
 Source: `9.3` checkpoint and `9.0` schema comments.
 
-Status: framework completed on 2026-04-27. Proxy session-ledger endpoint
-(client-safe HTTP route + Flutter client writer) shipped on 2026-04-27.
-Live wiring of `RepositoryAuthSessionLedgerWriter` over
-`PackagePostgresPool` inside the proxy boot still pending.
+Status: completed and staging-smoked by 2026-04-28. Proxy session-ledger
+endpoint (client-safe HTTP route + Flutter client writer) shipped on
+2026-04-27, and production proxy boot now wires
+`RepositoryAuthSessionLedgerWriter` through the Phase 9 route binding bundle.
 
 Needed before: `auth_sessions` acceptance.
 
@@ -293,12 +366,12 @@ Resolution (proxy session-ledger endpoint, 2026-04-27):
   `{ok: true}` for refresh / revoke, `{ok: true, revoked_count}`
   for revoke-all. Bearer tokens, `token_hash` values, and writer
   exception text NEVER leak through the response body.
-- `tool/advisor_proxy/main.dart` defaults the writer to
+- `tool/advisor_proxy/main.dart` originally defaulted the writer to
   `ScaffoldFailingAuthSessionLedgerWriter` so a misconfigured deploy
-  returns 503 from the four routes instead of silently dropping
-  ledger rows. Live wiring (`RepositoryAuthSessionLedgerWriter` over
-  `PackagePostgresPool`) lands in the same proxy slice that wires
-  the live PostgresPool for the accounting / usage stores.
+  returned 503 from the four routes instead of silently dropping ledger rows.
+  The 2026-04-28 production bootstrap reconciliation replaced that default in
+  live route binding with `RepositoryAuthSessionLedgerWriter` over
+  `PackagePostgresPool`.
 - Added `lib/services/auth/proxy_auth_session_ledger_writer.dart`:
   `ProxyAuthSessionLedgerWriter implements AuthSessionLedgerWriter`
   drives the four routes from the Flutter app via `dart:io HttpClient`
@@ -330,12 +403,6 @@ Resolution (proxy session-ledger endpoint, 2026-04-27):
 
 Pending follow-up:
 
-- Wire `RepositoryAuthSessionLedgerWriter` over the live
-  `PackagePostgresPool` in the proxy bootstrap so the
-  `ScaffoldFailingAuthSessionLedgerWriter` default is replaced with
-  real Postgres writes. This is the same lift that wires the
-  accounting / usage stores; bundling the four lands the live
-  staging in-app smoke (B8 below).
 - Idempotency: the proxy currently accepts the `Idempotency-Key`
   header but does not yet enforce it. A future slice will integrate
   the `proxy_requests` table so a retried POST returns the prior
@@ -356,6 +423,16 @@ Status: pending macOS session.
 
 Needed before: iOS launch acceptance.
 
+2026-04-28 Windows-side static check:
+
+- `ios/Runner/Firebase/GoogleService-Info-ForgeFlow.plist` and
+  `ios/Runner/Firebase/GoogleService-Info-Barrio.plist` are present.
+- `ios/Runner.xcodeproj/project.pbxproj` includes a `Copy Firebase Config`
+  shell phase that selects the plist by `PRODUCT_BUNDLE_IDENTIFIER`.
+- ForgeFlow/Barrio flavor xcconfigs and target build configurations are
+  present.
+- No `macos/` platform directory exists in this repo.
+
 Work:
 
 - Wire `GoogleService-Info.plist` files into Xcode schemes/configurations.
@@ -366,14 +443,13 @@ Work:
 
 Source: `9.3` checkpoint.
 
-Status: backend credential/session smoke completed on 2026-04-27;
-proxy session-ledger endpoint + Flutter client writer also shipped
-on 2026-04-27 (see B6 above). Full in-app smoke is READY for the live
-app run: the staging proxy is deployed, the unified secrets file loads,
-`FIREBASE_AUTH_SMOKE_PASSWORD` and `FORGE_FLOW_PROXY_BASE_URI` are present
-outside the repo, and Cloud Run has `FIREBASE_PROJECT_ID`, `POSTGRES_URL`,
-and `POSTGRES_ADMIN_URL`. See
-`phase_9_in_app_auth_smoke_prereq_result.md`.
+Status: completed on 2026-04-28. Backend credential/session smoke,
+proxy session-ledger endpoint, Flutter client writer, and full in-app
+login/persistence/logout all passed. The 2026-04-27 prerequisite report
+covered the session-ledger deploy env; the later Phase 9 production route
+bootstrap also requires `FIREBASE_WEB_API_KEY` alongside
+`FIREBASE_PROJECT_ID`, `POSTGRES_URL`, and `POSTGRES_ADMIN_URL` before the
+next auth-operation deploy.
 
 Needed before: live `9.3` acceptance.
 
@@ -402,11 +478,13 @@ Completed smoke:
   through the repository-compatible table path and verified as revoked with
   reason `phase_9_auth_smoke_complete`.
 
-Remaining gate:
+Post-closeout credential note:
 
-- Run the in-app sign-in / logout smoke with `auth-smoke@forgeflow.dev`
-  through the deployed proxy (`FORGE_FLOW_USE_FIREBASE_AUTH=true` +
-  `FORGE_FLOW_PROXY_BASE_URI` loaded from the non-repo secrets file).
+- A 2026-04-28 retry using the previous non-repo
+  `FIREBASE_AUTH_SMOKE_PASSWORD` returned Firebase
+  `INVALID_LOGIN_CREDENTIALS`. The dedicated smoke user's password has since
+  been reset/reconfirmed, the non-repo secrets loader updated, and password
+  sign-in plus deployed proxy permission snapshot verified.
 ### B9 - Admin Web Security Headers / Observatory
 
 Source: `9.3` checkpoint.
@@ -439,7 +517,9 @@ Work:
 
 Source: `9.4` checkpoint.
 
-Status: framework completed on 2026-04-27. SDK adapter pending B7 iOS/Android wiring.
+Status: local SDK/app challenge wiring and proxy Identity Toolkit REST adapter
+completed by 2026-04-28. Staging proxy TOTP begin/confirm and recovery-code
+consume passed with disposable-user cleanup.
 
 Needed before: live MFA enrollment/challenge acceptance.
 
@@ -465,16 +545,30 @@ Resolution (framework):
   contract.
 - TOTP secrets + otpauth URLs never echoed by the adapter layer.
 
+Resolution (runtime adapters):
+
+- App sign-in/challenge uses `FirebaseAuthSdkClient` and Flutter
+  `firebase_auth` TOTP APIs behind `FORGE_FLOW_USE_FIREBASE_AUTH=true`.
+- Proxy enrollment/withdraw uses `IdentityToolkitFirebaseMfaClient`, the
+  server-safe Identity Toolkit REST adapter, behind the production
+  `RepositoryMfaOperationsGateway`. Live provider verification corrected this
+  adapter to the API-key-plus-user-ID-token contract for the v2 MFA endpoints.
+- Direct staging provider smoke passed start, finalize, lookup, and withdraw
+  cleanup without printing token/secret/code values.
+- Deployed proxy revision `forge-flow-staging-proxy-00017-pcz` passed TOTP
+  begin/confirm plus recovery-code consume with disposable-user cleanup.
+
 Pending follow-up:
 
-- SDK adapter that imports `firebase_auth.MultiFactor` (paired
-  with the same B7 iOS/Android wiring as the B4/B5 SDK adapters).
+- B7 macOS/Xcode verification remains required before iOS launch acceptance.
 
 ### B12 - MFA Persistence And Recovery-Code Consumption
 
 Source: `9.4` checkpoint.
 
-Status: framework completed on 2026-04-27. Live proxy wiring pending.
+Status: local proxy orchestration and Identity Toolkit MFA adapter completed on
+2026-04-28. Staging TOTP begin/confirm and recovery-code consume passed with
+disposable-user cleanup.
 
 Needed before: live MFA and recovery-code acceptance.
 
@@ -498,22 +592,37 @@ Resolution (framework):
 - Added `RecoveryCodeConsumer` orchestrating limiter + repository +
   hasher (see B13 below) — the actual consumption path.
 
+2026-04-28 local closeout:
+
+- Added `MfaFactorsRepository.insertTotpEnrollment` so the proxy persists the
+  TOTP row and all hashed recovery-code rows inside one tenant transaction.
+- Added `RepositoryMfaOperationsGateway` to chain Firebase MFA enrollment
+  output, local persistence, recovery-code consumption, and append-only audit
+  rows.
+- Added proxy routes:
+  `POST /v1/auth/mfa/totp/begin`,
+  `POST /v1/auth/mfa/totp/confirm`, and
+  `POST /v1/auth/mfa/recovery/consume`.
+- Added app-side `ProxyMfaOperationsGateway` and runtime binding through
+  `FORGE_FLOW_PROXY_BASE_URI`.
+- Added `IdentityToolkitFirebaseMfaClient` for Cloud Run TOTP
+  begin/finalize/withdraw and latest-factor lookup through Identity Toolkit
+  REST. The proxy passes the already verified Authorization ID token into the
+  adapter without logging or returning token values. The adapter uses the
+  project API key path verified by live staging TOTP smoke.
+
 Pending follow-up:
 
-- Wire `MfaFactorsRepository` over the live `PackagePostgresPool`
-  in the proxy bootstrap.
-- Have the proxy chain `FirebaseMfaEnrollmentService` outputs into
-  `insertTotpFactor` + N × `insertRecoveryCodeFactor` inside one
-  transaction so a partial enroll cannot leave half-enrolled state.
-- The Firebase Admin SDK call for `revokeRefreshTokens(uid)`
-  (paired with `mfa_factor_revocation_completed` audit event)
-  belongs in the same proxy slice.
+- The Firebase Admin SDK call for `revokeRefreshTokens(uid)` (paired with
+  `mfa_factor_revocation_completed` audit event) belongs in the MFA removal
+  slice.
 
 ### B13 - Recovery-Code Attempt Rate Limits
 
 Source: `9.4` / `9.5` checkpoints.
 
-Status: framework completed on 2026-04-27. Postgres-backed attempt store pending.
+Status: Postgres-backed attempt store completed locally and smoked on staging
+on 2026-04-28.
 
 Needed before: live recovery-code acceptance.
 
@@ -541,19 +650,29 @@ Resolution (framework):
   an attacker cannot distinguish "wrong code" from
   "right code, already burned".
 
+2026-04-28 local closeout:
+
+- Added migration
+  `db/migrations/202604280011_phase_9_recovery_code_attempts.sql` with a
+  dedicated `recovery_code_attempts` table, tenant RLS via
+  `public.app_current_operator()`, and grants to `service_role` /
+  `forge_admin`.
+- Added `PostgresRecoveryCodeAttemptStore` for durable prune/read/write
+  attempt tracking behind `RecoveryCodeAttemptLimiter`.
+- Proxy recovery-code consume now maps invalid/already-used to the same
+  generic rejection and preserves retry metadata for rate-limit responses.
+
 Pending follow-up:
 
-- Implement the Postgres-backed `RecoveryCodeAttemptStore`. The
-  proxy needs to pick the persistence model (a dedicated
-  `recovery_code_attempts` table OR reading from
-  `auth_events_audit` filtered by event_type) before wiring.
-  The framework supports either choice transparently.
+- Recovery-code consume staging smoke recorded the durable
+  `recovery_code_attempts` ledger entry and cleaned up disposable Firebase and
+  Postgres state.
 
 ### B14 - HIBP Egress Policy
 
 Source: `9.5` checkpoint.
 
-Status: pending.
+Status: completed through the 2026-04-28 staging password-change smoke.
 
 Needed before: live password-screening acceptance.
 
@@ -563,11 +682,17 @@ Work:
 - Add per-IP HIBP cap guidance (100/minute).
 - Keep k-anonymity behavior: only SHA-1 prefix leaves the system.
 
+Evidence:
+
+- `phase_9_password_change_orchestration_result.md` records
+  `hibp_unavailable=false` during the live password-change smoke on
+  `forge-flow-staging-proxy-00013-zx8`.
+
 ### B15 - Password History Persistence
 
 Source: `9.5` checkpoint.
 
-Status: pending; depends on B2.
+Status: completed and staging-smoked on 2026-04-28.
 
 Needed before: live password-change acceptance.
 
@@ -577,19 +702,67 @@ Work:
 - Write new password-history rows after successful changes.
 - Preserve fail-closed behavior on history-store outage where policy requires.
 
+Evidence:
+
+- `RepositoryPasswordChangeGateway` now checks and records password history.
+- Staging password-change smoke showed `password_history_count=1`.
+
 ### B16 - Cloud Armor And reCAPTCHA Setup
 
 Source: `9.5` checkpoint.
 
-Status: pending human/cloud setup.
+Status: staging edge provisioned after explicit approval; DNS/certificate
+pending.
 
 Needed before: brute-force-protection launch acceptance.
 
-Human gate: explicit cloud dashboard / infrastructure authorization.
+Human gate: explicit cloud dashboard / infrastructure authorization. Staging
+setup was approved on 2026-04-28; Production1 remains locked.
+
+2026-04-28 read-only inventory:
+
+- `forge-flow-staging-proxy` latest ready revision is
+  `forge-flow-staging-proxy-00013-zx8`.
+- The proxy is directly exposed through Cloud Run with ingress `all` and
+  unauthenticated invoker access enabled.
+- `gcloud compute backend-services list --global` returned no backend
+  services for `forge-flow-staging`.
+- `gcloud compute security-policies list` returned no Cloud Armor policies.
+- `gcloud recaptcha keys list` could not list keys because reCAPTCHA
+  Enterprise API is disabled for `forge-flow-staging`.
+
+2026-04-28 staging setup:
+
+- Reserved global IP `ff-staging-proxy-ip`: `34.54.204.29`.
+- Created serverless NEG `ff-staging-proxy-neg`, backend service
+  `ff-staging-proxy-backend`, URL map, HTTP/HTTPS proxies, forwarding rules,
+  and managed certificate `ff-staging-proxy-cert` for
+  `staging-api.feflow.org`.
+- Attached Cloud Armor policy `ff-staging-proxy-armor` with a preview-only
+  `sqli-stable` / `xss-stable` preconfigured WAF deny rule.
+- Enabled reCAPTCHA Enterprise and created staging score key
+  `6LeBDc8sAAAAAO7QL0_qelJwl-f4QmCEktP-qlM4` for
+  `staging-api.feflow.org`, WAF session-token integration.
+- Forced HTTP edge smoke to `http://staging-api.feflow.org/readyz` via
+  `34.54.204.29` returned 200.
+
+Blocker:
+
+- Porkbun DNS now resolves `staging-api.feflow.org A 34.54.204.29`, and HTTP
+  `/readyz` passes on the real hostname. The managed certificate is `ACTIVE`,
+  and HTTPS `/readyz` passes on the real hostname.
+- Cloud Armor preview-log review passed after controlled staging-only probes:
+  requests returned 200 while logs recorded preview-only DENY matches at
+  priority 1000 for preconfigured WAF expressions. Keep WAF enforcement off
+  until normal traffic has enough preview data for false-positive review.
+- The Cloud Armor WAF rule is preview-only and should stay there until logs are
+  reviewed. Backend token verification / route-level reCAPTCHA enforcement is
+  still a later app decision, not part of this edge bootstrap.
 
 Work:
 
-- Configure Cloud Armor and reCAPTCHA v3 site keys for auth routes.
+- Review Cloud Armor preview logs after DNS/certificate is live, then decide
+  whether to enforce.
 - Wire risk telemetry to the configured controls.
 - Do not perform dashboard/cloud mutation without explicit approval.
 
@@ -597,7 +770,7 @@ Work:
 
 Source: `9.6` checkpoint.
 
-Status: pending; depends on B2.
+Status: partially completed and staging-smoked on 2026-04-28.
 
 Needed before: live role-management acceptance.
 
@@ -608,6 +781,18 @@ Work:
 - Load grants/rules through tenant-scoped Postgres paths.
 - Bump `users.roles_version` on every role/grant change.
 - Write audit rows for every role/grant mutation.
+
+Resolution so far:
+
+- `/v1/admin/auth/role-grants` create and revoke routes are implemented,
+  proxy/client contract-tested, and live-smoked on staging.
+- Grant/revoke bumps `users.roles_version`, refreshes Firebase custom claims,
+  and writes append-only audit rows.
+
+Remaining:
+
+- Custom role definition endpoints under `/v1/admin/auth/roles/*` remain for
+  the fuller Settings -> Team role-management surface.
 
 ### B18 - Bulk PermissionGate Migration
 
@@ -635,7 +820,7 @@ Resolution:
 
 Source: `9.7` checkpoint.
 
-Status: pending; depends on B2 and B17.
+Status: completed for the Phase 9 auth-operation routes on 2026-04-28.
 
 Needed before: authenticated admin API acceptance.
 
@@ -646,11 +831,25 @@ Work:
 - Enforce default-deny, explicit-deny-wins, tenant/location scope, and MFA
   freshness for MFA-required keys.
 
+Resolution:
+
+- `RepositoryProxyPermissionSnapshotResolver` and
+  `RepositoryProxyAdminPermissionGuard` are now wired by production proxy
+  bootstrap.
+- Live permission snapshot for the staging admin actor returned
+  `team.users.view=allow` and `team.users.invite=allow`; auth-op routes reject
+  before gateway delegation when the guard denies.
+
+Remaining:
+
+- Route-specific fresh-MFA enforcement for MFA-required actions continues with
+  the live MFA deploy smoke lane.
+
 ### B20 - User Lifecycle Audit And Persistence Binding
 
 Source: `9.8` checkpoint.
 
-Status: pending; depends on B2 and B17/B19 for proxy endpoint ownership.
+Status: partially completed and staging-smoked on 2026-04-28.
 
 Needed before: live user-lifecycle acceptance.
 
@@ -662,11 +861,25 @@ Work:
 - Ensure transition audit payloads never contain raw tokens or private PII
   beyond the allowed operational fields.
 
+Resolution so far:
+
+- Invite create/revoke, invited-recipient acceptance, suspend/reactivate,
+  soft-delete, admin password reset, and role grant/revoke are implemented
+  through proxy/repository paths and live-smoked on staging.
+- Auth-session revoke-all exists for signed-in user logout-all and force-logout
+  repository support.
+
+Remaining:
+
+- Operator-facing admin force-logout action wiring and GDPR erasure request
+  execution surface remain separate follow-ups. The runbook and redaction
+  template are complete; production execution stays gated.
+
 ### B21 - GDPR Erasure Runbook
 
 Source: `9.8` checkpoint.
 
-Status: pending doc/runbook authoring.
+Status: completed locally on 2026-04-27.
 
 Needed before: operational GDPR erasure acceptance.
 
@@ -678,11 +891,20 @@ Work:
   evidence.
 - Keep the runbook aligned with `ErasureRedactionTemplate`.
 
+Resolution:
+
+- `runbooks/gdpr_erasure_runbook.md` exists and documents paired approval,
+  soft-delete prerequisite, no-self-approval, irreversible execution, preserved
+  Art. 17(3) fields, runtime redaction paths, and break-glass audit-log
+  redaction.
+- `test/user_lifecycle_live_binding_test.dart` checks runbook alignment with
+  `ErasureRedactionTemplate`.
+
 ### B23 - 9.0Σ.b RLS UUID Wrapper Functions
 
 Source: `phase_9_scalability_decisions_2026-04-27.md` item 4.
 
-Status: queued.
+Status: completed and double-checked on 2026-04-28.
 
 Needed before: any operator-scoped RLS policy added after 2026-04-28; gates
 all future fact-table policies + the `9.0g` `usage_caps` two-slot key
@@ -715,11 +937,30 @@ Files (likely):
 Gate: post-apply staging smoke must show every operator-scoped policy
 calling a wrapper, and the lint must reject a synthetic violator commit.
 
+Resolution:
+
+- Added RLS UUID wrapper functions for app GUC reads.
+- Rewrote existing auth-table RLS policies to use wrappers instead of bare
+  `current_setting('app.*')` reads.
+- Added policy-aware lint plus allowlist for the superseded historical
+  migration.
+- Wired the lint into CI.
+- Added wrapper/rewrite/lint coverage tests.
+- Fixed the CRLF-sensitive test issue and the lint gap for unquoted policy
+  names.
+
+Verification:
+
+- `dart run tool/rls_policy_lint.dart`.
+- `dart analyze tool/rls_policy_lint.dart test/phase_9_0sigma_b_rls_wrappers_test.dart`.
+- `flutter test test/phase_9_0sigma_b_rls_wrappers_test.dart` passed 14/14.
+- `flutter analyze --fatal-infos`.
+
 ### B24 - 9.0Σ.c org_units ltree + data_region
 
 Source: `phase_9_scalability_decisions_2026-04-27.md` items 1, 19.
 
-Status: queued.
+Status: completed and double-checked on 2026-04-28.
 
 Needed before: any code path that consumes corp/region/district/location
 hierarchy — internal admin/dev access surface (Q1), franchisee billing
@@ -749,11 +990,36 @@ Files (likely):
 Gate: GiST index present; depth-6 constraint rejects depth-7 inserts;
 RLS reads bypass-RLS for `forge_admin`, deny cross-tenant.
 
+Resolution:
+
+- Added migration
+  `db/migrations/202604280002_phase_9_0sigma_c_org_units.sql`.
+- Migration enables `ltree`, adds `operators.data_region` default
+  `'CA-CENTRAL'`, creates `org_units`, enforces unit-type and depth checks,
+  backfills one root `corp` row per existing operator, adds tenant-leading
+  indexes plus GiST `path`, and grants DML to `service_role` / `forge_admin`.
+- Added `OrgUnitsRepository extends OperatorScopedRepository` for tenant
+  list/get/create-root/create-child paths and admin root listing.
+- RLS policy uses `public.app_current_operator()` from B23; no bare
+  `current_setting('app.*')` tenant reads were introduced.
+
+Verification:
+
+- `dart analyze lib/infrastructure/persistence/postgres/repositories/org_units_repository.dart test/phase_9_0sigma_c_org_units_test.dart`.
+- `flutter test test/phase_9_0sigma_c_org_units_test.dart` passed 24/24.
+- `dart run tool/rls_policy_lint.dart` scanned 19 migration files and reported
+  clean.
+
+Remaining:
+
+- No repo/test blocker remains for `9.0Σ.c`. Any staging or Production1
+  migration apply remains subject to the normal live-mutation approval gate.
+
 ### B25 - 9.0Σ.d service_principals + sp: JWT prefix + actor_kind
 
 Source: `phase_9_scalability_decisions_2026-04-27.md` item 14.
 
-Status: queued.
+Status: completed and double-checked on 2026-04-28.
 
 Needed before: any Phase 12 workflow tool call. Workflows act as a
 service principal, not a human user; without `actor_kind` separation
@@ -781,11 +1047,44 @@ Files (likely):
 Gate: a `sp:` JWT issued for one operator cannot read another operator's
 rows (RLS); audit row carries `actor_kind='service'`.
 
+Resolution:
+
+- Added migration
+  `db/migrations/202604280004_phase_9_0sigma_d_service_principals.sql`.
+- Migration creates `service_principals`, adds tenant-scoped RLS using
+  `public.app_current_operator()`, grants the runtime/admin roles, and extends
+  `auth_events_audit` with `actor_kind` plus
+  `actor_service_principal_id`.
+- Added `ServicePrincipalsRepository extends OperatorScopedRepository` with
+  create/revoke/find/list helpers and strict `sp:<uuid>` subject helpers.
+- Added `ServicePrincipalJwtIssuer`, `ServicePrincipalJwtVerifier`, and
+  `CompositeProxyJwtVerifier` support in the advisor proxy. Verified service
+  principals resolve as `actorKind='service'` with `sp_scope:*` roles while
+  tampered tokens fail before scope is trusted.
+- Updated `AuthEventsAuditRepository.insertEvent` so future service-principal
+  events can carry non-human attribution without overloading
+  `actor_user_id`.
+
+Verification:
+
+- `dart analyze tool/advisor_proxy/advisor_proxy.dart lib/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart lib/infrastructure/persistence/postgres/repositories/service_principals_repository.dart test/phase_9_0sigma_d_service_principals_test.dart`.
+- `flutter test test/phase_9_0sigma_d_service_principals_test.dart` passed
+  7/7.
+- `dart run tool/rls_policy_lint.dart` scanned 21 migration files and reported
+  clean.
+
+Local live-closeout note:
+
+- Current dirty local `master` is behind `origin/master`, and the
+  `service_principals` migration/repository/test from upstream commit
+  `49699ad` are not present in this worktree yet. Keep 9.0Σ.d.1 verification
+  queued after the live-closeout branch is committed/fast-forwarded.
+
 ### B26 - 9.0Σ.e event_outbox foundation
 
 Source: `phase_9_scalability_decisions_2026-04-27.md` item 33 (Q22).
 
-Status: queued.
+Status: completed and double-checked on 2026-04-28.
 
 Needed before: real-time bridge in `10a` (the Pub/Sub leg). The
 foundation lands in `9.0Σ`; the Pub/Sub bridge + WebSocket leg complete
@@ -809,6 +1108,35 @@ Files (likely):
 
 Gate: insert fires NOTIFY; tenant-leading index present; RLS denies
 cross-tenant reads.
+
+Resolution:
+
+- Added migration
+  `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`.
+- Migration creates durable `event_outbox` storage with `bigserial` id,
+  `operator_id`, topic, JSON object payload, size cap, delivery / lease
+  columns, tenant-leading claim index, insert-time `pg_notify` trigger, RLS
+  policies using `public.app_current_operator()`, and table/sequence grants.
+- Added `EventOutboxRepository` with tenant-scoped `enqueue` and admin/worker
+  `claimBatch` using `FOR UPDATE SKIP LOCKED`, lease reclaim, stable ordering,
+  and validation before opening transactions.
+- Added `docs/contracts/event_outbox_contract.md` as the Phase 10a bridge
+  contract: `NOTIFY` is wake-up only, `event_outbox` is source of truth,
+  topics/retry/dead-letter semantics are documented, and direct non-repository
+  inserts are forbidden for app code.
+
+Verification:
+
+- `dart analyze lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart test/phase_9_0sigma_e_event_outbox_test.dart`.
+- `flutter test test/phase_9_0sigma_e_event_outbox_test.dart` passed 22/22.
+- `dart run tool/rls_policy_lint.dart` scanned 19 migration files and reported
+  clean.
+
+Remaining:
+
+- No repo/test blocker remains for `9.0Σ.e`. Phase 10a owns the Pub/Sub /
+  WebSocket bridge consumer that drains the table. Any staging or Production1
+  migration apply remains subject to the normal live-mutation approval gate.
 
 ### B27 - 9.0Σ.f Hash-chained audit_logs + Azure Blob anchor
 
@@ -1051,14 +1379,33 @@ Postgres rows when deployed. The bootstrap helper is covered by
 `test/advisor_proxy_bootstrap_test.dart` and opens no database
 connection until the first ledger write.
 
-Next live-closeout work is the in-app `auth-smoke@forgeflow.dev`
-login/logout smoke through the deployed proxy with
-`FORGE_FLOW_PROXY_BASE_URI`. 2026-04-27 prerequisite closeout is READY:
-the proxy URL is present in the non-repo secrets path, Cloud Run is deployed
-with the required env names, and `/readyz` returns HTTP 200.
+Current local code state on 2026-04-28:
 
-After the auth smoke, group the role/admin, user lifecycle,
-password-change, MFA enrollment/challenge, and recovery-code endpoints
-into one or more audited proxy slices. Cloud Armor / reCAPTCHA dashboard
-setup, advisor accounting/usage/health live-store wiring, and
-iOS/macOS verification remain human-gated follow-ups.
+- In-app `auth-smoke@forgeflow.dev` login/logout through the deployed proxy
+  has passed (see `phase_9_in_app_auth_smoke_result.md`).
+- Auth-operation, password-change, and MFA/recovery local route/schema
+  foundations are in this dirty live-closeout worktree and covered by focused
+  tests. The service-principal 9.0Σ.d foundation exists upstream/parallel, but
+  this worktree still needs the queued fast-forward verification. The
+  MFA/recovery route bundle now has a local Identity Toolkit REST adapter for
+  live TOTP enrollment.
+- `tool/advisor_proxy/main.dart` now installs the production Phase 9 route
+  binding bundle into `routeRequest`: auth-session ledger,
+  permission-snapshot resolver, admin permission guard, auth-operations
+  gateway, password-change gateway, and MFA/recovery gateway. Construction is
+  covered by `test/advisor_proxy_bootstrap_test.dart` and opens no database
+  connection before the first request.
+- `scripts/deploy_staging_proxy.ps1` and
+  `scripts/use_forge_flow_secrets.ps1` now preserve the same
+  `FIREBASE_WEB_API_KEY` contract as the proxy config: they derive it from the
+  Forge Flow `google-services.json` when local env omits it, report the name
+  only, and the deploy script writes it into Cloud Run env. Covered by
+  `test/deploy_staging_proxy_contract_test.dart`.
+- Corrected-deploy fresh invite-create smoke passed on
+  `forge-flow-staging-proxy-00013-zx8`; see
+  `phase_9_corrected_deploy_invite_create_retry_result.md`.
+- Next live-closeout work is queued `9.0Σ.d.1` fast-forward verification and
+  Production1 only if explicitly approved.
+- Cloud Armor preview-log review/enforcement, route-level reCAPTCHA token
+  enforcement, advisor accounting/usage/health live-store wiring, and
+  Production1 apply/deploy remain gated follow-ups.

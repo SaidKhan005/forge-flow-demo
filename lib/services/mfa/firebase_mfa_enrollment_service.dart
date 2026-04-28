@@ -74,11 +74,13 @@ class FirebaseMfaEnrollmentService implements MfaEnrollmentService {
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment({
+    String authorizationIdToken = '',
     required String userId,
     required String userEmail,
     required String issuerName,
   }) async {
     final payload = await _client.beginTotpEnrollment(
+      authorizationIdToken: authorizationIdToken,
       userId: userId,
       userEmail: userEmail,
       issuerName: issuerName,
@@ -92,16 +94,22 @@ class FirebaseMfaEnrollmentService implements MfaEnrollmentService {
 
   @override
   Future<MfaEnrollmentConfirmResult> confirmTotpEnrollment({
+    String authorizationIdToken = '',
     required String factorId,
     required String oneTimeCode,
+    String issuerName = 'Forge & Flow',
   }) async {
     final outcome = await _client.confirmTotpEnrollment(
+      authorizationIdToken: authorizationIdToken,
       factorId: factorId,
       oneTimeCode: oneTimeCode,
+      issuerName: issuerName,
     );
     return switch (outcome) {
-      FirebaseMfaConfirmSucceeded(:final factorMetadata) =>
-        _buildSuccess(factorId: factorId, factorMetadata: factorMetadata),
+      FirebaseMfaConfirmSucceeded(:final factorMetadata) => _buildSuccess(
+        factorId: factorId,
+        factorMetadata: factorMetadata,
+      ),
       FirebaseMfaConfirmFailed(:final code, :final message) =>
         MfaEnrollmentConfirmFailure(code: code, message: message),
     };
@@ -126,9 +134,7 @@ class FirebaseMfaEnrollmentService implements MfaEnrollmentService {
           'alphabet — refusing to enroll',
         );
       }
-      hashed.add(
-        _codeHasher.hash(normalizedCode: normalized, saltBytes: salt),
-      );
+      hashed.add(_codeHasher.hash(normalizedCode: normalized, saltBytes: salt));
     }
     return MfaEnrollmentConfirmSuccess(
       MfaEnrollmentCompleted(

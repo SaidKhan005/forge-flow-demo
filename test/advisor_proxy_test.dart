@@ -32,6 +32,7 @@ void main() {
         ProxySecretNames.voyageApiKey: 'placeholder-voyage',
         ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
         ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         if (port != null) 'PORT': port,
       };
     }
@@ -49,6 +50,7 @@ void main() {
           ProxySecretNames.voyageApiKey,
           ProxySecretNames.postgresUrl,
           ProxySecretNames.postgresAdminUrl,
+          ProxySecretNames.firebaseWebApiKey,
         ]),
       );
       expect(config.hasSecretFor(ProxySecretNames.anthropicApiKey), isTrue);
@@ -86,6 +88,7 @@ void main() {
         // VOYAGE_API_KEY missing
         ProxySecretNames.postgresUrl: 'placeholder-url',
         ProxySecretNames.postgresAdminUrl: '   ', // blank counts
+        // FIREBASE_WEB_API_KEY missing
       };
 
       Object? thrown;
@@ -102,6 +105,7 @@ void main() {
         containsAll(<String>[
           ProxySecretNames.voyageApiKey,
           ProxySecretNames.postgresAdminUrl,
+          ProxySecretNames.firebaseWebApiKey,
         ]),
       );
       expect(
@@ -121,6 +125,7 @@ void main() {
         ProxySecretNames.voyageApiKey: marker,
         ProxySecretNames.postgresUrl: marker,
         ProxySecretNames.postgresAdminUrl: marker,
+        ProxySecretNames.firebaseWebApiKey: marker,
       };
 
       final config = ProxyConfig.fromEnvironment(environment);
@@ -1937,6 +1942,7 @@ void main() {
         ProxySecretNames.voyageApiKey: 'placeholder-voyage',
         ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
         ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
+        ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
         if (projectId != null) ProxyConfigNames.firebaseProjectId: projectId,
       };
     }
@@ -1952,6 +1958,7 @@ void main() {
           ProxySecretNames.voyageApiKey,
           ProxySecretNames.postgresUrl,
           ProxySecretNames.postgresAdminUrl,
+          ProxySecretNames.firebaseWebApiKey,
         ]),
       );
     });
