@@ -92,7 +92,16 @@ create table if not exists public.event_outbox (
   topic text not null
     check (char_length(topic) between 1 and 200),
   payload jsonb not null default '{}'::jsonb
-    check (octet_length(payload::text) <= 262144),
+    check (octet_length(payload::text) <= 262144)
+    -- Contract (docs/contracts/event_outbox_contract.md) requires
+    -- payloads to be JSON objects so consumers can read fields like
+    -- event_id / occurred_at without branching. Without this CHECK
+    -- a direct service_role / forge_admin INSERT could write an
+    -- array / string / number / null and the repository's claim
+    -- decoder would throw on read. Enforced at the DB layer so the
+    -- guarantee survives any future producer that bypasses the
+    -- repository.
+    check (jsonb_typeof(payload) = 'object'),
   created_at timestamptz not null default now(),
   picked_up_at timestamptz null,
   delivered_at timestamptz null,
@@ -109,7 +118,8 @@ create table if not exists public.event_outbox (
 --   select id, topic, payload
 --     from event_outbox
 --    where operator_id = public.app_current_operator()
---      and picked_up_at is null
+--      and (picked_up_at is null
+--           or picked_up_at < now() - <reclaim_window>)
 --    order by id
 --    for update skip locked
 --    limit @batch_size;
@@ -118,13 +128,21 @@ create table if not exists public.event_outbox (
 -- lets the planner:
 --   * narrow to the tenant's rows via the leading column,
 --   * walk the undelivered head of the queue contiguously
---     (`NULLS FIRST` matches the `picked_up_at IS NULL` predicate),
---   * resolve `ORDER BY id` from the trailing column without a sort.
+--     (NULLS FIRST matches the `picked_up_at IS NULL` predicate),
+--   * walk the stale-claim section by timestamp range immediately
+--     after the NULL block (same index, just scans further),
+--   * resolve ORDER BY id from the trailing column without a sort.
 --
--- Q22 explicitly calls out the danger of indexes that do NOT lead
--- with `operator_id`; without this lead the RLS policy evaluation
--- becomes a per-row filter and claim throughput collapses on
--- multi-operator deployments.
+-- The reclaim window comes from the worker (Phase 10a tunes it; the
+-- repository defaults to 5 minutes). Without the reclaim path,
+-- picked_up_at is a one-way claim marker and a worker crash between
+-- claim-commit and Pub/Sub-ack would strand rows forever — Q22's
+-- "real durable queue" guardrail explicitly rules that out.
+--
+-- Q22 also calls out the danger of indexes that do NOT lead with
+-- operator_id; without this lead the RLS policy evaluation becomes
+-- a per-row filter and claim throughput collapses on multi-operator
+-- deployments.
 create index if not exists event_outbox_claim_idx
   on public.event_outbox (operator_id, picked_up_at nulls first, id);
 

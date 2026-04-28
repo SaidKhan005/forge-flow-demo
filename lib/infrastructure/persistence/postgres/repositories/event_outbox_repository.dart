@@ -129,14 +129,44 @@ class EventOutboxRepository extends OperatorScopedRepository {
     });
   }
 
-  /// Claim up to [batchSize] undelivered rows for the operator named
-  /// in [operatorId]. Marks each row `picked_up_at = now()` in the
-  /// same transaction so concurrent claimants under SKIP LOCKED never
-  /// see the same row twice.
+  /// Default reclaim window for stale claims. Phase 10a tunes this
+  /// based on observed publish latency; the default is conservative
+  /// (5 minutes ≈ Q22's RED bridge-lag threshold) so legitimate slow
+  /// publishes do not get re-claimed and double-published. Pub/Sub is
+  /// at-least-once anyway and the contract requires consumers to
+  /// dedupe via the payload `event_id`, so the cost of a rare
+  /// double-publish is bounded.
+  static const Duration defaultClaimReclaimAfter = Duration(minutes: 5);
+
+  /// Claim up to [batchSize] outbox rows for the operator named in
+  /// [operatorId]. Marks each row `picked_up_at = now()` in the same
+  /// transaction so concurrent claimants under SKIP LOCKED never see
+  /// the same row twice.
   ///
-  /// The query orders by `id` so older rows publish first (matches
-  /// the `(operator_id, picked_up_at NULLS FIRST, id)` index trailing
-  /// column — no sort needed).
+  /// **Lease semantics (P1 fix).** `picked_up_at` is treated as a
+  /// stale-reclaim lease, not a one-way claim marker. The claim
+  /// predicate is:
+  ///
+  /// ```text
+  /// picked_up_at IS NULL
+  ///   OR picked_up_at < now() - <claimReclaimAfter>
+  /// ```
+  ///
+  /// so a row whose previous claimant crashed between commit and
+  /// Pub/Sub ack becomes claimable again once the reclaim window
+  /// passes. Without this, `picked_up_at IS NULL` filtering would
+  /// strand the row forever — Q22 explicitly rules that out for the
+  /// "real durable queue" guardrail. Phase 10a's graceful failure
+  /// path (`re-NULL picked_up_at` after a Pub/Sub failure) still
+  /// works in addition; the lease is only the safety net for
+  /// crash-during-publish.
+  ///
+  /// **Returned-row order (P2 fix).** PostgreSQL's
+  /// `UPDATE … RETURNING` does not guarantee row order, so the inner
+  /// CTE that locks the rows by `ORDER BY id` is wrapped in an outer
+  /// `SELECT … ORDER BY id` over the UPDATE's RETURNING set. This
+  /// keeps the documented oldest-id-first contract intact for the
+  /// bridge worker so its publish order matches the producer order.
   ///
   /// `FOR UPDATE SKIP LOCKED` is the locked Q22 / B26 claim shape:
   /// rows already locked by another worker shard are skipped rather
@@ -147,6 +177,7 @@ class EventOutboxRepository extends OperatorScopedRepository {
     required String locationId,
     required int batchSize,
     String? userId,
+    Duration claimReclaimAfter = defaultClaimReclaimAfter,
   }) {
     if (batchSize <= 0) {
       throw ArgumentError.value(
@@ -155,36 +186,52 @@ class EventOutboxRepository extends OperatorScopedRepository {
         'must be positive (claim batches are 1..N rows)',
       );
     }
+    if (claimReclaimAfter <= Duration.zero) {
+      throw ArgumentError.value(
+        claimReclaimAfter,
+        'claimReclaimAfter',
+        'must be positive (a non-positive lease would re-claim '
+            'every row on every poll)',
+      );
+    }
     final ctx = TenantContext(
       operatorId: operatorId,
       locationId: locationId,
       userId: userId,
     );
+    final reclaimSeconds = claimReclaimAfter.inSeconds;
     return withTenant<List<EventOutboxClaimedRow>>(ctx, (exec) async {
       final rows = await exec.query(
         'with claimed as ('
         '  select id from event_outbox '
         '  where operator_id = @operator_id::uuid '
-        '    and picked_up_at is null '
+        "    and (picked_up_at is null or picked_up_at < now() - (@reclaim_seconds * interval '1 second')) "
         '  order by id '
         '  for update skip locked '
         '  limit @batch_size'
+        '), updated as ('
+        '  update event_outbox e '
+        '     set picked_up_at = now() '
+        '    from claimed '
+        '   where e.id = claimed.id '
+        '  returning '
+        '    e.id, e.operator_id, e.topic, e.payload, '
+        '    e.created_at, e.picked_up_at, e.attempt_count'
         ') '
-        'update event_outbox e '
-        '   set picked_up_at = now() '
-        '  from claimed '
-        ' where e.id = claimed.id '
-        'returning '
-        '  e.id::text as id, '
-        '  e.operator_id::text as operator_id, '
-        '  e.topic as topic, '
-        '  e.payload as payload, '
-        '  e.created_at as created_at, '
-        '  e.picked_up_at as picked_up_at, '
-        '  e.attempt_count as attempt_count',
+        'select '
+        '  id::text as id, '
+        '  operator_id::text as operator_id, '
+        '  topic as topic, '
+        '  payload as payload, '
+        '  created_at as created_at, '
+        '  picked_up_at as picked_up_at, '
+        '  attempt_count as attempt_count '
+        'from updated '
+        'order by id',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'batch_size': batchSize,
+          'reclaim_seconds': reclaimSeconds,
         },
       );
       return rows.map(_projectClaimedRow).toList(growable: false);

@@ -73,6 +73,20 @@ void main() {
       expect(migrationSql, contains('last_error text null'));
     });
 
+    test('payload CHECK enforces both size cap and JSON-object shape '
+        '(P2 fix: jsonb_typeof guard so direct service_role / forge_admin '
+        'inserts cannot store array/string/number/null bodies the '
+        'claim decoder would reject)', () {
+      expect(
+        migrationSql,
+        contains('check (octet_length(payload::text) <= 262144)'),
+      );
+      expect(
+        migrationSql,
+        contains("check (jsonb_typeof(payload) = 'object')"),
+      );
+    });
+
     test('claim index is tenant-leading per CLAUDE.md RLS performance '
         'discipline', () {
       // The exact column order matters — operator_id LEADS so the
@@ -260,8 +274,8 @@ void main() {
       expect(pool.transactions, isEmpty);
     });
 
-    test('claimBatch issues FOR UPDATE SKIP LOCKED, orders by id, and '
-        'stamps picked_up_at in the same statement', () async {
+    test('claimBatch issues FOR UPDATE SKIP LOCKED + lease-reclaim '
+        'predicate + outer ORDER BY for stable returned-row order', () async {
       final claimedAt = DateTime.utc(2026, 4, 28, 12);
       final pool = _EventOutboxPool(
         returningId: '1',
@@ -306,17 +320,40 @@ void main() {
       expect(claimSql, contains('for update skip locked'));
       expect(claimSql, contains('order by id'));
       expect(claimSql, contains('limit @batch_size'));
-      // The single-statement CTE pattern stamps picked_up_at in the
-      // same query that selects the rows so a worker crash between
-      // SELECT and UPDATE cannot leave rows claimed-but-unprocessed.
+      // CTE pattern: inner CTE locks rows under SKIP LOCKED, then
+      // a second CTE stamps picked_up_at and RETURNINGs the row,
+      // then the outer SELECT re-orders by id (P2 fix — UPDATE …
+      // RETURNING does not preserve row order on its own).
       expect(claimSql, contains('with claimed as'));
+      expect(claimSql, contains('updated as'));
       expect(claimSql, contains('update event_outbox e'));
       expect(claimSql, contains('set picked_up_at = now()'));
+      expect(claimSql, contains('from updated'));
+      // Outer ORDER BY id is what makes the returned-row contract
+      // honest. There must be exactly two `order by id` occurrences
+      // (one inside the inner CTE for the lock order, one outside
+      // for the returned order).
+      expect(
+        'order by id'.allMatches(claimSql).length,
+        equals(2),
+        reason: 'inner CTE order plus outer SELECT order = 2',
+      );
+      // P1 fix: lease-reclaim predicate so a worker crash between
+      // claim-commit and Pub/Sub-ack does not strand the row.
+      expect(claimSql, contains('picked_up_at is null'));
+      expect(
+        claimSql,
+        contains(
+          "or picked_up_at < now() - (@reclaim_seconds * interval '1 second')",
+        ),
+      );
       // Tenant predicate is bound via parameter; never concatenated.
       expect(claimSql, contains('operator_id = @operator_id::uuid'));
-      expect(claimSql, contains('picked_up_at is null'));
       expect(tx.parameters.last['operator_id'], equals(_validOpId));
       expect(tx.parameters.last['batch_size'], equals(5));
+      // Default reclaim window is 5 minutes (300 s) — Q22 RED lag
+      // threshold doubles as the safe lease default.
+      expect(tx.parameters.last['reclaim_seconds'], equals(300));
 
       // Both rows project cleanly (Map and String payload shapes).
       expect(claimed[0].id, equals('101'));
@@ -360,6 +397,46 @@ void main() {
       }
       expect(thrown, isA<ArgumentError>());
       expect(pool.transactions, isEmpty);
+    });
+
+    test('claimBatch rejects a non-positive claimReclaimAfter before '
+        'opening a transaction (a zero/negative lease would re-claim '
+        'every row on every poll)', () async {
+      final pool = _EventOutboxPool(returningId: '1');
+      final repo = EventOutboxRepository(TenantTransactionWrapper(pool));
+      Object? thrown;
+      try {
+        await repo.claimBatch(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          batchSize: 5,
+          claimReclaimAfter: Duration.zero,
+        );
+      } on ArgumentError catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ArgumentError>());
+      expect(pool.transactions, isEmpty);
+    });
+
+    test('claimBatch passes a custom claimReclaimAfter through to the '
+        'reclaim_seconds bind so Phase 10a can tune the lease for its '
+        'observed publish latency', () async {
+      final pool = _EventOutboxPool(
+        returningId: '1',
+        claimedRows: const <PostgresRow>[],
+      );
+      final repo = EventOutboxRepository(TenantTransactionWrapper(pool));
+      await repo.claimBatch(
+        operatorId: _validOpId,
+        locationId: _validLocId,
+        batchSize: 5,
+        claimReclaimAfter: const Duration(seconds: 90),
+      );
+      expect(
+        pool.transactions.single.parameters.last['reclaim_seconds'],
+        equals(90),
+      );
     });
 
     test('two consecutive enqueues bind their own operator_id — pooled '

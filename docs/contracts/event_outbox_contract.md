@@ -147,12 +147,17 @@ expected length is well under 60.
 `payload jsonb` is the event body. Hard rules:
 
 - Payloads MUST be JSON objects (not arrays, not strings, not
-  numbers). Producers serialize through `jsonEncode(...)` in the
+  numbers, not null). Enforced at the DB layer by
+  `CHECK (jsonb_typeof(payload) = 'object')` so a direct
+  `service_role` / `forge_admin` INSERT that bypasses the repository
+  cannot store a non-object body that would crash the claim
+  decoder. Producers serialize through `jsonEncode(...)` in the
   repository's `enqueue` method.
 - Payloads MUST stay under 32 KiB target / 256 KiB hard cap (DB
-  CHECK constraint). Producers that need bigger payloads should
-  store the body elsewhere (object storage, advisor conversation
-  log, etc.) and put a reference in the event.
+  `CHECK (octet_length(payload::text) <= 262144)`). Producers that
+  need bigger payloads should store the body elsewhere (object
+  storage, advisor conversation log, etc.) and put a reference in
+  the event.
 - Payloads MUST NOT carry secrets. Token hashes, ID-token contents,
   password hashes, recovery-code material, full audit-log bodies,
   raw advisor question/recommendation text — none of these belong
@@ -201,24 +206,62 @@ Producers MUST NOT:
 
 ## Consumer Contract (Phase 10a)
 
+### Claim Lease + Returned Order (Locked)
+
+`picked_up_at` is a **stale-reclaim lease**, not a one-way claim
+marker. `EventOutboxRepository.claimBatch(...)` filters on:
+
+```text
+picked_up_at IS NULL
+  OR picked_up_at < now() - <claimReclaimAfter>
+```
+
+so a row whose previous claimant crashed between claim-commit and
+Pub/Sub-ack becomes claimable again once the reclaim window passes.
+Without this lease, `picked_up_at IS NULL` filtering would strand
+the row forever — Q22's "real durable queue" guardrail explicitly
+rules that out.
+
+The repository defaults `claimReclaimAfter` to **5 minutes**. This
+matches Q22's RED bridge-lag threshold: by the time the bridge is
+that far behind, a stranded row should already be re-claimed. Phase
+10a may tune the value down (worker observes typical publish
+latency under load) but MUST keep it greater than the worst-case
+expected publish + ack latency to avoid double-publish for
+legitimately slow publishes. Pub/Sub is at-least-once anyway and
+consumers dedupe via the payload `event_id`, so the cost of a rare
+double-publish is bounded.
+
+`claimBatch(...)` returns rows ordered by `id` ascending (oldest
+first). The implementation wraps the inner `UPDATE … RETURNING`
+inside an outer `SELECT … ORDER BY id` because PostgreSQL does not
+guarantee `RETURNING` row order even when the inner CTE locked rows
+in `ORDER BY id` order. The bridge worker SHOULD publish in the
+returned order so producer order is preserved on the wire.
+
+### Worker Responsibilities
+
 The bridge worker MUST:
 
 - Run inside a tenant transaction (the worker shards by operator;
   each shard sets its own `app.operator_id` via `withTenant` so the
   policy admits the rows).
 - Claim through `EventOutboxRepository.claimBatch(...)` so the
-  `SELECT … FOR UPDATE SKIP LOCKED` ordering matches the index and
-  workers cannot fight over the same row.
+  `SELECT … FOR UPDATE SKIP LOCKED` + lease + ORDER BY contract
+  above is honored.
 - Treat NOTIFY as a wake-up signal only. The worker MUST also poll
   on a 60s schedule so a dropped notification (Postgres queue
   pressure, connection blip) does not strand a row indefinitely.
 - Mark `delivered_at = now()` only after Pub/Sub acks the publish.
-- On Pub/Sub failure: increment `attempt_count`, write
+- On graceful Pub/Sub failure: increment `attempt_count`, write
   `last_error_at` + `last_error`, and re-NULL `picked_up_at` so the
-  next claim picks the row up (subject to the dead-letter cap).
+  next claim picks the row up immediately (subject to the
+  dead-letter cap). The lease is the safety net for ungraceful
+  failure (worker process crash); the manual re-NULL is the
+  optimization for graceful failure.
 - Dead-letter rows whose `attempt_count` exceeds the tunable cap
   (Phase 10a defines the value; expected ≥ 5) by writing the row to
-  a `event_outbox_dead_letter` table and removing it from
+  an `event_outbox_dead_letter` table and removing it from
   `event_outbox`. Dead-letter handling is alarmed.
 - Honor the yellow/red tripwires above and feed them to the F&F
   Dev/Admin Health UX (Q22 calls this out explicitly).
