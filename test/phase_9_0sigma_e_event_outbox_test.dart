@@ -318,28 +318,48 @@ void main() {
       final tx = pool.transactions.single;
       final claimSql = tx.executedSql.last;
       expect(claimSql, contains('for update skip locked'));
-      expect(claimSql, contains('order by id'));
       expect(claimSql, contains('limit @batch_size'));
       // CTE pattern: inner CTE locks rows under SKIP LOCKED, then
       // a second CTE stamps picked_up_at and RETURNINGs the row,
-      // then the outer SELECT re-orders by id (P2 fix — UPDATE …
-      // RETURNING does not preserve row order on its own).
+      // then the outer SELECT re-orders by `updated.id` so the
+      // returned-row contract holds (UPDATE … RETURNING does not
+      // preserve row order on its own).
       expect(claimSql, contains('with claimed as'));
       expect(claimSql, contains('updated as'));
       expect(claimSql, contains('update event_outbox e'));
       expect(claimSql, contains('set picked_up_at = now()'));
       expect(claimSql, contains('from updated'));
-      // Outer ORDER BY id is what makes the returned-row contract
-      // honest. There must be exactly two `order by id` occurrences
-      // (one inside the inner CTE for the lock order, one outside
-      // for the returned order).
+      // P2 fix: outer ORDER BY MUST qualify with the CTE name
+      // (`updated.id`) — the SELECT list aliases `id::text AS id`,
+      // so a bare `ORDER BY id` would resolve to the text alias and
+      // lex-sort '10' before '2' once ids cross digit lengths.
+      expect(claimSql, contains('order by updated.id'));
+      // Sanity: the inner CTE still uses `order by id` (its row
+      // source is `event_outbox` directly, no alias collision).
+      // Inner uses `order by id`; outer uses `order by updated.id`.
       expect(
-        'order by id'.allMatches(claimSql).length,
-        equals(2),
-        reason: 'inner CTE order plus outer SELECT order = 2',
+        RegExp(r'order by id\b').allMatches(claimSql).length,
+        equals(1),
+        reason: 'only the inner CTE should use bare `order by id`; '
+            'the outer SELECT must use `order by updated.id` to '
+            'avoid sorting the text alias',
       );
-      // P1 fix: lease-reclaim predicate so a worker crash between
-      // claim-commit and Pub/Sub-ack does not strand the row.
+      expect(
+        RegExp(r'order by updated\.id\b').allMatches(claimSql).length,
+        equals(1),
+        reason: 'outer SELECT must explicitly qualify the BIGINT id '
+            'from the CTE',
+      );
+      // P1 fix (round 2): delivered_at IS NULL keeps already-
+      // delivered rows out of the claim set. Without this, every
+      // delivered row whose picked_up_at crosses the reclaim window
+      // would re-publish — combined with Phase 10a's 7-day
+      // delivered-row retention, every delivered row would re-fan-
+      // out every <reclaim_window> for a week.
+      expect(claimSql, contains('delivered_at is null'));
+      // P1 fix (round 1): lease-reclaim predicate so a worker crash
+      // between claim-commit and Pub/Sub-ack does not strand the
+      // row.
       expect(claimSql, contains('picked_up_at is null'));
       expect(
         claimSql,
@@ -509,6 +529,94 @@ void main() {
           reason: 'contract must list locked topic namespace $ns',
         );
       }
+    });
+
+    test('locked schema block lists both payload CHECKs (P3 fix — '
+        'block is the quick schema authority and must be self-'
+        'consistent with the migration)', () {
+      final body = contract.readAsStringSync();
+      // The "Schema (locked here)" block is what implementers read
+      // when they need a one-glance answer for the table shape.
+      // Both CHECKs (size + jsonb_typeof) MUST appear there or the
+      // contract drifts from the migration.
+      expect(
+        body,
+        contains('check (octet_length(payload::text) <= 262144)'),
+      );
+      expect(
+        body,
+        contains("check (jsonb_typeof(payload) = 'object')"),
+      );
+    });
+
+    test('claim-predicate snippet documents the delivered_at + lease '
+        'filters (P1 fix round 2 + round 1 reflected in the consumer '
+        'contract)', () {
+      final body = contract.readAsStringSync();
+      // The consumer-contract snippet MUST list all three filters
+      // the repository applies, so a Phase 10a implementer reading
+      // the contract gets the same predicate the SQL enforces.
+      expect(body, contains('delivered_at IS NULL'));
+      expect(body, contains('picked_up_at IS NULL'));
+      expect(
+        body,
+        contains('picked_up_at < now() - <claimReclaimAfter>'),
+      );
+    });
+  });
+
+  group('Phase 10a plan alignment with event_outbox contract', () {
+    final plan = File(
+      'docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md',
+    );
+
+    setUpAll(() {
+      expect(
+        plan.existsSync(),
+        isTrue,
+        reason: 'Phase 10a plan doc must exist for the cross-doc '
+            'alignment check',
+      );
+    });
+
+    test('Phase 10a bridge spec points at event_outbox + treats NOTIFY '
+        'as wake-up signal only (P2 fix — old plan described a direct '
+        'NOTIFY → Pub/Sub bridge that bypassed the outbox)', () {
+      final body = plan.readAsStringSync();
+      expect(
+        body,
+        contains('event_outbox'),
+        reason: 'plan must reference the durable outbox table',
+      );
+      expect(
+        body,
+        contains('event_outbox_contract.md'),
+        reason: 'plan must defer to the contract doc for table shape, '
+            'topic namespaces, payload rules, and lease semantics',
+      );
+      expect(
+        body,
+        contains('EventOutboxRepository.claimBatch'),
+        reason: 'plan must direct the bridge worker through the '
+            'repository claim path, not a raw NOTIFY consumer',
+      );
+      expect(
+        body,
+        contains('NOTIFY is a wake-up signal'),
+        reason: 'plan must explicitly state NOTIFY is not the source '
+            'of truth so the next implementer does not bypass the '
+            'outbox',
+      );
+      // Old plan said `shared_state.{operator_id}.{table}` topic
+      // shape; new contract uses dotted namespaces (auth.session.*
+      // etc.). Make sure the old shape is gone so the next reader
+      // does not implement it.
+      expect(
+        body,
+        isNot(contains('shared_state.{operator_id}.{table}')),
+        reason: 'old per-table topic shape is superseded by the '
+            'event_outbox topic-namespace contract',
+      );
     });
   });
 }

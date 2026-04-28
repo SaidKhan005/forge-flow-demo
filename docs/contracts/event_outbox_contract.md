@@ -65,7 +65,8 @@ event_outbox (
   operator_id   uuid not null references operators(operator_id) on delete cascade,
   topic         text not null  check (char_length(topic) between 1 and 200),
   payload       jsonb not null default '{}'::jsonb
-                  check (octet_length(payload::text) <= 262144),
+                  check (octet_length(payload::text) <= 262144)
+                  check (jsonb_typeof(payload) = 'object'),
   created_at    timestamptz not null default now(),
   picked_up_at  timestamptz null,
   delivered_at  timestamptz null,           -- Phase 10a fills on Pub/Sub ack
@@ -206,21 +207,29 @@ Producers MUST NOT:
 
 ## Consumer Contract (Phase 10a)
 
-### Claim Lease + Returned Order (Locked)
+### Claim Predicate, Lease, and Returned Order (Locked)
 
-`picked_up_at` is a **stale-reclaim lease**, not a one-way claim
-marker. `EventOutboxRepository.claimBatch(...)` filters on:
+`EventOutboxRepository.claimBatch(...)` filters on three predicates,
+all required:
 
 ```text
-picked_up_at IS NULL
-  OR picked_up_at < now() - <claimReclaimAfter>
+delivered_at IS NULL                       -- never re-publish a delivered row
+  AND (picked_up_at IS NULL                -- never claimed
+       OR picked_up_at < now() - <claimReclaimAfter>)  -- stale claim (lease)
 ```
 
-so a row whose previous claimant crashed between claim-commit and
-Pub/Sub-ack becomes claimable again once the reclaim window passes.
-Without this lease, `picked_up_at IS NULL` filtering would strand
-the row forever — Q22's "real durable queue" guardrail explicitly
-rules that out.
+`delivered_at IS NULL` keeps already-delivered rows out of the
+claim set. Without it, every delivered row whose `picked_up_at`
+crosses the reclaim window would be re-claimed and republished;
+combined with the 7-day delivered-row retention, every delivered
+row would re-fan-out every `<claimReclaimAfter>` for a week.
+
+`picked_up_at IS NULL OR picked_up_at < now() - …` treats
+`picked_up_at` as a **stale-reclaim lease**, not a one-way claim
+marker. A row whose previous claimant crashed between claim-commit
+and Pub/Sub-ack becomes claimable again once the reclaim window
+passes. Without this lease the row would be stranded forever —
+Q22's "real durable queue" guardrail rules that out.
 
 The repository defaults `claimReclaimAfter` to **5 minutes**. This
 matches Q22's RED bridge-lag threshold: by the time the bridge is
@@ -234,10 +243,14 @@ double-publish is bounded.
 
 `claimBatch(...)` returns rows ordered by `id` ascending (oldest
 first). The implementation wraps the inner `UPDATE … RETURNING`
-inside an outer `SELECT … ORDER BY id` because PostgreSQL does not
-guarantee `RETURNING` row order even when the inner CTE locked rows
-in `ORDER BY id` order. The bridge worker SHOULD publish in the
-returned order so producer order is preserved on the wire.
+inside an outer `SELECT … ORDER BY updated.id` because PostgreSQL
+does not guarantee `RETURNING` row order even when the inner CTE
+locked rows in `ORDER BY id`. The outer `ORDER BY` is qualified
+with the CTE name (`updated.id`) because the SELECT list aliases
+`id::text AS id`; bare `ORDER BY id` would resolve to the text
+alias and lex-sort `'10' < '2'` once ids cross digit lengths. The
+bridge worker SHOULD publish in the returned order so producer
+order is preserved on the wire.
 
 ### Worker Responsibilities
 

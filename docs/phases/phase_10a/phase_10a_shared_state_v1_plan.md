@@ -97,47 +97,99 @@ Phase 10a owns:
 - Editable restaurant timing + service-period settings UI that writes
   through Postgres via the proxy backend (supersedes the
   Settings-screen read-only timing display landed in `7.55o.4`)
-- Postgres `NOTIFY` → Cloud Pub/Sub → WebSocket bridge in the Cloud Run
+- `event_outbox` → Cloud Pub/Sub → WebSocket bridge in the Cloud Run
   proxy backend (Lock 9 in `phase_11a_decision_register.md` Production
-  Hardening Locks, fully specified):
+  Hardening Locks, completes Q22 / item 33 from
+  `phase_9_scalability_decisions_2026-04-27.md`):
 
-  - **Topic naming**: `shared_state.{operator_id}.{table}` (one topic per
-    operator-table pair; clients subscribe to operator-scoped topics
-    only, never cross-operator).
-  - **Message payload schema** (versioned for forward compatibility):
-    ```json
-    {
-      "schema_version": 1,
-      "operator_id": "uuid",
-      "location_id": "uuid",
-      "table": "weekly_plan_snapshots",
-      "op": "INSERT" | "UPDATE" | "DELETE",
-      "primary_key": "uuid_or_composite_string",
-      "updated_at": "2026-04-26T12:34:56Z",
-      "version": 47
-    }
-    ```
-    Payload does NOT carry full row content; clients re-fetch the row
-    via `/v1/...` proxy. Reasons: keeps Pub/Sub messages small;
-    operator-scoped re-fetch goes through RLS so it's safe; handles
-    schema changes without versioning the message body.
-  - **Subscriber acks within 30s**; unprocessed messages route to
-    `shared_state.deadletter` topic for later replay.
-  - **WebSocket lifecycle**:
+  Authority for the table shape, claim contract, payload rules, topic
+  namespaces, lease semantics, and yellow/red tripwires is
+  `docs/contracts/event_outbox_contract.md`. Phase 9.0Σ.e (B26) lands
+  the table + repository + the foundation tests; Phase 10a builds the
+  bridge worker against that contract. **NOTIFY is a wake-up signal
+  only — never the source of truth.** The bridge MUST claim durable
+  `event_outbox` rows via `EventOutboxRepository.claimBatch(...)`; a
+  bridge that skipped the table and routed straight off the
+  `pg_notify('event_outbox', …)` envelope would lose events the
+  moment Postgres dropped a notification under queue pressure.
+
+  - **Source of truth**: producers enqueue rows in
+    `public.event_outbox` inside the same transaction as the business
+    write (see contract doc "Producer Contract"). The
+    `event_outbox_notify` trigger fires `pg_notify('event_outbox',
+    '{operator_id, topic, id}')` on insert; the bridge `LISTEN`s on
+    that channel. NOTIFY may be dropped under connection failure or
+    queue pressure — the bridge's 60s scheduled poll is the catch-all.
+  - **Claim path**: bridge worker shards by operator and runs each
+    shard's claim inside `runInTenantContext(operator)` so the
+    per-tenant RLS policy admits the row.
+    `EventOutboxRepository.claimBatch(...)` issues `SELECT … FOR
+    UPDATE SKIP LOCKED` against the tenant-leading
+    `(operator_id, picked_up_at NULLS FIRST, id)` index, stamps
+    `picked_up_at = now()` on each claimed row, and returns rows in
+    `id` ascending order. Worker concurrency scales linearly with
+    shard count.
+  - **Topic routing**: payload `topic` (locked namespaces in the
+    contract: `auth.session.*`, `auth.user.*`, `usage.cap.*`,
+    `rollup.invalidate.*`, `advisor.candidate.*`,
+    `workflow.event.*`, `internal.health.*`) maps to the matching
+    Cloud Pub/Sub topic. Operator scoping is enforced by injecting
+    `operator_id` into the Pub/Sub subscription filter; subscribers
+    never see cross-operator events.
+  - **Payload contract**: producers stuff a JSON object into the
+    `payload` jsonb column (DB CHECK enforces both
+    `jsonb_typeof = 'object'` and ≤ 256 KiB). The bridge publishes
+    the row's payload as the Pub/Sub message body. Payloads MUST
+    NOT carry secrets — see contract doc "Payload Shape" for the
+    full rule set. Payloads SHOULD include `event_id` (UUID) so
+    consumers can dedupe across at-least-once redeliveries, and
+    SHOULD include `occurred_at` so consumers compute lag without
+    joining back to `event_outbox`.
+  - **Lease + retry**: claimed rows carry a stale-reclaim lease
+    (default 5 min, tunable per claim via the `claimReclaimAfter`
+    parameter; see contract doc "Claim Lease + Returned Order
+    (Locked)"). On Pub/Sub ack, worker writes
+    `delivered_at = now()` and the row drops out of the claim
+    predicate. On graceful Pub/Sub failure, worker increments
+    `attempt_count`, writes `last_error_at` + `last_error`, and
+    re-NULLs `picked_up_at` so the next claim picks the row up
+    immediately. On worker crash between claim-commit and Pub/Sub
+    ack, the lease window expires and another worker re-claims.
+    Pub/Sub itself is at-least-once anyway and consumers dedupe via
+    `event_id`, so the cost of a rare double-publish is bounded.
+  - **Dead-letter**: rows whose `attempt_count` exceeds the tunable
+    cap (Phase 10a defines, expected ≥ 5) move to
+    `event_outbox_dead_letter` and surface in F&F Dev/Admin Health
+    UX. Dead-letter handling is alarmed.
+  - **Retention sweep**: Cloud Run scheduled job (or `pg_cron`)
+    deletes rows where `delivered_at IS NOT NULL AND delivered_at <
+    now() - INTERVAL '7 days'`. Un-delivered rows are never
+    auto-deleted; the yellow/red tripwires alert before the table
+    grows past safe size.
+  - **WebSocket lifecycle** (downstream of Pub/Sub):
     - Cloud Run idle timeout: 60 minutes (cap); transparent client
       reconnect on close
-    - Last-seen-sequence in client → server resends missed messages on
-      reconnect from operator's recent NOTIFY history (up to 5 minutes
-      retention in Pub/Sub message backlog)
+    - On reconnect, client provides last-seen `event_id`; server
+      replays missed events from Pub/Sub message backlog (up to 5
+      minutes retention)
     - Heartbeat ping every 30s
     - Server closes connection if heartbeat missed for 90s
     - Client falls back to 30-60s polling if WebSocket fails 3×
-      consecutively within 5 minutes (circuit-breaker pattern matching
-      Lock 7 LLM fallback shape)
+      consecutively within 5 minutes (circuit-breaker pattern
+      matching Lock 7 LLM fallback shape)
   - Each WebSocket connection authenticates via Firebase JWT; proxy
-    injects `(operator_id, location_id, staff_id NULL)` into the Pub/Sub
-    subscription filter so the connection only receives operator-scoped
-    events.
+    injects `(operator_id, location_id, staff_id NULL)` into the
+    Pub/Sub subscription filter so the connection only receives
+    operator-scoped events.
+  - **Yellow/red tripwires** (Q22 lock; surface in F&F Dev/Admin
+    Health UX, not just logs):
+    - Yellow: bridge lag > 60s, undelivered outbox rows > 10 000,
+      publish error rate > 1 %, or
+      `pg_notification_queue_usage()` ≥ 0.10
+    - Red: bridge lag > 5 min, undelivered rows > 100 000, repeated
+      publish failures, or `pg_notification_queue_usage()` ≥ 0.25
+    - Fallback when red fires: poll-by-shard, increase workers,
+      dead-letter repeated failures, slow non-critical producers.
 - Client-side repository layer that:
   - reads local SQLite cache for fast display
   - writes through the proxy backend → Azure DB first, updates cache

@@ -143,30 +143,41 @@ class EventOutboxRepository extends OperatorScopedRepository {
   /// transaction so concurrent claimants under SKIP LOCKED never see
   /// the same row twice.
   ///
-  /// **Lease semantics (P1 fix).** `picked_up_at` is treated as a
-  /// stale-reclaim lease, not a one-way claim marker. The claim
-  /// predicate is:
+  /// **Claim predicate.** Three filters apply:
   ///
   /// ```text
-  /// picked_up_at IS NULL
-  ///   OR picked_up_at < now() - <claimReclaimAfter>
+  /// delivered_at IS NULL                     -- never re-publish a delivered row
+  ///   AND (picked_up_at IS NULL              -- never claimed
+  ///        OR picked_up_at < now() - <claimReclaimAfter>)  -- stale claim
   /// ```
   ///
-  /// so a row whose previous claimant crashed between commit and
-  /// Pub/Sub ack becomes claimable again once the reclaim window
-  /// passes. Without this, `picked_up_at IS NULL` filtering would
-  /// strand the row forever — Q22 explicitly rules that out for the
-  /// "real durable queue" guardrail. Phase 10a's graceful failure
-  /// path (`re-NULL picked_up_at` after a Pub/Sub failure) still
-  /// works in addition; the lease is only the safety net for
+  /// `delivered_at IS NULL` keeps rows the bridge has already
+  /// successfully published out of the claim set. Without it, every
+  /// delivered row whose `picked_up_at` crosses the reclaim window
+  /// would be re-claimed and republished — combined with Phase 10a's
+  /// 7-day retention, every delivered row would re-fan-out every
+  /// `claimReclaimAfter` for a week.
+  ///
+  /// `picked_up_at IS NULL OR picked_up_at < now() - …` treats
+  /// `picked_up_at` as a stale-reclaim lease so a row whose previous
+  /// claimant crashed between commit and Pub/Sub ack becomes claimable
+  /// again once the reclaim window passes. Q22 explicitly rules out
+  /// any one-way claim marker for the "real durable queue"
+  /// guardrail. Phase 10a's graceful failure path (re-NULL
+  /// `picked_up_at` after a Pub/Sub failure) still works in
+  /// addition; the lease is only the safety net for
   /// crash-during-publish.
   ///
-  /// **Returned-row order (P2 fix).** PostgreSQL's
-  /// `UPDATE … RETURNING` does not guarantee row order, so the inner
-  /// CTE that locks the rows by `ORDER BY id` is wrapped in an outer
-  /// `SELECT … ORDER BY id` over the UPDATE's RETURNING set. This
-  /// keeps the documented oldest-id-first contract intact for the
-  /// bridge worker so its publish order matches the producer order.
+  /// **Returned-row order.** PostgreSQL's `UPDATE … RETURNING` does
+  /// not guarantee row order, so the inner CTE that locks the rows
+  /// by `ORDER BY id` is wrapped in an outer
+  /// `SELECT … ORDER BY updated.id` over the UPDATE's RETURNING set.
+  /// The outer `ORDER BY` is qualified with the CTE name because the
+  /// SELECT list aliases `id::text AS id`; bare `ORDER BY id` would
+  /// resolve to the text alias and lex-sort `'10' < '2'` once ids
+  /// cross digit lengths. The qualified form keeps the documented
+  /// oldest-id-first contract intact for the bridge worker so its
+  /// publish order matches the producer order.
   ///
   /// `FOR UPDATE SKIP LOCKED` is the locked Q22 / B26 claim shape:
   /// rows already locked by another worker shard are skipped rather
@@ -205,6 +216,13 @@ class EventOutboxRepository extends OperatorScopedRepository {
         'with claimed as ('
         '  select id from event_outbox '
         '  where operator_id = @operator_id::uuid '
+        // P1 fix: `delivered_at IS NULL` keeps already-delivered rows
+        // out of the claim set. Without this, every delivered row
+        // becomes claimable again once its picked_up_at crosses the
+        // reclaim window — combined with Phase 10a's 7-day retention
+        // that means each delivered row would be republished every
+        // <reclaim_window> for a week.
+        '    and delivered_at is null '
         "    and (picked_up_at is null or picked_up_at < now() - (@reclaim_seconds * interval '1 second')) "
         '  order by id '
         '  for update skip locked '
@@ -219,15 +237,20 @@ class EventOutboxRepository extends OperatorScopedRepository {
         '    e.created_at, e.picked_up_at, e.attempt_count'
         ') '
         'select '
-        '  id::text as id, '
-        '  operator_id::text as operator_id, '
-        '  topic as topic, '
-        '  payload as payload, '
-        '  created_at as created_at, '
-        '  picked_up_at as picked_up_at, '
-        '  attempt_count as attempt_count '
+        '  updated.id::text as id, '
+        '  updated.operator_id::text as operator_id, '
+        '  updated.topic as topic, '
+        '  updated.payload as payload, '
+        '  updated.created_at as created_at, '
+        '  updated.picked_up_at as picked_up_at, '
+        '  updated.attempt_count as attempt_count '
         'from updated '
-        'order by id',
+        // P2 fix: order by the BIGINT `updated.id` from the CTE, NOT
+        // the `id::text` output alias. Bare `order by id` would
+        // resolve to the text alias and lex-sort '10' before '2'
+        // once ids cross digit lengths, breaking the
+        // oldest-id-first contract.
+        'order by updated.id',
         parameters: <String, Object?>{
           'operator_id': operatorId,
           'batch_size': batchSize,
