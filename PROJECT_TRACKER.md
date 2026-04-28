@@ -122,12 +122,16 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 - **Current phase:** `9` live-closeout stability freeze. No new feature
   addition starts until the maintenance/backlog/test baseline remains green
   and the remaining live-closeout gates are explicitly cleared. The
-  `9.0Σ.f-k` queue remains planned after local `9.0Σ.b/c/e` plus
-  upstream/parallel `9.0Σ.d` fast-forward verification, but is paused behind
-  this freeze.
+  `9.0Σ.b-k` foundation series is now fully merged into master
+  (parallel-merge commit `fe14b31`, 2026-04-28). Remaining work is
+  human-gated: Cloud Armor enforcement flip, Production1 migration apply
+  for the new `…0004`-`…0010` slots, and iOS device-matrix expansion.
 - **Next slice:** live-closeout stability gates are green on staging/local/GitHub.
-  Continue only with regression/backlog capture, queued `9.0Σ.d.1`
-  fast-forward verification, and Production1 work only if explicitly approved.
+  `9.0Σ.d.1` `sp:` JWT verifier is verified in repo at
+  `tool/advisor_proxy/advisor_proxy.dart` lines 353-462; resolved against
+  the merged `service_principals` schema/repo. Continue only with
+  regression/backlog capture, Cloud Armor enforcement flip, Production1
+  work, and iOS device-matrix expansion when explicitly approved.
   Corrected-deploy invite-create retry
   passed on `forge-flow-staging-proxy-00013-zx8`. Identity Toolkit MFA adapter
   and Secret Manager-backed proxy config are deployed on
@@ -149,19 +153,16 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   staging smoke password was reset/reconfirmed and
   `$HOME/.forge_flow/forge_flow.secrets.ps1` updated; password sign-in and
   proxy permission snapshot pass.
-- **Parallel scalability queue:** paused during the live-closeout stability
-  freeze. `9.0Σ.b` RLS UUID wrappers, `9.0Σ.c`
-  org_units ltree + data_region, and `9.0Σ.e` event_outbox foundation are
-  complete in the local line. `9.0Σ.d` service_principals + `sp:` JWT prefix
-  + `actor_kind` exists upstream/parallel but still needs the queued
-  fast-forward verification in this live-closeout worktree. Do not start
-  `9.0Σ.f-k` until the freeze is explicitly lifted.
-- **9.0Σ.d.1 follow-up (queued):** verify the `sp:`-prefixed JWT verifier in
-  `tool/advisor_proxy/` aligns end-to-end with the worktree's
-  `service_principals` schema/repo once the live-closeout commits and the
-  parallel-merge fast-forward both land. Held back from `9.0Σ.d` to avoid
-  colliding with Codex's live-closeout proxy edits; captured 2026-04-28 by
-  parallel-merge audit.
+- **Parallel scalability queue (complete on master 2026-04-28):** all ten
+  9.0Σ foundation sub-slices are merged via `fe14b31`. `9.0Σ.b` RLS UUID
+  wrappers, `9.0Σ.c` org_units ltree + data_region, `9.0Σ.d`
+  service_principals + `sp:` JWT prefix + `actor_kind`, `9.0Σ.e`
+  event_outbox foundation, `9.0Σ.f` hash-chained audit_logs + Azure Blob
+  anchor, `9.0Σ.g` usage_caps two-slot key, `9.0Σ.h`
+  advisor_conversation_log, `9.0Σ.i` graph_nodes/edges + AGE projection
+  rebuild, `9.0Σ.j` pg_diskann install + HNSW switch trigger doc, and
+  `9.0Σ.k` rollups foundation are all in repo. B21 GDPR erasure runbook
+  polish landed in the same merge.
 - **Notify the user before** any live Firebase mutation, key/account
   request, billing setup, provider call, or product decision.
 
@@ -180,10 +181,11 @@ ships before any operator goes live on production. No friend-beta, no
 demo-mode launch, no split-and-defer of compliance.
 
 Realigned 2026-04-28 to absorb the 35 locked scalability decisions and
-the CONDITIONAL PASS perf audit. The 9.0Σ foundation series lands before
-`11A.0-6` (b/c/e complete locally, d upstream/parallel verification queued,
-f-k queued), but new feature additions are paused while the 9 live-closeout
-stability freeze is active. Two new cutover sub-slices gate launch.
+the CONDITIONAL PASS perf audit. The 9.0Σ foundation series (b through k
+plus B21 GDPR runbook) is now fully merged into master via `fe14b31`.
+Remaining pre-`11A.0-6` work is human-gated live-closeout hardening:
+Cloud Armor enforcement, Production1 migration apply, iOS device matrix.
+Two new cutover sub-slices gate launch.
 
 **Pre-launch (in order):**
 
@@ -210,18 +212,18 @@ stability freeze is active. Two new cutover sub-slices gate launch.
      `operators.region`, 12 `team.*` permission keys, and the
      super_admin team-grant audit fix are live.
    - Detail in `phase_9/phase_9_auth_plan.md` sub-slices 9.0a + 9.10.
-4. **9.0Σ.b-k** — Scalability foundation sub-slices absorbing the
-   4-27 locks before any consumer touches them. `9.0b` RLS UUID wrappers,
-   `9.0c` org_units ltree + data_region, and `9.0e` event_outbox are complete
-   locally; `9.0d` service_principals exists upstream/parallel and needs
-   fast-forward verification in this worktree. Remaining work is queued but
-   paused behind the live-closeout stability freeze: `9.0f`
-   hash-chained audit_logs + Azure Blob anchor, `9.0g` usage_caps two-slot,
-   `9.0h` advisor_conversation_log, `9.0i` graph_nodes/edges,
-   `9.0j` vector indexing, `9.0k` rollups foundation. Per-slice
-   scope, files, and gate: `phase_9_execution_backlog.md` parcels
-   B23-B32. Rationale + Q-decision items:
-   `phase_9_scalability_decisions_2026-04-27.md`.
+4. **9.0Σ.b-k** — All ten scalability foundation sub-slices absorbing
+   the 4-27 locks are merged into master 2026-04-28 via `fe14b31`:
+   `9.0b` RLS UUID wrappers, `9.0c` org_units ltree + data_region,
+   `9.0d` service_principals + `sp:` JWT + `actor_kind`, `9.0e`
+   event_outbox foundation, `9.0f` hash-chained audit_logs + Azure
+   Blob anchor, `9.0g` usage_caps two-slot key, `9.0h`
+   advisor_conversation_log, `9.0i` graph_nodes/edges + AGE projection
+   rebuild, `9.0j` pg_diskann install + HNSW switch trigger doc, and
+   `9.0k` rollups foundation. Live apply on staging + Production1 and
+   the accompanying perf-gate runs in `cutover.0b` are the remaining
+   step-checks. Detail: `phase_9_execution_backlog.md` parcels B23-B32
+   + `phase_9_scalability_decisions_2026-04-27.md`.
 5. `11A.0-6` - F&F Operations Console foundation.
 6. `7.58` - Primary Driver audit (Hard Promise #3 gate before `11b.0`).
 7. `10a` - Shared state v1 (`event_outbox` -> Pub/Sub/WebSocket bridge;
@@ -277,7 +279,7 @@ Slice scopes in their phase plans. Architecture rationale in
 | `7.57` | complete | archived |
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | live-closeout active | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
-| `9.0Σ.b-k` | paused by live-closeout stability freeze; b/c/e complete locally, d upstream verification queued, f-k queued | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
+| `9.0Σ.b-k` | b-k complete on master 2026-04-28 via `fe14b31`; live apply pending | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
 | `11A.0-6` | queued | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
