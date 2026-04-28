@@ -4,7 +4,7 @@
 // `phase_9_scalability_decisions_2026-04-27.md` item 33 / Q22 and
 // scoped in `phase_9_execution_backlog.md` parcel B26. The schema
 // lands in
-// `db/migrations/202604280002_phase_9_0sigma_e_event_outbox.sql`;
+// `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`;
 // this repository owns the two contract methods producers and the
 // (Phase 10a) bridge worker call:
 //

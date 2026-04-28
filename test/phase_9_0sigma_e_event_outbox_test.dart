@@ -46,7 +46,7 @@ const String _otherOpId = '44444444-4444-4444-4444-444444444444';
 void main() {
   final migrationSql = _readSqlNormalized(
     'db/migrations/'
-    '202604280002_phase_9_0sigma_e_event_outbox.sql',
+    '202604280003_phase_9_0sigma_e_event_outbox.sql',
   );
 
   group('Phase 9.0Σ.e migration shape', () {
@@ -171,7 +171,7 @@ void main() {
     test('migration passes the policy-aware lint', () {
       final result = RlsPolicyLintRunner(
         files: <String, String>{
-          '202604280002_phase_9_0sigma_e_event_outbox.sql': migrationSql,
+          '202604280003_phase_9_0sigma_e_event_outbox.sql': migrationSql,
         },
         allowlist: const <String>{},
       ).run();

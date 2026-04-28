@@ -25,7 +25,7 @@ the worker after the worker ships.
 
 This slice (9.0Σ.e) lands:
 
-- `db/migrations/202604280002_phase_9_0sigma_e_event_outbox.sql` —
+- `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql` —
   table, tenant-leading claim index, RLS policies through the
   `public.app_current_operator()` wrapper, the
   `event_outbox_notify` trigger, and the grants.
