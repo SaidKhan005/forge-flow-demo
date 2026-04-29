@@ -14,4 +14,4 @@ Removed entries live in git history; do not keep a "resolved" section here.
 
 | File | Notes | Discovered | Owning slice |
 |------|-------|------------|--------------|
-| _None_ | Full suite green on 2026-04-28 (`flutter test` passed 2323/2323). | 2026-04-28 | n/a |
+| `test/advisor_proxy_test.dart` | Windows checkout CRLF flake in the Phase 9 auth schema foundation group. Confirmed pre-existing on clean HEAD: `legacy users.role column is migrated into user_roles and dropped` and sibling SQL-shape assertions compare LF-only substrings against CRLF migration content. Not a B33 regression. | 2026-04-29 | test hygiene |

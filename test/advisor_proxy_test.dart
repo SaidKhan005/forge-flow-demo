@@ -19,6 +19,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
@@ -525,12 +527,17 @@ void main() {
   });
 
   group('Proxy accounting + cost levers (11a.11d)', () {
-    test('usage log SQL is an atomic telemetry-aware UPSERT', () {
+    test('usage log SQL is an atomic telemetry-aware UPSERT that writes '
+        'the Phase 9.0Σ.g two-slot identity (B33)', () {
       final sql = ProxyUsageLogSql.atomicUpsert.toLowerCase();
 
+      // Shape that survived the B33 follow-up.
       expect(sql, contains('insert into public.usage_logs'));
       expect(sql, contains('on conflict'));
       expect(sql, contains('do update set'));
+
+      // Telemetry tail from 202604250006 — the rollup identity must
+      // still split a Haiku cache hit from a Sonnet fallback miss.
       for (final column in <String>[
         'query_class',
         'cache_hit',
@@ -542,6 +549,113 @@ void main() {
       ]) {
         expect(sql, contains(column));
       }
+
+      // location_id is preserved (cap-shape includes it; lock 6).
+      expect(sql, contains('location_id'));
+      // period_start is still computed locally as the month bucket
+      // so callers do not have to pre-truncate.
+      expect(sql, contains("date_trunc('month', @request_time::timestamptz)"));
+
+      // Two-slot org-unit axes — the B33 acceptance criterion. These
+      // four columns must appear in the INSERT column list and the
+      // operator-root org_units fallback must be present so a caller
+      // with no narrower scope still writes a non-NULL billing/scoped
+      // pair (matching the 202604280006_b backfill of legacy rows).
+      for (final column in <String>[
+        'billing_owner_org_unit_id',
+        'scoped_org_unit_id',
+        'staff_id',
+        'workflow_id',
+      ]) {
+        expect(
+          sql,
+          contains(column),
+          reason:
+              'B33 writer must include $column in the two-slot rollup '
+              'identity (matches usage_logs_two_slot_rollup_uq from '
+              '202604280006_c)',
+        );
+      }
+      expect(
+        sql,
+        contains('coalesce(\n    @billing_owner_org_unit_id::uuid'),
+        reason:
+            'B33 writer must default billing_owner_org_unit_id to the '
+            'operator root org_units row when the caller has no '
+            'narrower scope',
+      );
+      expect(
+        sql,
+        contains('coalesce(\n    @scoped_org_unit_id::uuid'),
+        reason:
+            'B33 writer must default scoped_org_unit_id to the '
+            'operator root org_units row when the caller has no '
+            'narrower scope',
+      );
+      expect(
+        sql,
+        contains(
+          'select id\n'
+          '       from public.org_units\n'
+          '      where operator_id = @operator_id\n'
+          '        and parent_id is null\n'
+          '      limit 1',
+        ),
+        reason:
+            'B33 writer must resolve the operator root via the same '
+            'shape that 202604280002 enforces uniqueness on '
+            '(parent_id is null + operator_id)',
+      );
+      expect(
+        sql,
+        contains('@staff_id::uuid'),
+        reason:
+            'B33 writer must thread nullable staff_id through to the '
+            'rollup identity (NULL = "covers all staff")',
+      );
+      expect(
+        sql,
+        contains('@workflow_id::uuid'),
+        reason:
+            'B33 writer must thread nullable workflow_id through to '
+            'the rollup identity (NULL = "covers all workflows")',
+      );
+
+      // ON CONFLICT must target the named NULLS NOT DISTINCT
+      // constraint (PG's column-list inference assumes NULLS
+      // DISTINCT, which would not match the constraint and would
+      // cause every NULL-staff row to insert as a duplicate).
+      expect(
+        sql,
+        contains('on conflict on constraint usage_logs_two_slot_rollup_uq'),
+        reason:
+            'ON CONFLICT must target usage_logs_two_slot_rollup_uq by '
+            'name so the NULLS NOT DISTINCT constraint matches '
+            'NULL-staff / NULL-workflow rows correctly',
+      );
+      // The legacy 11-column inference target must be gone; if it
+      // were still present a single-slot writer would silently keep
+      // working alongside the new constraint and the cap-vs-actual
+      // join would no longer be 1:1.
+      expect(
+        sql,
+        isNot(
+          contains(
+            'on conflict (\n'
+            '  operator_id,\n'
+            '  location_id,\n'
+            '  usage_class,\n'
+            '  period_start,\n'
+            '  query_class,',
+          ),
+        ),
+        reason:
+            'B33 must remove the legacy 11-column ON CONFLICT '
+            'inference target — that key was dropped in '
+            '202604280006_c',
+      );
+
+      // Increment-on-conflict semantics unchanged.
       expect(
         sql,
         contains(
@@ -549,6 +663,8 @@ void main() {
           'excluded.token_count',
         ),
       );
+
+      // Idempotency insert — unchanged shape.
       expect(
         ProxyUsageLogSql.idempotencyInsert.toLowerCase(),
         contains('insert into public.proxy_requests'),
@@ -560,6 +676,23 @@ void main() {
           'do nothing',
         ),
       );
+
+      final capSql = ProxyUsageLogSql.capStatusSelect.toLowerCase();
+      expect(capSql, contains('from public.usage_caps c, cap_scope s'));
+      expect(
+        capSql,
+        contains('c.billing_owner_org_unit_id = s.billing_owner_org_unit_id'),
+        reason:
+            'B33 cap lookups must qualify shared org-unit column names '
+            'so Postgres does not reject the cap_scope join as ambiguous',
+      );
+      expect(capSql, contains('c.scoped_org_unit_id = s.scoped_org_unit_id'));
+      expect(capSql, contains('from public.usage_logs l, cap_scope s'));
+      expect(
+        capSql,
+        contains('l.billing_owner_org_unit_id = s.billing_owner_org_unit_id'),
+      );
+      expect(capSql, contains('l.scoped_org_unit_id = s.scoped_org_unit_id'));
     });
 
     test('tier routing keeps Basic on Haiku and allows Premium+ nuanced '
@@ -703,6 +836,107 @@ void main() {
         expect(store.monthlyUsedCents, equals(1));
       },
     );
+
+    test('Postgres accounting store executes B33 usage-log upsert with '
+        'the four two-slot bind parameters inside tenant scope', () async {
+      final pool = _AccountingPostgresPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = _uuidOperatorContext();
+      const billingOwner = '55555555-5555-4555-8555-555555555555';
+      const workflowId = '66666666-6666-4666-8666-666666666666';
+
+      final start = await store.startRequest(
+        idempotencyKey: 'idem-b33',
+        requestType: 'advisor_smoke',
+        operator: operator,
+        usageClass: 'advisor_qa',
+        telemetry: const ProxyUsageTelemetry(
+          queryClass: 'methodology_lookup',
+          cacheHit: false,
+          llmTier: 'haiku',
+          modelUsed: 'claude-haiku-4-5',
+          billingOwnerOrgUnitId: billingOwner,
+          workflowId: workflowId,
+        ),
+        estimate: const ProxyUsageChargeEstimate(
+          tokenCount: 123,
+          costCents: 25,
+        ),
+        now: DateTime.utc(2026, 4, 26, 12),
+      );
+
+      expect(start, isA<ProxyAccountingReserved>());
+      expect(pool.transactions, hasLength(1));
+      final tx = pool.transactions.single;
+      expect(tx.committed, isTrue);
+      expect(tx.rolledBack, isFalse);
+      expect(
+        tx.executedSql,
+        containsAll(<String>[
+          "select set_config('app.operator_id', @value, true)",
+          "select set_config('app.location_id', @value, true)",
+          "select set_config('app.user_id', @value, true)",
+          "select set_config('app.bypass_rls_audit', 'tenant', true)",
+        ]),
+      );
+      final usageCall = tx.queryCalls.singleWhere(
+        (call) => call.sql.contains('insert into public.usage_logs'),
+      );
+      expect(
+        usageCall.sql,
+        contains('on conflict on constraint usage_logs_two_slot_rollup_uq'),
+      );
+      expect(
+        usageCall.parameters,
+        containsPair('billing_owner_org_unit_id', billingOwner),
+      );
+      expect(usageCall.parameters, containsPair('scoped_org_unit_id', isNull));
+      expect(usageCall.parameters, containsPair('staff_id', isNull));
+      expect(usageCall.parameters, containsPair('workflow_id', workflowId));
+      expect(usageCall.parameters, containsPair('token_count', 123));
+      expect(usageCall.parameters, containsPair('cost_usd', '0.2500'));
+    });
+
+    test('Postgres accounting completion updates the idempotency row with '
+        'operator-scoped tenant context', () async {
+      final pool = _AccountingPostgresPool();
+      final store = PostgresProxyAccountingStore(
+        wrapper: TenantTransactionWrapper(pool),
+      );
+      final operator = _uuidOperatorContext();
+
+      await store.completeRequest(
+        operator: operator,
+        idempotencyKey: 'idem-b33',
+        responsePayload: const <String, Object?>{
+          'status': 'ok',
+          'answer': 'fake',
+        },
+        now: DateTime.utc(2026, 4, 26, 12, 1),
+      );
+
+      expect(pool.transactions, hasLength(1));
+      final tx = pool.transactions.single;
+      expect(tx.committed, isTrue);
+      final completionCall = tx.executeCalls.singleWhere(
+        (call) => call.sql.contains('update public.proxy_requests'),
+      );
+      expect(
+        completionCall.parameters['operator_id'],
+        equals(operator.operatorId),
+      );
+      expect(
+        completionCall.parameters['location_id'],
+        equals(operator.locationId),
+      );
+      expect(completionCall.parameters['idempotency_key'], equals('idem-b33'));
+      expect(
+        completionCall.parameters['response_payload'],
+        equals('{"status":"ok","answer":"fake"}'),
+      );
+    });
   });
 
   group('Advisor proxy usage counters migration (11a.10b)', () {
@@ -3671,303 +3905,277 @@ void main() {
     });
   });
 
-  group(
-    'Phase 9.0Σ.g usage_caps two-slot key migration (B28 / item 6)',
-    () {
-      // Migration/schema-only assertions — the deep coverage of the
-      // ADD / BACKFILL / CONSTRAINT FLIP shape lives in
-      // `test/phase_9_0sigma_g_usage_caps_two_slot_test.dart`. The
-      // assertions in this group exist so that a regression in the
-      // proxy hot-zone (this test file's primary subject) cannot land
-      // a sibling regression in the migration order or accidentally
-      // re-introduce the legacy usage_caps PK in a later migration.
-      late List<String> migrationNames;
-      late String addSql;
-      late String flipSql;
-      late String cloudFoundationSql;
+  group('Phase 9.0Σ.g usage_caps two-slot key migration (B28 / item 6)', () {
+    // Migration/schema-only assertions — the deep coverage of the
+    // ADD / BACKFILL / CONSTRAINT FLIP shape lives in
+    // `test/phase_9_0sigma_g_usage_caps_two_slot_test.dart`. The
+    // assertions in this group exist so that a regression in the
+    // proxy hot-zone (this test file's primary subject) cannot land
+    // a sibling regression in the migration order or accidentally
+    // re-introduce the legacy usage_caps PK in a later migration.
+    late List<String> migrationNames;
+    late String addSql;
+    late String flipSql;
+    late String cloudFoundationSql;
 
-      setUpAll(() {
-        migrationNames =
-            Directory('db/migrations')
-                .listSync()
-                .whereType<File>()
-                .map((file) => file.uri.pathSegments.last)
-                .where((name) => name.endsWith('.sql'))
-                .toList()
-              ..sort();
-        addSql = File(
-          'db/migrations/'
-          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
-        ).readAsStringSync().replaceAll('\r\n', '\n');
-        flipSql = File(
-          'db/migrations/'
-          '202604280006_c_phase_9_0sigma_g_'
-          'usage_caps_two_slot_constraint_flip.sql',
-        ).readAsStringSync().replaceAll('\r\n', '\n');
-        cloudFoundationSql = File(
-          'db/migrations/202604250005_advisor_cloud_foundation.sql',
-        ).readAsStringSync().replaceAll('\r\n', '\n');
-      });
+    setUpAll(() {
+      migrationNames =
+          Directory('db/migrations')
+              .listSync()
+              .whereType<File>()
+              .map((file) => file.uri.pathSegments.last)
+              .where((name) => name.endsWith('.sql'))
+              .toList()
+            ..sort();
+      addSql = File(
+        'db/migrations/'
+        '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      flipSql = File(
+        'db/migrations/'
+        '202604280006_c_phase_9_0sigma_g_'
+        'usage_caps_two_slot_constraint_flip.sql',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+      cloudFoundationSql = File(
+        'db/migrations/202604250005_advisor_cloud_foundation.sql',
+      ).readAsStringSync().replaceAll('\r\n', '\n');
+    });
 
-      test('three migration files exist with the locked filenames', () {
-        // ignore: lines_longer_than_80_chars
-        const flipName = '202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql';
-        const expected = <String>[
-          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
-          '202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql',
-          flipName,
-        ];
-        for (final name in expected) {
+    test('three migration files exist with the locked filenames', () {
+      // ignore: lines_longer_than_80_chars
+      const flipName =
+          '202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql';
+      const expected = <String>[
+        '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+        '202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql',
+        flipName,
+      ];
+      for (final name in expected) {
+        expect(
+          migrationNames,
+          contains(name),
+          reason: 'Phase 9.0Σ.g requires migration $name',
+        );
+      }
+    });
+
+    test('migration files are ordered ADD → BACKFILL → CONSTRAINT FLIP', () {
+      final addIdx = migrationNames.indexOf(
+        '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
+      );
+      final backfillIdx = migrationNames.indexOf(
+        '202604280006_b_phase_9_0sigma_g_'
+        'usage_caps_two_slot_backfill.sql',
+      );
+      final flipIdx = migrationNames.indexOf(
+        '202604280006_c_phase_9_0sigma_g_'
+        'usage_caps_two_slot_constraint_flip.sql',
+      );
+      expect(addIdx, greaterThanOrEqualTo(0));
+      expect(backfillIdx, greaterThan(addIdx));
+      expect(flipIdx, greaterThan(backfillIdx));
+    });
+
+    test('legacy 202604250005 usage_caps PK is unchanged — the flip '
+        'lives only in 9.0Σ.g step c', () {
+      // Tripwire: if a hand edited the cloud-foundation migration to
+      // bake the new key shape directly into the legacy file (which
+      // the slice constraint forbids), this assertion would catch it.
+      expect(
+        cloudFoundationSql,
+        contains('primary key (operator_id, location_id, usage_class)'),
+      );
+      expect(cloudFoundationSql.contains('billing_owner_org_unit_id'), isFalse);
+      expect(cloudFoundationSql.contains('scoped_org_unit_id'), isFalse);
+    });
+
+    test('add migration introduces the four cap-shape columns on usage_caps '
+        'and usage_logs as nullable', () {
+      for (final table in <String>['usage_caps', 'usage_logs']) {
+        for (final column in <String>[
+          'billing_owner_org_unit_id uuid;',
+          'scoped_org_unit_id uuid;',
+          'staff_id uuid null;',
+          'workflow_id uuid null;',
+        ]) {
           expect(
-            migrationNames,
-            contains(name),
-            reason: 'Phase 9.0Σ.g requires migration $name',
+            addSql,
+            contains(
+              'alter table public.$table\n'
+              '  add column if not exists $column',
+            ),
+            reason: '$table.$column must be added by the ADD migration',
           );
         }
-      });
+      }
+    });
 
-      test('migration files are ordered ADD → BACKFILL → CONSTRAINT FLIP',
-          () {
-        final addIdx = migrationNames.indexOf(
-          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql',
-        );
-        final backfillIdx = migrationNames.indexOf(
-          '202604280006_b_phase_9_0sigma_g_'
-          'usage_caps_two_slot_backfill.sql',
-        );
-        final flipIdx = migrationNames.indexOf(
-          '202604280006_c_phase_9_0sigma_g_'
-          'usage_caps_two_slot_constraint_flip.sql',
-        );
-        expect(addIdx, greaterThanOrEqualTo(0));
-        expect(backfillIdx, greaterThan(addIdx));
-        expect(flipIdx, greaterThan(backfillIdx));
-      });
-
-      test('legacy 202604250005 usage_caps PK is unchanged — the flip '
-          'lives only in 9.0Σ.g step c', () {
-        // Tripwire: if a hand edited the cloud-foundation migration to
-        // bake the new key shape directly into the legacy file (which
-        // the slice constraint forbids), this assertion would catch it.
-        expect(
-          cloudFoundationSql,
-          contains('primary key (operator_id, location_id, usage_class)'),
-        );
-        expect(
-          cloudFoundationSql.contains('billing_owner_org_unit_id'),
-          isFalse,
-        );
-        expect(cloudFoundationSql.contains('scoped_org_unit_id'), isFalse);
-      });
-
-      test(
-        'add migration introduces the four cap-shape columns on usage_caps '
-        'and usage_logs as nullable',
-        () {
-          for (final table in <String>['usage_caps', 'usage_logs']) {
-            for (final column in <String>[
-              'billing_owner_org_unit_id uuid;',
-              'scoped_org_unit_id uuid;',
-              'staff_id uuid null;',
-              'workflow_id uuid null;',
-            ]) {
-              expect(
-                addSql,
-                contains(
-                  'alter table public.$table\n'
-                  '  add column if not exists $column',
-                ),
-                reason:
-                    '$table.$column must be added by the ADD migration',
-              );
-            }
-          }
-        },
+    test('flip migration drops legacy PKs and attaches tenant-leading '
+        'surrogate PKs', () {
+      expect(flipSql, contains('drop constraint if exists usage_caps_pkey'));
+      expect(
+        flipSql,
+        contains(
+          'add constraint usage_caps_pkey\n'
+          '  primary key (operator_id, cap_id);',
+        ),
       );
+      expect(flipSql, contains('drop constraint if exists usage_logs_pkey'));
+      expect(
+        flipSql,
+        contains(
+          'add constraint usage_logs_pkey\n'
+          '  primary key (operator_id, log_id, period_start);',
+        ),
+      );
+    });
 
-      test('flip migration drops legacy PKs and attaches tenant-leading '
-          'surrogate PKs', () {
-        expect(
-          flipSql,
-          contains('drop constraint if exists usage_caps_pkey'),
-        );
-        expect(
-          flipSql,
-          contains(
-            'add constraint usage_caps_pkey\n'
-            '  primary key (operator_id, cap_id);',
-          ),
-        );
-        expect(
-          flipSql,
-          contains('drop constraint if exists usage_logs_pkey'),
-        );
-        expect(
-          flipSql,
-          contains(
-            'add constraint usage_logs_pkey\n'
-            '  primary key (operator_id, log_id, period_start);',
-          ),
-        );
-      });
+    test('flip migration encodes the lock 6 logical key as UNIQUE NULLS '
+        'NOT DISTINCT on usage_caps and the matching reconciliation '
+        'key on usage_logs', () {
+      // Cap-side: lock 6 shape, tenant-leading.
+      expect(flipSql, contains('usage_caps_two_slot_uq'));
+      expect(flipSql, contains('unique nulls not distinct ('));
+      expect(
+        flipSql,
+        contains(
+          '    operator_id,\n'
+          '    billing_owner_org_unit_id,\n'
+          '    scoped_org_unit_id,\n'
+          '    location_id,\n'
+          '    staff_id,\n'
+          '    workflow_id,\n'
+          '    usage_class\n'
+          '  );',
+        ),
+      );
+      // Log-side: cap-shape prefix + period_start + telemetry tail.
+      expect(flipSql, contains('usage_logs_two_slot_rollup_uq'));
+      expect(flipSql, contains('    period_start,'));
+      expect(flipSql, contains('    query_class,'));
+      expect(flipSql, contains('    cache_hit,'));
+      expect(flipSql, contains('    llm_tier,'));
+      expect(flipSql, contains('    model_used,'));
+      expect(flipSql, contains('    batch_mode,'));
+      expect(flipSql, contains('    circuit_state,'));
+      expect(flipSql, contains('    fallback_used'));
+    });
 
-      test('flip migration encodes the lock 6 logical key as UNIQUE NULLS '
-          'NOT DISTINCT on usage_caps and the matching reconciliation '
-          'key on usage_logs', () {
-        // Cap-side: lock 6 shape, tenant-leading.
-        expect(flipSql, contains('usage_caps_two_slot_uq'));
-        expect(flipSql, contains('unique nulls not distinct ('));
+    test('flip migration attaches composite FKs to '
+        'org_units(operator_id, id) for both billing-owner and '
+        'scoped-org slots on both tables', () {
+      const fkConstraints = <String>[
+        'usage_caps_billing_owner_org_unit_fk',
+        'usage_caps_scoped_org_unit_fk',
+        'usage_logs_billing_owner_org_unit_fk',
+        'usage_logs_scoped_org_unit_fk',
+      ];
+      for (final name in fkConstraints) {
         expect(
           flipSql,
-          contains(
-            '    operator_id,\n'
-            '    billing_owner_org_unit_id,\n'
-            '    scoped_org_unit_id,\n'
-            '    location_id,\n'
-            '    staff_id,\n'
-            '    workflow_id,\n'
-            '    usage_class\n'
-            '  );',
-          ),
+          contains('add constraint $name'),
+          reason: 'composite FK $name must be attached in the flip',
         );
-        // Log-side: cap-shape prefix + period_start + telemetry tail.
-        expect(flipSql, contains('usage_logs_two_slot_rollup_uq'));
-        expect(flipSql, contains('    period_start,'));
-        expect(flipSql, contains('    query_class,'));
-        expect(flipSql, contains('    cache_hit,'));
-        expect(flipSql, contains('    llm_tier,'));
-        expect(flipSql, contains('    model_used,'));
-        expect(flipSql, contains('    batch_mode,'));
-        expect(flipSql, contains('    circuit_state,'));
-        expect(flipSql, contains('    fallback_used'));
-      });
+      }
+      expect(flipSql, contains('references public.org_units(operator_id, id)'));
+    });
 
-      test('flip migration attaches composite FKs to '
-          'org_units(operator_id, id) for both billing-owner and '
-          'scoped-org slots on both tables', () {
-        const fkConstraints = <String>[
-          'usage_caps_billing_owner_org_unit_fk',
-          'usage_caps_scoped_org_unit_fk',
-          'usage_logs_billing_owner_org_unit_fk',
-          'usage_logs_scoped_org_unit_fk',
-        ];
-        for (final name in fkConstraints) {
+    test('flip migration adds tenant-leading reconciliation index on '
+        'usage_logs (cap-shape only, no telemetry tail)', () {
+      expect(
+        flipSql,
+        contains(
+          'create index if not exists '
+          'usage_logs_cap_reconciliation_idx\n'
+          '  on public.usage_logs (\n'
+          '    operator_id,\n'
+          '    billing_owner_org_unit_id,\n'
+          '    scoped_org_unit_id,\n'
+          '    location_id,\n'
+          '    staff_id,\n'
+          '    workflow_id,\n'
+          '    usage_class\n'
+          '  );',
+        ),
+      );
+    });
+
+    test('flip migration grants service_role + forge_admin DML and adds '
+        'no forge_admin RLS policy', () {
+      for (final table in <String>[
+        'usage_caps',
+        'usage_logs',
+        'usage_logs_default',
+      ]) {
+        for (final role in <String>['service_role', 'forge_admin']) {
           expect(
             flipSql,
-            contains('add constraint $name'),
-            reason: 'composite FK $name must be attached in the flip',
+            contains(
+              'grant select, insert, update, delete on public.$table '
+              'to $role',
+            ),
+            reason: '$table must grant DML to $role',
           );
         }
-        expect(
-          flipSql,
-          contains('references public.org_units(operator_id, id)'),
-        );
-      });
+      }
+      // No CREATE POLICY ... TO forge_admin in this slice (lock).
+      final forgeAdminPolicy = RegExp(
+        r'create policy [^;]*to forge_admin',
+        caseSensitive: false,
+      );
+      expect(forgeAdminPolicy.hasMatch(flipSql), isFalse);
+    });
 
-      test('flip migration adds tenant-leading reconciliation index on '
-          'usage_logs (cap-shape only, no telemetry tail)', () {
-        expect(
-          flipSql,
-          contains(
-            'create index if not exists '
-            'usage_logs_cap_reconciliation_idx\n'
-            '  on public.usage_logs (\n'
-            '    operator_id,\n'
-            '    billing_owner_org_unit_id,\n'
-            '    scoped_org_unit_id,\n'
-            '    location_id,\n'
-            '    staff_id,\n'
-            '    workflow_id,\n'
-            '    usage_class\n'
-            '  );',
-          ),
-        );
-      });
-
-      test('flip migration grants service_role + forge_admin DML and adds '
-          'no forge_admin RLS policy', () {
-        for (final table in <String>[
-          'usage_caps',
-          'usage_logs',
-          'usage_logs_default',
-        ]) {
-          for (final role in <String>['service_role', 'forge_admin']) {
-            expect(
-              flipSql,
-              contains(
-                'grant select, insert, update, delete on public.$table '
-                'to $role',
-              ),
-              reason: '$table must grant DML to $role',
-            );
-          }
-        }
-        // No CREATE POLICY ... TO forge_admin in this slice (lock).
-        final forgeAdminPolicy = RegExp(
-          r'create policy [^;]*to forge_admin',
+    test('the slice introduces no DDL for actor_kind, sp:-prefixed '
+        'JWT, audit_logs, or service_principals (those belong to '
+        'disjoint slices)', () {
+      // DDL-pattern guards rather than prose substrings — a comment
+      // that names the out-of-scope term ("does not touch
+      // actor_kind") is allowed; an actual column declaration is not.
+      for (final sql in <String>[addSql, flipSql]) {
+        final actorKindDdl = RegExp(
+          r'\b(?:add column[^;]*\bactor_kind|actor_kind\s+text)\b',
           caseSensitive: false,
         );
-        expect(forgeAdminPolicy.hasMatch(flipSql), isFalse);
-      });
+        expect(actorKindDdl.hasMatch(sql), isFalse);
 
-      test('the slice introduces no DDL for actor_kind, sp:-prefixed '
-          'JWT, audit_logs, or service_principals (those belong to '
-          'disjoint slices)', () {
-        // DDL-pattern guards rather than prose substrings — a comment
-        // that names the out-of-scope term ("does not touch
-        // actor_kind") is allowed; an actual column declaration is not.
-        for (final sql in <String>[addSql, flipSql]) {
-          final actorKindDdl = RegExp(
-            r'\b(?:add column[^;]*\bactor_kind|actor_kind\s+text)\b',
-            caseSensitive: false,
-          );
-          expect(actorKindDdl.hasMatch(sql), isFalse);
-
-          final servicePrincipalsTable = RegExp(
-            r'\b(?:create table|references)[^;]*\bservice_principals\b',
-            caseSensitive: false,
-          );
-          expect(servicePrincipalsTable.hasMatch(sql), isFalse);
-
-          final spPrefix = RegExp(
-            r'''['"]sp:''',
-            caseSensitive: false,
-          );
-          expect(spPrefix.hasMatch(sql), isFalse);
-
-          final auditLogDdl = RegExp(
-            r'\b(?:create table|alter table|references)[^;]*'
-            r'\b(?:audit_logs|auth_events_audit)\b',
-            caseSensitive: false,
-          );
-          expect(auditLogDdl.hasMatch(sql), isFalse);
-        }
-      });
-
-      test('the slice did not invent lib/services/advisor/usage_*.dart',
-          () {
-        final advisorDir = Directory('lib/services/advisor');
-        if (!advisorDir.existsSync()) return;
-        final usageFiles = advisorDir
-            .listSync(recursive: true)
-            .whereType<File>()
-            .map((file) => file.uri.pathSegments.last)
-            .where(
-              (name) =>
-                  name.startsWith('usage_') && name.endsWith('.dart'),
-            )
-            .toList();
-        expect(
-          usageFiles,
-          isEmpty,
-          reason:
-              'Block 3 task 4 forbids inventing usage_*.dart in this '
-              'slice; the missing seam is a documented follow-up. '
-              'Found: $usageFiles',
+        final servicePrincipalsTable = RegExp(
+          r'\b(?:create table|references)[^;]*\bservice_principals\b',
+          caseSensitive: false,
         );
-      });
-    },
-  );
+        expect(servicePrincipalsTable.hasMatch(sql), isFalse);
+
+        final spPrefix = RegExp(r'''['"]sp:''', caseSensitive: false);
+        expect(spPrefix.hasMatch(sql), isFalse);
+
+        final auditLogDdl = RegExp(
+          r'\b(?:create table|alter table|references)[^;]*'
+          r'\b(?:audit_logs|auth_events_audit)\b',
+          caseSensitive: false,
+        );
+        expect(auditLogDdl.hasMatch(sql), isFalse);
+      }
+    });
+
+    test('the slice did not invent lib/services/advisor/usage_*.dart', () {
+      final advisorDir = Directory('lib/services/advisor');
+      if (!advisorDir.existsSync()) return;
+      final usageFiles = advisorDir
+          .listSync(recursive: true)
+          .whereType<File>()
+          .map((file) => file.uri.pathSegments.last)
+          .where((name) => name.startsWith('usage_') && name.endsWith('.dart'))
+          .toList();
+      expect(
+        usageFiles,
+        isEmpty,
+        reason:
+            'Block 3 task 4 forbids inventing usage_*.dart in this '
+            'slice; the missing seam is a documented follow-up. '
+            'Found: $usageFiles',
+      );
+    });
+  });
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -4201,6 +4409,7 @@ class _InMemoryAccountingStore implements ProxyAccountingStore {
 
   @override
   Future<void> completeRequest({
+    required OperatorContext operator,
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
@@ -4217,6 +4426,13 @@ OperatorContext _operatorContext() => const OperatorContext(
   roles: <String>['advisor.read'],
 );
 
+OperatorContext _uuidOperatorContext() => const OperatorContext(
+  userId: '11111111-1111-4111-8111-111111111111',
+  operatorId: '22222222-2222-4222-8222-222222222222',
+  locationId: '33333333-3333-4333-8333-333333333333',
+  roles: <String>['advisor.read'],
+);
+
 ProxyJwtClaims _claims() => const ProxyJwtClaims(
   userId: 'user_x',
   operatorId: 'op_777',
@@ -4230,6 +4446,91 @@ ProxyUsageTelemetry _telemetry() => const ProxyUsageTelemetry(
   llmTier: 'haiku',
   modelUsed: 'claude-haiku-4-5',
 );
+
+class _PostgresSqlCall {
+  const _PostgresSqlCall(this.sql, this.parameters);
+
+  final String sql;
+  final PostgresParameters parameters;
+}
+
+class _AccountingPostgresPool implements PostgresPool {
+  final transactions = <_AccountingPostgresTransaction>[];
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    final tx = _AccountingPostgresTransaction();
+    transactions.add(tx);
+    return tx;
+  }
+}
+
+class _AccountingPostgresTransaction implements PostgresTransaction {
+  final executedSql = <String>[];
+  final executeCalls = <_PostgresSqlCall>[];
+  final queryCalls = <_PostgresSqlCall>[];
+  var committed = false;
+  var rolledBack = false;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    queryCalls.add(_PostgresSqlCall(sql, parameters));
+    if (sql.contains('select response_payload') &&
+        sql.contains('from public.proxy_requests')) {
+      return const <PostgresRow>[];
+    }
+    if (sql.contains('from public.usage_caps')) {
+      return const <PostgresRow>[
+        <String, Object?>{
+          'monthly_cap_usd': '10.00',
+          'monthly_used_usd': '1.25',
+          'per_invocation_cap_usd': '2.00',
+        },
+      ];
+    }
+    if (sql.contains('insert into public.proxy_requests')) {
+      return const <PostgresRow>[
+        <String, Object?>{
+          'request_id': '44444444-4444-4444-8444-444444444444',
+          'response_payload': null,
+        },
+      ];
+    }
+    if (sql.contains('insert into public.usage_logs')) {
+      return const <PostgresRow>[
+        <String, Object?>{
+          'token_count': 123,
+          'cost_usd': '0.2500',
+          'request_count': 1,
+        },
+      ];
+    }
+    return const <PostgresRow>[];
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    executedSql.add(sql);
+    executeCalls.add(_PostgresSqlCall(sql, parameters));
+    return 1;
+  }
+
+  @override
+  Future<void> commit() async {
+    committed = true;
+  }
+
+  @override
+  Future<void> rollback() async {
+    rolledBack = true;
+  }
+}
 
 class _HttpResponseSnapshot {
   _HttpResponseSnapshot({required this.statusCode, required this.body});

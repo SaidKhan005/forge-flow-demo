@@ -44,6 +44,7 @@ typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
 class ProxyProductionBindings {
   const ProxyProductionBindings({
+    required this.accountingStore,
     required this.authSessionLedgerWriter,
     required this.permissionSnapshotResolver,
     required this.adminPermissionGuard,
@@ -52,6 +53,7 @@ class ProxyProductionBindings {
     required this.mfaOperationsGateway,
   });
 
+  final ProxyAccountingStore accountingStore;
   final AuthSessionLedgerWriter authSessionLedgerWriter;
   final ProxyPermissionSnapshotResolver permissionSnapshotResolver;
   final ProxyAdminPermissionGuard adminPermissionGuard;
@@ -90,6 +92,7 @@ ProxyProductionBindings buildProxyProductionBindings(
   );
 
   return ProxyProductionBindings(
+    accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
     authSessionLedgerWriter: RepositoryAuthSessionLedgerWriter(
       repository: AuthSessionsRepository(tenantWrapper),
     ),

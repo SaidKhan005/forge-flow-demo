@@ -42,6 +42,9 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
@@ -1577,6 +1580,10 @@ class ProxyUsageTelemetry {
     required this.cacheHit,
     required this.llmTier,
     required this.modelUsed,
+    this.billingOwnerOrgUnitId,
+    this.scopedOrgUnitId,
+    this.staffId,
+    this.workflowId,
     this.batchMode = false,
     this.circuitState = 'closed',
     this.fallbackUsed = 'none',
@@ -1586,6 +1593,10 @@ class ProxyUsageTelemetry {
   final bool cacheHit;
   final String llmTier;
   final String modelUsed;
+  final String? billingOwnerOrgUnitId;
+  final String? scopedOrgUnitId;
+  final String? staffId;
+  final String? workflowId;
   final bool batchMode;
   final String circuitState;
   final String fallbackUsed;
@@ -1595,6 +1606,10 @@ class ProxyUsageTelemetry {
     'cache_hit': cacheHit,
     'llm_tier': llmTier,
     'model_used': modelUsed,
+    'billing_owner_org_unit_id': billingOwnerOrgUnitId,
+    'scoped_org_unit_id': scopedOrgUnitId,
+    'staff_id': staffId,
+    'workflow_id': workflowId,
     'batch_mode': batchMode,
     'circuit_state': circuitState,
     'fallback_used': fallbackUsed,
@@ -1676,10 +1691,193 @@ abstract class ProxyAccountingStore {
   });
 
   Future<void> completeRequest({
+    required OperatorContext operator,
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
   });
+}
+
+class PostgresProxyAccountingStore implements ProxyAccountingStore {
+  PostgresProxyAccountingStore({required TenantTransactionWrapper wrapper})
+    : _wrapper = wrapper;
+
+  final TenantTransactionWrapper _wrapper;
+
+  @override
+  Future<ProxyAccountingStartResult> startRequest({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) {
+    final ctx = _tenantContextFor(operator);
+    final params = _usageParameters(
+      idempotencyKey: idempotencyKey,
+      requestType: requestType,
+      operator: operator,
+      usageClass: usageClass,
+      telemetry: telemetry,
+      estimate: estimate,
+      now: now,
+    );
+
+    return _wrapper.runInTenantContext(ctx, (exec) async {
+      final existingReplay = await _lookupReplay(exec, params);
+      if (existingReplay != null) return existingReplay;
+
+      final capStatus = await _loadCapStatus(
+        exec,
+        params,
+        usageClass,
+        estimate,
+      );
+      if (!capStatus.allowed) {
+        return ProxyAccountingRefused(capStatus: capStatus);
+      }
+
+      final reservationRows = await exec.query(
+        ProxyUsageLogSql.idempotencyInsert,
+        parameters: params,
+      );
+      if (reservationRows.isEmpty) {
+        final racedReplay = await _lookupReplay(exec, params);
+        if (racedReplay != null) return racedReplay;
+        throw StateError(
+          'proxy accounting idempotency reservation is already in flight',
+        );
+      }
+
+      await exec.query(ProxyUsageLogSql.atomicUpsert, parameters: params);
+      return ProxyAccountingReserved(capStatus: capStatus);
+    });
+  }
+
+  @override
+  Future<void> completeRequest({
+    required OperatorContext operator,
+    required String idempotencyKey,
+    required Map<String, Object?> responsePayload,
+    required DateTime now,
+  }) async {
+    final ctx = _tenantContextFor(operator);
+    final affected = await _wrapper.runInTenantContext(ctx, (exec) {
+      return exec.execute(
+        ProxyUsageLogSql.completionUpdate,
+        parameters: <String, Object?>{
+          'operator_id': operator.operatorId,
+          'location_id': operator.locationId,
+          'idempotency_key': idempotencyKey,
+          'response_payload': jsonEncode(responsePayload),
+          'completed_at': now.toUtc().toIso8601String(),
+        },
+      );
+    });
+    if (affected == 0) {
+      throw StateError('proxy accounting completion row was not found');
+    }
+  }
+
+  static TenantContext _tenantContextFor(OperatorContext operator) {
+    return TenantContext(
+      operatorId: operator.operatorId,
+      locationId: operator.locationId,
+      userId: operator.userId,
+    );
+  }
+
+  static PostgresParameters _usageParameters({
+    required String idempotencyKey,
+    required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) {
+    return <String, Object?>{
+      'idempotency_key': idempotencyKey,
+      'request_type': requestType,
+      'operator_id': operator.operatorId,
+      'location_id': operator.locationId,
+      'usage_class': usageClass,
+      'request_time': now.toUtc().toIso8601String(),
+      'token_count': estimate.tokenCount,
+      'cost_usd': (estimate.costCents / 100).toStringAsFixed(4),
+      'billing_owner_org_unit_id': telemetry.billingOwnerOrgUnitId,
+      'scoped_org_unit_id': telemetry.scopedOrgUnitId,
+      'staff_id': telemetry.staffId,
+      'workflow_id': telemetry.workflowId,
+      'query_class': telemetry.queryClass,
+      'cache_hit': telemetry.cacheHit,
+      'llm_tier': telemetry.llmTier,
+      'model_used': telemetry.modelUsed,
+      'batch_mode': telemetry.batchMode,
+      'circuit_state': telemetry.circuitState,
+      'fallback_used': telemetry.fallbackUsed,
+    };
+  }
+
+  static Future<ProxyAccountingReplayed?> _lookupReplay(
+    PostgresExecutor exec,
+    PostgresParameters params,
+  ) async {
+    final rows = await exec.query(
+      ProxyUsageLogSql.idempotencyLookup,
+      parameters: params,
+    );
+    if (rows.isEmpty) return null;
+    final payload = _jsonObjectOrNull(rows.first['response_payload']);
+    if (payload != null) {
+      return ProxyAccountingReplayed(responsePayload: payload);
+    }
+    throw StateError(
+      'proxy accounting idempotency reservation is already in flight',
+    );
+  }
+
+  static Future<ProxyCapStatus> _loadCapStatus(
+    PostgresExecutor exec,
+    PostgresParameters params,
+    String usageClass,
+    ProxyUsageChargeEstimate estimate,
+  ) async {
+    final rows = await exec.query(
+      ProxyUsageLogSql.capStatusSelect,
+      parameters: params,
+    );
+    final row = rows.isEmpty ? const <String, Object?>{} : rows.first;
+    return ProxyCapStatus(
+      usageClass: usageClass,
+      monthlyCapCents: _usdToCents(row['monthly_cap_usd']),
+      monthlyUsedCents: _usdToCents(row['monthly_used_usd']),
+      perInvocationCapCents: _usdToCents(row['per_invocation_cap_usd']),
+      estimatedCostCents: estimate.costCents,
+    );
+  }
+
+  static Map<String, Object?>? _jsonObjectOrNull(Object? value) {
+    if (value == null) return null;
+    if (value is Map<String, Object?>) return value;
+    if (value is Map) return Map<String, Object?>.from(value);
+    if (value is String && value.trim().isNotEmpty) {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return Map<String, Object?>.from(decoded);
+    }
+    return null;
+  }
+
+  static int _usdToCents(Object? value) {
+    if (value == null) return 0;
+    final amount = value is num
+        ? value.toDouble()
+        : double.tryParse(value.toString());
+    if (amount == null) return 0;
+    return (amount * 100).round();
+  }
 }
 
 class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
@@ -1702,6 +1900,7 @@ class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
 
   @override
   Future<void> completeRequest({
+    required OperatorContext operator,
     required String idempotencyKey,
     required Map<String, Object?> responsePayload,
     required DateTime now,
@@ -1942,10 +2141,38 @@ class ProxyRequestLogPolicy {
 abstract class ProxyUsageLogSql {
   ProxyUsageLogSql._();
 
+  // Phase 9.0Σ.g2 / B33 — usage_logs two-slot writer follow-up to the
+  // 202604280006_a/b/c schema flip. The legacy 11-column ON CONFLICT
+  // tuple is gone; the locked rollup identity is the named constraint
+  // `usage_logs_two_slot_rollup_uq`
+  // (operator_id, billing_owner_org_unit_id, scoped_org_unit_id,
+  //  location_id, staff_id, workflow_id, usage_class, period_start,
+  //  + seven telemetry dims) declared with NULLS NOT DISTINCT.
+  //
+  // We target the constraint by name rather than inferring from a
+  // column list because PG's ON CONFLICT inference assumes
+  // NULLS DISTINCT; staff_id / workflow_id stay nullable forever and
+  // two NULL-staff rows must collapse onto the same counter, so the
+  // named-constraint form is the only correct match.
+  //
+  // Cap-shape defaulting: when the caller has no narrower org-unit
+  // scope (the launch state — operator_id maps 1:1 to a single
+  // org_units root row created by 202604280002), billing_owner /
+  // scoped fall back via COALESCE to that operator-root. This keeps
+  // cap-vs-actual reconciliation joining on the shared cap-shape
+  // prefix shared with `usage_caps_two_slot_uq`. staff_id /
+  // workflow_id pass through nullable; callers without per-staff or
+  // per-workflow attribution send NULL and NULLS NOT DISTINCT folds
+  // them onto a single "covers all staff" / "covers all workflows"
+  // counter.
   static const String atomicUpsert = '''
 insert into public.usage_logs (
   operator_id,
+  billing_owner_org_unit_id,
+  scoped_org_unit_id,
   location_id,
+  staff_id,
+  workflow_id,
   usage_class,
   period_start,
   token_count,
@@ -1960,7 +2187,25 @@ insert into public.usage_logs (
   fallback_used
 ) values (
   @operator_id,
+  coalesce(
+    @billing_owner_org_unit_id::uuid,
+    (select id
+       from public.org_units
+      where operator_id = @operator_id
+        and parent_id is null
+      limit 1)
+  ),
+  coalesce(
+    @scoped_org_unit_id::uuid,
+    (select id
+       from public.org_units
+      where operator_id = @operator_id
+        and parent_id is null
+      limit 1)
+  ),
   @location_id,
+  @staff_id::uuid,
+  @workflow_id::uuid,
   @usage_class,
   date_trunc('month', @request_time::timestamptz),
   @token_count,
@@ -1974,24 +2219,65 @@ insert into public.usage_logs (
   @circuit_state,
   @fallback_used
 )
-on conflict (
-  operator_id,
-  location_id,
-  usage_class,
-  period_start,
-  query_class,
-  cache_hit,
-  llm_tier,
-  model_used,
-  batch_mode,
-  circuit_state,
-  fallback_used
-) do update set
+on conflict on constraint usage_logs_two_slot_rollup_uq do update set
   token_count = public.usage_logs.token_count + excluded.token_count,
   cost_usd = public.usage_logs.cost_usd + excluded.cost_usd,
   request_count = public.usage_logs.request_count + 1,
   updated_at = now()
 returning token_count, cost_usd, request_count;
+''';
+
+  static const String capStatusSelect = '''
+with cap_scope as (
+  select
+    coalesce(
+      @billing_owner_org_unit_id::uuid,
+      (select id
+         from public.org_units
+        where operator_id = @operator_id
+          and parent_id is null
+        limit 1)
+    ) as billing_owner_org_unit_id,
+    coalesce(
+      @scoped_org_unit_id::uuid,
+      (select id
+         from public.org_units
+        where operator_id = @operator_id
+          and parent_id is null
+        limit 1)
+    ) as scoped_org_unit_id
+),
+cap as (
+  select c.monthly_cap_usd, c.per_invocation_cap_usd
+    from public.usage_caps c, cap_scope s
+   where c.operator_id = @operator_id
+     and c.billing_owner_org_unit_id = s.billing_owner_org_unit_id
+     and c.scoped_org_unit_id = s.scoped_org_unit_id
+     and c.location_id = @location_id
+     and c.staff_id is not distinct from @staff_id::uuid
+     and c.workflow_id is not distinct from @workflow_id::uuid
+     and c.usage_class = @usage_class
+   limit 1
+),
+actuals as (
+  select coalesce(sum(cost_usd), 0) as monthly_used_usd
+    from public.usage_logs l, cap_scope s
+   where l.operator_id = @operator_id
+     and l.billing_owner_org_unit_id = s.billing_owner_org_unit_id
+     and l.scoped_org_unit_id = s.scoped_org_unit_id
+     and l.location_id = @location_id
+     and l.staff_id is not distinct from @staff_id::uuid
+     and l.workflow_id is not distinct from @workflow_id::uuid
+     and l.usage_class = @usage_class
+     and l.period_start = date_trunc('month', @request_time::timestamptz)
+)
+select
+  coalesce((select monthly_cap_usd from cap), 0) as monthly_cap_usd,
+  coalesce(
+    (select per_invocation_cap_usd from cap),
+    0
+  ) as per_invocation_cap_usd,
+  (select monthly_used_usd from actuals) as monthly_used_usd;
 ''';
 
   static const String idempotencyInsert = '''
@@ -2012,6 +2298,24 @@ insert into public.proxy_requests (
 )
 on conflict (operator_id, location_id, idempotency_key) do nothing
 returning request_id, response_payload;
+''';
+
+  static const String idempotencyLookup = '''
+select response_payload
+  from public.proxy_requests
+ where operator_id = @operator_id
+   and location_id = @location_id
+   and idempotency_key = @idempotency_key
+ limit 1;
+''';
+
+  static const String completionUpdate = '''
+update public.proxy_requests
+   set response_payload = @response_payload::jsonb,
+       updated_at = @completed_at::timestamptz
+ where operator_id = @operator_id
+   and location_id = @location_id
+   and idempotency_key = @idempotency_key;
 ''';
 }
 
@@ -2427,6 +2731,7 @@ Future<void> routeRequest(
 
       try {
         await accountingStore.completeRequest(
+          operator: scope,
           idempotencyKey: idempotencyKey,
           responsePayload: responsePayload,
           now: clock().toUtc(),

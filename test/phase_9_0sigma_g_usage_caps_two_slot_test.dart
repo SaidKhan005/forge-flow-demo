@@ -60,20 +60,20 @@ void main() {
         expect(
           File(path).existsSync(),
           isTrue,
-          reason:
-              'Phase 9.0Σ.g requires three migration files. Missing: $path',
+          reason: 'Phase 9.0Σ.g requires three migration files. Missing: $path',
         );
       }
     });
 
     test('files are ordered ADD → BACKFILL → CONSTRAINT FLIP', () {
-      final names = Directory('db/migrations')
-          .listSync()
-          .whereType<File>()
-          .map((file) => file.uri.pathSegments.last)
-          .where((name) => name.endsWith('.sql'))
-          .toList()
-        ..sort();
+      final names =
+          Directory('db/migrations')
+              .listSync()
+              .whereType<File>()
+              .map((file) => file.uri.pathSegments.last)
+              .where((name) => name.endsWith('.sql'))
+              .toList()
+            ..sort();
 
       final addName =
           '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql';
@@ -198,27 +198,24 @@ void main() {
       expect(addSql, contains('where the cap applies'));
     });
 
-    test(
-      'add migration does not modify the legacy primary keys or attach '
-      'NOT NULL / UNIQUE constraints (those flip in step c)',
-      () {
-        expect(
-          addSql.contains('drop constraint'),
-          isFalse,
-          reason: 'step a is column-only; constraint changes belong in step c',
-        );
-        expect(
-          addSql.contains('set not null'),
-          isFalse,
-          reason: 'step a keeps every new column nullable',
-        );
-        expect(
-          addSql.contains('unique nulls not distinct'),
-          isFalse,
-          reason: 'step a does not encode the logical key — that is step c',
-        );
-      },
-    );
+    test('add migration does not modify the legacy primary keys or attach '
+        'NOT NULL / UNIQUE constraints (those flip in step c)', () {
+      expect(
+        addSql.contains('drop constraint'),
+        isFalse,
+        reason: 'step a is column-only; constraint changes belong in step c',
+      );
+      expect(
+        addSql.contains('set not null'),
+        isFalse,
+        reason: 'step a keeps every new column nullable',
+      );
+      expect(
+        addSql.contains('unique nulls not distinct'),
+        isFalse,
+        reason: 'step a does not encode the logical key — that is step c',
+      );
+    });
   });
 
   group('Phase 9.0Σ.g step-b (BACKFILL) shape', () {
@@ -296,14 +293,8 @@ void main() {
     });
 
     test('legacy primary keys are dropped before new keys attach', () {
-      expect(
-        flipSql,
-        contains('drop constraint if exists usage_caps_pkey'),
-      );
-      expect(
-        flipSql,
-        contains('drop constraint if exists usage_logs_pkey'),
-      );
+      expect(flipSql, contains('drop constraint if exists usage_caps_pkey'));
+      expect(flipSql, contains('drop constraint if exists usage_logs_pkey'));
     });
 
     test('surrogate cap_id / log_id columns are added with default '
@@ -553,11 +544,7 @@ void main() {
       // Lock: privileges before RLS, and forge_admin uses BYPASSRLS,
       // never a tenant policy. Both usage_caps and usage_logs (plus
       // the partition default) get the required DML grants.
-      const tables = <String>[
-        'usage_caps',
-        'usage_logs',
-        'usage_logs_default',
-      ];
+      const tables = <String>['usage_caps', 'usage_logs', 'usage_logs_default'];
       for (final table in tables) {
         for (final role in <String>['service_role', 'forge_admin']) {
           expect(
@@ -616,8 +603,7 @@ void main() {
       // policy body using bare current_setting('app...').
       final result = RlsPolicyLintRunner(
         files: <String, String>{
-          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql':
-              addSql,
+          '202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql': addSql,
           '202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql':
               backfillSql,
           '202604280006_c_phase_9_0sigma_g_'
@@ -629,7 +615,8 @@ void main() {
       expect(
         result.isClean,
         isTrue,
-        reason: '9.0Σ.g must not introduce bare current_setting(\'app.…\') '
+        reason:
+            '9.0Σ.g must not introduce bare current_setting(\'app.…\') '
             'reads; violations: ${result.violations}',
       );
     });
@@ -735,10 +722,7 @@ void main() {
               'ships with 9.0Σ.d service principals',
         );
 
-        final spPrefix = RegExp(
-          r'''['"]sp:''',
-          caseSensitive: false,
-        );
+        final spPrefix = RegExp(r'''['"]sp:''', caseSensitive: false);
         expect(
           spPrefix.hasMatch(sql),
           isFalse,
@@ -772,32 +756,46 @@ void main() {
       }
     });
 
-    test('proxy hot-zone files are off-limits for this slice and remain '
-        'unchanged on disk', () {
-      // The slice constraint forbids editing
-      // tool/advisor_proxy/advisor_proxy.dart and
-      // tool/advisor_proxy/proxy_bootstrap.dart. We assert their old
-      // upsert SQL ON CONFLICT target still references the
-      // pre-9.0Σ.g eleven-column rollup tuple — confirming the slice
-      // did not reach into the proxy.
+    test('proxy upsert is now aligned with the two-slot schema (B33 '
+        'follow-up to 9.0Σ.g landed)', () {
+      // 9.0Σ.g (B28) added cap-shape columns to usage_logs and
+      // dropped the legacy 11-column PK; the proxy hot-zone update
+      // was deferred to the B33 follow-up. After B33, the runtime
+      // writer in tool/advisor_proxy/advisor_proxy.dart targets
+      // `usage_logs_two_slot_rollup_uq` by name — without that
+      // alignment, every usage write would fail at runtime because
+      // the legacy inference target no longer exists.
+      //
+      // This assertion is the schema↔writer drift tripwire: if a
+      // future slice silently re-introduces the legacy 11-column
+      // ON CONFLICT inference target, this test catches it before
+      // the cap-vs-actual reconciliation join breaks.
       final proxy = File(
         'tool/advisor_proxy/advisor_proxy.dart',
       ).readAsStringSync();
-      // Old PK tuple (telemetry-aware rollup from 202604250006).
       expect(
         proxy,
-        contains('on conflict ('),
+        contains('on conflict on constraint usage_logs_two_slot_rollup_uq'),
         reason:
-            'proxy upsert must still target the legacy ON CONFLICT key '
-            '(slice constraint forbids touching this file)',
+            'B33 must wire the proxy upsert to the named '
+            'usage_logs_two_slot_rollup_uq constraint — column-list '
+            'inference assumes NULLS DISTINCT and would not match '
+            'the NULLS NOT DISTINCT logical key',
       );
       expect(
         proxy.contains('billing_owner_org_unit_id'),
-        isFalse,
+        isTrue,
         reason:
-            'proxy upsert must still target the legacy ON CONFLICT key '
-            '(the new cap-shape columns are only in the migration; the '
-            'proxy update is a follow-up slice)',
+            'B33 must thread billing_owner_org_unit_id through the '
+            'proxy writer so cap-vs-actual reconciliation joins on '
+            'the shared cap-shape prefix with usage_caps',
+      );
+      expect(
+        proxy.contains('scoped_org_unit_id'),
+        isTrue,
+        reason:
+            'B33 must thread scoped_org_unit_id through the proxy '
+            'writer (the second slot of the lock 6 logical key)',
       );
     });
 
@@ -812,7 +810,9 @@ void main() {
             .listSync(recursive: true)
             .whereType<File>()
             .map((file) => file.uri.pathSegments.last)
-            .where((name) => name.startsWith('usage_') && name.endsWith('.dart'))
+            .where(
+              (name) => name.startsWith('usage_') && name.endsWith('.dart'),
+            )
             .toList();
         expect(
           usageDartFiles,

@@ -121,6 +121,7 @@ void main() {
         },
       );
 
+      expect(bindings.accountingStore, isA<PostgresProxyAccountingStore>());
       expect(
         bindings.authSessionLedgerWriter,
         isA<RepositoryAuthSessionLedgerWriter>(),

@@ -60,7 +60,6 @@ Future<void> main(List<String> args) async {
     store: const ScaffoldFailingUsageCounterStore(),
     tierResolver: const FixedLaunchTierResolver(),
   );
-  const accountingStore = ScaffoldFailingProxyAccountingStore();
   const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
   const llmProvider = ScaffoldRejectingProxyLlmProvider();
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
@@ -74,6 +73,7 @@ Future<void> main(List<String> args) async {
     '(loaded secret names: ${config.loadedSecretNames.join(', ')}, '
     'firebase_verifier: ${firebaseProjectId == null ? 'scaffold' : 'firebase'}, '
     'auth_session_ledger: postgres, '
+    'accounting_store: postgres, '
     'permission_snapshot: postgres, '
     'admin_permission_guard: postgres, '
     'auth_operations: postgres, '
@@ -89,7 +89,7 @@ Future<void> main(List<String> args) async {
         request,
         authGuard,
         usageGuard: usageGuard,
-        accountingStore: accountingStore,
+        accountingStore: productionBindings.accountingStore,
         healthCheckStore: healthCheckStore,
         llmProvider: llmProvider,
         authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
