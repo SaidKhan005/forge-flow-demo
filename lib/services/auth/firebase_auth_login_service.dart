@@ -5,8 +5,9 @@
 // [AuthLoginResult] shape the rest of the app consumes. Builds the
 // [AuthSession] from JWT custom claims per the Phase 9 decision lock:
 //
-//   * `user_id` — optional Postgres UUID user id. When present, it wins over
-//     the Firebase UID so repository writes address `public.users.user_id`.
+//   * `postgres_user_id` / `user_id` — optional Postgres UUID user id. When
+//     present, it wins over the Firebase UID so repository writes address
+//     `public.users.user_id`.
 //   * `operator_id` — required custom claim.
 //   * `is_super_admin` — projected to a `super_admin` role string.
 //   * `is_ff_support` — projected to an `ff_support` role string.
@@ -142,8 +143,9 @@ class FirebaseAuthLoginService implements AuthLoginService {
   }
 
   @override
-  Future<void> signOutAllSessions() {
-    return _client.revokeAllRefreshTokens();
+  Future<void> signOutAllSessions() async {
+    await _client.revokeAllRefreshTokens();
+    await _client.signOut();
   }
 
   Future<AuthLoginResult> _projectOutcome(
@@ -183,11 +185,13 @@ class FirebaseAuthLoginService implements AuthLoginService {
         'JWT custom claim `operator_id` is missing or not a string',
       );
     }
+    final postgresUserIdClaim = credential.customClaims['postgres_user_id'];
     final userIdClaim = credential.customClaims['user_id'];
-    final userId =
-        userIdClaim is String && userIdClaim.isNotEmpty
-            ? userIdClaim
-            : credential.userId;
+    final userId = userIdClaim is String && userIdClaim.isNotEmpty
+        ? userIdClaim
+        : postgresUserIdClaim is String && postgresUserIdClaim.isNotEmpty
+        ? postgresUserIdClaim
+        : credential.userId;
     final locationClaim = credential.customClaims['location_id'];
     final locationId =
         locationOverride ??

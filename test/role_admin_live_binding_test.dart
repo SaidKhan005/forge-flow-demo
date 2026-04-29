@@ -279,6 +279,7 @@ void main() {
       expect(insertParams['scope_type'], equals('operator_wide'));
       // operator_wide grants must NOT bind a location_id.
       expect(insertParams['location_id'], isNull);
+      expect(insertParams['org_unit_id'], isNull);
       expect(
         tx.executedSql.last,
         equals(
@@ -311,6 +312,32 @@ void main() {
       final insertParams = tx.parameters[insertIdx];
       expect(insertParams['scope_type'], equals('location'));
       expect(insertParams['location_id'], equals(grantLoc));
+      expect(insertParams['org_unit_id'], isNull);
+    });
+
+    test('insertGrant org_unit scope binds scope_type=org_unit AND the '
+        'grantOrgUnitId', () async {
+      final pool = _RoleAdminPool(returningUserRoleId: _validUserRoleId);
+      final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+      const String grantOrgUnit = '77777777-7777-4777-8777-777777777777';
+      final id = await repo.insertGrant(
+        operatorId: _validOpId,
+        locationId: _validLocId,
+        actorUserId: _validUserId,
+        targetUserId: '99999999-9999-9999-9999-999999999999',
+        roleId: _validRoleId,
+        scopeType: UserRoleScope.orgUnit,
+        grantOrgUnitId: grantOrgUnit,
+      );
+      expect(id, equals(_validUserRoleId));
+      final tx = pool.transactions.single;
+      final insertIdx = tx.executedSql.indexWhere(
+        (sql) => sql.contains('insert into user_roles'),
+      );
+      final insertParams = tx.parameters[insertIdx];
+      expect(insertParams['scope_type'], equals('org_unit'));
+      expect(insertParams['location_id'], isNull);
+      expect(insertParams['org_unit_id'], equals(grantOrgUnit));
     });
 
     test('insertGrant location scope without grantLocationId throws '
@@ -333,6 +360,24 @@ void main() {
       );
       // No transaction was opened; the validation runs before
       // withTenant().
+      expect(pool.transactions, isEmpty);
+    });
+
+    test('insertGrant org_unit scope without grantOrgUnitId throws '
+        'ArgumentError synchronously before any SQL runs', () {
+      final pool = _RoleAdminPool(returningUserRoleId: _validUserRoleId);
+      final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+      expect(
+        () => repo.insertGrant(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+          targetUserId: '99999999-9999-9999-9999-999999999999',
+          roleId: _validRoleId,
+          scopeType: UserRoleScope.orgUnit,
+        ),
+        throwsArgumentError,
+      );
       expect(pool.transactions, isEmpty);
     });
 

@@ -198,8 +198,8 @@ The B42 `/health` envelope reserves a `rollup_freshness_per_grain`
 key. The payload is produced by `RollupFreshnessReporter.snapshot()`
 in `lib/services/rollups/rollup_worker.dart` — one read against
 `aggregation_state`, one entry per locked Q3.3 grain. The route
-wiring is owned by B42; B45 owns the data shape and severity
-bucketing described here.
+envelope is owned by B42; B45 owns the producer wiring, data shape, UI
+integration, and severity bucketing described here.
 
 ### Envelope shape
 

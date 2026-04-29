@@ -118,8 +118,9 @@ shadow and canary.
 The `tool/vector_index_health/vector_index_health.dart` helper
 materializes the field set above as `VectorIndexHealthSnapshot` and
 derives `recommended_action` from the Q20 trigger families. The
-helper is the data shape the B42 `/health` route will read; B47
-lands the helper, B42 wires the route.
+helper is the data shape the B42 `/health` envelope will read once the
+vector producer wiring lands. B47 lands the helper/benchmark artifact; B42
+reserves the route envelope and metric keys.
 
 The helper requires every snapshot to carry an explicit
 `VectorIndexHealthBudgets` instance and an `evaluation_time`. There

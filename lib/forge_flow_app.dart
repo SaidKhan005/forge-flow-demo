@@ -1,15 +1,26 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'auth/auth_session.dart';
+import 'auth/permission_effect.dart';
 import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
+import 'services/auth/auth_operations_gateway.dart';
+import 'services/auth/password_change_gateway.dart';
+import 'services/auth/proxy_permission_snapshot_loader.dart';
 import 'services/business_date_authority_service.dart';
+import 'services/mfa/mfa_operations_gateway.dart';
 import 'services/shift_data_source.dart';
+import 'services/team/team_scope_visibility_policy.dart';
 import 'state/active_target_profile_notifier.dart';
 import 'state/app_refresh_coordinator.dart';
 import 'state/app_runtime_invalidation_bus.dart';
+import 'state/auth_session_notifier.dart';
 import 'state/demand_forecast_context_notifier.dart';
+import 'state/permission_context.dart';
 import 'state/restaurant_scope_notifier.dart';
 import 'state/schedule_distribution_weights_notifier.dart';
 import 'state/shift_dashboard_notifier.dart';
@@ -18,26 +29,54 @@ import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_r
 import 'infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_week_record_repository.dart';
 import 'screens/baseline_tracker.dart';
+import 'screens/auth/auth_permission_context_bridge.dart';
+import 'screens/auth/auth_gate.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
+import 'screens/team/team_settings_section.dart';
 import 'screens/variance_report.dart';
 import 'services/current_state_boundary_monitor.dart';
 import 'theme/app_theme.dart';
 
 /// Shared Forge & Flow runtime that can run standalone or inside Barrio.
 class ForgeFlowApp extends StatelessWidget {
-  const ForgeFlowApp({super.key});
+  const ForgeFlowApp({
+    super.key,
+    this.requireAuth = false,
+    this.permissionContextLoader,
+    this.authOperationsGateway,
+    this.passwordChangeGateway,
+    this.mfaOperationsGateway,
+  });
+
+  final bool requireAuth;
+  final PermissionContextLoader? permissionContextLoader;
+  final AuthOperationsGateway? authOperationsGateway;
+  final PasswordChangeGateway? passwordChangeGateway;
+  final MfaOperationsGateway? mfaOperationsGateway;
 
   @override
   Widget build(BuildContext context) {
+    final shell = AppShell(
+      authOperationsGateway: authOperationsGateway,
+      passwordChangeGateway: passwordChangeGateway,
+      mfaOperationsGateway: mfaOperationsGateway,
+    );
     return ForgeFlowScope(
       child: MaterialApp(
         title: 'Forge & Flow',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
-        home: const AppShell(),
+        home: requireAuth
+            ? AuthGate(
+                authenticatedChild: AuthPermissionContextBridge(
+                  permissionContextLoader: permissionContextLoader,
+                  child: shell,
+                ),
+              )
+            : shell,
       ),
     );
   }
@@ -79,7 +118,8 @@ class ForgeFlowScope extends StatelessWidget {
               weekRepo: SqliteWeekRecordRepository.instance,
               shiftRepo: SqliteShiftRecordRepository.instance,
             );
-            notifier.load(); // fire-and-forget; Schedule uses fallback until ready
+            notifier
+                .load(); // fire-and-forget; Schedule uses fallback until ready
             return notifier;
           },
         ),
@@ -93,8 +133,11 @@ class ForgeFlowScope extends StatelessWidget {
         // ProxyProvider2: when EITHER ActiveTargetProfileNotifier changes
         // OR the runtime invalidation bus fires, the coordinator refreshes
         // current-state surfaces (week, shift) through one shared rule.
-        ProxyProvider2<ActiveTargetProfileNotifier,
-            AppRuntimeInvalidationBus, AppRefreshCoordinator>(
+        ProxyProvider2<
+          ActiveTargetProfileNotifier,
+          AppRuntimeInvalidationBus,
+          AppRefreshCoordinator
+        >(
           create: (ctx) => AppRefreshCoordinator(
             restaurantScope: ctx.read<RestaurantScopeNotifier>(),
             activeTarget: ctx.read<ActiveTargetProfileNotifier>(),
@@ -116,6 +159,9 @@ class ForgeFlowScope extends StatelessWidget {
 
 class AppShell extends StatefulWidget {
   final bool embeddedInBarrio;
+  final AuthOperationsGateway? authOperationsGateway;
+  final PasswordChangeGateway? passwordChangeGateway;
+  final MfaOperationsGateway? mfaOperationsGateway;
 
   /// Test-only: override business-date resolution for the boundary
   /// monitor. When provided, the monitor uses this resolver instead
@@ -126,6 +172,9 @@ class AppShell extends StatefulWidget {
   const AppShell({
     super.key,
     this.embeddedInBarrio = false,
+    this.authOperationsGateway,
+    this.passwordChangeGateway,
+    this.mfaOperationsGateway,
     this.testBusinessDateResolver,
   });
 
@@ -135,6 +184,23 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  List<TeamRoleOption> _teamRoleOptions =
+      TeamSettingsSection.defaultRoleOptions;
+  late final ValueNotifier<List<TeamRoleOption>> _teamRoleOptionsListenable =
+      ValueNotifier<List<TeamRoleOption>>(_teamRoleOptions);
+  List<TeamUserListItem> _teamUsers = const <TeamUserListItem>[];
+  late final ValueNotifier<List<TeamUserListItem>> _teamUsersListenable =
+      ValueNotifier<List<TeamUserListItem>>(_teamUsers);
+  List<TeamPendingInviteListItem> _teamPendingInvites =
+      const <TeamPendingInviteListItem>[];
+  late final ValueNotifier<List<TeamPendingInviteListItem>>
+  _teamPendingInvitesListenable =
+      ValueNotifier<List<TeamPendingInviteListItem>>(_teamPendingInvites);
+  Map<String, String> _teamRoleIdsByKey = const <String, String>{};
+  String? _teamRolesLoadedFor;
+  String? _teamRolesLoadingFor;
+  String? _teamDataLoadedFor;
+  String? _teamDataLoadingFor;
 
   /// Tracks whether the app has been backgrounded at least once.
   /// Prevents the cold-start `resumed` callback from triggering a
@@ -165,13 +231,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void _initBoundaryMonitor() {
     if (!mounted) return;
     _boundaryMonitor = CurrentStateBoundaryMonitor(
-      resolveBusinessDate: widget.testBusinessDateResolver ??
+      resolveBusinessDate:
+          widget.testBusinessDateResolver ??
           BusinessDateAuthorityService.instance.resolveBusinessDate,
       onBoundaryChanged: () {
         if (mounted) {
-          context
-              .read<AppRefreshCoordinator>()
-              .refreshCurrentStateSurfaces();
+          context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces();
         }
       },
     );
@@ -181,6 +246,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     _boundaryMonitor?.stop();
+    _teamRoleOptionsListenable.dispose();
+    _teamUsersListenable.dispose();
+    _teamPendingInvitesListenable.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -227,7 +295,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     setState(() => _selectedIndex = index);
   }
 
-  void _openSettings(BuildContext context) {
+  Future<void> _openSettings(BuildContext context) async {
     // In debug builds, wire the dev-only Settings sections by passing
     // their respective services:
     //   * `AdvisorModelConfigService` powers the ADVISOR MODELS section
@@ -240,14 +308,349 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // service instance are present.
     final advisorConfig = kDebugMode ? AdvisorModelConfigService() : null;
     final corpusAdmin = kDebugMode ? AdvisorCorpusAdminService() : null;
-    Navigator.of(context).push(
+    final authNotifier = context.read<AuthSessionNotifier>();
+    final session = authNotifier.session;
+    final teamActor = _teamActorFromContext(context);
+    final restaurant = context.read<RestaurantScopeNotifier>().restaurant;
+    final navigator = Navigator.of(context);
+    if (session != null &&
+        teamActor != null &&
+        TeamScopeVisibilityPolicy.canSeeTeamNav(teamActor)) {
+      unawaited(_loadTeamRoleOptionsIfNeeded(session));
+      unawaited(_loadTeamDataIfNeeded(session));
+    }
+    if (!mounted) return;
+    navigator.push(
       MaterialPageRoute(
         builder: (_) => SettingsScreen(
           advisorModelConfigService: advisorConfig,
           advisorCorpusAdminService: corpusAdmin,
+          teamActor: teamActor,
+          teamRoleOptions: _teamRoleOptions,
+          teamRoleOptionsListenable: _teamRoleOptionsListenable,
+          teamLocationOptions: session == null
+              ? const <TeamLocationOption>[]
+              : <TeamLocationOption>[
+                  TeamLocationOption(
+                    locationId: session.locationId,
+                    label: restaurant?.displayName ?? 'Current location',
+                  ),
+                ],
+          teamUsers: _teamUsers,
+          teamUsersListenable: _teamUsersListenable,
+          teamPendingInvites: _teamPendingInvites,
+          teamPendingInvitesListenable: _teamPendingInvitesListenable,
+          onTeamInviteSubmitted: _teamInviteSubmitter(session),
+          onTeamInviteRevoked: _teamInviteRevoker(session),
+          onTeamUserAction: _teamUserActionHandler(session),
+          passwordChangeGateway: widget.passwordChangeGateway,
         ),
         fullscreenDialog: true,
       ),
+    );
+  }
+
+  TeamScopeActor? _teamActorFromContext(BuildContext context) {
+    final session = context.read<AuthSessionNotifier>().session;
+    if (session == null) return null;
+    PermissionContext? permissionContext;
+    try {
+      permissionContext = Provider.of<PermissionContext>(
+        context,
+        listen: false,
+      );
+    } on ProviderNotFoundException {
+      return _teamActorFromSession(session, const <String>{});
+    }
+    final permissions = permissionContext.snapshot.entries.entries
+        .where((entry) => entry.value == PermissionEffect.allow)
+        .map((entry) => entry.key)
+        .toSet();
+    return _teamActorFromSession(session, permissions);
+  }
+
+  TeamScopeActor _teamActorFromSession(
+    AuthSession session,
+    Set<String> permissions,
+  ) {
+    final roles = session.roles.toSet();
+    if (!roles.contains('super_admin') &&
+        !roles.contains('ff_support') &&
+        !roles.contains('operator_owner') &&
+        !roles.contains('operator_manager')) {
+      if (permissions.contains('team.roles.create_custom') ||
+          permissions.contains('team.users.soft_delete')) {
+        roles.add('operator_owner');
+      } else if (permissions.contains('team.users.view')) {
+        roles.add('operator_manager');
+      }
+    }
+    final isOperatorWide =
+        roles.contains('operator_owner') ||
+        roles.contains('super_admin') ||
+        roles.contains('ff_support');
+    return TeamScopeActor(
+      actorRoles: roles,
+      actorOperatorId: session.operatorId,
+      actorAssignedLocationIds: isOperatorWide
+          ? const <String>{}
+          : <String>{session.locationId},
+      actorPermissions: permissions,
+    );
+  }
+
+  Future<void> _loadTeamRoleOptionsIfNeeded(AuthSession session) async {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null) return;
+    final key = '${session.userId}|${session.operatorId}|${session.locationId}';
+    if (_teamRolesLoadedFor == key) return;
+    if (_teamRolesLoadingFor == key) return;
+    _teamRolesLoadingFor = key;
+    try {
+      final listed = await gateway.listRoles(
+        TeamRoleCatalogListCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+        ),
+      );
+      if (!mounted) return;
+      final roles = listed.roles;
+      if (roles.isEmpty) return;
+      final nextOptions = roles
+          .map(
+            (role) =>
+                TeamRoleOption(roleId: role.roleId, label: role.displayName),
+          )
+          .toList(growable: false);
+      final nextRoleIdsByKey = <String, String>{
+        for (final role in roles) role.roleKey: role.roleId,
+      };
+      setState(() {
+        _teamRolesLoadedFor = key;
+        _teamRoleOptions = nextOptions;
+        _teamRoleIdsByKey = nextRoleIdsByKey;
+      });
+      _teamRoleOptionsListenable.value = nextOptions;
+    } catch (error) {
+      debugPrint('Team role catalog load failed: $error');
+    } finally {
+      if (_teamRolesLoadingFor == key) _teamRolesLoadingFor = null;
+    }
+  }
+
+  Future<void> _loadTeamDataIfNeeded(
+    AuthSession session, {
+    bool force = false,
+  }) async {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null) return;
+    final key = '${session.userId}|${session.operatorId}|${session.locationId}';
+    if (!force && _teamDataLoadedFor == key) return;
+    if (_teamDataLoadingFor == key) return;
+    _teamDataLoadingFor = key;
+    try {
+      final users = await gateway.listUsers(
+        TeamUserListCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+        ),
+      );
+      final invites = await gateway.listInvites(
+        TeamInviteListCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+        ),
+      );
+      if (!mounted) return;
+      final nextUsers = users.users
+          .map(_teamUserFromEntry)
+          .toList(growable: false);
+      final nextInvites = invites.invites
+          .map(_teamInviteFromEntry)
+          .toList(growable: false);
+      setState(() {
+        _teamDataLoadedFor = key;
+        _teamUsers = nextUsers;
+        _teamPendingInvites = nextInvites;
+      });
+      _teamUsersListenable.value = nextUsers;
+      _teamPendingInvitesListenable.value = nextInvites;
+    } catch (error) {
+      debugPrint('Team data load failed: $error');
+    } finally {
+      if (_teamDataLoadingFor == key) _teamDataLoadingFor = null;
+    }
+  }
+
+  TeamUserListItem _teamUserFromEntry(TeamUserListEntry entry) {
+    return TeamUserListItem(
+      userId: entry.userId,
+      email: entry.email,
+      displayName: entry.displayName,
+      roleId: entry.roleId,
+      roleLabel: entry.roleLabel,
+      status: entry.status,
+      locationId: entry.locationId,
+      locationLabel: entry.locationLabel,
+      mfaEnrolled: entry.mfaEnrolled,
+      userRoleId: entry.userRoleId,
+      lastActiveAt: entry.lastActiveAt,
+    );
+  }
+
+  TeamPendingInviteListItem _teamInviteFromEntry(TeamInviteListEntry entry) {
+    return TeamPendingInviteListItem(
+      inviteId: entry.inviteId,
+      email: entry.email,
+      roleId: entry.roleId,
+      roleLabel: entry.roleLabel,
+      scopeType: entry.scopeType,
+      locationId: entry.locationId,
+      locationLabel: entry.locationLabel,
+      expiresAt: entry.expiresAt,
+    );
+  }
+
+  TeamInviteSubmitter? _teamInviteSubmitter(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (payload) async {
+      final email = payload['email'];
+      final roleIdOrKey = payload['role_id'];
+      final scopeType = payload['scope_type'];
+      final targetLocationId = payload['location_id'];
+      final targetOrgUnitId = payload['org_unit_id'];
+      if (email is! String || roleIdOrKey is! String || scopeType is! String) {
+        throw StateError('Invite form payload was incomplete.');
+      }
+      final resolvedRoleId = _teamRoleIdsByKey[roleIdOrKey] ?? roleIdOrKey;
+      if (resolvedRoleId.startsWith('operator_')) {
+        throw StateError('Team role catalog is still loading. Try again.');
+      }
+      final created = await gateway.createInvite(
+        TeamInviteCreateCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          email: email,
+          roleId: resolvedRoleId,
+          scopeType: scopeType,
+          targetLocationId: targetLocationId is String
+              ? targetLocationId
+              : null,
+          targetOrgUnitId: targetOrgUnitId is String ? targetOrgUnitId : null,
+        ),
+      );
+      unawaited(_loadTeamDataIfNeeded(session, force: true));
+      return created;
+    };
+  }
+
+  TeamInviteRevoker? _teamInviteRevoker(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (inviteId) async {
+      await gateway.revokeInvite(
+        TeamInviteRevokeCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          inviteId: inviteId,
+        ),
+      );
+      unawaited(_loadTeamDataIfNeeded(session, force: true));
+    };
+  }
+
+  TeamUserActionHandler? _teamUserActionHandler(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (request) async {
+      switch (request.action) {
+        case TeamUserAction.suspend:
+          await gateway.suspendUser(_teamUserStatusCommand(session, request));
+        case TeamUserAction.reactivate:
+          await gateway.reactivateUser(
+            _teamUserStatusCommand(session, request),
+          );
+        case TeamUserAction.softDelete:
+          await gateway.softDeleteUser(
+            _teamUserStatusCommand(session, request),
+          );
+        case TeamUserAction.resetPassword:
+          await gateway.requestPasswordReset(
+            TeamPasswordResetCommand(
+              actorUserId: session.userId,
+              operatorId: session.operatorId,
+              locationId: session.locationId,
+              targetUserId: request.user.userId,
+            ),
+          );
+        case TeamUserAction.createRoleGrant:
+          final roleId = request.roleId;
+          final scopeType = request.scopeType;
+          if (roleId == null || scopeType == null) {
+            throw StateError('Team role action was incomplete.');
+          }
+          final replaceId = request.replaceUserRoleId;
+          if (replaceId != null && replaceId.isNotEmpty) {
+            await gateway.revokeRoleGrant(
+              TeamRoleGrantRevokeCommand(
+                actorUserId: session.userId,
+                operatorId: session.operatorId,
+                locationId: session.locationId,
+                userRoleId: replaceId,
+                targetUserId: request.user.userId,
+                reason: request.reason,
+              ),
+            );
+          }
+          await gateway.createRoleGrant(
+            TeamRoleGrantCreateCommand(
+              actorUserId: session.userId,
+              operatorId: session.operatorId,
+              locationId: session.locationId,
+              targetUserId: request.user.userId,
+              roleId: roleId,
+              scopeType: scopeType,
+              targetLocationId: request.locationId,
+              reason: request.reason,
+            ),
+          );
+        case TeamUserAction.revokeRoleGrant:
+          final userRoleId =
+              request.replaceUserRoleId ?? request.user.userRoleId;
+          if (userRoleId == null || userRoleId.isEmpty) {
+            throw StateError('Team role revoke was missing a grant id.');
+          }
+          await gateway.revokeRoleGrant(
+            TeamRoleGrantRevokeCommand(
+              actorUserId: session.userId,
+              operatorId: session.operatorId,
+              locationId: session.locationId,
+              userRoleId: userRoleId,
+              targetUserId: request.user.userId,
+              reason: request.reason,
+            ),
+          );
+      }
+      unawaited(_loadTeamDataIfNeeded(session, force: true));
+    };
+  }
+
+  TeamUserStatusCommand _teamUserStatusCommand(
+    AuthSession session,
+    TeamUserActionRequest request,
+  ) {
+    return TeamUserStatusCommand(
+      actorUserId: session.userId,
+      operatorId: session.operatorId,
+      locationId: session.locationId,
+      targetUserId: request.user.userId,
+      reason: request.reason ?? 'settings_team_action',
     );
   }
 
@@ -343,36 +746,36 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
 
     return Scaffold(
-        backgroundColor: AppColors.backgroundDeep,
-        appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
-        body: SafeArea(
-          top: !widget.embeddedInBarrio,
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: [
-              KeyedSubtree(
-                key: ValueKey('shift-$revision'),
-                child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
-              ),
-              KeyedSubtree(
-                key: ValueKey('variance-$revision'),
-                child: const VarianceReport(),
-              ),
-              KeyedSubtree(
-                key: ValueKey('schedule-$revision'),
-                child: const ScheduleBuilder(),
-              ),
-              KeyedSubtree(
-                key: ValueKey('baseline-$revision'),
-                child: const BaselineTracker(),
-              ),
-            ],
-          ),
+      backgroundColor: AppColors.backgroundDeep,
+      appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
+      body: SafeArea(
+        top: !widget.embeddedInBarrio,
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            KeyedSubtree(
+              key: ValueKey('shift-$revision'),
+              child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
+            ),
+            KeyedSubtree(
+              key: ValueKey('variance-$revision'),
+              child: const VarianceReport(),
+            ),
+            KeyedSubtree(
+              key: ValueKey('schedule-$revision'),
+              child: const ScheduleBuilder(),
+            ),
+            KeyedSubtree(
+              key: ValueKey('baseline-$revision'),
+              child: const BaselineTracker(),
+            ),
+          ],
         ),
-        bottomNavigationBar: _AppBottomNav(
-          selectedIndex: _selectedIndex,
-          onTap: _navigateTo,
-        ),
+      ),
+      bottomNavigationBar: _AppBottomNav(
+        selectedIndex: _selectedIndex,
+        onTap: _navigateTo,
+      ),
     );
   }
 }
@@ -388,10 +791,7 @@ class _AppBottomNav extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         border: Border(
-          top: BorderSide(
-            color: AppColors.borderSubtle,
-            width: 1,
-          ),
+          top: BorderSide(color: AppColors.borderSubtle, width: 1),
         ),
       ),
       child: BottomNavigationBar(

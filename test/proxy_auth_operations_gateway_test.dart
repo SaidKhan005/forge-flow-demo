@@ -64,6 +64,112 @@ void main() {
       },
     );
 
+    test('createInvite can POST org-unit scope', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: ProxyAuthOperationsResponse(
+          statusCode: 201,
+          body: <String, Object?>{
+            'invite_id': 'invite-org-1',
+            'expires_at': DateTime.utc(2026, 5, 5, 12).toIso8601String(),
+          },
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      await gateway.createInvite(
+        const TeamInviteCreateCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          email: 'regional.user@example.test',
+          roleId: 'role-1',
+          scopeType: 'org_unit',
+          targetOrgUnitId: 'org-unit-1',
+        ),
+      );
+
+      expect(fake.posts.single.body, containsPair('org_unit_id', 'org-unit-1'));
+      expect(fake.posts.single.body.containsKey('location_id'), isFalse);
+    });
+
+    test('lists team users and pending invites from GET routes', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        getResponses: <ProxyAuthOperationsResponse>[
+          ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'users': <Object?>[
+                <String, Object?>{
+                  'user_id': 'user-1',
+                  'email': 'jane@example.test',
+                  'display_name': 'Jane Owner',
+                  'role_id': 'role-1',
+                  'role_label': 'Owner',
+                  'status': 'active',
+                  'location_id': null,
+                  'location_label': null,
+                  'mfa_enrolled': true,
+                  'user_role_id': 'grant-1',
+                  'last_active_at': DateTime.utc(
+                    2026,
+                    4,
+                    29,
+                    12,
+                  ).toIso8601String(),
+                },
+              ],
+            },
+          ),
+          ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'invites': <Object?>[
+                <String, Object?>{
+                  'invite_id': 'invite-1',
+                  'email': 'new@example.test',
+                  'role_id': 'role-2',
+                  'role_label': 'Staff',
+                  'scope_type': 'operator_wide',
+                  'expires_at': DateTime.utc(2026, 5, 6).toIso8601String(),
+                  'created_at': DateTime.utc(2026, 4, 29).toIso8601String(),
+                },
+              ],
+            },
+          ),
+        ],
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final users = await gateway.listUsers(
+        const TeamUserListCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+        ),
+      );
+      final invites = await gateway.listInvites(
+        const TeamInviteListCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+        ),
+      );
+
+      expect(users.users.single.userRoleId, equals('grant-1'));
+      expect(users.users.single.mfaEnrolled, isTrue);
+      expect(invites.invites.single.inviteId, equals('invite-1'));
+      expect(fake.gets.first.url.path, equals(proxy.adminAuthUsersPath));
+      expect(fake.gets.last.url.path, equals(proxy.adminAuthInvitesPath));
+    });
+
     test('createInvite maps proxy rejection to narrow error code', () async {
       final fake = _FakeAuthOpsHttpClient(
         postResponse: const ProxyAuthOperationsResponse(
@@ -210,6 +316,36 @@ void main() {
         expect(fake.deletes.single.body['user_id'], equals('target-user'));
       },
     );
+
+    test('createRoleGrant can POST org-unit scope', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 201,
+          body: <String, Object?>{'user_role_id': 'grant-org-1'},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      await gateway.createRoleGrant(
+        const TeamRoleGrantCreateCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetUserId: 'target-user',
+          roleId: 'role-1',
+          scopeType: 'org_unit',
+          targetOrgUnitId: 'org-unit-1',
+        ),
+      );
+
+      expect(fake.posts.single.body['scope_type'], equals('org_unit'));
+      expect(fake.posts.single.body['org_unit_id'], equals('org-unit-1'));
+      expect(fake.posts.single.body.containsKey('location_id'), isFalse);
+    });
 
     test('role catalog CRUD uses the custom role route contract', () async {
       final roleJson = <String, Object?>{
@@ -364,6 +500,7 @@ Future<Object?> _captureError(Future<void> future) async {
 class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
   _FakeAuthOpsHttpClient({
     ProxyAuthOperationsResponse? getResponse,
+    List<ProxyAuthOperationsResponse>? getResponses,
     ProxyAuthOperationsResponse? postResponse,
     ProxyAuthOperationsResponse? patchResponse,
     ProxyAuthOperationsResponse? deleteResponse,
@@ -373,6 +510,9 @@ class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
              statusCode: 200,
              body: <String, Object?>{'roles': <Object?>[]},
            ),
+       _getResponses = getResponses == null
+           ? null
+           : List<ProxyAuthOperationsResponse>.of(getResponses),
        _postResponse =
            postResponse ??
            const ProxyAuthOperationsResponse(
@@ -394,12 +534,14 @@ class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
 
   _FakeAuthOpsHttpClient.throws(Object error)
     : _getResponse = null,
+      _getResponses = null,
       _postResponse = null,
       _patchResponse = null,
       _deleteResponse = null,
       _error = error;
 
   final ProxyAuthOperationsResponse? _getResponse;
+  final List<ProxyAuthOperationsResponse>? _getResponses;
   final ProxyAuthOperationsResponse? _postResponse;
   final ProxyAuthOperationsResponse? _patchResponse;
   final ProxyAuthOperationsResponse? _deleteResponse;
@@ -423,6 +565,10 @@ class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
         body: const <String, Object?>{},
       ),
     );
+    final queued = _getResponses;
+    if (queued != null && queued.isNotEmpty) {
+      return queued.removeAt(0);
+    }
     return _getResponse!;
   }
 

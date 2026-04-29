@@ -28,6 +28,7 @@
 // resolver lands. 9.3 only carries the role list straight from the
 // JWT claims.
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart' as crypto;
@@ -89,8 +90,7 @@ class AuthSessionNotifier extends ChangeNotifier {
        // either the scaffold-failing default (fail-closed) or the
        // RepositoryAuthSessionLedgerWriter once the Postgres pool
        // is wired.
-       _ledgerWriter =
-           ledgerWriter ?? InMemoryAuthSessionLedgerWriter(),
+       _ledgerWriter = ledgerWriter ?? InMemoryAuthSessionLedgerWriter(),
        _now = now ?? DateTime.now,
        _freshnessWindow = freshnessWindow,
        _ledgerContextFactory =
@@ -149,7 +149,9 @@ class AuthSessionNotifier extends ChangeNotifier {
     } on StateError catch (error) {
       // Scaffold storage is wired; treat as "no persistence" for now.
       // The error message stays in process logs, never in the UI.
-      debugPrint('AuthSessionNotifier.rehydrate storage error: ${error.message}');
+      debugPrint(
+        'AuthSessionNotifier.rehydrate storage error: ${error.message}',
+      );
       loaded = null;
     } catch (_) {
       loaded = null;
@@ -254,10 +256,10 @@ class AuthSessionNotifier extends ChangeNotifier {
       //   * Low-friction UX is preserved on the success path: when
       //     ledger + storage are both wired correctly, neither
       //     failure branch fires and the user sees no extra prompt.
-      String issuedSessionId;
+      AuthSessionLedgerLoginRecord recordedLogin;
       try {
         final hash = _idTokenHashOf(result.session);
-        issuedSessionId = await _ledgerWriter.recordLogin(
+        recordedLogin = await _ledgerWriter.recordLoginAndResolveScope(
           AuthSessionLedgerLogin(
             userId: result.session.userId,
             operatorId: result.session.operatorId,
@@ -297,19 +299,25 @@ class AuthSessionNotifier extends ChangeNotifier {
       // envelope. From here on, storage failures are non-fatal — the
       // ledger row already exists and the in-memory session keeps the
       // user productive for this launch.
+      final issuedSessionId = recordedLogin.sessionId;
+      final effectiveSession = result.session.copyWith(
+        userId: recordedLogin.userId,
+        operatorId: recordedLogin.operatorId,
+        locationId: recordedLogin.locationId,
+      );
       _activeSessionId = issuedSessionId;
       try {
         await _storage.writeEnvelope(
           StoredAuthSession(
-            session: result.session,
+            session: effectiveSession,
             authSessionId: issuedSessionId,
           ),
         );
       } catch (error) {
         debugPrint('AuthSessionNotifier.signIn storage error: $error');
       }
-      _setState(AuthSessionAuthenticated(result.session));
-      return result;
+      _setState(AuthSessionAuthenticated(effectiveSession));
+      return AuthLoginSuccess(effectiveSession);
     } else if (result is AuthLoginMfaRequired) {
       _setState(
         AuthSessionMfaChallenge(
@@ -329,6 +337,10 @@ class AuthSessionNotifier extends ChangeNotifier {
       return result;
     }
     return result;
+  }
+
+  Future<void> requestPasswordReset({required String email}) {
+    return _loginService.requestPasswordReset(email: email);
   }
 
   /// Returns the live session iff it is authenticated AND the
@@ -407,23 +419,28 @@ class AuthSessionNotifier extends ChangeNotifier {
   Future<void> signOutThisSession() async {
     final live = session;
     final activeId = _activeSessionId;
+    if (live != null && activeId != null) {
+      try {
+        _logSignOutBackgroundError(
+          _ledgerWriter.revokeSession(
+            sessionId: activeId,
+            userId: live.userId,
+            operatorId: live.operatorId,
+            locationId: live.locationId,
+            reason: 'user_signed_out_this_session',
+          ),
+          'AuthSessionNotifier.signOutThisSession ledger error',
+        );
+      } catch (error) {
+        debugPrint(
+          'AuthSessionNotifier.signOutThisSession ledger error: $error',
+        );
+      }
+    }
     try {
       await _loginService.signOutThisSession();
     } catch (error) {
       debugPrint('AuthSessionNotifier.signOutThisSession error: $error');
-    }
-    if (live != null && activeId != null) {
-      try {
-        await _ledgerWriter.revokeSession(
-          sessionId: activeId,
-          userId: live.userId,
-          operatorId: live.operatorId,
-          locationId: live.locationId,
-          reason: 'user_signed_out_this_session',
-        );
-      } catch (error) {
-        debugPrint('AuthSessionNotifier.signOutThisSession ledger error: $error');
-      }
     }
     _activeSessionId = null;
     try {
@@ -438,21 +455,39 @@ class AuthSessionNotifier extends ChangeNotifier {
   /// device is signed out as a side effect.
   Future<void> signOutAllSessions() async {
     final live = session;
+    if (live != null) {
+      try {
+        _logSignOutBackgroundError(
+          _ledgerWriter
+              .revokeAllSessionsForUser(
+                userId: live.userId,
+                operatorId: live.operatorId,
+                locationId: live.locationId,
+                reason: 'user_signed_out_all_sessions',
+              )
+              .then<void>((_) {}),
+          'AuthSessionNotifier.signOutAllSessions ledger error',
+        );
+      } catch (error) {
+        debugPrint(
+          'AuthSessionNotifier.signOutAllSessions ledger error: $error',
+        );
+      }
+    }
+    var signedOutLocally = false;
     try {
       await _loginService.signOutAllSessions();
+      signedOutLocally = true;
     } catch (error) {
       debugPrint('AuthSessionNotifier.signOutAllSessions error: $error');
     }
-    if (live != null) {
+    if (!signedOutLocally) {
       try {
-        await _ledgerWriter.revokeAllSessionsForUser(
-          userId: live.userId,
-          operatorId: live.operatorId,
-          locationId: live.locationId,
-          reason: 'user_signed_out_all_sessions',
-        );
+        await _loginService.signOutThisSession();
       } catch (error) {
-        debugPrint('AuthSessionNotifier.signOutAllSessions ledger error: $error');
+        debugPrint(
+          'AuthSessionNotifier.signOutAllSessions fallback error: $error',
+        );
       }
     }
     _activeSessionId = null;
@@ -462,6 +497,14 @@ class AuthSessionNotifier extends ChangeNotifier {
       /* ignore */
     }
     _setState(const AuthSessionUnauthenticated());
+  }
+
+  void _logSignOutBackgroundError(Future<void> operation, String label) {
+    unawaited(
+      operation.catchError((Object error) {
+        debugPrint('$label: $error');
+      }),
+    );
   }
 
   void _setState(AuthSessionState next) {

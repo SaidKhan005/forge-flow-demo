@@ -20,6 +20,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/proxy_auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/proxy_refresh_token_revoker.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart' as proxy;
 
@@ -80,6 +81,40 @@ void main() {
         expect(call.body['token_hash'], equals('sha256-hex-hash'));
       },
     );
+
+    test('recordLoginAndResolveScope returns canonical proxy scope when '
+        'the local user id is still the Firebase UID', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'session_id': 'session-from-proxy',
+            'user_id': 'postgres-user-id',
+            'operator_id': 'op',
+            'location_id': 'loc',
+          },
+        ),
+      );
+      final writer = ProxyAuthSessionLedgerWriter(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'live-id-token',
+        httpClient: fake,
+      );
+
+      final record = await writer.recordLoginAndResolveScope(
+        const AuthSessionLedgerLogin(
+          userId: 'firebase-uid',
+          operatorId: 'op',
+          locationId: 'loc',
+          tokenHash: 'sha256-hex-hash',
+        ),
+      );
+
+      expect(record.sessionId, equals('session-from-proxy'));
+      expect(record.userId, equals('postgres-user-id'));
+      expect(record.operatorId, equals('op'));
+      expect(record.locationId, equals('loc'));
+    });
 
     test('non-200 response maps to ProxyAuthSessionLedgerError with the '
         "proxy's error code + status code", () async {
@@ -544,6 +579,75 @@ void main() {
         expect(keys.first, isNot(equals(keys.last)));
       },
     );
+  });
+
+  group('ProxyRefreshTokenRevoker', () {
+    test('POSTs an empty body to the refresh-token revoke-all route', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true},
+        ),
+      );
+      final revoker = ProxyRefreshTokenRevoker(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'live-id-token',
+        httpClient: fake,
+        idempotencyKeyFactory: () => 'idempotency-refresh-revoke',
+      );
+
+      await revoker.revokeAllRefreshTokens();
+
+      final call = fake.calls.single;
+      expect(
+        call.url.toString(),
+        equals(
+          'https://forge-flow-proxy.example.com'
+          '/v1/auth/refresh-tokens/revoke-all',
+        ),
+      );
+      expect(
+        call.headers[HttpHeaders.authorizationHeader],
+        equals('Bearer live-id-token'),
+      );
+      expect(
+        call.headers['Idempotency-Key'],
+        equals('idempotency-refresh-revoke'),
+      );
+      expect(call.body, isEmpty);
+    });
+
+    test('route path matches the proxy constant', () {
+      expect(
+        ProxyRefreshTokenRevoker.revokeAllPath,
+        equals(proxy.authRefreshTokensRevokeAllPath),
+      );
+    });
+
+    test('missing ID token maps to no_id_token before any HTTP call', () async {
+      final fake = _FakeProxyHttpJsonClient(
+        respondWith: const ProxyHttpJsonResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true},
+        ),
+      );
+      final revoker = ProxyRefreshTokenRevoker(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => null,
+        httpClient: fake,
+      );
+
+      Object? thrown;
+      try {
+        await revoker.revokeAllRefreshTokens();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown, isA<ProxyAuthSessionLedgerError>());
+      expect((thrown! as ProxyAuthSessionLedgerError).code, 'no_id_token');
+      expect(fake.calls, isEmpty);
+    });
   });
 
   group('ScaffoldFailingProxyHttpJsonClient', () {

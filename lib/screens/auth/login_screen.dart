@@ -27,6 +27,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _submitting = false;
+  bool _requestingReset = false;
+  String? _localMessage;
+  bool _localMessageIsError = false;
 
   @override
   void dispose() {
@@ -42,7 +45,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty || password.isEmpty) {
       return;
     }
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _localMessage = null;
+    });
     try {
       await context.read<AuthSessionNotifier>().signInWithEmailPassword(
         email: email,
@@ -51,6 +57,44 @@ class _LoginScreenState extends State<LoginScreen> {
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _requestPasswordReset() async {
+    if (_submitting || _requestingReset) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _localMessage = 'Enter your email to reset your password.';
+        _localMessageIsError = true;
+      });
+      return;
+    }
+    setState(() {
+      _requestingReset = true;
+      _localMessage = null;
+    });
+    try {
+      await context.read<AuthSessionNotifier>().requestPasswordReset(
+        email: email,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localMessage =
+            'If that email is registered, a password reset link is on the way.';
+        _localMessageIsError = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _localMessage =
+            'Password reset could not be started. Please try again.';
+        _localMessageIsError = true;
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _requestingReset = false);
       }
     }
   }
@@ -86,6 +130,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 24),
                 if (errorMessage != null) ...[
                   _ErrorBanner(message: errorMessage),
+                  const SizedBox(height: 16),
+                ],
+                if (_localMessage != null) ...[
+                  _LoginMessageBanner(
+                    message: _localMessage!,
+                    isError: _localMessageIsError,
+                  ),
                   const SizedBox(height: 16),
                 ],
                 TextField(
@@ -126,11 +177,47 @@ class _LoginScreenState extends State<LoginScreen> {
                         )
                       : const Text('Sign in'),
                 ),
+                const SizedBox(height: 8),
+                TextButton(
+                  key: const Key('login_forgot_password_button'),
+                  onPressed: _submitting || _requestingReset
+                      ? null
+                      : _requestPasswordReset,
+                  child: _requestingReset
+                      ? const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Forgot password?'),
+                ),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+}
+
+class _LoginMessageBanner extends StatelessWidget {
+  const _LoginMessageBanner({required this.message, required this.isError});
+
+  final String message;
+  final bool isError;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isError ? const Color(0xFFB00020) : const Color(0xFF2E7D32);
+    return Container(
+      key: const Key('login_local_message_banner'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.2),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(message, style: const TextStyle(color: Colors.white)),
     );
   }
 }
@@ -150,10 +237,7 @@ class _ErrorBanner extends StatelessWidget {
         border: Border.all(color: const Color(0xFFB00020)),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(color: Colors.white),
-      ),
+      child: Text(message, style: const TextStyle(color: Colors.white)),
     );
   }
 }

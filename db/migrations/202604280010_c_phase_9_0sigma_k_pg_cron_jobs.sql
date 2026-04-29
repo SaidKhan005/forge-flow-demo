@@ -52,9 +52,10 @@
 --     or leased_until < now()` so two simultaneous cron firings on
 --     a misconfigured host do not both win the lease.
 --
--- This migration is local framework only — no live database
--- mutation. Live apply is queued behind 202604280010_a/b under the
--- Phase 9 live-mutation gate.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
+--   * First observed hot/cold rollup cron runs succeeded on both environments.
 
 begin;
 

@@ -127,87 +127,133 @@ void main() {
       },
     );
 
-    test('location_id custom claim is used before the fallback resolver',
-        () async {
-      const claimedLocationId = '55555555-5555-5555-5555-555555555555';
-      final client = _FakeFirebaseAuthClient(
-        nextSignInOutcome: FirebaseAuthSignInSucceeded(
-          buildCredential(
-            userId: _validUserId,
-            claims: const <String, Object?>{
-              'operator_id': _validOpId,
-              'location_id': claimedLocationId,
-              'roles_version': 9,
-            },
+    test(
+      'location_id custom claim is used before the fallback resolver',
+      () async {
+        const claimedLocationId = '55555555-5555-5555-5555-555555555555';
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: FirebaseAuthSignInSucceeded(
+            buildCredential(
+              userId: _validUserId,
+              claims: const <String, Object?>{
+                'operator_id': _validOpId,
+                'location_id': claimedLocationId,
+                'roles_version': 9,
+              },
+            ),
           ),
-        ),
-      );
-      final service = FirebaseAuthLoginService(
-        client: client,
-        locationResolver: const FixedAuthLocationResolver(_validLocId),
-      );
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
 
-      final result = await service.signInWithEmailPassword(
-        email: 'admin@example.test',
-        password: 'pw',
-      );
+        final result = await service.signInWithEmailPassword(
+          email: 'admin@example.test',
+          password: 'pw',
+        );
 
-      expect(result, isA<AuthLoginSuccess>());
-      expect(
-        (result as AuthLoginSuccess).session.locationId,
-        equals(claimedLocationId),
-      );
-    });
+        expect(result, isA<AuthLoginSuccess>());
+        expect(
+          (result as AuthLoginSuccess).session.locationId,
+          equals(claimedLocationId),
+        );
+      },
+    );
 
-    test('user_id custom claim maps Firebase uid to Postgres user uuid',
-        () async {
-      final client = _FakeFirebaseAuthClient(
-        nextSignInOutcome: FirebaseAuthSignInSucceeded(
-          buildCredential(
-            userId: 'firebase-uid-not-a-postgres-uuid',
-            claims: const <String, Object?>{
-              'user_id': _validUserId,
-              'operator_id': _validOpId,
-              'location_id': _validLocId,
-            },
+    test(
+      'user_id custom claim maps Firebase uid to Postgres user uuid',
+      () async {
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: FirebaseAuthSignInSucceeded(
+            buildCredential(
+              userId: 'firebase-uid-not-a-postgres-uuid',
+              claims: const <String, Object?>{
+                'user_id': _validUserId,
+                'operator_id': _validOpId,
+                'location_id': _validLocId,
+              },
+            ),
           ),
-        ),
-      );
-      final service = FirebaseAuthLoginService(
-        client: client,
-        locationResolver: const FixedAuthLocationResolver(_validLocId),
-      );
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
 
-      final result = await service.signInWithEmailPassword(
-        email: 'admin@example.test',
-        password: 'pw',
-      );
+        final result = await service.signInWithEmailPassword(
+          email: 'admin@example.test',
+          password: 'pw',
+        );
 
-      expect(result, isA<AuthLoginSuccess>());
-      expect((result as AuthLoginSuccess).session.userId, equals(_validUserId));
-    });
+        expect(result, isA<AuthLoginSuccess>());
+        expect(
+          (result as AuthLoginSuccess).session.userId,
+          equals(_validUserId),
+        );
+      },
+    );
 
-    test('signInWithEmailPassword RequiresMfa -> AuthLoginMfaRequired', () async {
-      final client = _FakeFirebaseAuthClient(
-        nextSignInOutcome: const FirebaseAuthSignInRequiresMfa(
-          mfaSessionToken: 'mfa-tok',
-          factorIds: <String>['totp-1'],
-        ),
-      );
-      final service = FirebaseAuthLoginService(
-        client: client,
-        locationResolver: const FixedAuthLocationResolver(_validLocId),
-      );
+    test(
+      'postgres_user_id custom claim maps Firebase uid to Postgres uuid',
+      () async {
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: FirebaseAuthSignInSucceeded(
+            buildCredential(
+              userId: 'firebase-uid-not-a-postgres-uuid',
+              claims: const <String, Object?>{
+                'postgres_user_id': _validUserId,
+                'operator_id': _validOpId,
+                'location_id': _validLocId,
+              },
+            ),
+          ),
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
 
-      final result = await service.signInWithEmailPassword(
-        email: 'mfa@example.test',
-        password: 'pw',
-      );
+        final result = await service.signInWithEmailPassword(
+          email: 'admin@example.test',
+          password: 'pw',
+        );
 
-      expect(result, isA<AuthLoginMfaRequired>());
-      expect((result as AuthLoginMfaRequired).mfaSessionToken, equals('mfa-tok'));
-      expect(result.factorIds, equals(<String>['totp-1']));
-    });
+        expect(result, isA<AuthLoginSuccess>());
+        expect(
+          (result as AuthLoginSuccess).session.userId,
+          equals(_validUserId),
+        );
+      },
+    );
+
+    test(
+      'signInWithEmailPassword RequiresMfa -> AuthLoginMfaRequired',
+      () async {
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: const FirebaseAuthSignInRequiresMfa(
+            mfaSessionToken: 'mfa-tok',
+            factorIds: <String>['totp-1'],
+          ),
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
+
+        final result = await service.signInWithEmailPassword(
+          email: 'mfa@example.test',
+          password: 'pw',
+        );
+
+        expect(result, isA<AuthLoginMfaRequired>());
+        expect(
+          (result as AuthLoginMfaRequired).mfaSessionToken,
+          equals('mfa-tok'),
+        );
+        expect(result.factorIds, equals(<String>['totp-1']));
+      },
+    );
 
     test('signInWithEmailPassword Failed -> AuthLoginFailure preserves code + '
         'message', () async {
@@ -232,33 +278,33 @@ void main() {
       expect(result.message, equals('Email or password is incorrect.'));
     });
 
-    test('missing operator_id custom claim -> invalid_claims AuthLoginFailure',
-        () async {
-      final client = _FakeFirebaseAuthClient(
-        nextSignInOutcome: FirebaseAuthSignInSucceeded(
-          buildCredential(
-            claims: const <String, Object?>{
-              'roles_version': 7,
-            },
+    test(
+      'missing operator_id custom claim -> invalid_claims AuthLoginFailure',
+      () async {
+        final client = _FakeFirebaseAuthClient(
+          nextSignInOutcome: FirebaseAuthSignInSucceeded(
+            buildCredential(
+              claims: const <String, Object?>{'roles_version': 7},
+            ),
           ),
-        ),
-      );
-      final service = FirebaseAuthLoginService(
-        client: client,
-        locationResolver: const FixedAuthLocationResolver(_validLocId),
-      );
+        );
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
 
-      final result = await service.signInWithEmailPassword(
-        email: 'a@b.c',
-        password: 'x',
-      );
+        final result = await service.signInWithEmailPassword(
+          email: 'a@b.c',
+          password: 'x',
+        );
 
-      expect(result, isA<AuthLoginFailure>());
-      expect((result as AuthLoginFailure).code, equals('invalid_claims'));
-      // Acceptance: the failure message references the missing claim
-      // by name so the operator can debug, without echoing claim values.
-      expect(result.message, contains('operator_id'));
-    });
+        expect(result, isA<AuthLoginFailure>());
+        expect((result as AuthLoginFailure).code, equals('invalid_claims'));
+        // Acceptance: the failure message references the missing claim
+        // by name so the operator can debug, without echoing claim values.
+        expect(result.message, contains('operator_id'));
+      },
+    );
 
     test('completeTotpChallenge Succeeded -> AuthLoginSuccess', () async {
       final client = _FakeFirebaseAuthClient(
@@ -279,10 +325,7 @@ void main() {
 
       expect(result, isA<AuthLoginSuccess>());
       expect(client.completeTotpCalls, equals(1));
-      expect(
-        (result as AuthLoginSuccess).session.userId,
-        equals(_validUserId),
-      );
+      expect((result as AuthLoginSuccess).session.userId, equals(_validUserId));
     });
 
     test('refreshSession preserves the live session location_id', () async {
@@ -314,26 +357,28 @@ void main() {
       expect(refreshed!.locationId, equals(_validLocId));
     });
 
-    test('refreshSession returns null when client has no refreshable session',
-        () async {
-      final client = _FakeFirebaseAuthClient(nextRefreshCredential: null);
-      final service = FirebaseAuthLoginService(
-        client: client,
-        locationResolver: const FixedAuthLocationResolver(_validLocId),
-      );
-      final live = AuthSession(
-        userId: _validUserId,
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        firebaseIdToken: 't',
-        issuedAt: DateTime.utc(2026, 4, 26),
-        expiresAt: DateTime.utc(2026, 4, 26, 1),
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26),
-        roles: const <String>[],
-        mfaEnrolled: false,
-      );
-      expect(await service.refreshSession(live), isNull);
-    });
+    test(
+      'refreshSession returns null when client has no refreshable session',
+      () async {
+        final client = _FakeFirebaseAuthClient(nextRefreshCredential: null);
+        final service = FirebaseAuthLoginService(
+          client: client,
+          locationResolver: const FixedAuthLocationResolver(_validLocId),
+        );
+        final live = AuthSession(
+          userId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          firebaseIdToken: 't',
+          issuedAt: DateTime.utc(2026, 4, 26),
+          expiresAt: DateTime.utc(2026, 4, 26, 1),
+          lastFreshAuthAt: DateTime.utc(2026, 4, 26),
+          roles: const <String>[],
+          mfaEnrolled: false,
+        );
+        expect(await service.refreshSession(live), isNull);
+      },
+    );
   });
 
   group('PlatformSecureSessionStorage (B5)', () {
@@ -354,36 +399,35 @@ void main() {
       expect(await storage.readSessionJson(), isNull);
     });
 
+    test('AuthSession round-trip via writeSession + readSession through the '
+        'backend', () async {
+      final backend = InMemoryPlatformSecureStorageBackend();
+      final storage = PlatformSecureSessionStorage(backend: backend);
+      final session = AuthSession(
+        userId: _validUserId,
+        operatorId: _validOpId,
+        locationId: _validLocId,
+        firebaseIdToken: 't',
+        issuedAt: DateTime.utc(2026, 4, 26),
+        expiresAt: DateTime.utc(2026, 4, 26, 1),
+        lastFreshAuthAt: DateTime.utc(2026, 4, 26),
+        roles: const <String>['operator_owner'],
+        mfaEnrolled: true,
+      );
+      await storage.writeSession(session);
+      final loaded = await storage.readSession();
+      expect(loaded?.operatorId, equals(_validOpId));
+    });
+
     test(
-      'AuthSession round-trip via writeSession + readSession through the '
-      'backend',
+      'ScaffoldFailingPlatformSecureStorageBackend throws on every method',
       () async {
-        final backend = InMemoryPlatformSecureStorageBackend();
-        final storage = PlatformSecureSessionStorage(backend: backend);
-        final session = AuthSession(
-          userId: _validUserId,
-          operatorId: _validOpId,
-          locationId: _validLocId,
-          firebaseIdToken: 't',
-          issuedAt: DateTime.utc(2026, 4, 26),
-          expiresAt: DateTime.utc(2026, 4, 26, 1),
-          lastFreshAuthAt: DateTime.utc(2026, 4, 26),
-          roles: const <String>['operator_owner'],
-          mfaEnrolled: true,
-        );
-        await storage.writeSession(session);
-        final loaded = await storage.readSession();
-        expect(loaded?.operatorId, equals(_validOpId));
+        const backend = ScaffoldFailingPlatformSecureStorageBackend();
+        await expectLater(backend.read('k'), throwsStateError);
+        await expectLater(backend.write('k', 'v'), throwsStateError);
+        await expectLater(backend.delete('k'), throwsStateError);
       },
     );
-
-    test('ScaffoldFailingPlatformSecureStorageBackend throws on every method',
-        () async {
-      const backend = ScaffoldFailingPlatformSecureStorageBackend();
-      await expectLater(backend.read('k'), throwsStateError);
-      await expectLater(backend.write('k', 'v'), throwsStateError);
-      await expectLater(backend.delete('k'), throwsStateError);
-    });
   });
 
   group('InMemoryAuthSessionLedgerWriter + ScaffoldFailing (B6)', () {
@@ -437,42 +481,44 @@ void main() {
       expect(writer.revokedSessions.containsKey('s-3'), isFalse);
     });
 
-    test('ScaffoldFailingAuthSessionLedgerWriter throws on every method',
-        () async {
-      const writer = ScaffoldFailingAuthSessionLedgerWriter();
-      await expectLater(
-        writer.recordLogin(_loginFor(userId: _validUserId)),
-        throwsStateError,
-      );
-      await expectLater(
-        writer.recordRefresh(
-          sessionId: 's',
-          userId: _validUserId,
-          operatorId: _validOpId,
-          locationId: _validLocId,
-        ),
-        throwsStateError,
-      );
-      await expectLater(
-        writer.revokeSession(
-          sessionId: 's',
-          userId: _validUserId,
-          operatorId: _validOpId,
-          locationId: _validLocId,
-          reason: 'r',
-        ),
-        throwsStateError,
-      );
-      await expectLater(
-        writer.revokeAllSessionsForUser(
-          userId: _validUserId,
-          operatorId: _validOpId,
-          locationId: _validLocId,
-          reason: 'r',
-        ),
-        throwsStateError,
-      );
-    });
+    test(
+      'ScaffoldFailingAuthSessionLedgerWriter throws on every method',
+      () async {
+        const writer = ScaffoldFailingAuthSessionLedgerWriter();
+        await expectLater(
+          writer.recordLogin(_loginFor(userId: _validUserId)),
+          throwsStateError,
+        );
+        await expectLater(
+          writer.recordRefresh(
+            sessionId: 's',
+            userId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+          ),
+          throwsStateError,
+        );
+        await expectLater(
+          writer.revokeSession(
+            sessionId: 's',
+            userId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            reason: 'r',
+          ),
+          throwsStateError,
+        );
+        await expectLater(
+          writer.revokeAllSessionsForUser(
+            userId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            reason: 'r',
+          ),
+          throwsStateError,
+        );
+      },
+    );
   });
 
   group('AuthSessionsRepository (B6 — fake Postgres)', () {
@@ -517,20 +563,22 @@ void main() {
       expect(insertSql, isNot(contains('refresh_token_hash')));
     });
 
-    test('insertLogin throws when RETURNING produces no rows (RLS denial)',
-        () async {
-      final pool = _AuthSessionsPool(returningSessionId: null);
-      final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
-      await expectLater(
-        repo.insertLogin(
-          operatorId: _validOpId,
-          locationId: _validLocId,
-          userId: _validUserId,
-          tokenHash: 'h',
-        ),
-        throwsStateError,
-      );
-    });
+    test(
+      'insertLogin throws when RETURNING produces no rows (RLS denial)',
+      () async {
+        final pool = _AuthSessionsPool(returningSessionId: null);
+        final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
+        await expectLater(
+          repo.insertLogin(
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            userId: _validUserId,
+            tokenHash: 'h',
+          ),
+          throwsStateError,
+        );
+      },
+    );
 
     test('markRefreshed updates last_seen_at = now() with sessionId + userId '
         'parameters and skips already-revoked rows', () async {
@@ -577,30 +625,32 @@ void main() {
       );
     });
 
-    test('revokeAllSessionsForUserAsAdmin uses withSystem with audited reason',
-        () async {
-      final pool = _AuthSessionsPool(returningSessionId: _validSessionId);
-      final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
+    test(
+      'revokeAllSessionsForUserAsAdmin uses withSystem with audited reason',
+      () async {
+        final pool = _AuthSessionsPool(returningSessionId: _validSessionId);
+        final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
 
-      await repo.revokeAllSessionsForUserAsAdmin(
-        userId: _validUserId,
-        reason: 'admin_force_logout',
-        adminReason: 'admin.users.force_logout_all_sessions',
-      );
+        await repo.revokeAllSessionsForUserAsAdmin(
+          userId: _validUserId,
+          reason: 'admin_force_logout',
+          adminReason: 'admin.users.force_logout_all_sessions',
+        );
 
-      final tx = pool.transactions.single;
-      // Acceptance: bypass_rls_audit reason is set with `system:<reason>`.
-      expect(
-        tx.parameters[0]['value'],
-        equals('system:admin.users.force_logout_all_sessions'),
-      );
-      expect(tx.executedSql[1], equals('set local role forge_admin'));
-      // Acceptance: the actual UPDATE filtered by user_id only — the
-      // admin path does not need the row's tenant context.
-      final updateSql = tx.executedSql.last;
-      expect(updateSql, contains('update auth_sessions'));
-      expect(updateSql, contains('where user_id = @user_id'));
-    });
+        final tx = pool.transactions.single;
+        // Acceptance: bypass_rls_audit reason is set with `system:<reason>`.
+        expect(
+          tx.parameters[0]['value'],
+          equals('system:admin.users.force_logout_all_sessions'),
+        );
+        expect(tx.executedSql[1], equals('set local role forge_admin'));
+        // Acceptance: the actual UPDATE filtered by user_id only — the
+        // admin path does not need the row's tenant context.
+        final updateSql = tx.executedSql.last;
+        expect(updateSql, contains('update auth_sessions'));
+        expect(updateSql, contains('where user_id = @user_id'));
+      },
+    );
   });
 
   group('RepositoryAuthSessionLedgerWriter delegates to AuthSessionsRepository '
@@ -631,25 +681,27 @@ void main() {
       expect(params['geo_country'], equals('US'));
     });
 
-    test('revokeAllSessionsForUser forwards reason to the SQL update',
-        () async {
-      final pool = _AuthSessionsPool(returningSessionId: _validSessionId);
-      final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
-      final writer = RepositoryAuthSessionLedgerWriter(repository: repo);
+    test(
+      'revokeAllSessionsForUser forwards reason to the SQL update',
+      () async {
+        final pool = _AuthSessionsPool(returningSessionId: _validSessionId);
+        final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
+        final writer = RepositoryAuthSessionLedgerWriter(repository: repo);
 
-      await writer.revokeAllSessionsForUser(
-        userId: _validUserId,
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        reason: 'user_signed_out_all_sessions',
-      );
+        await writer.revokeAllSessionsForUser(
+          userId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          reason: 'user_signed_out_all_sessions',
+        );
 
-      final tx = pool.transactions.single;
-      expect(
-        tx.parameters.last['reason'],
-        equals('user_signed_out_all_sessions'),
-      );
-    });
+        final tx = pool.transactions.single;
+        expect(
+          tx.parameters.last['reason'],
+          equals('user_signed_out_all_sessions'),
+        );
+      },
+    );
   });
 
   group('AuthSessionNotifier B6 ledger wiring', () {
@@ -730,10 +782,7 @@ void main() {
       // Returned result is an AuthLoginFailure with the specific
       // calm code — UI renders a "try again in a moment" banner.
       expect(result, isA<AuthLoginFailure>());
-      expect(
-        (result as AuthLoginFailure).code,
-        equals('ledger_unavailable'),
-      );
+      expect((result as AuthLoginFailure).code, equals('ledger_unavailable'));
       expect(result.message.toLowerCase(), contains('try again'));
       // State stays Unauthenticated — no half-authenticated phase.
       expect(notifier.state, isA<AuthSessionUnauthenticated>());
@@ -773,8 +822,7 @@ void main() {
     });
 
     test('refreshSession survives a ledger failure — log-and-continue '
-        'preserves persistent login (audit-fix 2026-04-27 decision)',
-        () async {
+        'preserves persistent login (audit-fix 2026-04-27 decision)', () async {
       final session = buildSession();
       final refreshed = session.copyWith(
         firebaseIdToken: 'refreshed.token.sig',
@@ -1086,10 +1134,7 @@ void main() {
       // Ledger failure surfaces as ledger_unavailable (existing
       // fail-closed contract).
       expect(result, isA<AuthLoginFailure>());
-      expect(
-        (result as AuthLoginFailure).code,
-        equals('ledger_unavailable'),
-      );
+      expect((result as AuthLoginFailure).code, equals('ledger_unavailable'));
       // Acceptance for F2: storage's writeSessionJson was NEVER
       // called during the failing sign-in. Without the reorder this
       // would be 1 (storage written first, then ledger failed, then
@@ -1154,10 +1199,7 @@ AuthSessionLedgerLogin _loginFor({required String userId}) {
 }
 
 class _FakeFirebaseAuthClient implements FirebaseAuthClient {
-  _FakeFirebaseAuthClient({
-    this.nextSignInOutcome,
-    this.nextRefreshCredential,
-  });
+  _FakeFirebaseAuthClient({this.nextSignInOutcome, this.nextRefreshCredential});
 
   FirebaseAuthSignInOutcome? nextSignInOutcome;
   FirebaseAuthCredential? nextRefreshCredential;
@@ -1291,9 +1333,7 @@ class _AuthSessionsPool implements PostgresPool {
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
-    final tx = _AuthSessionsTransaction(
-      returningSessionId: returningSessionId,
-    );
+    final tx = _AuthSessionsTransaction(returningSessionId: returningSessionId);
     transactions.add(tx);
     return tx;
   }

@@ -46,6 +46,8 @@ abstract class FirebaseAdminAuthClient {
   });
 
   Future<void> updatePassword({required String uid, required String password});
+
+  Future<void> revokeRefreshTokens({required String uid});
 }
 
 class ScaffoldFailingFirebaseAdminAuthClient
@@ -93,6 +95,11 @@ class ScaffoldFailingFirebaseAdminAuthClient
 
   @override
   Future<void> updatePassword({required String uid, required String password}) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
+  Future<void> revokeRefreshTokens({required String uid}) {
     throw const FirebaseAdminAuthError('firebase_admin_not_configured');
   }
 }
@@ -165,9 +172,11 @@ class IdentityToolkitFirebaseAdminAuthClient
     HttpClient? httpClient,
     this.continueUrl,
     Duration timeout = const Duration(seconds: 10),
+    DateTime Function()? now,
   }) : _accessTokenProvider = accessTokenProvider,
        _httpClient = httpClient ?? HttpClient(),
-       _timeout = timeout;
+       _timeout = timeout,
+       _now = now ?? DateTime.now;
 
   final String projectId;
   final String apiKey;
@@ -175,6 +184,7 @@ class IdentityToolkitFirebaseAdminAuthClient
   final HttpClient _httpClient;
   final String? continueUrl;
   final Duration _timeout;
+  final DateTime Function() _now;
 
   @override
   Future<void> createUser({
@@ -274,6 +284,19 @@ class IdentityToolkitFirebaseAdminAuthClient
     await _post(
       '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:update',
       <String, Object?>{'localId': uid, 'password': password},
+      expectedStatus: 200,
+    );
+  }
+
+  @override
+  Future<void> revokeRefreshTokens({required String uid}) async {
+    await _post(
+      '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:update',
+      <String, Object?>{
+        'localId': uid,
+        'validSince': (_now().toUtc().millisecondsSinceEpoch ~/ 1000)
+            .toString(),
+      },
       expectedStatus: 200,
     );
   }

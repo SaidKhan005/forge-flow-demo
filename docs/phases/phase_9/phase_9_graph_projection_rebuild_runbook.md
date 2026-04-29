@@ -399,8 +399,9 @@ Closing banner:
   edges. Execute Q19 rollover immediately.
 
 Capture the per-row + roll-up NOTICEs as 9.0Σ.i acceptance evidence.
-The B42 `/health` route, when it lands, parses these NOTICEs
-directly so 11A.5 wiring does not need to translate column aliases.
+The B42 `/health` envelope is now stable; the follow-on graph producer wiring
+can parse these NOTICEs directly so 11A.5 does not need to translate column
+aliases.
 
 The B42 contract reserves a wider key set than this slice fills
 today. Active vs reserved-null split:
@@ -459,7 +460,7 @@ Forbidden rollback paths:
 
 ## How B42 graph health keys consume this status
 
-The proxy `/health` route locked in B42 (queued) reserves a set of
+The proxy `/health` route locked in B42 reserves a set of
 graph metric keys; the archived B42 backlog enumerates the full set,
 the slice's authority block (Block 2) names a narrower core. The
 rebuild's tripwire emits the union so the proxy never needs to
@@ -479,8 +480,8 @@ ingest two shapes:
 | `last_benchmark_at` | Reserved-null today | Later benchmark slice |
 
 The tripwire artifact emits every key verbatim in the
-`AGE_TRIPWIRE` and `AGE_TRIPWIRE_TOTALS` NOTICE lines. When the B42
-route lands:
+`AGE_TRIPWIRE` and `AGE_TRIPWIRE_TOTALS` NOTICE lines. When the graph
+producer wiring lands:
 
 - The proxy reads the NOTICE shape from the most recent rebuild's
   tripwire output (or from a live aggregation against canonical
@@ -505,16 +506,15 @@ route lands:
   tables direct read because forge_admin views require operator-
   scoped rows.
 
-Until the B42 route ships, the tripwire NOTICE output is the
-acceptance evidence the operator captures by hand. The `/health`
-route wiring (proxy code in `tool/advisor_proxy/advisor_proxy.dart`
-plus a contract doc at `docs/contracts/proxy_health_contract.md`)
-is intentionally deferred to B42; this slice does not add any
-proxy routes.
+Until the graph producer wiring ships, the tripwire NOTICE output is the
+acceptance evidence the operator captures by hand. The B42 `/health` route
+already reserves the graph metric keys, but this slice still does not add any
+proxy-side graph producer.
 
 ## Out of scope for this runbook
 
-- The proxy `/health` route itself (B42) — separately tracked.
+- Proxy-side graph producer wiring into the B42 `/health` envelope — separately
+  tracked.
 - The graph traversal benchmark slice that populates
   `graph_traversal_latency_ms` and `last_benchmark_at`. Reserved
   slots stay null until that slice lands.

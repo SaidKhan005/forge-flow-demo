@@ -74,6 +74,27 @@ class AuthSessionLedgerLogin {
   final AuthSessionLedgerContext context;
 }
 
+/// Result of a successful login ledger write.
+///
+/// Most writers simply echo the local [AuthSessionLedgerLogin] scope,
+/// but proxy-backed writers can return the canonical scope resolved
+/// server-side from the verified Firebase bearer token. That matters
+/// when the client only has the Firebase UID provisionally and the
+/// proxy maps it to the production `users.user_id`.
+class AuthSessionLedgerLoginRecord {
+  const AuthSessionLedgerLoginRecord({
+    required this.sessionId,
+    required this.userId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String sessionId;
+  final String userId;
+  final String operatorId;
+  final String locationId;
+}
+
 /// What the production `AuthLoginService` (and tests) calls into.
 abstract class AuthSessionLedgerWriter {
   /// INSERT a row into `auth_sessions` and return the freshly
@@ -114,6 +135,36 @@ abstract class AuthSessionLedgerWriter {
     required String locationId,
     required String reason,
   });
+}
+
+/// Optional capability for writers that can return a server-resolved
+/// login scope in addition to the `auth_sessions.session_id`.
+abstract class AuthSessionLedgerScopeResolvingWriter {
+  Future<AuthSessionLedgerLoginRecord> recordLoginAndResolveScope(
+    AuthSessionLedgerLogin login,
+  );
+}
+
+extension AuthSessionLedgerWriterScopeResolution on AuthSessionLedgerWriter {
+  /// Records login and returns the effective scope the app should
+  /// persist. Non-proxy writers fall back to the caller-provided
+  /// scope, preserving existing test/dev behavior.
+  Future<AuthSessionLedgerLoginRecord> recordLoginAndResolveScope(
+    AuthSessionLedgerLogin login,
+  ) async {
+    final writer = this;
+    if (writer is AuthSessionLedgerScopeResolvingWriter) {
+      return (writer as AuthSessionLedgerScopeResolvingWriter)
+          .recordLoginAndResolveScope(login);
+    }
+    final sessionId = await recordLogin(login);
+    return AuthSessionLedgerLoginRecord(
+      sessionId: sessionId,
+      userId: login.userId,
+      operatorId: login.operatorId,
+      locationId: login.locationId,
+    );
+  }
 }
 
 /// Hard-fail-closed default. Every method throws so a production

@@ -48,6 +48,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_contex
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
@@ -278,6 +279,7 @@ class ProxyJwtClaims {
     required this.roles,
     this.actorKind = 'user',
     this.servicePrincipalId,
+    this.firebaseUid,
     this.rolesVersion,
     this.lastFreshAuthAt,
   });
@@ -297,6 +299,7 @@ class ProxyJwtClaims {
   final List<String> roles;
   final String actorKind;
   final String? servicePrincipalId;
+  final String? firebaseUid;
 
   final int? rolesVersion;
 
@@ -1056,6 +1059,7 @@ class FirebaseProxyJwtVerifier implements ProxyJwtVerifier {
           _readOptionalString(payloadJson, 'postgres_user_id') ??
           _readOptionalString(payloadJson, 'user_id') ??
           sub,
+      firebaseUid: sub,
       operatorId: _readOptionalString(payloadJson, 'operator_id'),
       locationId: _readOptionalString(payloadJson, 'location_id'),
       roles: _resolveRoles(payloadJson),
@@ -1177,6 +1181,7 @@ class OperatorContext {
     required this.roles,
     this.actorKind = 'user',
     this.servicePrincipalId,
+    this.firebaseUid,
     this.rolesVersion = 0,
     this.lastFreshAuthAt,
   });
@@ -1187,6 +1192,7 @@ class OperatorContext {
   final List<String> roles;
   final String actorKind;
   final String? servicePrincipalId;
+  final String? firebaseUid;
   final int rolesVersion;
   final DateTime? lastFreshAuthAt;
 
@@ -1260,6 +1266,7 @@ class ProxyRequestGuard {
       roles: claims.roles,
       actorKind: claims.actorKind,
       servicePrincipalId: claims.servicePrincipalId,
+      firebaseUid: claims.firebaseUid,
       rolesVersion: claims.rolesVersion ?? _rolesVersionFromRoles(claims.roles),
       lastFreshAuthAt: claims.lastFreshAuthAt,
     );
@@ -2385,20 +2392,310 @@ class ProxyHealthStatus {
     required this.postgresOk,
     required this.ageOk,
     required this.pgvectorOk,
+    this.metrics = const <String, ProxyHealthMetric>{},
+    this.surfaces = const <String, ProxyHealthSurface>{},
   });
 
   final bool postgresOk;
   final bool ageOk;
   final bool pgvectorOk;
+  final Map<String, ProxyHealthMetric> metrics;
+  final Map<String, ProxyHealthSurface> surfaces;
 
   bool get ok => postgresOk && ageOk && pgvectorOk;
 
+  Map<String, Object?> toJson({required DateTime checkedAt}) {
+    final metricEnvelope = <String, ProxyHealthMetric>{
+      ..._reservedProxyHealthMetrics,
+      ...metrics,
+    };
+    final surfaceEnvelope = <String, ProxyHealthSurface>{
+      ..._reservedProxyHealthSurfaces,
+      ...surfaces,
+    };
+    final hasMetricProblem =
+        _hasYellowOrRedMetric(metricEnvelope) ||
+        _hasYellowOrRedSurface(surfaceEnvelope);
+    final status = !ok
+        ? 'unavailable'
+        : hasMetricProblem
+        ? 'degraded'
+        : 'ok';
+    final severity = _overallSeverity(
+      dependenciesOk: ok,
+      metrics: metricEnvelope,
+      surfaces: surfaceEnvelope,
+    );
+
+    return <String, Object?>{
+      'status': status,
+      'severity': severity,
+      'contract': 'proxy_health.v1',
+      'schema_version': 1,
+      'checked_at': checkedAt.toUtc().toIso8601String(),
+      'dependencies': <String, Object?>{
+        'postgres': _dependencyJson(
+          ok: postgresOk,
+          check: 'select_1',
+          legacyKey: 'postgres_select_1',
+        ),
+        'age': _dependencyJson(
+          ok: ageOk,
+          check: 'cypher_match',
+          legacyKey: 'age_cypher_match',
+        ),
+        'pgvector': _dependencyJson(
+          ok: pgvectorOk,
+          check: 'similarity',
+          legacyKey: 'pgvector_similarity',
+        ),
+      },
+      'surfaces': <String, Object?>{
+        for (final entry in surfaceEnvelope.entries)
+          entry.key: entry.value.toJson(),
+      },
+      'metrics': <String, Object?>{
+        for (final entry in metricEnvelope.entries)
+          entry.key: entry.value.toJson(),
+      },
+      // Compatibility aliases for the first deep-health implementation.
+      'postgres_select_1': postgresOk ? 'ok' : 'failed',
+      'age_cypher_match': ageOk ? 'ok' : 'failed',
+      'pgvector_similarity': pgvectorOk ? 'ok' : 'failed',
+    };
+  }
+}
+
+class ProxyHealthMetric {
+  const ProxyHealthMetric({
+    required this.status,
+    required this.value,
+    required this.unit,
+    required this.description,
+    required this.owner,
+    this.source,
+    this.observedAt,
+    this.thresholds = const <String, Object?>{},
+    this.metadata = const <String, Object?>{},
+  });
+
+  final String status;
+  final Object? value;
+  final String unit;
+  final String description;
+  final String owner;
+  final String? source;
+  final DateTime? observedAt;
+  final Map<String, Object?> thresholds;
+  final Map<String, Object?> metadata;
+
   Map<String, Object?> toJson() => <String, Object?>{
-    'postgres_select_1': postgresOk ? 'ok' : 'failed',
-    'age_cypher_match': ageOk ? 'ok' : 'failed',
-    'pgvector_similarity': pgvectorOk ? 'ok' : 'failed',
+    'status': status,
+    'value': value,
+    'unit': unit,
+    'description': description,
+    'source': source,
+    'owner': owner,
+    'observed_at': observedAt?.toUtc().toIso8601String(),
+    'thresholds': thresholds,
+    'metadata': metadata,
   };
 }
+
+class ProxyHealthSurface {
+  const ProxyHealthSurface({
+    required this.status,
+    required this.metrics,
+    required this.owner,
+  });
+
+  final String status;
+  final List<String> metrics;
+  final String owner;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'status': status,
+    'metrics': metrics,
+    'owner': owner,
+  };
+}
+
+Map<String, Object?> _dependencyJson({
+  required bool ok,
+  required String check,
+  required String legacyKey,
+}) => <String, Object?>{
+  'status': ok ? 'green' : 'red',
+  'check': check,
+  'legacy_key': legacyKey,
+};
+
+bool _hasYellowOrRedMetric(Map<String, ProxyHealthMetric> metrics) => metrics
+    .values
+    .any((metric) => metric.status == 'yellow' || metric.status == 'red');
+
+bool _hasYellowOrRedSurface(Map<String, ProxyHealthSurface> surfaces) =>
+    surfaces.values.any(
+      (surface) => surface.status == 'yellow' || surface.status == 'red',
+    );
+
+String _overallSeverity({
+  required bool dependenciesOk,
+  required Map<String, ProxyHealthMetric> metrics,
+  required Map<String, ProxyHealthSurface> surfaces,
+}) {
+  if (!dependenciesOk ||
+      metrics.values.any((metric) => metric.status == 'red') ||
+      surfaces.values.any((surface) => surface.status == 'red')) {
+    return 'red';
+  }
+  if (metrics.values.any((metric) => metric.status == 'yellow') ||
+      surfaces.values.any((surface) => surface.status == 'yellow')) {
+    return 'yellow';
+  }
+  return 'green';
+}
+
+const Map<String, ProxyHealthMetric>
+_reservedProxyHealthMetrics = <String, ProxyHealthMetric>{
+  'audit_chain_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description:
+        'Lag between current audit chain head and latest durable audit anchor.',
+    source: 'audit_chain_anchors',
+    owner: 'B37/B43',
+  ),
+  'event_outbox_undelivered_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Undelivered event_outbox rows awaiting bridge delivery.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 10000, 'red': 100000},
+  ),
+  'event_outbox_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the oldest undelivered event_outbox row.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 60, 'red': 300},
+  ),
+  'usage_caps_breach_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Requests refused because usage caps were reached.',
+    source: 'proxy usage accounting',
+    owner: 'B33',
+  ),
+  'graph_node_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Canonical graph node count for operations health.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+  ),
+  'graph_edge_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Canonical active graph edge count for operations health.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 3000000, 'red': 4000000},
+  ),
+  'graph_traversal_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Graph traversal latency from the graph benchmark slice.',
+    source: 'graph benchmark',
+    owner: 'B44',
+  ),
+  'vector_index_size_per_corpus': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Per-corpus vector index size.',
+    source: 'vector index health helper',
+    owner: 'B47',
+  ),
+  'vector_query_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Filtered vector search latency summary.',
+    source: 'filtered-search benchmark',
+    owner: 'B47',
+  ),
+  'vector_recall': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Filtered vector search benchmark recall.',
+    source: 'filtered-search benchmark',
+    owner: 'B47',
+  ),
+  'rollup_freshness_per_grain': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Rollup freshness lag grouped by grain.',
+    source: 'RollupFreshnessReporter.snapshot()',
+    owner: 'B45',
+  ),
+};
+
+const Map<String, ProxyHealthSurface> _reservedProxyHealthSurfaces =
+    <String, ProxyHealthSurface>{
+      'audit_chain': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>['audit_chain_lag_seconds'],
+        owner: 'B37/B43',
+      ),
+      'event_outbox': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>[
+          'event_outbox_undelivered_count',
+          'event_outbox_lag_seconds',
+        ],
+        owner: 'Phase 10a',
+      ),
+      'usage_caps': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>['usage_caps_breach_count'],
+        owner: 'B33',
+      ),
+      'graph': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>[
+          'graph_node_count',
+          'graph_edge_count',
+          'graph_traversal_latency_ms',
+        ],
+        owner: 'B44',
+      ),
+      'vector': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>[
+          'vector_index_size_per_corpus',
+          'vector_query_latency_ms',
+          'vector_recall',
+        ],
+        owner: 'B47',
+      ),
+      'rollups': ProxyHealthSurface(
+        status: 'unknown',
+        metrics: <String>['rollup_freshness_per_grain'],
+        owner: 'B45',
+      ),
+    };
 
 class ScaffoldFailingProxyHealthCheckStore implements ProxyHealthCheckStore {
   const ScaffoldFailingProxyHealthCheckStore();
@@ -2799,6 +3096,7 @@ const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
 const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
+const String adminAuthUsersPath = '/v1/admin/auth/users';
 const String adminAuthUsersPrefix = '/v1/admin/auth/users/';
 const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
@@ -2819,6 +3117,8 @@ const String authSessionLoginPath = '/v1/auth/session/login';
 const String authSessionRefreshPath = '/v1/auth/session/refresh';
 const String authSessionRevokePath = '/v1/auth/session/revoke';
 const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
+const String authRefreshTokensRevokeAllPath =
+    '/v1/auth/refresh-tokens/revoke-all';
 
 class ProxyPermissionSnapshot {
   const ProxyPermissionSnapshot({
@@ -2905,6 +3205,7 @@ Future<void> routeRequest(
   ProxyHealthCheckStore? healthCheckStore,
   ProxyLlmProvider? llmProvider,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
+  FirebaseAdminAuthClient? firebaseAdminAuthClient,
   ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
@@ -2930,7 +3231,11 @@ Future<void> routeRequest(
     if (request.method == 'GET' && path == deepHealthPath) {
       if (healthCheckStore == null) {
         _writeJson(response, 503, <String, Object?>{
-          'status': 'unavailable',
+          ...const ProxyHealthStatus(
+            postgresOk: false,
+            ageOk: false,
+            pgvectorOk: false,
+          ).toJson(checkedAt: clock().toUtc()),
           'error': 'health_check_not_configured',
           'message': 'route requires a ProxyHealthCheckStore to be installed',
         });
@@ -2942,17 +3247,22 @@ Future<void> routeRequest(
         status = await healthCheckStore.check();
       } catch (_) {
         _writeJson(response, 503, <String, Object?>{
-          'status': 'unavailable',
+          ...const ProxyHealthStatus(
+            postgresOk: false,
+            ageOk: false,
+            pgvectorOk: false,
+          ).toJson(checkedAt: clock().toUtc()),
           'error': 'health_check_failed',
           'message': 'proxy dependency health check failed',
         });
         return;
       }
 
-      _writeJson(response, status.ok ? 200 : 503, <String, Object?>{
-        'status': status.ok ? 'ok' : 'unavailable',
-        ...status.toJson(),
-      });
+      _writeJson(
+        response,
+        status.ok ? 200 : 503,
+        status.toJson(checkedAt: clock().toUtc()),
+      );
       return;
     }
 
@@ -3311,6 +3621,7 @@ Future<void> routeRequest(
             locationId: scope.locationId,
             currentPassword: currentPassword,
             newPassword: newPassword,
+            firebaseUid: scope.firebaseUid,
           ),
         );
         _writeJson(response, 200, <String, Object?>{
@@ -3594,6 +3905,21 @@ Future<void> routeRequest(
           return;
         }
 
+        if (request.method == 'GET' && path == adminAuthUsersPath) {
+          if (!await requirePermission('team.users.view')) return;
+          final listed = await authOperationsGateway.listUsers(
+            TeamUserListCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'users': listed.users.map(_teamUserToJson).toList(),
+          });
+          return;
+        }
+
         if (request.method == 'POST' && path == adminAuthRolesPath) {
           if (!await requirePermission('team.roles.create_custom')) return;
           final roleKey = _nonBlankString(body['role_key']);
@@ -3702,11 +4028,27 @@ Future<void> routeRequest(
               roleId: roleId,
               scopeType: scopeType,
               targetLocationId: _nonBlankString(body['location_id']),
+              targetOrgUnitId: _nonBlankString(body['org_unit_id']),
             ),
           );
           _writeJson(response, 201, <String, Object?>{
             'invite_id': created.inviteId,
             'expires_at': created.expiresAt.toUtc().toIso8601String(),
+          });
+          return;
+        }
+
+        if (request.method == 'GET' && path == adminAuthInvitesPath) {
+          if (!await requirePermission('team.users.view')) return;
+          final listed = await authOperationsGateway.listInvites(
+            TeamInviteListCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'invites': listed.invites.map(_teamInviteToJson).toList(),
           });
           return;
         }
@@ -3820,6 +4162,7 @@ Future<void> routeRequest(
               roleId: roleId,
               scopeType: scopeType,
               targetLocationId: _nonBlankString(body['location_id']),
+              targetOrgUnitId: _nonBlankString(body['org_unit_id']),
               reason: _nonBlankString(body['reason']),
             ),
           );
@@ -3870,6 +4213,51 @@ Future<void> routeRequest(
         });
         return;
       }
+    }
+
+    if (request.method == 'POST' && path == authRefreshTokensRevokeAllPath) {
+      if (firebaseAdminAuthClient == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'refresh_token_revoke_not_configured',
+          'message': 'route requires a FirebaseAdminAuthClient to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      try {
+        await firebaseAdminAuthClient.revokeRefreshTokens(
+          uid: scope.firebaseUid ?? scope.userId,
+        );
+      } on FirebaseAdminAuthError catch (error) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': error.code,
+          'message': 'refresh-token revoke is unavailable; please retry',
+        });
+        return;
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'refresh_token_revoke_unavailable',
+          'message': 'refresh-token revoke is unavailable; please retry',
+        });
+        return;
+      }
+
+      _writeJson(response, 200, <String, Object?>{'ok': true});
+      return;
     }
 
     if (request.method == 'POST' && path == authSessionLoginPath) {
@@ -4182,6 +4570,8 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'POST' && path == adminAuthRolesPath) return true;
   if (method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) return true;
   if (method == 'DELETE' && path.startsWith(adminAuthRolePrefix)) return true;
+  if (method == 'GET' && path == adminAuthUsersPath) return true;
+  if (method == 'GET' && path == adminAuthInvitesPath) return true;
   if (method == 'POST' && path == adminAuthInvitesPath) return true;
   if (method == 'DELETE' && path.startsWith(adminAuthInvitePrefix)) {
     return true;
@@ -4304,6 +4694,38 @@ Map<String, Object?> _teamRoleToJson(TeamRoleCatalogEntry role) {
           },
         )
         .toList(growable: false),
+  };
+}
+
+Map<String, Object?> _teamUserToJson(TeamUserListEntry user) {
+  return <String, Object?>{
+    'user_id': user.userId,
+    'email': user.email,
+    'display_name': user.displayName,
+    'role_id': user.roleId,
+    'role_label': user.roleLabel,
+    'status': user.status,
+    'location_id': user.locationId,
+    'location_label': user.locationLabel,
+    'mfa_enrolled': user.mfaEnrolled,
+    'user_role_id': user.userRoleId,
+    'last_active_at': user.lastActiveAt?.toUtc().toIso8601String(),
+  };
+}
+
+Map<String, Object?> _teamInviteToJson(TeamInviteListEntry invite) {
+  return <String, Object?>{
+    'invite_id': invite.inviteId,
+    'email': invite.email,
+    'role_id': invite.roleId,
+    'role_label': invite.roleLabel,
+    'scope_type': invite.scopeType,
+    'location_id': invite.locationId,
+    'location_label': invite.locationLabel,
+    'org_unit_id': invite.orgUnitId,
+    'org_unit_label': invite.orgUnitLabel,
+    'expires_at': invite.expiresAt.toUtc().toIso8601String(),
+    'created_at': invite.createdAt.toUtc().toIso8601String(),
   };
 }
 

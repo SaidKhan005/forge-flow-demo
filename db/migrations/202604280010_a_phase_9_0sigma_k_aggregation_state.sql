@@ -51,9 +51,9 @@
 --      each (rollup_table, grain) it owns, with `last_processed_seq
 --      = 0`).
 --
--- This migration is local framework only — no live database mutation.
--- Live apply on staging + Production1 is queued under the Phase 9
--- live-mutation gate and runs together with 202604280010_b/c.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 
 begin;
 

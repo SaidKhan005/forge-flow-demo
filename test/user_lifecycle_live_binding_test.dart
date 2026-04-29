@@ -34,40 +34,41 @@ const String _validEventId = '55555555-5555-5555-5555-555555555555';
 
 void main() {
   group('UsersRepository (B20 — fake Postgres)', () {
-    test('updateStatus uses withSystem with the supplied audit reason',
-        () async {
-      final pool = _LifecyclePool();
-      final repo = UsersRepository(TenantTransactionWrapper(pool));
-      await repo.updateStatus(
-        userId: _validUserId,
-        newStatus: 'suspended',
-        adminReason: 'admin.users.suspend',
-      );
-      final tx = pool.transactions.single;
-      expect(
-        tx.parameters[0]['value'],
-        equals('system:admin.users.suspend'),
-      );
-      expect(tx.executedSql[1], equals('set local role forge_admin'));
-      expect(tx.executedSql.last, contains('update users'));
-      expect(tx.executedSql.last, contains('set status = @status'));
-    });
+    test(
+      'updateStatus uses withSystem with the supplied audit reason',
+      () async {
+        final pool = _LifecyclePool();
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        await repo.updateStatus(
+          userId: _validUserId,
+          newStatus: 'suspended',
+          adminReason: 'admin.users.suspend',
+        );
+        final tx = pool.transactions.single;
+        expect(tx.parameters[0]['value'], equals('system:admin.users.suspend'));
+        expect(tx.executedSql[1], equals('set local role forge_admin'));
+        expect(tx.executedSql.last, contains('update users'));
+        expect(tx.executedSql.last, contains('set status = @status'));
+      },
+    );
 
-    test('markLoggedIn uses withTenant + bumps last_login_at + last_active_at',
-        () async {
-      final pool = _LifecyclePool();
-      final repo = UsersRepository(TenantTransactionWrapper(pool));
-      await repo.markLoggedIn(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        userId: _validUserId,
-      );
-      final tx = pool.transactions.single;
-      // SET LOCAL app.operator_id ran first (tenant path).
-      expect(tx.executedSql.first, contains("'app.operator_id'"));
-      expect(tx.executedSql.last, contains('last_login_at = now()'));
-      expect(tx.executedSql.last, contains('last_active_at = now()'));
-    });
+    test(
+      'markLoggedIn uses withTenant + bumps last_login_at + last_active_at',
+      () async {
+        final pool = _LifecyclePool();
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        await repo.markLoggedIn(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          userId: _validUserId,
+        );
+        final tx = pool.transactions.single;
+        // SET LOCAL app.operator_id ran first (tenant path).
+        expect(tx.executedSql.first, contains("'app.operator_id'"));
+        expect(tx.executedSql.last, contains('last_login_at = now()'));
+        expect(tx.executedSql.last, contains('last_active_at = now()'));
+      },
+    );
 
     test('softDelete is idempotent (filters deleted_at is null)', () async {
       final pool = _LifecyclePool();
@@ -82,24 +83,28 @@ void main() {
       expect(sql, contains('deleted_at is null'));
     });
 
-    test('redactPii overwrites email + nulls profile fields per template',
-        () async {
-      final pool = _LifecyclePool();
-      final repo = UsersRepository(TenantTransactionWrapper(pool));
-      await repo.redactPii(
-        userId: _validUserId,
-        adminReason: 'gdpr.erasure_executed',
-      );
-      final sql = pool.transactions.single.executedSql.last;
-      expect(sql, contains('update users'));
-      expect(
-        sql,
-        contains("set email = 'redacted-' || user_id::text || '@deleted.local'"),
-      );
-      expect(sql, contains('first_name = null'));
-      expect(sql, contains('last_name = null'));
-      expect(sql, contains('display_name = null'));
-    });
+    test(
+      'redactPii overwrites email + nulls profile fields per template',
+      () async {
+        final pool = _LifecyclePool();
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        await repo.redactPii(
+          userId: _validUserId,
+          adminReason: 'gdpr.erasure_executed',
+        );
+        final sql = pool.transactions.single.executedSql.last;
+        expect(sql, contains('update users'));
+        expect(
+          sql,
+          contains(
+            "set email = 'redacted-' || user_id::text || '@deleted.local'",
+          ),
+        );
+        expect(sql, contains('first_name = null'));
+        expect(sql, contains('last_name = null'));
+        expect(sql, contains('display_name = null'));
+      },
+    );
 
     test('bumpRolesVersion increments via SQL expression', () async {
       final pool = _LifecyclePool();
@@ -114,25 +119,29 @@ void main() {
   });
 
   group('AuthInvitesRepository (B20 — fake Postgres)', () {
-    test('insertInvite writes the bound fields + RETURNING invite_id',
-        () async {
-      final pool = _LifecyclePool(returningInviteId: _validInviteId);
-      final repo = AuthInvitesRepository(TenantTransactionWrapper(pool));
-      final id = await repo.insertInvite(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        email: 'new@example.test',
-        roleId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-        invitedByUserId: _validUserId,
-        expiresAt: DateTime.utc(2026, 5, 4, 12),
-        tokenHash: 'hash-abc',
-      );
-      expect(id, equals(_validInviteId));
-      final tx = pool.transactions.single;
-      final params = tx.parameters.last;
-      expect(params['email'], equals('new@example.test'));
-      expect(params['token_hash'], equals('hash-abc'));
-    });
+    test(
+      'insertInvite writes the bound fields + RETURNING invite_id',
+      () async {
+        final pool = _LifecyclePool(returningInviteId: _validInviteId);
+        final repo = AuthInvitesRepository(TenantTransactionWrapper(pool));
+        final id = await repo.insertInvite(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          email: 'new@example.test',
+          roleId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+          scopeType: 'operator_wide',
+          invitedByUserId: _validUserId,
+          expiresAt: DateTime.utc(2026, 5, 4, 12),
+          tokenHash: 'hash-abc',
+        );
+        expect(id, equals(_validInviteId));
+        final tx = pool.transactions.single;
+        final params = tx.parameters.last;
+        expect(params['email'], equals('new@example.test'));
+        expect(params['scope_type'], equals('operator_wide'));
+        expect(params['token_hash'], equals('hash-abc'));
+      },
+    );
 
     test('markAccepted filters by accepted_at is null + revoked_at is null + '
         'expires_at > now()', () async {
@@ -151,26 +160,27 @@ void main() {
       expect(sql, contains('expires_at > now()'));
     });
 
-    test('revokeInvite is idempotent (skips already-revoked / accepted)',
-        () async {
-      final pool = _LifecyclePool(returningInviteId: _validInviteId);
-      final repo = AuthInvitesRepository(TenantTransactionWrapper(pool));
-      await repo.revokeInvite(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        inviteId: _validInviteId,
-        actorUserId: _validUserId,
-      );
-      final sql = pool.transactions.single.executedSql.last;
-      expect(sql, contains('set revoked_at = now()'));
-      expect(sql, contains('accepted_at is null'));
-      expect(sql, contains('revoked_at is null'));
-    });
+    test(
+      'revokeInvite is idempotent (skips already-revoked / accepted)',
+      () async {
+        final pool = _LifecyclePool(returningInviteId: _validInviteId);
+        final repo = AuthInvitesRepository(TenantTransactionWrapper(pool));
+        await repo.revokeInvite(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          inviteId: _validInviteId,
+          actorUserId: _validUserId,
+        );
+        final sql = pool.transactions.single.executedSql.last;
+        expect(sql, contains('set revoked_at = now()'));
+        expect(sql, contains('accepted_at is null'));
+        expect(sql, contains('revoked_at is null'));
+      },
+    );
   });
 
   group('AuthEventsAuditRepository (B20 — fake Postgres)', () {
-    test('insertEvent writes the bound payload + RETURNING event_id',
-        () async {
+    test('insertEvent writes the bound payload + RETURNING event_id', () async {
       final pool = _LifecyclePool(returningEventId: _validEventId);
       final repo = AuthEventsAuditRepository(TenantTransactionWrapper(pool));
       final id = await repo.insertEvent(
@@ -188,10 +198,7 @@ void main() {
       final params = tx.parameters.last;
       expect(params['event_type'], equals('auth.login_succeeded'));
       expect(params['ip'], equals('1.2.3.4'));
-      expect(
-        params['payload'],
-        equals('{"method":"email_password"}'),
-      );
+      expect(params['payload'], equals('{"method":"email_password"}'));
     });
 
     test('redactForUser FAILS CLOSED with a runbook pointer — append-only '
@@ -251,8 +258,7 @@ void main() {
       expect(
         runbook.existsSync(),
         isTrue,
-        reason:
-            'GDPR erasure runbook must exist alongside the framework code',
+        reason: 'GDPR erasure runbook must exist alongside the framework code',
       );
     });
 
@@ -279,14 +285,16 @@ void main() {
       }
     });
 
-    test('documents paired-approval + soft-delete + no-self-approval rules',
-        () {
-      final body = runbookText();
-      expect(body, contains('paired-approval'));
-      expect(body, contains('no-self-approval'));
-      expect(body, contains('soft-delete'));
-      expect(body, contains('super_admin'));
-    });
+    test(
+      'documents paired-approval + soft-delete + no-self-approval rules',
+      () {
+        final body = runbookText();
+        expect(body, contains('paired-approval'));
+        expect(body, contains('no-self-approval'));
+        expect(body, contains('soft-delete'));
+        expect(body, contains('super_admin'));
+      },
+    );
 
     test('documents Art. 17(3) preserved fields by name', () {
       final body = runbookText();
@@ -317,9 +325,7 @@ void main() {
       );
       expect(
         body,
-        contains(
-          'revoke update on public.auth_events_audit from forge_admin',
-        ),
+        contains('revoke update on public.auth_events_audit from forge_admin'),
       );
       // Core redaction SQL fragments appear verbatim in the runbook
       // so the DBA copy-paste matches what the code constant
@@ -361,10 +367,7 @@ void main() {
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 class _LifecyclePool implements PostgresPool {
-  _LifecyclePool({
-    this.returningInviteId,
-    this.returningEventId,
-  });
+  _LifecyclePool({this.returningInviteId, this.returningEventId});
 
   final String? returningInviteId;
   final String? returningEventId;

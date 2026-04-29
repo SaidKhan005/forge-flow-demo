@@ -43,6 +43,15 @@ Closed and verified:
   scheduling, and first successful rollup cron runs are documented in
   `runbooks/phase_9_production1_migration_apply_runbook.md` and the archived
   apply result.
+- B42 proxy `/health` v1 envelope is implemented locally with compatibility
+  aliases, dependency checks, reserved metric keys, and reserved surface keys.
+  Focused proxy tests pin the wire shape.
+- B41 service-principal JWT issuance and B46 advisor audit-privacy are locally
+  implemented, contracted, and tested. Their additive live migrations
+  (`202604290000` and `202604280014`) still need explicit staging +
+  Production1 apply evidence before live phases depend on them.
+- B44/B45/B47 helper and runbook work exists, but the metric producer wiring
+  that fills the B42 reserved values remains follow-on work.
 - Latest local baseline: `flutter analyze --fatal-infos`,
   `dart run tool/rls_policy_lint.dart`, focused B17 auth/proxy tests,
   `git diff --check`, and full `flutter test --reporter compact` passed
@@ -78,13 +87,13 @@ already-completed Production1 apply unless explicitly stated.
 | B38 Tier-M rollup load test | queued | `cutover.0b` launch blocker |
 | B39 recovery code attempt-store refactor | queued | Code hygiene |
 | B40 `202604280013` hotfix cross-link | queued | Docs polish |
-| B41 service-principal issuance route | queued | Phase 12 prerequisite |
-| B42 proxy `/health` expansion | complete | Contract: `docs/contracts/proxy_health_contract.md`; B44/B45/B47 fill reserved metric values |
+| B41 service-principal issuance route | local complete; live apply pending | Route/client/tests landed; apply `202604290000` to staging + Production1 before live Phase 12 dependence |
+| B42 proxy `/health` expansion | complete | Contract/code/tests landed; B44/B45/B47 fill reserved metric values |
 | B43 Cloud Run audit anchor deploy | queued | Audit operations |
-| B44 graph/vector health metrics and rebuild runbook | queued | 11A.5 health surface |
-| B45 rollup worker/freshness UI integration | queued | Rollup operations |
-| B46 advisor conversation encryption/audit privacy | queued | 11b prerequisite |
-| B47 vector health + filtered-search benchmark | queued | 11A.5 vector health surface |
+| B44 graph health metrics and rebuild runbook | helper/runbook landed; producer wiring pending | 11A.5 health surface |
+| B45 rollup worker/freshness UI integration | freshness helper/runbook landed; route/UI pending | Rollup operations |
+| B46 advisor conversation encryption/audit privacy | local complete; live apply pending | Apply `202604280014` to staging + Production1 before live 11b writes |
+| B47 vector health + filtered-search benchmark | helper/benchmark artifact landed; producer wiring pending | 11A.5 vector health surface |
 
 ## Operating Rules
 

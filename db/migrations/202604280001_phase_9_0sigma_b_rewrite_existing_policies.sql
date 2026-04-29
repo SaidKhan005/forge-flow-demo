@@ -30,7 +30,9 @@
 -- the Phase 9 execution backlog and will land its policies through
 -- the wrappers from creation, not via a second rewrite.
 --
--- This migration is local framework only — no live mutation.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 
 -- ─── Drop the bare-current_setting auth policies ───────────────────
 --

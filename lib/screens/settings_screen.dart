@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
 import '../models/app_data_status.dart';
 import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
+import '../services/auth/password_change_gateway.dart';
 import '../services/shift_service.dart';
 import '../services/team/team_invite_form_controller.dart';
 import '../services/team/team_scope_visibility_policy.dart';
 import '../services/team/team_users_list_controller.dart';
 import '../state/app_refresh_coordinator.dart';
+import '../state/auth_session_notifier.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
@@ -18,7 +21,6 @@ import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
-import 'team/team_settings_entrypoint.dart';
 import 'team/team_settings_section.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -64,7 +66,15 @@ class SettingsScreen extends StatefulWidget {
   final List<TeamUserListItem> teamUsers;
   final List<TeamRoleOption> teamRoleOptions;
   final List<TeamLocationOption> teamLocationOptions;
+  final List<TeamPendingInviteListItem> teamPendingInvites;
   final TeamInviteSubmitter? onTeamInviteSubmitted;
+  final TeamInviteRevoker? onTeamInviteRevoked;
+  final TeamUserActionHandler? onTeamUserAction;
+  final PasswordChangeGateway? passwordChangeGateway;
+  final ValueListenable<List<TeamRoleOption>>? teamRoleOptionsListenable;
+  final ValueListenable<List<TeamUserListItem>>? teamUsersListenable;
+  final ValueListenable<List<TeamPendingInviteListItem>>?
+  teamPendingInvitesListenable;
 
   /// Test-only override: when true, renders Team with an owner-shaped
   /// actor even when no runtime actor snapshot is installed.
@@ -84,7 +94,14 @@ class SettingsScreen extends StatefulWidget {
     this.teamUsers = const <TeamUserListItem>[],
     this.teamRoleOptions = TeamSettingsSection.defaultRoleOptions,
     this.teamLocationOptions = const <TeamLocationOption>[],
+    this.teamPendingInvites = const <TeamPendingInviteListItem>[],
     this.onTeamInviteSubmitted,
+    this.onTeamInviteRevoked,
+    this.onTeamUserAction,
+    this.passwordChangeGateway,
+    this.teamRoleOptionsListenable,
+    this.teamUsersListenable,
+    this.teamPendingInvitesListenable,
     this.forceShowTeamSection = false,
   });
 
@@ -151,7 +168,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final authNotifier = context.watch<AuthSessionNotifier?>();
     final restaurantDisplayName = restaurant?.displayName ?? 'Restaurant';
+    final showAccount = authNotifier?.session != null;
     final showAdvisorModels =
         widget.forceShowAdvisorModelSection ||
         (advisorModelSectionEnabled &&
@@ -161,13 +180,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
         (advisorCorpusSectionEnabled &&
             widget.advisorCorpusAdminService != null);
     final effectiveTeamActor =
-        widget.teamActor ?? (widget.forceShowTeamSection ? _debugTeamActor : null);
+        widget.teamActor ??
+        (widget.forceShowTeamSection ? _debugTeamActor : null);
     final showTeam =
         effectiveTeamActor != null &&
         (widget.forceShowTeamSection ||
+            showAccount ||
             TeamScopeVisibilityPolicy.canSeeTeamNav(effectiveTeamActor));
     final tabs = <_SettingsTabSpec>[
       ..._baseSettingsTabs,
+      if (showAccount) _accountSettingsTab,
       if (showTeam) _teamSettingsTab,
       _developerSettingsTab,
     ];
@@ -234,6 +256,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 _settingsFooterSliver(restaurantDisplayName),
               ],
             ),
+            if (showAccount)
+              _SettingsTabScrollView(
+                tabId: 'account',
+                slivers: [
+                  _restaurantHeroSliver(restaurantDisplayName),
+                  _settingsSection(
+                    title: 'ACCOUNT',
+                    child: SettingsAccountSection(
+                      passwordChangeGateway: widget.passwordChangeGateway,
+                    ),
+                  ),
+                  _settingsFooterSliver(restaurantDisplayName),
+                ],
+              ),
             if (showTeam)
               _SettingsTabScrollView(
                 tabId: 'team',
@@ -241,17 +277,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _restaurantHeroSliver(restaurantDisplayName),
                   _settingsSection(
                     title: 'TEAM',
-                    child: TeamSettingsEntrypoint(
-                      actor: effectiveTeamActor,
-                      child: TeamSettingsSection(
-                        actor: effectiveTeamActor,
-                        users: widget.teamUsers,
-                        roleOptions: widget.teamRoleOptions,
-                        locationOptions: widget.teamLocationOptions,
-                        usersController: widget.teamUsersListController,
-                        inviteFormController: widget.teamInviteFormController,
-                        onInviteSubmitted: widget.onTeamInviteSubmitted,
-                      ),
+                    child: _TeamSettingsLiveDataScope(
+                      roleOptions: widget.teamRoleOptions,
+                      roleOptionsListenable: widget.teamRoleOptionsListenable,
+                      users: widget.teamUsers,
+                      usersListenable: widget.teamUsersListenable,
+                      pendingInvites: widget.teamPendingInvites,
+                      pendingInvitesListenable:
+                          widget.teamPendingInvitesListenable,
+                      builder: (roleOptions, users, pendingInvites) =>
+                          TeamSettingsSection(
+                            actor: effectiveTeamActor,
+                            users: users,
+                            roleOptions: roleOptions,
+                            locationOptions: widget.teamLocationOptions,
+                            pendingInvites: pendingInvites,
+                            usersController: widget.teamUsersListController,
+                            inviteFormController:
+                                widget.teamInviteFormController,
+                            onInviteSubmitted: widget.onTeamInviteSubmitted,
+                            onInviteRevoked: widget.onTeamInviteRevoked,
+                            onUserAction: widget.onTeamUserAction,
+                          ),
                     ),
                   ),
                   _settingsFooterSliver(restaurantDisplayName),
@@ -308,6 +355,12 @@ const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
   icon: Icons.group_outlined,
 );
 
+const _SettingsTabSpec _accountSettingsTab = _SettingsTabSpec(
+  id: 'account',
+  label: 'Account',
+  icon: Icons.person_outline,
+);
+
 const _SettingsTabSpec _developerSettingsTab = _SettingsTabSpec(
   id: 'developer',
   label: 'Developer',
@@ -321,8 +374,12 @@ const TeamScopeActor _debugTeamActor = TeamScopeActor(
   actorPermissions: <String>{
     'team.users.view',
     'team.users.invite',
-    'team.users.update',
+    'team.users.deactivate',
+    'team.users.reactivate',
+    'team.users.soft_delete',
+    'team.users.reset_password',
     'team.roles.assign',
+    'team.roles.revoke',
   },
 );
 
@@ -338,6 +395,68 @@ class _SettingsTabSpec {
   });
 }
 
+class _TeamSettingsLiveDataScope extends StatelessWidget {
+  const _TeamSettingsLiveDataScope({
+    required this.roleOptions,
+    required this.users,
+    required this.pendingInvites,
+    required this.builder,
+    this.roleOptionsListenable,
+    this.usersListenable,
+    this.pendingInvitesListenable,
+  });
+
+  final List<TeamRoleOption> roleOptions;
+  final List<TeamUserListItem> users;
+  final List<TeamPendingInviteListItem> pendingInvites;
+  final ValueListenable<List<TeamRoleOption>>? roleOptionsListenable;
+  final ValueListenable<List<TeamUserListItem>>? usersListenable;
+  final ValueListenable<List<TeamPendingInviteListItem>>?
+  pendingInvitesListenable;
+  final Widget Function(
+    List<TeamRoleOption> roleOptions,
+    List<TeamUserListItem> users,
+    List<TeamPendingInviteListItem> pendingInvites,
+  )
+  builder;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget withInvites(
+      List<TeamRoleOption> roleValue,
+      List<TeamUserListItem> userValue,
+    ) {
+      final listenable = pendingInvitesListenable;
+      if (listenable == null) {
+        return builder(roleValue, userValue, pendingInvites);
+      }
+      return ValueListenableBuilder<List<TeamPendingInviteListItem>>(
+        valueListenable: listenable,
+        builder: (context, inviteValue, _) =>
+            builder(roleValue, userValue, inviteValue),
+      );
+    }
+
+    Widget withUsers(List<TeamRoleOption> roleValue) {
+      final listenable = usersListenable;
+      if (listenable == null) return withInvites(roleValue, users);
+      return ValueListenableBuilder<List<TeamUserListItem>>(
+        valueListenable: listenable,
+        builder: (context, userValue, _) => withInvites(roleValue, userValue),
+      );
+    }
+
+    final listenable = roleOptionsListenable;
+    if (listenable == null) return withUsers(roleOptions);
+    return ValueListenableBuilder<List<TeamRoleOption>>(
+      valueListenable: listenable,
+      builder: (context, roleValue, _) {
+        return withUsers(roleValue);
+      },
+    );
+  }
+}
+
 class _SettingsTabBar extends StatelessWidget {
   final List<_SettingsTabSpec> tabs;
 
@@ -345,52 +464,68 @@ class _SettingsTabBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-      decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.sunset.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
-      ),
-      child: TabBar(
-        isScrollable: false,
-        labelStyle: AppTextStyles.mono12(color: AppColors.sunsetDark),
-        unselectedLabelStyle: AppTextStyles.mono12(color: AppColors.textMuted),
-        indicatorColor: AppColors.sunset,
-        indicatorWeight: 3,
-        labelColor: AppColors.sunsetDark,
-        unselectedLabelColor: AppColors.textMuted,
-        dividerColor: Colors.transparent,
-        tabs: [
-          for (final tab in tabs)
-            Tab(
-              key: Key('settings_tab_${tab.id}'),
-              height: 48,
-              child: _SettingsTabLabel(tab: tab),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < tabs.length * 92;
+        return Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: AppColors.sunset.withValues(alpha: 0.2),
+                width: 1,
+              ),
             ),
-        ],
-      ),
+          ),
+          child: TabBar(
+            isScrollable: false,
+            labelStyle: compact
+                ? AppTextStyles.mono10(color: AppColors.sunsetDark)
+                : AppTextStyles.mono12(color: AppColors.sunsetDark),
+            unselectedLabelStyle: compact
+                ? AppTextStyles.mono10(color: AppColors.textMuted)
+                : AppTextStyles.mono12(color: AppColors.textMuted),
+            indicatorColor: AppColors.sunset,
+            indicatorWeight: 3,
+            labelPadding: EdgeInsets.symmetric(horizontal: compact ? 4 : 10),
+            labelColor: AppColors.sunsetDark,
+            unselectedLabelColor: AppColors.textMuted,
+            dividerColor: Colors.transparent,
+            tabs: [
+              for (final tab in tabs)
+                Tab(
+                  key: Key('settings_tab_${tab.id}'),
+                  height: 48,
+                  child: _SettingsTabLabel(tab: tab, showIcon: !compact),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
 class _SettingsTabLabel extends StatelessWidget {
   final _SettingsTabSpec tab;
+  final bool showIcon;
 
-  const _SettingsTabLabel({required this.tab});
+  const _SettingsTabLabel({required this.tab, required this.showIcon});
 
   @override
   Widget build(BuildContext context) {
+    final label = tab.id == 'developer' ? 'Dev' : tab.label;
+    if (!showIcon) {
+      return Text(label, overflow: TextOverflow.ellipsis, maxLines: 1);
+    }
     return Row(
+      mainAxisSize: MainAxisSize.min,
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         Icon(tab.icon, size: 16),
         const SizedBox(width: 6),
         Flexible(
-          child: Text(tab.label, overflow: TextOverflow.ellipsis, maxLines: 1),
+          child: Text(label, overflow: TextOverflow.ellipsis, maxLines: 1),
         ),
       ],
     );

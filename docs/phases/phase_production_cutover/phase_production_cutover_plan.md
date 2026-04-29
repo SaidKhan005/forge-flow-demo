@@ -7,9 +7,10 @@ Owner: F&F launch lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies
 
-`cutover.0a` CMK at provisioning pairs with `9.0Σ.h`
-advisor_conversation_log encryption-key reference (B46 follow-on for
-B29 in `phase_9_execution_backlog.md`). The CMK key ID is stored on
+`cutover.0a` CMK provisioning pairs with `9.0Σ.h` advisor_conversation_log
+encryption-key references and B46 audit-privacy gating. B46 is local/code/test
+complete, but `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` still
+needs live staging + Production1 apply evidence. The CMK key ID is stored on
 each row; provisioning must be live before the table receives encrypted
 content.
 

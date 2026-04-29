@@ -46,6 +46,7 @@ class ProxyProductionBindings {
   const ProxyProductionBindings({
     required this.accountingStore,
     required this.authSessionLedgerWriter,
+    required this.firebaseAdminAuthClient,
     required this.permissionSnapshotResolver,
     required this.adminPermissionGuard,
     required this.authOperationsGateway,
@@ -56,6 +57,7 @@ class ProxyProductionBindings {
 
   final ProxyAccountingStore accountingStore;
   final AuthSessionLedgerWriter authSessionLedgerWriter;
+  final FirebaseAdminAuthClient firebaseAdminAuthClient;
   final ProxyPermissionSnapshotResolver permissionSnapshotResolver;
   final ProxyAdminPermissionGuard adminPermissionGuard;
   final AuthOperationsGateway authOperationsGateway;
@@ -95,6 +97,7 @@ ProxyProductionBindings buildProxyProductionBindings(
 
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
+    firebaseAdminAuthClient: firebaseAdmin,
     authSessionLedgerWriter: RepositoryAuthSessionLedgerWriter(
       repository: AuthSessionsRepository(tenantWrapper),
     ),
@@ -337,7 +340,10 @@ Future<_PermissionBundle> _loadPermissionBundle({
         userId: row.userId,
         roleId: row.roleId,
         operatorId: row.operatorId,
+        scopeType: row.scopeType,
         locationId: row.locationId,
+        orgUnitId: row.orgUnitId,
+        effectiveLocationIds: row.effectiveLocationIds,
         validFrom: row.validFrom,
         validUntil: row.validUntil,
         revokedAt: row.revokedAt,

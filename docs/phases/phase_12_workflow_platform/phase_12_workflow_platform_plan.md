@@ -1,6 +1,6 @@
 # Phase 12 — Workflow Platform Program
 
-Updated: 2026-04-26
+Updated: 2026-04-29
 Status: Planned (multi-quarter program, opens after `8.5` close)
 Owner: Future workflow automation lane
 
@@ -12,9 +12,10 @@ Owner: Future workflow automation lane
   `phase_9_execution_backlog.md`).
 - `9.0Σ.d.1` `sp:`-prefixed JWT verifier (verified at
   `tool/advisor_proxy/advisor_proxy.dart` lines 353-462).
-- B41 `service_principal` JWT issuance proxy route (queued — Phase 12
-  prerequisite). Without B41, workflows have no way to obtain an SP JWT
-  to act as a non-human principal.
+- B41 `service_principal` JWT issuance proxy route/client/tests are local
+  complete. Before Phase 12 depends on live issuance, apply
+  `202604290000_phase_9_b41_service_principal_issue_permission.sql` to staging
+  + Production1 and smoke the route with the deployed proxy.
 
 Workflows authenticate as service principals; the audit trail uses
 `actor_kind='service'` per `auth_events_audit` and `actor_principal_id`

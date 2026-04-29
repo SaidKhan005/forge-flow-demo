@@ -31,11 +31,7 @@ class SettingsCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (accent != null)
-                Container(
-                  width: 3,
-                  color: accent,
-                ),
+              if (accent != null) Container(width: 3, color: accent),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -158,44 +154,52 @@ class SettingsActionRow extends StatelessWidget {
                       Flexible(
                         child: Text(
                           label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: AppTextStyles.mono12(
-                              color: _accentColor,
-                              weight: FontWeight.w600),
+                            color: _accentColor,
+                            weight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       if (trailingBadge != null) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
                           decoration: BoxDecoration(
                             color: AppColors.sunset.withValues(alpha: 0.15),
                             border: Border.all(
-                                color: AppColors.sunset
-                                    .withValues(alpha: 0.5),
-                                width: 1),
+                              color: AppColors.sunset.withValues(alpha: 0.5),
+                              width: 1,
+                            ),
                             borderRadius: BorderRadius.circular(2),
                           ),
-                          child: Text(trailingBadge!,
-                              style:
-                                  AppTextStyles.mono7(color: AppColors.sunset)),
+                          child: Text(
+                            trailingBadge!,
+                            style: AppTextStyles.mono7(color: AppColors.sunset),
+                          ),
                         ),
                       ],
                     ],
                   ),
                   const SizedBox(height: 3),
-                  Text(description,
-                      style:
-                          AppTextStyles.body13(color: AppColors.textMuted)),
+                  Text(
+                    description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTextStyles.body13(color: AppColors.textMuted),
+                  ),
                 ],
               ),
             ),
             const SizedBox(width: 8),
-            Icon(Icons.chevron_right,
-                size: 18, color: AppColors.textMuted),
+            Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
           ],
         ),
       ),
     );
   }
-}
+}

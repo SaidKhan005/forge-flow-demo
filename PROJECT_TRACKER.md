@@ -121,6 +121,16 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   `https://staging-api.feflow.org`. Staging and Production1 applied and
   verified `202604280000` through `202604280013`; Azure `ltree` allow-listing
   and `pg_cron` maintenance-database scheduling are documented in the runbook.
+- **Phase 9 audit cleanup:** B42 proxy `/health` now returns the
+  `proxy_health.v1` envelope with compatibility aliases, dependency checks,
+  reserved metric keys, and reserved surface keys. B41 service-principal JWT
+  issuance and B46 audit-privacy are local/code/test complete, but their
+  additive live migrations (`202604290000`, `202604280014`) still need fresh
+  staging + Production1 apply evidence before live phases depend on them.
+- **Health producer status:** B44 graph tripwire/runbook, B45 rollup freshness
+  reporter/runbook, and B47 vector health helper/benchmark artifact exist;
+  producer wiring that fills the B42 reserved metric values remains follow-on
+  work for the 11A health surface.
 - **Cloud Armor status:** staging WAF remains preview-only. B17 role CRUD
   found false positives in the original SQLi/XSS preview rule, so the policy
   was tuned to sensitivity 2 with the B17 false-positive SQLi signatures
@@ -168,6 +178,10 @@ Armor preview tuning, Apple simulator recheck, and docs lean pass.
 2. iOS physical device matrix - deferred; the user will come back to it later
    with an Apple device/signing lane.
 3. `cutover.0b` - Tier-M 14-row perf-gate run; launch blocker.
+4. `202604280014` + `202604290000` live apply/smoke - required before live
+   11b audit-privacy reads or Phase 12 service-principal issuance dependence.
+5. B44/B45/B47 metric producers - fill the B42 `/health` reserved values for
+   the 11A.5 health surface.
 
 **Then continue:**
 
@@ -203,7 +217,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `8R` | queued | phase 8R plan |
 | `8.5` | queued | `phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` |
 | `11b` / `11b.1` / `11b.2` | queued | `phase_11b/phase_11b_advisor_ux_plan.md` |
-| `12.0-12.5` | queued (gated by `9.0d`) | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
+| `12.0-12.5` | queued (gated by B41 live apply/smoke) | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
 | `11A.7-10` | queued | `phase_11A_operations_console_plan.md` |
 | `10b` | queued | `phase_10b/phase_10b_full_offline_sync_plan.md` |
 | `9.8` | queued (lands last) | `phase_9_8/phase_9_8_compliance_and_legal_plan.md` |

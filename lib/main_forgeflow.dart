@@ -19,7 +19,13 @@ Future<void> main() async {
       proxyBaseUri: proxyBaseUri,
     );
     await bootstrapAndRunApp(
-      const ForgeFlowApp(),
+      ForgeFlowApp(
+        requireAuth: true,
+        permissionContextLoader: bindings.permissionContextLoader,
+        authOperationsGateway: bindings.authOperationsGateway,
+        passwordChangeGateway: bindings.passwordChangeGateway,
+        mfaOperationsGateway: bindings.mfaOperationsGateway,
+      ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,

@@ -6,6 +6,8 @@
 // `flutter_secure_storage` is a focused follow-up parallel to the
 // 9.1 RS256 backend gap and the 9.2 `package:postgres` binding.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +18,7 @@ import 'package:forge_and_flow/screens/auth/auth_gate.dart';
 import 'package:forge_and_flow/screens/auth/login_screen.dart';
 import 'package:forge_and_flow/screens/auth/mfa_challenge_screen.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
+import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/secure_session_storage.dart';
 import 'package:forge_and_flow/state/auth_session_notifier.dart';
 
@@ -35,16 +38,15 @@ void main() {
         firebaseIdToken: 'header.payload.sig',
         issuedAt: now.subtract(const Duration(minutes: 1)),
         expiresAt: expiresAt ?? now.add(const Duration(hours: 1)),
-        lastFreshAuthAt: lastFreshAuthAt ?? now.subtract(const Duration(minutes: 1)),
+        lastFreshAuthAt:
+            lastFreshAuthAt ?? now.subtract(const Duration(minutes: 1)),
         roles: roles,
         mfaEnrolled: mfaEnrolled,
       );
     }
 
     test('isAuthFresh returns true within the 5-minute window', () {
-      final session = build(
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 58),
-      );
+      final session = build(lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 58));
       expect(
         session.isAuthFresh(now: DateTime.utc(2026, 4, 26, 12, 2)),
         isTrue,
@@ -52,9 +54,7 @@ void main() {
     });
 
     test('isAuthFresh returns false past the 5-minute window', () {
-      final session = build(
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 50),
-      );
+      final session = build(lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 50));
       expect(
         session.isAuthFresh(now: DateTime.utc(2026, 4, 26, 12, 0)),
         isFalse,
@@ -226,13 +226,15 @@ void main() {
       expect(loaded?.roles, equals(<String>['operator_owner']));
     });
 
-    test('ScaffoldFailingSecureSessionStorage throws on every method',
-        () async {
-      final storage = ScaffoldFailingSecureSessionStorage();
-      await expectLater(storage.readSessionJson(), throwsStateError);
-      await expectLater(storage.writeSessionJson(''), throwsStateError);
-      await expectLater(storage.clear(), throwsStateError);
-    });
+    test(
+      'ScaffoldFailingSecureSessionStorage throws on every method',
+      () async {
+        final storage = ScaffoldFailingSecureSessionStorage();
+        await expectLater(storage.readSessionJson(), throwsStateError);
+        await expectLater(storage.writeSessionJson(''), throwsStateError);
+        await expectLater(storage.clear(), throwsStateError);
+      },
+    );
   });
 
   group('ScaffoldFailingAuthLoginService', () {
@@ -261,12 +263,14 @@ void main() {
     AuthSessionNotifier buildNotifier({
       AuthLoginService? service,
       SecureSessionStorage? storage,
+      AuthSessionLedgerWriter? ledgerWriter,
       DateTime Function()? now,
       Duration freshnessWindow = const Duration(minutes: 5),
     }) {
       return AuthSessionNotifier(
         loginService: service ?? _FakeAuthLoginService(),
         storage: storage ?? InMemorySecureSessionStorage(),
+        ledgerWriter: ledgerWriter,
         now: now ?? () => DateTime.utc(2026, 4, 26, 12),
         freshnessWindow: freshnessWindow,
       );
@@ -285,7 +289,8 @@ void main() {
         firebaseIdToken: 'header.payload.sig',
         issuedAt: now.subtract(const Duration(minutes: 1)),
         expiresAt: expiresAt ?? now.add(const Duration(hours: 1)),
-        lastFreshAuthAt: lastFreshAuthAt ?? now.subtract(const Duration(minutes: 1)),
+        lastFreshAuthAt:
+            lastFreshAuthAt ?? now.subtract(const Duration(minutes: 1)),
         roles: roles,
         mfaEnrolled: true,
       );
@@ -314,9 +319,9 @@ void main() {
     test('rehydrate with expired persisted session -> unauthenticated + '
         'storage cleared', () async {
       final storage = InMemorySecureSessionStorage();
-      await storage.writeSession(buildSession(
-        expiresAt: DateTime.utc(2026, 4, 26, 11),
-      ));
+      await storage.writeSession(
+        buildSession(expiresAt: DateTime.utc(2026, 4, 26, 11)),
+      );
       final notifier = buildNotifier(storage: storage);
       await notifier.rehydrate();
       expect(notifier.state, isA<AuthSessionUnauthenticated>());
@@ -351,29 +356,68 @@ void main() {
       expect(await storage.readSession(), isNotNull);
     });
 
-    test('signIn MFA required -> mfa-challenge state with email + token',
-        () async {
+    test('signIn adopts canonical ledger scope before persisting', () async {
+      final storage = InMemorySecureSessionStorage();
       final service = _FakeAuthLoginService(
-        signInResult: const AuthLoginMfaRequired(
-          mfaSessionToken: 'mfa-tok',
-          factorIds: <String>['totp-1'],
+        signInResult: AuthLoginSuccess(
+          buildSession().copyWith(userId: 'firebase-uid'),
         ),
       );
-      final notifier = buildNotifier(service: service);
+      final ledger = _CanonicalScopeLedger(
+        const AuthSessionLedgerLoginRecord(
+          sessionId: 'session-from-proxy',
+          userId: 'postgres-user-id',
+          operatorId: 'op_777',
+          locationId: 'loc_999',
+        ),
+      );
+      final notifier = buildNotifier(
+        service: service,
+        storage: storage,
+        ledgerWriter: ledger,
+      );
       await notifier.rehydrate();
 
-      await notifier.signInWithEmailPassword(
-        email: 'mfa@example.test',
+      final result = await notifier.signInWithEmailPassword(
+        email: 'a@b.c',
         password: 'pw',
       );
 
-      final state = notifier.state;
-      expect(state, isA<AuthSessionMfaChallenge>());
-      expect((state as AuthSessionMfaChallenge).email,
-          equals('mfa@example.test'));
-      expect(state.mfaSessionToken, equals('mfa-tok'));
-      expect(state.factorIds, equals(<String>['totp-1']));
+      expect(result, isA<AuthLoginSuccess>());
+      final session = (result as AuthLoginSuccess).session;
+      expect(session.userId, equals('postgres-user-id'));
+      expect(notifier.session?.userId, equals('postgres-user-id'));
+      expect((await storage.readSession())?.userId, equals('postgres-user-id'));
+      expect(ledger.login?.userId, equals('firebase-uid'));
     });
+
+    test(
+      'signIn MFA required -> mfa-challenge state with email + token',
+      () async {
+        final service = _FakeAuthLoginService(
+          signInResult: const AuthLoginMfaRequired(
+            mfaSessionToken: 'mfa-tok',
+            factorIds: <String>['totp-1'],
+          ),
+        );
+        final notifier = buildNotifier(service: service);
+        await notifier.rehydrate();
+
+        await notifier.signInWithEmailPassword(
+          email: 'mfa@example.test',
+          password: 'pw',
+        );
+
+        final state = notifier.state;
+        expect(state, isA<AuthSessionMfaChallenge>());
+        expect(
+          (state as AuthSessionMfaChallenge).email,
+          equals('mfa@example.test'),
+        );
+        expect(state.mfaSessionToken, equals('mfa-tok'));
+        expect(state.factorIds, equals(<String>['totp-1']));
+      },
+    );
 
     test('signIn failure -> unauthenticated with code + message', () async {
       final service = _FakeAuthLoginService(
@@ -389,8 +433,10 @@ void main() {
 
       final state = notifier.state;
       expect(state, isA<AuthSessionUnauthenticated>());
-      expect((state as AuthSessionUnauthenticated).lastErrorCode,
-          equals('invalid_credentials'));
+      expect(
+        (state as AuthSessionUnauthenticated).lastErrorCode,
+        equals('invalid_credentials'),
+      );
       expect(state.lastErrorMessage, equals('Sorry, that did not match'));
     });
 
@@ -403,25 +449,30 @@ void main() {
       );
     });
 
-    test('completeTotpChallenge transitions to authenticated on success',
-        () async {
-      final service = _FakeAuthLoginService(
-        signInResult: const AuthLoginMfaRequired(
-          mfaSessionToken: 'mfa-tok',
-          factorIds: <String>['totp-1'],
-        ),
-      );
-      final notifier = buildNotifier(service: service);
-      await notifier.rehydrate();
-      await notifier.signInWithEmailPassword(email: 'mfa@example.test', password: 'pw');
+    test(
+      'completeTotpChallenge transitions to authenticated on success',
+      () async {
+        final service = _FakeAuthLoginService(
+          signInResult: const AuthLoginMfaRequired(
+            mfaSessionToken: 'mfa-tok',
+            factorIds: <String>['totp-1'],
+          ),
+        );
+        final notifier = buildNotifier(service: service);
+        await notifier.rehydrate();
+        await notifier.signInWithEmailPassword(
+          email: 'mfa@example.test',
+          password: 'pw',
+        );
 
-      service.totpResult = AuthLoginSuccess(buildSession());
-      await notifier.completeTotpChallenge(
-        factorId: 'totp-1',
-        oneTimeCode: '123456',
-      );
-      expect(notifier.state, isA<AuthSessionAuthenticated>());
-    });
+        service.totpResult = AuthLoginSuccess(buildSession());
+        await notifier.completeTotpChallenge(
+          factorId: 'totp-1',
+          oneTimeCode: '123456',
+        );
+        expect(notifier.state, isA<AuthSessionAuthenticated>());
+      },
+    );
 
     test('requireFreshAuth returns null when not authenticated', () async {
       final notifier = buildNotifier();
@@ -430,24 +481,26 @@ void main() {
       expect(notifier.isAuthFresh, isFalse);
     });
 
-    test('requireFreshAuth returns the session when within 5-minute window',
-        () async {
-      final storage = InMemorySecureSessionStorage();
-      await storage.writeSession(buildSession(
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 58),
-      ));
-      final notifier = buildNotifier(storage: storage);
-      await notifier.rehydrate();
+    test(
+      'requireFreshAuth returns the session when within 5-minute window',
+      () async {
+        final storage = InMemorySecureSessionStorage();
+        await storage.writeSession(
+          buildSession(lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 58)),
+        );
+        final notifier = buildNotifier(storage: storage);
+        await notifier.rehydrate();
 
-      expect(notifier.requireFreshAuth(), isNotNull);
-      expect(notifier.isAuthFresh, isTrue);
-    });
+        expect(notifier.requireFreshAuth(), isNotNull);
+        expect(notifier.isAuthFresh, isTrue);
+      },
+    );
 
     test('requireFreshAuth returns null past the window', () async {
       final storage = InMemorySecureSessionStorage();
-      await storage.writeSession(buildSession(
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 50),
-      ));
+      await storage.writeSession(
+        buildSession(lastFreshAuthAt: DateTime.utc(2026, 4, 26, 11, 50)),
+      );
       final notifier = buildNotifier(storage: storage);
       await notifier.rehydrate();
 
@@ -474,8 +527,53 @@ void main() {
       expect(service.signOutAllSessionsCalls, equals(0));
     });
 
-    test('signOutAllSessions calls service revoke + clears storage',
-        () async {
+    test(
+      'signOutThisSession starts the ledger revoke before auth sign-out',
+      () async {
+        final order = <String>[];
+        final session = buildSession();
+        final service = _OrderingAuthLoginService(
+          order,
+          AuthLoginSuccess(session),
+        );
+        final notifier = buildNotifier(
+          service: service,
+          storage: InMemorySecureSessionStorage(),
+          ledgerWriter: _OrderingAuthSessionLedger(order),
+        );
+        await notifier.rehydrate();
+        await notifier.signInWithEmailPassword(email: 'a@b.c', password: 'pw');
+
+        order.clear();
+        await notifier.signOutThisSession();
+
+        expect(order, <String>[
+          'ledger.revokeSession',
+          'auth.signOutThisSession',
+        ]);
+      },
+    );
+
+    test('signOutThisSession does not wait for a slow ledger revoke', () async {
+      final session = buildSession();
+      final ledger = _BlockingAuthSessionLedger();
+      final notifier = buildNotifier(
+        service: _FakeAuthLoginService(signInResult: AuthLoginSuccess(session)),
+        storage: InMemorySecureSessionStorage(),
+        ledgerWriter: ledger,
+      );
+      await notifier.signInWithEmailPassword(email: 'a@b.c', password: 'pw');
+
+      await notifier.signOutThisSession().timeout(
+        const Duration(milliseconds: 100),
+      );
+
+      expect(notifier.state, isA<AuthSessionUnauthenticated>());
+      expect(ledger.revokeSessionStarted, isTrue);
+      ledger.complete();
+    });
+
+    test('signOutAllSessions calls service revoke + clears storage', () async {
       final storage = InMemorySecureSessionStorage();
       await storage.writeSession(buildSession());
       final service = _FakeAuthLoginService();
@@ -487,6 +585,56 @@ void main() {
       expect(notifier.state, isA<AuthSessionUnauthenticated>());
       expect(service.signOutAllSessionsCalls, equals(1));
     });
+
+    test(
+      'signOutAllSessions starts ledger revoke before auth revoke',
+      () async {
+        final order = <String>[];
+        final session = buildSession();
+        final service = _OrderingAuthLoginService(
+          order,
+          AuthLoginSuccess(session),
+        );
+        final notifier = buildNotifier(
+          service: service,
+          storage: InMemorySecureSessionStorage(),
+          ledgerWriter: _OrderingAuthSessionLedger(order),
+        );
+        await notifier.rehydrate();
+        await notifier.signInWithEmailPassword(email: 'a@b.c', password: 'pw');
+
+        order.clear();
+        await notifier.signOutAllSessions();
+
+        expect(order, <String>[
+          'ledger.revokeAllSessionsForUser',
+          'auth.signOutAllSessions',
+        ]);
+      },
+    );
+
+    test('signOutAllSessions does not wait for a slow ledger revoke', () async {
+      final session = buildSession();
+      final ledger = _BlockingAuthSessionLedger();
+      final service = _FakeAuthLoginService(
+        signInResult: AuthLoginSuccess(session),
+      );
+      final notifier = buildNotifier(
+        service: service,
+        storage: InMemorySecureSessionStorage(),
+        ledgerWriter: ledger,
+      );
+      await notifier.signInWithEmailPassword(email: 'a@b.c', password: 'pw');
+
+      await notifier.signOutAllSessions().timeout(
+        const Duration(milliseconds: 100),
+      );
+
+      expect(notifier.state, isA<AuthSessionUnauthenticated>());
+      expect(service.signOutAllSessionsCalls, equals(1));
+      expect(ledger.revokeAllStarted, isTrue);
+      ledger.complete();
+    });
   });
 
   group('AuthGate widget', () {
@@ -495,8 +643,7 @@ void main() {
         home: ChangeNotifierProvider<AuthSessionNotifier>.value(
           value: notifier,
           child: AuthGate(
-            authenticatedChild:
-                authenticatedChild ?? const _ScaffoldHomeStub(),
+            authenticatedChild: authenticatedChild ?? const _ScaffoldHomeStub(),
           ),
         ),
       );
@@ -527,11 +674,13 @@ void main() {
         loginService: _FakeAuthLoginService(),
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
       expect(find.byType(MfaChallengeScreen), findsOneWidget);
@@ -542,23 +691,27 @@ void main() {
         loginService: _FakeAuthLoginService(),
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetSession(AuthSession(
-        userId: 'u',
-        operatorId: 'o',
-        locationId: 'l',
-        firebaseIdToken: 't',
-        issuedAt: DateTime.utc(2026, 4, 26),
-        expiresAt: DateTime.utc(2026, 4, 26, 1),
-        lastFreshAuthAt: DateTime.utc(2026, 4, 26),
-        roles: const <String>['operator_owner'],
-        mfaEnrolled: true,
-      ));
-      await tester.pumpWidget(wrap(
-        notifier,
-        authenticatedChild: const Scaffold(
-          body: Center(child: Text('app-shell-here')),
+      notifier.debugSetSession(
+        AuthSession(
+          userId: 'u',
+          operatorId: 'o',
+          locationId: 'l',
+          firebaseIdToken: 't',
+          issuedAt: DateTime.utc(2026, 4, 26),
+          expiresAt: DateTime.utc(2026, 4, 26, 1),
+          lastFreshAuthAt: DateTime.utc(2026, 4, 26),
+          roles: const <String>['operator_owner'],
+          mfaEnrolled: true,
         ),
-      ));
+      );
+      await tester.pumpWidget(
+        wrap(
+          notifier,
+          authenticatedChild: const Scaffold(
+            body: Center(child: Text('app-shell-here')),
+          ),
+        ),
+      );
       await tester.pumpAndSettle();
       expect(find.text('app-shell-here'), findsOneWidget);
     });
@@ -574,8 +727,9 @@ void main() {
       );
     }
 
-    testWidgets('disabled until both fields have content + tap submits',
-        (tester) async {
+    testWidgets('disabled until both fields have content + tap submits', (
+      tester,
+    ) async {
       final session = AuthSession(
         userId: 'u',
         operatorId: 'o',
@@ -619,23 +773,23 @@ void main() {
       expect(notifier.state, isA<AuthSessionAuthenticated>());
     });
 
-    testWidgets('error banner renders when notifier carries failure code',
-        (tester) async {
+    testWidgets('error banner renders when notifier carries failure code', (
+      tester,
+    ) async {
       final notifier = AuthSessionNotifier(
         loginService: _FakeAuthLoginService(),
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionUnauthenticated(
-        lastErrorCode: 'invalid_credentials',
-        lastErrorMessage: 'Email or password is incorrect.',
-      ));
+      notifier.debugSetState(
+        const AuthSessionUnauthenticated(
+          lastErrorCode: 'invalid_credentials',
+          lastErrorMessage: 'Email or password is incorrect.',
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('login_error_banner')), findsOneWidget);
-      expect(
-        find.text('Email or password is incorrect.'),
-        findsOneWidget,
-      );
+      expect(find.text('Email or password is incorrect.'), findsOneWidget);
     });
   });
 }
@@ -646,6 +800,54 @@ class _ScaffoldHomeStub extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(body: SizedBox.shrink());
+  }
+}
+
+class _CanonicalScopeLedger
+    implements AuthSessionLedgerWriter, AuthSessionLedgerScopeResolvingWriter {
+  _CanonicalScopeLedger(this.record);
+
+  final AuthSessionLedgerLoginRecord record;
+  AuthSessionLedgerLogin? login;
+
+  @override
+  Future<AuthSessionLedgerLoginRecord> recordLoginAndResolveScope(
+    AuthSessionLedgerLogin login,
+  ) async {
+    this.login = login;
+    return record;
+  }
+
+  @override
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    throw StateError('recordLogin should not be used by AuthSessionNotifier');
+  }
+
+  @override
+  Future<void> recordRefresh({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {}
+
+  @override
+  Future<void> revokeSession({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {}
+
+  @override
+  Future<int> revokeAllSessionsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    return 0;
   }
 }
 
@@ -700,5 +902,112 @@ class _FakeAuthLoginService implements AuthLoginService {
   @override
   Future<void> signOutAllSessions() async {
     signOutAllSessionsCalls += 1;
+  }
+}
+
+class _OrderingAuthLoginService extends _FakeAuthLoginService {
+  _OrderingAuthLoginService(this.order, AuthLoginResult signInResult)
+    : super(signInResult: signInResult);
+
+  final List<String> order;
+
+  @override
+  Future<void> signOutThisSession() async {
+    order.add('auth.signOutThisSession');
+    await super.signOutThisSession();
+  }
+
+  @override
+  Future<void> signOutAllSessions() async {
+    order.add('auth.signOutAllSessions');
+    await super.signOutAllSessions();
+  }
+}
+
+class _OrderingAuthSessionLedger implements AuthSessionLedgerWriter {
+  _OrderingAuthSessionLedger(this.order);
+
+  final List<String> order;
+
+  @override
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    return 'session-ordering-test';
+  }
+
+  @override
+  Future<void> recordRefresh({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {}
+
+  @override
+  Future<void> revokeSession({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    order.add('ledger.revokeSession');
+  }
+
+  @override
+  Future<int> revokeAllSessionsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    order.add('ledger.revokeAllSessionsForUser');
+    return 1;
+  }
+}
+
+class _BlockingAuthSessionLedger implements AuthSessionLedgerWriter {
+  final Completer<void> _completer = Completer<void>();
+  bool revokeSessionStarted = false;
+  bool revokeAllStarted = false;
+
+  void complete() {
+    if (!_completer.isCompleted) _completer.complete();
+  }
+
+  @override
+  Future<String> recordLogin(AuthSessionLedgerLogin login) async {
+    return 'session-blocking-test';
+  }
+
+  @override
+  Future<void> recordRefresh({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+  }) async {}
+
+  @override
+  Future<void> revokeSession({
+    required String sessionId,
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    revokeSessionStarted = true;
+    return _completer.future;
+  }
+
+  @override
+  Future<int> revokeAllSessionsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String reason,
+  }) async {
+    revokeAllStarted = true;
+    await _completer.future;
+    return 1;
   }
 }

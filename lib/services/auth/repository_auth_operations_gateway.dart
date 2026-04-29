@@ -46,6 +46,34 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   final String Function() _tokenFactory;
 
   @override
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
+    final rows = await usersRepository.listTeamUsers(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+    );
+    return TeamUsersListed(
+      users: List<TeamUserListEntry>.unmodifiable(
+        rows.map(
+          (row) => TeamUserListEntry(
+            userId: row.userId,
+            email: row.email,
+            displayName: row.displayName,
+            roleId: row.roleId,
+            roleLabel: row.roleLabel,
+            status: row.status,
+            locationId: row.locationId,
+            locationLabel: row.locationLabel,
+            mfaEnrolled: row.mfaEnrolled,
+            userRoleId: row.userRoleId,
+            lastActiveAt: row.lastActiveAt,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Future<TeamRoleCatalogListed> listRoles(
     TeamRoleCatalogListCommand command,
   ) async {
@@ -198,9 +226,43 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamInvitesListed> listInvites(TeamInviteListCommand command) async {
+    final rows = await authInvitesRepository.listPendingInvites(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+    );
+    return TeamInvitesListed(
+      invites: List<TeamInviteListEntry>.unmodifiable(
+        rows.map(
+          (row) => TeamInviteListEntry(
+            inviteId: row.inviteId,
+            email: row.email,
+            roleId: row.roleId,
+            roleLabel: row.roleLabel,
+            scopeType: row.scopeType,
+            locationId: row.locationId,
+            locationLabel: row.locationLabel,
+            orgUnitId: row.orgUnitId,
+            orgUnitLabel: row.orgUnitLabel,
+            expiresAt: row.expiresAt,
+            createdAt: row.createdAt,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
   Future<TeamInviteCreated> createInvite(
     TeamInviteCreateCommand command,
   ) async {
+    final scopeType = _scopeFromCommand(command.scopeType);
+    _validateScopePayload(
+      scopeType: scopeType,
+      targetLocationId: command.targetLocationId,
+      targetOrgUnitId: command.targetOrgUnitId,
+    );
     final roleId = await _resolveRoleId(command);
     final userId = _idFactory();
     final defaultLocationId = command.targetLocationId ?? command.locationId;
@@ -212,11 +274,22 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       rolesVersion: 1,
     );
 
-    await firebaseAdmin.createUser(
-      uid: userId,
-      email: command.email,
-      customClaims: claims,
-    );
+    try {
+      await firebaseAdmin.createUser(
+        uid: userId,
+        email: command.email,
+        customClaims: claims,
+      );
+    } on FirebaseAdminAuthError catch (error) {
+      if (error.code == 'email_exists') {
+        throw const AuthOperationRejected(
+          code: 'invite_email_already_exists',
+          message: 'an account with this email already exists',
+          statusCode: 409,
+        );
+      }
+      rethrow;
+    }
     await usersRepository.insertInvitedUser(
       userId: userId,
       firebaseUid: userId,
@@ -232,8 +305,9 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       actorUserId: command.actorUserId,
       targetUserId: userId,
       roleId: roleId,
-      scopeType: _scopeFromCommand(command.scopeType),
+      scopeType: scopeType,
       grantLocationId: command.targetLocationId,
+      grantOrgUnitId: command.targetOrgUnitId,
       reason: 'team.invite_create',
     );
     final inviteId = await authInvitesRepository.insertInvite(
@@ -241,10 +315,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       locationId: command.locationId,
       email: command.email,
       roleId: roleId,
+      scopeType: scopeType.sqlKey,
       invitedByUserId: command.actorUserId,
       expiresAt: expiresAt,
       tokenHash: _sha256(_tokenFactory()),
       targetLocationId: command.targetLocationId,
+      targetOrgUnitId: command.targetOrgUnitId,
     );
     final rolesVersion = await usersRepository.rolesVersionForUser(
       operatorId: command.operatorId,
@@ -271,7 +347,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       payload: <String, Object?>{
         'invite_id': inviteId,
         'user_role_id': userRoleId,
-        'scope_type': command.scopeType,
+        'scope_type': scopeType.sqlKey,
+        if (command.targetLocationId != null)
+          'location_id': command.targetLocationId,
+        if (command.targetOrgUnitId != null)
+          'org_unit_id': command.targetOrgUnitId,
       },
     );
     return TeamInviteCreated(inviteId: inviteId, expiresAt: expiresAt);
@@ -361,6 +441,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   Future<TeamRoleGrantCreated> createRoleGrant(
     TeamRoleGrantCreateCommand command,
   ) async {
+    final scopeType = _scopeFromCommand(command.scopeType);
+    _validateScopePayload(
+      scopeType: scopeType,
+      targetLocationId: command.targetLocationId,
+      targetOrgUnitId: command.targetOrgUnitId,
+    );
     final roleId = await _resolveRoleGrantRoleId(command);
     final id = await userRolesRepository.insertGrant(
       operatorId: command.operatorId,
@@ -368,8 +454,9 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       actorUserId: command.actorUserId,
       targetUserId: command.targetUserId,
       roleId: roleId,
-      scopeType: _scopeFromCommand(command.scopeType),
+      scopeType: scopeType,
       grantLocationId: command.targetLocationId,
+      grantOrgUnitId: command.targetOrgUnitId,
       reason: command.reason,
     );
     await _refreshTargetClaims(command);
@@ -381,7 +468,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       eventType: 'auth.role_grant_created',
       payload: <String, Object?>{
         'user_role_id': id,
-        'scope_type': command.scopeType,
+        'scope_type': scopeType.sqlKey,
+        if (command.targetLocationId != null)
+          'location_id': command.targetLocationId,
+        if (command.targetOrgUnitId != null)
+          'org_unit_id': command.targetOrgUnitId,
       },
     );
     return TeamRoleGrantCreated(userRoleId: id);
@@ -701,13 +792,51 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   static UserRoleScope _scopeFromCommand(String scopeType) {
     return switch (scopeType) {
       'operator_wide' => UserRoleScope.operatorWide,
+      'org_unit' => UserRoleScope.orgUnit,
       'location' => UserRoleScope.location,
-      _ => throw ArgumentError.value(
-        scopeType,
-        'scopeType',
-        "must be 'operator_wide' or 'location'",
+      _ => throw const AuthOperationRejected(
+        code: 'invalid_scope_type',
+        message:
+            "scope_type must be 'operator_wide', 'org_unit', or 'location'",
+        statusCode: 400,
       ),
     };
+  }
+
+  static void _validateScopePayload({
+    required UserRoleScope scopeType,
+    required String? targetLocationId,
+    required String? targetOrgUnitId,
+  }) {
+    final hasLocation = targetLocationId != null && targetLocationId.isNotEmpty;
+    final hasOrgUnit = targetOrgUnitId != null && targetOrgUnitId.isNotEmpty;
+    switch (scopeType) {
+      case UserRoleScope.operatorWide:
+        if (hasLocation || hasOrgUnit) {
+          throw const AuthOperationRejected(
+            code: 'invalid_scope_payload',
+            message:
+                'operator-wide scope cannot include a location or org unit',
+            statusCode: 400,
+          );
+        }
+      case UserRoleScope.location:
+        if (!hasLocation || hasOrgUnit) {
+          throw const AuthOperationRejected(
+            code: 'invalid_scope_payload',
+            message: 'location scope requires exactly one location',
+            statusCode: 400,
+          );
+        }
+      case UserRoleScope.orgUnit:
+        if (!hasOrgUnit || hasLocation) {
+          throw const AuthOperationRejected(
+            code: 'invalid_scope_payload',
+            message: 'org-unit scope requires exactly one org unit',
+            statusCode: 400,
+          );
+        }
+    }
   }
 
   static String _sha256(String value) {
