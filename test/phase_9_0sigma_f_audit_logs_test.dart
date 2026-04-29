@@ -1,27 +1,59 @@
-// Phase 9.0Σ.f — hash-chained audit_logs tests.
+// Phase 9.0Σ.f — hash-chained audit_logs tests (B27 surface).
 //
-// Local framework slice (no live database, no live Azure). Five
-// groups:
+// Local framework slice (no live database, no live Azure). This file
+// owns the migration / lint / unit-level / CLI / runbook contracts.
+// The orchestrator E2E surface (B37) lives in two sibling files:
+//
+//   * `test/phase_9_0sigma_f_audit_chain_e2e_test.dart` — 100-row
+//     synthetic chain set across 3 operators × 2 chain dates,
+//     full chain walk, single-byte tamper detection, chain-boundary
+//     isolation.
+//   * `tool/audit_anchor/test/anchor_e2e_test.dart` —
+//     `AuditAnchorOrchestrator` end-to-end with fake reader / writer /
+//     blob client: runAnchor happy path + refuse-on-self-inconsistent
+//     + idempotent re-run; runVerify ok + every locked rejection
+//     (synthetic tamper, anchorMissing, anchorTerminalMismatch,
+//     blobEvidenceMismatch on ETag drift and envelope forgery,
+//     blobUnavailable).
+//
+// Groups in this file:
 //
 //   1. Migration shape — declares audit_logs partitioned by chain_date
 //      with `actor_kind`, prev/row_hash columns, the chain trigger,
 //      pg_partman registration intent, tenant-leading indexes,
-//      wrapper-only RLS, and append-only grants.
+//      wrapper-only RLS, and append-only grants. Also covers the
+//      `audit_chain_anchors` ledger schema and grants.
 //
 //   2. RLS lint posture — runs `RlsPolicyLintRunner` against the new
 //      migration and proves it passes.
 //
 //   3. Pure hash-chain recomputation — `AuditChainHasher` reproduces
-//      the SQL trigger byte-for-byte and detects retroactive
-//      mutation in a deterministic sample chain.
+//      the SQL trigger byte-for-byte at unit scale (small chains,
+//      explicit row/prev hash mismatch shapes). The 100-row scale +
+//      boundary coverage is in the chain E2E file above.
 //
-//   4. Anchor + verify orchestrator with fakes — `AuditAnchorOrchestrator`
-//      walks the chain, builds deterministic evidence, writes through
-//      the [AuditAnchorBlobClient] abstraction, records the anchor,
-//      and detects every failure mode without any live Azure call.
+//   4. `AnchorEvidenceCodec` — canonical JSON encode/decode round-trip
+//      and key-order determinism.
 //
-//   5. Runbook posture — names immutability, verification, break-glass,
-//      no live secrets/SAS tokens.
+//   5. `anchorBlobName` — deterministic blob path layout, lowercased
+//      operator UUID.
+//
+//   6. Per-axis evidence-envelope rejection contracts — exercises
+//      `_checkEvidenceEnvelope` against forged operator_id, chain_date,
+//      terminal_row_id, row_count, schema_version, and anchored_at.
+//      Each axis carries a runbook-triage-specific message; the wider
+//      spread of axes is unit-level and stays here. The single-axis
+//      "envelope mismatch is rejected" surface lives in the anchor
+//      E2E file above.
+//
+//   7. CLI surface — `parseArgs`, `runCli`, env-name-only diagnostics
+//      (no live secret values), `ScaffoldRejectingAuditAnchorBlobClient`
+//      production default, plus the B43 sweep-mode operator-id
+//      resolution path.
+//
+//   8. Runbook posture — names immutability, verification, break-glass,
+//      pg_partman live-Azure schema, JSONL evidence emitter; no live
+//      secrets / SAS tokens / account names.
 
 import 'dart:convert';
 import 'dart:io';
@@ -663,319 +695,17 @@ void main() {
   });
 
   // ───────────────────────────────────────────────────────────────────
-  group('AuditAnchorOrchestrator (anchor mode, fakes)', () {
-    test('anchors every unanchored completed chain end-to-end: '
-        'recomputes hash chain, writes evidence to fake Blob client, '
-        'records anchor row, returns one result per chain', () async {
-      final clean = _buildCleanChain();
-      final reader = _FakeReader(
-        unanchored: <AuditChainSummary>[
-          AuditChainSummary(
-            operatorId: _opA,
-            chainDate: DateTime.utc(2026, 4, 27),
-          ),
-        ],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: const <String, AuditChainAnchor>{},
-      );
-      final writer = _FakeAnchorWriter();
-      final blob = _FakeBlobClient();
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: writer,
-        blobClient: blob,
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final results = await orchestrator.runAnchor(
-        operatorId: _opA,
-        asOfUtc: DateTime.utc(2026, 4, 28),
-        nowUtc: DateTime.utc(2026, 4, 28, 2, 0, 0),
-      );
-      expect(results, hasLength(1));
-      expect(results.single.outcome, AnchorOutcome.anchored);
-
-      // Blob got the deterministic evidence.
-      expect(blob.writes, hasLength(1));
-      final write = blob.writes.single;
-      expect(write.containerName, 'forge-flow-audit-anchors');
-      expect(write.blobName, 'audit_anchors/$_opA/2026-04-27.json');
-      // Decoded evidence carries the chain's terminal data verbatim.
-      final evidence = const AnchorEvidenceCodec().decode(write.evidenceBytes);
-      expect(evidence.schemaVersion, 1);
-      expect(evidence.operatorId, _opA);
-      expect(evidence.terminalRowId, clean.last.id);
-      expect(evidence.terminalRowHashHex, equals(_hex(clean.last.rowHash)));
-      expect(evidence.rowCount, BigInt.from(clean.length));
-
-      // Anchor row recorded with the same terminal hash + row count
-      // and the Blob client's returned URI/ETag.
-      expect(writer.inserts, hasLength(1));
-      final anchor = writer.inserts.single;
-      expect(anchor.operatorId, _opA);
-      expect(anchor.chainDate, DateTime.utc(2026, 4, 27));
-      expect(anchor.terminalRowHash, equals(clean.last.rowHash));
-      expect(anchor.terminalRowId, clean.last.id);
-      expect(anchor.rowCount, BigInt.from(clean.length));
-      expect(anchor.blobUri, equals(write.fakeUri));
-      expect(anchor.blobEtag, equals(write.fakeEtag));
-    });
-
-    test('refuses to anchor a self-inconsistent chain — emits a '
-        'chainHashMismatch result and writes neither the Blob nor '
-        'the anchor row', () async {
-      final tampered = _buildCleanChain()
-        ..[1] = _retamperRow(
-          _buildCleanChain()[1],
-          newPayloadText: '{"forged": true}',
-        );
-      final reader = _FakeReader(
-        unanchored: <AuditChainSummary>[
-          AuditChainSummary(
-            operatorId: _opA,
-            chainDate: DateTime.utc(2026, 4, 27),
-          ),
-        ],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': tampered},
-        anchorsByDate: const <String, AuditChainAnchor>{},
-      );
-      final writer = _FakeAnchorWriter();
-      final blob = _FakeBlobClient();
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: writer,
-        blobClient: blob,
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final results = await orchestrator.runAnchor(
-        operatorId: _opA,
-        asOfUtc: DateTime.utc(2026, 4, 28),
-        nowUtc: DateTime.utc(2026, 4, 28, 2),
-      );
-      expect(results, hasLength(1));
-      expect(results.single.outcome, AnchorOutcome.chainHashMismatch);
-      expect(results.single.violations, isNotEmpty);
-      expect(
-        blob.writes,
-        isEmpty,
-        reason: 'no Blob write on self-verification failure',
-      );
-      expect(
-        writer.inserts,
-        isEmpty,
-        reason: 'no anchor row on self-verification failure',
-      );
-    });
-
-    test('returns no results when there are no unanchored completed '
-        'chains for the operator (idempotent re-runs are safe)', () async {
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: const <String, List<AuditLogRow>>{},
-        anchorsByDate: const <String, AuditChainAnchor>{},
-      );
-      final writer = _FakeAnchorWriter();
-      final blob = _FakeBlobClient();
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: writer,
-        blobClient: blob,
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final results = await orchestrator.runAnchor(
-        operatorId: _opA,
-        asOfUtc: DateTime.utc(2026, 4, 28),
-        nowUtc: DateTime.utc(2026, 4, 28, 2),
-      );
-      expect(results, isEmpty);
-      expect(blob.writes, isEmpty);
-      expect(writer.inserts, isEmpty);
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────
-  group('AuditAnchorOrchestrator (verify mode, fakes)', () {
-    test('returns ok when chain, anchor, and Blob evidence agree', () async {
-      final clean = _buildCleanChain();
-      final blob = _FakeBlobClient();
-      final evidenceBytes = const AnchorEvidenceCodec().encode(
-        AnchorEvidence(
-          schemaVersion: 1,
-          operatorId: _opA,
-          chainDate: DateTime.utc(2026, 4, 27),
-          terminalRowId: clean.last.id,
-          terminalRowHashHex: _hex(clean.last.rowHash),
-          rowCount: BigInt.from(clean.length),
-          anchoredAt: DateTime.utc(2026, 4, 28, 2),
-        ),
-      );
-      blob.preload(
-        blobName: 'audit_anchors/$_opA/2026-04-27.json',
-        bytes: evidenceBytes,
-        etag: 'etag-clean',
-      );
-      final anchor = AuditChainAnchor(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-        terminalRowHash: clean.last.rowHash,
-        terminalRowId: clean.last.id,
-        rowCount: BigInt.from(clean.length),
-        blobUri: 'https://fake/audit_anchors/$_opA/2026-04-27.json',
-        blobEtag: 'etag-clean',
-        anchoredAt: DateTime.utc(2026, 4, 28, 2),
-      );
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
-      );
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: blob,
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final result = await orchestrator.runVerify(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-      );
-      expect(result.outcome, VerifyOutcome.ok);
-    });
-
-    test('reports anchorMissing when the anchor row does not exist', () async {
-      final clean = _buildCleanChain();
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: const <String, AuditChainAnchor>{},
-      );
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: _FakeBlobClient(),
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final result = await orchestrator.runVerify(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-      );
-      expect(result.outcome, VerifyOutcome.anchorMissing);
-    });
-
-    test('reports anchorTerminalMismatch when the in-DB chain disagrees '
-        'with the anchor row terminal hash', () async {
-      final clean = _buildCleanChain();
-      final wrongHash = Uint8List(32)..fillRange(0, 32, 0xAA);
-      final anchor = AuditChainAnchor(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-        terminalRowHash: wrongHash, // diverges from chain.last.rowHash
-        terminalRowId: clean.last.id,
-        rowCount: BigInt.from(clean.length),
-        blobUri: 'https://fake/x',
-        blobEtag: 'etag-x',
-        anchoredAt: DateTime.utc(2026, 4, 28, 2),
-      );
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
-      );
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: _FakeBlobClient(),
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final result = await orchestrator.runVerify(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-      );
-      expect(result.outcome, VerifyOutcome.anchorTerminalMismatch);
-    });
-
-    test('reports blobEvidenceMismatch when ETag drifts — Blob '
-        'immutability prevents body changes, so an ETag mismatch is '
-        'a forensic alert (the runbook covers escalation)', () async {
-      final clean = _buildCleanChain();
-      final blob = _FakeBlobClient();
-      final evidenceBytes = const AnchorEvidenceCodec().encode(
-        AnchorEvidence(
-          schemaVersion: 1,
-          operatorId: _opA,
-          chainDate: DateTime.utc(2026, 4, 27),
-          terminalRowId: clean.last.id,
-          terminalRowHashHex: _hex(clean.last.rowHash),
-          rowCount: BigInt.from(clean.length),
-          anchoredAt: DateTime.utc(2026, 4, 28, 2),
-        ),
-      );
-      blob.preload(
-        blobName: 'audit_anchors/$_opA/2026-04-27.json',
-        bytes: evidenceBytes,
-        etag: 'etag-current',
-      );
-      final anchor = AuditChainAnchor(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-        terminalRowHash: clean.last.rowHash,
-        terminalRowId: clean.last.id,
-        rowCount: BigInt.from(clean.length),
-        blobUri: 'https://fake/audit_anchors/$_opA/2026-04-27.json',
-        blobEtag: 'etag-stale', // drifts from blob's etag-current
-        anchoredAt: DateTime.utc(2026, 4, 28, 2),
-      );
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
-      );
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: blob,
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final result = await orchestrator.runVerify(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-      );
-      expect(result.outcome, VerifyOutcome.blobEvidenceMismatch);
-    });
-
-    test('reports blobUnavailable when the Blob client raises '
-        'AuditAnchorBlobUnavailable (no live Azure call needed)', () async {
-      final clean = _buildCleanChain();
-      final anchor = AuditChainAnchor(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-        terminalRowHash: clean.last.rowHash,
-        terminalRowId: clean.last.id,
-        rowCount: BigInt.from(clean.length),
-        blobUri: 'https://fake/x',
-        blobEtag: 'etag-x',
-        anchoredAt: DateTime.utc(2026, 4, 28, 2),
-      );
-      final reader = _FakeReader(
-        unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
-        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
-      );
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: reader,
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: const ScaffoldRejectingAuditAnchorBlobClient(),
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final result = await orchestrator.runVerify(
-        operatorId: _opA,
-        chainDate: DateTime.utc(2026, 4, 27),
-      );
-      expect(result.outcome, VerifyOutcome.blobUnavailable);
-      expect(result.message, contains('not wired to live Azure'));
-    });
-  });
-
-  // ───────────────────────────────────────────────────────────────────
+  // The orchestrator anchor- and verify-mode happy paths and major
+  // failure modes (anchor terminal mismatch, ETag drift, missing
+  // anchor, blob unavailable, synthetic tamper, refuse-to-anchor on
+  // self-inconsistent chain, idempotent re-run) are owned by the
+  // B37 E2E surface at `tool/audit_anchor/test/anchor_e2e_test.dart`.
+  // The per-axis envelope-mismatch tests below are kept here because
+  // they are unit-level contracts on `_checkEvidenceEnvelope`'s axis-
+  // specific message — each axis maps to a runbook triage section, so
+  // the wider spread of axes belongs with the rest of the unit-level
+  // contract tests in this file.
+  //
   // Negative tests for each evidence-envelope axis. Round-2 fix: the
   // verifier previously checked only `terminal_row_hash_hex`, so a
   // forged Blob body matching the terminal hash would pass even if
@@ -1216,57 +946,59 @@ void main() {
       );
     });
 
-    test('runCli sweep mode resolves operators via OperatorIdReader '
-        'and drives the existing per-operator anchor logic (B43: the '
-        'daily Cloud Run firing exits 0 instead of failing parseArgs)',
-        () async {
-      // Two operators returned by the fake reader; the fake chain
-      // reader returns no unanchored chains for either, so the
-      // success path emits one log line per operator + the leading
-      // "sweep resolved" line, and the orchestrator never touches
-      // the Blob client.
-      final orchestrator = AuditAnchorOrchestrator(
-        reader: _FakeReader(
-          unanchored: const <AuditChainSummary>[],
-          chainsByDate: const <String, List<AuditLogRow>>{},
-          anchorsByDate: const <String, AuditChainAnchor>{},
-        ),
-        anchorWriter: _FakeAnchorWriter(),
-        blobClient: _FakeBlobClient(),
-        containerName: 'forge-flow-audit-anchors',
-      );
-      final reader = _FakeOperatorIdReader(<String>[_opA, _opB]);
-      // ignore: close_sinks - test sinks; close adds noise without value.
-      final out = _StringSink();
-      // ignore: close_sinks - test sinks; close adds noise without value.
-      final err = _StringSink();
-      final code = await audit_anchor_main.runCli(
-        <String>['sweep', '--as-of-utc=2026-04-28'],
-        orchestratorOverride: orchestrator,
-        operatorIdReaderOverride: reader,
-        out: out,
-        err: err,
-      );
-      expect(code, 0);
-      expect(reader.callCount, 1);
-      // Leading "sweep resolved N" line, then per-operator status.
-      expect(
-        out.toString(),
-        contains(
-          'audit_anchor: sweep resolved 2 operator(s) from '
-          'public.operators',
-        ),
-      );
-      expect(
-        out.toString(),
-        contains('audit_anchor: no unanchored completed chains for $_opA'),
-      );
-      expect(
-        out.toString(),
-        contains('audit_anchor: no unanchored completed chains for $_opB'),
-      );
-      expect(err.toString(), isEmpty);
-    });
+    test(
+      'runCli sweep mode resolves operators via OperatorIdReader '
+      'and drives the existing per-operator anchor logic (B43: the '
+      'daily Cloud Run firing exits 0 instead of failing parseArgs)',
+      () async {
+        // Two operators returned by the fake reader; the fake chain
+        // reader returns no unanchored chains for either, so the
+        // success path emits one log line per operator + the leading
+        // "sweep resolved" line, and the orchestrator never touches
+        // the Blob client.
+        final orchestrator = AuditAnchorOrchestrator(
+          reader: _FakeReader(
+            unanchored: const <AuditChainSummary>[],
+            chainsByDate: const <String, List<AuditLogRow>>{},
+            anchorsByDate: const <String, AuditChainAnchor>{},
+          ),
+          anchorWriter: _FakeAnchorWriter(),
+          blobClient: _FakeBlobClient(),
+          containerName: 'forge-flow-audit-anchors',
+        );
+        final reader = _FakeOperatorIdReader(<String>[_opA, _opB]);
+        // ignore: close_sinks - test sinks; close adds noise without value.
+        final out = _StringSink();
+        // ignore: close_sinks - test sinks; close adds noise without value.
+        final err = _StringSink();
+        final code = await audit_anchor_main.runCli(
+          <String>['sweep', '--as-of-utc=2026-04-28'],
+          orchestratorOverride: orchestrator,
+          operatorIdReaderOverride: reader,
+          out: out,
+          err: err,
+        );
+        expect(code, 0);
+        expect(reader.callCount, 1);
+        // Leading "sweep resolved N" line, then per-operator status.
+        expect(
+          out.toString(),
+          contains(
+            'audit_anchor: sweep resolved 2 operator(s) from '
+            'public.operators',
+          ),
+        );
+        expect(
+          out.toString(),
+          contains('audit_anchor: no unanchored completed chains for $_opA'),
+        );
+        expect(
+          out.toString(),
+          contains('audit_anchor: no unanchored completed chains for $_opB'),
+        );
+        expect(err.toString(), isEmpty);
+      },
+    );
 
     test('runCli sweep with an empty public.operators returns 0 with '
         'a "0 operators" stdout line (a brand-new tenant is not a '
@@ -1718,9 +1450,7 @@ void main() {
     // (POSTGRES_URL, AZURE_BLOB_AUDIT_CONTAINER,
     // AZURE_BLOB_AUDIT_ENDPOINT), and the human-approval gate.
 
-    final cloudRunYaml = File(
-      'infrastructure/cloud_run/audit_anchor_job.yaml',
-    );
+    final cloudRunYaml = File('infrastructure/cloud_run/audit_anchor_job.yaml');
     final deployScript = File('scripts/deploy_audit_anchor_job.ps1');
 
     test('runbook reconciles schedule on 23:55 UTC and never claims '
@@ -1732,7 +1462,8 @@ void main() {
       expect(
         body,
         isNot(contains('02:00 UTC')),
-        reason: 'B43 locks the daily firing at 23:55 UTC; the prior '
+        reason:
+            'B43 locks the daily firing at 23:55 UTC; the prior '
             '02:00 UTC text would re-introduce the schedule conflict '
             'the parallel-merge audit just fixed',
       );
@@ -1745,20 +1476,13 @@ void main() {
       // Deploy procedure section + cross-references to the new
       // YAML and script.
       expect(body, contains('Deploy procedure'));
-      expect(
-        body,
-        contains('infrastructure/cloud_run/audit_anchor_job.yaml'),
-      );
-      expect(
-        body,
-        contains('scripts/deploy_audit_anchor_job.ps1'),
-      );
+      expect(body, contains('infrastructure/cloud_run/audit_anchor_job.yaml'));
+      expect(body, contains('scripts/deploy_audit_anchor_job.ps1'));
       expect(
         normalizedBody,
-        contains(
-          'command/args (`dart run tool/audit_anchor/main.dart sweep`)',
-        ),
-        reason: 'the by-hand deploy contract must name the no-arg '
+        contains('command/args (`dart run tool/audit_anchor/main.dart sweep`)'),
+        reason:
+            'the by-hand deploy contract must name the no-arg '
             '`sweep` mode, not `anchor`',
       );
       expect(
@@ -1768,7 +1492,8 @@ void main() {
             'command/args (`dart run tool/audit_anchor/main.dart anchor`)',
           ),
         ),
-        reason: '`anchor` requires --operator-id and is only the '
+        reason:
+            '`anchor` requires --operator-id and is only the '
             'manual rerun surface',
       );
       // Manual smoke after deploy is documented (operators must
@@ -1781,7 +1506,8 @@ void main() {
       expect(
         body,
         isNot(contains('secret-only sync')),
-        reason: 'the deploy script does not have a secret-only mode; '
+        reason:
+            'the deploy script does not have a secret-only mode; '
             'rotation docs must describe the idempotent job/scheduler '
             'refresh honestly',
       );
@@ -1804,7 +1530,8 @@ void main() {
       expect(
         cloudRunYaml.existsSync(),
         isTrue,
-        reason: 'B43 requires the repo-owned Cloud Run Job + '
+        reason:
+            'B43 requires the repo-owned Cloud Run Job + '
             'Cloud Scheduler manifest at '
             'infrastructure/cloud_run/audit_anchor_job.yaml',
       );
@@ -1854,7 +1581,8 @@ void main() {
       expect(
         command,
         equals(<String>['dart', 'run', 'tool/audit_anchor/main.dart', 'sweep']),
-        reason: 'YAML command + args must be exactly '
+        reason:
+            'YAML command + args must be exactly '
             '["dart", "run", "tool/audit_anchor/main.dart", "sweep"]',
       );
 
@@ -1864,8 +1592,7 @@ void main() {
       // AFTER the script path (slice index 3 of the full command).
       // The deployed command parses cleanly into sweep mode with
       // no operator ids — exactly the daily firing shape.
-      final parsed =
-          audit_anchor_main.parseArgs(command.skip(3).toList());
+      final parsed = audit_anchor_main.parseArgs(command.skip(3).toList());
       expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
       expect(parsed.operatorIds, isEmpty);
 
@@ -1873,17 +1600,11 @@ void main() {
       // Cloud Scheduler kind in a multi-doc YAML.
       expect(body, contains('apiVersion: run.googleapis.com/v1'));
       expect(body, contains('kind: Job'));
-      expect(
-        body,
-        contains('apiVersion: cloudscheduler.googleapis.com/v1'),
-      );
+      expect(body, contains('apiVersion: cloudscheduler.googleapis.com/v1'));
 
       // Cross-link to the runbook so a future operator finds the
       // operational procedure from the manifest.
-      expect(
-        body,
-        contains('runbooks/audit_chain_verify_runbook.md'),
-      );
+      expect(body, contains('runbooks/audit_chain_verify_runbook.md'));
     });
 
     test('deploy_audit_anchor_job.ps1 supports name-only preflight, '
@@ -1891,7 +1612,8 @@ void main() {
       expect(
         deployScript.existsSync(),
         isTrue,
-        reason: 'B43 requires the deploy script at '
+        reason:
+            'B43 requires the deploy script at '
             'scripts/deploy_audit_anchor_job.ps1',
       );
       final body = deployScript.readAsStringSync();
@@ -1912,17 +1634,15 @@ void main() {
 
       // Loads the unified secrets file by HOME path; the secrets
       // file itself is NOT in the repo.
-      expect(
-        body,
-        contains(r'.forge_flow\forge_flow.secrets.ps1'),
-      );
+      expect(body, contains(r'.forge_flow\forge_flow.secrets.ps1'));
 
       // Forbidden: no inline secret values, no Account keys, no
       // SAS-token query strings.
       expect(
         body,
         isNot(contains('AccountKey=')),
-        reason: 'deploy script must never embed an Azure account '
+        reason:
+            'deploy script must never embed an Azure account '
             'key — values come from the env loader',
       );
       expect(
@@ -1954,11 +1674,11 @@ void main() {
       expect(
         scriptArgs,
         equals(<String>['run', 'tool/audit_anchor/main.dart', 'sweep']),
-        reason: 'deploy script must invoke `audit_anchor sweep`; '
+        reason:
+            'deploy script must invoke `audit_anchor sweep`; '
             '`anchor` would exit on `--operator-id is required`',
       );
-      final parsed =
-          audit_anchor_main.parseArgs(scriptArgs.skip(2).toList());
+      final parsed = audit_anchor_main.parseArgs(scriptArgs.skip(2).toList());
       expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
       expect(parsed.operatorIds, isEmpty);
     });
@@ -1980,7 +1700,8 @@ void main() {
       expect(
         urlPattern.hasMatch(body),
         isTrue,
-        reason: 'preflight URI must use {6} (\$JobName) for the '
+        reason:
+            'preflight URI must use {6} (\$JobName) for the '
             ':run segment, not {1} (\$SchedulerName)',
       );
       // Defense in depth: the buggy `/jobs/{1}:run` shape MUST NOT
@@ -2009,7 +1730,8 @@ void main() {
       expect(
         preflightSchedulerLine,
         contains(r'$JobName, $ServiceAccount'),
-        reason: r'format bindings must list $JobName before '
+        reason:
+            r'format bindings must list $JobName before '
             r'$ServiceAccount so the URI {6}=JobName, '
             r'{7}=ServiceAccount mapping holds',
       );
@@ -2033,10 +1755,7 @@ void main() {
 
       // YAML: posture comment names CLAUDE.md so a future deploy
       // operator opening only the manifest still sees the gate.
-      expect(
-        yamlBody,
-        contains('CLAUDE.md "no live Azure mutation in repo"'),
-      );
+      expect(yamlBody, contains('CLAUDE.md "no live Azure mutation in repo"'));
 
       // Script: explicit `Human approval is required` line in the
       // header so a future runner reading only the script header
@@ -2044,7 +1763,8 @@ void main() {
       expect(
         scriptBody.toLowerCase(),
         contains('human approval'),
-        reason: 'deploy script header must name the human-approval '
+        reason:
+            'deploy script header must name the human-approval '
             'gate so a runner who skips the runbook still sees it',
       );
       expect(
@@ -2119,13 +1839,9 @@ List<String> _extractScriptCliArgs(String script) {
   final pattern = RegExp(r"--args\s+'([^']+)'");
   final matches = pattern.allMatches(script).toList(growable: false);
   if (matches.isEmpty) {
-    throw StateError(
-      'deploy script does not contain a --args literal',
-    );
+    throw StateError('deploy script does not contain a --args literal');
   }
-  final literals = <String>{
-    for (final match in matches) match.group(1)!,
-  };
+  final literals = <String>{for (final match in matches) match.group(1)!};
   if (literals.length != 1) {
     throw StateError(
       'deploy script contains mismatched --args literals: $literals',
@@ -2240,29 +1956,6 @@ List<AuditLogRow> _buildCleanChain() {
   return out;
 }
 
-AuditLogRow _retamperRow(
-  AuditLogRow original, {
-  required String newPayloadText,
-}) {
-  return _buildRow(
-    id: original.id,
-    operatorId: original.operatorId,
-    locationId: original.locationId,
-    chainDate: original.chainDate,
-    occurredAt: original.occurredAt,
-    actorKind: original.actorKind,
-    actorUserId: original.actorUserId,
-    actorPrincipalId: original.actorPrincipalId,
-    targetKind: original.targetKind,
-    targetId: original.targetId,
-    action: original.action,
-    payloadText: newPayloadText,
-    prevRowHash: original.prevRowHash,
-    // Keep the OLD row_hash so the recompute disagrees with stored.
-    rowHash: original.rowHash,
-  );
-}
-
 String _hex(Uint8List bytes) {
   final sb = StringBuffer();
   for (final b in bytes) {
@@ -2336,8 +2029,8 @@ class _FakeAnchorWriter implements AuditChainAnchorWriter {
 class _FakeOperatorIdReader implements OperatorIdReader {
   _FakeOperatorIdReader(this._operatorIds) : _failureMessage = null;
   _FakeOperatorIdReader.throwing(String message)
-      : _operatorIds = const <String>[],
-        _failureMessage = message;
+    : _operatorIds = const <String>[],
+      _failureMessage = message;
 
   final List<String> _operatorIds;
   final String? _failureMessage;
