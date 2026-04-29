@@ -42,6 +42,7 @@ import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -88,6 +89,12 @@ abstract class ProxySecretNames {
   /// SDK / proxy surfaces, never to the Admin choreography directly.
   static const String firebaseWebApiKey = 'FIREBASE_WEB_API_KEY';
 
+  /// HMAC signing secret for short-lived `sp:` service-principal JWTs.
+  /// Only the proxy holds this value; Flutter clients receive issued
+  /// tokens, never the signing key.
+  static const String servicePrincipalJwtSecret =
+      'SERVICE_PRINCIPAL_JWT_SECRET';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -96,6 +103,7 @@ abstract class ProxySecretNames {
     postgresUrl,
     postgresAdminUrl,
     firebaseWebApiKey,
+    servicePrincipalJwtSecret,
   ];
 }
 
@@ -1564,6 +1572,463 @@ class ProxyUsageGuard {
 // Postgres + Anthropic wiring must satisfy without opening network sockets or
 // importing a DB driver. The default implementations fail closed.
 
+class ServicePrincipalJwtIssueCommand {
+  const ServicePrincipalJwtIssueCommand({
+    required this.servicePrincipalId,
+    required this.operator,
+    required this.idempotencyKey,
+    required this.issuedAt,
+  });
+
+  final String servicePrincipalId;
+  final OperatorContext operator;
+  final String idempotencyKey;
+  final DateTime issuedAt;
+}
+
+class ServicePrincipalJwtIssued {
+  const ServicePrincipalJwtIssued({
+    required this.jwt,
+    required this.expiresAt,
+    this.idempotentReplay = false,
+  });
+
+  final String jwt;
+  final DateTime expiresAt;
+  final bool idempotentReplay;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'jwt': jwt,
+    'expires_at': expiresAt.toUtc().toIso8601String(),
+    'idempotent_replay': idempotentReplay,
+  };
+}
+
+class ServicePrincipalJwtIssueRejected implements Exception {
+  const ServicePrincipalJwtIssueRejected({
+    required this.code,
+    required this.message,
+    required this.statusCode,
+    this.retryAfter,
+  });
+
+  final String code;
+  final String message;
+  final int statusCode;
+  final DateTime? retryAfter;
+
+  Map<String, Object?> toJson() => <String, Object?>{
+    'error': code,
+    'message': message,
+    if (retryAfter != null)
+      'retry_after': retryAfter!.toUtc().toIso8601String(),
+  };
+}
+
+abstract class ServicePrincipalJwtIssuanceGateway {
+  Future<ServicePrincipalJwtIssued> issue(
+    ServicePrincipalJwtIssueCommand command,
+  );
+}
+
+class PostgresServicePrincipalJwtIssuanceGateway
+    implements ServicePrincipalJwtIssuanceGateway {
+  PostgresServicePrincipalJwtIssuanceGateway({
+    required TenantTransactionWrapper wrapper,
+    required ServicePrincipalJwtIssuer issuer,
+    this.ttl = const Duration(minutes: 15),
+    this.rateLimitPerHour = 100,
+  }) : _wrapper = wrapper,
+       _issuer = issuer;
+
+  final TenantTransactionWrapper _wrapper;
+  final ServicePrincipalJwtIssuer _issuer;
+  final Duration ttl;
+  final int rateLimitPerHour;
+
+  @override
+  Future<ServicePrincipalJwtIssued> issue(
+    ServicePrincipalJwtIssueCommand command,
+  ) {
+    final servicePrincipalId = command.servicePrincipalId.toLowerCase();
+    if (!_servicePrincipalUuidPattern.hasMatch(servicePrincipalId)) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'invalid_service_principal_id',
+        message: 'service principal id must be a UUID',
+        statusCode: 400,
+      );
+    }
+
+    final ctx = TenantContext(
+      operatorId: command.operator.operatorId,
+      locationId: command.operator.locationId,
+      userId: command.operator.userId,
+    );
+    return _wrapper.runInTenantContext(ctx, (exec) async {
+      final issuedAt = command.issuedAt.toUtc();
+      final requestType = _requestTypeFor(servicePrincipalId);
+      final existing = await _lookupIdempotency(exec, command, requestType);
+      if (existing != null) return existing;
+
+      await exec.execute(
+        'select pg_advisory_xact_lock(hashtext(@service_principal_id))',
+        parameters: <String, Object?>{
+          'service_principal_id': servicePrincipalId,
+        },
+      );
+
+      final principal = await _loadServicePrincipal(
+        exec,
+        operatorId: command.operator.operatorId,
+        servicePrincipalId: servicePrincipalId,
+      );
+      if (principal == null) {
+        throw const ServicePrincipalJwtIssueRejected(
+          code: 'service_principal_not_found',
+          message: 'service principal was not found for this operator',
+          statusCode: 404,
+        );
+      }
+      if (principal.revokedAt != null) {
+        throw const ServicePrincipalJwtIssueRejected(
+          code: 'service_principal_revoked',
+          message: 'service principal is revoked',
+          statusCode: 409,
+        );
+      }
+
+      final recentCount = await _recentIssuanceCount(
+        exec,
+        operatorId: command.operator.operatorId,
+        servicePrincipalId: servicePrincipalId,
+        issuedAt: issuedAt,
+      );
+      if (recentCount >= rateLimitPerHour) {
+        throw ServicePrincipalJwtIssueRejected(
+          code: 'service_principal_rate_limited',
+          message: 'service principal JWT issuance rate limit reached',
+          statusCode: 429,
+          retryAfter: issuedAt.add(const Duration(hours: 1)),
+        );
+      }
+
+      final reserved = await _reserveIdempotency(exec, command, requestType);
+      if (!reserved) {
+        final raced = await _lookupIdempotency(exec, command, requestType);
+        if (raced != null) return raced;
+        throw const ServicePrincipalJwtIssueRejected(
+          code: 'idempotency_request_in_flight',
+          message: 'idempotent request is already in flight',
+          statusCode: 409,
+        );
+      }
+
+      final jwt = _issuer.issue(
+        servicePrincipalId: principal.id,
+        operatorId: command.operator.operatorId,
+        locationId: command.operator.locationId,
+        scopes: principal.scopes,
+        issuedAt: issuedAt,
+        ttl: ttl,
+      );
+      final expiresAt = issuedAt.add(ttl);
+      final payload = <String, Object?>{
+        'jwt': jwt,
+        'expires_at': expiresAt.toIso8601String(),
+      };
+
+      await _insertAuditRow(
+        exec,
+        command: command,
+        principal: principal,
+        issuedAt: issuedAt,
+        expiresAt: expiresAt,
+      );
+      await _completeIdempotency(exec, command, payload);
+
+      return ServicePrincipalJwtIssued(jwt: jwt, expiresAt: expiresAt);
+    });
+  }
+
+  Future<ServicePrincipalJwtIssued?> _lookupIdempotency(
+    PostgresExecutor exec,
+    ServicePrincipalJwtIssueCommand command,
+    String requestType,
+  ) async {
+    final rows = await exec.query(
+      '''
+select request_type, response_payload
+  from public.proxy_requests
+ where operator_id = @operator_id
+   and location_id = @location_id
+   and idempotency_key = @idempotency_key
+ limit 1
+''',
+      parameters: <String, Object?>{
+        'operator_id': command.operator.operatorId,
+        'location_id': command.operator.locationId,
+        'idempotency_key': command.idempotencyKey,
+      },
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    if (row['request_type'] != requestType) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'idempotency_key_conflict',
+        message: 'Idempotency-Key was already used for another request',
+        statusCode: 409,
+      );
+    }
+    final payload = _jsonObjectOrNull(row['response_payload']);
+    if (payload == null) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'idempotency_request_in_flight',
+        message: 'idempotent request is already in flight',
+        statusCode: 409,
+      );
+    }
+    final jwt = payload['jwt'];
+    final expiresAt = DateTime.tryParse(
+      payload['expires_at']?.toString() ?? '',
+    );
+    if (jwt is! String || jwt.isEmpty || expiresAt == null) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'idempotency_payload_malformed',
+        message: 'stored idempotency response is malformed',
+        statusCode: 503,
+      );
+    }
+    return ServicePrincipalJwtIssued(
+      jwt: jwt,
+      expiresAt: expiresAt.toUtc(),
+      idempotentReplay: true,
+    );
+  }
+
+  Future<bool> _reserveIdempotency(
+    PostgresExecutor exec,
+    ServicePrincipalJwtIssueCommand command,
+    String requestType,
+  ) async {
+    final rows = await exec.query(
+      '''
+insert into public.proxy_requests (
+  idempotency_key,
+  request_type,
+  operator_id,
+  location_id,
+  usage_class,
+  response_payload
+) values (
+  @idempotency_key,
+  @request_type,
+  @operator_id,
+  @location_id,
+  'auth_service_principal',
+  null
+)
+on conflict (operator_id, location_id, idempotency_key) do nothing
+returning request_id
+''',
+      parameters: <String, Object?>{
+        'idempotency_key': command.idempotencyKey,
+        'request_type': requestType,
+        'operator_id': command.operator.operatorId,
+        'location_id': command.operator.locationId,
+      },
+    );
+    return rows.isNotEmpty;
+  }
+
+  Future<_ServicePrincipalIssueRow?> _loadServicePrincipal(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String servicePrincipalId,
+  }) async {
+    final rows = await exec.query(
+      '''
+select id::text as id, scopes, revoked_at
+  from public.service_principals
+ where operator_id = @operator_id::uuid
+   and id = @service_principal_id::uuid
+ limit 1
+''',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'service_principal_id': servicePrincipalId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    final id = row['id'];
+    final revokedAt = row['revoked_at'];
+    if (id is! String || (revokedAt != null && revokedAt is! DateTime)) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'service_principal_malformed',
+        message: 'service principal row was malformed',
+        statusCode: 503,
+      );
+    }
+    return _ServicePrincipalIssueRow(
+      id: id,
+      scopes: _decodeServicePrincipalScopes(row['scopes']),
+      revokedAt: revokedAt as DateTime?,
+    );
+  }
+
+  Future<int> _recentIssuanceCount(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String servicePrincipalId,
+    required DateTime issuedAt,
+  }) async {
+    final rows = await exec.query(
+      '''
+select count(*)::int as issuance_count
+  from public.auth_events_audit
+ where operator_id = @operator_id::uuid
+   and actor_kind = 'service'
+   and actor_service_principal_id = @service_principal_id::uuid
+   and event_type = @event_type
+   and occurred_at >= @window_start::timestamptz
+''',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'service_principal_id': servicePrincipalId,
+        'event_type': PermissionKeys.adminServicePrincipalIssueToken,
+        'window_start': issuedAt
+            .subtract(const Duration(hours: 1))
+            .toIso8601String(),
+      },
+    );
+    if (rows.isEmpty) return 0;
+    final count = rows.single['issuance_count'];
+    if (count is int) return count;
+    return int.tryParse(count.toString()) ?? 0;
+  }
+
+  Future<void> _insertAuditRow(
+    PostgresExecutor exec, {
+    required ServicePrincipalJwtIssueCommand command,
+    required _ServicePrincipalIssueRow principal,
+    required DateTime issuedAt,
+    required DateTime expiresAt,
+  }) async {
+    await exec.query(
+      '''
+insert into public.auth_events_audit (
+  actor_user_id,
+  actor_kind,
+  actor_service_principal_id,
+  target_user_id,
+  operator_id,
+  location_id,
+  event_type,
+  event_payload
+) values (
+  null,
+  'service',
+  @service_principal_id::uuid,
+  null,
+  @operator_id::uuid,
+  @location_id::uuid,
+  @event_type,
+  @payload::jsonb
+)
+returning event_id::text as event_id
+''',
+      parameters: <String, Object?>{
+        'service_principal_id': principal.id,
+        'operator_id': command.operator.operatorId,
+        'location_id': command.operator.locationId,
+        'event_type': PermissionKeys.adminServicePrincipalIssueToken,
+        'payload': jsonEncode(<String, Object?>{
+          'issued_by_user_id': command.operator.userId,
+          'service_principal_id': principal.id,
+          'scopes': principal.scopes,
+          'issued_at': issuedAt.toIso8601String(),
+          'expires_at': expiresAt.toIso8601String(),
+        }),
+      },
+    );
+  }
+
+  Future<void> _completeIdempotency(
+    PostgresExecutor exec,
+    ServicePrincipalJwtIssueCommand command,
+    Map<String, Object?> payload,
+  ) async {
+    final affected = await exec.execute(
+      '''
+update public.proxy_requests
+   set response_payload = @response_payload::jsonb,
+       updated_at = @completed_at::timestamptz
+ where operator_id = @operator_id
+   and location_id = @location_id
+   and idempotency_key = @idempotency_key
+''',
+      parameters: <String, Object?>{
+        'response_payload': jsonEncode(payload),
+        'completed_at': command.issuedAt.toUtc().toIso8601String(),
+        'operator_id': command.operator.operatorId,
+        'location_id': command.operator.locationId,
+        'idempotency_key': command.idempotencyKey,
+      },
+    );
+    if (affected == 0) {
+      throw const ServicePrincipalJwtIssueRejected(
+        code: 'idempotency_completion_missing',
+        message: 'idempotency reservation was not found',
+        statusCode: 503,
+      );
+    }
+  }
+
+  static String _requestTypeFor(String servicePrincipalId) =>
+      'service_principal_jwt_issue:$servicePrincipalId';
+}
+
+class _ServicePrincipalIssueRow {
+  const _ServicePrincipalIssueRow({
+    required this.id,
+    required this.scopes,
+    required this.revokedAt,
+  });
+
+  final String id;
+  final List<String> scopes;
+  final DateTime? revokedAt;
+}
+
+List<String> _decodeServicePrincipalScopes(Object? raw) {
+  if (raw == null) return const <String>[];
+  final decoded = raw is String && raw.isNotEmpty ? jsonDecode(raw) : raw;
+  if (decoded is List) {
+    return decoded.map((scope) => scope.toString()).toList(growable: false);
+  }
+  if (decoded is String && decoded.isEmpty) return const <String>[];
+  throw const ServicePrincipalJwtIssueRejected(
+    code: 'service_principal_scopes_malformed',
+    message: 'service principal scopes were malformed',
+    statusCode: 503,
+  );
+}
+
+Map<String, Object?>? _jsonObjectOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return Map<String, Object?>.from(value);
+  if (value is String && value.trim().isNotEmpty) {
+    final decoded = jsonDecode(value);
+    if (decoded is Map) return Map<String, Object?>.from(decoded);
+  }
+  return null;
+}
+
+final RegExp _servicePrincipalUuidPattern = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+);
+
 class ProxyUsageChargeEstimate {
   const ProxyUsageChargeEstimate({
     required this.tokenCount,
@@ -2339,6 +2804,8 @@ const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+const String adminServicePrincipalsPath = '/v1/admin/service-principals';
+const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
 
 // Phase 9 live-closeout B6 — auth-session ledger endpoints. The Flutter
 // app holds no Postgres credentials; every `auth_sessions` mutation
@@ -2441,6 +2908,7 @@ Future<void> routeRequest(
   ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
+  ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
   PasswordChangeGateway? passwordChangeGateway,
   MfaOperationsGateway? mfaOperationsGateway,
   bool trustProxyAuditHeaders = false,
@@ -3009,6 +3477,67 @@ Future<void> routeRequest(
         });
         return;
       }
+    }
+
+    final servicePrincipalJwtIssueId = _servicePrincipalJwtIssueId(
+      path,
+      request.method,
+    );
+    if (servicePrincipalJwtIssueId != null) {
+      if (servicePrincipalJwtIssuanceGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'service_principal_issuance_not_configured',
+          'message':
+              'route requires a ServicePrincipalJwtIssuanceGateway to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+
+      final allowed = await _requireAdminPermissionOrWrite(
+        response: response,
+        guard: adminPermissionGuard,
+        scope: scope,
+        permissionKey: PermissionKeys.adminServicePrincipalIssueToken,
+        requestedAt: clock().toUtc(),
+      );
+      if (!allowed) return;
+
+      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_idempotency_key',
+          'message': 'Idempotency-Key header is required',
+        });
+        return;
+      }
+
+      try {
+        final issued = await servicePrincipalJwtIssuanceGateway.issue(
+          ServicePrincipalJwtIssueCommand(
+            servicePrincipalId: servicePrincipalJwtIssueId,
+            operator: scope,
+            idempotencyKey: idempotencyKey,
+            issuedAt: clock().toUtc(),
+          ),
+        );
+        _writeJson(response, 200, issued.toJson());
+      } on ServicePrincipalJwtIssueRejected catch (error) {
+        _writeJson(response, error.statusCode, error.toJson());
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'service_principal_issuance_unavailable',
+          'message':
+              'service principal JWT issuance is unavailable; please retry',
+        });
+      }
+      return;
     }
 
     if (_isAdminAuthOperation(path, request.method)) {
@@ -3663,6 +4192,17 @@ bool _isAdminAuthOperation(String path, String method) {
     return true;
   }
   return false;
+}
+
+String? _servicePrincipalJwtIssueId(String path, String method) {
+  if (method != 'POST') return null;
+  if (!path.startsWith(adminServicePrincipalsPrefix)) return null;
+  final rest = path.substring(adminServicePrincipalsPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'jwt') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 bool _isMfaOperation(String path, String method) {

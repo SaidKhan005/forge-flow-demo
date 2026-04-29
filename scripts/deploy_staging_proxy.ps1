@@ -84,6 +84,7 @@ $requiredEnv = @(
   'POSTGRES_ADMIN_URL',
   'FIREBASE_PROJECT_ID',
   'FIREBASE_WEB_API_KEY',
+  'SERVICE_PRINCIPAL_JWT_SECRET',
   'FIREBASE_AUTH_SMOKE_PASSWORD'
 )
 Assert-PresentEnv -Names $requiredEnv
@@ -94,6 +95,7 @@ $secretEnv = [ordered] @{
   'POSTGRES_URL' = 'forge-flow-staging-postgres-url'
   'POSTGRES_ADMIN_URL' = 'forge-flow-staging-postgres-admin-url'
   'FIREBASE_WEB_API_KEY' = 'forge-flow-staging-firebase-web-api-key'
+  'SERVICE_PRINCIPAL_JWT_SECRET' = 'forge-flow-staging-service-principal-jwt-secret'
 }
 
 function Sync-SecretManagerSecret {
@@ -226,6 +228,7 @@ Write-Host ' - deployed staging proxy URL'
 Write-Host ' - FORGE_FLOW_PROXY_BASE_URI'
 Write-Host ' - FIREBASE_PROJECT_ID'
 Write-Host ' - FIREBASE_WEB_API_KEY'
+Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
 Write-Host ' - POSTGRES_URL'
 Write-Host ' - POSTGRES_ADMIN_URL'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'

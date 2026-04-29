@@ -34,11 +34,18 @@ Future<void> main(List<String> args) async {
   final ProxyJwtVerifier verifier;
   final firebaseProjectId = config.firebaseProjectId;
   if (firebaseProjectId != null) {
-    verifier = FirebaseProxyJwtVerifier(
-      projectId: firebaseProjectId,
-      keySource: FirebaseSecureTokenJwksSource(),
-      signatureValidator: const PointyCastleRs256SignatureValidator(),
-    );
+    verifier = CompositeProxyJwtVerifier(<ProxyJwtVerifier>[
+      FirebaseProxyJwtVerifier(
+        projectId: firebaseProjectId,
+        keySource: FirebaseSecureTokenJwksSource(),
+        signatureValidator: const PointyCastleRs256SignatureValidator(),
+      ),
+      ServicePrincipalJwtVerifier(
+        sharedSecret: config.secretFor(
+          ProxySecretNames.servicePrincipalJwtSecret,
+        ),
+      ),
+    ]);
   } else {
     verifier = const ScaffoldRejectingJwtVerifier();
   }
@@ -77,6 +84,7 @@ Future<void> main(List<String> args) async {
     'permission_snapshot: postgres, '
     'admin_permission_guard: postgres, '
     'auth_operations: postgres, '
+    'service_principal_issuance: postgres, '
     'password_change: postgres, '
     'mfa_operations: postgres_identitytoolkit_firebase_mfa)',
   );
@@ -97,6 +105,8 @@ Future<void> main(List<String> args) async {
             productionBindings.permissionSnapshotResolver,
         adminPermissionGuard: productionBindings.adminPermissionGuard,
         authOperationsGateway: productionBindings.authOperationsGateway,
+        servicePrincipalJwtIssuanceGateway:
+            productionBindings.servicePrincipalJwtIssuanceGateway,
         passwordChangeGateway: productionBindings.passwordChangeGateway,
         mfaOperationsGateway: productionBindings.mfaOperationsGateway,
       );

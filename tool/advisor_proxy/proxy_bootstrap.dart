@@ -49,6 +49,7 @@ class ProxyProductionBindings {
     required this.permissionSnapshotResolver,
     required this.adminPermissionGuard,
     required this.authOperationsGateway,
+    required this.servicePrincipalJwtIssuanceGateway,
     required this.passwordChangeGateway,
     required this.mfaOperationsGateway,
   });
@@ -58,6 +59,7 @@ class ProxyProductionBindings {
   final ProxyPermissionSnapshotResolver permissionSnapshotResolver;
   final ProxyAdminPermissionGuard adminPermissionGuard;
   final AuthOperationsGateway authOperationsGateway;
+  final ServicePrincipalJwtIssuanceGateway servicePrincipalJwtIssuanceGateway;
   final PasswordChangeGateway passwordChangeGateway;
   final MfaOperationsGateway mfaOperationsGateway;
 }
@@ -111,6 +113,15 @@ ProxyProductionBindings buildProxyProductionBindings(
       authInvitesRepository: AuthInvitesRepository(adminWrapper),
       auditRepository: AuthEventsAuditRepository(adminWrapper),
     ),
+    servicePrincipalJwtIssuanceGateway:
+        PostgresServicePrincipalJwtIssuanceGateway(
+          wrapper: tenantWrapper,
+          issuer: ServicePrincipalJwtIssuer(
+            sharedSecret: config.secretFor(
+              ProxySecretNames.servicePrincipalJwtSecret,
+            ),
+          ),
+        ),
     passwordChangeGateway: RepositoryPasswordChangeGateway(
       firebaseAdmin: firebaseAdmin,
       usersRepository: tenantUsers,

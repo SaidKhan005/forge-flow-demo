@@ -31,6 +31,22 @@ void main() {
       expect(script, contains("Write-Host ' - FIREBASE_WEB_API_KEY'"));
     });
 
+    test('requires SERVICE_PRINCIPAL_JWT_SECRET for B41 JWT issuance', () {
+      expect(script, contains("'SERVICE_PRINCIPAL_JWT_SECRET'"));
+      expect(
+        script,
+        contains(
+          "'SERVICE_PRINCIPAL_JWT_SECRET' = "
+          "'forge-flow-staging-service-principal-jwt-secret'",
+        ),
+      );
+      expect(script, contains("Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'"));
+      expect(
+        script,
+        isNot(contains(r'Write-Host $env:SERVICE_PRINCIPAL_JWT_SECRET')),
+      );
+    });
+
     test('deploys secret values through Secret Manager references', () {
       expect(script, contains('secretmanager.googleapis.com'));
       expect(script, contains('function Sync-SecretManagerSecret'));
@@ -86,6 +102,15 @@ void main() {
       expect(script, contains("'FIREBASE_WEB_API_KEY'"));
       expect(script, contains('PRESENT (name only - value not inspected)'));
       expect(script, isNot(contains(r'Write-Host $env:FIREBASE_WEB_API_KEY')));
+    });
+
+    test('reports SERVICE_PRINCIPAL_JWT_SECRET by name only', () {
+      expect(script, contains("'SERVICE_PRINCIPAL_JWT_SECRET'"));
+      expect(script, contains('PRESENT (name only - value not inspected)'));
+      expect(
+        script,
+        isNot(contains(r'Write-Host $env:SERVICE_PRINCIPAL_JWT_SECRET')),
+      );
     });
 
     test('shares the google-services fallback with the deploy script', () {

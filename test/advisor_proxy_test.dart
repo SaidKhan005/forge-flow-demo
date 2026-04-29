@@ -35,6 +35,8 @@ void main() {
         ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
         ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
         if (port != null) 'PORT': port,
       };
     }
@@ -53,6 +55,7 @@ void main() {
           ProxySecretNames.postgresUrl,
           ProxySecretNames.postgresAdminUrl,
           ProxySecretNames.firebaseWebApiKey,
+          ProxySecretNames.servicePrincipalJwtSecret,
         ]),
       );
       expect(config.hasSecretFor(ProxySecretNames.anthropicApiKey), isTrue);
@@ -91,6 +94,7 @@ void main() {
         ProxySecretNames.postgresUrl: 'placeholder-url',
         ProxySecretNames.postgresAdminUrl: '   ', // blank counts
         // FIREBASE_WEB_API_KEY missing
+        // SERVICE_PRINCIPAL_JWT_SECRET missing
       };
 
       Object? thrown;
@@ -108,6 +112,7 @@ void main() {
           ProxySecretNames.voyageApiKey,
           ProxySecretNames.postgresAdminUrl,
           ProxySecretNames.firebaseWebApiKey,
+          ProxySecretNames.servicePrincipalJwtSecret,
         ]),
       );
       expect(
@@ -128,6 +133,7 @@ void main() {
         ProxySecretNames.postgresUrl: marker,
         ProxySecretNames.postgresAdminUrl: marker,
         ProxySecretNames.firebaseWebApiKey: marker,
+        ProxySecretNames.servicePrincipalJwtSecret: marker,
       };
 
       final config = ProxyConfig.fromEnvironment(environment);
@@ -1733,10 +1739,10 @@ void main() {
         // The DO block guards the backfill on column existence so re-runs
         // after the column was already dropped are safe.
         expect(
-          migration,
+          normalizedMigration,
           contains(
-            "where table_schema = 'public'\n       and table_name = 'users'\n"
-            "       and column_name = 'role'",
+            "where table_schema = 'public' and table_name = 'users' "
+            "and column_name = 'role'",
           ),
         );
         expect(migration, contains('insert into public.user_roles'));
@@ -2069,7 +2075,8 @@ void main() {
           expect(
             allMigrationsContent,
             contains("'$key'"),
-            reason: 'PermissionKeys constant $key not seeded by any '
+            reason:
+                'PermissionKeys constant $key not seeded by any '
                 'db/migrations/*.sql file',
           );
         }
@@ -2082,6 +2089,7 @@ void main() {
         'admin.users.erase_pii',
         'admin.roles.edit_seeded',
         'admin.pricing_tier.edit',
+        'admin.service_principal.issue_token',
         'billing.subscription.manage',
         'billing.payment_method.manage',
         'billing.usage_caps.edit',
@@ -2195,6 +2203,8 @@ void main() {
         ProxySecretNames.postgresUrl: 'placeholder-postgres-url',
         ProxySecretNames.postgresAdminUrl: 'placeholder-postgres-admin-url',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
         if (projectId != null) ProxyConfigNames.firebaseProjectId: projectId,
       };
     }
@@ -2211,6 +2221,7 @@ void main() {
           ProxySecretNames.postgresUrl,
           ProxySecretNames.postgresAdminUrl,
           ProxySecretNames.firebaseWebApiKey,
+          ProxySecretNames.servicePrincipalJwtSecret,
         ]),
       );
     });

@@ -816,7 +816,7 @@ values
   ('barrio.streak.view', 'barrio',
    'View own streak / leaderboard standing.', false, true),
 
-  -- admin.* (25)
+  -- admin.* (26)
   ('admin.users.view', 'admin', 'View users in admin console.', false, true),
   ('admin.users.create', 'admin',
    'Create users programmatically (rare path).', false, true),
@@ -862,6 +862,9 @@ values
    'View internal debug console.', false, true),
   ('admin.session.force_logout', 'admin',
    'Force-revoke all sessions for a user.', false, true),
+  ('admin.service_principal.issue_token', 'admin',
+   'Issue short-lived service-principal JWTs for automation identities. MFA required.',
+   true, true),
 
   -- billing.* (5)
   ('billing.invoice.view', 'billing', 'View operator invoices.', false, true),

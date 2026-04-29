@@ -26,6 +26,8 @@ void main() {
         ProxySecretNames.postgresAdminUrl:
             'postgres://admin-role.example/forgeflow',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
       });
       final pool = _RecordingPostgresPool(
         returningSessionId: '11111111-1111-4111-8111-111111111111',
@@ -95,6 +97,8 @@ void main() {
         ProxySecretNames.postgresAdminUrl:
             'postgres://admin-role.example/forgeflow',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
       final appPool = _RecordingPostgresPool(
@@ -139,6 +143,10 @@ void main() {
         isA<RepositoryAuthOperationsGateway>(),
       );
       expect(
+        bindings.servicePrincipalJwtIssuanceGateway,
+        isA<PostgresServicePrincipalJwtIssuanceGateway>(),
+      );
+      expect(
         bindings.passwordChangeGateway,
         isA<RepositoryPasswordChangeGateway>(),
       );
@@ -172,6 +180,8 @@ void main() {
         ProxySecretNames.postgresAdminUrl:
             'postgres://admin-role.example/forgeflow',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
         ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
       });
       final appPool = _RecordingPostgresPool(
@@ -262,6 +272,8 @@ void main() {
         ProxySecretNames.postgresAdminUrl:
             'postgres://admin-role.example/forgeflow',
         ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+        ProxySecretNames.servicePrincipalJwtSecret:
+            'placeholder-service-principal-jwt-secret',
       });
       var poolFactoryCalls = 0;
 
