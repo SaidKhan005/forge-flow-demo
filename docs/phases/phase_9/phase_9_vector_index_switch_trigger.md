@@ -113,6 +113,241 @@ Vector Index Health is the evidence layer. Triggers fire from these
 fields; the cutover playbook below consumes the same fields during
 shadow and canary.
 
+## Health interpretation (B47 helper)
+
+The `tool/vector_index_health/vector_index_health.dart` helper
+materializes the field set above as `VectorIndexHealthSnapshot` and
+derives `recommended_action` from the Q20 trigger families. The
+helper is the data shape the B42 `/health` route will read; B47
+lands the helper, B42 wires the route.
+
+The helper requires every snapshot to carry an explicit
+`VectorIndexHealthBudgets` instance and an `evaluation_time`. There
+are no implicit defaults; the operator decides what counts as green
+per searchable embedding space, and `recommended_action` cannot
+silently grant `hold` while a Q20 family fails. The library exports
+`VectorIndexHealthBudgets.exampleStartingBudgets` as a documented
+starting point — it is not a contract-locked threshold.
+
+Trigger families evaluated per snapshot (per searchable embedding
+space — **not** aggregated across corpora):
+
+- **Current state**
+  - 5M active vectors → yellow.
+  - 8M active vectors → red.
+  - Growth projection crossing 10M over the planning horizon → red,
+    treated as a **projection** trigger (a 6.5M current count with a
+    10M projection is red on the projection; an 8M current count
+    with an 8M projection is red on the count).
+- **Sustained latency regression** — Q20 fires on p50, p95, OR p99,
+  and filtered HNSW latency is its own divergent signal. The helper
+  evaluates four independent percentile triggers, each with its own
+  yellow / red threshold:
+  - `p50_latency_ms` against `budgets.p50LatencyYellowMs` /
+    `budgets.p50LatencyRedMs`.
+  - `p95_latency_ms` against `budgets.p95LatencyYellowMs` /
+    `budgets.p95LatencyRedMs`.
+  - `p99_latency_ms` against `budgets.p99LatencyYellowMs` /
+    `budgets.p99LatencyRedMs`.
+  - `filtered_search_behavior.filtered_p95_latency_ms` against
+    `budgets.filteredP95LatencyYellowMs` /
+    `budgets.filteredP95LatencyRedMs`. Filtered p95 is its own
+    trigger because filtered HNSW behaviour diverges from the
+    unfiltered shape; a snapshot with green unfiltered p95 but red
+    filtered p95 still escalates.
+- **Repeated timeouts** — `timeout_rate` against
+  `budgets.timeoutRateYellow` / `budgets.timeoutRateRed`.
+- **Unacceptable recall** — `recall_score` below
+  `budgets.recallScoreFloorYellow` / `budgets.recallScoreFloorRed`.
+- **Filtered-search divergence** — `filtered_recall_score` below
+  `budgets.filteredRecallFloorYellow` /
+  `budgets.filteredRecallFloorRed`. Q20 lists filtered HNSW recall
+  as its own trigger family because filtered behaviour diverges
+  from unfiltered.
+- **Rebuild-window overrun / unsafe rebuilds** —
+  `last_rebuild_duration` against `budgets.rebuildDurationYellow` /
+  `budgets.rebuildDurationRed`.
+- **Memory pressure** — `memory_pressure_ratio` against
+  `budgets.memoryPressureYellow` / `budgets.memoryPressureRed`.
+- **Stale or missing benchmark** — when `active_vectors > 0` and
+  any of `p50/p95/p99_latency_ms`, `recall_score`, `timeout_rate`,
+  `benchmark_timestamp`, or `filtered_search_behavior` is missing,
+  OR the benchmark is older than `budgets.benchmarkStaleAfter`,
+  `recommended_action` is `investigate`. The helper refuses to
+  report green without evidence.
+
+Evaluation order (red beats investigate beats yellow):
+
+1. Current-state count and growth projection (red).
+2. Operational signals against red budgets (red).
+3. Build status and benchmark completeness / freshness (investigate).
+4. Current-state count against the yellow line (yellow).
+5. Operational signals against yellow budgets (yellow).
+6. Otherwise → `hold`.
+
+This ordering means a non-empty index with a high `timeout_rate` is
+`execute_cutover`, not `investigate` — the failing operational
+signal is real evidence, not an evidence gap.
+
+The three B42 metric keys reserved for the 11A.5 health surface map
+1:1 to the snapshot, keyed by `corpus_id`:
+
+- `vector_index_size_per_corpus` ← `index_size_bytes` plus
+  `active_vectors` and the yellow / red thresholds for chart
+  annotations.
+- `vector_query_latency_ms` ← `p50_latency_ms`, `p95_latency_ms`,
+  `p99_latency_ms`, `timeout_rate`, and `benchmark_timestamp`.
+- `vector_recall` ← `recall_score`, `filtered_recall_score`,
+  `filtered_p95_latency_ms`, and the `filter_predicate_summary` so
+  the surface can render filtered vs unfiltered behaviour
+  side-by-side.
+
+Multi-corpus aggregation is the surface's job. The helper emits one
+row per `(provider_id, model_id, dimension)` partial-index slice.
+
+## Filtered-search benchmark procedure (dry-run only)
+
+`buildFilteredSearchBenchmarkArtifact` (in the same helper) emits a
+two-file artifact pair:
+
+- `filtered_search_benchmark.sql` — a SQL template, designed for the
+  repo's psql migration channel, that wraps every measurement step
+  in a single transaction, opens with `BEGIN;`, closes with
+  `ROLLBACK;`, and never `COMMIT;`s. The template targets the locked
+  HNSW partial index name from
+  `db/migrations/202604250003_advisor_vector_search.sql` and refuses
+  to emit `USING DISKANN` (Q20 dormant posture). Each measurement
+  step is `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)` against the same
+  partial-index predicate production candidate retrieval reads —
+  status `ready`, embedding present, `active = true`, plus the
+  Voyage `voyage-4-large` 1024-dim triple — and applies the locked
+  filter predicates (`scope`, optional `restaurant_id`).
+  - The artifact uses psql variables (`:query_embedding`,
+    `:scope_filter`, `:restaurant_id_filter`, `:max_results`). Each
+    has a conditional fallback `\set` at the top of the file so a
+    plain `psql -f filtered_search_benchmark.sql` run substitutes a
+    value before any statement reaches the server. Values passed with
+    `psql -v <name>=<value>` are already defined when the file is
+    processed, so the fallback `\set` is skipped and the command-line
+    value is preserved.
+  - `:query_embedding` defaults to the bare-identifier sentinel
+    `__REPLACE_ME_QUERY_EMBEDDING__`. If the operator runs the
+    template without binding a real query vector, the sentinel
+    reaches the server as a bare identifier and Postgres rejects it
+    at parse time ("column does not exist"). That is the intended
+    dry-run safety stop — do not paper over it. A zero-vector
+    copy-paste fallback for syntax-only parse checks lives only in
+    comments; recording benchmark numbers from a zero-vector run is
+    forbidden.
+  - `:scope_filter`, `:restaurant_id_filter`, and `:max_results`
+    default to the helper-validated filter inputs. The validated
+    values are also recorded in a human-readable comment block at
+    the top of the file so the operator can verify the binds line
+    up with the intended production callsite values.
+  - Filter inputs are validated against strict allowlists before
+    any string interpolation happens. `filterScope` must match
+    `^[a-z][a-z0-9_]{0,63}$`; `filterRestaurantId` must match the
+    canonical UUID 8-4-4-4-12 hex shape; `filterMaxResults` must be
+    in `[1, 100]`. Any value that does not match throws
+    `VectorIndexHealthException` and the artifact is not emitted.
+    A value such as `'; commit; --` is refused at this layer, not
+    at SQL parse time, so the dry-run safety invariant cannot be
+    bypassed by attacker-controlled inputs.
+- `filtered_search_benchmark.json` — an envelope JSON whose
+  `snapshots[]` list mirrors the helper's snapshot shape with every
+  benchmark numeric left null. The operator records measured numbers
+  under the same keys (`p50_latency_ms`, `p95_latency_ms`,
+  `p99_latency_ms`, `recall_score`, `filtered_search_behavior.*`)
+  so the 11A.5 surface reads them through the existing field set.
+
+CLI usage:
+
+```
+# Print a placeholder snapshot envelope to stdout (no file I/O).
+dart run tool/vector_index_health/main.dart
+
+# Emit the dry-run benchmark template pair to a directory.
+dart run tool/vector_index_health/main.dart \
+  --emit-benchmark --output=build/vector_index_health
+```
+
+Operator-side procedure on staging (this tool **never** runs the
+template — the operator does, through the approved Phase 9 psql
+migration channel):
+
+1. Generate the artifact pair locally with `--emit-benchmark`.
+2. Bind `:query_embedding` to a real query vector recorded against
+   the same Voyage `voyage-4-large` model. The recommended path is
+   to pass `psql -v query_embedding="'[…]'::vector(1024)"` on the
+   command line (no in-file edit needed); the alternative is to
+   replace the fallback `\set query_embedding` line at the top of
+   the file.
+   The zero-vector literal in comments is a syntax-only parse-check
+   fallback and **must not** be recorded as benchmark evidence. If
+   the operator skips this step, the sentinel default reaches the
+   server as a bare identifier and Postgres errors at parse — that
+   is the intended safety stop.
+3. Override `:scope_filter`, `:restaurant_id_filter`, and
+   `:max_results` to match the production callsite values via
+   `psql -v <name>=<value>` (or by editing the corresponding
+   fallback `\set` lines). The defaults emitted by the helper reflect the
+   validated inputs from the CLI run, but the operator confirms
+   they match the production query before recording benchmark
+   numbers.
+4. Run the SQL inside an explicit transaction:
+
+   ```
+   psql \
+     -v "query_embedding='[…]'::vector(1024)" \
+     -v "scope_filter='methodology'" \
+     -v "restaurant_id_filter=NULL" \
+     -v "max_results=10" \
+     -f filtered_search_benchmark.sql
+   ```
+
+   The template starts with `BEGIN;` and ends with `ROLLBACK;` —
+   keep the rollback. No row is mutated.
+5. Capture p50, p95, p99 latency from the `EXPLAIN ANALYZE` output;
+   capture `timeout_rate` from the surrounding harness; capture
+   `recall_score` against the held-out evaluation set; capture
+   `filtered_search_behavior.filtered_p95_latency_ms` and
+   `filtered_search_behavior.filtered_recall_score` from the same
+   filtered run. Each percentile feeds its own Q20 trigger; do not
+   record p95 alone and assume the others are green.
+6. Capture `last_rebuild_duration` and `memory_pressure_ratio` from
+   the host signals; the helper compares them against the budgets
+   to fire the rebuild-window-overrun and memory-pressure Q20
+   triggers.
+7. Update the envelope JSON in place, leaving `apply_mode` at
+   `dry_run_template_only`, `run_channel` at `psql`, and
+   `targets_index_type` at `hnsw`.
+8. Re-evaluate the snapshot through the helper, passing the
+   operator-tuned `VectorIndexHealthBudgets` and the current
+   `evaluation_time`. If `recommended_action` returns `plan_cutover`
+   or `execute_cutover`, open the cutover playbook below; otherwise
+   hold.
+
+Hard rules carried in the artifact:
+
+- The helper never connects to a database from this repo.
+- The artifact never references DiskANN as default; it targets the
+  active HNSW partial index only.
+- The SQL never `COMMIT;`s; production mutations cannot escape the
+  template even with attacker-controlled filter inputs.
+- The executable SELECT/ORDER BY reference `:query_embedding`, not
+  the zero-vector literal. Operators following the documented
+  substitution actually replace something the query reads.
+- The `:query_embedding` default is a bare-identifier sentinel that
+  Postgres rejects at parse time. A `psql -f` run without an
+  override stops at the parser; it does not silently produce
+  zero-vector benchmark numbers.
+- The fallback `\set` lines are conditional. Command-line `psql -v`
+  values are preserved and are not overwritten by the template.
+- The default index strategy stays HNSW until the cutover playbook
+  has run shadow → benchmark → canary on real corpus data and the
+  promotion is authorized separately. B47 does not authorize that
+  switch.
+
 ## Cutover posture (non-destructive)
 
 When Red triggers fire and the playbook is authorized, the cutover
