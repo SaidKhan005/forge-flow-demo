@@ -6,12 +6,15 @@ Auto-generated from `db/migrations/*.sql` by
 Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
+Filename timestamps are ordering metadata, not live-apply evidence;
+live status must come from migration comments, runbooks, or archived
+apply results.
 
 Migration count: **34**
 
 ## `202604250000_advisor_roles.sql`
 
-- **Applied:** 2026-04-25 00:00
+- **Filename timestamp:** 2026-04-25 00:00
 - **Title:** advisor roles
 - **Description:**
 
@@ -45,7 +48,7 @@ Migration count: **34**
 
 ## `202604250001_advisor_corpus_storage_schema.sql`
 
-- **Applied:** 2026-04-25 00:01
+- **Filename timestamp:** 2026-04-25 00:01
 - **Title:** advisor corpus storage schema
 - **Description:**
 
@@ -60,7 +63,7 @@ Migration count: **34**
 
 ## `202604250002_advisor_embedding_contract.sql`
 
-- **Applied:** 2026-04-25 00:02
+- **Filename timestamp:** 2026-04-25 00:02
 - **Title:** advisor embedding contract
 - **Description:**
 
@@ -74,7 +77,7 @@ Migration count: **34**
 
 ## `202604250003_advisor_vector_search.sql`
 
-- **Applied:** 2026-04-25 00:03
+- **Filename timestamp:** 2026-04-25 00:03
 - **Title:** advisor vector search
 - **Description:**
 
@@ -105,7 +108,7 @@ Migration count: **34**
 
 ## `202604250004_advisor_proxy_usage_counters.sql`
 
-- **Applied:** 2026-04-25 00:04
+- **Filename timestamp:** 2026-04-25 00:04
 - **Title:** advisor proxy usage counters
 - **Description:**
 
@@ -134,7 +137,7 @@ Migration count: **34**
 
 ## `202604250005_advisor_cloud_foundation.sql`
 
-- **Applied:** 2026-04-25 00:05
+- **Filename timestamp:** 2026-04-25 00:05
 - **Title:** advisor cloud foundation
 - **Description:**
 
@@ -194,7 +197,7 @@ Migration count: **34**
 
 ## `202604250006_advisor_contextual_retrieval_telemetry.sql`
 
-- **Applied:** 2026-04-25 00:06
+- **Filename timestamp:** 2026-04-25 00:06
 - **Title:** advisor contextual retrieval telemetry
 - **Description:**
 
@@ -209,7 +212,7 @@ Migration count: **34**
 
 ## `202604250007_advisor_rls_index_hardening.sql`
 
-- **Applied:** 2026-04-25 00:07
+- **Filename timestamp:** 2026-04-25 00:07
 - **Title:** advisor rls index hardening
 - **Description:**
 
@@ -228,7 +231,7 @@ Migration count: **34**
 
 ## `202604250008_auth_schema_foundation.sql`
 
-- **Applied:** 2026-04-25 00:08
+- **Filename timestamp:** 2026-04-25 00:08
 - **Title:** auth schema foundation
 - **Description:**
 
@@ -303,7 +306,7 @@ Migration count: **34**
 
 ## `202604260000_auth_rls_per_tenant_policies.sql`
 
-- **Applied:** 2026-04-26 00:00
+- **Filename timestamp:** 2026-04-26 00:00
 - **Title:** auth rls per tenant policies
 - **Description:**
 
@@ -366,7 +369,7 @@ Migration count: **34**
 
 ## `202604260001_auth_rls_service_role_grants.sql`
 
-- **Applied:** 2026-04-26 00:01
+- **Filename timestamp:** 2026-04-26 00:01
 - **Title:** auth rls service role grants
 - **Description:**
 
@@ -390,7 +393,7 @@ Migration count: **34**
 
 ## `202604270000_phase_9_0a_scope_extensions.sql`
 
-- **Applied:** 2026-04-27 00:00
+- **Filename timestamp:** 2026-04-27 00:00
 - **Title:** phase 9 0a scope extensions
 - **Description:**
 
@@ -411,7 +414,7 @@ Migration count: **34**
 
 ## `202604270100_auth_sessions_token_hash_rename.sql`
 
-- **Applied:** 2026-04-27 01:00
+- **Filename timestamp:** 2026-04-27 01:00
 - **Title:** auth sessions token hash rename
 - **Description:**
 
@@ -433,7 +436,7 @@ Migration count: **34**
 
 ## `202604270200_phase_9_0a_super_admin_team_grants.sql`
 
-- **Applied:** 2026-04-27 02:00
+- **Filename timestamp:** 2026-04-27 02:00
 - **Title:** phase 9 0a super admin team grants
 - **Description:**
 
@@ -448,7 +451,7 @@ Migration count: **34**
 
 ## `202604280000_phase_9_0sigma_b_rls_wrappers.sql`
 
-- **Applied:** 2026-04-28 00:00
+- **Filename timestamp:** 2026-04-28 00:00
 - **Title:** phase 9 0sigma b rls wrappers
 - **Description:**
 
@@ -506,14 +509,16 @@ Migration count: **34**
   BYPASSRLS` in 202604260000).
   * `PARALLEL SAFE`   — readonly GUC reads are parallel-safe.
 
-  This migration is local framework only — no live database mutation.
-  The matching policy rewrite lands in 202604280001 (next file).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
+  * The matching policy rewrite lands in 202604280001 (next file).
 
   ─── app_current_operator ──────────────────────────────────────────
 
 ## `202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql`
 
-- **Applied:** 2026-04-28 00:01
+- **Filename timestamp:** 2026-04-28 00:01
 - **Title:** phase 9 0sigma b rewrite existing policies
 - **Description:**
 
@@ -549,7 +554,9 @@ Migration count: **34**
   the Phase 9 execution backlog and will land its policies through
   the wrappers from creation, not via a second rewrite.
 
-  This migration is local framework only — no live mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
   ─── Drop the bare-current_setting auth policies ───────────────────
 
@@ -559,7 +566,7 @@ Migration count: **34**
 
 ## `202604280002_phase_9_0sigma_c_org_units.sql`
 
-- **Applied:** 2026-04-28 00:02
+- **Filename timestamp:** 2026-04-28 00:02
 - **Title:** phase 9 0sigma c org units
 - **Description:**
 
@@ -604,13 +611,13 @@ Migration count: **34**
   DDL uses `if not exists` / `create or replace`; the backfill is
   guarded by `not exists` so re-runs are no-ops.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280003_phase_9_0sigma_e_event_outbox.sql`
 
-- **Applied:** 2026-04-28 00:03
+- **Filename timestamp:** 2026-04-28 00:03
 - **Title:** phase 9 0sigma e event outbox
 - **Description:**
 
@@ -630,7 +637,9 @@ Migration count: **34**
   truth, since notifications are dropped under Postgres connection
   failures and queue-pressure conditions.
 
-  This migration is local framework only — no live mutation. The
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set. The
   bridge worker, the WebSocket leg, and dead-letter handling all
   land in Phase 10a per the backlog gate. The repository in
   `lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart`
@@ -674,7 +683,7 @@ Migration count: **34**
 
 ## `202604280004_phase_9_0sigma_d_service_principals.sql`
 
-- **Applied:** 2026-04-28 00:04
+- **Filename timestamp:** 2026-04-28 00:04
 - **Title:** phase 9 0sigma d service principals
 - **Description:**
 
@@ -723,13 +732,13 @@ Migration count: **34**
   that 9.0Σ.f then has to reconcile with — both worse than letting
   9.0Σ.f land it in one place.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280005_phase_9_0sigma_f_audit_logs.sql`
 
-- **Applied:** 2026-04-28 00:05
+- **Filename timestamp:** 2026-04-28 00:05
 - **Title:** phase 9 0sigma f audit logs
 - **Description:**
 
@@ -751,9 +760,9 @@ Migration count: **34**
   recomputes every row hash, and compares the terminal hash to the
   anchor row + the Blob evidence.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
   The pg_partman registration call is wrapped in a re-runnable DO
   block so the same migration is safe to apply repeatedly.
 
@@ -809,7 +818,7 @@ Migration count: **34**
 
 ## `202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql`
 
-- **Applied:** 2026-04-28 00:06
+- **Filename timestamp:** 2026-04-28 00:06
 - **Title:** a phase 9 0sigma g usage caps two slot add
 - **Description:**
 
@@ -872,7 +881,7 @@ Migration count: **34**
 
 ## `202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql`
 
-- **Applied:** 2026-04-28 00:06
+- **Filename timestamp:** 2026-04-28 00:06
 - **Title:** b phase 9 0sigma g usage caps two slot backfill
 - **Description:**
 
@@ -919,11 +928,13 @@ Migration count: **34**
   or proxy hot-zone changes.
   * No `forge_admin` RLS policy added.
 
-  This migration is local framework only — no live database mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql`
 
-- **Applied:** 2026-04-28 00:06
+- **Filename timestamp:** 2026-04-28 00:06
 - **Title:** c phase 9 0sigma g usage caps two slot constraint flip
 - **Description:**
 
@@ -1018,7 +1029,7 @@ Migration count: **34**
 
 ## `202604280007_phase_9_0sigma_h_advisor_conversation_log.sql`
 
-- **Applied:** 2026-04-28 00:07
+- **Filename timestamp:** 2026-04-28 00:07
 - **Title:** phase 9 0sigma h advisor conversation log
 - **Description:**
 
@@ -1085,13 +1096,13 @@ Migration count: **34**
   * `forge_admin` keeps full DML as the BYPASSRLS escape hatch for
   paired-super-admin GDPR redaction / break-glass paths.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280008_phase_9_0sigma_i_graph_canonical.sql`
 
-- **Applied:** 2026-04-28 00:08
+- **Filename timestamp:** 2026-04-28 00:08
 - **Title:** phase 9 0sigma i graph canonical
 - **Description:**
 
@@ -1137,13 +1148,13 @@ Migration count: **34**
   * Filters out soft-deleted / archived rows so the count tracks
   "active" rows the AGE projection rebuild would replay.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280009_phase_9_0sigma_j_diskann_install.sql`
 
-- **Applied:** 2026-04-28 00:09
+- **Filename timestamp:** 2026-04-28 00:09
 - **Title:** phase 9 0sigma j diskann install
 - **Description:**
 
@@ -1204,7 +1215,7 @@ Migration count: **34**
 
 ## `202604280010_a_phase_9_0sigma_k_aggregation_state.sql`
 
-- **Applied:** 2026-04-28 00:10
+- **Filename timestamp:** 2026-04-28 00:10
 - **Title:** a phase 9 0sigma k aggregation state
 - **Description:**
 
@@ -1261,13 +1272,13 @@ Migration count: **34**
   each (rollup_table, grain) it owns, with `last_processed_seq
   = 0`).
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate and runs together with 202604280010_b/c.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280010_b_phase_9_0sigma_k_rollup_tables.sql`
 
-- **Applied:** 2026-04-28 00:10
+- **Filename timestamp:** 2026-04-28 00:10
 - **Title:** b phase 9 0sigma k rollup tables
 - **Description:**
 
@@ -1386,11 +1397,13 @@ Migration count: **34**
   pure overhead. This migration deliberately stops at the hook;
   the Phase 9 partition-policy slice locks the windowing rules.
 
-  This migration is local framework only â€” no live database mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280010_c_phase_9_0sigma_k_pg_cron_jobs.sql`
 
-- **Applied:** 2026-04-28 00:10
+- **Filename timestamp:** 2026-04-28 00:10
 - **Title:** c phase 9 0sigma k pg cron jobs
 - **Description:**
 
@@ -1448,13 +1461,14 @@ Migration count: **34**
   or leased_until < now()` so two simultaneous cron firings on
   a misconfigured host do not both win the lease.
 
-  This migration is local framework only — no live database
-  mutation. Live apply is queued behind 202604280010_a/b under the
-  Phase 9 live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
+  * First observed hot/cold rollup cron runs succeeded on both environments.
 
 ## `202604280011_phase_9_recovery_code_attempts.sql`
 
-- **Applied:** 2026-04-28 00:11
+- **Filename timestamp:** 2026-04-28 00:11
 - **Title:** phase 9 recovery code attempts
 - **Description:**
 
@@ -1467,7 +1481,7 @@ Migration count: **34**
 
 ## `202604280012_phase_9_auth_ops_cloud_foundation_grants.sql`
 
-- **Applied:** 2026-04-28 00:12
+- **Filename timestamp:** 2026-04-28 00:12
 - **Title:** phase 9 auth ops cloud foundation grants
 - **Description:**
 
@@ -1486,7 +1500,7 @@ Migration count: **34**
 
 ## `202604280013_phase_9_audit_actor_kind_live_repair.sql`
 
-- **Applied:** 2026-04-28 00:13
+- **Filename timestamp:** 2026-04-28 00:13
 - **Title:** phase 9 audit actor kind live repair
 - **Description:**
 
@@ -1501,7 +1515,7 @@ Migration count: **34**
 
 ## `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`
 
-- **Applied:** 2026-04-28 00:14
+- **Filename timestamp:** 2026-04-28 00:14
 - **Title:** phase 9 0sigma h2 audit privacy role
 - **Description:**
 
@@ -1560,7 +1574,7 @@ Migration count: **34**
 
 ## `202604290000_phase_9_b41_service_principal_issue_permission.sql`
 
-- **Applied:** 2026-04-29 00:00
+- **Filename timestamp:** 2026-04-29 00:00
 - **Title:** phase 9 b41 service principal issue permission
 - **Description:**
 
@@ -1571,3 +1585,9 @@ Migration count: **34**
   now includes this row for fresh installs; this additive seed keeps
   already-applied staging/Production1 databases in sync without
   replaying the foundation migration.
+
+  Live apply note:
+  * Phase 9 closeout evidence only covers staging + Production1 through
+  `202604280013`. Apply this additive seed under a fresh live-mutation
+  gate before Phase 12 depends on service-principal JWT issuance in live
+  environments.
