@@ -468,3 +468,198 @@ class RollupLeaseLostException implements Exception {
         'rebuild took ownership';
   }
 }
+
+/// Read-only freshness reporter that produces the
+/// `rollup_freshness_per_grain` payload the B42 `/health` envelope
+/// surfaces and the 11A operations console renders.
+///
+/// The reporter is a sibling of [RollupWorker] — same
+/// [RollupSystemRunner] seam, same `aggregation_state` table — but
+/// it never writes. Keeping it on its own class so:
+///
+///   * The worker stays focused on lease + flush + fail mutations
+///     (one mutation primitive per method).
+///   * Read-only consumers (the B42 route, an admin CLI, a future
+///     dashboard probe) can construct just the reporter without
+///     wiring a `workerOwner`.
+///
+/// The helper translates raw `aggregation_state` rows plus a
+/// configurable [RollupFreshnessThresholds] policy into a
+/// [RollupFreshnessReport]. The route wiring (which key the report
+/// embeds under, how it composes with other `/health` metrics) is
+/// owned by B42 and intentionally NOT done here.
+class RollupFreshnessReporter {
+  RollupFreshnessReporter({
+    required RollupSystemRunner runAsSystem,
+    this.thresholds = const RollupFreshnessThresholds(),
+    DateTime Function()? clock,
+  })  : _runAsSystem = runAsSystem,
+        _clock = clock ?? _defaultClock;
+
+  final RollupSystemRunner _runAsSystem;
+  final RollupFreshnessThresholds thresholds;
+  final DateTime Function() _clock;
+
+  static DateTime _defaultClock() => DateTime.now().toUtc();
+
+  /// Build a fresh [RollupFreshnessReport]. One round-trip — a single
+  /// SELECT against `aggregation_state`. Missing rows surface as
+  /// synthetic `'missing'` entries so the 11A operations console can
+  /// flag a grain that has never bootstrapped.
+  Future<RollupFreshnessReport> snapshot() {
+    return _runAsSystem<RollupFreshnessReport>(
+      (exec) async {
+        final rows = await exec.query(
+          'select rollup_table, grain, last_processed_seq, '
+          'last_run_status, last_run_completed_at, last_error_at, '
+          'last_error, attempt_count, lease_owner, leased_until, '
+          'rebuild_in_progress '
+          'from public.aggregation_state',
+        );
+        return _buildReport(rows);
+      },
+      reason: 'rollups.freshness',
+    );
+  }
+
+  /// Pure helper — turns a list of `aggregation_state` rows into a
+  /// [RollupFreshnessReport]. Exposed so tests can drive the
+  /// severity-bucketing logic without going through a fake runner.
+  RollupFreshnessReport buildReportFromRows(List<Map<String, Object?>> rows) {
+    return _buildReport(rows);
+  }
+
+  RollupFreshnessReport _buildReport(List<Map<String, Object?>> rows) {
+    final observedAt = _clock();
+    final byGrain = <RollupGrain, RollupGrainFreshness>{};
+    for (final row in rows) {
+      final entry = _projectEntry(row, observedAt);
+      if (entry != null) byGrain[entry.grain] = entry;
+    }
+    final entries = <RollupGrainFreshness>[
+      for (final grain in RollupGrain.values)
+        byGrain[grain] ?? _missingEntry(grain),
+    ];
+    return RollupFreshnessReport(observedAt: observedAt, entries: entries);
+  }
+
+  RollupGrainFreshness? _projectEntry(
+    Map<String, Object?> row,
+    DateTime observedAt,
+  ) {
+    final grainName = row['grain'];
+    if (grainName is! String) return null;
+    final grain = RollupGrain.fromSqlName(grainName);
+    if (grain == null) return null;
+
+    final status = row['last_run_status'] is String
+        ? row['last_run_status'] as String
+        : 'idle';
+    // `last_run_completed_at` is stamped by BOTH `flushBatch`
+    // (success) and `recordFailure` — see Q3.9. We surface it as-is
+    // and let the consumer branch on `status` to tell success from
+    // failure-completion.
+    final lastRunCompletedAt =
+        row['last_run_completed_at'] is DateTime
+            ? row['last_run_completed_at'] as DateTime
+            : null;
+    final attemptCount =
+        row['attempt_count'] is int ? row['attempt_count'] as int : 0;
+    final leaseOwner =
+        row['lease_owner'] is String ? row['lease_owner'] as String : null;
+    final leasedUntil =
+        row['leased_until'] is DateTime ? row['leased_until'] as DateTime : null;
+    final lastErrorAt =
+        row['last_error_at'] is DateTime ? row['last_error_at'] as DateTime : null;
+    final lastError =
+        row['last_error'] is String ? row['last_error'] as String : null;
+    final rebuildInProgress = row['rebuild_in_progress'] == true;
+
+    final ageSeconds = lastRunCompletedAt == null
+        ? null
+        : observedAt.difference(lastRunCompletedAt).inSeconds.clamp(0, 1 << 62);
+
+    final severity = _severityFor(
+      grain: grain,
+      status: status,
+      ageSeconds: ageSeconds,
+      leasedUntil: leasedUntil,
+      observedAt: observedAt,
+      rebuildInProgress: rebuildInProgress,
+    );
+
+    return RollupGrainFreshness(
+      grain: grain,
+      severity: severity,
+      lastRunStatus: status,
+      lastRunCompletedAt: lastRunCompletedAt,
+      ageSeconds: ageSeconds,
+      attemptCount: attemptCount,
+      leaseOwner: leaseOwner,
+      leasedUntil: leasedUntil,
+      lastErrorAt: lastErrorAt,
+      lastErrorReason: lastError,
+      rebuildInProgress: rebuildInProgress,
+    );
+  }
+
+  RollupGrainFreshness _missingEntry(RollupGrain grain) {
+    return RollupGrainFreshness(
+      grain: grain,
+      severity: RollupFreshnessSeverity.unhealthy,
+      lastRunStatus: 'missing',
+    );
+  }
+
+  RollupFreshnessSeverity _severityFor({
+    required RollupGrain grain,
+    required String status,
+    required int? ageSeconds,
+    required DateTime? leasedUntil,
+    required DateTime observedAt,
+    required bool rebuildInProgress,
+  }) {
+    // Failure dominates everything else — operator must see it red.
+    if (status == 'failed') return RollupFreshnessSeverity.unhealthy;
+
+    // Rebuild in progress (either via flag or via status) shows as
+    // degraded so the dashboard can render a "Rebuilding…" label.
+    if (status == 'rebuilding' || rebuildInProgress) {
+      return RollupFreshnessSeverity.degraded;
+    }
+
+    // The Q3.7 staleness sweep already flipped this row.
+    if (status == 'stale') return RollupFreshnessSeverity.degraded;
+
+    // Bootstrap row that has never run a batch.
+    if (status == 'idle') return RollupFreshnessSeverity.degraded;
+
+    // Active processing: a worker holds a non-expired lease. The
+    // worker is making progress; a still-valid lease is `ok`.
+    // An expired lease (or a leased row whose owner died) downgrades
+    // to `degraded` because `rollup_acquire_lease` will need to
+    // reclaim it on the next tick.
+    if (status == 'leased') {
+      if (leasedUntil != null && leasedUntil.isAfter(observedAt)) {
+        return RollupFreshnessSeverity.ok;
+      }
+      return RollupFreshnessSeverity.degraded;
+    }
+
+    // 'succeeded' — bucket by age. No success timestamp means the
+    // row is in a degenerate state (succeeded without a completion
+    // stamp) — treat as degraded so the operator investigates.
+    if (status == 'succeeded') {
+      if (ageSeconds == null) return RollupFreshnessSeverity.degraded;
+      final warning = thresholds.warningAgeFor(grain).inSeconds;
+      final critical = thresholds.criticalAgeFor(grain).inSeconds;
+      if (ageSeconds >= critical) return RollupFreshnessSeverity.unhealthy;
+      if (ageSeconds >= warning) return RollupFreshnessSeverity.degraded;
+      return RollupFreshnessSeverity.ok;
+    }
+
+    // Unknown status literal — surface as degraded so the operator
+    // knows something outside the locked CHECK set landed.
+    return RollupFreshnessSeverity.degraded;
+  }
+}

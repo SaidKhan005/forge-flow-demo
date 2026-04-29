@@ -192,6 +192,134 @@ Every rebuild surfaces these signals in Dev/Admin Health:
   axes against the dashboard surface map to render "rebuilding
   affects: Sales / Labor / Variance" in the right-rail context panel.
 
+## Reading the `rollup_freshness_per_grain` health metric (B42 / B45)
+
+The B42 `/health` envelope reserves a `rollup_freshness_per_grain`
+key. The payload is produced by `RollupFreshnessReporter.snapshot()`
+in `lib/services/rollups/rollup_worker.dart` — one read against
+`aggregation_state`, one entry per locked Q3.3 grain. The route
+wiring is owned by B42; B45 owns the data shape and severity
+bucketing described here.
+
+### Envelope shape
+
+```json
+{
+  "rollup_freshness_per_grain": {
+    "severity": "degraded",
+    "observed_at": "2026-04-29T10:30:00.000Z",
+    "grains": {
+      "daypart":           { "severity": "ok",        "status": "succeeded",  "last_run_completed_at": "...", "age_seconds": 30,   ... },
+      "business_day":      { "severity": "degraded",  "status": "stale",      "last_run_completed_at": "...", "age_seconds": 7200, ... },
+      "week":              { "severity": "ok",        "status": "succeeded",  "last_run_completed_at": "...", "age_seconds": 60,   ... },
+      "accounting_period": { "severity": "unhealthy", "status": "failed",     "last_run_completed_at": "...", "last_error_reason": "...", ... },
+      "month":             { "severity": "degraded",  "status": "rebuilding", "rebuild_in_progress": true, ... },
+      "quarter":           { "severity": "ok",        "status": "leased",     "lease_owner": "host:42", ... },
+      "year":              { "severity": "unhealthy", "status": "missing",    "last_run_completed_at": null, ... }
+    }
+  }
+}
+```
+
+Top-level `severity` is the worst across all grains (unhealthy >
+degraded > ok). The 11A operations console renders this as the
+collapsed-row headline color; the operator can expand to see the
+per-grain detail.
+
+#### `last_run_completed_at` — NOT a "last success" timestamp
+
+The JSON field is deliberately named `last_run_completed_at`
+(matching the SQL column) and NOT `last_success_at`, because
+`RollupWorker.recordFailure` also stamps `last_run_completed_at =
+now()` when a batch fails. On a `failed` row the timestamp is the
+failure-completion time, not the last-good-data time. Consumers
+must branch on `status` to tell the two apart:
+
+- `status = 'succeeded'` → `last_run_completed_at` is the time the
+  worker last advanced the watermark.
+- `status = 'failed'` → `last_run_completed_at` is the time the
+  failure landed; the operator-facing "last known good" data lives
+  on the `rollup_<grain>` rows themselves (Q3.9 — those rows keep
+  their prior `computed_at` + `freshness_status = 'last_known_good'`).
+- `status = 'idle'` or synthetic `'missing'` → `last_run_completed_at`
+  is `null`.
+
+### Severity meaning per status
+
+| `status` (from `aggregation_state.last_run_status`) | Severity decision |
+| --------------------------------------------------- | ----------------- |
+| `succeeded`                                         | `ok` if `age_seconds < warningAge`; `degraded` if `< criticalAge`; `unhealthy` if past critical. The age is `now() - last_run_completed_at` and only this status path uses age — every other status takes precedence over the age check. |
+| `leased`                                            | `ok` while `leased_until > now()` (worker is actively processing). `degraded` once the lease expires — the next `rollup_acquire_lease` call recovers it but the operator still sees that a worker died mid-flight. |
+| `idle`                                              | `degraded`. Bootstrap row that has never run a batch. Should clear on the next cron tick; investigate if it persists past one full hot-path period (60 s). |
+| `stale`                                             | `degraded`. `RollupWorker.markStale` already flipped this row because no batch advanced the watermark within the staleness window. |
+| `rebuilding` (or `rebuild_in_progress = true`)      | `degraded`. Q3.8 rebuild is in-flight; production data is the prior-rule-version "last known good" until step 4 (Promote) lands. |
+| `failed`                                            | `unhealthy`. Most recent batch threw; `last_error_reason` carries a short string. The watermark has NOT advanced (Q3.6) — re-run picks up the same window. `last_run_completed_at` here is the failure-completion time, NOT the last-good-data time (see "`last_run_completed_at` — NOT a 'last success' timestamp" above). |
+| `missing` (synthetic — no `aggregation_state` row)  | `unhealthy`. The grain has never bootstrapped. The first call to `rollup_acquire_lease` for that `(rollup_table, grain)` seeds the row; if a grain stays missing the worker is not running for that path. |
+
+### Threshold defaults (and how to tune)
+
+`RollupFreshnessThresholds` defaults are pinned to the Q3.1 locked
+cron cadence and the B38 load-test tripwires so the dashboard
+flips to `degraded`/`unhealthy` BEFORE the alarm fires:
+
+| Path | Grain set                                                  | Q3.1 cadence | B45 warning | B45 critical | B38 alarm |
+| ---- | ---------------------------------------------------------- | ------------ | ----------- | ------------ | --------- |
+| Hot  | `daypart`, `business_day`                                  | 60 s         | 90 s        | 120 s        | > 120 s   |
+| Cold | `week`, `accounting_period`, `month`, `quarter`, `year`    | 300 s (5 m)  | 600 s (10 m)| 900 s (15 m) | > 900 s   |
+
+`warning` lands at ~1.5×–2× the cron cadence — the next-tick miss
+is a real signal, but the band is narrow enough that the operator
+sees `degraded` before B38 trips. `critical` matches the B38
+tripwire exactly so the dashboard color and the alarm fire on the
+same threshold.
+
+These defaults intentionally do NOT mask a missed cron window — a
+hot rollup that has not advanced for >2 cron cycles paints
+`degraded` immediately and `unhealthy` the moment B38 would alarm.
+
+Tune by passing a non-default `RollupFreshnessThresholds` to the
+reporter constructor — call `validate()` in the wiring code or in
+a test so a misconfiguration (warning >= critical) fails closed at
+startup instead of silently producing meaningless severities.
+
+### Reconciling freshness with the staleness sweep (Q3.7)
+
+The reporter and `RollupWorker.markStale` are independent:
+
+- `markStale` flips `last_run_status = 'stale'` once the
+  `aggregation_state.updated_at` is older than `staleAfter`. Its
+  guard (`last_run_status not in ('leased', 'rebuilding')`) means
+  active or rebuilding rows are NEVER marked stale by the sweep.
+- `RollupFreshnessReporter` reads the same row but additionally
+  computes `now() - last_run_completed_at` against the configured
+  thresholds. It can flag a `succeeded` row as `degraded`/`unhealthy`
+  even before the sweep flips the status — useful when the sweep
+  itself is not running (e.g., during a cron outage).
+
+Both signals are observable from the same `aggregation_state` row;
+the operations console renders whichever paints the loudest color.
+
+### Lease ownership and recovery (worker leasing safety)
+
+The B42 envelope carries `lease_owner` and `leased_until` per grain
+so an operator can identify which worker holds a lease that has
+gone past its `leased_until`. The recovery path is automatic — the
+SQL `rollup_acquire_lease` primitive reclaims any lease whose
+`leased_until` is null or in the past — but a persistent
+`leased_until` in the past with no progress over multiple ticks
+indicates either:
+
+1. the cron job is not firing (check `cron.job` rows / Azure
+   `Postgres-Maintenance` cron database), or
+2. every worker is failing the same window (check `last_error` on
+   the row).
+
+`RollupLeaseLostException` is the worker-side counterpart: any
+flush or failure write that loses its lease (because another worker
+took over OR a rebuild started) throws and rolls back the entire
+transaction. No partial UPSERTs land under a lease the worker no
+longer owns.
+
 ## Out of scope for this runbook
 
 - The rebuild writer CLI itself is a follow-up slice. Until it ships,

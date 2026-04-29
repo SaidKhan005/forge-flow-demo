@@ -238,3 +238,241 @@ class RollupBatchResult {
   final int rowsUpserted;
   final String? failureReason;
 }
+
+/// Severity bucket for the B42 `/health` envelope's
+/// `rollup_freshness_per_grain` metric. Matches the standard health
+/// levels other 9.0Σ surfaces use (e.g. `audit_chain_lag_seconds`,
+/// `graph_p95_traversal_latency_ms`) so the 11A operations console
+/// can render mixed-severity rows with one rule.
+enum RollupFreshnessSeverity {
+  /// Worker is keeping up. Used for `succeeded` rows whose age is
+  /// below [RollupFreshnessThresholds.warningAgeFor], plus `leased`
+  /// rows whose `leased_until` is still in the future (work in
+  /// progress is not stale).
+  ok,
+
+  /// Worker fell behind or is in a recoverable transitional state:
+  /// `stale`, `rebuilding`, `idle`, an expired `leased` row, or a
+  /// `succeeded` row whose age has passed [warningAge] but not
+  /// [criticalAge].
+  degraded,
+
+  /// Worker is broken or invisible: `failed`, missing
+  /// `aggregation_state` row, or a `succeeded` row whose age has
+  /// passed [criticalAge].
+  unhealthy;
+
+  /// Wire literal embedded in the B42 health JSON. Lower-case so it
+  /// matches the existing string severities used by other
+  /// `/health` metrics.
+  String get sqlName {
+    switch (this) {
+      case RollupFreshnessSeverity.ok:
+        return 'ok';
+      case RollupFreshnessSeverity.degraded:
+        return 'degraded';
+      case RollupFreshnessSeverity.unhealthy:
+        return 'unhealthy';
+    }
+  }
+}
+
+/// Thresholds the freshness reporter uses to bucket a `succeeded`
+/// row by age. Defaults are pinned to the Q3.1 locked cadence and
+/// the B38 load-test tripwires so the B42/11A health surface
+/// flips to `degraded`/`unhealthy` BEFORE the alarm fires:
+///
+/// | Path | Q3.1 cadence | B45 warning | B45 critical | B38 alarm |
+/// | ---- | ------------ | ----------- | ------------ | --------- |
+/// | Hot  | 60 s         | 90 s        | 120 s        | > 120 s   |
+/// | Cold | 300 s (5 m)  | 600 s (10 m)| 900 s (15 m) | > 900 s   |
+///
+/// `warning` lands at ~1.5×–2× the cron cadence — far enough past
+/// the expected next-tick to be a real signal, close enough that
+/// the operations console paints `degraded` before B38 trips.
+/// `critical` matches the B38 tripwire exactly so the dashboard
+/// and the alert fire on the same threshold.
+///
+/// The Q3.7 staleness sweep (`RollupWorker.markStale`) is the
+/// SQL-side counterpart and may be configured to a different
+/// window — they observe the same row from different angles and
+/// either signal can flip a grain to `degraded`.
+class RollupFreshnessThresholds {
+  const RollupFreshnessThresholds({
+    this.hotWarningAge = const Duration(seconds: 90),
+    this.hotCriticalAge = const Duration(seconds: 120),
+    this.coldWarningAge = const Duration(minutes: 10),
+    this.coldCriticalAge = const Duration(minutes: 15),
+  });
+
+  /// Runtime sanity check — each warning age must be strictly less
+  /// than its matching critical age. The constructor stays `const`
+  /// so the worker / reporter can use it as a default-parameter
+  /// value, which means we can't `assert` the invariant inside the
+  /// initializer list (Duration's comparison operators are not
+  /// const-evaluable). Callers that build a non-default
+  /// [RollupFreshnessThresholds] should call [validate] in tests
+  /// or at startup.
+  void validate() {
+    if (hotWarningAge >= hotCriticalAge) {
+      throw ArgumentError.value(
+        hotWarningAge,
+        'hotWarningAge',
+        'must be strictly less than hotCriticalAge ($hotCriticalAge)',
+      );
+    }
+    if (coldWarningAge >= coldCriticalAge) {
+      throw ArgumentError.value(
+        coldWarningAge,
+        'coldWarningAge',
+        'must be strictly less than coldCriticalAge ($coldCriticalAge)',
+      );
+    }
+  }
+
+  final Duration hotWarningAge;
+  final Duration hotCriticalAge;
+  final Duration coldWarningAge;
+  final Duration coldCriticalAge;
+
+  Duration warningAgeFor(RollupGrain grain) =>
+      grain.isHotPath ? hotWarningAge : coldWarningAge;
+
+  Duration criticalAgeFor(RollupGrain grain) =>
+      grain.isHotPath ? hotCriticalAge : coldCriticalAge;
+}
+
+/// Per-grain entry in the [RollupFreshnessReport]. One row per grain
+/// in the locked Q3.3 set; a grain whose `aggregation_state` row is
+/// missing surfaces as a `'missing'` status with severity
+/// [RollupFreshnessSeverity.unhealthy] so the 11A operations console
+/// flags the gap instead of silently omitting it.
+class RollupGrainFreshness {
+  const RollupGrainFreshness({
+    required this.grain,
+    required this.severity,
+    required this.lastRunStatus,
+    this.lastRunCompletedAt,
+    this.ageSeconds,
+    this.attemptCount = 0,
+    this.leaseOwner,
+    this.leasedUntil,
+    this.lastErrorAt,
+    this.lastErrorReason,
+    this.rebuildInProgress = false,
+  });
+
+  final RollupGrain grain;
+  final RollupFreshnessSeverity severity;
+
+  /// Verbatim `aggregation_state.last_run_status` value for present
+  /// rows, or the synthetic literal `'missing'` when the row is
+  /// absent. The literal is intentionally outside the SQL CHECK
+  /// constraint set — it can never appear in the database, so the
+  /// dashboard can branch on it without ambiguity.
+  final String lastRunStatus;
+
+  /// `aggregation_state.last_run_completed_at` — the moment the last
+  /// run stamped a completion, REGARDLESS of success or failure
+  /// (`recordFailure` writes this column too). The reporter
+  /// deliberately surfaces the raw column without renaming it
+  /// `last_success_at` so a `failed` row's completion timestamp
+  /// is not mistaken for the last good run. Q3.9 "last known good"
+  /// data lives on the `rollup_<grain>` rows themselves
+  /// (`computed_at` + `freshness_status`); the per-grain
+  /// `aggregation_state` row only knows when the worker was last
+  /// active.
+  ///
+  /// Null when the row has never run a batch (e.g. `'idle'`
+  /// bootstrap rows or the synthetic `'missing'` entry).
+  final DateTime? lastRunCompletedAt;
+
+  /// `(observedAt - lastRunCompletedAt).inSeconds` rounded to a
+  /// non-negative integer. Null when [lastRunCompletedAt] is null.
+  /// On a `'failed'` row this is the time-since-failure, not
+  /// time-since-success — see [lastRunCompletedAt] docs.
+  final int? ageSeconds;
+
+  final int attemptCount;
+  final String? leaseOwner;
+  final DateTime? leasedUntil;
+  final DateTime? lastErrorAt;
+  final String? lastErrorReason;
+  final bool rebuildInProgress;
+
+  /// Render as one entry under
+  /// `rollup_freshness_per_grain.grains.<grain>` in the B42 `/health`
+  /// envelope. Keys are snake_case to match the existing health-JSON
+  /// convention used by `ProxyHealthStatus.toJson()`.
+  ///
+  /// Note: the JSON key is `last_run_completed_at` (not
+  /// `last_success_at`) so consumers cannot read a failure timestamp
+  /// as a success timestamp. Branch on `status` to tell the two
+  /// apart.
+  Map<String, Object?> toHealthJson() => <String, Object?>{
+        'severity': severity.sqlName,
+        'status': lastRunStatus,
+        'last_run_completed_at': lastRunCompletedAt?.toUtc().toIso8601String(),
+        'age_seconds': ageSeconds,
+        'attempt_count': attemptCount,
+        'lease_owner': leaseOwner,
+        'leased_until': leasedUntil?.toUtc().toIso8601String(),
+        'last_error_at': lastErrorAt?.toUtc().toIso8601String(),
+        'last_error_reason': lastErrorReason,
+        'rebuild_in_progress': rebuildInProgress,
+      };
+}
+
+/// Top-level `rollup_freshness_per_grain` payload. Carries one
+/// [RollupGrainFreshness] per locked Q3.3 grain plus an aggregate
+/// [overallSeverity] worst-case across all grains.
+class RollupFreshnessReport {
+  const RollupFreshnessReport({
+    required this.observedAt,
+    required this.entries,
+  });
+
+  final DateTime observedAt;
+  final List<RollupGrainFreshness> entries;
+
+  /// Worst severity across all entries. The 11A operations console
+  /// uses this as the headline color when collapsing the per-grain
+  /// list. Order follows the [RollupFreshnessSeverity] enum
+  /// declaration: `unhealthy > degraded > ok`.
+  RollupFreshnessSeverity get overallSeverity {
+    var worst = RollupFreshnessSeverity.ok;
+    for (final entry in entries) {
+      if (entry.severity.index > worst.index) worst = entry.severity;
+    }
+    return worst;
+  }
+
+  /// Render the full B42 envelope payload. Shape:
+  ///
+  /// ```json
+  /// {
+  ///   "severity": "degraded",
+  ///   "observed_at": "2026-04-29T10:30:00.000Z",
+  ///   "grains": {
+  ///     "daypart":      { "severity": "ok", … },
+  ///     "business_day": { "severity": "degraded", … },
+  ///     …
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// The route handler embeds this under the
+  /// `rollup_freshness_per_grain` key in `/health` JSON. The route
+  /// itself is NOT wired in this slice (B42 owns that). The helper
+  /// only locks the data shape so B42 can drop it in.
+  Map<String, Object?> toHealthJson() {
+    final grains = <String, Object?>{
+      for (final entry in entries) entry.grain.sqlName: entry.toHealthJson(),
+    };
+    return <String, Object?>{
+      'severity': overallSeverity.sqlName,
+      'observed_at': observedAt.toUtc().toIso8601String(),
+      'grains': grains,
+    };
+  }
+}

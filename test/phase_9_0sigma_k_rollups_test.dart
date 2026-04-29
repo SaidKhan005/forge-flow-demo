@@ -1217,6 +1217,581 @@ void main() {
         throwsA(isA<AssertionError>()),
       );
     });
+
+    test('claimBatch round-trips after a stale lease — once the SQL lease '
+        'primitive recovers an expired lease, claimBatch surfaces the '
+        'fresh snapshot under the new owner (worker-level proof that '
+        'stale-lease recovery is observable)', () async {
+      // Simulate the SQL `rollup_acquire_lease` returning `true`
+      // because the prior `leased_until` had passed (expired-lease
+      // recovery path documented in 202604280010_c). The follow-up
+      // SELECT then returns the row with the NEW lease owner stamped
+      // by the SQL function.
+      final fake = _FakeSystemRunner(
+        canned: <_CannedResponse>[
+          _CannedResponse(
+            rows: <PostgresRow>[
+              <String, Object?>{'acquired': true},
+            ],
+          ),
+          _CannedResponse(
+            rows: <PostgresRow>[
+              <String, Object?>{
+                'rollup_table': 'rollup_business_day',
+                'grain': 'business_day',
+                'last_processed_seq': 5000,
+                // 'leased' status reflects the lease primitive having
+                // taken the row over from a worker whose previous
+                // lease had expired.
+                'last_run_status': 'leased',
+                'attempt_count': 1,
+                'lease_owner': 'host:new',
+                'leased_until': DateTime.utc(2026, 4, 28, 12, 10),
+              },
+            ],
+          ),
+        ],
+      );
+      final worker = RollupWorker(
+        runAsSystem: fake.run,
+        workerOwner: 'host:new',
+      );
+      final snapshot = await worker.claimBatch(grain: RollupGrain.businessDay);
+      expect(snapshot, isNotNull);
+      expect(snapshot!.leaseOwner, equals('host:new'));
+      expect(snapshot.lastRunStatus, equals('leased'));
+      expect(snapshot.lastProcessedSeq, equals(5000));
+      // attempt_count is preserved across the recovery so the worker
+      // can see that the row had a prior abandoned attempt.
+      expect(snapshot.attemptCount, equals(1));
+    });
+  });
+
+  // ─── 5b. RollupFreshnessReporter (B45 health helper) ─────────────
+
+  group('RollupFreshnessReporter', () {
+    // Reference clock the snapshot tests pin so age math is
+    // deterministic.
+    DateTime fixedNow() => DateTime.utc(2026, 4, 29, 10, 30);
+
+    RollupFreshnessReporter buildReporter({
+      RollupFreshnessThresholds thresholds = const RollupFreshnessThresholds(),
+      _FakeSystemRunner? fake,
+    }) {
+      return RollupFreshnessReporter(
+        runAsSystem: (fake ?? _FakeSystemRunner()).run,
+        thresholds: thresholds,
+        clock: fixedNow,
+      );
+    }
+
+    test('snapshot() runs one SELECT against aggregation_state under '
+        'system scope (no per-tenant transaction; reporter is read-only '
+        'internal infrastructure)', () async {
+      final fake = _FakeSystemRunner(
+        canned: <_CannedResponse>[
+          _CannedResponse(rows: <PostgresRow>[]),
+        ],
+      );
+      final reporter = buildReporter(fake: fake);
+      final report = await reporter.snapshot();
+
+      expect(fake.calls, hasLength(1));
+      final call = fake.calls.single;
+      expect(call.reason, equals('rollups.freshness'));
+      expect(call.queries, hasLength(1));
+      // Read-only: only a SELECT runs, never an UPDATE.
+      expect(call.executes, isEmpty);
+      expect(call.queries.single, contains('from public.aggregation_state'));
+      expect(
+        call.queries.single,
+        contains('last_run_completed_at'),
+        reason:
+            'snapshot must read last_run_completed_at to compute the '
+            'rollup_freshness_per_grain `last_success_at` field',
+      );
+      expect(call.queries.single, contains('rebuild_in_progress'));
+
+      // Empty result — every locked grain surfaces as `missing`.
+      expect(report.entries, hasLength(7));
+      for (final entry in report.entries) {
+        expect(entry.lastRunStatus, equals('missing'));
+        expect(entry.severity, equals(RollupFreshnessSeverity.unhealthy));
+      }
+      expect(
+        report.overallSeverity,
+        equals(RollupFreshnessSeverity.unhealthy),
+        reason: 'all-missing report must be unhealthy at the top level',
+      );
+    });
+
+    test('per-grain severity bucketing covers every aggregation_state '
+        'last_run_status the worker can stamp', () {
+      final reporter = buildReporter();
+      final rows = <PostgresRow>[
+        // daypart: succeeded 30 s ago — well under hot warning (90 s)
+        // → ok.
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 100,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(seconds: 30)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        // business_day: succeeded 100 s ago — past hot warning (90 s)
+        // but below hot critical (120 s) → degraded. Demonstrates the
+        // warning band sits between Q3.1 cadence and the B38
+        // tripwire.
+        <String, Object?>{
+          'rollup_table': 'rollup_business_day',
+          'grain': 'business_day',
+          'last_processed_seq': 500,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(seconds: 100)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        // week: stale → degraded.
+        <String, Object?>{
+          'rollup_table': 'rollup_week',
+          'grain': 'week',
+          'last_processed_seq': 0,
+          'last_run_status': 'stale',
+          'last_run_completed_at': fixedNow().subtract(const Duration(hours: 8)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        // accounting_period: failed → unhealthy. last_error_at +
+        // last_error must round-trip to the JSON output for the
+        // 11A console.
+        <String, Object?>{
+          'rollup_table': 'rollup_accounting_period',
+          'grain': 'accounting_period',
+          'last_processed_seq': 0,
+          'last_run_status': 'failed',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(minutes: 30)),
+          'last_error_at': fixedNow().subtract(const Duration(minutes: 30)),
+          'last_error': 'aggregator threw at seq 1500',
+          'attempt_count': 3,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        // month: rebuilding → degraded (Q3.8 in-flight rebuild).
+        <String, Object?>{
+          'rollup_table': 'rollup_month',
+          'grain': 'month',
+          'last_processed_seq': 0,
+          'last_run_status': 'rebuilding',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(hours: 1)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': true,
+        },
+        // quarter: leased with a non-expired lease → ok (active
+        // processing). leased_until is in the future per fixedNow().
+        <String, Object?>{
+          'rollup_table': 'rollup_quarter',
+          'grain': 'quarter',
+          'last_processed_seq': 0,
+          'last_run_status': 'leased',
+          'last_run_completed_at': null,
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': 'host:42',
+          'leased_until': fixedNow().add(const Duration(minutes: 4)),
+          'rebuild_in_progress': false,
+        },
+        // year: idle (bootstrap row) → degraded.
+        <String, Object?>{
+          'rollup_table': 'rollup_year',
+          'grain': 'year',
+          'last_processed_seq': 0,
+          'last_run_status': 'idle',
+          'last_run_completed_at': null,
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+      ];
+      final report = reporter.buildReportFromRows(rows);
+
+      RollupGrainFreshness entryFor(RollupGrain g) =>
+          report.entries.firstWhere((e) => e.grain == g);
+
+      expect(entryFor(RollupGrain.daypart).severity,
+          equals(RollupFreshnessSeverity.ok));
+      expect(entryFor(RollupGrain.daypart).ageSeconds, equals(30));
+
+      expect(entryFor(RollupGrain.businessDay).severity,
+          equals(RollupFreshnessSeverity.degraded));
+      expect(entryFor(RollupGrain.businessDay).ageSeconds, equals(100));
+
+      expect(entryFor(RollupGrain.week).severity,
+          equals(RollupFreshnessSeverity.degraded));
+
+      expect(entryFor(RollupGrain.accountingPeriod).severity,
+          equals(RollupFreshnessSeverity.unhealthy));
+      expect(entryFor(RollupGrain.accountingPeriod).lastErrorReason,
+          equals('aggregator threw at seq 1500'));
+      expect(entryFor(RollupGrain.accountingPeriod).attemptCount, equals(3));
+
+      expect(entryFor(RollupGrain.month).severity,
+          equals(RollupFreshnessSeverity.degraded));
+      expect(entryFor(RollupGrain.month).rebuildInProgress, isTrue);
+
+      expect(entryFor(RollupGrain.quarter).severity,
+          equals(RollupFreshnessSeverity.ok));
+      expect(entryFor(RollupGrain.quarter).leaseOwner, equals('host:42'));
+
+      expect(entryFor(RollupGrain.year).severity,
+          equals(RollupFreshnessSeverity.degraded));
+      expect(entryFor(RollupGrain.year).lastRunCompletedAt, isNull);
+
+      // Worst severity wins the overall headline.
+      expect(report.overallSeverity,
+          equals(RollupFreshnessSeverity.unhealthy));
+    });
+
+    test('an expired lease (leased_until in the past) downgrades a '
+        'leased row from ok to degraded — the row is invisible until '
+        'the next acquire_lease call recovers it', () {
+      final reporter = buildReporter();
+      final report = reporter.buildReportFromRows(<PostgresRow>[
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 0,
+          'last_run_status': 'leased',
+          'last_run_completed_at': null,
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': 'host:dead',
+          // 5 minutes in the past — lease has expired but the SQL
+          // sweep / next acquire_lease call has not run yet.
+          'leased_until': fixedNow().subtract(const Duration(minutes: 5)),
+          'rebuild_in_progress': false,
+        },
+      ]);
+      final entry =
+          report.entries.firstWhere((e) => e.grain == RollupGrain.daypart);
+      expect(entry.severity, equals(RollupFreshnessSeverity.degraded));
+      expect(entry.lastRunStatus, equals('leased'));
+      expect(entry.leaseOwner, equals('host:dead'));
+    });
+
+    test('a succeeded row past the critical-age threshold escalates to '
+        'unhealthy (worker is silently behind — sweep has not flipped '
+        'it yet). Hot critical is 120 s — matches the B38 tripwire — '
+        'so a 5-minute-old daypart succeeded row is unhealthy.', () {
+      final reporter = buildReporter();
+      final report = reporter.buildReportFromRows(<PostgresRow>[
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 1000,
+          'last_run_status': 'succeeded',
+          // 5 minutes old — well past hot critical (120 s).
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(minutes: 5)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+      ]);
+      final entry =
+          report.entries.firstWhere((e) => e.grain == RollupGrain.daypart);
+      expect(entry.severity, equals(RollupFreshnessSeverity.unhealthy));
+      expect(entry.ageSeconds, equals(300));
+    });
+
+    test('cold-grain thresholds are looser than hot — a 3-minute-old '
+        'week rollup is ok (cold warning is 10 min); the same age on '
+        'daypart would be unhealthy (hot critical is 120 s). Both '
+        'thresholds remain pinned to the Q3.1 cron cadence + B38 '
+        'tripwires so the dashboard cannot mask a missed cron window.',
+        () {
+      final reporter = buildReporter();
+      final report = reporter.buildReportFromRows(<PostgresRow>[
+        // Cold week succeeded 3 minutes ago — past hot critical
+        // (120 s) but well under cold warning (600 s) → ok for week.
+        <String, Object?>{
+          'rollup_table': 'rollup_week',
+          'grain': 'week',
+          'last_processed_seq': 100,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(minutes: 3)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        // Hot daypart succeeded at the SAME age — must be unhealthy
+        // because hot critical (120 s) is much tighter than the
+        // 180 s sample.
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 100,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(minutes: 3)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+      ]);
+      final week =
+          report.entries.firstWhere((e) => e.grain == RollupGrain.week);
+      expect(week.severity, equals(RollupFreshnessSeverity.ok));
+      expect(week.ageSeconds, equals(180));
+
+      final daypart =
+          report.entries.firstWhere((e) => e.grain == RollupGrain.daypart);
+      expect(daypart.severity, equals(RollupFreshnessSeverity.unhealthy));
+      expect(daypart.ageSeconds, equals(180));
+    });
+
+    test('a missing aggregation_state row surfaces as a synthetic '
+        '`missing` entry with severity unhealthy so the 11A console '
+        'flags grains that never bootstrapped (instead of silently '
+        'dropping them)', () {
+      final reporter = buildReporter();
+      // Only daypart present; the other six grains should appear as
+      // synthetic missing entries.
+      final report = reporter.buildReportFromRows(<PostgresRow>[
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 1,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(seconds: 30)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+      ]);
+      final daypart =
+          report.entries.firstWhere((e) => e.grain == RollupGrain.daypart);
+      expect(daypart.lastRunStatus, equals('succeeded'));
+      expect(daypart.severity, equals(RollupFreshnessSeverity.ok));
+      // Every other grain is missing → unhealthy.
+      for (final grain in RollupGrain.values) {
+        if (grain == RollupGrain.daypart) continue;
+        final entry = report.entries.firstWhere((e) => e.grain == grain);
+        expect(entry.lastRunStatus, equals('missing'),
+            reason: '$grain must surface as missing when the row is absent');
+        expect(entry.severity, equals(RollupFreshnessSeverity.unhealthy));
+        expect(entry.lastRunCompletedAt, isNull);
+        expect(entry.ageSeconds, isNull);
+      }
+      expect(report.overallSeverity,
+          equals(RollupFreshnessSeverity.unhealthy));
+    });
+
+    test('toHealthJson() emits the B42 rollup_freshness_per_grain '
+        'envelope shape — top-level severity + observed_at + '
+        'per-grain map keyed by sqlName, with snake_case fields', () {
+      final reporter = buildReporter();
+      final report = reporter.buildReportFromRows(<PostgresRow>[
+        <String, Object?>{
+          'rollup_table': 'rollup_daypart',
+          'grain': 'daypart',
+          'last_processed_seq': 100,
+          'last_run_status': 'succeeded',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(seconds: 30)),
+          'last_error_at': null,
+          'last_error': null,
+          'attempt_count': 0,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+        <String, Object?>{
+          'rollup_table': 'rollup_business_day',
+          'grain': 'business_day',
+          'last_processed_seq': 0,
+          'last_run_status': 'failed',
+          'last_run_completed_at':
+              fixedNow().subtract(const Duration(minutes: 10)),
+          'last_error_at': fixedNow().subtract(const Duration(minutes: 10)),
+          'last_error': 'aggregator unreachable',
+          'attempt_count': 4,
+          'lease_owner': null,
+          'leased_until': null,
+          'rebuild_in_progress': false,
+        },
+      ]);
+      final json = report.toHealthJson();
+
+      // Top-level keys.
+      expect(json.keys,
+          containsAll(<String>['severity', 'observed_at', 'grains']));
+      expect(json['severity'], equals('unhealthy'),
+          reason: 'failed business_day must dominate the headline');
+      expect(json['observed_at'], equals(fixedNow().toIso8601String()));
+
+      final grains = json['grains']! as Map<String, Object?>;
+      // Every locked grain must appear; missing ones are synthetic.
+      for (final grain in RollupGrain.values) {
+        expect(grains.containsKey(grain.sqlName), isTrue,
+            reason: 'B42 envelope must list every grain by sqlName');
+      }
+
+      // Per-grain shape — daypart (ok succeeded). The JSON key is
+      // `last_run_completed_at`, NOT `last_success_at`, because the
+      // SQL column is stamped on both success AND failure
+      // (`recordFailure` writes it too). The reporter never emits a
+      // `last_success_at` field — consumers must branch on `status`
+      // to tell a success-completion from a failure-completion.
+      final daypartJson = grains['daypart']! as Map<String, Object?>;
+      expect(
+        daypartJson.keys,
+        containsAll(<String>[
+          'severity',
+          'status',
+          'last_run_completed_at',
+          'age_seconds',
+          'attempt_count',
+          'lease_owner',
+          'leased_until',
+          'last_error_at',
+          'last_error_reason',
+          'rebuild_in_progress',
+        ]),
+      );
+      expect(
+        daypartJson.containsKey('last_success_at'),
+        isFalse,
+        reason:
+            'last_success_at would be a misleading rename — failure '
+            'completions stamp the same SQL column. Use '
+            'last_run_completed_at + status instead.',
+      );
+      expect(daypartJson['severity'], equals('ok'));
+      expect(daypartJson['status'], equals('succeeded'));
+      expect(daypartJson['age_seconds'], equals(30));
+      expect(daypartJson['rebuild_in_progress'], isFalse);
+
+      // Per-grain shape — business_day (failed). On a failed row,
+      // `last_run_completed_at` is the FAILURE-completion time, not
+      // a success time. The dashboard reads `status='failed'` and
+      // labels the timestamp accordingly.
+      final bdJson = grains['business_day']! as Map<String, Object?>;
+      expect(bdJson['severity'], equals('unhealthy'));
+      expect(bdJson['status'], equals('failed'));
+      expect(bdJson['attempt_count'], equals(4));
+      expect(bdJson['last_error_reason'], equals('aggregator unreachable'));
+      expect(
+        bdJson['last_run_completed_at'],
+        isNotNull,
+        reason:
+            'failed rows still carry last_run_completed_at — it is '
+            'when the failure landed, not when success last landed',
+      );
+
+      // Missing entries serialize with null timestamps but a present
+      // status string so the dashboard can branch.
+      final yearJson = grains['year']! as Map<String, Object?>;
+      expect(yearJson['status'], equals('missing'));
+      expect(yearJson['severity'], equals('unhealthy'));
+      expect(yearJson['last_run_completed_at'], isNull);
+      expect(yearJson['age_seconds'], isNull);
+    });
+
+    test('RollupFreshnessThresholds.validate() rejects misconfigured '
+        'age windows (warning >= critical) — runtime guard for '
+        'startup/test wiring', () {
+      // Default thresholds pass.
+      const RollupFreshnessThresholds().validate();
+
+      // Inverted hot ages.
+      expect(
+        () => const RollupFreshnessThresholds(
+          hotWarningAge: Duration(seconds: 200),
+          hotCriticalAge: Duration(seconds: 100),
+        ).validate(),
+        throwsArgumentError,
+      );
+      // Inverted cold ages.
+      expect(
+        () => const RollupFreshnessThresholds(
+          coldWarningAge: Duration(minutes: 30),
+          coldCriticalAge: Duration(minutes: 15),
+        ).validate(),
+        throwsArgumentError,
+      );
+    });
+
+    test('default thresholds align with the Q3.1 cadence and the B38 '
+        'tripwires — hot critical = 120 s (matches the B38 hot alarm); '
+        'cold critical = 15 min (matches the B38 cold alarm). Defaults '
+        'must NOT mask a missed cron window.', () {
+      const t = RollupFreshnessThresholds();
+      // Hot path: cadence 60 s, warning 90 s, critical 120 s.
+      expect(t.hotWarningAge, equals(const Duration(seconds: 90)));
+      expect(t.hotCriticalAge, equals(const Duration(seconds: 120)));
+      // Cold path: cadence 300 s, warning 600 s, critical 900 s.
+      expect(t.coldWarningAge, equals(const Duration(minutes: 10)));
+      expect(t.coldCriticalAge, equals(const Duration(minutes: 15)));
+      // Per-grain getters return the right side of the split.
+      expect(
+        t.warningAgeFor(RollupGrain.daypart),
+        equals(t.hotWarningAge),
+      );
+      expect(
+        t.criticalAgeFor(RollupGrain.businessDay),
+        equals(t.hotCriticalAge),
+      );
+      expect(
+        t.warningAgeFor(RollupGrain.week),
+        equals(t.coldWarningAge),
+      );
+      expect(
+        t.criticalAgeFor(RollupGrain.year),
+        equals(t.coldCriticalAge),
+      );
+    });
   });
 
   // ─── 6. RLS lint against the rollup migrations ────────────────────
