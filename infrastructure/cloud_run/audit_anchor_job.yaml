@@ -1,0 +1,147 @@
+# Phase 9.0Σ.f / B43 — audit_anchor Cloud Run scheduled-job contract.
+#
+# This YAML is the repo-owned, name-only template for the daily
+# `tool/audit_anchor/` Cloud Run Job + Cloud Scheduler trigger pair.
+# It documents the deployment shape so a deploy operator can stand
+# the job up by-hand or via `scripts/deploy_audit_anchor_job.ps1`
+# without storing real values in the repository.
+#
+# Authority sources:
+#   * runbooks/audit_chain_verify_runbook.md — operational procedure.
+#   * tool/audit_anchor/main.dart + tool/audit_anchor/audit_anchor.dart
+#     — CLI / env contract (env *names* only: POSTGRES_URL,
+#     AZURE_BLOB_AUDIT_CONTAINER, AZURE_BLOB_AUDIT_ENDPOINT).
+#   * docs/phases/phase_9/phase_9_execution_backlog.md (B43 / B27).
+#
+# Posture (CLAUDE.md "no live Azure mutation in repo"):
+#   * Placeholders only. Values shown as `__PLACEHOLDER__` are the
+#     deploy-time substitution targets; the deploy script supplies
+#     them from `$HOME/.forge_flow/forge_flow.secrets.ps1`.
+#   * No real project ids, account ids, secret values, SAS tokens,
+#     account keys, or container endpoints appear here.
+#   * Secret Manager backs every value via `secretKeyRef` — env
+#     names are repo-public; values live in Secret Manager only.
+#   * Schedule: `55 23 * * *` = 23:55 UTC daily (per B43 lock).
+#     This precedes the prior-UTC-day rollover by 5 minutes; the
+#     job's `--as-of-utc` resolves at runtime so chains with
+#     `chain_date < as-of-utc` are eligible. Timezone is pinned
+#     to `Etc/UTC` to remove DST surprise.
+#
+# Apply order:
+#   1. Cloud Run Job manifest (this file's first document).
+#   2. Cloud Scheduler trigger (this file's second document).
+#
+# A deploy operator should NEVER commit a copy of this file with
+# placeholder substitution applied; the deploy script produces a
+# rendered copy in a temp directory and feeds it to `gcloud`.
+---
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: forge-flow-audit-anchor
+  labels:
+    cloud.googleapis.com/location: __REGION__
+    component: audit-anchor
+    phase: phase-9-0sigma-f
+  annotations:
+    # Documentation-only annotations so a future operator can trace
+    # the job back to the runbook + decision register.
+    forge-flow.dev/runbook: runbooks/audit_chain_verify_runbook.md
+    forge-flow.dev/decision: phase_9_scalability_decisions_2026-04-27.md#item-13
+    forge-flow.dev/backlog-slice: B43
+spec:
+  template:
+    spec:
+      # Per-execution deadline (3600s = 1h). The orchestrator anchors
+      # one chain per transaction; a sweep of all operators completes
+      # well under the hour even at Tier-M scale, so this is a fail-
+      # safe ceiling, not a steady-state target.
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          serviceAccountName: __SERVICE_ACCOUNT__
+          timeoutSeconds: 3600
+          maxRetries: 0
+          containers:
+            - name: audit-anchor
+              image: __IMAGE__
+              command:
+                - dart
+              # The daily firing uses `sweep`, not `anchor`. The sweep
+              # mode resolves the operator-id list from
+              # `public.operators` via `runAsSystem` (audit reason
+              # `audit_anchor.sweep`) and dispatches the existing
+              # per-operator anchor logic for each. The `anchor` mode
+              # remains the documented manual-rerun form (caller
+              # passes `--operator-id` repeatedly).
+              args:
+                - run
+                - tool/audit_anchor/main.dart
+                - sweep
+              env:
+                # ─── Required (names only; values from Secret Manager) ───
+                - name: POSTGRES_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: __SECRET_POSTGRES_URL__
+                      key: latest
+                - name: AZURE_BLOB_AUDIT_CONTAINER
+                  valueFrom:
+                    secretKeyRef:
+                      name: __SECRET_AZURE_BLOB_AUDIT_CONTAINER__
+                      key: latest
+                - name: AZURE_BLOB_AUDIT_ENDPOINT
+                  valueFrom:
+                    secretKeyRef:
+                      name: __SECRET_AZURE_BLOB_AUDIT_ENDPOINT__
+                      key: latest
+              resources:
+                limits:
+                  cpu: '1'
+                  memory: 512Mi
+---
+# Cloud Scheduler trigger — invokes the Cloud Run Job's `:run`
+# endpoint daily at 23:55 UTC. Cloud Scheduler is a separate API
+# from Cloud Run; this manifest documents the contract so the
+# deploy script can apply both surfaces idempotently.
+apiVersion: cloudscheduler.googleapis.com/v1
+kind: Job
+metadata:
+  name: forge-flow-audit-anchor-daily
+  labels:
+    component: audit-anchor
+    phase: phase-9-0sigma-f
+  annotations:
+    forge-flow.dev/runbook: runbooks/audit_chain_verify_runbook.md
+    forge-flow.dev/backlog-slice: B43
+spec:
+  # 23:55 UTC every day. Cron field order: minute hour day-of-month
+  # month day-of-week. `55 23 * * *` = "at minute 55 past hour 23
+  # every day". Timezone is pinned explicitly so a host OS DST
+  # change cannot shift the firing wall-clock window.
+  schedule: '55 23 * * *'
+  timeZone: 'Etc/UTC'
+  description: >-
+    Forge & Flow audit_anchor daily anchor sweep. Walks every
+    operator's unanchored completed chains (chain_date < as-of-utc)
+    and writes one immutable Azure Blob anchor + one
+    audit_chain_anchors row per chain. See
+    runbooks/audit_chain_verify_runbook.md for triage.
+  attemptDeadline: 3600s
+  retryConfig:
+    # Anchor writes are idempotent (`audit_chain_anchors` UNIQUE on
+    # `(operator_id, chain_date)`), so a Scheduler retry on a
+    # transient failure is safe. The orchestrator skips already-
+    # anchored chains.
+    retryCount: 2
+    minBackoffDuration: 60s
+    maxBackoffDuration: 600s
+    maxDoublings: 3
+  httpTarget:
+    uri: >-
+      https://__REGION__-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/__PROJECT__/jobs/forge-flow-audit-anchor:run
+    httpMethod: POST
+    oauthToken:
+      serviceAccountEmail: __SERVICE_ACCOUNT__
+      scope: https://www.googleapis.com/auth/cloud-platform

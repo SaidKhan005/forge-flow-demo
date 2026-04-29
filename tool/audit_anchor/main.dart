@@ -1,17 +1,29 @@
 // Phase 9.0Σ.f — audit_anchor CLI entry point.
 //
-// Two modes, mirroring the runbook:
+// Three modes, mirroring the runbook:
+//
+//   * `sweep` — the daily Cloud Run scheduled-job entry point
+//     (B43). Resolves the operator-id list via [OperatorIdReader]
+//     (a `runAsSystem` read of `public.operators`) and then drives
+//     the existing per-operator anchor logic for each. Takes no
+//     `--operator-id` flag; the resolution happens inside the tool
+//     so the deployed command shape is `audit_anchor sweep`. The
+//     orchestrator's `runInTenantContext` posture is preserved
+//     because operator enumeration is the seam, not the per-operator
+//     work.
 //
 //   * `anchor` — sweeps every operator id provided via
 //     `--operator-id` and anchors every unanchored completed chain
 //     (chain_date < UTC today). One blob is written per chain via the
 //     [AuditAnchorBlobClient] abstraction; one row is inserted into
-//     `public.audit_chain_anchors`. Live Azure Blob wiring is NOT
-//     enabled until the operator deploys the Cloud Run job with the
-//     real client; until then, the production [AuditAnchorBlobClient]
-//     binding is the [ScaffoldRejectingAuditAnchorBlobClient] fail-
-//     closed scaffold (matching `tool/advisor_proxy`'s scaffold-
-//     rejecter pattern).
+//     `public.audit_chain_anchors`. Used for manual reruns when an
+//     operator wants to anchor a specific subset (e.g. after a job
+//     pod crash leaves the daily firing partial). Live Azure Blob
+//     wiring is NOT enabled until the operator deploys the Cloud Run
+//     job with the real client; until then, the production
+//     [AuditAnchorBlobClient] binding is the
+//     [ScaffoldRejectingAuditAnchorBlobClient] fail-closed scaffold
+//     (matching `tool/advisor_proxy`'s scaffold-rejecter pattern).
 //
 //   * `verify` — verifies one `(operator_id, chain_date)` chain
 //     against the in-DB row-by-row hash, the anchor row, and the
@@ -20,6 +32,7 @@
 //
 // CLI contract:
 //
+//   audit_anchor sweep  [--as-of-utc=<YYYY-MM-DD>]
 //   audit_anchor anchor --operator-id=<uuid> [--operator-id=<uuid> …]
 //                       [--as-of-utc=<YYYY-MM-DD>]
 //   audit_anchor verify --operator-id=<uuid> --chain-date=<YYYY-MM-DD>
@@ -52,7 +65,7 @@ class AuditAnchorCliArgs {
   final DateTime? asOfUtc;
 }
 
-enum AuditAnchorMode { anchor, verify }
+enum AuditAnchorMode { sweep, anchor, verify }
 
 /// Parses the CLI arguments into [AuditAnchorCliArgs]. Throws
 /// [FormatException] with a single-line, no-secrets message when the
@@ -60,15 +73,17 @@ enum AuditAnchorMode { anchor, verify }
 AuditAnchorCliArgs parseArgs(List<String> args) {
   if (args.isEmpty) {
     throw const FormatException(
-      'usage: audit_anchor <anchor|verify> --operator-id=<uuid> '
-      '[--chain-date=<YYYY-MM-DD>] [--as-of-utc=<YYYY-MM-DD>]',
+      'usage: audit_anchor <sweep|anchor|verify> '
+      '[--operator-id=<uuid>] [--chain-date=<YYYY-MM-DD>] '
+      '[--as-of-utc=<YYYY-MM-DD>]',
     );
   }
   final mode = switch (args.first) {
+    'sweep' => AuditAnchorMode.sweep,
     'anchor' => AuditAnchorMode.anchor,
     'verify' => AuditAnchorMode.verify,
-    final unknown =>
-      throw FormatException('unknown mode "$unknown" (expected anchor|verify)'),
+    final unknown => throw FormatException(
+        'unknown mode "$unknown" (expected sweep|anchor|verify)'),
   };
   final operatorIds = <String>[];
   DateTime? chainDate;
@@ -84,18 +99,34 @@ AuditAnchorCliArgs parseArgs(List<String> args) {
       throw FormatException('unknown flag "$raw"');
     }
   }
-  if (operatorIds.isEmpty) {
-    throw const FormatException('--operator-id is required (one or more)');
-  }
-  if (mode == AuditAnchorMode.verify) {
-    if (operatorIds.length != 1) {
-      throw const FormatException(
-        'verify requires exactly one --operator-id',
-      );
-    }
-    if (chainDate == null) {
-      throw const FormatException('verify requires --chain-date');
-    }
+  switch (mode) {
+    case AuditAnchorMode.sweep:
+      if (operatorIds.isNotEmpty) {
+        throw const FormatException(
+          'sweep does not accept --operator-id; the tool resolves the '
+          'operator list from public.operators',
+        );
+      }
+      if (chainDate != null) {
+        throw const FormatException(
+          'sweep does not accept --chain-date',
+        );
+      }
+    case AuditAnchorMode.anchor:
+      if (operatorIds.isEmpty) {
+        throw const FormatException(
+          '--operator-id is required (one or more)',
+        );
+      }
+    case AuditAnchorMode.verify:
+      if (operatorIds.length != 1) {
+        throw const FormatException(
+          'verify requires exactly one --operator-id',
+        );
+      }
+      if (chainDate == null) {
+        throw const FormatException('verify requires --chain-date');
+      }
   }
   return AuditAnchorCliArgs(
     mode: mode,
@@ -163,6 +194,21 @@ typedef AuditAnchorBlobClientFactory = AuditAnchorBlobClient Function(
   AuditAnchorRuntimeConfig config,
 );
 
+/// Bundle returned by [buildAuditAnchorRuntime]: the orchestrator the
+/// per-operator anchor/verify path drives, plus the operator-id
+/// reader the daily `sweep` mode uses to enumerate operators. Both
+/// share a single [TenantTransactionWrapper] so the production
+/// runtime opens one Postgres pool, not two.
+class AuditAnchorRuntime {
+  const AuditAnchorRuntime({
+    required this.orchestrator,
+    required this.operatorIdReader,
+  });
+
+  final AuditAnchorOrchestrator orchestrator;
+  final OperatorIdReader operatorIdReader;
+}
+
 /// Default pool factory — wraps `PackagePostgresPool.fromUrl` so the
 /// CLI builds a real Postgres pool against the live `POSTGRES_URL`
 /// env value at deploy time. Identical posture to
@@ -180,12 +226,13 @@ AuditAnchorBlobClient _defaultBlobClientFactory(
   return const ScaffoldRejectingAuditAnchorBlobClient();
 }
 
-/// Production wiring. Builds the orchestrator from env-derived config
-/// and the supplied factories. Defaults match the production runtime
-/// (`PackagePostgresPool.fromUrl` for the pool, scaffold-rejecting
-/// for the Blob client until live Azure wiring lands); tests override
-/// with fakes via [poolFactory] / [blobClientFactory].
-AuditAnchorOrchestrator buildOrchestrator(
+/// Production wiring. Builds the orchestrator + operator-id reader
+/// from env-derived config and the supplied factories. Both share a
+/// single Postgres pool (one `TenantTransactionWrapper`) so the
+/// daily `sweep` run opens exactly one connection factory, not two.
+/// Tests inject [orchestrator] / [operatorIdReader] via
+/// `runCli(orchestratorOverride: ..., operatorIdReaderOverride: ...)`.
+AuditAnchorRuntime buildAuditAnchorRuntime(
   AuditAnchorRuntimeConfig config, {
   AuditAnchorPoolFactory poolFactory = _defaultPoolFactory,
   AuditAnchorBlobClientFactory blobClientFactory =
@@ -210,12 +257,39 @@ AuditAnchorOrchestrator buildOrchestrator(
     defaultLocationId: defaultLocationId,
     defaultUserId: defaultUserId,
   );
-  return AuditAnchorOrchestrator(
+  final orchestrator = AuditAnchorOrchestrator(
     reader: reader,
     anchorWriter: writer,
     blobClient: blobClientFactory(config),
     containerName: config.containerName,
   );
+  final operatorIdReader =
+      PostgresOperatorIdReader(wrapper: wrapper);
+  return AuditAnchorRuntime(
+    orchestrator: orchestrator,
+    operatorIdReader: operatorIdReader,
+  );
+}
+
+/// Back-compat shim. Existing callers / tests that only need the
+/// orchestrator (anchor/verify, no sweep) keep their signature.
+/// Internally delegates to [buildAuditAnchorRuntime] so both paths
+/// share the same wiring.
+AuditAnchorOrchestrator buildOrchestrator(
+  AuditAnchorRuntimeConfig config, {
+  AuditAnchorPoolFactory poolFactory = _defaultPoolFactory,
+  AuditAnchorBlobClientFactory blobClientFactory =
+      _defaultBlobClientFactory,
+  String defaultLocationId = '00000000-0000-0000-0000-000000000000',
+  String defaultUserId = '00000000-0000-0000-0000-000000000000',
+}) {
+  return buildAuditAnchorRuntime(
+    config,
+    poolFactory: poolFactory,
+    blobClientFactory: blobClientFactory,
+    defaultLocationId: defaultLocationId,
+    defaultUserId: defaultUserId,
+  ).orchestrator;
 }
 
 /// CLI entry point. Exit codes:
@@ -224,15 +298,16 @@ AuditAnchorOrchestrator buildOrchestrator(
 ///   * 1 — anchor produced or verify reported a chain/anchor/blob
 ///         violation.
 ///   * 2 — configuration error (missing env, malformed args).
-///   * 3 — runtime error (DB unreachable, Blob unavailable). The
-///         message identifies the failing component but never echoes
-///         secret values.
+///   * 3 — runtime error (DB unreachable, Blob unavailable, operator
+///         enumeration failed). The message identifies the failing
+///         component but never echoes secret values.
 Future<int> runCli(
   List<String> rawArgs, {
   Map<String, String>? environment,
   AuditAnchorPoolFactory? poolFactory,
   AuditAnchorBlobClientFactory? blobClientFactory,
   AuditAnchorOrchestrator? orchestratorOverride,
+  OperatorIdReader? operatorIdReaderOverride,
   DateTime Function()? clock,
   IOSink? out,
   IOSink? err,
@@ -253,8 +328,14 @@ Future<int> runCli(
   }
 
   AuditAnchorOrchestrator orchestrator;
+  OperatorIdReader operatorIdReader;
+  // Default operator-id reader for non-sweep modes that never call
+  // it. The sweep dispatch builds the production reader (or accepts
+  // the test override) below.
   if (orchestratorOverride != null) {
     orchestrator = orchestratorOverride;
+    operatorIdReader = operatorIdReaderOverride ??
+        const _UnusedOperatorIdReader();
   } else {
     AuditAnchorRuntimeConfig config;
     try {
@@ -266,12 +347,14 @@ Future<int> runCli(
     // Defaults: PackagePostgresPool.fromUrl for the pool and the
     // scaffold-rejecting Blob client until live Azure wiring lands.
     // Tests pass overrides; production callers do not need to.
-    orchestrator = buildOrchestrator(
+    final runtime = buildAuditAnchorRuntime(
       config,
       poolFactory: poolFactory ?? _defaultPoolFactory,
       blobClientFactory:
           blobClientFactory ?? _defaultBlobClientFactory,
     );
+    orchestrator = runtime.orchestrator;
+    operatorIdReader = operatorIdReaderOverride ?? runtime.operatorIdReader;
     stdoutSink.writeln(
       'audit_anchor starting (loaded secret names: '
       '${config.loadedSecretNames.join(', ')})',
@@ -279,6 +362,15 @@ Future<int> runCli(
   }
 
   switch (args.mode) {
+    case AuditAnchorMode.sweep:
+      return _runSweepMode(
+        orchestrator: orchestrator,
+        operatorIdReader: operatorIdReader,
+        asOfUtc: args.asOfUtc ?? _utcDate(now),
+        nowUtc: now,
+        out: stdoutSink,
+        err: stderrSink,
+      );
     case AuditAnchorMode.anchor:
       return _runAnchorMode(
         orchestrator: orchestrator,
@@ -297,6 +389,61 @@ Future<int> runCli(
         err: stderrSink,
       );
   }
+}
+
+/// Sentinel reader for non-sweep modes: should never be called. If a
+/// future code path triggers it, the explicit error surfaces faster
+/// than a null-deref would.
+class _UnusedOperatorIdReader implements OperatorIdReader {
+  const _UnusedOperatorIdReader();
+
+  @override
+  Future<List<String>> listOperatorIds() {
+    throw StateError(
+      'OperatorIdReader called outside sweep mode; '
+      'orchestratorOverride was supplied without an operator-id '
+      'reader override',
+    );
+  }
+}
+
+Future<int> _runSweepMode({
+  required AuditAnchorOrchestrator orchestrator,
+  required OperatorIdReader operatorIdReader,
+  required DateTime asOfUtc,
+  required DateTime nowUtc,
+  required IOSink out,
+  required IOSink err,
+}) async {
+  List<String> operatorIds;
+  try {
+    operatorIds = await operatorIdReader.listOperatorIds();
+  } catch (error) {
+    err.writeln(
+      'audit_anchor: operator-id resolution failed: $error',
+    );
+    return 3;
+  }
+  if (operatorIds.isEmpty) {
+    out.writeln(
+      'audit_anchor: sweep found 0 operators in public.operators '
+      '(no chains to anchor); see '
+      'runbooks/audit_chain_verify_runbook.md',
+    );
+    return 0;
+  }
+  out.writeln(
+    'audit_anchor: sweep resolved ${operatorIds.length} operator(s) '
+    'from public.operators',
+  );
+  return _runAnchorMode(
+    orchestrator: orchestrator,
+    operatorIds: operatorIds,
+    asOfUtc: asOfUtc,
+    nowUtc: nowUtc,
+    out: out,
+    err: err,
+  );
 }
 
 Future<int> _runAnchorMode({

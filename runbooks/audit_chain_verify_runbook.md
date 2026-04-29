@@ -18,10 +18,18 @@ operator/day chain has not been tampered with retroactively.
 ## When to use this runbook
 
 - **Daily anchor (automated):** the Cloud Run scheduled job runs
-  `audit_anchor anchor` once per UTC day, after the prior UTC day has
-  closed. The job sweeps every operator, finds chains with no
-  existing `audit_chain_anchors` row, and writes the day's evidence
-  to the immutable Blob container.
+  `audit_anchor sweep` once per UTC day, after the prior UTC day has
+  closed. The `sweep` mode resolves the operator-id list from
+  `public.operators` (via `runAsSystem` with audit reason
+  `audit_anchor.sweep`) and then dispatches the existing per-operator
+  anchor logic, finding chains with no existing
+  `audit_chain_anchors` row and writing the day's evidence to the
+  immutable Blob container.
+- **Manual rerun (operator-scoped):** an operator can run
+  `audit_anchor anchor --operator-id=<uuid> [--operator-id=<uuid> ...]`
+  to re-anchor a specific subset of operators (e.g. after a job pod
+  crash leaves the daily firing partial, or to re-run a single
+  operator after security review clears a chain).
 - **On-demand verification:** SOC 2 audit, security forensic review,
   or a support escalation can require verifying that a specific
   `(operator_id, chain_date)` chain has not been retroactively
@@ -55,10 +63,17 @@ before triggering a manual or out-of-band run:
    `AZURE_BLOB_AUDIT_ENDPOINT` (names only — the value is resolved
    from the deployment runtime, never from this runbook).
 
-2. **Cloud Run scheduled job configured.** The job runs at 02:00 UTC
-   daily so the prior UTC day's chain is fully closed at job start.
-   The job's managed identity has `Storage Blob Data Contributor` on
-   the audit container and `audit_anchor_role` (a Postgres role with
+2. **Cloud Run scheduled job configured.** The job runs at 23:55 UTC
+   daily (cron: `55 23 * * *`, timezone `Etc/UTC`). The 23:55 firing
+   sweeps every operator's chains whose `chain_date < as-of-utc`;
+   the prior UTC day's chain rolls over at 00:00 UTC, so the 5-minute
+   pre-rollover firing keeps the sweep aligned with the same UTC
+   business date the chain trigger uses. The job + scheduler contract
+   lives in
+   `infrastructure/cloud_run/audit_anchor_job.yaml`; the deploy
+   surface is `scripts/deploy_audit_anchor_job.ps1`. The job's
+   managed identity has `Storage Blob Data Contributor` on the audit
+   container and `audit_anchor_role` (a Postgres role with
    `service_role` inheritance, no DB-level write privileges beyond
    `audit_logs` INSERT and `audit_chain_anchors` INSERT).
 
@@ -101,9 +116,25 @@ before triggering a manual or out-of-band run:
 
 ## Daily anchor procedure (automated)
 
-The Cloud Run scheduled job runs the following at 02:00 UTC. The
-runbook lists the exact command sequence so a manual rerun (e.g.
-after a job pod crash) is byte-identical.
+The Cloud Run scheduled job runs the following at 23:55 UTC (cron
+`55 23 * * *`, timezone `Etc/UTC`):
+
+```bash
+audit_anchor sweep [--as-of-utc=2026-04-28]
+```
+
+- `sweep` takes no `--operator-id` argument. The tool resolves the
+  operator-id list from `public.operators` via `runAsSystem` (audit
+  reason `audit_anchor.sweep`); the per-operator anchor logic
+  itself stays inside `runInTenantContext` so RLS posture is
+  preserved per-operator.
+- `--as-of-utc` is the UTC date to treat as "today"; chains with
+  `chain_date < as-of-utc` are eligible. Defaults to the host clock's
+  UTC date when omitted.
+
+For a manual rerun against a specific subset of operators (e.g.
+after a job pod crash leaves the daily firing partial), use the
+`anchor` mode instead:
 
 ```bash
 audit_anchor anchor \
@@ -112,28 +143,122 @@ audit_anchor anchor \
   --as-of-utc=2026-04-28
 ```
 
-- `--operator-id` repeats once per operator the job is sweeping. The
-  Cloud Run runtime resolves the operator list from a Postgres query
-  against `public.operators` before invoking the tool; the tool
-  itself never queries the operator list (no cross-tenant scan).
-- `--as-of-utc` is the UTC date to treat as "today"; chains with
-  `chain_date < as-of-utc` are eligible. Defaults to the host clock's
-  UTC date when omitted.
+`anchor` requires at least one `--operator-id`; it does NOT query
+`public.operators` (no cross-tenant scan from the manual surface).
 
-Expected exit codes:
+Expected exit codes (both `sweep` and `anchor`):
 
 - `0` — every chain anchored successfully (or no chains were
-  unanchored).
+  unanchored). Sweep also exits 0 when `public.operators` is empty.
 - `1` — at least one chain failed self-verification before anchor;
   see the [Failed-anchor triage](#failed-anchor-triage) section.
 - `2` — configuration error (missing env, malformed args). Check the
   job's env wiring against the [Prerequisites](#prerequisites) list.
+  Examples: `sweep` was passed `--operator-id` (unsupported), or
+  `anchor` was invoked with no `--operator-id`.
 - `3` — runtime error (Postgres unreachable, Blob client unavailable,
-  network partition). Check the Cloud Run logs; do NOT retry without
-  reading the error — a partial anchor is impossible by design (each
-  chain anchor is a single transaction), but a runtime error
-  indicates a deeper infrastructure problem that retrying will not
-  resolve.
+  network partition, or — for `sweep` only — operator-id resolution
+  failed). Check the Cloud Run logs; do NOT retry without reading
+  the error — a partial anchor is impossible by design (each chain
+  anchor is a single transaction), but a runtime error indicates a
+  deeper infrastructure problem that retrying will not resolve.
+
+## Deploy procedure (Cloud Run Job + Cloud Scheduler)
+
+The deploy surface is repo-owned in two files:
+
+- `infrastructure/cloud_run/audit_anchor_job.yaml` — the Cloud Run
+  Job + Cloud Scheduler manifest contract. Documents job name,
+  region/service-account placeholders, schedule (`55 23 * * *`,
+  `Etc/UTC`), command/args (`dart run tool/audit_anchor/main.dart
+  sweep`), and the Secret Manager `secretKeyRef` bindings for
+  `POSTGRES_URL`, `AZURE_BLOB_AUDIT_CONTAINER`, and
+  `AZURE_BLOB_AUDIT_ENDPOINT`. Names only; never values.
+- `scripts/deploy_audit_anchor_job.ps1` — name-only deploy script.
+  Loads `$HOME/.forge_flow/forge_flow.secrets.ps1`, asserts the
+  required env names are present (values never echoed), syncs each
+  to Secret Manager, then deploys the Cloud Run Job and creates /
+  updates the Cloud Scheduler trigger.
+
+### IAM / service-account grants
+
+Live Azure setup, Postgres role creation, and any mutation of the
+immutable Blob container retention policy require **human approval
+before execution** per CLAUDE.md "no live Azure mutation in repo".
+Grants the deploy operator must confirm out-of-band:
+
+| Surface              | Identity / role                              | Grant                                                                                  |
+| -------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Postgres             | `audit_anchor_role` (DB role, not human)     | `INSERT` on `public.audit_logs`, `INSERT` on `public.audit_chain_anchors`; nothing else |
+| Postgres             | Cloud Run Job managed identity               | Inherits `audit_anchor_role`                                                            |
+| Azure Blob           | Cloud Run Job managed identity               | `Storage Blob Data Contributor` on the immutable audit container                        |
+| Azure Blob           | Tenant owner                                 | Container creation + retention policy lock (out-of-band; never scripted)                |
+| GCP Secret Manager   | Cloud Run Job service account                | `roles/secretmanager.secretAccessor` on each of the three secrets below                 |
+| Cloud Scheduler      | Same service account as the Job              | Used as the `oauth-service-account-email` for the Job's `:run` invocation               |
+
+### Secret Manager mapping
+
+| Env name (used by `audit_anchor`) | Secret name (Secret Manager)                     |
+| --------------------------------- | ------------------------------------------------ |
+| `POSTGRES_URL`                    | `forge-flow-staging-postgres-url`                |
+| `AZURE_BLOB_AUDIT_CONTAINER`      | `forge-flow-staging-azure-blob-audit-container`  |
+| `AZURE_BLOB_AUDIT_ENDPOINT`       | `forge-flow-staging-azure-blob-audit-endpoint`   |
+
+The proxy already publishes `forge-flow-staging-postgres-url`; the
+job reuses it so the proxy and the daily anchor read the same
+connection string. The two `AZURE_BLOB_AUDIT_*` secrets are
+job-specific and are NOT part of the proxy bundle.
+
+### Preflight (no live mutation)
+
+```powershell
+.\scripts\deploy_audit_anchor_job.ps1 -Preflight
+```
+
+The preflight path performs name-only checks, prints the gcloud
+commands the deploy *would* run, and exits without touching Cloud
+Run, Cloud Scheduler, Secret Manager, or the live Postgres host.
+Use it before every real deploy and again after rotation to confirm
+no env name is missing.
+
+### Apply (after human approval)
+
+```powershell
+.\scripts\deploy_audit_anchor_job.ps1 `
+  -Image <artifact-registry-image-uri>
+```
+
+The script is idempotent: re-running against an existing job +
+scheduler updates them in place. Anchor writes themselves are
+idempotent (the orchestrator skips chains that already have an
+`audit_chain_anchors` row), so a Cloud Scheduler retry on a
+transient failure is safe by design.
+
+### Manual smoke after deploy
+
+After the apply step succeeds, force one execution of the Job to
+prove the wiring is live (the Job's command is `audit_anchor sweep`,
+so this single call exercises the full daily firing shape):
+
+```bash
+gcloud run jobs execute forge-flow-audit-anchor \
+  --project <project> \
+  --region <region> \
+  --wait
+```
+
+Expected: exit `0` and a leading
+`audit_anchor: sweep resolved <N> operator(s) from public.operators`
+line, followed by one `audit_anchor: anchored ...` or
+`audit_anchor: no unanchored completed chains for ...` line per
+operator id. If `public.operators` is empty the Job exits `0` with
+`audit_anchor: sweep found 0 operators in public.operators` (this
+is normal for a brand-new tenant; not a tamper signal). If the Blob
+client is still the `ScaffoldRejectingAuditAnchorBlobClient` (live
+Azure wiring not
+yet landed), the job exits non-zero with the
+`audit_anchor blob client is not wired to live Azure yet` reason —
+that signals a deploy-config issue, not a chain tamper.
 
 ## Manual verification
 
@@ -329,6 +454,89 @@ The daily anchor job's standard run logs:
   Names only; no Blob URIs containing SAS tokens, no operator
   business names beyond their UUID.
 
+## Rotation pattern
+
+Rotation covers two surfaces — the GCP Secret Manager values that
+back the env names, and the Azure Blob immutable container itself.
+Both rotations are name-only operations from the deploy script's
+perspective; live Azure mutations stay out-of-band.
+
+### Secret rotation (Secret Manager)
+
+The job reads each env via `secretKeyRef ... key: latest`, so a new
+secret version is picked up on the next Cloud Run Job execution
+without redeploying. Procedure:
+
+1. Update the upstream secret value (e.g. rotate the Postgres user
+   password, regenerate the Azure Blob endpoint with a fresh SAS
+   identity, change the container name during a tenant move).
+2. Update the corresponding entry in
+   `$HOME/.forge_flow/forge_flow.secrets.ps1` (NEVER commit this
+   file).
+3. After human approval for the live Cloud Run / Scheduler refresh,
+   re-run the deploy script with the unchanged image:
+
+   ```powershell
+   .\scripts\deploy_audit_anchor_job.ps1 `
+     -SkipApiEnable `
+     -Image <unchanged-image-uri>
+   ```
+
+   The script's `Sync-SecretManagerSecret` writes a new version
+   under each existing secret name (idempotent), then re-applies the
+   Cloud Run Job and Cloud Scheduler trigger with the same image. The
+   next 23:55 UTC firing reads `:latest`.
+
+4. Run the manual smoke documented in
+   [Deploy procedure](#deploy-procedure-cloud-run-job--cloud-scheduler)
+   to confirm the new version works before the unattended firing.
+
+5. Disable older secret versions in Secret Manager only after one
+   successful manual smoke. Disabling before the smoke risks
+   bricking the next 23:55 UTC sweep.
+
+The deploy script never prints secret values; rotation logs only
+the secret *names* it touched.
+
+### Container rotation (Azure Blob)
+
+Rotating the immutable Blob container (e.g. tenant migration,
+retention-policy change beyond the existing lock) is a tenant-owner
+operation, never a deploy-script operation. Sequence:
+
+1. Tenant owner provisions the new container with retention
+   policies matching or exceeding the SOC 2 / Q9 7-year audit floor
+   and locks it. Live Azure mutation requires
+   **human approval** before execution per CLAUDE.md "no live Azure
+   mutation in repo".
+2. Tenant owner grants the Cloud Run Job's managed identity
+   `Storage Blob Data Contributor` on the new container.
+3. Operator updates the `AZURE_BLOB_AUDIT_CONTAINER` (and
+   `AZURE_BLOB_AUDIT_ENDPOINT` if the storage account changed)
+   value via the secret-rotation procedure above.
+4. The old container stays immutable for its full retention window;
+   it is NOT deleted on cutover. Existing `audit_chain_anchors` rows
+   continue to point at it and `audit_anchor verify` continues to
+   walk forward against those Blob URIs.
+5. New anchors written after the cutover land in the new container;
+   `audit_chain_anchors.blob_uri` records which container each
+   anchor was written to, so the verifier picks the right surface
+   automatically.
+
+A rotation that changes the schedule (e.g. moving away from
+`55 23 * * *` UTC) requires a synchronized edit across:
+
+- `infrastructure/cloud_run/audit_anchor_job.yaml`,
+- `scripts/deploy_audit_anchor_job.ps1` (`$ScheduleCron` /
+  `$ScheduleTimeZone`),
+- this runbook (Prerequisites + Daily anchor procedure),
+- and the Phase 9 backlog entry for B43.
+
+The focused test
+`test/phase_9_0sigma_f_audit_logs_test.dart` (`audit_chain_verify
+runbook posture`) guards the schedule string; a desync produces a
+test failure on the next CI run.
+
 ## Rollback
 
 **Anchoring is irreversible.** Once `audit_anchor anchor` writes the
@@ -362,10 +570,20 @@ operator-id misrouting), the procedure is:
   `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`
   (table shape, trigger, grants, RLS), and the
   `PostgresAuditChainReader` /
-  `PostgresAuditChainAnchorWriter` classes inside
+  `PostgresAuditChainAnchorWriter` /
+  `PostgresOperatorIdReader` classes inside
   `tool/audit_anchor/audit_anchor.dart`.
-- **CLI entry point:** `tool/audit_anchor/main.dart`. Reads env
-  *names* only; never echoes secret values.
+- **CLI entry point:** `tool/audit_anchor/main.dart`. Three modes
+  (`sweep` for the daily firing, `anchor` for manual reruns,
+  `verify` for on-demand). Reads env *names* only; never echoes
+  secret values.
+- **Cloud Run Job + Cloud Scheduler manifest:**
+  `infrastructure/cloud_run/audit_anchor_job.yaml`. Placeholders
+  only; values are resolved via Secret Manager at deploy time.
+- **Deploy script:** `scripts/deploy_audit_anchor_job.ps1`. Loads
+  `$HOME/.forge_flow/forge_flow.secrets.ps1`, asserts required env
+  *names*, syncs Secret Manager, deploys Cloud Run Job + Cloud
+  Scheduler. Supports `-Preflight` for a no-mutation dry run.
 - **Decision lock:** `phase_9_scalability_decisions_2026-04-27.md`
   item 13 (`Hash-chained audit log`).
 

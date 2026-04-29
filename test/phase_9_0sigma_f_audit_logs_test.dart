@@ -1160,8 +1160,8 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────
   group('audit_anchor CLI (env-name only, no live secret values)', () {
-    test('parseArgs requires anchor|verify and at least one '
-        '--operator-id', () {
+    test('parseArgs requires sweep|anchor|verify and at least one '
+        '--operator-id for anchor mode', () {
       expect(
         () => audit_anchor_main.parseArgs(<String>[]),
         throwsA(isA<FormatException>()),
@@ -1173,6 +1173,164 @@ void main() {
       expect(
         () => audit_anchor_main.parseArgs(<String>['anchor']),
         throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('parseArgs sweep mode parses without --operator-id and '
+        'rejects --operator-id / --chain-date (B43: the deployed '
+        'Cloud Run command is `audit_anchor sweep`)', () {
+      // The deployed Cloud Run command shape — no flags at all.
+      final args = audit_anchor_main.parseArgs(<String>['sweep']);
+      expect(args.mode, audit_anchor_main.AuditAnchorMode.sweep);
+      expect(args.operatorIds, isEmpty);
+      expect(args.chainDateUtc, isNull);
+      expect(args.asOfUtc, isNull);
+
+      // --as-of-utc is allowed (manual rerun for a specific UTC
+      // date — same semantic the runbook documents for `anchor`).
+      final withAsOf = audit_anchor_main.parseArgs(<String>[
+        'sweep',
+        '--as-of-utc=2026-04-28',
+      ]);
+      expect(withAsOf.mode, audit_anchor_main.AuditAnchorMode.sweep);
+      expect(withAsOf.asOfUtc, equals(DateTime.utc(2026, 4, 28)));
+
+      // --operator-id is forbidden: the sweep dispatch resolves the
+      // operator list from public.operators, so accepting both
+      // would create a confusing dual contract.
+      expect(
+        () => audit_anchor_main.parseArgs(<String>[
+          'sweep',
+          '--operator-id=$_opA',
+        ]),
+        throwsA(isA<FormatException>()),
+      );
+
+      // --chain-date is verify-only.
+      expect(
+        () => audit_anchor_main.parseArgs(<String>[
+          'sweep',
+          '--chain-date=2026-04-27',
+        ]),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('runCli sweep mode resolves operators via OperatorIdReader '
+        'and drives the existing per-operator anchor logic (B43: the '
+        'daily Cloud Run firing exits 0 instead of failing parseArgs)',
+        () async {
+      // Two operators returned by the fake reader; the fake chain
+      // reader returns no unanchored chains for either, so the
+      // success path emits one log line per operator + the leading
+      // "sweep resolved" line, and the orchestrator never touches
+      // the Blob client.
+      final orchestrator = AuditAnchorOrchestrator(
+        reader: _FakeReader(
+          unanchored: const <AuditChainSummary>[],
+          chainsByDate: const <String, List<AuditLogRow>>{},
+          anchorsByDate: const <String, AuditChainAnchor>{},
+        ),
+        anchorWriter: _FakeAnchorWriter(),
+        blobClient: _FakeBlobClient(),
+        containerName: 'forge-flow-audit-anchors',
+      );
+      final reader = _FakeOperatorIdReader(<String>[_opA, _opB]);
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final out = _StringSink();
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final err = _StringSink();
+      final code = await audit_anchor_main.runCli(
+        <String>['sweep', '--as-of-utc=2026-04-28'],
+        orchestratorOverride: orchestrator,
+        operatorIdReaderOverride: reader,
+        out: out,
+        err: err,
+      );
+      expect(code, 0);
+      expect(reader.callCount, 1);
+      // Leading "sweep resolved N" line, then per-operator status.
+      expect(
+        out.toString(),
+        contains(
+          'audit_anchor: sweep resolved 2 operator(s) from '
+          'public.operators',
+        ),
+      );
+      expect(
+        out.toString(),
+        contains('audit_anchor: no unanchored completed chains for $_opA'),
+      );
+      expect(
+        out.toString(),
+        contains('audit_anchor: no unanchored completed chains for $_opB'),
+      );
+      expect(err.toString(), isEmpty);
+    });
+
+    test('runCli sweep with an empty public.operators returns 0 with '
+        'a "0 operators" stdout line (a brand-new tenant is not a '
+        'tamper signal)', () async {
+      final orchestrator = AuditAnchorOrchestrator(
+        reader: _FakeReader(
+          unanchored: const <AuditChainSummary>[],
+          chainsByDate: const <String, List<AuditLogRow>>{},
+          anchorsByDate: const <String, AuditChainAnchor>{},
+        ),
+        anchorWriter: _FakeAnchorWriter(),
+        blobClient: _FakeBlobClient(),
+        containerName: 'forge-flow-audit-anchors',
+      );
+      final reader = _FakeOperatorIdReader(const <String>[]);
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final out = _StringSink();
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final err = _StringSink();
+      final code = await audit_anchor_main.runCli(
+        <String>['sweep'],
+        orchestratorOverride: orchestrator,
+        operatorIdReaderOverride: reader,
+        out: out,
+        err: err,
+      );
+      expect(code, 0);
+      expect(
+        out.toString(),
+        contains('sweep found 0 operators in public.operators'),
+      );
+      expect(err.toString(), isEmpty);
+    });
+
+    test('runCli sweep maps a reader failure to exit 3 without '
+        'leaking the underlying error type to the operator', () async {
+      final orchestrator = AuditAnchorOrchestrator(
+        reader: _FakeReader(
+          unanchored: const <AuditChainSummary>[],
+          chainsByDate: const <String, List<AuditLogRow>>{},
+          anchorsByDate: const <String, AuditChainAnchor>{},
+        ),
+        anchorWriter: _FakeAnchorWriter(),
+        blobClient: _FakeBlobClient(),
+        containerName: 'forge-flow-audit-anchors',
+      );
+      final reader = _FakeOperatorIdReader.throwing(
+        'simulated postgres unreachable',
+      );
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final out = _StringSink();
+      // ignore: close_sinks - test sinks; close adds noise without value.
+      final err = _StringSink();
+      final code = await audit_anchor_main.runCli(
+        <String>['sweep'],
+        orchestratorOverride: orchestrator,
+        operatorIdReaderOverride: reader,
+        out: out,
+        err: err,
+      );
+      expect(code, 3);
+      expect(
+        err.toString(),
+        contains('audit_anchor: operator-id resolution failed'),
       );
     });
 
@@ -1550,6 +1708,350 @@ void main() {
       expect(body, contains('JSONL is canonical'));
       expect(body, contains('Q9 lock'));
     });
+
+    // ─── B43: Cloud Run scheduled-job deploy surface ───────────────
+    //
+    // The next four tests pin the Phase 9.0Σ.f / B43 deploy surface:
+    // a Cloud Run Job + Cloud Scheduler manifest plus a name-only
+    // PowerShell deploy script. The runbook, the YAML, and the
+    // script must agree on schedule (23:55 UTC), env names
+    // (POSTGRES_URL, AZURE_BLOB_AUDIT_CONTAINER,
+    // AZURE_BLOB_AUDIT_ENDPOINT), and the human-approval gate.
+
+    final cloudRunYaml = File(
+      'infrastructure/cloud_run/audit_anchor_job.yaml',
+    );
+    final deployScript = File('scripts/deploy_audit_anchor_job.ps1');
+
+    test('runbook reconciles schedule on 23:55 UTC and never claims '
+        '02:00 UTC (B43 reconcile)', () {
+      final body = runbook.readAsStringSync();
+      expect(body, contains('23:55 UTC'));
+      expect(body, contains('55 23 * * *'));
+      expect(body, contains('Etc/UTC'));
+      expect(
+        body,
+        isNot(contains('02:00 UTC')),
+        reason: 'B43 locks the daily firing at 23:55 UTC; the prior '
+            '02:00 UTC text would re-introduce the schedule conflict '
+            'the parallel-merge audit just fixed',
+      );
+    });
+
+    test('runbook documents the Cloud Run Job + Cloud Scheduler '
+        'deploy procedure and rotation pattern (B43)', () {
+      final body = runbook.readAsStringSync();
+      final normalizedBody = body.replaceAll(RegExp(r'\s+'), ' ');
+      // Deploy procedure section + cross-references to the new
+      // YAML and script.
+      expect(body, contains('Deploy procedure'));
+      expect(
+        body,
+        contains('infrastructure/cloud_run/audit_anchor_job.yaml'),
+      );
+      expect(
+        body,
+        contains('scripts/deploy_audit_anchor_job.ps1'),
+      );
+      expect(
+        normalizedBody,
+        contains(
+          'command/args (`dart run tool/audit_anchor/main.dart sweep`)',
+        ),
+        reason: 'the by-hand deploy contract must name the no-arg '
+            '`sweep` mode, not `anchor`',
+      );
+      expect(
+        normalizedBody,
+        isNot(
+          contains(
+            'command/args (`dart run tool/audit_anchor/main.dart anchor`)',
+          ),
+        ),
+        reason: '`anchor` requires --operator-id and is only the '
+            'manual rerun surface',
+      );
+      // Manual smoke after deploy is documented (operators must
+      // verify the pipe before the unattended firing).
+      expect(body.toLowerCase(), contains('manual smoke'));
+      // Rotation section: secrets and Blob container both covered.
+      expect(body, contains('Rotation pattern'));
+      expect(body.toLowerCase(), contains('secret rotation'));
+      expect(body.toLowerCase(), contains('container rotation'));
+      expect(
+        body,
+        isNot(contains('secret-only sync')),
+        reason: 'the deploy script does not have a secret-only mode; '
+            'rotation docs must describe the idempotent job/scheduler '
+            'refresh honestly',
+      );
+      expect(
+        normalizedBody,
+        contains(
+          'then re-applies the Cloud Run Job and Cloud Scheduler '
+          'trigger with the same image',
+        ),
+      );
+      // IAM / service-account grants table is present.
+      expect(body, contains('audit_anchor_role'));
+      expect(body, contains('Storage Blob Data Contributor'));
+      expect(body, contains('roles/secretmanager.secretAccessor'));
+    });
+
+    test('Cloud Run Job + Scheduler YAML uses placeholders only, '
+        'pins schedule + timezone + env names, and never embeds '
+        'secret values (B43)', () {
+      expect(
+        cloudRunYaml.existsSync(),
+        isTrue,
+        reason: 'B43 requires the repo-owned Cloud Run Job + '
+            'Cloud Scheduler manifest at '
+            'infrastructure/cloud_run/audit_anchor_job.yaml',
+      );
+      final body = cloudRunYaml.readAsStringSync();
+
+      // Schedule + timezone locked.
+      expect(body, contains("schedule: '55 23 * * *'"));
+      expect(body, contains("timeZone: 'Etc/UTC'"));
+
+      // The three required env names appear (names only).
+      expect(body, contains(AuditAnchorEnvNames.postgresUrl));
+      expect(body, contains(AuditAnchorEnvNames.azureBlobContainer));
+      expect(body, contains(AuditAnchorEnvNames.azureBlobEndpoint));
+
+      // Each env reads from Secret Manager via secretKeyRef (so the
+      // YAML never holds a real value).
+      expect(body, contains('valueFrom:'));
+      expect(body, contains('secretKeyRef:'));
+
+      // Placeholders, not real project ids / accounts.
+      expect(body, contains('__PROJECT__'));
+      expect(body, contains('__REGION__'));
+      expect(body, contains('__SERVICE_ACCOUNT__'));
+      expect(body, contains('__IMAGE__'));
+
+      // Forbidden secret patterns: no SAS tokens, account keys, or
+      // project-numeric service accounts checked into the repo.
+      expect(
+        body,
+        isNot(contains('?sv=')),
+        reason: 'YAML must not embed a SAS-token query string',
+      );
+      expect(
+        body,
+        isNot(contains('AccountKey=')),
+        reason: 'YAML must not embed an Azure connection-string key',
+      );
+
+      // The deployed CLI command is exactly
+      //   dart run tool/audit_anchor/main.dart sweep
+      // — not `anchor`. The earlier review pointed out that an
+      // `anchor`-mode invocation without `--operator-id` exits with
+      // a parser error before any anchor work runs. Pinning the
+      // exact command/args list (and re-parsing it via the CLI's
+      // own parseArgs below) prevents a regression to that shape.
+      final command = _extractYamlCommandArgs(body);
+      expect(
+        command,
+        equals(<String>['dart', 'run', 'tool/audit_anchor/main.dart', 'sweep']),
+        reason: 'YAML command + args must be exactly '
+            '["dart", "run", "tool/audit_anchor/main.dart", "sweep"]',
+      );
+
+      // Re-feed the deployed CLI args through the tool's own
+      // parser. Cloud Run runs `dart run <script> <args>`; the
+      // Dart `main(List<String> args)` receives only the entries
+      // AFTER the script path (slice index 3 of the full command).
+      // The deployed command parses cleanly into sweep mode with
+      // no operator ids — exactly the daily firing shape.
+      final parsed =
+          audit_anchor_main.parseArgs(command.skip(3).toList());
+      expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
+      expect(parsed.operatorIds, isEmpty);
+
+      // Job manifest carries the Cloud Run Job kind and the
+      // Cloud Scheduler kind in a multi-doc YAML.
+      expect(body, contains('apiVersion: run.googleapis.com/v1'));
+      expect(body, contains('kind: Job'));
+      expect(
+        body,
+        contains('apiVersion: cloudscheduler.googleapis.com/v1'),
+      );
+
+      // Cross-link to the runbook so a future operator finds the
+      // operational procedure from the manifest.
+      expect(
+        body,
+        contains('runbooks/audit_chain_verify_runbook.md'),
+      );
+    });
+
+    test('deploy_audit_anchor_job.ps1 supports name-only preflight, '
+        'pins schedule, and never prints secret values (B43)', () {
+      expect(
+        deployScript.existsSync(),
+        isTrue,
+        reason: 'B43 requires the deploy script at '
+            'scripts/deploy_audit_anchor_job.ps1',
+      );
+      final body = deployScript.readAsStringSync();
+
+      // Schedule + timezone locked, matching the YAML and runbook.
+      expect(body, contains("'55 23 * * *'"));
+      expect(body, contains("'Etc/UTC'"));
+
+      // The three required env names appear in the verification
+      // list (names only).
+      expect(body, contains("'POSTGRES_URL'"));
+      expect(body, contains("'AZURE_BLOB_AUDIT_CONTAINER'"));
+      expect(body, contains("'AZURE_BLOB_AUDIT_ENDPOINT'"));
+
+      // Preflight (no-mutation) flag is wired.
+      expect(body, contains(r'[switch] $Preflight'));
+      expect(body.toLowerCase(), contains('no live mutation'));
+
+      // Loads the unified secrets file by HOME path; the secrets
+      // file itself is NOT in the repo.
+      expect(
+        body,
+        contains(r'.forge_flow\forge_flow.secrets.ps1'),
+      );
+
+      // Forbidden: no inline secret values, no Account keys, no
+      // SAS-token query strings.
+      expect(
+        body,
+        isNot(contains('AccountKey=')),
+        reason: 'deploy script must never embed an Azure account '
+            'key — values come from the env loader',
+      );
+      expect(
+        body,
+        isNot(contains('?sv=')),
+        reason: 'deploy script must never embed a SAS token',
+      );
+
+      // Mutating gcloud verbs (`run jobs deploy/update`,
+      // `scheduler jobs create/update`) only appear OUTSIDE the
+      // preflight branch — the preflight section is informational
+      // (Write-Host of the gcloud commands that *would* run).
+      // We pin: when Preflight is set, the script reaches `exit 0`
+      // before the apply path. The simplest invariant is that the
+      // script contains the preflight early-exit sentinel.
+      expect(
+        body,
+        contains('Re-run without -Preflight to apply'),
+        reason: 'preflight branch must exit before live mutation',
+      );
+
+      // The deployed Cloud Run command shape MUST be `sweep`, not
+      // `anchor`. The `--args` value the apply path hands to
+      // `gcloud run jobs deploy/update` is a comma-joined list (no
+      // shell quoting); split it and re-feed through the CLI's own
+      // parser to prove the deployed shape parses cleanly into
+      // sweep mode with no operator ids.
+      final scriptArgs = _extractScriptCliArgs(body);
+      expect(
+        scriptArgs,
+        equals(<String>['run', 'tool/audit_anchor/main.dart', 'sweep']),
+        reason: 'deploy script must invoke `audit_anchor sweep`; '
+            '`anchor` would exit on `--operator-id is required`',
+      );
+      final parsed =
+          audit_anchor_main.parseArgs(scriptArgs.skip(2).toList());
+      expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
+      expect(parsed.operatorIds, isEmpty);
+    });
+
+    test('preflight printout uses \$JobName for the Cloud Run :run '
+        'URI segment (regression guard for the earlier bug where '
+        'the dry-run printed /jobs/<scheduler-name>:run, which would '
+        'wire Scheduler at a non-existent Cloud Run Job)', () {
+      final body = deployScript.readAsStringSync();
+      // The PowerShell -f format string lists positional bindings.
+      // The bug was: the `:run` URI segment was bound to {1} which
+      // is `$SchedulerName`. The fix moves `$JobName` into the
+      // bindings and references it from the URI. Pin the corrected
+      // shape directly so a future edit cannot silently regress.
+      final urlPattern = RegExp(
+        r"--uri\s+https://\{3\}-run\.googleapis\.com"
+        r"/apis/run\.googleapis\.com/v1/namespaces/\{2\}/jobs/\{6\}:run",
+      );
+      expect(
+        urlPattern.hasMatch(body),
+        isTrue,
+        reason: 'preflight URI must use {6} (\$JobName) for the '
+            ':run segment, not {1} (\$SchedulerName)',
+      );
+      // Defense in depth: the buggy `/jobs/{1}:run` shape MUST NOT
+      // appear anywhere in the script.
+      expect(
+        body,
+        isNot(contains(r'jobs/{1}:run')),
+        reason: r'jobs/{1}:run was the bug — {1} is $SchedulerName',
+      );
+      // Also confirm `$JobName` actually appears in the format
+      // bindings list of the offending Write-Host (the `-f` tail).
+      // The bindings line is exactly one line; we read it back and
+      // assert $JobName precedes $ServiceAccount (matches the
+      // {6}/{7} ordering above).
+      final preflightSchedulerLine = body
+          .split('\n')
+          .firstWhere(
+            (line) => line.contains('scheduler jobs create http'),
+            orElse: () => '',
+          );
+      expect(
+        preflightSchedulerLine,
+        isNot(isEmpty),
+        reason: 'preflight scheduler-create line must exist',
+      );
+      expect(
+        preflightSchedulerLine,
+        contains(r'$JobName, $ServiceAccount'),
+        reason: r'format bindings must list $JobName before '
+            r'$ServiceAccount so the URI {6}=JobName, '
+            r'{7}=ServiceAccount mapping holds',
+      );
+    });
+
+    test('runbook + YAML + deploy script all describe human approval '
+        'before live mutation (CLAUDE.md "no live Azure mutation '
+        'in repo") (B43)', () {
+      final runbookBody = runbook.readAsStringSync();
+      final yamlBody = cloudRunYaml.readAsStringSync();
+      final scriptBody = deployScript.readAsStringSync();
+
+      // Runbook: human approval is named in two surfaces — the
+      // existing prerequisites block AND the new deploy / rotation
+      // sections.
+      expect(runbookBody.toLowerCase(), contains('human approval'));
+      expect(
+        runbookBody,
+        contains('CLAUDE.md "no live Azure mutation in repo"'),
+      );
+
+      // YAML: posture comment names CLAUDE.md so a future deploy
+      // operator opening only the manifest still sees the gate.
+      expect(
+        yamlBody,
+        contains('CLAUDE.md "no live Azure mutation in repo"'),
+      );
+
+      // Script: explicit `Human approval is required` line in the
+      // header so a future runner reading only the script header
+      // still sees the gate before invoking the script.
+      expect(
+        scriptBody.toLowerCase(),
+        contains('human approval'),
+        reason: 'deploy script header must name the human-approval '
+            'gate so a runner who skips the runbook still sees it',
+      );
+      expect(
+        scriptBody,
+        contains('CLAUDE.md "no live Azure mutation in repo"'),
+      );
+    });
   });
 }
 
@@ -1557,6 +2059,79 @@ void main() {
 
 String _readSqlNormalized(String path) {
   return File(path).readAsStringSync().replaceAll('\r\n', '\n');
+}
+
+/// Reads the Cloud Run Job YAML and returns the concatenation of the
+/// container's `command:` block and its `args:` block as a flat list
+/// (e.g. `['dart', 'run', 'tool/audit_anchor/main.dart', 'sweep']`).
+/// The deployed shell command is the first element followed by the
+/// remainder. Tests use this to feed the deployed args back through
+/// `audit_anchor`'s own `parseArgs` so a regression in the YAML
+/// command shape is caught at test time.
+List<String> _extractYamlCommandArgs(String yaml) {
+  final lines = yaml.replaceAll('\r\n', '\n').split('\n');
+  final command = <String>[];
+  for (var i = 0; i < lines.length; i++) {
+    final stripped = lines[i].trimLeft();
+    if (stripped == 'command:' || stripped.startsWith('command:')) {
+      command.addAll(_collectYamlListItems(lines, i + 1));
+    } else if (stripped == 'args:' || stripped.startsWith('args:')) {
+      command.addAll(_collectYamlListItems(lines, i + 1));
+    }
+  }
+  return command;
+}
+
+/// Walks the lines starting at [startIndex] and returns every
+/// consecutive `- <item>` entry until the indentation drops or a
+/// non-list line is reached. Inline comments are preserved as-is in
+/// the source but are not expected on item lines.
+List<String> _collectYamlListItems(List<String> lines, int startIndex) {
+  final items = <String>[];
+  int? listIndent;
+  for (var i = startIndex; i < lines.length; i++) {
+    final line = lines[i];
+    if (line.trim().isEmpty) continue;
+    final indentMatch = RegExp(r'^(\s*)').firstMatch(line)!;
+    final indent = indentMatch.group(1)!.length;
+    final dashMatch = RegExp(r'^\s*-\s+(.*\S)\s*$').firstMatch(line);
+    if (dashMatch == null) {
+      // Allow leading comment lines inside a list block (rare).
+      if (line.trim().startsWith('#')) continue;
+      break;
+    }
+    listIndent ??= indent;
+    if (indent != listIndent) break;
+    items.add(dashMatch.group(1)!);
+  }
+  return items;
+}
+
+/// Reads the deploy script and extracts every `--args 'a,b,c'` literal
+/// used for the preflight echo and apply path. All occurrences must
+/// match so the test cannot pass by validating only the dry-run text
+/// while the real `gcloud run jobs deploy/update` command regresses.
+/// Returns the comma-split list (e.g. `['run',
+/// 'tool/audit_anchor/main.dart', 'sweep']`). Tests feed this through
+/// `audit_anchor`'s parser so a regression to `anchor` (which requires
+/// --operator-id) fails fast.
+List<String> _extractScriptCliArgs(String script) {
+  final pattern = RegExp(r"--args\s+'([^']+)'");
+  final matches = pattern.allMatches(script).toList(growable: false);
+  if (matches.isEmpty) {
+    throw StateError(
+      'deploy script does not contain a --args literal',
+    );
+  }
+  final literals = <String>{
+    for (final match in matches) match.group(1)!,
+  };
+  if (literals.length != 1) {
+    throw StateError(
+      'deploy script contains mismatched --args literals: $literals',
+    );
+  }
+  return literals.single.split(',');
 }
 
 AuditLogRow _buildRow({
@@ -1755,6 +2330,27 @@ class _FakeAnchorWriter implements AuditChainAnchorWriter {
   @override
   Future<void> insertAnchor(AuditChainAnchor anchor) async {
     inserts.add(anchor);
+  }
+}
+
+class _FakeOperatorIdReader implements OperatorIdReader {
+  _FakeOperatorIdReader(this._operatorIds) : _failureMessage = null;
+  _FakeOperatorIdReader.throwing(String message)
+      : _operatorIds = const <String>[],
+        _failureMessage = message;
+
+  final List<String> _operatorIds;
+  final String? _failureMessage;
+  int callCount = 0;
+
+  @override
+  Future<List<String>> listOperatorIds() async {
+    callCount++;
+    final failure = _failureMessage;
+    if (failure != null) {
+      throw StateError(failure);
+    }
+    return List<String>.unmodifiable(_operatorIds);
   }
 }
 

@@ -742,6 +742,49 @@ AuditLogRow _coerceRow(Map<String, Object?> row) {
   );
 }
 
+// ─── Operator-id reader (sweep-mode dependency) ───────────────────────
+
+/// Resolves the list of operator ids the daily Cloud Run Job should
+/// sweep. The orchestrator (and `runAnchor` per-operator) deliberately
+/// does NOT enumerate operators — that boundary stays in this seam so
+/// the orchestrator's `runInTenantContext` posture is preserved per-
+/// operator. The sweep entry point in `main.dart` calls this once at
+/// the top of a daily run and then dispatches the existing
+/// per-operator anchor logic.
+abstract class OperatorIdReader {
+  /// Returns the operator ids in stable order (ascending UUID) so the
+  /// daily Cloud Run log line ordering is reproducible.
+  Future<List<String>> listOperatorIds();
+}
+
+/// Postgres-backed [OperatorIdReader]. Reads `public.operators` via
+/// `runAsSystem` (cross-tenant by definition; the audit reason is
+/// `audit_anchor.sweep` so the bypass-RLS event is attributed at
+/// `auth_events_audit` ingest time).
+class PostgresOperatorIdReader implements OperatorIdReader {
+  PostgresOperatorIdReader({required TenantTransactionWrapper wrapper})
+      : _wrapper = wrapper;
+
+  final TenantTransactionWrapper _wrapper;
+
+  @override
+  Future<List<String>> listOperatorIds() {
+    return _wrapper.runAsSystem<List<String>>(
+      (exec) async {
+        final rows = await exec.query(
+          'select operator_id::text as operator_id '
+          '  from public.operators '
+          ' order by operator_id',
+        );
+        return <String>[
+          for (final row in rows) row['operator_id']! as String,
+        ];
+      },
+      reason: 'audit_anchor.sweep',
+    );
+  }
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────
 
 /// Result of one anchor run.
