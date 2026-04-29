@@ -79,7 +79,7 @@ already-completed Production1 apply unless explicitly stated.
 | B39 recovery code attempt-store refactor | queued | Code hygiene |
 | B40 `202604280013` hotfix cross-link | queued | Docs polish |
 | B41 service-principal issuance route | queued | Phase 12 prerequisite |
-| B42 proxy `/health` expansion | queued | 11A.5/11A.6 prerequisite |
+| B42 proxy `/health` expansion | complete | Contract: `docs/contracts/proxy_health_contract.md`; B44/B45/B47 fill reserved metric values |
 | B43 Cloud Run audit anchor deploy | queued | Audit operations |
 | B44 graph/vector health metrics and rebuild runbook | queued | 11A.5 health surface |
 | B45 rollup worker/freshness UI integration | queued | Rollup operations |

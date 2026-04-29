@@ -26,6 +26,7 @@ Current examples:
 - `docs/contracts/phase_7_55_plain_english_architecture.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
+- `docs/contracts/proxy_health_contract.md`
 
 ## 3. Live phase docs
 

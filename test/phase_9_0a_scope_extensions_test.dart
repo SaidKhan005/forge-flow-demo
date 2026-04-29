@@ -53,8 +53,7 @@ void main() {
       superAdminTeamGrantsMigrationFile.readAsStringSync();
 
   group('user_roles.scope_type (9.0a)', () {
-    test('column added with NOT NULL + CHECK in (operator_wide, location)',
-        () {
+    test('column added with NOT NULL + CHECK in (operator_wide, location)', () {
       final sql = migration();
       expect(sql, contains('alter table public.user_roles'));
       expect(sql, contains('add column if not exists scope_type text'));
@@ -66,13 +65,15 @@ void main() {
       );
     });
 
-    test('backfill: NULL location_id -> operator_wide; non-null -> location',
-        () {
-      final sql = migration();
-      expect(sql, contains('update public.user_roles'));
-      expect(sql, contains("when location_id is null then 'operator_wide'"));
-      expect(sql, contains("else 'location'"));
-    });
+    test(
+      'backfill: NULL location_id -> operator_wide; non-null -> location',
+      () {
+        final sql = migration();
+        expect(sql, contains('update public.user_roles'));
+        expect(sql, contains("when location_id is null then 'operator_wide'"));
+        expect(sql, contains("else 'location'"));
+      },
+    );
 
     test('tenant-leading scope_type lookup index exists', () {
       final sql = migration();
@@ -158,10 +159,7 @@ void main() {
       expect(sql, contains('cross join public.permission_keys pk'));
       expect(sql, contains("and pk.category = 'team'"));
       expect(sql, contains("on conflict (role_id, permission_key) do nothing"));
-      expect(
-        sql,
-        contains('super_admin role keeps every catalog key'),
-      );
+      expect(sql, contains('super_admin role keeps every catalog key'));
     });
 
     test('operator_manager seed grants the manager-tier subset', () {
@@ -169,7 +167,9 @@ void main() {
       // Extract only the operator_manager seed block so we can assert
       // its content without false-positives from operator_owner's
       // cross-join above (which DOES grant every team.* key).
-      final managerBlockStart = sql.indexOf("where r.role_key = 'operator_manager'");
+      final managerBlockStart = sql.indexOf(
+        "where r.role_key = 'operator_manager'",
+      );
       expect(managerBlockStart, greaterThan(0));
       final managerBlock = sql.substring(managerBlockStart);
       expect(managerBlock, contains("'team.users.view',"));
@@ -183,14 +183,8 @@ void main() {
       expect(managerBlock, contains("'team.session.force_logout'"));
       // Acceptance: operator_manager does NOT get create_custom or
       // soft_delete (locked decision).
-      expect(
-        managerBlock,
-        isNot(contains("'team.roles.create_custom'")),
-      );
-      expect(
-        managerBlock,
-        isNot(contains("'team.users.soft_delete'")),
-      );
+      expect(managerBlock, isNot(contains("'team.roles.create_custom'")));
+      expect(managerBlock, isNot(contains("'team.users.soft_delete'")));
     });
   });
 
@@ -219,17 +213,15 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 94 entries (81 baseline + 12 team.* + '
-        '1 admin.audit_privacy.read added in 9.0Σ.h2)', () {
+    test('PermissionKeys.all has 95 entries (81 baseline + 12 team.* + '
+        '2 later admin keys)', () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
-      // advisor-conversation audit-privacy gate, bringing the catalog
-      // to 94. The 9.0Σ.h2 test in
-      // `test/phase_9_0sigma_h2_audit_privacy_role_test.dart` carries
-      // the matching assertion for the post-h2 state; this test
-      // tracks the running total so a future catalog addition that
-      // forgets to grow the count is caught here.
-      expect(PermissionKeys.all.length, equals(94));
+      // advisor-conversation audit-privacy gate. B41 then added
+      // admin.service_principal.issue_token, bringing the catalog to
+      // 95. This test tracks the running total so a future catalog
+      // addition that forgets to grow the count is caught here.
+      expect(PermissionKeys.all.length, equals(95));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '
@@ -264,10 +256,7 @@ void main() {
       // TIMESTAMPTZ. Even though 9.0a doesn't add timestamps, lint
       // for regression in case future edits add them.
       final sql = migration();
-      expect(
-        sql.toLowerCase(),
-        isNot(contains('timestamp without time zone')),
-      );
+      expect(sql.toLowerCase(), isNot(contains('timestamp without time zone')));
       expect(
         sql.toLowerCase(),
         isNot(matches(RegExp(r'\btimestamp\b(?!\s*with)'))),

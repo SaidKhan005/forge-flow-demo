@@ -3374,12 +3374,12 @@ Key pieces, one at a time:
 - **Why it matters:** Needed for real event fan-out
 - **How this helps long term:** Blocks durable event fan-out and real-time consumers.
 
-#### Health expansion needed
+#### Health producers needed
 
-- **What it means:** `/health` needs more system signals
-- **Example in the app:** `/health` needs audit/vector/graph/rollup signals.
+- **What it means:** `/health` now has the B42 metric envelope; later producers still need to fill it
+- **Example in the app:** B44/B45/B47 fill audit/vector/graph/rollup metric values.
 - **Why it matters:** Needed for ops console health views
-- **How this helps long term:** Needed before the operations console can show complete platform health.
+- **How this helps long term:** Lets the operations console bind to stable health keys before every producer is live.
 
 
 ### Where It Lives

@@ -107,6 +107,79 @@ operator query (Forge & Flow manager / Barrio manager / Barrio staff)
 -> no operator data retained by the model
 ```
 
+## `11b.2` Graphify-Informed Traversal Contract
+
+Graphify can inform the advisor graph, but it does not run in the
+advisor hot path. By the time `11b.2` executes, every relationship the
+advisor can traverse must already be approved through `11A.3.x` and
+stored in canonical Postgres graph rows.
+
+Runtime rule:
+
+```text
+Graphify proposal
+-> 11A.3.x admin review
+-> approved graph_nodes / graph_edges
+-> AGE projection
+-> 11b.2 traversal
+-> advisor answer with provenance
+```
+
+The advisor must not read from `graphify-out/graph.json`, Graphify MCP,
+or any unapproved draft artifact. Draft candidates are admin data, not
+answer data.
+
+Implementation details for `11b.2`:
+
+- Traversal source of truth is `public.graph_nodes` /
+  `public.graph_edges`, projected into AGE by the graph projection
+  tooling.
+- Every traversal query is scoped by authenticated `operator_id`,
+  `graph_scope`, and `graph_version`.
+- Runtime relationship types are allowlisted. Suggested initial edge
+  types: `CONTAINS`, `DEPENDS_ON`, `CAUSES`, `SUPPORTS`,
+  `CONTRADICTS`, `REFERENCES`, `IMPLEMENTS`, `MEASURES`.
+- Runtime node types are allowlisted. Suggested initial node types:
+  `Document`, `Chunk`, `Concept`, `Policy`, `Metric`, `Workflow`,
+  `Role`, `Tool`, `Decision`.
+- The agent can request bounded graph operations:
+  - get approved node by key/label
+  - get approved neighbors for a node
+  - find a bounded path between two approved nodes
+  - expand a local neighborhood up to a fixed depth
+  - return provenance for every traversed node and edge
+- Depth, edge count, and token budgets are capped per query so graph
+  traversal cannot flood the prompt.
+- Confidence is part of answer grounding. Lower-confidence approved
+  edges may support exploration, but strong claims require extracted
+  or explicitly approved evidence.
+- The answer provenance must include graph node labels, edge labels,
+  source documents, source spans when available, and live tool values
+  used by the agent.
+
+Graphify repo details to mirror conceptually:
+
+- Mirror `graphify/serve.py` query primitives as AGE-backed operations:
+  graph stats, node lookup, neighbor lookup, and shortest/bounded path.
+- Mirror Graphify's source/provenance habit from `graphify/extract.py`:
+  each traversal result must be traceable back to the source document or
+  reviewed candidate.
+- Mirror Graphify's confidence categories from its graph/report output,
+  but normalize them to the F&F numeric confidence field and admin
+  approval state before runtime use.
+- Do not embed Graphify's NetworkX graph as runtime state. AGE/Postgres
+  remains the runtime graph engine.
+
+Acceptance for `11b.2`:
+
+- Advisor answers can cite approved graph paths.
+- Advisor refuses or narrows when graph provenance is weak.
+- Unapproved, rejected, and ambiguous Graphify candidates are absent
+  from runtime traversal.
+- Tests cover same-operator traversal, cross-operator isolation,
+  bounded traversal limits, provenance output, and confidence-aware
+  answer behavior.
+
 ## Dependencies
 
 Required before Phase 11b can ship real:
@@ -152,6 +225,8 @@ Helpful but not required:
 ## Source Material
 
 - [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
+- [phase_11A_operations_console_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md)
+- [Graphify v5 repository](https://github.com/safishamsi/graphify/tree/v5)
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)
 - [Rag_Architecture.svg](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/reference/Rag_Architecture.svg)
 

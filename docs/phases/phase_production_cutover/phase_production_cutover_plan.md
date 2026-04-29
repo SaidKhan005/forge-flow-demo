@@ -113,10 +113,25 @@ Live, billable. Mirror of staging load with explicit approval gates.
 
 - Verify all `db/migrations/*` applied to production1 (already done;
   re-confirm).
+- Verify `11A.3.x` Graphify-assisted corpus graph review is closed for
+  the corpus version being loaded:
+  - candidate manifest exists
+  - all approved nodes/edges have source document provenance
+  - all `INFERRED` relationships have explicit admin approval
+  - all `AMBIGUOUS` relationships are rejected or edited into clear
+    approved relationships
+  - rejected candidates are retained in the review manifest but are not
+    present in `graph_nodes` / `graph_edges`
+  - no raw `graphify-out/graph.json` artifact is treated as production
+    truth
 - Run corpus build pipeline against production1:
   - `dart run tool/advisor_corpus/main.dart prepare-load`
+  - if Graphify candidates are part of the approved corpus version:
+    `dart run tool/advisor_corpus/main.dart prepare-graphify-candidates`
   - psql apply for ingestion run, source documents, source chunks,
     graph node seeds, graph edge hints
+  - psql apply for approved canonical `graph_nodes` / `graph_edges`
+    generated from reviewed Graphify candidates
 - **APPROVAL GATE**: Voyage embedding execution against production
   (~$X estimated; surface estimate before approval).
   - Run `prepare-embeddings` then `execute-embeddings` against the
@@ -133,11 +148,18 @@ Live, billable. Mirror of staging load with explicit approval gates.
 - Apply BM25 vector population.
 - Smoke tests on production1:
   - pgvector candidate query returns expected count
+  - AGE approved graph traversal returns expected Graphify-reviewed
+    relationship count
+  - rejected / ambiguous Graphify candidates are absent from AGE
+    traversal results
   - AGE Document → Chunk traversal returns expected count
   - Voyage rerank live smoke returns scored results
   - Claude answer smoke returns `end_turn`
 - Verify counts match staging shape (8 docs, 233 chunks at current
   corpus size).
+- Verify approved graph counts match the `11A.3.x` review manifest:
+  approved nodes, approved edges, inferred-approved edges,
+  rejected candidates, isolated approved nodes.
 - Output: `phase_production_cutover_1_corpus_load_result.md` with
   execution IDs, token counts, costs incurred, smoke results.
 
@@ -322,6 +344,9 @@ After this phase closes:
   T&Cs surface that `cutover.2` records acceptance against
 - `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md` — UX phase
   whose acceptance gates `cutover.0`
+- `https://github.com/safishamsi/graphify/tree/v5` - source repo for
+  the Graphify-assisted corpus graph review pattern consumed by
+  `11A.3.x` and verified during `cutover.1`
 - `docs/archive/phases/phase_11a/phase_11a_production1_provisioning_result.md`
   — current production1 state baseline (archived)
 - `docs/archive/phases/phase_11a/phase_11a_11e_staging_live_load_result.md`

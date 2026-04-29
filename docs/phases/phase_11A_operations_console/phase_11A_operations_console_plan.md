@@ -7,9 +7,11 @@ Owner: F&F admin / operations lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies
 
+Active B42 contract: `docs/contracts/proxy_health_contract.md`.
+
 `11A.5` Graph/Vector Health and `11A.6` observability dashboard depend on
 the proxy `/health` contract expansion in `phase_9_execution_backlog.md`
-B42 (queued). The expansion exposes per-surface metrics from the 9.0Σ
+B42. The expansion exposes per-surface metrics from the 9.0Σ
 foundation series:
 
 - `audit_chain_lag_seconds` (B27 audit_logs hash chain).
@@ -144,6 +146,134 @@ Specifically:
   enforces resumability + Voyage rate-limit backoff per
   `11a.11e` acceptance.
 
+### `11A.3.x` Graphify-Assisted Corpus Graph Review
+
+This is the phase slice where the open-source Graphify repo can feed the
+Forge & Flow advisor graph. It is an admin/review feature, not runtime
+AI behavior.
+
+Graphify's job is to propose relationships from corpus content. The F&F
+admin's job is to approve, reject, or edit those relationships before
+they become advisor truth. Approved records are written into the existing
+Postgres graph layer; unapproved suggestions never reach the advisor.
+
+Implementation flow:
+
+1. Run Graphify against the advisor corpus source set.
+2. Import Graphify's `graph.json` as draft graph candidates.
+3. Normalize every candidate into the F&F graph vocabulary.
+4. Show the candidate diff in Corpus Admin:
+   - new nodes
+   - changed nodes
+   - new relationships
+   - changed relationships
+   - removed relationships
+   - inferred or ambiguous relationships requiring explicit review
+5. Admin approves, rejects, or edits candidates.
+6. Approved records become `graph_nodes` / `graph_edges` rows.
+7. AGE projection rebuild consumes `graph_nodes` / `graph_edges`.
+8. `11b.2` advisor traversal can use the approved graph.
+
+Local implementation details:
+
+- Add a build-tool command under `tool/advisor_corpus/main.dart`, named
+  `prepare-graphify-candidates`.
+- Add a Dart importer in `tool/advisor_corpus/advisor_corpus.dart` that
+  reads Graphify `graph.json` and emits deterministic JSONL artifacts:
+  `graphify_node_candidates.jsonl`,
+  `graphify_edge_candidates.jsonl`, and
+  `graphify_candidate_manifest.json`.
+- The importer must not write live database rows directly. It produces
+  review artifacts first, matching the existing `prepare-load` pattern.
+- The Flutter admin client must never shell out to Graphify. The admin
+  UI calls a proxy admin route, and the proxy/server-side job invokes the
+  build tool.
+- `docs/Knowledge_graph_docs/corpus_manifest.yaml` remains the
+  authority for which corpus docs are in scope. Graphify output for
+  files outside the active manifest is ignored.
+- Use canonical graph storage as the destination:
+  `public.graph_nodes` and `public.graph_edges`. The older
+  `advisor_graph_node_seeds` / `advisor_graph_edge_hints` path remains
+  a corpus-load/projection input, not the long-term source of truth.
+
+Graphify repo details to adapt:
+
+- `graphify/detect.py`: take the changed-file detection and ignore
+  discipline. Adapt it to the corpus manifest instead of using the repo
+  filesystem as the authority.
+- `graphify/cache.py`: take the incremental-cache idea so unchanged
+  corpus documents do not trigger full graph regeneration.
+- `graphify/extract.py`: take the node/edge extraction shape:
+  stable ids, labels, relation names, source file references, and source
+  locations. Do not copy code that depends on a developer-only Claude
+  Code session into production.
+- `graphify/validate.py`: take the schema-validation posture. Every
+  imported candidate must validate before it appears in the admin review
+  screen.
+- `graphify/security.py`: take the path/URL safety posture before any
+  future external `graphify add <url>` style ingestion is allowed.
+- `graphify/serve.py`: take the query primitives as inspiration for
+  debug tooling (`get_node`, `get_neighbors`, graph stats, shortest
+  path). Production runtime queries still go through Postgres/AGE.
+- `graphify/build.py`, `graphify/cluster.py`, and `graphify/analyze.py`:
+  take the build/report structure for admin summaries such as connected
+  components, central nodes, isolated nodes, and surprising edges.
+
+Candidate mapping rules:
+
+- Graphify node id -> `graph_nodes.node_key`, prefixed with
+  `graphify:` and scoped by source doc/version so ids are stable across
+  re-runs.
+- Graphify node label -> `graph_nodes.properties.label`.
+- Graphify node type -> `graph_nodes.node_type`, normalized to the F&F
+  approved type list before commit.
+- Graphify edge source/target -> lookup by candidate node key, then
+  write `graph_edges.from_node_id` / `graph_edges.to_node_id`.
+- Graphify relation -> `graph_edges.edge_type`, normalized to the F&F
+  approved relation list.
+- Graphify confidence -> `graph_nodes.confidence` /
+  `graph_edges.confidence` as numeric 0.000-1.000.
+- Graphify source path/location -> `source = 'graphify'`,
+  `source_ref`, and JSONB provenance fields.
+- Graphify community/cluster ids -> JSONB properties only. They help
+  review but are not semantic truth.
+
+Approval rules:
+
+- `EXTRACTED` relationships can be batch-approved only after a diff
+  preview.
+- `INFERRED` relationships require explicit per-edge approval.
+- `AMBIGUOUS` relationships are debug-only until edited into a clear
+  approved relationship.
+- Rejected candidates stay in the review manifest for audit but are not
+  written to `graph_nodes` / `graph_edges`.
+- Every approved candidate records the admin actor, approval timestamp,
+  source document, source line/span when available, Graphify version,
+  and Graphify source commit or package version.
+
+License and source rules:
+
+- Graphify is MIT licensed. Any copied helper code must keep an MIT
+  attribution comment and a source URL in the file header.
+- Prefer a bridge/importer over vendoring the full package. The F&F app
+  owns persistence, tenant isolation, approval workflow, and runtime
+  traversal.
+- Do not ship `graphify-out/graph.json` itself as production truth.
+  It is an input artifact only.
+
+Acceptance:
+
+- Corpus Admin shows a graph candidate diff before commit.
+- Admin can approve, reject, and edit relationship candidates.
+- Approved candidates write to canonical `graph_nodes` / `graph_edges`
+  only through the proxy/admin backend path.
+- AGE rebuild reads canonical rows and passes smoke traversal.
+- Ambiguous and inferred edges cannot silently reach advisor runtime.
+- `prepare-graphify-candidates` is deterministic for the same
+  `graph.json`, manifest, and corpus version.
+- Tests cover import validation, confidence handling, rejected
+  candidates, source provenance, and manifest-out-of-scope filtering.
+
 ### Operations readiness (launch-blocking, lands alongside 11b)
 
 - `11A.4` **Integration management.** View and rotate Anthropic
@@ -158,12 +288,19 @@ Specifically:
   `request_id` or `idempotency_key`. Live-tail latest requests
   for the active session. **This is the "remote debug" surface**
   - accessible from any browser, no shell access required.
+  Graph debug extends this surface for `11A.3.x`: inspect a graph
+  node, inspect neighbors, inspect shortest approved path between
+  two approved nodes, and see whether an edge was extracted,
+  inferred-and-approved, edited, or rejected.
 - `11A.6` **Observability dashboard.** System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
   Cap-event stream (incoming alerts when operators hit cap).
   Cloud Run instance counts. Replaces "I'll figure out if
   something's broken from raw logs" as the path.
+  Graph observability must include approved node count, approved edge
+  count, inferred-edge approval count, rejected candidate count,
+  isolated-node count, AGE projection freshness, and traversal p95.
 
   **Cost telemetry surfaces** (Hard Promise #9 visibility):
   - Total cost-by-(`operator_id` / `location_id` / `staff_id` /
@@ -276,6 +413,9 @@ Required before Phase 11A can ship real:
 ## Source Material
 
 - [PROJECT_TRACKER.md](C:/Git%20Local%20Repos/forge_flow_demo/PROJECT_TRACKER.md)
+- [Graphify v5 repository](https://github.com/safishamsi/graphify/tree/v5)
+- [Graphify architecture](https://raw.githubusercontent.com/safishamsi/graphify/v5/ARCHITECTURE.md)
+- [Graphify MIT license](https://raw.githubusercontent.com/safishamsi/graphify/v5/LICENSE)
 - [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
 - [Architecture_Guide.pdf](C:/Git%20Local%20Repos/forge_flow_demo/Architecture_Guide.pdf)
 - [lib/theme/app_theme.dart](C:/Git%20Local%20Repos/forge_flow_demo/lib/theme/app_theme.dart)
