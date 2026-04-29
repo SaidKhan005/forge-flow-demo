@@ -1,14 +1,18 @@
 // Phase 9 live-closeout B13 - Postgres recovery-code attempt store.
 //
 // Backs RecoveryCodeAttemptLimiter with the durable
-// `recovery_code_attempts` table. The limiter interface is user-scoped, so
-// this store uses the narrow system path: no operator data is returned, and
-// older rows are pruned opportunistically on read.
+// `recovery_code_attempts` table. The table has no `operator_id`
+// column; its RLS policy filters by `public.app_current_actor_user()`,
+// so this store extends [UserScopedRepository] and routes every
+// read/write through [withUser]. That sets only `app.user_id`
+// transaction-locally and does NOT engage `forge_admin`'s BYPASSRLS —
+// the policy itself admits the row. Older rows are pruned
+// opportunistically on read.
 
 import '../../../../services/mfa/recovery_code_attempt_limiter.dart';
-import '../operator_scoped_repository.dart';
+import 'user_scoped_repository.dart';
 
-class PostgresRecoveryCodeAttemptStore extends OperatorScopedRepository
+class PostgresRecoveryCodeAttemptStore extends UserScopedRepository
     implements RecoveryCodeAttemptStore {
   PostgresRecoveryCodeAttemptStore(super.tenantWrapper);
 
@@ -19,7 +23,7 @@ class PostgresRecoveryCodeAttemptStore extends OperatorScopedRepository
     required Duration window,
   }) {
     final cutoff = now.toUtc().subtract(window);
-    return withSystem<List<DateTime>>((exec) async {
+    return withUser<List<DateTime>>(userId, (exec) async {
       await exec.execute(
         'delete from recovery_code_attempts '
         'where user_id = @user_id::uuid '
@@ -38,12 +42,12 @@ class PostgresRecoveryCodeAttemptStore extends OperatorScopedRepository
           .whereType<DateTime>()
           .map((value) => value.toUtc())
           .toList(growable: false);
-    }, reason: 'auth.recovery_code_attempt_read');
+    });
   }
 
   @override
   Future<void> recordAttempt({required String userId, required DateTime at}) {
-    return withSystem<void>((exec) async {
+    return withUser<void>(userId, (exec) async {
       await exec.execute(
         'insert into recovery_code_attempts (user_id, attempted_at) '
         'values (@user_id::uuid, @attempted_at)',
@@ -52,6 +56,6 @@ class PostgresRecoveryCodeAttemptStore extends OperatorScopedRepository
           'attempted_at': at.toUtc(),
         },
       );
-    }, reason: 'auth.recovery_code_attempt_record');
+    });
   }
 }

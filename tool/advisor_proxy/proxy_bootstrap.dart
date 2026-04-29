@@ -132,7 +132,13 @@ ProxyProductionBindings buildProxyProductionBindings(
         hasher: const Sha256RecoveryCodeHasher(),
         repository: tenantMfaFactors,
         limiter: RecoveryCodeAttemptLimiter(
-          store: PostgresRecoveryCodeAttemptStore(adminWrapper),
+          // `recovery_code_attempts` is a per-user table whose RLS
+          // policy filters by `public.app_current_actor_user()`. The
+          // store therefore wires through the TENANT pool (POSTGRES_URL)
+          // so SET LOCAL `app.user_id` admits the row — NOT through
+          // the admin pool (POSTGRES_ADMIN_URL), which would silently
+          // engage `forge_admin` BYPASSRLS and skip the per-user gate.
+          store: PostgresRecoveryCodeAttemptStore(tenantWrapper),
         ),
       ),
       auditRepository: tenantAudit,

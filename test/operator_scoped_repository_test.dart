@@ -15,6 +15,7 @@ import 'package:postgres/postgres.dart' as pg;
 import 'package:forge_and_flow/infrastructure/persistence/postgres/operator_scoped_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_scoped_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
@@ -678,6 +679,88 @@ void main() {
       }
     });
   });
+
+  group('TenantTransactionWrapper.runInUserContext (B39)', () {
+    test('sets only app.user_id with parameter binding, audits, and '
+        'commits — no forge_admin BYPASSRLS', () async {
+      final pool = _RecordingPool();
+      final wrapper = TenantTransactionWrapper(pool);
+
+      final result = await wrapper.runInUserContext<int>(
+        _validUserId,
+        (exec) async => 7,
+      );
+
+      expect(result, equals(7));
+      final tx = pool.transactions.single;
+      expect(tx.commitCount, equals(1));
+      expect(tx.rollbackCount, equals(0));
+      // First call sets app.user_id with parameter binding.
+      expect(tx.executedSql[0], contains("set_config('app.user_id'"));
+      expect(tx.executedSql[0], contains('true)'));
+      expect(tx.parameters[0]['value'], equals(_validUserId));
+      // Second call is the audit marker, literal 'user'.
+      expect(tx.executedSql[1], contains("set_config('app.bypass_rls_audit'"));
+      expect(tx.executedSql[1], contains("'user'"));
+      // No operator/location injected on this path.
+      expect(
+        tx.executedSql.any((sql) => sql.contains("'app.operator_id'")),
+        isFalse,
+      );
+      expect(
+        tx.executedSql.any((sql) => sql.contains("'app.location_id'")),
+        isFalse,
+      );
+      // No forge_admin elevation.
+      expect(
+        tx.executedSql.any((sql) => sql.contains('forge_admin')),
+        isFalse,
+        reason: 'user-scoped path must rely on RLS, not BYPASSRLS',
+      );
+    });
+
+    test('rolls back on body throw and rethrows the original error', () async {
+      final pool = _RecordingPool();
+      final wrapper = TenantTransactionWrapper(pool);
+      final boom = StateError('user-context boom');
+
+      Object? thrown;
+      try {
+        await wrapper.runInUserContext<void>(_validUserId, (exec) async {
+          throw boom;
+        });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(identical(thrown, boom), isTrue);
+      expect(pool.transactions.single.commitCount, equals(0));
+      expect(pool.transactions.single.rollbackCount, equals(1));
+    });
+  });
+
+  group('UserScopedRepository (subclass-facing API)', () {
+    test('withUser delegates to runInUserContext and forwards body return',
+        () async {
+      final pool = _RecordingPool();
+      final repo = _ExampleUserRepository(TenantTransactionWrapper(pool));
+
+      final result = await repo.exampleUserRead(_validUserId);
+
+      expect(result, equals(<String>['row-a', 'row-b']));
+      expect(pool.transactions, hasLength(1));
+      final tx = pool.transactions.single;
+      // SET LOCAL app.user_id ran before the body's read.
+      expect(tx.executedSql[0], contains("set_config('app.user_id'"));
+      expect(tx.parameters[0]['value'], equals(_validUserId));
+      // Body's query ran after SET LOCAL + audit marker.
+      expect(tx.executedSql.any((sql) => sql.contains('from users')), isTrue);
+      // Repository never touches forge_admin.
+      expect(
+        tx.executedSql.any((sql) => sql.contains('forge_admin')),
+        isFalse,
+      );
+    });
+  });
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -871,5 +954,22 @@ class _ExampleRepository extends OperatorScopedRepository {
     // Intentionally passes a blank reason so the test can assert the
     // wrapper rejects it before opening a transaction.
     return withSystem((exec) async {}, reason: '');
+  }
+}
+
+class _ExampleUserRepository extends UserScopedRepository {
+  _ExampleUserRepository(super.tenantWrapper);
+
+  Future<List<String>> exampleUserRead(String userId) {
+    return withUser(userId, (exec) async {
+      final rows = await exec.query(
+        'select name from users where user_id = '
+        "current_setting('app.user_id', true)::uuid",
+      );
+      return rows
+          .map((row) => row['name'] as String? ?? '')
+          .where((name) => name.isNotEmpty)
+          .toList();
+    });
   }
 }

@@ -1,4 +1,9 @@
-// Phase 9 live-closeout B13 - Postgres recovery-code attempt store tests.
+// Phase 9 live-closeout B13 / B39 - Postgres recovery-code attempt store tests.
+//
+// Verifies the store routes through the user-scoped helper so the
+// per-user RLS policy (`recovery_code_attempts_per_user`, reads
+// `public.app_current_actor_user()`) admits the row. The store must
+// NOT engage `forge_admin` BYPASSRLS — RLS itself is the gate.
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
@@ -27,11 +32,28 @@ void main() {
 
         expect(attempts, hasLength(2));
         final tx = pool.transactions.single;
+        // User-scoped execution: app.user_id is set transaction-locally
+        // with parameter binding, audit marker is 'user', and there is
+        // NO `set local role forge_admin`.
         expect(
           tx.executedSql,
-          contains("select set_config('app.bypass_rls_audit', @value, true)"),
+          contains("select set_config('app.user_id', @value, true)"),
         );
-        expect(tx.executedSql, contains('set local role forge_admin'));
+        expect(
+          tx.executedSql,
+          contains("select set_config('app.bypass_rls_audit', 'user', true)"),
+        );
+        expect(
+          tx.executedSql.any((sql) => sql.contains('forge_admin')),
+          isFalse,
+          reason: 'recovery-code attempt store must not engage BYPASSRLS',
+        );
+        // app.user_id is bound via parameter, not concatenated.
+        final userIdSet = tx.executeCalls.firstWhere(
+          (call) => call.sql.contains("'app.user_id'"),
+        );
+        expect(userIdSet.parameters['value'], equals(_userId));
+
         expect(
           tx.executedSql.any(
             (sql) => sql.contains('delete from recovery_code_attempts'),
@@ -39,6 +61,7 @@ void main() {
           isTrue,
         );
         expect(tx.queryCalls.single.sql, contains('order by attempted_at asc'));
+        expect(tx.committed, isTrue);
       },
     );
 
@@ -52,6 +75,15 @@ void main() {
       await store.recordAttempt(userId: _userId, at: at);
 
       final tx = pool.transactions.single;
+      // Same user-scoped guarantees as the read path.
+      expect(
+        tx.executedSql,
+        contains("select set_config('app.user_id', @value, true)"),
+      );
+      expect(
+        tx.executedSql.any((sql) => sql.contains('forge_admin')),
+        isFalse,
+      );
       final insert = tx.executeCalls.last;
       expect(insert.sql, contains('insert into recovery_code_attempts'));
       expect(insert.parameters['user_id'], equals(_userId));

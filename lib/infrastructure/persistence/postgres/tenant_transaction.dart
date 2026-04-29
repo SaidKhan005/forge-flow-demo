@@ -87,6 +87,50 @@ class TenantTransactionWrapper {
     }
   }
 
+  /// Runs [body] inside a transaction with only `app.user_id`
+  /// injected (no operator/location SET LOCAL). For per-user tables
+  /// whose RLS policy filters by `public.app_current_actor_user()`
+  /// (e.g. `recovery_code_attempts`) and that have no `operator_id`
+  /// column to gate on. The audit marker is `'user'`; no
+  /// `set local role forge_admin` is issued — the policy itself
+  /// admits the row when `app.user_id` matches.
+  ///
+  /// Commit/rollback semantics mirror [runInTenantContext]: commits
+  /// on body success, rolls back and rethrows on any error from the
+  /// body or the SET LOCAL calls. Secondary rollback failures are
+  /// swallowed so the original error wins.
+  Future<R> runInUserContext<R>(
+    String userId,
+    Future<R> Function(PostgresExecutor exec) body,
+  ) async {
+    final tx = await _pool.beginTransaction();
+    var finalized = false;
+    try {
+      await tx.execute(
+        "select set_config('app.user_id', @value, true)",
+        parameters: <String, Object?>{'value': userId},
+      );
+      // Audit marker mirrors the tenant path's `'tenant'` so
+      // anything reading current_setting('app.bypass_rls_audit', true)
+      // can distinguish a user-scoped op from a system op.
+      await tx.execute(
+        "select set_config('app.bypass_rls_audit', 'user', true)",
+      );
+      final result = await body(tx);
+      await tx.commit();
+      finalized = true;
+      return result;
+    } finally {
+      if (!finalized) {
+        try {
+          await tx.rollback();
+        } catch (_) {
+          // See [runInTenantContext]; keep the original error.
+        }
+      }
+    }
+  }
+
   /// Runs [body] inside a transaction WITHOUT tenant SET LOCAL —
   /// the `forge_admin` Postgres role's `BYPASSRLS` privilege is the
   /// safety net here, and every call audits via the
