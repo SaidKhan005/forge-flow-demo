@@ -37,7 +37,10 @@ the constants without seeding it, the test catches that.
 
 ## Categories
 
-The catalog currently carries 81 keys across 7 categories.
+The catalog carries 82 keys across 7 categories at the 9.0 baseline
+(81 original + 1 added in 9.0Σ.h2). The 12 `team.*` keys added in
+9.0a live in their own section below; the running total across all
+8 categories is 94 keys.
 
 ### `product.*` (2)
 
@@ -103,10 +106,14 @@ where operator owners or F&F may curate Barrio content per operator.
 | `barrio.learning.complete_unit` | Mark a learning unit complete for the current user. | — |
 | `barrio.streak.view` | View own streak / leaderboard standing. | — |
 
-### `admin.*` (25)
+### `admin.*` (26)
 
 F&F admin actions. Mostly mounted under `/v1/admin/auth/*` (9.6, 9.8).
-Sensitive keys carry `requires_mfa = true`.
+Sensitive keys carry `requires_mfa = true`. The 9.0Σ.h2 slice
+(2026-04-28) added `admin.audit_privacy.read` to gate the audit-read
+path on `advisor_conversation_log`; that key is seeded by
+`db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`,
+not by the 9.0 foundation seed.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -135,6 +142,7 @@ Sensitive keys carry `requires_mfa = true`.
 | `admin.status_page.publish` | Publish a status-page incident or recovery. | — |
 | `admin.debug_console.view` | View internal debug console. | — |
 | `admin.session.force_logout` | Force-revoke all sessions for a user. | — |
+| `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
 ### `team.*` (12)
 

@@ -1813,12 +1813,30 @@ void main() {
               'PermissionKeys.dart should declare ~80 permission keys; '
               'found ${keys.length}',
         );
-        // Every key declared in constants must be seeded by the migration.
+        // Some catalog keys are seeded by follow-up migrations rather
+        // than by the 9.0 foundation seed (so the foundation migration
+        // stays a fixed-shape historical record). The h2 slice
+        // (2026-04-28) added `admin.audit_privacy.read` via
+        // `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`;
+        // the assertion below scans every migration in `db/migrations/`
+        // so a follow-up seed counts as "seeded into permission_keys"
+        // for the purposes of this contract test.
+        final allMigrations = StringBuffer();
+        for (final entry in Directory('db/migrations').listSync()) {
+          if (entry is File && entry.path.endsWith('.sql')) {
+            allMigrations.write(entry.readAsStringSync());
+            allMigrations.write('\n');
+          }
+        }
+        final allMigrationsContent = allMigrations.toString();
+        // Every key declared in constants must be seeded by some
+        // migration in db/migrations/.
         for (final key in keys) {
           expect(
-            migration,
+            allMigrationsContent,
             contains("'$key'"),
-            reason: 'PermissionKeys constant $key not seeded by migration',
+            reason: 'PermissionKeys constant $key not seeded by any '
+                'db/migrations/*.sql file',
           );
         }
       },

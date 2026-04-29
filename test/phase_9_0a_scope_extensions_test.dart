@@ -219,8 +219,17 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 93 entries (81 baseline + 12 team.*)', () {
-      expect(PermissionKeys.all.length, equals(93));
+    test('PermissionKeys.all has 94 entries (81 baseline + 12 team.* + '
+        '1 admin.audit_privacy.read added in 9.0Σ.h2)', () {
+      // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
+      // (2026-04-28) added admin.audit_privacy.read for the
+      // advisor-conversation audit-privacy gate, bringing the catalog
+      // to 94. The 9.0Σ.h2 test in
+      // `test/phase_9_0sigma_h2_audit_privacy_role_test.dart` carries
+      // the matching assertion for the post-h2 state; this test
+      // tracks the running total so a future catalog addition that
+      // forgets to grow the count is caught here.
+      expect(PermissionKeys.all.length, equals(94));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '

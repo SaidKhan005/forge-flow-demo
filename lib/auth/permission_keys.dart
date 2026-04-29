@@ -27,7 +27,7 @@
 //   - product.*       (2 keys)  product-access gates
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
-//   - admin.*         (25 keys) admin actions
+//   - admin.*         (26 keys) admin actions
 //   - team.*          (12 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX)
@@ -35,9 +35,10 @@
 //   - integration.*   (9 keys)  integration management
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 93 keys (81 baseline + 12 team.* added in 9.0a). Some keys
-// are flagged MFA-required via PermissionKeys.requiresMfa; the
-// migration mirrors that in the permission_keys.requires_mfa column.
+// Total: 94 keys (81 baseline + 12 team.* added in 9.0a + 1
+// admin.audit_privacy.read added in 9.0Σ.h2). Some keys are flagged
+// MFA-required via PermissionKeys.requiresMfa; the migration mirrors
+// that in the permission_keys.requires_mfa column.
 
 /// Frozen permission key catalog. See file header for invariants.
 class PermissionKeys {
@@ -59,7 +60,8 @@ class PermissionKeys {
   static const String forgeflowHistoryView = 'forgeflow.history.view';
   static const String forgeflowBenchmarkView = 'forgeflow.benchmark.view';
   static const String forgeflowBenchmarkEdit = 'forgeflow.benchmark.edit';
-  static const String forgeflowTargetProfileView = 'forgeflow.target_profile.view';
+  static const String forgeflowTargetProfileView =
+      'forgeflow.target_profile.view';
   static const String forgeflowTargetProfileManage =
       'forgeflow.target_profile.manage';
   static const String forgeflowTargetCycleView = 'forgeflow.target_cycle.view';
@@ -91,7 +93,7 @@ class PermissionKeys {
       'barrio.learning.complete_unit';
   static const String barrioStreakView = 'barrio.streak.view';
 
-  // ─── admin.* (25) ─────────────────────────────────────────────────
+  // ─── admin.* (26) ─────────────────────────────────────────────────
   static const String adminUsersView = 'admin.users.view';
   static const String adminUsersCreate = 'admin.users.create';
   static const String adminUsersDeactivate = 'admin.users.deactivate';
@@ -117,6 +119,12 @@ class PermissionKeys {
   static const String adminStatusPagePublish = 'admin.status_page.publish';
   static const String adminDebugConsoleView = 'admin.debug_console.view';
   static const String adminSessionForceLogout = 'admin.session.force_logout';
+  // Added 9.0Σ.h2 (2026-04-28). Gates the audit-privacy read path on
+  // `advisor_conversation_log` (raw encrypted columns). MFA required.
+  // Default-granted to `super_admin` and `ff_support` only; operator-
+  // tier roles do NOT receive this key by default — raw advisor-
+  // conversation content is F&F-internal at launch.
+  static const String adminAuditPrivacyRead = 'admin.audit_privacy.read'; // MFA
 
   // ─── team.* (12) ──────────────────────────────────────────────────
   // Added 9.0a (2026-04-27). Operator-self-service team management;
@@ -147,8 +155,7 @@ class PermissionKeys {
   // ─── integration.* (9) ────────────────────────────────────────────
   static const String integrationToastConnect = 'integration.toast.connect';
   static const String integrationToastView = 'integration.toast.view';
-  static const String integration7shiftsConnect =
-      'integration.7shifts.connect';
+  static const String integration7shiftsConnect = 'integration.7shifts.connect';
   static const String integration7shiftsView = 'integration.7shifts.view';
   static const String integrationOpentableConnect =
       'integration.opentable.connect';
@@ -230,6 +237,7 @@ class PermissionKeys {
     adminStatusPagePublish,
     adminDebugConsoleView,
     adminSessionForceLogout,
+    adminAuditPrivacyRead,
     teamUsersView,
     teamUsersInvite,
     teamUsersDeactivate,
@@ -272,6 +280,7 @@ class PermissionKeys {
     adminUsersErasePii,
     adminRolesEditSeeded,
     adminPricingTierEdit,
+    adminAuditPrivacyRead,
     billingSubscriptionManage,
     billingPaymentMethodManage,
     billingUsageCapsEdit,
