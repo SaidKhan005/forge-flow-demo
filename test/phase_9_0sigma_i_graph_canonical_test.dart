@@ -556,10 +556,53 @@ void main() {
       expect(safety['mutates_canonical_rows'], isFalse);
       expect(safety['mutates_age_projection'], isTrue);
 
-      // Tripwire surface declares Q19 thresholds.
+      // Tripwire surface declares Q19 thresholds and an operator-
+      // scoped read path. The misleading `function` field — which
+      // pointed B42 implementers at public.graph_health_metrics() and
+      // would have recreated the cross-tenant aggregation bug — is
+      // intentionally removed. B42 manifest consumers follow
+      // `reads_from` + `aggregation_keys` instead.
       final tripwire =
           manifest['tripwire_surface']! as Map<String, Object?>;
-      expect(tripwire['function'], equals('public.graph_health_metrics()'));
+      expect(
+        tripwire.containsKey('function'),
+        isFalse,
+        reason: 'The "function" field was removed because pointing '
+            'B42 at public.graph_health_metrics() recreates the '
+            'forge_admin operatorless-aggregation bug. Consumers must '
+            'use reads_from + aggregation_keys instead.',
+      );
+      final readsFrom =
+          (tripwire['reads_from']! as List<Object?>).cast<String>();
+      expect(
+        readsFrom,
+        containsAll(<String>[
+          'public.graph_nodes',
+          'public.graph_edges',
+        ]),
+      );
+      final aggregationKeys =
+          (tripwire['aggregation_keys']! as List<Object?>).cast<String>();
+      expect(
+        aggregationKeys,
+        containsAllInOrder(<String>[
+          'operator_id',
+          'graph_scope',
+          'graph_version',
+        ]),
+      );
+      expect(
+        tripwire['tenant_scoped_helper_function'],
+        equals('public.graph_health_metrics()'),
+      );
+      // The helper is still NAMED for tenant-scoped ad-hoc use, but
+      // an explicit warning string sits next to it so a B42 reader
+      // does not mistake it for the cross-tenant read path.
+      expect(
+        tripwire['tenant_scoped_helper_function_warning'],
+        contains('MUST NOT be used as the B42 forge_admin /health '
+            'read path'),
+      );
       expect(tripwire['yellow_threshold_active_edges'], equals(3000000));
       expect(tripwire['red_threshold_active_edges'], equals(4000000));
 
@@ -656,10 +699,20 @@ void main() {
       );
       expect(projectionSql, contains('ag_catalog.create_graph'));
 
-      // MERGE-based vertex + edge projection (idempotent on re-run).
-      expect(projectionSql, contains('MERGE (v:%s {node_id:'));
-      expect(projectionSql, contains('MERGE (a)-[r:%s {edge_id:'));
-
+      // Composite-identity MERGE — vertex pattern carries
+      // (operator_id, graph_scope, graph_version, node_id) so two
+      // canonical rows with the same UUID across different
+      // tenants/scopes/versions stay separate vertices in AGE.
+      expect(projectionSql, contains('MERGE (v:%s {operator_id:'));
+      expect(projectionSql, contains('graph_scope:'));
+      expect(projectionSql, contains('graph_version:'));
+      expect(projectionSql, contains('node_id:'));
+      // Edge MERGE pattern is composite too — same rationale.
+      expect(projectionSql, contains('MERGE (a)-[r:%s {operator_id:'));
+      // Edge endpoint MATCH carries the full canonical identity tuple
+      // so an edge cannot attach to a same-UUID vertex from a
+      // different tenant/scope/version.
+      expect(projectionSql, contains('MATCH (a {operator_id:'));
       // Stamps the canonical identity tuple back onto every projected
       // vertex + edge so the smoke artifact can read it via Cypher and
       // compute an AGE-side byte-equivalence digest. Without these
@@ -729,11 +782,16 @@ void main() {
       expect(smokeSql, contains('canonical_node_digest'));
       expect(smokeSql, contains('canonical_edge_digest'));
 
-      // AGE projection counts via Cypher.
+      // AGE projection counts via Cypher. The MATCH carries an
+      // optional WHERE slot so a bounded scope filter can narrow the
+      // count to the rebuilt subgraph; `all_active` collapses the
+      // slot to an empty string and the count walks the whole graph.
       expect(smokeSql, contains('age_node_count'));
       expect(smokeSql, contains('age_edge_count'));
-      expect(smokeSql, contains('MATCH (v) RETURN v'));
-      expect(smokeSql, contains('MATCH ()-[r]->() RETURN r'));
+      expect(smokeSql, contains('MATCH (v)'));
+      expect(smokeSql, contains('RETURN v'));
+      expect(smokeSql, contains('MATCH ()-[r]->()'));
+      expect(smokeSql, contains('RETURN r'));
 
       // AGE-side digests — the byte-equivalence gate. The Cypher cursor
       // returns the canonical-identity tuple stamped onto each
@@ -838,8 +896,9 @@ void main() {
       );
     });
 
-    test('tripwire artifact reads public.graph_health_metrics() and '
-        'reports yellow/red status with Q19 thresholds', () async {
+    test('tripwire artifact aggregates canonical tables grouped by '
+        '(operator_id, graph_scope, graph_version) and reports '
+        'green/yellow/red status with Q19 thresholds', () async {
       final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
       final result = await preparer.prepare();
       final tripwireSql = await File(
@@ -847,20 +906,647 @@ void main() {
         '${GraphProjectionRebuildPreparer.tripwireFileName}',
       ).readAsString();
 
+      // Reads canonical tables directly so forge_admin BYPASSRLS sees
+      // per-tenant rows. The migration's graph_health_metrics()
+      // function exists as a tenant-scoped helper but is unsuitable
+      // for forge_admin reads because it aggregates across
+      // operator_id; the rebuild's tripwire avoids it deliberately.
+      expect(tripwireSql, contains('from public.graph_nodes'));
+      expect(tripwireSql, contains('from public.graph_edges'));
       expect(
         tripwireSql,
-        contains('from public.graph_health_metrics()'),
+        contains('group by operator_id, graph_scope, graph_version'),
       );
       expect(tripwireSql, contains('AGE_TRIPWIRE_RED'));
       expect(tripwireSql, contains('AGE_TRIPWIRE_YELLOW'));
       expect(tripwireSql, contains('AGE_TRIPWIRE_GREEN'));
-      // Per-row notice carries scope/version + counts so the operator
-      // panel can attach them.
-      expect(tripwireSql, contains('AGE_TRIPWIRE: scope='));
+      // Per-row notice carries operator + scope/version + counts so
+      // the operator panel can attach them. The line shape begins
+      // with `operator=` because the tripwire is operator-scoped now.
+      expect(tripwireSql, contains('AGE_TRIPWIRE: operator='));
+      expect(tripwireSql, contains('scope='));
+      expect(tripwireSql, contains('version='));
       // Q19 4M / 3M thresholds are surfaced in the rollover prose so
       // the operator running the rebuild knows what just fired.
       expect(tripwireSql, contains('4M'));
       expect(tripwireSql, contains('3M'));
+    });
+
+    test('B44 — bounded scope filter pushes into the generated SQL: drop '
+        'targets only the matched subgraph via DETACH DELETE, projection '
+        'and smoke narrow canonical SELECTs to the matched scope/version, '
+        'and the tripwire restricts its aggregation to the same filter',
+        () async {
+      final preparer = GraphProjectionRebuildPreparer(
+        repoRoot: tempRepo,
+        graphScopeFilter: 'methodology:v3',
+      );
+      final result = await preparer.prepare();
+      final dropSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.dropFileName}',
+      ).readAsString();
+      final projectionSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.projectionFileName}',
+      ).readAsString();
+      final smokeSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.smokeFileName}',
+      ).readAsString();
+      final tripwireSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.tripwireFileName}',
+      ).readAsString();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Bounded drop — the script runs Cypher DETACH DELETE on the
+      // matched subgraph and explicitly does NOT call
+      // ag_catalog.drop_graph (which would erase every projection
+      // including untouched scopes).
+      expect(dropSql, contains("v.graph_scope = 'methodology'"));
+      expect(dropSql, contains("v.graph_version = 'v3'"));
+      expect(dropSql, contains('DETACH DELETE v'));
+      expect(
+        dropSql,
+        isNot(contains('ag_catalog.drop_graph(graph_name, true)')),
+        reason: 'A bounded-scope drop must not call drop_graph; that '
+            'helper drops every projection in the AGE catalog and '
+            'would erase scopes the rebuild is not touching.',
+      );
+
+      // Projection and smoke narrow canonical SELECTs to the matched
+      // scope/version. The fragment is positional so the byte
+      // sequence stays deterministic.
+      expect(projectionSql, contains("and graph_scope = 'methodology'"));
+      expect(projectionSql, contains("and graph_version = 'v3'"));
+      expect(smokeSql, contains("and graph_scope = 'methodology'"));
+      expect(smokeSql, contains("and graph_version = 'v3'"));
+      // Smoke's AGE-side queries also carry the same Cypher WHERE so
+      // a bounded rebuild's digest comparison is restricted to the
+      // matched subgraph (count + digest both narrowed identically).
+      expect(smokeSql, contains("v.graph_scope = 'methodology'"));
+      expect(smokeSql, contains("v.graph_version = 'v3'"));
+      expect(smokeSql, contains("r.graph_scope = 'methodology'"));
+      expect(smokeSql, contains("r.graph_version = 'v3'"));
+
+      // Tripwire restricts its aggregation to the same filter so a
+      // bounded rebuild reports only the rebuilt subgraph's status.
+      expect(tripwireSql, contains("and graph_scope = 'methodology'"));
+      expect(tripwireSql, contains("and graph_version = 'v3'"));
+
+      // Manifest captures the parsed filter so a downstream tool
+      // sees exactly what the SQL was narrowed to without re-parsing.
+      final parsed =
+          manifest['graph_scope_filter_parsed']! as Map<String, Object?>;
+      expect(parsed['is_all_active'], isFalse);
+      expect(parsed['scope'], equals('methodology'));
+      expect(parsed['version'], equals('v3'));
+      expect(
+        parsed['description'],
+        equals('scope=methodology, version=v3'),
+      );
+
+      // Drop role on the manifest reflects the bounded behavior.
+      final files = (manifest['rebuild_files']! as List<Object?>)
+          .cast<Map<String, Object?>>();
+      final dropEntry = files.firstWhere(
+        (f) => f['file'] == GraphProjectionRebuildPreparer.dropFileName,
+      );
+      expect(
+        dropEntry['role'],
+        equals('drop_age_subgraph_for_scope_filter'),
+      );
+    });
+
+    test('B44 — invalid scope filter values are rejected at parse time so '
+        'the SQL cannot smuggle injection', () {
+      // Empty / whitespace.
+      expect(
+        () => GraphProjectionRebuildPreparer(
+          repoRoot: tempRepo,
+          graphScopeFilter: '',
+        ),
+        throwsA(isA<GraphProjectionException>()),
+      );
+      // SQL injection attempt — quotes and statement separators.
+      expect(
+        () => GraphProjectionRebuildPreparer(
+          repoRoot: tempRepo,
+          graphScopeFilter: "methodology'; drop table public.graph_nodes; --",
+        ),
+        throwsA(isA<GraphProjectionException>()),
+      );
+      // Cypher injection attempt — closing brace.
+      expect(
+        () => GraphProjectionRebuildPreparer(
+          repoRoot: tempRepo,
+          graphScopeFilter: 'methodology}) DETACH DELETE v //',
+        ),
+        throwsA(isA<GraphProjectionException>()),
+      );
+    });
+
+    test('B44 — AGE projection identity is composite '
+        '(operator_id, graph_scope, graph_version, node_id) so '
+        'cross-tenant / cross-scope / cross-version UUIDs do not '
+        'collapse into a single AGE node', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final projectionSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.projectionFileName}',
+      ).readAsString();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Vertex MERGE pattern carries the full canonical identity
+      // tuple. Same-UUID rows under different (operator, scope,
+      // version) frames stay separate vertices in AGE.
+      expect(projectionSql, contains('MERGE (v:%s {operator_id:'));
+      // Edge MERGE pattern is composite too.
+      expect(projectionSql, contains('MERGE (a)-[r:%s {operator_id:'));
+      // Edge endpoint MATCH is composite — an edge cannot attach to
+      // a same-UUID vertex from a different (operator, scope,
+      // version) frame.
+      expect(projectionSql, contains('MATCH (a {operator_id:'));
+
+      // Manifest declares the same posture so a downstream tool sees
+      // the contract.
+      final identity =
+          manifest['age_projection_identity']! as Map<String, Object?>;
+      final vertexKeys = (identity['vertex_merge_pattern_keys']!
+              as List<Object?>)
+          .cast<String>();
+      expect(
+        vertexKeys,
+        containsAllInOrder(<String>[
+          'operator_id',
+          'graph_scope',
+          'graph_version',
+          'node_id',
+        ]),
+      );
+      final edgeKeys =
+          (identity['edge_merge_pattern_keys']! as List<Object?>)
+              .cast<String>();
+      expect(
+        edgeKeys,
+        containsAllInOrder(<String>[
+          'operator_id',
+          'graph_scope',
+          'graph_version',
+          'edge_id',
+        ]),
+      );
+      final endpointKeys = (identity['edge_endpoint_match_keys']!
+              as List<Object?>)
+          .cast<String>();
+      expect(
+        endpointKeys,
+        containsAllInOrder(<String>[
+          'operator_id',
+          'graph_scope',
+          'graph_version',
+          'node_id',
+        ]),
+      );
+    });
+
+    test('B44 — tripwire is operator-scoped so forge_admin BYPASSRLS '
+        'sees one row per (operator_id, graph_scope, graph_version) '
+        'instead of cross-tenant aggregates', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final tripwireSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.tripwireFileName}',
+      ).readAsString();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Per-row line surfaces operator_id alongside scope/version so
+      // forge_admin can wire one row per tenant without re-deriving.
+      expect(tripwireSql, contains('AGE_TRIPWIRE: operator='));
+      // Aggregation is GROUP BY (operator_id, graph_scope,
+      // graph_version) — not the migration's
+      // graph_health_metrics() function, which discards operator_id.
+      expect(
+        tripwireSql,
+        contains('group by operator_id, graph_scope, graph_version'),
+      );
+      // Manifest declares the aggregation keys explicitly so the B42
+      // proxy ingestion layer knows what cardinality to expect.
+      final tripwire =
+          manifest['tripwire_surface']! as Map<String, Object?>;
+      final aggregationKeys =
+          (tripwire['aggregation_keys']! as List<Object?>).cast<String>();
+      expect(
+        aggregationKeys,
+        containsAllInOrder(<String>[
+          'operator_id',
+          'graph_scope',
+          'graph_version',
+        ]),
+      );
+      expect(tripwire['forge_admin_per_tenant_rows'], isTrue);
+      // The migration's tenant-scoped helper is still named in the
+      // manifest as a fallback for ad-hoc tenant queries.
+      expect(
+        tripwire['tenant_scoped_helper_function'],
+        equals('public.graph_health_metrics()'),
+      );
+    });
+
+    test('B44 — yellow threshold begins at 3M active edges and red threshold '
+        'begins at 4M active edges, surfaced in BOTH the tripwire SQL and '
+        'the rebuild manifest', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final tripwireSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.tripwireFileName}',
+      ).readAsString();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // SQL surfaces the exact numeric thresholds AND the named
+      // constants — 11A.5 wiring asserts on the numeric form, the
+      // operator running the rebuild reads the named form.
+      expect(
+        tripwireSql,
+        contains('yellow_threshold_active_edges=3000000'),
+        reason: 'Yellow tripwire begins at 3M active edges per Q19; '
+            'the named-constant form must appear in the SQL so '
+            'operators reading NOTICEs can see why the row fired.',
+      );
+      expect(
+        tripwireSql,
+        contains('red_threshold_active_edges=4000000'),
+        reason: 'Red tripwire begins at 4M active edges per Q19; '
+            'the named-constant form must appear in the SQL.',
+      );
+      // Roll-up TOTALS line carries the exact integers as well so a
+      // single grep over the rebuild logs proves the gate fired
+      // against 3M / 4M without re-reading the per-row entries.
+      expect(tripwireSql, contains('3000000'));
+      expect(tripwireSql, contains('4000000'));
+
+      // Manifest declares the same thresholds as ints so a downstream
+      // tool ingesting the manifest sees the contract directly.
+      final tripwire =
+          manifest['tripwire_surface']! as Map<String, Object?>;
+      expect(
+        tripwire['yellow_threshold_active_edges'],
+        equals(3000000),
+        reason: 'Manifest must lock yellow at 3M active edges.',
+      );
+      expect(
+        tripwire['red_threshold_active_edges'],
+        equals(4000000),
+        reason: 'Manifest must lock red at 4M active edges.',
+      );
+      // Status alphabet stays {green, yellow, red} so 11A.5 has a
+      // closed enum to render against.
+      final statusValues =
+          (tripwire['status_values']! as List<Object?>).cast<String>();
+      expect(
+        statusValues,
+        containsAll(<String>['green', 'yellow', 'red']),
+      );
+    });
+
+    test('B44 — tripwire SQL + manifest expose the FULL B42 graph health '
+        'metric key contract (active counts plus reserved-null keys for '
+        'p95 latency, timeout rate, high-degree count, and last-build '
+        'age) so the proxy /health route can wire to a stable parsing '
+        'target without breaking when individual keys flip from null '
+        'to numeric', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final tripwireSql = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.tripwireFileName}',
+      ).readAsString();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Per-row tripwire NOTICE carries the B42 key shapes verbatim so
+      // a 11A.5 surface ingesting the lines pulls the metric without
+      // having to translate column aliases.
+      // Active keys — non-null today.
+      expect(tripwireSql, contains('graph_node_count='));
+      expect(tripwireSql, contains('graph_edge_count='));
+      expect(tripwireSql, contains('graph_active_edges_count='));
+      // Reserved-null keys — emitted as `<key>=null` in every line so
+      // the parser-side schema is stable today and a later benchmark
+      // slice can flip individual keys to numeric without breaking
+      // the proxy.
+      expect(tripwireSql, contains('graph_traversal_latency_ms=null'));
+      expect(tripwireSql, contains('graph_p95_traversal_latency_ms=null'));
+      expect(tripwireSql, contains('graph_timeout_rate=null'));
+      expect(tripwireSql, contains('graph_high_degree_count=null'));
+      expect(
+        tripwireSql,
+        contains('graph_last_projection_build_seconds_ago=null'),
+      );
+      // Cross-scope roll-up line carries the totaled form of the same
+      // keys for a one-line summary view.
+      expect(tripwireSql, contains('AGE_TRIPWIRE_TOTALS:'));
+      // Reserved metadata slots flow into both per-row and totals
+      // NOTICEs so 11A.5 can render last-build/last-benchmark context
+      // (currently null until a benchmark / runtime telemetry slice
+      // fills them).
+      expect(tripwireSql, contains('last_projection_built_at=null'));
+      expect(tripwireSql, contains('last_benchmark_at=null'));
+
+      // Manifest mirrors the same key list so a manifest-only consumer
+      // (CI gate, doc generator, B42 proxy ingestion) sees the
+      // contract. The key set is the union of active + reserved-null.
+      final tripwire =
+          manifest['tripwire_surface']! as Map<String, Object?>;
+      final keys =
+          (tripwire['b42_health_metric_keys']! as List<Object?>).cast<String>();
+      expect(
+        keys,
+        containsAll(<String>[
+          'graph_node_count',
+          'graph_edge_count',
+          'graph_active_edges_count',
+          'graph_traversal_latency_ms',
+          'graph_p95_traversal_latency_ms',
+          'graph_timeout_rate',
+          'graph_high_degree_count',
+          'graph_last_projection_build_seconds_ago',
+        ]),
+        reason: 'B42 reserved health key names must round-trip through '
+            'the manifest so the proxy /health slice can ingest them '
+            'without re-reading the SQL. The set includes both active '
+            'counts (filled today) and reserved-null keys (filled by '
+            'a later benchmark slice).',
+      );
+      // Active vs reserved-null split is explicit so the proxy parser
+      // knows which keys it must handle as nullable strings until the
+      // benchmark slice ships.
+      final activeKeys = (tripwire['b42_health_metric_keys_active']!
+              as List<Object?>)
+          .cast<String>();
+      expect(
+        activeKeys,
+        containsAll(<String>[
+          'graph_node_count',
+          'graph_edge_count',
+          'graph_active_edges_count',
+        ]),
+      );
+      final reservedNullKeys =
+          (tripwire['b42_health_metric_keys_reserved_null_today']!
+                  as List<Object?>)
+              .cast<String>();
+      expect(
+        reservedNullKeys,
+        containsAll(<String>[
+          'graph_traversal_latency_ms',
+          'graph_p95_traversal_latency_ms',
+          'graph_timeout_rate',
+          'graph_high_degree_count',
+          'graph_last_projection_build_seconds_ago',
+        ]),
+      );
+      // No overlap between active and reserved-null sets.
+      for (final reserved in reservedNullKeys) {
+        expect(
+          activeKeys,
+          isNot(contains(reserved)),
+          reason: 'Key "$reserved" must be in exactly one set; the '
+              'active vs reserved-null split is the contract.',
+        );
+      }
+
+      final metadataSlots =
+          (tripwire['metadata_slots']! as List<Object?>).cast<String>();
+      expect(
+        metadataSlots,
+        containsAll(<String>[
+          'last_projection_built_at',
+          'last_benchmark_at',
+        ]),
+      );
+      final noticePrefixes =
+          (tripwire['notice_prefixes']! as List<Object?>).cast<String>();
+      expect(
+        noticePrefixes,
+        containsAll(<String>[
+          'AGE_TRIPWIRE',
+          'AGE_TRIPWIRE_TOTALS',
+          'AGE_TRIPWIRE_GREEN',
+          'AGE_TRIPWIRE_YELLOW',
+          'AGE_TRIPWIRE_RED',
+        ]),
+      );
+    });
+
+    test('B44 — rebuild artifacts do NOT imply canonical graph mutation: '
+        'every emitted SQL file is read-only against public.graph_nodes / '
+        'public.graph_edges, and the manifest declares the same posture '
+        'explicitly', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Manifest claim: no canonical mutation, regardless of which SQL
+      // file fires. The four explicit booleans below would each fail
+      // to round-trip if a future regression flipped the contract.
+      final safety = manifest['canonical_safety']! as Map<String, Object?>;
+      expect(safety['mutates_canonical_rows'], isFalse);
+      expect(safety['mutates_graph_nodes_table'], isFalse);
+      expect(safety['mutates_graph_edges_table'], isFalse);
+      expect(safety['rebuild_artifacts_imply_canonical_mutation'], isFalse);
+      // The rebuild DOES drop/recreate the AGE projection — that is
+      // not canonical mutation per Q19.
+      expect(safety['mutates_age_projection'], isTrue);
+
+      // SQL-level guard — every emitted file must be free of
+      // canonical-mutation statements. The drop / projection / smoke
+      // tests already cover this individually; the loop here makes
+      // canonical-safety a single B44 acceptance assertion that
+      // surfaces if any future file regressed.
+      const sqlFiles = <String>[
+        GraphProjectionRebuildPreparer.dropFileName,
+        GraphProjectionRebuildPreparer.projectionFileName,
+        GraphProjectionRebuildPreparer.smokeFileName,
+        GraphProjectionRebuildPreparer.tripwireFileName,
+      ];
+      for (final fileName in sqlFiles) {
+        final sql = await File(
+          '${result.outputDirectory}/$fileName',
+        ).readAsString();
+        for (final forbidden in const <String>[
+          'update public.graph_nodes',
+          'update public.graph_edges',
+          'delete from public.graph_nodes',
+          'delete from public.graph_edges',
+          'insert into public.graph_nodes',
+          'insert into public.graph_edges',
+          'truncate public.graph_nodes',
+          'truncate public.graph_edges',
+        ]) {
+          expect(
+            sql,
+            isNot(contains(forbidden)),
+            reason: 'Rebuild artifact $fileName must never imply canonical '
+                'mutation. Found forbidden statement "$forbidden". Per '
+                'Q19, canonical truth is graph_nodes/graph_edges; the '
+                'rebuild is a projection-only operation.',
+          );
+        }
+      }
+    });
+
+    test('B44 — manifest carries operator-readable rebuild metadata: '
+        'last projection build slot, benchmark slot, graph scope/version '
+        'context, canonical source tables, and a four-step validation '
+        'plan so 11A health surfaces have everything they need', () async {
+      final preparer = GraphProjectionRebuildPreparer(repoRoot: tempRepo);
+      final result = await preparer.prepare();
+      final manifestRaw = await File(
+        '${result.outputDirectory}/'
+        '${GraphProjectionRebuildPreparer.manifestFileName}',
+      ).readAsString();
+      final manifest = jsonDecode(manifestRaw) as Map<String, Object?>;
+
+      // Reserved metadata slots match graph_health_metrics() column
+      // shape so a 11A.5 panel reading the manifest already knows
+      // which fields in the SQL function it should render.
+      final tripwire =
+          manifest['tripwire_surface']! as Map<String, Object?>;
+      final metadataSlots =
+          (tripwire['metadata_slots']! as List<Object?>).cast<String>();
+      expect(metadataSlots, contains('last_projection_built_at'));
+      expect(metadataSlots, contains('last_benchmark_at'));
+
+      // Graph scope / version context — the manifest names the filter
+      // shape and the canonical source tables so a downstream B42
+      // /health route consumer does not need to re-read the migration.
+      expect(
+        manifest['graph_scope_filter'],
+        equals(defaultGraphScopeFilter),
+      );
+      expect(
+        manifest['graph_scope_version_pairs'],
+        contains('graph_scope, graph_version'),
+      );
+      final sources =
+          (manifest['canonical_source_tables']! as List<Object?>).cast<String>();
+      expect(
+        sources,
+        containsAll(<String>[
+          'public.graph_nodes',
+          'public.graph_edges',
+        ]),
+      );
+
+      // Validation step plan — drop, rebuild, smoke, tripwire (plus
+      // preflight + dry-run) in the order the runbook prescribes.
+      final steps = (manifest['rebuild_validation_steps']! as List<Object?>)
+          .cast<Map<String, Object?>>();
+      final stepNames = steps.map((s) => s['name']).toList();
+      expect(
+        stepNames,
+        containsAllInOrder(<String>[
+          'preflight',
+          'dry_run_artifacts',
+          'drop_age_projection',
+          'rebuild_age_projection',
+          'smoke_byte_equivalence',
+          'tripwire_health_check',
+        ]),
+        reason: 'Rebuild validation steps must be ordered so the runbook '
+            'and the manifest agree on the apply sequence.',
+      );
+
+      // Runbook reference exists so any tooling reading the manifest
+      // knows where to find operator procedure.
+      expect(
+        manifest['runbook_reference'],
+        equals(
+          'docs/phases/phase_9/phase_9_graph_projection_rebuild_runbook.md',
+        ),
+      );
+    });
+  });
+
+  group('Phase 9.0Σ.i graph projection rebuild runbook (B44)', () {
+    final runbookFile = File(
+      'docs/phases/phase_9/phase_9_graph_projection_rebuild_runbook.md',
+    );
+
+    test('runbook file exists at the manifest-referenced path', () {
+      expect(
+        runbookFile.existsSync(),
+        isTrue,
+        reason: 'B44 runbook must live at the path the manifest names so '
+            'the manifest reference is not a broken link.',
+      );
+    });
+
+    test('runbook covers when to rebuild, preflight, dry-run, Production1 '
+        'gate, execution outline, validation, rollback, and B42 '
+        'consumption', () {
+      final runbook = runbookFile.readAsStringSync();
+      // Required headings — the runbook is normative, so the section
+      // names are part of the contract.
+      const requiredHeadings = <String>[
+        '## When to run a rebuild',
+        '## Preflight checks',
+        '## Dry-run / local artifact generation',
+        '## Production1 approval gate',
+        '## Rebuild execution outline',
+        '## Validation and smoke checks',
+        '## Rollback / fallback',
+        '## How B42 graph health keys consume this status',
+      ];
+      for (final heading in requiredHeadings) {
+        expect(
+          runbook,
+          contains(heading),
+          reason: 'Runbook must define section "$heading" so a B44 '
+              'reader has procedure for that phase of the rebuild.',
+        );
+      }
+      // Q19 thresholds + B42 keys must appear so the runbook agrees
+      // with the SQL/manifest contract above.
+      expect(runbook, contains('3,000,000'));
+      expect(runbook, contains('4,000,000'));
+      expect(runbook, contains('graph_node_count'));
+      expect(runbook, contains('graph_edge_count'));
+      expect(runbook, contains('graph_traversal_latency_ms'));
+      expect(runbook, contains('public.graph_health_metrics()'));
+      // The rebuild is non-destructive against canonical truth — the
+      // runbook must say so out loud.
+      expect(runbook, contains('graph_nodes'));
+      expect(runbook, contains('graph_edges'));
+      expect(runbook, contains('canonical'));
     });
   });
 }
