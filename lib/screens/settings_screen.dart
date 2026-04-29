@@ -180,13 +180,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: AppColors.backgroundDeep,
           foregroundColor: AppColors.textPrimary,
           elevation: 0,
-          title: Text('Settings', style: AppTextStyles.display20()),
+          titleSpacing: 4,
+          title: Row(
+            children: [
+              ClipOval(
+                child: Image.asset(
+                  'assets/images/forge_flow_splash_icon.png',
+                  width: 26,
+                  height: 26,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text('Settings', style: AppTextStyles.display20()),
+            ],
+          ),
           leading: IconButton(
             icon: const Icon(Icons.close, size: 20),
             onPressed: () => Navigator.of(context).pop(),
           ),
           bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(56),
+            preferredSize: const Size.fromHeight(60),
             child: _SettingsTabBar(tabs: tabs),
           ),
         ),
@@ -201,15 +215,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: SettingsDataStatusSection(status: _status),
                 ),
                 _settingsSection(
-                  title: 'MOCK REPLAY',
-                  child: SettingsMockReplaySection(
-                    mockReplayDate: () => _mockReplayDate,
+                  title: 'DATA MANAGEMENT',
+                  child: SettingsDataManagementSection(
                     onAfterWrite: _refreshAfterWrite,
                   ),
                 ),
                 _settingsSection(
-                  title: 'DATA MANAGEMENT',
-                  child: SettingsDataManagementSection(
+                  title: 'MOCK REPLAY',
+                  child: SettingsMockReplaySection(
+                    mockReplayDate: () => _mockReplayDate,
                     onAfterWrite: _refreshAfterWrite,
                   ),
                 ),
@@ -346,29 +360,44 @@ class _SettingsTabBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      height: 44,
       decoration: BoxDecoration(
-        border: Border(
-          bottom: BorderSide(
-            color: AppColors.sunset.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
+        color: AppColors.backgroundMid,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: TabBar(
         isScrollable: false,
-        labelStyle: AppTextStyles.mono12(color: AppColors.sunsetDark),
+        labelStyle: AppTextStyles.mono12(color: AppColors.backgroundSurface),
         unselectedLabelStyle: AppTextStyles.mono12(color: AppColors.textMuted),
-        indicatorColor: AppColors.sunset,
-        indicatorWeight: 3,
-        labelColor: AppColors.sunsetDark,
+        labelColor: AppColors.backgroundSurface,
         unselectedLabelColor: AppColors.textMuted,
         dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicatorPadding: const EdgeInsets.all(3),
+        indicator: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.sunset, AppColors.sunsetDark],
+          ),
+          borderRadius: BorderRadius.circular(4),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.sunset.withValues(alpha: 0.25),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        splashFactory: NoSplash.splashFactory,
+        overlayColor: WidgetStateProperty.all(Colors.transparent),
         tabs: [
           for (final tab in tabs)
             Tab(
               key: Key('settings_tab_${tab.id}'),
-              height: 48,
+              height: 38,
               child: _SettingsTabLabel(tab: tab),
             ),
         ],
