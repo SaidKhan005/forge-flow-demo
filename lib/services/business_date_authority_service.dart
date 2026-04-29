@@ -33,8 +33,7 @@ class BusinessDateAuthorityService {
   static final BusinessDateAuthorityService instance =
       BusinessDateAuthorityService._();
 
-  final ShiftRecordRepository _shiftRepo =
-      SqliteShiftRecordRepository.instance;
+  final ShiftRecordRepository _shiftRepo = SqliteShiftRecordRepository.instance;
 
   // ── Planning-anchor resolution ──────────────────────────────────────────
 
@@ -53,8 +52,9 @@ class BusinessDateAuthorityService {
   /// NOT used by: ShiftService operational reads (open shift, current
   /// business day). Those use OpenShiftSnapshotRepository directly.
   Future<String?> resolvePlanningAnchorDate(String restaurantId) async {
-    final mockDate = await SqliteDatabase.instance
-        .getMockReplayBusinessDate(restaurantId);
+    final mockDate = await SqliteDatabase.instance.getMockReplayBusinessDate(
+      restaurantId,
+    );
     if (mockDate != null) return mockDate;
 
     return _shiftRepo.getLatestClosedBusinessDate(restaurantId);
@@ -76,8 +76,8 @@ class BusinessDateAuthorityService {
   /// planning-anchor resolution above. Planning-anchor and operational
   /// business-date remain separate concerns.
   Future<String?> resolveBusinessDate(DateTime localTimestamp) async {
-    final config =
-        await RestaurantTimingConfigReadService.instance.getActiveTimingConfig();
+    final config = await RestaurantTimingConfigReadService.instance
+        .getActiveTimingConfig();
     if (config == null) return null;
 
     return BusinessDateResolver.resolve(
@@ -126,7 +126,8 @@ class BusinessDateAuthorityService {
   /// Returns the 1-based day number for [dayLabel], or null if unrecognized.
   ///
   /// Delegates to [CanonicalDayOrder.dayNumber].
-  static int? dayNumber(String dayLabel) => CanonicalDayOrder.dayNumber(dayLabel);
+  static int? dayNumber(String dayLabel) =>
+      CanonicalDayOrder.dayNumber(dayLabel);
 
   // ── Date arithmetic ─────────────────────────────────────────────────────
 
@@ -135,7 +136,7 @@ class BusinessDateAuthorityService {
   /// Shared across planning services to avoid duplicating date arithmetic.
   static String subtractDays(String isoDate, int days) {
     final parts = isoDate.split('-');
-    final dt = DateTime(
+    final dt = DateTime.utc(
       int.parse(parts[0]),
       int.parse(parts[1]),
       int.parse(parts[2]),

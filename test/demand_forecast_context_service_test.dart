@@ -31,13 +31,14 @@ void main() {
 
   group('A — mock replay anchor', () {
     test('uses mock replay current business date when available', () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
-      final mockDate = await SqliteDatabase.instance
-          .getMockReplayBusinessDate(restaurantId);
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
+      final mockDate = await SqliteDatabase.instance.getMockReplayBusinessDate(
+        restaurantId,
+      );
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (mockDate != null) {
         expect(ctx.anchorBusinessDate, equals(mockDate));
@@ -53,29 +54,31 @@ void main() {
   // ── B. Latest closed fallback ──────────────────────────────────────────────
 
   group('B — latest closed business date fallback', () {
-    test('falls back to latest closed when mock replay date is unavailable',
-        () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    test(
+      'falls back to latest closed when mock replay date is unavailable',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      final db = await SqliteDatabase.instance.database;
-      await db.delete('mock_replay_state');
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('mock_replay_state');
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
-      final latestClosed = await SqliteShiftRecordRepository.instance
-          .getLatestClosedBusinessDate(restaurantId);
+        final ctx = await DemandForecastContextService.instance
+            .getCurrentContext();
+        final latestClosed = await SqliteShiftRecordRepository.instance
+            .getLatestClosedBusinessDate(restaurantId);
 
-      expect(ctx.anchorBusinessDate, equals(latestClosed));
-    });
+        expect(ctx.anchorBusinessDate, equals(latestClosed));
+      },
+    );
 
     test('returns unavailable when no closed shifts exist', () async {
       final db = await SqliteDatabase.instance.database;
       await db.delete('mock_replay_state');
       await db.delete('shift_records');
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       expect(ctx.anchorBusinessDate, isNull);
       expect(ctx.resolvedWeeklyForecastCovers, isNull);
@@ -88,18 +91,21 @@ void main() {
 
   group('C — 60-day baseline covers from closed shifts', () {
     test('sums closed-shift covers in the inclusive 60-day window', () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.anchorBusinessDate == null) return;
 
       final startDate = _subtractDays(ctx.anchorBusinessDate!, 59);
       final shifts = await SqliteShiftRecordRepository.instance
           .getClosedShiftsInDateRange(
-              restaurantId, startDate, ctx.anchorBusinessDate!);
+            restaurantId,
+            startDate,
+            ctx.anchorBusinessDate!,
+          );
 
       final expectedTotal = shifts.fold<int>(0, (s, r) => s + r.covers);
       expect(ctx.baselineTotalCovers, equals(expectedTotal));
@@ -111,8 +117,8 @@ void main() {
 
   group('D — baseline weekly avg covers contract', () {
     test('baseline weekly avg = round(total / (60/7))', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.baselineTotalCovers == null || ctx.baselineTotalCovers == 0) {
         return;
@@ -123,8 +129,8 @@ void main() {
     });
 
     test('baselineWeeksRepresented equals 60/7', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.isAvailable) {
         expect(ctx.baselineWeeksRepresented, closeTo(60 / 7, 0.001));
@@ -136,26 +142,29 @@ void main() {
 
   group('E — 3-week recent trend from closed shifts', () {
     test('sums closed-shift covers in the inclusive 21-day window', () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.anchorBusinessDate == null) return;
 
       final startDate = _subtractDays(ctx.anchorBusinessDate!, 20);
       final shifts = await SqliteShiftRecordRepository.instance
           .getClosedShiftsInDateRange(
-              restaurantId, startDate, ctx.anchorBusinessDate!);
+            restaurantId,
+            startDate,
+            ctx.anchorBusinessDate!,
+          );
 
       final expectedTotal = shifts.fold<int>(0, (s, r) => s + r.covers);
       expect(ctx.recentThreeWeekTotalCovers, equals(expectedTotal));
     });
 
     test('3-week weekly avg = round(total / 3)', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.recentThreeWeekTotalCovers == null ||
           ctx.recentThreeWeekTotalCovers == 0) {
@@ -171,39 +180,41 @@ void main() {
 
   group('F — resolved weekly forecast covers smoothing rule', () {
     test(
-        'when both layers available: resolved = max(0, baseline + delta/2)',
-        () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      'when both layers available: resolved = max(0, baseline + delta/2)',
+      () async {
+        final ctx = await DemandForecastContextService.instance
+            .getCurrentContext();
 
-      if (!ctx.isAvailable) return;
-      if (ctx.recentThreeWeekTotalCovers == null ||
-          ctx.recentThreeWeekTotalCovers == 0) {
-        return;
-      }
+        if (!ctx.isAvailable) return;
+        if (ctx.recentThreeWeekTotalCovers == null ||
+            ctx.recentThreeWeekTotalCovers == 0) {
+          return;
+        }
 
-      final delta =
-          ctx.recentThreeWeekWeeklyAvgCovers! - ctx.baselineWeeklyAvgCovers!;
-      expect(ctx.recentTrendDeltaCovers, equals(delta));
+        final delta =
+            ctx.recentThreeWeekWeeklyAvgCovers! - ctx.baselineWeeklyAvgCovers!;
+        expect(ctx.recentTrendDeltaCovers, equals(delta));
 
-      final expected =
-          max(0, ctx.baselineWeeklyAvgCovers! + (delta / 2).round());
-      expect(ctx.resolvedWeeklyForecastCovers, equals(expected));
-    });
+        final expected = max(
+          0,
+          ctx.baselineWeeklyAvgCovers! + (delta / 2).round(),
+        );
+        expect(ctx.resolvedWeeklyForecastCovers, equals(expected));
+      },
+    );
 
     test('resolved weekly forecast is non-negative', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       if (ctx.resolvedWeeklyForecastCovers != null) {
         expect(ctx.resolvedWeeklyForecastCovers, greaterThanOrEqualTo(0));
       }
     });
 
-    test('when only baseline available: resolved = baseline weekly avg',
-        () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    test('when only baseline available: resolved = baseline weekly avg', () async {
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
 
       // Use an anchor date far enough back that the 21-day window has no data
       // but the 60-day window does.
@@ -215,8 +226,10 @@ void main() {
           ctx.baselineTotalCovers! > 0 &&
           (ctx.recentThreeWeekTotalCovers == null ||
               ctx.recentThreeWeekTotalCovers == 0)) {
-        expect(ctx.resolvedWeeklyForecastCovers,
-            equals(ctx.baselineWeeklyAvgCovers));
+        expect(
+          ctx.resolvedWeeklyForecastCovers,
+          equals(ctx.baselineWeeklyAvgCovers),
+        );
         expect(ctx.recentTrendDeltaCovers, isNull);
       }
       // If both have data or neither does, this test is not applicable — pass.
@@ -243,8 +256,8 @@ void main() {
       await db.delete('mock_replay_state');
       await db.delete('shift_records');
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       expect(ctx.isAvailable, isFalse);
     });
   });
@@ -253,22 +266,26 @@ void main() {
 
   group('H — compatibility accessors', () {
     test('historicalTotalCovers aliases baselineTotalCovers', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       expect(ctx.historicalTotalCovers, equals(ctx.baselineTotalCovers));
     });
 
-    test('historicalWeeklyAvgCovers aliases resolvedWeeklyForecastCovers',
-        () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
-      expect(ctx.historicalWeeklyAvgCovers,
-          equals(ctx.resolvedWeeklyForecastCovers));
-    });
+    test(
+      'historicalWeeklyAvgCovers aliases resolvedWeeklyForecastCovers',
+      () async {
+        final ctx = await DemandForecastContextService.instance
+            .getCurrentContext();
+        expect(
+          ctx.historicalWeeklyAvgCovers,
+          equals(ctx.resolvedWeeklyForecastCovers),
+        );
+      },
+    );
 
     test('weeksRepresented aliases baselineWeeksRepresented', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       expect(ctx.weeksRepresented, equals(ctx.baselineWeeksRepresented));
     });
   });
@@ -277,8 +294,8 @@ void main() {
 
   group('J — zero-cover window correctness', () {
     test('zero-cover baseline window is available, not unavailable', () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
 
       final db = await SqliteDatabase.instance.database;
       await db.delete('mock_replay_state');
@@ -296,14 +313,16 @@ void main() {
       expect(ctx.baselineTotalCovers, equals(0));
       expect(ctx.baselineWeeklyAvgCovers, equals(0));
       expect(ctx.resolvedWeeklyForecastCovers, equals(0));
-      expect(ctx.coversSource,
-          equals(ForecastDemandSource.appDerivedFromHistoricalAverage));
+      expect(
+        ctx.coversSource,
+        equals(ForecastDemandSource.appDerivedFromHistoricalAverage),
+      );
       expect(ctx.coversSource, isNot(ForecastDemandSource.unavailable));
     });
 
     test('zero-cover in both windows applies smoothing correctly', () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+      final restaurantId = await SqliteRestaurantScopeRepository.instance
+          .getActiveRestaurantId();
 
       final db = await SqliteDatabase.instance.database;
       await db.delete('mock_replay_state');
@@ -312,7 +331,11 @@ void main() {
       // Insert zero-cover closed shifts in both windows.
       const anchorDate = '2026-03-15';
       await _insertZeroCoverShift(db, restaurantId, '2026-03-10'); // 21-day
-      await _insertZeroCoverShift(db, restaurantId, '2026-02-01'); // 60-day only
+      await _insertZeroCoverShift(
+        db,
+        restaurantId,
+        '2026-02-01',
+      ); // 60-day only
 
       final ctx = await DemandForecastContextService.instance
           .getContextForAnchorDate(restaurantId, anchorDate);
@@ -324,63 +347,71 @@ void main() {
       expect(ctx.recentThreeWeekWeeklyAvgCovers, equals(0));
       expect(ctx.recentTrendDeltaCovers, equals(0));
       expect(ctx.resolvedWeeklyForecastCovers, equals(0));
-      expect(ctx.coversSource,
-          equals(ForecastDemandSource.appDerivedFromHistoricalAverage));
+      expect(
+        ctx.coversSource,
+        equals(ForecastDemandSource.appDerivedFromHistoricalAverage),
+      );
     });
 
-    test('truly unavailable means no eligible closed shifts, not zero covers',
-        () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    test(
+      'truly unavailable means no eligible closed shifts, not zero covers',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      final db = await SqliteDatabase.instance.database;
-      await db.delete('mock_replay_state');
-      await db.delete('shift_records');
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('mock_replay_state');
+        await db.delete('shift_records');
 
-      // No shifts at all — this is genuinely unavailable.
-      final ctx = await DemandForecastContextService.instance
-          .getContextForAnchorDate(restaurantId, '2026-03-15');
+        // No shifts at all — this is genuinely unavailable.
+        final ctx = await DemandForecastContextService.instance
+            .getContextForAnchorDate(restaurantId, '2026-03-15');
 
-      expect(ctx.baselineTotalCovers, isNull);
-      expect(ctx.baselineWeeklyAvgCovers, isNull);
-      expect(ctx.resolvedWeeklyForecastCovers, isNull);
-      expect(ctx.coversSource, equals(ForecastDemandSource.unavailable));
-    });
+        expect(ctx.baselineTotalCovers, isNull);
+        expect(ctx.baselineWeeklyAvgCovers, isNull);
+        expect(ctx.resolvedWeeklyForecastCovers, isNull);
+        expect(ctx.coversSource, equals(ForecastDemandSource.unavailable));
+      },
+    );
 
-    test('zero-cover baseline with no recent shifts uses baseline directly',
-        () async {
-      final restaurantId =
-          await SqliteRestaurantScopeRepository.instance.getActiveRestaurantId();
+    test(
+      'zero-cover baseline with no recent shifts uses baseline directly',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      final db = await SqliteDatabase.instance.database;
-      await db.delete('mock_replay_state');
-      await db.delete('shift_records');
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('mock_replay_state');
+        await db.delete('shift_records');
 
-      // Insert a zero-cover shift only in the 60-day range, outside 21-day.
-      const anchorDate = '2026-03-15';
-      await _insertZeroCoverShift(db, restaurantId, '2026-02-01');
+        // Insert a zero-cover shift only in the 60-day range, outside 21-day.
+        const anchorDate = '2026-03-15';
+        await _insertZeroCoverShift(db, restaurantId, '2026-02-01');
 
-      final ctx = await DemandForecastContextService.instance
-          .getContextForAnchorDate(restaurantId, anchorDate);
+        final ctx = await DemandForecastContextService.instance
+            .getContextForAnchorDate(restaurantId, anchorDate);
 
-      expect(ctx.isAvailable, isTrue);
-      expect(ctx.baselineTotalCovers, equals(0));
-      expect(ctx.baselineWeeklyAvgCovers, equals(0));
-      expect(ctx.recentThreeWeekTotalCovers, isNull);
-      expect(ctx.recentThreeWeekWeeklyAvgCovers, isNull);
-      expect(ctx.recentTrendDeltaCovers, isNull);
-      expect(ctx.resolvedWeeklyForecastCovers, equals(0));
-      expect(ctx.coversSource,
-          equals(ForecastDemandSource.appDerivedFromHistoricalAverage));
-    });
+        expect(ctx.isAvailable, isTrue);
+        expect(ctx.baselineTotalCovers, equals(0));
+        expect(ctx.baselineWeeklyAvgCovers, equals(0));
+        expect(ctx.recentThreeWeekTotalCovers, isNull);
+        expect(ctx.recentThreeWeekWeeklyAvgCovers, isNull);
+        expect(ctx.recentTrendDeltaCovers, isNull);
+        expect(ctx.resolvedWeeklyForecastCovers, equals(0));
+        expect(
+          ctx.coversSource,
+          equals(ForecastDemandSource.appDerivedFromHistoricalAverage),
+        );
+      },
+    );
   });
 
   // ── I. resolveFromContext uses v2 rolling demand ────────────────────────────
 
   group('I — resolveFromContext uses v2 rolling demand', () {
     test('resolveFromContext uses resolved weekly forecast covers', () async {
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       const testPPA = 42.0;
 
       final fromContext = ScheduleForecastDemandResolver.resolveFromContext(
@@ -389,8 +420,10 @@ void main() {
       );
 
       if (ctx.isAvailable) {
-        expect(fromContext.forecastCovers,
-            equals(ctx.resolvedWeeklyForecastCovers));
+        expect(
+          fromContext.forecastCovers,
+          equals(ctx.resolvedWeeklyForecastCovers),
+        );
         expect(
           fromContext.forecastSales,
           closeTo(ctx.resolvedWeeklyForecastCovers! * testPPA, 0.01),
@@ -416,8 +449,11 @@ void main() {
 /// Test-only date helper for independent verification.
 String _subtractDays(String isoDate, int days) {
   final parts = isoDate.split('-');
-  final dt = DateTime(
-      int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+  final dt = DateTime.utc(
+    int.parse(parts[0]),
+    int.parse(parts[1]),
+    int.parse(parts[2]),
+  );
   final result = dt.subtract(Duration(days: days));
   return '${result.year}-${result.month.toString().padLeft(2, '0')}'
       '-${result.day.toString().padLeft(2, '0')}';

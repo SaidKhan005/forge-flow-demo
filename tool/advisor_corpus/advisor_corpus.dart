@@ -368,7 +368,7 @@ class CorpusChunkPlanner {
 
     for (final document in manifest.documents.where((doc) => doc.isIncluded)) {
       final sourceFile = File(p.join(_repoRoot.path, document.sourcePath));
-      final text = await sourceFile.readAsString();
+      final text = _normalizeTextNewlines(await sourceFile.readAsString());
       final documentChunks = document.chunkProfile == 'glossary_entry_per_term'
           ? _planGlossaryChunks(document, text)
           : _planHeadingAwareChunks(document, text);
@@ -3224,9 +3224,12 @@ class _SectionSplit {
 }
 
 Future<String> sha256ForFile(File file) async {
-  final bytes = await file.readAsBytes();
-  return sha256.convert(bytes).toString();
+  final text = _normalizeTextNewlines(await file.readAsString());
+  return _sha256ForString(text);
 }
+
+String _normalizeTextNewlines(String value) =>
+    value.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 
 /// 11a.11a content-addressed chunk id. Doc-prefixed so identical
 /// chunk text in different docs produces different ids; the trailing

@@ -37,8 +37,9 @@ void main() {
     test('returns mock replay business date', () async {
       final restaurantId = await SqliteRestaurantScopeRepository.instance
           .getActiveRestaurantId();
-      final mockDate = await SqliteDatabase.instance
-          .getMockReplayBusinessDate(restaurantId);
+      final mockDate = await SqliteDatabase.instance.getMockReplayBusinessDate(
+        restaurantId,
+      );
 
       // Seeded data should have a mock replay date.
       expect(mockDate, isNotNull);
@@ -101,8 +102,8 @@ void main() {
 
       // getCandidateShifts internally uses the shared anchor.
       // If it returns candidates, the anchor resolved successfully.
-      final candidates =
-          await BaselineManagerService.instance.getCandidateShifts();
+      final candidates = await BaselineManagerService.instance
+          .getCandidateShifts();
 
       expect(expectedAnchor, isNotNull);
       expect(candidates, isNotEmpty);
@@ -110,8 +111,10 @@ void main() {
       // All candidates should be within the 60-day window ending at the anchor.
       for (final c in candidates) {
         expect(c.businessDate, isNotNull);
-        expect(c.businessDate!.compareTo(expectedAnchor!),
-            lessThanOrEqualTo(0));
+        expect(
+          c.businessDate!.compareTo(expectedAnchor!),
+          lessThanOrEqualTo(0),
+        );
       }
     });
 
@@ -121,8 +124,8 @@ void main() {
       final expectedAnchor = await BusinessDateAuthorityService.instance
           .resolvePlanningAnchorDate(restaurantId);
 
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
 
       expect(ctx.anchorBusinessDate, equals(expectedAnchor));
     });
@@ -132,16 +135,17 @@ void main() {
           .getActiveRestaurantId();
 
       // loadDistributionWeights internally uses the shared anchor.
-      final weights =
-          await SchedulePlanReadService.loadDistributionWeights(restaurantId);
+      final weights = await SchedulePlanReadService.loadDistributionWeights(
+        restaurantId,
+      );
 
       expect(weights, isNotNull);
       expect(weights!.isAvailable, isTrue);
     });
 
     test('WeeklyPlanSnapshotService uses shared anchor', () async {
-      final snapshot =
-          await WeeklyPlanSnapshotService.instance.getCurrentWeekSnapshot();
+      final snapshot = await WeeklyPlanSnapshotService.instance
+          .getCurrentWeekSnapshot();
 
       expect(snapshot, isNotNull);
       expect(snapshot!.forecastCovers, greaterThan(0));
@@ -152,12 +156,12 @@ void main() {
       await db.delete('mock_replay_state');
 
       // All services should still work via latest-closed fallback.
-      final ctx =
-          await DemandForecastContextService.instance.getCurrentContext();
+      final ctx = await DemandForecastContextService.instance
+          .getCurrentContext();
       expect(ctx.isAvailable, isTrue);
 
-      final candidates =
-          await BaselineManagerService.instance.getCandidateShifts();
+      final candidates = await BaselineManagerService.instance
+          .getCandidateShifts();
       expect(candidates, isNotEmpty);
     });
   });
@@ -308,69 +312,87 @@ void main() {
 
   // ── F. Operational authority is separate ────────────────────────────────────
 
-  group('F — operational Shift authority is not collapsed into planning anchor', () {
-    test('ShiftService.getCurrentWeekId uses open-snapshot, not planning anchor',
+  group(
+    'F — operational Shift authority is not collapsed into planning anchor',
+    () {
+      test(
+        'ShiftService.getCurrentWeekId uses open-snapshot, not planning anchor',
         () async {
-      // ShiftService resolves the current week from open shift snapshots,
-      // not from the planning-anchor seam. Verify they can differ.
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+          // ShiftService resolves the current week from open shift snapshots,
+          // not from the planning-anchor seam. Verify they can differ.
+          final restaurantId = await SqliteRestaurantScopeRepository.instance
+              .getActiveRestaurantId();
 
-      // Planning anchor.
-      final planningAnchor = await BusinessDateAuthorityService.instance
-          .resolvePlanningAnchorDate(restaurantId);
+          // Planning anchor.
+          final planningAnchor = await BusinessDateAuthorityService.instance
+              .resolvePlanningAnchorDate(restaurantId);
 
-      // Operational authority — from open shift snapshots.
-      final operationalWeekId = await ShiftService.instance.getCurrentWeekId();
+          // Operational authority — from open shift snapshots.
+          final operationalWeekId = await ShiftService.instance
+              .getCurrentWeekId();
 
-      // Both should be non-null with seeded data, but they come from
-      // different sources. The important thing is that ShiftService does
-      // NOT call BusinessDateAuthorityService.resolvePlanningAnchorDate.
-      expect(planningAnchor, isNotNull);
-      expect(operationalWeekId, isNotNull);
-    });
+          // Both should be non-null with seeded data, but they come from
+          // different sources. The important thing is that ShiftService does
+          // NOT call BusinessDateAuthorityService.resolvePlanningAnchorDate.
+          expect(planningAnchor, isNotNull);
+          expect(operationalWeekId, isNotNull);
+        },
+      );
 
-    test('ShiftService.getShiftDashboard uses open-snapshot business date',
+      test(
+        'ShiftService.getShiftDashboard uses open-snapshot business date',
         () async {
-      // The Shift dashboard resolves business date from
-      // OpenShiftSnapshotRepository, not from the planning anchor.
-      //
-      // 7.55q.2-review-fix changed getShiftDashboard to consume the
-      // existing locked weekly plan (null-if-missing) instead of
-      // auto-generating one. reseedDemo() does NOT write a
-      // weekly_plan_snapshots row, so the test first primes the locked
-      // plan via the auto-generating read-service entrypoint, then
-      // asserts the dashboard resolves.
-      await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
+          // The Shift dashboard resolves business date from
+          // OpenShiftSnapshotRepository, not from the planning anchor.
+          //
+          // 7.55q.2-review-fix changed getShiftDashboard to consume the
+          // existing locked weekly plan (null-if-missing) instead of
+          // auto-generating one. reseedDemo() does NOT write a
+          // weekly_plan_snapshots row, so the test first primes the locked
+          // plan via the auto-generating read-service entrypoint, then
+          // asserts the dashboard resolves.
+          await SchedulePlanReadService.instance.getCurrentLockedWeeklyPlan();
 
-      final dashboard = await ShiftService.instance.getShiftDashboard();
+          final dashboard = await ShiftService.instance.getShiftDashboard();
 
-      // With seeded data + a locked plan in place, dashboard should work.
-      expect(dashboard, isNotNull);
-      expect(dashboard!.forecastCovers, greaterThan(0));
-    });
-  });
+          // With seeded data + a locked plan in place, dashboard should work.
+          expect(dashboard, isNotNull);
+          expect(dashboard!.forecastCovers, greaterThan(0));
+        },
+      );
+    },
+  );
 
   // ── G. Date arithmetic ─────────────────────────────────────────────────────
 
   group('G — subtractDays helper', () {
     test('subtracts days correctly', () {
-      expect(BusinessDateAuthorityService.subtractDays('2026-03-27', 0),
-          '2026-03-27');
-      expect(BusinessDateAuthorityService.subtractDays('2026-03-27', 1),
-          '2026-03-26');
-      expect(BusinessDateAuthorityService.subtractDays('2026-03-27', 59),
-          '2026-01-26');
+      expect(
+        BusinessDateAuthorityService.subtractDays('2026-03-27', 0),
+        '2026-03-27',
+      );
+      expect(
+        BusinessDateAuthorityService.subtractDays('2026-03-27', 1),
+        '2026-03-26',
+      );
+      expect(
+        BusinessDateAuthorityService.subtractDays('2026-03-27', 59),
+        '2026-01-27',
+      );
     });
 
     test('handles month boundary correctly', () {
-      expect(BusinessDateAuthorityService.subtractDays('2026-03-01', 1),
-          '2026-02-28');
+      expect(
+        BusinessDateAuthorityService.subtractDays('2026-03-01', 1),
+        '2026-02-28',
+      );
     });
 
     test('handles year boundary correctly', () {
-      expect(BusinessDateAuthorityService.subtractDays('2026-01-01', 1),
-          '2025-12-31');
+      expect(
+        BusinessDateAuthorityService.subtractDays('2026-01-01', 1),
+        '2025-12-31',
+      );
     });
 
     test('DemandForecastContextService.subtractDays delegates correctly', () {
@@ -395,14 +417,16 @@ void main() {
       expect(result, '2026-04-13');
     });
 
-    test('before-cutoff resolves to previous date through timing config',
-        () async {
-      final result = await BusinessDateAuthorityService.instance
-          .resolveBusinessDate(DateTime(2026, 4, 13, 3, 0));
+    test(
+      'before-cutoff resolves to previous date through timing config',
+      () async {
+        final result = await BusinessDateAuthorityService.instance
+            .resolveBusinessDate(DateTime(2026, 4, 13, 3, 0));
 
-      // 03:00 is before 04:00 cutoff → previous calendar date.
-      expect(result, '2026-04-12');
-    });
+        // 03:00 is before 04:00 cutoff → previous calendar date.
+        expect(result, '2026-04-12');
+      },
+    );
 
     test('exact cutoff resolves to same date through timing config', () async {
       final result = await BusinessDateAuthorityService.instance
@@ -412,17 +436,19 @@ void main() {
       expect(result, '2026-04-13');
     });
 
-    test('planning-anchor behavior is unchanged after adding resolver',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+    test(
+      'planning-anchor behavior is unchanged after adding resolver',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      final anchorDate = await BusinessDateAuthorityService.instance
-          .resolvePlanningAnchorDate(restaurantId);
+        final anchorDate = await BusinessDateAuthorityService.instance
+            .resolvePlanningAnchorDate(restaurantId);
 
-      // Planning anchor should still resolve from mock replay / latest closed.
-      expect(anchorDate, isNotNull);
-    });
+        // Planning anchor should still resolve from mock replay / latest closed.
+        expect(anchorDate, isNotNull);
+      },
+    );
 
     test('resolveBusinessDateFromConfig uses explicit config', () {
       const config = RestaurantTimingConfig(

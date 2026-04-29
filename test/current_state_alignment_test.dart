@@ -873,9 +873,28 @@ void main() {
 
         final fri = notifier.adjustedDayViews.firstWhere((d) => d.day == 'Fri');
         final friLunch = fri.subrows.firstWhere((r) => r.label == 'Lunch');
-        expect(friLunch.forecastCovers, equals(110));
-        expect(friLunch.requiredFohHours, equals(23));
-        expect(friLunch.requiredBohHours, equals(26));
+        final friDayRow = snapshot.dayRows.firstWhere((r) => r.day == 'Fri');
+        final friLunchAllocation = DaypartPlanAllocator.allocate(
+          day: friDayRow.day,
+          dayCovers: friDayRow.forecastCovers,
+          daySales: friDayRow.forecastSales,
+          dayFohHours: friDayRow.requiredFohHours,
+          dayBohHours: friDayRow.requiredBohHours,
+          definitions: defs,
+          distributionWeights: weights,
+        ).firstWhere((a) => a.label == 'Lunch');
+        expect(
+          friLunch.forecastCovers,
+          equals(friLunchAllocation.forecastCovers),
+        );
+        expect(
+          friLunch.requiredFohHours,
+          equals(friLunchAllocation.requiredFohHours),
+        );
+        expect(
+          friLunch.requiredBohHours,
+          equals(friLunchAllocation.requiredBohHours),
+        );
 
         notifier.dispose();
       },

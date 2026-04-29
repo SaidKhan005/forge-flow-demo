@@ -57,26 +57,31 @@ class FakeShiftRecordRepository implements ShiftRecordRepository {
 
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) async =>
-      _shifts.where((s) => s.weekId == weekId).toList();
+    String restaurantId,
+    String weekId,
+  ) async => _shifts.where((s) => s.weekId == weekId).toList();
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) async =>
-      _shifts
-          .where((s) => s.isClosed && weekIds.contains(s.weekId))
-          .toList();
+    String restaurantId,
+    List<String> weekIds,
+  ) async =>
+      _shifts.where((s) => s.isClosed && weekIds.contains(s.weekId)).toList();
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-          String restaurantId, String startDate, String endDate) async =>
-      _shifts
-          .where((s) =>
-              s.isClosed &&
-              s.businessDate != null &&
-              s.businessDate!.compareTo(startDate) >= 0 &&
-              s.businessDate!.compareTo(endDate) <= 0)
-          .toList();
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async => _shifts
+      .where(
+        (s) =>
+            s.isClosed &&
+            s.businessDate != null &&
+            s.businessDate!.compareTo(startDate) >= 0 &&
+            s.businessDate!.compareTo(endDate) <= 0,
+      )
+      .toList();
 
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async {
@@ -98,18 +103,22 @@ class FakeShiftRecordRepository implements ShiftRecordRepository {
 class ThrowingShiftRecordRepository implements ShiftRecordRepository {
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) async =>
-      throw Exception('DB error');
+    String restaurantId,
+    String weekId,
+  ) async => throw Exception('DB error');
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) async =>
-      throw Exception('DB error');
+    String restaurantId,
+    List<String> weekIds,
+  ) async => throw Exception('DB error');
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-          String restaurantId, String startDate, String endDate) async =>
-      throw Exception('DB error');
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async => throw Exception('DB error');
 
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async =>
@@ -124,18 +133,22 @@ class ThrowingShiftRecordRepository implements ShiftRecordRepository {
 class NoHistoryShiftRecordRepository implements ShiftRecordRepository {
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) async =>
-      [];
+    String restaurantId,
+    String weekId,
+  ) async => [];
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) async =>
-      [];
+    String restaurantId,
+    List<String> weekIds,
+  ) async => [];
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-          String restaurantId, String startDate, String endDate) async =>
-      [];
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async => [];
 
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async =>
@@ -155,17 +168,22 @@ class _TrackingShiftRecordRepository implements ShiftRecordRepository {
 
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) =>
-      _inner.getShiftsForWeek(restaurantId, weekId);
+    String restaurantId,
+    String weekId,
+  ) => _inner.getShiftsForWeek(restaurantId, weekId);
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) =>
-      _inner.getClosedShiftsForWeeks(restaurantId, weekIds);
+    String restaurantId,
+    List<String> weekIds,
+  ) => _inner.getClosedShiftsForWeeks(restaurantId, weekIds);
 
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-      String restaurantId, String startDate, String endDate) {
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) {
     onDateRangeQuery?.call(startDate, endDate);
     return _inner.getClosedShiftsInDateRange(restaurantId, startDate, endDate);
   }
@@ -187,22 +205,21 @@ ShiftRecord _shift({
   required String daypart,
   int covers = 100,
   String? businessDate,
-}) =>
-    ShiftRecord(
-      weekId: weekId,
-      dayLabel: dayLabel,
-      daypart: daypart,
-      status: 'closed',
-      covers: covers,
-      forecastCovers: covers,
-      fohHours: 20,
-      bohHours: 10,
-      ppa: 40.0,
-      cplh: 5.0,
-      splh: 180.0,
-      primaryLever: 'none',
-      businessDate: businessDate,
-    );
+}) => ShiftRecord(
+  weekId: weekId,
+  dayLabel: dayLabel,
+  daypart: daypart,
+  status: 'closed',
+  covers: covers,
+  forecastCovers: covers,
+  fohHours: 20,
+  bohHours: 10,
+  ppa: 40.0,
+  cplh: 5.0,
+  splh: 180.0,
+  primaryLever: 'none',
+  businessDate: businessDate,
+);
 
 /// Generate date-based closed shifts across [dayCount] consecutive days
 /// ending at [anchorDate], with lunch+dinner dayparts.
@@ -217,7 +234,7 @@ List<ShiftRecord> _generateDateShifts({
   const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   final anchorParts = anchorDate.split('-');
-  final anchor = DateTime(
+  final anchor = DateTime.utc(
     int.parse(anchorParts[0]),
     int.parse(anchorParts[1]),
     int.parse(anchorParts[2]),
@@ -232,27 +249,31 @@ List<ShiftRecord> _generateDateShifts({
     final weekId = '${date.year}-W${weekNum.toString().padLeft(2, '0')}';
     final covers = coversByDay?[dayLabel] ?? 100;
 
-    shifts.add(_shift(
-      weekId: weekId,
-      dayLabel: dayLabel,
-      daypart: 'lunch',
-      covers: (covers * 0.4).round(),
-      businessDate: dateStr,
-    ));
-    shifts.add(_shift(
-      weekId: weekId,
-      dayLabel: dayLabel,
-      daypart: 'dinner',
-      covers: (covers * 0.6).round(),
-      businessDate: dateStr,
-    ));
+    shifts.add(
+      _shift(
+        weekId: weekId,
+        dayLabel: dayLabel,
+        daypart: 'lunch',
+        covers: (covers * 0.4).round(),
+        businessDate: dateStr,
+      ),
+    );
+    shifts.add(
+      _shift(
+        weekId: weekId,
+        dayLabel: dayLabel,
+        daypart: 'dinner',
+        covers: (covers * 0.6).round(),
+        businessDate: dateStr,
+      ),
+    );
   }
   return shifts;
 }
 
 /// ISO week number for a date (simplified).
 int _isoWeekNumber(DateTime date) {
-  final jan1 = DateTime(date.year, 1, 1);
+  final jan1 = DateTime.utc(date.year, 1, 1);
   final dayOfYear = date.difference(jan1).inDays + 1;
   return ((dayOfYear - date.weekday + 10) / 7).floor();
 }
@@ -275,38 +296,44 @@ void main() {
   // ── A0. Anchor precedence — mock replay first, latest closed fallback ───
 
   group('A0 — anchor precedence matches planning stack', () {
-    test('uses mock replay date when available, ignoring latest closed', () async {
-      // Shifts exist with latest closed date = 2026-03-15.
-      // Mock replay date = 2026-02-15 (earlier date, different window).
-      // The notifier should anchor to the mock replay date.
-      final shifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 60,
-      );
+    test(
+      'uses mock replay date when available, ignoring latest closed',
+      () async {
+        // Shifts exist with latest closed date = 2026-03-15.
+        // Mock replay date = 2026-02-15 (earlier date, different window).
+        // The notifier should anchor to the mock replay date.
+        final shifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 60,
+        );
 
-      // Track which date ranges the fake repo is queried with.
-      final queriedRanges = <(String, String)>[];
-      final trackingRepo = _TrackingShiftRecordRepository(
-        FakeShiftRecordRepository(shifts),
-        onDateRangeQuery: (start, end) => queriedRanges.add((start, end)),
-      );
+        // Track which date ranges the fake repo is queried with.
+        final queriedRanges = <(String, String)>[];
+        final trackingRepo = _TrackingShiftRecordRepository(
+          FakeShiftRecordRepository(shifts),
+          onDateRangeQuery: (start, end) => queriedRanges.add((start, end)),
+        );
 
-      final notifier = _buildNotifier(
-        shiftRepo: trackingRepo,
-        mockReplayDateProvider: (_) async => '2026-02-15',
-      );
+        final notifier = _buildNotifier(
+          shiftRepo: trackingRepo,
+          mockReplayDateProvider: (_) async => '2026-02-15',
+        );
 
-      await notifier.load();
+        await notifier.load();
 
-      expect(notifier.hasLoaded, isTrue);
-      // The 60-day window should end at the mock replay date (2026-02-15),
-      // not the latest closed date (2026-03-15).
-      expect(queriedRanges, isNotEmpty);
-      for (final (_, endDate) in queriedRanges) {
-        expect(endDate, equals('2026-02-15'),
-            reason: 'Window end date must match mock replay date');
-      }
-    });
+        expect(notifier.hasLoaded, isTrue);
+        // The 60-day window should end at the mock replay date (2026-02-15),
+        // not the latest closed date (2026-03-15).
+        expect(queriedRanges, isNotEmpty);
+        for (final (_, endDate) in queriedRanges) {
+          expect(
+            endDate,
+            equals('2026-02-15'),
+            reason: 'Window end date must match mock replay date',
+          );
+        }
+      },
+    );
 
     test('falls back to latest closed date when mock replay is null', () async {
       // Shifts with latest closed date = 2026-03-15.
@@ -333,8 +360,11 @@ void main() {
       // The 60-day window should end at the latest closed date (2026-03-15).
       expect(queriedRanges, isNotEmpty);
       for (final (_, endDate) in queriedRanges) {
-        expect(endDate, equals('2026-03-15'),
-            reason: 'Window end date must match latest closed date');
+        expect(
+          endDate,
+          equals('2026-03-15'),
+          reason: 'Window end date must match latest closed date',
+        );
       }
     });
 
@@ -368,44 +398,50 @@ void main() {
     // falls back to latest closed business date from the shift repo.
     Future<String?> noReplay(String _) async => null;
 
-    test('loads available weights from 60-day window of closed shifts', () async {
-      final shifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 60,
-      );
-      final notifier = _buildNotifier(
-        shifts: shifts,
-        mockReplayDateProvider: noReplay,
-      );
+    test(
+      'loads available weights from 60-day window of closed shifts',
+      () async {
+        final shifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 60,
+        );
+        final notifier = _buildNotifier(
+          shifts: shifts,
+          mockReplayDateProvider: noReplay,
+        );
 
-      await notifier.load();
+        await notifier.load();
 
-      expect(notifier.hasLoaded, isTrue);
-      expect(notifier.isLoading, isFalse);
-      expect(notifier.weights, isNotNull);
-      expect(notifier.weights!.isAvailable, isTrue);
-      // 60 days × 2 dayparts = 120 closed shifts
-      expect(notifier.weights!.closedShiftCount, 120);
-      expect(notifier.weights!.closedBusinessDayCount, 60);
-    });
+        expect(notifier.hasLoaded, isTrue);
+        expect(notifier.isLoading, isFalse);
+        expect(notifier.weights, isNotNull);
+        expect(notifier.weights!.isAvailable, isTrue);
+        // 60 days × 2 dayparts = 120 closed shifts
+        expect(notifier.weights!.closedShiftCount, 120);
+        expect(notifier.weights!.closedBusinessDayCount, 60);
+      },
+    );
 
-    test('loads available weights from 21-day window (>= 14 threshold)', () async {
-      final shifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 21,
-      );
-      final notifier = _buildNotifier(
-        shifts: shifts,
-        mockReplayDateProvider: noReplay,
-      );
+    test(
+      'loads available weights from 21-day window (>= 14 threshold)',
+      () async {
+        final shifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 21,
+        );
+        final notifier = _buildNotifier(
+          shifts: shifts,
+          mockReplayDateProvider: noReplay,
+        );
 
-      await notifier.load();
+        await notifier.load();
 
-      expect(notifier.hasLoaded, isTrue);
-      expect(notifier.weights, isNotNull);
-      expect(notifier.weights!.isAvailable, isTrue);
-      expect(notifier.weights!.closedBusinessDayCount, 21);
-    });
+        expect(notifier.hasLoaded, isTrue);
+        expect(notifier.weights, isNotNull);
+        expect(notifier.weights!.isAvailable, isTrue);
+        expect(notifier.weights!.closedBusinessDayCount, 21);
+      },
+    );
 
     test('returns null when no closed business date exists', () async {
       final notifier = _buildNotifier(
@@ -419,23 +455,26 @@ void main() {
       expect(notifier.weights, isNull);
     });
 
-    test('returns unavailable when insufficient closed business days', () async {
-      // 7 days < 14 threshold
-      final shifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 7,
-      );
-      final notifier = _buildNotifier(
-        shifts: shifts,
-        mockReplayDateProvider: noReplay,
-      );
+    test(
+      'returns unavailable when insufficient closed business days',
+      () async {
+        // 7 days < 14 threshold
+        final shifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 7,
+        );
+        final notifier = _buildNotifier(
+          shifts: shifts,
+          mockReplayDateProvider: noReplay,
+        );
 
-      await notifier.load();
+        await notifier.load();
 
-      expect(notifier.hasLoaded, isTrue);
-      expect(notifier.weights, isNotNull);
-      expect(notifier.weights!.isAvailable, isFalse);
-    });
+        expect(notifier.hasLoaded, isTrue);
+        expect(notifier.weights, isNotNull);
+        expect(notifier.weights!.isAvailable, isFalse);
+      },
+    );
 
     test('returns null weights instead of throwing when repo fails', () async {
       final notifier = _buildNotifier(
@@ -468,8 +507,13 @@ void main() {
         anchorDate: '2026-03-15',
         dayCount: 7,
         coversByDay: {
-          'Mon': 100, 'Tue': 100, 'Wed': 100, 'Thu': 100,
-          'Fri': 300, 'Sat': 100, 'Sun': 100,
+          'Mon': 100,
+          'Tue': 100,
+          'Wed': 100,
+          'Thu': 100,
+          'Fri': 300,
+          'Sat': 100,
+          'Sun': 100,
         },
       );
 
@@ -483,31 +527,37 @@ void main() {
       // Fri should be the highest weight due to recent trend boosting it.
       final friWeight = weights.dayWeights['Fri'] ?? 0;
       final monWeight = weights.dayWeights['Mon'] ?? 0;
-      expect(friWeight, greaterThan(monWeight),
-          reason: 'Friday should have higher weight due to recent trend');
+      expect(
+        friWeight,
+        greaterThan(monWeight),
+        reason: 'Friday should have higher weight due to recent trend',
+      );
     });
 
-    test('baseline-only fallback when recent window has no positive covers', () {
-      // 21 days of baseline with even distribution
-      final baselineShifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 21,
-      );
+    test(
+      'baseline-only fallback when recent window has no positive covers',
+      () {
+        // 21 days of baseline with even distribution
+        final baselineShifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 21,
+        );
 
-      // Recent window: no shifts (empty)
-      final weights = DistributionWeightBuilder.fromDateWindowShifts(
-        baselineShifts: baselineShifts,
-        recentShifts: const [],
-      );
+        // Recent window: no shifts (empty)
+        final weights = DistributionWeightBuilder.fromDateWindowShifts(
+          baselineShifts: baselineShifts,
+          recentShifts: const [],
+        );
 
-      expect(weights.isAvailable, isTrue);
-      // All day weights should be approximately equal (baseline-only)
-      final dayWeightValues = weights.dayWeights.values.toList();
-      final maxWeight = dayWeightValues.reduce((a, b) => a > b ? a : b);
-      final minWeight = dayWeightValues.reduce((a, b) => a < b ? a : b);
-      // With even baseline, difference should be small (rounding)
-      expect(maxWeight - minWeight, lessThan(10));
-    });
+        expect(weights.isAvailable, isTrue);
+        // All day weights should be approximately equal (baseline-only)
+        final dayWeightValues = weights.dayWeights.values.toList();
+        final maxWeight = dayWeightValues.reduce((a, b) => a > b ? a : b);
+        final minWeight = dayWeightValues.reduce((a, b) => a < b ? a : b);
+        // With even baseline, difference should be small (rounding)
+        expect(maxWeight - minWeight, lessThan(10));
+      },
+    );
 
     test('resolved weights sum to ~1000 (full proportion)', () {
       final baselineShifts = _generateDateShifts(
@@ -521,8 +571,10 @@ void main() {
       );
 
       expect(weights.isAvailable, isTrue);
-      final totalWeight = weights.dayWeights.values
-          .fold<int>(0, (s, w) => s + w);
+      final totalWeight = weights.dayWeights.values.fold<int>(
+        0,
+        (s, w) => s + w,
+      );
       // Shares sum to 1.0, scaled by 1000 → total ≈ 1000
       // Allow rounding tolerance of ±7 (one per day)
       expect(totalWeight, closeTo(1000, 7));
@@ -539,8 +591,13 @@ void main() {
         anchorDate: '2026-03-15',
         dayCount: 7,
         coversByDay: {
-          'Mon': 500, 'Tue': 500, 'Wed': 500, 'Thu': 500,
-          'Fri': 500, 'Sat': 500, 'Sun': 500,
+          'Mon': 500,
+          'Tue': 500,
+          'Wed': 500,
+          'Thu': 500,
+          'Fri': 500,
+          'Sat': 500,
+          'Sun': 500,
         },
       );
 
@@ -574,44 +631,63 @@ void main() {
       expect(weights.isAvailable, isFalse);
     });
 
-    test('reconciliation: largest-remainder allocation preserves weekly total', () {
-      // Uneven distribution to stress-test allocation
-      final baselineShifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 28,
-        coversByDay: {
-          'Mon': 80, 'Tue': 90, 'Wed': 100, 'Thu': 120,
-          'Fri': 160, 'Sat': 180, 'Sun': 70,
-        },
-      );
+    test(
+      'reconciliation: largest-remainder allocation preserves weekly total',
+      () {
+        // Uneven distribution to stress-test allocation
+        final baselineShifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 28,
+          coversByDay: {
+            'Mon': 80,
+            'Tue': 90,
+            'Wed': 100,
+            'Thu': 120,
+            'Fri': 160,
+            'Sat': 180,
+            'Sun': 70,
+          },
+        );
 
-      final recentShifts = _generateDateShifts(
-        anchorDate: '2026-03-15',
-        dayCount: 7,
-        coversByDay: {
-          'Mon': 100, 'Tue': 100, 'Wed': 120, 'Thu': 140,
-          'Fri': 200, 'Sat': 200, 'Sun': 80,
-        },
-      );
+        final recentShifts = _generateDateShifts(
+          anchorDate: '2026-03-15',
+          dayCount: 7,
+          coversByDay: {
+            'Mon': 100,
+            'Tue': 100,
+            'Wed': 120,
+            'Thu': 140,
+            'Fri': 200,
+            'Sat': 200,
+            'Sun': 80,
+          },
+        );
 
-      final weights = DistributionWeightBuilder.fromDateWindowShifts(
-        baselineShifts: baselineShifts,
-        recentShifts: recentShifts,
-      );
+        final weights = DistributionWeightBuilder.fromDateWindowShifts(
+          baselineShifts: baselineShifts,
+          recentShifts: recentShifts,
+        );
 
-      expect(weights.isAvailable, isTrue);
+        expect(weights.isAvailable, isTrue);
 
-      // Verify orderedDayWeights has all 7 days
-      final ordered = weights.orderedDayWeights;
-      expect(ordered.length, 7);
-      expect(ordered.map((e) => e.$1).toList(),
-          equals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']));
+        // Verify orderedDayWeights has all 7 days
+        final ordered = weights.orderedDayWeights;
+        expect(ordered.length, 7);
+        expect(
+          ordered.map((e) => e.$1).toList(),
+          equals(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']),
+        );
 
-      // All weights should be positive for this data
-      for (final (day, weight) in ordered) {
-        expect(weight, greaterThan(0), reason: '$day should have positive weight');
-      }
-    });
+        // All weights should be positive for this data
+        for (final (day, weight) in ordered) {
+          expect(
+            weight,
+            greaterThan(0),
+            reason: '$day should have positive weight',
+          );
+        }
+      },
+    );
   });
 
   // ── B. ScheduleForecastNotifier.updateDistributionWeights ────────────────
@@ -638,8 +714,13 @@ void main() {
         anchorDate: '2026-03-15',
         dayCount: 21,
         coversByDay: {
-          'Mon': 80, 'Tue': 90, 'Wed': 100, 'Thu': 120,
-          'Fri': 160, 'Sat': 180, 'Sun': 70,
+          'Mon': 80,
+          'Tue': 90,
+          'Wed': 100,
+          'Thu': 120,
+          'Fri': 160,
+          'Sat': 180,
+          'Sun': 70,
         },
       );
       return DistributionWeightBuilder.fromDateWindowShifts(
@@ -662,15 +743,19 @@ void main() {
       // Day views still exist
       expect(notifier.adjustedDayViews.length, 7);
       // Sum of day covers still equals weekly
-      final daySum = notifier.adjustedDayViews
-          .fold<int>(0, (s, d) => s + d.forecastCovers);
+      final daySum = notifier.adjustedDayViews.fold<int>(
+        0,
+        (s, d) => s + d.forecastCovers,
+      );
       expect(daySum, coversBefore);
 
       // Day distribution changed (weights are uneven)
       final newFriCovers = notifier.adjustedDayViews
-          .firstWhere((d) => d.day == 'Fri').forecastCovers;
+          .firstWhere((d) => d.day == 'Fri')
+          .forecastCovers;
       final oldFriCovers = dayViewsBefore
-          .firstWhere((d) => d.day == 'Fri').forecastCovers;
+          .firstWhere((d) => d.day == 'Fri')
+          .forecastCovers;
       // With uneven weights, Friday should differ from default allocation
       expect(newFriCovers, isNot(equals(oldFriCovers)));
     });
@@ -687,8 +772,10 @@ void main() {
       expect(notifier.weeklyCovers, 1500);
       expect(notifier.coversSource, sourceBefore);
       // Day sum still matches
-      final daySum = notifier.adjustedDayViews
-          .fold<int>(0, (s, d) => s + d.forecastCovers);
+      final daySum = notifier.adjustedDayViews.fold<int>(
+        0,
+        (s, d) => s + d.forecastCovers,
+      );
       expect(daySum, 1500);
     });
 
@@ -698,22 +785,24 @@ void main() {
       final coversBefore = notifier.weeklyCovers;
 
       // Update targets — should rebuild plan with same covers and weights
-      notifier.updateTargets(ActiveTargetProfile(
-        targetProfileId: 'tp_test',
-        restaurantId: 'test',
-        sourceType: 'system_baseline',
-        targetCPLH: 6.0,
-        targetPPA: 42.0,
-        targetSPLH: 200.0,
-        fohWage: 16.0,
-        bohWage: 19.0,
-        opzFloorCPLH: 4.0,
-        opzCeilingCPLH: 8.0,
-        theoreticalLaborPct: 24.0,
-        theoreticalFohLaborPct: 12.0,
-        theoreticalBohLaborPct: 12.0,
-        builtAt: '2026-01-01T00:00:00Z',
-      ));
+      notifier.updateTargets(
+        ActiveTargetProfile(
+          targetProfileId: 'tp_test',
+          restaurantId: 'test',
+          sourceType: 'system_baseline',
+          targetCPLH: 6.0,
+          targetPPA: 42.0,
+          targetSPLH: 200.0,
+          fohWage: 16.0,
+          bohWage: 19.0,
+          opzFloorCPLH: 4.0,
+          opzCeilingCPLH: 8.0,
+          theoreticalLaborPct: 24.0,
+          theoreticalFohLaborPct: 12.0,
+          theoreticalBohLaborPct: 12.0,
+          builtAt: '2026-01-01T00:00:00Z',
+        ),
+      );
 
       // Covers unchanged, but hours recalculated with new targets
       expect(notifier.weeklyCovers, coversBefore);

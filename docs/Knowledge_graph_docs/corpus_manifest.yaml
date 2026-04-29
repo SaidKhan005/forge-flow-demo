@@ -52,7 +52,7 @@ documents:
     word_count_estimate: 21598
     heading_count: 171
     line_count: 1344
-    sha256: "1f990f007a2dab9d832480eaf7a8a1f52b58895a42e5ce912ae06f6bbb3f4afb"
+    sha256: "579cd5623cfcb4b828397df61b6d18ab29f63f8d803377ea8383e972708ab431"
 
   - doc_id: "barrio_interview_playbook"
     file_name: "Barrio_interview_playbook.md"
@@ -82,7 +82,7 @@ documents:
     word_count_estimate: 2227
     heading_count: 44
     line_count: 297
-    sha256: "85cff55f81091721db1e61234d07dbcdcf167e85c95b65e142bc2cb8b6983515"
+    sha256: "ab3ba86075aeb0c130154c3d8bc7879a63d800581ea04fa2ad9a793ab4fe10f9"
 
   - doc_id: "bold_by_design"
     file_name: "Bold By Design.md"
@@ -117,7 +117,7 @@ documents:
     word_count_estimate: 30482
     heading_count: 228
     line_count: 3295
-    sha256: "00d43d24f04f368d95511e8bba70772f93a44678c82e30753394e5d029192c2e"
+    sha256: "d5466ea000414ff6a19ccf5c437a7a02c2576683e0804cee002465c7a6a42f4f"
 
   - doc_id: "food_safety_manual"
     file_name: "food safety manual.md"
@@ -148,7 +148,7 @@ documents:
     word_count_estimate: 10801
     heading_count: 86
     line_count: 703
-    sha256: "0dbbb82c79eff397296ea491732bc58820b5caaab38858f1bfdd7a618e3326d5"
+    sha256: "fe2860cef5548fa043ec9ec5f79b3a2793b68fc44be9333c745d63fa94ae53d6"
 
   - doc_id: "general_words_to_know"
     file_name: "GENERAL WORDS TO KNOW.md"
@@ -177,7 +177,7 @@ documents:
     word_count_estimate: 2766
     heading_count: 1
     line_count: 100
-    sha256: "a6a7d1320aaf7d0fbd5e8efe25e6b5f85a8d2db74835a501a1921f7ab9008823"
+    sha256: "b376b19b91fd01da6486337baace7764ac6e6dcf82517b80116448f5e638f3c6"
 
   - doc_id: "jim_taylor_labor_model_deep_dive"
     file_name: "jim_taylor_labor_model_deep_dive.md"
@@ -211,7 +211,7 @@ documents:
     word_count_estimate: 7795
     heading_count: 58
     line_count: 1041
-    sha256: "e973007fc02d1d44f139d835bc87f2fdab4d2a1ac540ed2f91c234a5e4256957"
+    sha256: "62f67562bd2ab733284f274eb4e67ae3bc90a390cc765147755f95543f57d469"
 
   - doc_id: "oe_cheers_to_responsibility"
     file_name: "OE Cheers to Responsibility.md"
@@ -242,7 +242,7 @@ documents:
     word_count_estimate: 3975
     heading_count: 25
     line_count: 307
-    sha256: "8c4f884ce8e57fea7fde62457585e1db8931c31cfe63e9691f5b56f05d1c0b62"
+    sha256: "44c5ed33b20db62986d06795411331b59ca1a0193c3658320706e379763e85a1"
 
   - doc_id: "oe_mastering_the_metrics"
     file_name: "OE MASTERING THE METRICS.md"
@@ -272,4 +272,4 @@ documents:
     word_count_estimate: 1979
     heading_count: 9
     line_count: 91
-    sha256: "6340118ea16823dee38b93a52bfdd75ca1abfcc0c1ba582bfa7f4d310ead206e"
+    sha256: "c9d6394451fbd7da2e861436447a8bf44b0cfdc5b72ca23d1087dd3cc8ba315d"
