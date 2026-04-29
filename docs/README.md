@@ -1,6 +1,6 @@
 # Docs Layout
 
-Updated: 2026-04-25
+Updated: 2026-04-29
 
 This repo keeps docs in four main buckets:
 
@@ -9,6 +9,7 @@ This repo keeps docs in four main buckets:
 These stay at the top level because they are the fastest-entry authority docs:
 
 - `PROJECT_TRACKER.md` (repo root)
+- `docs/ARCHITECTURE.md`
 - `docs/DATA_ALIGNMENT_TRACKER.md`
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 
@@ -85,3 +86,10 @@ Temporary synthesis or reconciliation notes should be archived once their
 decisions are absorbed into the active trackers and phase docs.
 When that happens, prefer `docs/archive/internal/` for internal temp notes
 that are no longer part of the live working spine.
+
+2026-04-29 Phase 9 cleanup: completed closeout result reports now live under
+`docs/archive/phases/phase_9/`; active Phase 9 docs keep only plans, decision
+locks, backlog, QA matrix, and operational runbooks.
+
+2026-04-29 Phase 9 live update: B17 staging smoke and Cloud Armor preview
+tuning evidence is archived with the other Phase 9 result reports.

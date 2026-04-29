@@ -25,7 +25,18 @@ class ProxyAuthOperationsResponse {
 }
 
 abstract class ProxyAuthOperationsHttpClient {
+  Future<ProxyAuthOperationsResponse> getJson({
+    required Uri url,
+    required Map<String, String> headers,
+  });
+
   Future<ProxyAuthOperationsResponse> postJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  });
+
+  Future<ProxyAuthOperationsResponse> patchJson({
     required Uri url,
     required Map<String, String> headers,
     required Map<String, Object?> body,
@@ -50,12 +61,29 @@ class DartIoProxyAuthOperationsHttpClient
   final Duration _timeout;
 
   @override
+  Future<ProxyAuthOperationsResponse> getJson({
+    required Uri url,
+    required Map<String, String> headers,
+  }) {
+    return _sendJson(method: 'GET', url: url, headers: headers);
+  }
+
+  @override
   Future<ProxyAuthOperationsResponse> postJson({
     required Uri url,
     required Map<String, String> headers,
     required Map<String, Object?> body,
   }) {
     return _sendJson(method: 'POST', url: url, headers: headers, body: body);
+  }
+
+  @override
+  Future<ProxyAuthOperationsResponse> patchJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) {
+    return _sendJson(method: 'PATCH', url: url, headers: headers, body: body);
   }
 
   @override
@@ -71,16 +99,21 @@ class DartIoProxyAuthOperationsHttpClient
     required String method,
     required Uri url,
     required Map<String, String> headers,
-    required Map<String, Object?> body,
+    Map<String, Object?>? body,
   }) async {
-    final request = method == 'DELETE'
-        ? await _httpClient.deleteUrl(url).timeout(_timeout)
-        : await _httpClient.postUrl(url).timeout(_timeout);
-    request.headers.contentType = ContentType.json;
+    final request = switch (method) {
+      'DELETE' => await _httpClient.deleteUrl(url).timeout(_timeout),
+      'GET' => await _httpClient.getUrl(url).timeout(_timeout),
+      'PATCH' => await _httpClient.patchUrl(url).timeout(_timeout),
+      _ => await _httpClient.postUrl(url).timeout(_timeout),
+    };
     headers.forEach(request.headers.set);
-    final encoded = utf8.encode(jsonEncode(body));
-    request.contentLength = encoded.length;
-    request.add(encoded);
+    if (body != null) {
+      request.headers.contentType = ContentType.json;
+      final encoded = utf8.encode(jsonEncode(body));
+      request.contentLength = encoded.length;
+      request.add(encoded);
+    }
     final response = await request.close().timeout(_timeout);
     final raw = await utf8
         .decodeStream(response.cast<List<int>>())
@@ -118,7 +151,24 @@ class ScaffoldFailingProxyAuthOperationsHttpClient
   const ScaffoldFailingProxyAuthOperationsHttpClient();
 
   @override
+  Future<ProxyAuthOperationsResponse> getJson({
+    required Uri url,
+    required Map<String, String> headers,
+  }) async {
+    throw StateError(_message);
+  }
+
+  @override
   Future<ProxyAuthOperationsResponse> postJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) async {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<ProxyAuthOperationsResponse> patchJson({
     required Uri url,
     required Map<String, String> headers,
     required Map<String, Object?> body,
@@ -174,7 +224,89 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
 
   static const String invitesPath = '/v1/admin/auth/invites';
   static const String usersPrefix = '/v1/admin/auth/users/';
+  static const String rolesPath = '/v1/admin/auth/roles';
   static const String roleGrantsPath = '/v1/admin/auth/role-grants';
+
+  @override
+  Future<TeamRoleCatalogListed> listRoles(
+    TeamRoleCatalogListCommand command,
+  ) async {
+    final path = _rolesListPath(command.scope);
+    final response = await _get(path);
+    _expectStatus(response, 200);
+    final rawRoles = response.body['roles'];
+    if (rawRoles is! List) {
+      throw _malformed(response, 'role list response was incomplete');
+    }
+    return TeamRoleCatalogListed(
+      roles: List<TeamRoleCatalogEntry>.unmodifiable(
+        rawRoles.map((raw) => _roleFromJson(response, raw)),
+      ),
+    );
+  }
+
+  @override
+  Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command) async {
+    final response = await _post(rolesPath, <String, Object?>{
+      'role_key': command.roleKey,
+      'display_name': command.displayName,
+      if (command.description.trim().isNotEmpty)
+        'description': command.description.trim(),
+      if (command.permissions.isNotEmpty)
+        'permissions': command.permissions.map(_permissionUpdateJson).toList(),
+      if (_readNonBlankString(command.reason) != null)
+        'reason': command.reason!.trim(),
+    });
+    _expectStatus(response, 201);
+    return TeamRoleCreated(
+      role: _roleFromJson(response, response.body['role']),
+    );
+  }
+
+  @override
+  Future<TeamRolePatched> patchRole(TeamRolePatchCommand command) async {
+    final response = await _patch(
+      '$rolesPath/${Uri.encodeComponent(command.roleId)}',
+      <String, Object?>{
+        if (_readNonBlankString(command.displayName) != null)
+          'display_name': command.displayName!.trim(),
+        if (command.description != null)
+          'description': command.description!.trim(),
+        if (command.permissions.isNotEmpty)
+          'permissions': command.permissions
+              .map(_permissionUpdateJson)
+              .toList(),
+        if (_readNonBlankString(command.reason) != null)
+          'reason': command.reason!.trim(),
+      },
+    );
+    _expectStatus(response, 200);
+    final bumpedUsers = response.body['bumped_users'];
+    if (bumpedUsers is! int) {
+      throw _malformed(response, 'role patch response was incomplete');
+    }
+    return TeamRolePatched(
+      role: _roleFromJson(response, response.body['role']),
+      bumpedUsers: bumpedUsers,
+    );
+  }
+
+  @override
+  Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command) async {
+    final response = await _delete(
+      '$rolesPath/${Uri.encodeComponent(command.roleId)}',
+      <String, Object?>{
+        if (_readNonBlankString(command.reason) != null)
+          'reason': command.reason!.trim(),
+      },
+    );
+    _expectStatus(response, 200);
+    final deleted = response.body['deleted'];
+    if (deleted is! bool) {
+      throw _malformed(response, 'role delete response was incomplete');
+    }
+    return TeamRoleDeleted(deleted: deleted);
+  }
 
   @override
   Future<TeamInviteCreated> createInvite(
@@ -299,8 +431,21 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     return TeamUserStatusUpdated(updated: updated);
   }
 
+  String _rolesListPath(String? scope) {
+    final trimmed = _readNonBlankString(scope);
+    if (trimmed == null) return rolesPath;
+    return '$rolesPath?scope=${Uri.encodeQueryComponent(trimmed)}';
+  }
+
   String _userActionPath(String userId, String action) {
     return '$usersPrefix${Uri.encodeComponent(userId)}/$action';
+  }
+
+  Future<ProxyAuthOperationsResponse> _get(String relativePath) async {
+    return _send(
+      relativePath: relativePath,
+      send: (url, headers) => _httpClient.getJson(url: url, headers: headers),
+    );
   }
 
   Future<ProxyAuthOperationsResponse> _post(
@@ -314,6 +459,17 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     );
   }
 
+  Future<ProxyAuthOperationsResponse> _patch(
+    String relativePath,
+    Map<String, Object?> body,
+  ) async {
+    return _send(
+      relativePath: relativePath,
+      send: (url, headers) =>
+          _httpClient.patchJson(url: url, headers: headers, body: body),
+    );
+  }
+
   Future<ProxyAuthOperationsResponse> _delete(
     String relativePath,
     Map<String, Object?> body,
@@ -323,6 +479,71 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       send: (url, headers) =>
           _httpClient.deleteJson(url: url, headers: headers, body: body),
     );
+  }
+
+  TeamRoleCatalogEntry _roleFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'role payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final roleId = _readNonBlankString(json['role_id']);
+    final roleKey = _readNonBlankString(json['role_key']);
+    final displayName = _readNonBlankString(json['display_name']);
+    final description = json['description'];
+    final isSeeded = json['is_seeded'];
+    final isEditable = json['is_editable'];
+    final permissions = json['permissions'];
+    if (roleId == null ||
+        roleKey == null ||
+        displayName == null ||
+        description is! String ||
+        isSeeded is! bool ||
+        isEditable is! bool ||
+        permissions is! List) {
+      throw _malformed(response, 'role payload was incomplete');
+    }
+    return TeamRoleCatalogEntry(
+      roleId: roleId,
+      roleKey: roleKey,
+      displayName: displayName,
+      description: description,
+      isSeeded: isSeeded,
+      isEditable: isEditable,
+      operatorId: _readNonBlankString(json['operator_id']),
+      permissions: List<TeamRolePermissionRule>.unmodifiable(
+        permissions.map((rawPermission) {
+          if (rawPermission is! Map) {
+            throw _malformed(response, 'role permission payload was malformed');
+          }
+          final permission = Map<String, Object?>.from(rawPermission);
+          final permissionKey = _readNonBlankString(
+            permission['permission_key'],
+          );
+          final effect = _readNonBlankString(permission['effect']);
+          if (permissionKey == null ||
+              (effect != 'allow' && effect != 'deny')) {
+            throw _malformed(
+              response,
+              'role permission payload was incomplete',
+            );
+          }
+          return TeamRolePermissionRule(
+            permissionKey: permissionKey,
+            effect: effect!,
+          );
+        }),
+      ),
+    );
+  }
+
+  Map<String, Object?> _permissionUpdateJson(TeamRolePermissionUpdate update) {
+    return <String, Object?>{
+      'permission_key': update.permissionKey,
+      'effect': update.effect ?? 'inherit',
+    };
   }
 
   Future<ProxyAuthOperationsResponse> _send({

@@ -103,6 +103,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       firebaseAdmin: firebaseAdmin,
       usersRepository: UsersRepository(adminWrapper),
       rolesRepository: RolesRepository(adminWrapper),
+      rolePermissionsRepository: RolePermissionsRepository(adminWrapper),
       userRolesRepository: UserRolesRepository(adminWrapper),
       authInvitesRepository: AuthInvitesRepository(adminWrapper),
       auditRepository: AuthEventsAuditRepository(adminWrapper),

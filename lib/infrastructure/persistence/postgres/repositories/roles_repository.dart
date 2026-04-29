@@ -76,6 +76,42 @@ class RolesRepository extends OperatorScopedRepository {
     });
   }
 
+  /// SELECT one role visible to the actor's tenant.
+  Future<RoleRecord> visibleRoleById({
+    required String operatorId,
+    required String locationId,
+    required String roleId,
+    String? actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<RoleRecord>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select role_id::text as role_id, '
+        'operator_id::text as operator_id, '
+        'role_key, display_name, description, '
+        'is_seeded, is_editable, '
+        'created_at, updated_at, deleted_at '
+        'from roles '
+        'where role_id = @role_id::uuid '
+        'and deleted_at is null '
+        'and (operator_id = @operator_id::uuid or operator_id is null) '
+        'limit 1',
+        parameters: <String, Object?>{
+          'role_id': roleId,
+          'operator_id': operatorId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError('role is not visible to this operator');
+      }
+      return _projectRow(rows.single);
+    });
+  }
+
   /// Resolve a visible role key to its UUID. Operator-scoped custom roles win
   /// over global seeded roles when both expose the same key.
   Future<String> roleIdForVisibleKey({
@@ -157,6 +193,42 @@ class RolesRepository extends OperatorScopedRepository {
         throw StateError('roles insert returned a malformed role_id');
       }
       return id;
+    });
+  }
+
+  /// Update editable metadata for an operator-scoped custom role.
+  Future<int> updateOperatorRole({
+    required String operatorId,
+    required String locationId,
+    required String updatedByUserId,
+    required String roleId,
+    String? displayName,
+    String? description,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: updatedByUserId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      return exec.execute(
+        'update roles '
+        'set display_name = coalesce(@display_name, display_name), '
+        'description = coalesce(@description, description), '
+        'updated_at = now(), updated_by = @updated_by::uuid '
+        'where role_id = @role_id::uuid '
+        'and operator_id = @operator_id::uuid '
+        'and is_seeded = false '
+        'and is_editable = true '
+        'and deleted_at is null',
+        parameters: <String, Object?>{
+          'role_id': roleId,
+          'operator_id': operatorId,
+          'display_name': displayName,
+          'description': description,
+          'updated_by': updatedByUserId,
+        },
+      );
     });
   }
 

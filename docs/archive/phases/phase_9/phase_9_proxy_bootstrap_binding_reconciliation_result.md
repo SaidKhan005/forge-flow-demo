@@ -54,7 +54,7 @@ staging or Production1 live mutation was performed in this slice.
 
 - Corrected-deploy fresh invite creation passed on staging revision
   `forge-flow-staging-proxy-00013-zx8`; see
-  `phase_9_corrected_deploy_invite_create_retry_result.md`.
+  `docs/archive/phases/phase_9/phase_9_corrected_deploy_invite_create_retry_result.md`.
 - The scaffold-failing Firebase MFA client has been replaced with the Identity
   Toolkit REST adapter and deployed on
   `forge-flow-staging-proxy-00017-pcz`; staging TOTP begin/confirm and

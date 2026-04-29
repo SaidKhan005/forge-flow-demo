@@ -114,6 +114,117 @@ void main() {
       });
     });
 
+    test(
+      'GET roles lists by scope and verifies team role view permission',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.get(
+              '$adminAuthRolesPath?scope=custom',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.view']));
+            expect(gateway.roleLists.single.scope, equals('custom'));
+            final roles = response.json['roles'] as List<Object?>;
+            final role = Map<String, Object?>.from(roles.single as Map);
+            expect(role['role_id'], equals(_roleId));
+            expect(role['permissions'], isA<List<Object?>>());
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('POST role create delegates custom role command', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            adminAuthRolesPath,
+            const <String, Object?>{
+              'role_key': 'kitchen_lead',
+              'display_name': 'Kitchen Lead',
+              'description': 'Can coach kitchen handoffs',
+              'permissions': <Object?>[
+                <String, Object?>{
+                  'permission_key': 'team.users.view',
+                  'effect': 'allow',
+                },
+              ],
+            },
+          );
+
+          expect(response.statusCode, equals(201));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.roles.create_custom']),
+          );
+          expect(gateway.roleCreates.single.roleKey, equals('kitchen_lead'));
+          expect(gateway.roleCreates.single.permissions.single.effect, 'allow');
+          expect(response.json['role'], isA<Map<String, Object?>>());
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('PATCH and DELETE roles delegate custom role commands', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final patch = await harness.patchJson(
+            '$adminAuthRolePrefix${Uri.encodeComponent(_roleId)}',
+            const <String, Object?>{
+              'display_name': 'Kitchen Captain',
+              'permissions': <Object?>[
+                <String, Object?>{
+                  'permission_key': 'team.users.invite',
+                  'effect': 'inherit',
+                },
+              ],
+            },
+          );
+          final delete = await harness.deleteJson(
+            '$adminAuthRolePrefix${Uri.encodeComponent(_roleId)}',
+            const <String, Object?>{'reason': 'cleanup'},
+          );
+
+          expect(patch.statusCode, equals(200));
+          expect(delete.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>[
+              'team.roles.create_custom',
+              'team.roles.create_custom',
+            ]),
+          );
+          expect(gateway.rolePatches.single.roleId, equals(_roleId));
+          expect(gateway.rolePatches.single.permissions.single.effect, isNull);
+          expect(gateway.roleDeletes.single.reason, equals('cleanup'));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test('POST password change delegates and returns HIBP flag', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingPasswordChangeGateway(
@@ -206,6 +317,7 @@ void main() {
 const _userId = '11111111-1111-4111-8111-111111111111';
 const _operatorId = '22222222-2222-4222-8222-222222222222';
 const _locationId = '33333333-3333-4333-8333-333333333333';
+const _roleId = '44444444-4444-4444-8444-444444444444';
 
 Future<T> _withRealHttp<T>(Future<T> Function() body) async {
   final saved = HttpOverrides.current;
@@ -268,6 +380,34 @@ class _RouteHarness {
     Map<String, Object?> body,
   ) async {
     final request = await client.postUrl(baseUri.resolve(path));
+    request.headers.contentType = ContentType.json;
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    final encoded = utf8.encode(jsonEncode(body));
+    request.contentLength = encoded.length;
+    request.add(encoded);
+    final response = await request.close();
+    return _HttpJsonResponse.from(response);
+  }
+
+  Future<_HttpJsonResponse> patchJson(
+    String path,
+    Map<String, Object?> body,
+  ) async {
+    final request = await client.patchUrl(baseUri.resolve(path));
+    request.headers.contentType = ContentType.json;
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    final encoded = utf8.encode(jsonEncode(body));
+    request.contentLength = encoded.length;
+    request.add(encoded);
+    final response = await request.close();
+    return _HttpJsonResponse.from(response);
+  }
+
+  Future<_HttpJsonResponse> deleteJson(
+    String path,
+    Map<String, Object?> body,
+  ) async {
+    final request = await client.deleteUrl(baseUri.resolve(path));
     request.headers.contentType = ContentType.json;
     request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
     final encoded = utf8.encode(jsonEncode(body));
@@ -396,7 +536,37 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
 }
 
 class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
+  final roleLists = <TeamRoleCatalogListCommand>[];
+  final roleCreates = <TeamRoleCreateCommand>[];
+  final rolePatches = <TeamRolePatchCommand>[];
+  final roleDeletes = <TeamRoleDeleteCommand>[];
   final inviteCreates = <TeamInviteCreateCommand>[];
+
+  @override
+  Future<TeamRoleCatalogListed> listRoles(
+    TeamRoleCatalogListCommand command,
+  ) async {
+    roleLists.add(command);
+    return TeamRoleCatalogListed(roles: <TeamRoleCatalogEntry>[_teamRole]);
+  }
+
+  @override
+  Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command) async {
+    roleCreates.add(command);
+    return const TeamRoleCreated(role: _teamRole);
+  }
+
+  @override
+  Future<TeamRolePatched> patchRole(TeamRolePatchCommand command) async {
+    rolePatches.add(command);
+    return const TeamRolePatched(role: _teamRole, bumpedUsers: 2);
+  }
+
+  @override
+  Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command) async {
+    roleDeletes.add(command);
+    return const TeamRoleDeleted(deleted: true);
+  }
 
   @override
   Future<TeamInviteCreated> createInvite(
@@ -458,3 +628,16 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     return const TeamRoleGrantRevoked(revoked: true);
   }
 }
+
+const _teamRole = TeamRoleCatalogEntry(
+  roleId: _roleId,
+  roleKey: 'kitchen_lead',
+  displayName: 'Kitchen Lead',
+  description: 'Can coach kitchen handoffs',
+  isSeeded: false,
+  isEditable: true,
+  operatorId: _operatorId,
+  permissions: <TeamRolePermissionRule>[
+    TeamRolePermissionRule(permissionKey: 'team.users.view', effect: 'allow'),
+  ],
+);

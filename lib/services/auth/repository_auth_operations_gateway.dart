@@ -11,6 +11,7 @@ import 'package:crypto/crypto.dart';
 
 import '../../infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
+import '../../infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/users_repository.dart';
@@ -22,6 +23,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required this.firebaseAdmin,
     required this.usersRepository,
     required this.rolesRepository,
+    required this.rolePermissionsRepository,
     required this.userRolesRepository,
     required this.authInvitesRepository,
     required this.auditRepository,
@@ -35,12 +37,165 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   final FirebaseAdminAuthClient firebaseAdmin;
   final UsersRepository usersRepository;
   final RolesRepository rolesRepository;
+  final RolePermissionsRepository rolePermissionsRepository;
   final UserRolesRepository userRolesRepository;
   final AuthInvitesRepository authInvitesRepository;
   final AuthEventsAuditRepository auditRepository;
   final DateTime Function() _now;
   final String Function() _idFactory;
   final String Function() _tokenFactory;
+
+  @override
+  Future<TeamRoleCatalogListed> listRoles(
+    TeamRoleCatalogListCommand command,
+  ) async {
+    final roles = await rolesRepository.listVisibleRoles(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+    );
+    final entries = <TeamRoleCatalogEntry>[];
+    for (final role in roles) {
+      if (!_scopeIncludesRole(command.scope, command.operatorId, role)) {
+        continue;
+      }
+      entries.add(await _roleEntry(command, role));
+    }
+    return TeamRoleCatalogListed(
+      roles: List<TeamRoleCatalogEntry>.unmodifiable(entries),
+    );
+  }
+
+  @override
+  Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command) async {
+    final roleKey = _roleKey(command.roleKey);
+    final displayName = _requiredTrimmed(command.displayName, 'displayName');
+    final description = command.description.trim();
+    final roleId = await rolesRepository.insertOperatorRole(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      createdByUserId: command.actorUserId,
+      roleKey: roleKey,
+      displayName: displayName,
+      description: description,
+    );
+    await _applyRolePermissionUpdates(
+      command: command,
+      roleId: roleId,
+      updates: command.permissions,
+    );
+    await _audit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      eventType: 'auth.custom_role_created',
+      payload: <String, Object?>{
+        'role_id': roleId,
+        'role_key': roleKey,
+        if (command.reason != null) 'reason': command.reason,
+      },
+    );
+    final role = await rolesRepository.visibleRoleById(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      roleId: roleId,
+      actorUserId: command.actorUserId,
+    );
+    return TeamRoleCreated(role: await _roleEntry(command, role));
+  }
+
+  @override
+  Future<TeamRolePatched> patchRole(TeamRolePatchCommand command) async {
+    await _customRoleForMutation(command);
+    final displayName = _optionalTrimmed(command.displayName, 'displayName');
+    final description = command.description?.trim();
+    var metadataChanged = false;
+    if (displayName != null || description != null) {
+      metadataChanged =
+          await rolesRepository.updateOperatorRole(
+            operatorId: command.operatorId,
+            locationId: command.locationId,
+            updatedByUserId: command.actorUserId,
+            roleId: command.roleId,
+            displayName: displayName,
+            description: description,
+          ) >
+          0;
+    }
+    final permissionChanges = await _applyRolePermissionUpdates(
+      command: command,
+      roleId: command.roleId,
+      updates: command.permissions,
+    );
+    var bumpedUsers = 0;
+    if (metadataChanged || permissionChanges > 0) {
+      bumpedUsers = await userRolesRepository.bumpActiveGrantHoldersForRole(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        roleId: command.roleId,
+      );
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: 'auth.custom_role_updated',
+        payload: <String, Object?>{
+          'role_id': command.roleId,
+          'permission_changes': permissionChanges,
+          'metadata_changed': metadataChanged,
+          'bumped_users': bumpedUsers,
+          if (command.reason != null) 'reason': command.reason,
+        },
+      );
+    }
+    final role = await rolesRepository.visibleRoleById(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      roleId: command.roleId,
+      actorUserId: command.actorUserId,
+    );
+    return TeamRolePatched(
+      role: await _roleEntry(command, role),
+      bumpedUsers: bumpedUsers,
+    );
+  }
+
+  @override
+  Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command) async {
+    await _customRoleForMutation(command);
+    int affected;
+    try {
+      affected = await rolesRepository.softDeleteOperatorRole(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        updatedByUserId: command.actorUserId,
+        roleId: command.roleId,
+      );
+    } on StateError catch (error) {
+      if (error.message.contains('active user_roles grants')) {
+        throw const AuthOperationRejected(
+          code: 'role_has_active_grants',
+          message: 'custom role still has active grants',
+          statusCode: 409,
+        );
+      }
+      rethrow;
+    }
+    if (affected > 0) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: 'auth.custom_role_deleted',
+        payload: <String, Object?>{
+          'role_id': command.roleId,
+          if (command.reason != null) 'reason': command.reason,
+        },
+      );
+    }
+    return TeamRoleDeleted(deleted: affected > 0);
+  }
 
   @override
   Future<TeamInviteCreated> createInvite(
@@ -363,6 +518,154 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     );
   }
 
+  Future<TeamRoleCatalogEntry> _roleEntry(
+    Object command,
+    RoleRecord role,
+  ) async {
+    final operatorId = switch (command) {
+      TeamRoleCatalogListCommand(:final operatorId) => operatorId,
+      TeamRoleCreateCommand(:final operatorId) => operatorId,
+      TeamRolePatchCommand(:final operatorId) => operatorId,
+      TeamRoleDeleteCommand(:final operatorId) => operatorId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final locationId = switch (command) {
+      TeamRoleCatalogListCommand(:final locationId) => locationId,
+      TeamRoleCreateCommand(:final locationId) => locationId,
+      TeamRolePatchCommand(:final locationId) => locationId,
+      TeamRoleDeleteCommand(:final locationId) => locationId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final actorUserId = switch (command) {
+      TeamRoleCatalogListCommand(:final actorUserId) => actorUserId,
+      TeamRoleCreateCommand(:final actorUserId) => actorUserId,
+      TeamRolePatchCommand(:final actorUserId) => actorUserId,
+      TeamRoleDeleteCommand(:final actorUserId) => actorUserId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final permissionRows = await rolePermissionsRepository.listForRole(
+      operatorId: operatorId,
+      locationId: locationId,
+      roleId: role.roleId,
+      actorUserId: actorUserId,
+    );
+    return TeamRoleCatalogEntry(
+      roleId: role.roleId,
+      roleKey: role.roleKey,
+      displayName: role.displayName,
+      description: role.description,
+      isSeeded: role.isSeeded,
+      isEditable: role.isEditable,
+      operatorId: role.operatorId,
+      permissions: List<TeamRolePermissionRule>.unmodifiable(
+        permissionRows.map(
+          (row) => TeamRolePermissionRule(
+            permissionKey: row.permissionKey,
+            effect: row.effect,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<RoleRecord> _customRoleForMutation(Object command) async {
+    final operatorId = switch (command) {
+      TeamRolePatchCommand(:final operatorId) => operatorId,
+      TeamRoleDeleteCommand(:final operatorId) => operatorId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final locationId = switch (command) {
+      TeamRolePatchCommand(:final locationId) => locationId,
+      TeamRoleDeleteCommand(:final locationId) => locationId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final actorUserId = switch (command) {
+      TeamRolePatchCommand(:final actorUserId) => actorUserId,
+      TeamRoleDeleteCommand(:final actorUserId) => actorUserId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final roleId = switch (command) {
+      TeamRolePatchCommand(:final roleId) => roleId,
+      TeamRoleDeleteCommand(:final roleId) => roleId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final role = await rolesRepository.visibleRoleById(
+      operatorId: operatorId,
+      locationId: locationId,
+      roleId: roleId,
+      actorUserId: actorUserId,
+    );
+    if (role.operatorId != operatorId || role.isSeeded || !role.isEditable) {
+      throw const AuthOperationRejected(
+        code: 'role_not_editable',
+        message: 'only editable operator-scoped custom roles can be changed',
+        statusCode: 403,
+      );
+    }
+    return role;
+  }
+
+  Future<int> _applyRolePermissionUpdates({
+    required Object command,
+    required String roleId,
+    required List<TeamRolePermissionUpdate> updates,
+  }) async {
+    final operatorId = switch (command) {
+      TeamRoleCreateCommand(:final operatorId) => operatorId,
+      TeamRolePatchCommand(:final operatorId) => operatorId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final locationId = switch (command) {
+      TeamRoleCreateCommand(:final locationId) => locationId,
+      TeamRolePatchCommand(:final locationId) => locationId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final actorUserId = switch (command) {
+      TeamRoleCreateCommand(:final actorUserId) => actorUserId,
+      TeamRolePatchCommand(:final actorUserId) => actorUserId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    var changed = 0;
+    final seen = <String>{};
+    for (final update in updates) {
+      final key = _requiredTrimmed(update.permissionKey, 'permissionKey');
+      if (!seen.add(key)) {
+        throw AuthOperationRejected(
+          code: 'duplicate_permission_update',
+          message: 'permission update for $key appears more than once',
+          statusCode: 400,
+        );
+      }
+      final effect = update.effect?.trim();
+      if (effect == null || effect == 'inherit') {
+        changed += await rolePermissionsRepository.deleteCell(
+          operatorId: operatorId,
+          locationId: locationId,
+          updatedByUserId: actorUserId,
+          roleId: roleId,
+          permissionKey: key,
+        );
+        continue;
+      }
+      if (effect != 'allow' && effect != 'deny') {
+        throw const AuthOperationRejected(
+          code: 'invalid_permission_effect',
+          message: "permission effect must be 'allow', 'deny', or 'inherit'",
+          statusCode: 400,
+        );
+      }
+      changed += await rolePermissionsRepository.upsertCell(
+        operatorId: operatorId,
+        locationId: locationId,
+        updatedByUserId: actorUserId,
+        roleId: roleId,
+        permissionKey: key,
+        effect: effect,
+      );
+    }
+    return changed;
+  }
+
   Future<Map<String, Object?>> _claimsForUser({
     required String userId,
     required String operatorId,
@@ -409,6 +712,63 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
 
   static String _sha256(String value) {
     return sha256.convert(value.codeUnits).toString();
+  }
+
+  static bool _scopeIncludesRole(
+    String? rawScope,
+    String operatorId,
+    RoleRecord role,
+  ) {
+    final scope = (rawScope ?? 'all').trim();
+    switch (scope) {
+      case '':
+      case 'all':
+        return true;
+      case 'global':
+      case 'seeded':
+        return role.operatorId == null;
+      case 'operator':
+      case 'custom':
+        return role.operatorId == operatorId;
+      default:
+        throw const AuthOperationRejected(
+          code: 'invalid_role_scope',
+          message: "role scope must be 'all', 'global', or 'operator'",
+          statusCode: 400,
+        );
+    }
+  }
+
+  static String _roleKey(String value) {
+    final trimmed = _requiredTrimmed(value, 'roleKey');
+    final valid = RegExp(r'^[a-z][a-z0-9_]{2,63}$').hasMatch(trimmed);
+    if (!valid) {
+      throw const AuthOperationRejected(
+        code: 'invalid_role_key',
+        message:
+            'role_key must start with a lowercase letter and contain only '
+            'lowercase letters, numbers, and underscores',
+        statusCode: 400,
+      );
+    }
+    return trimmed;
+  }
+
+  static String _requiredTrimmed(String value, String fieldName) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) {
+      throw AuthOperationRejected(
+        code: 'missing_$fieldName',
+        message: '$fieldName is required',
+        statusCode: 400,
+      );
+    }
+    return trimmed;
+  }
+
+  static String? _optionalTrimmed(String? value, String fieldName) {
+    if (value == null) return null;
+    return _requiredTrimmed(value, fieldName);
   }
 
   static bool _looksLikeUuid(String value) {

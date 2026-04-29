@@ -16,9 +16,9 @@
 //      deterministic UPSERT keys with NULLS NOT DISTINCT, no
 //      TIMESTAMP WITHOUT TIME ZONE, partition hooks, grants.
 //
-//   4. pg_cron migration shape — extension creation,
-//      hot/cold-path SQL functions, idempotent unschedule-then-
-//      schedule pattern, 60s/300s cadence.
+//   4. pg_cron migration shape — Azure cron-database topology,
+//      hot/cold-path SQL functions, guarded idempotent
+//      unschedule-then-schedule pattern, 60s/300s cadence.
 //
 //   5. RollupWorker fake-Postgres tests — claim bounded work, success
 //      advances watermark, failure does NOT advance and records
@@ -90,8 +90,7 @@ void main() {
       '202604280010_a_phase_9_0sigma_k_aggregation_state.sql',
     );
 
-    test('runs in a single transaction (begin/commit pair) — rerun-safe',
-        () {
+    test('runs in a single transaction (begin/commit pair) — rerun-safe', () {
       expect(sql, contains('begin;'));
       expect(sql, contains('commit;'));
     });
@@ -147,7 +146,10 @@ void main() {
       expect(sql, contains('last_run_completed_at timestamptz null'));
       expect(sql, contains("last_run_status text not null default 'idle'"));
       // Rebuild bookkeeping per Q3.8.
-      expect(sql, contains('rebuild_in_progress boolean not null default false'));
+      expect(
+        sql,
+        contains('rebuild_in_progress boolean not null default false'),
+      );
       expect(sql, contains('rebuild_started_at timestamptz null'));
       expect(sql, contains('rebuild_target_rule_version text null'));
       expect(sql, contains('rebuild_scope text null'));
@@ -193,8 +195,7 @@ void main() {
       '202604280010_b_phase_9_0sigma_k_rollup_tables.sql',
     );
 
-    test('runs in a single transaction (begin/commit pair) — rerun-safe',
-        () {
+    test('runs in a single transaction (begin/commit pair) — rerun-safe', () {
       expect(sql, contains('begin;'));
       expect(sql, contains('commit;'));
     });
@@ -239,36 +240,40 @@ void main() {
         // Tenant scope.
         expect(
           sql,
-          contains('create table if not exists public.$tbl (\n'
-              '  operator_id uuid not null references public.operators('
-              'operator_id)\n'
-              '    on delete cascade,\n'
-              '  scoped_org_unit_id uuid not null,\n'
-              '  location_id uuid null,'),
+          contains(
+            'create table if not exists public.$tbl (\n'
+            '  operator_id uuid not null references public.operators('
+            'operator_id)\n'
+            '    on delete cascade,\n'
+            '  scoped_org_unit_id uuid not null,\n'
+            '  location_id uuid null,',
+          ),
           reason: '$tbl must declare the locked tenant-scope columns',
         );
         // Period.
         expect(
           sql,
-          contains('  period_start timestamptz not null,\n'
-              '  period_end timestamptz not null,\n'
-              '  business_date date not null,'),
+          contains(
+            '  period_start timestamptz not null,\n'
+            '  period_end timestamptz not null,\n'
+            '  business_date date not null,',
+          ),
           reason: '$tbl must carry period_start/period_end/business_date',
         );
         // Metric family + dimensions + metrics + source watermark +
         // rule_version + computed_at + freshness.
         expect(sql, contains('  metric_family text not null'));
-        expect(sql, contains("  dimensions jsonb not null default '{}'::jsonb"));
+        expect(
+          sql,
+          contains("  dimensions jsonb not null default '{}'::jsonb"),
+        );
         expect(sql, contains("  metrics jsonb not null default '{}'::jsonb"));
         expect(
           sql,
           contains('  source_watermark_seq bigint not null default 0'),
         );
         expect(sql, contains('  source_watermark_at timestamptz null'));
-        expect(
-          sql,
-          contains("  rule_version text not null default 'v1'"),
-        );
+        expect(sql, contains("  rule_version text not null default 'v1'"));
         expect(
           sql,
           contains('  computed_at timestamptz not null default now()'),
@@ -315,9 +320,12 @@ void main() {
         );
         expect(
           sql,
-          contains('create table if not exists public.${tbl}_default\n'
-              '  partition of public.$tbl default;'),
-          reason: '$tbl must have a default partition that catches all '
+          contains(
+            'create table if not exists public.${tbl}_default\n'
+            '  partition of public.$tbl default;',
+          ),
+          reason:
+              '$tbl must have a default partition that catches all '
               'rows until per-period partitions are carved out',
         );
       }
@@ -348,7 +356,8 @@ void main() {
       expect(
         RegExp(r'\)\s*nulls not distinct;').allMatches(sql).length,
         equals(7),
-        reason: 'every grain unique index must use NULLS NOT DISTINCT '
+        reason:
+            'every grain unique index must use NULLS NOT DISTINCT '
             'so location_id NULL collapses to one conflict target',
       );
     });
@@ -367,11 +376,13 @@ void main() {
         // Tenant-leading hot-read index.
         expect(
           sql,
-          contains('create index if not exists ${tbl}_tenant_period_idx\n'
-              '  on public.$tbl (\n'
-              '    operator_id, scoped_org_unit_id, location_id, '
-              'business_date desc\n'
-              '  );'),
+          contains(
+            'create index if not exists ${tbl}_tenant_period_idx\n'
+            '  on public.$tbl (\n'
+            '    operator_id, scoped_org_unit_id, location_id, '
+            'business_date desc\n'
+            '  );',
+          ),
           reason: '$tbl tenant_period index must lead with operator_id',
         );
       }
@@ -400,21 +411,27 @@ void main() {
         // 14 constraints in the same schema.
         expect(
           sql,
-          contains('constraint ${tbl}_scope_org_unit_fk\n'
-              '    foreign key (operator_id, scoped_org_unit_id)\n'
-              '    references public.org_units(operator_id, id)\n'
-              '    on delete cascade'),
-          reason: '$tbl must bind (operator_id, scoped_org_unit_id) to '
+          contains(
+            'constraint ${tbl}_scope_org_unit_fk\n'
+            '    foreign key (operator_id, scoped_org_unit_id)\n'
+            '    references public.org_units(operator_id, id)\n'
+            '    on delete cascade',
+          ),
+          reason:
+              '$tbl must bind (operator_id, scoped_org_unit_id) to '
               'org_units(operator_id, id) so cross-tenant org_unit '
               'pointers are rejected at the database layer',
         );
         expect(
           sql,
-          contains('constraint ${tbl}_scope_location_fk\n'
-              '    foreign key (operator_id, location_id)\n'
-              '    references public.locations(operator_id, location_id)\n'
-              '    on delete cascade'),
-          reason: '$tbl must bind (operator_id, location_id) to '
+          contains(
+            'constraint ${tbl}_scope_location_fk\n'
+            '    foreign key (operator_id, location_id)\n'
+            '    references public.locations(operator_id, location_id)\n'
+            '    on delete cascade',
+          ),
+          reason:
+              '$tbl must bind (operator_id, location_id) to '
               'locations(operator_id, location_id) — MATCH SIMPLE '
               '(default) keeps NULL location_id allowed for hierarchy '
               'aggregates while still rejecting cross-tenant '
@@ -438,20 +455,11 @@ void main() {
           sql,
           contains('alter table public.$tbl enable row level security'),
         );
-        expect(
-          sql,
-          contains('create policy "${tbl}_per_tenant"'),
-        );
+        expect(sql, contains('create policy "${tbl}_per_tenant"'));
       }
       // Predicate must use the wrapper, not bare current_setting.
-      expect(
-        sql,
-        contains('operator_id = public.app_current_operator()'),
-      );
-      expect(
-        sql,
-        isNot(contains("current_setting('app.operator_id'")),
-      );
+      expect(sql, contains('operator_id = public.app_current_operator()'));
+      expect(sql, isNot(contains("current_setting('app.operator_id'")));
     });
 
     test('grants follow the locked posture — service_role SELECT only, '
@@ -490,30 +498,24 @@ void main() {
       '202604280010_c_phase_9_0sigma_k_pg_cron_jobs.sql',
     );
 
-    test('creates the pg_cron extension idempotently', () {
-      expect(sql, contains('create extension if not exists pg_cron'));
+    test('does not create pg_cron inside forgeflow on Azure', () {
+      expect(sql, isNot(contains('create extension if not exists pg_cron')));
+      expect(sql, contains('cron.database_name'));
+      expect(sql, contains('cron.schedule_in_database'));
+      expect(sql, contains('not attempt `create extension pg_cron` here'));
     });
 
     test('hot-path kickoff function emits pg_notify ONLY (P1-1 fix — '
         'taking the lease here would starve the Dart worker) and names '
-        'the locked grain set (daypart + business_day) in the envelope',
-        () {
+        'the locked grain set (daypart + business_day) in the envelope', () {
       expect(
         sql,
-        contains(
-          'create or replace function public.rollup_run_hot_path()',
-        ),
+        contains('create or replace function public.rollup_run_hot_path()'),
       );
       // Wake-up signal must be NOTIFY-only.
-      expect(
-        sql,
-        contains("perform pg_notify(\n    'rollups_tick',"),
-      );
+      expect(sql, contains("perform pg_notify(\n    'rollups_tick',"));
       expect(sql, contains("'path', 'hot'"));
-      expect(
-        sql,
-        contains("json_build_array('daypart', 'business_day')"),
-      );
+      expect(sql, contains("json_build_array('daypart', 'business_day')"));
       // P1-1 negative guard: the cron path MUST NOT call the lease
       // primitive itself. Match a complete-token regex so a future
       // helper named e.g. `rollup_acquire_lease_v2` does not slip
@@ -523,7 +525,8 @@ void main() {
       expect(
         hotPathBody.contains('rollup_acquire_lease'),
         isFalse,
-        reason: 'P1-1: hot-path cron MUST NOT take the lease — only '
+        reason:
+            'P1-1: hot-path cron MUST NOT take the lease — only '
             'the Dart worker may. Found: $hotPathBody',
       );
     });
@@ -533,9 +536,7 @@ void main() {
         'month + quarter + year)', () {
       expect(
         sql,
-        contains(
-          'create or replace function public.rollup_run_cold_path()',
-        ),
+        contains('create or replace function public.rollup_run_cold_path()'),
       );
       expect(sql, contains("'path', 'cold'"));
       expect(
@@ -550,7 +551,8 @@ void main() {
       expect(
         coldPathBody.contains('rollup_acquire_lease'),
         isFalse,
-        reason: 'P1-1: cold-path cron MUST NOT take the lease — only '
+        reason:
+            'P1-1: cold-path cron MUST NOT take the lease — only '
             'the Dart worker may. Found: $coldPathBody',
       );
     });
@@ -566,14 +568,8 @@ void main() {
       expect(sql, contains('leased_until is null or leased_until < v_now'));
       // P1-3 fix: rebuild guards prevent normal incremental advances
       // from overwriting a Q3.8 rebuild row.
-      expect(
-        sql,
-        contains('and rebuild_in_progress = false'),
-      );
-      expect(
-        sql,
-        contains("and last_run_status <> 'rebuilding'"),
-      );
+      expect(sql, contains('and rebuild_in_progress = false'));
+      expect(sql, contains("and last_run_status <> 'rebuilding'"));
       // Bootstrap row on first call so the worker doesn't need a
       // separate seed migration.
       expect(
@@ -586,9 +582,10 @@ void main() {
       );
     });
 
-    test('schedule registration is idempotent — unschedule any existing '
-        'job with the same name BEFORE schedule(...) so a re-run does '
-        'not raise a unique_violation', () {
+    test('schedule registration is guarded and idempotent when cron metadata '
+        'is present in the current database', () {
+      expect(sql, contains("to_regnamespace('cron') is null"));
+      expect(sql, contains("to_regclass('cron.job') is null"));
       // The hot-path schedule.
       expect(
         sql,
@@ -602,11 +599,12 @@ void main() {
         contains(
           "perform cron.schedule(\n"
           "    'forge_rollup_hot_path',\n"
-          "    '60 seconds',\n"
+          "    '* * * * *',\n"
           "    'select public.rollup_run_hot_path();'\n"
           "  );",
         ),
-        reason: 'hot path must be scheduled at the Q3.1-locked 60s '
+        reason:
+            'hot path must be scheduled at the Q3.1-locked 60s '
             'cadence calling the hot-path kickoff function',
       );
       // The cold-path schedule.
@@ -621,11 +619,12 @@ void main() {
         contains(
           "perform cron.schedule(\n"
           "    'forge_rollup_cold_path',\n"
-          "    '300 seconds',\n"
+          "    '*/5 * * * *',\n"
           "    'select public.rollup_run_cold_path();'\n"
           "  );",
         ),
-        reason: 'cold path must be scheduled at the Q3.1-locked 300s '
+        reason:
+            'cold path must be scheduled at the Q3.1-locked 300s '
             'cadence calling the cold-path kickoff function',
       );
     });
@@ -656,10 +655,7 @@ void main() {
       expect(RollupGrain.daypart.sqlName, equals('daypart'));
       expect(RollupGrain.businessDay.sqlName, equals('business_day'));
       expect(RollupGrain.week.sqlName, equals('week'));
-      expect(
-        RollupGrain.accountingPeriod.sqlName,
-        equals('accounting_period'),
-      );
+      expect(RollupGrain.accountingPeriod.sqlName, equals('accounting_period'));
       expect(RollupGrain.month.sqlName, equals('month'));
       expect(RollupGrain.quarter.sqlName, equals('quarter'));
       expect(RollupGrain.year.sqlName, equals('year'));
@@ -686,27 +682,28 @@ void main() {
       final fake = _FakeSystemRunner(
         canned: <_CannedResponse>[
           // First call — acquire lease returns true.
-          _CannedResponse(rows: <PostgresRow>[
-            <String, Object?>{'acquired': true},
-          ]),
+          _CannedResponse(
+            rows: <PostgresRow>[
+              <String, Object?>{'acquired': true},
+            ],
+          ),
           // Second call — read aggregation_state row.
-          _CannedResponse(rows: <PostgresRow>[
-            <String, Object?>{
-              'rollup_table': 'rollup_daypart',
-              'grain': 'daypart',
-              'last_processed_seq': 1042,
-              'last_run_status': 'leased',
-              'attempt_count': 0,
-              'lease_owner': 'host:1',
-              'leased_until': DateTime.utc(2026, 4, 28, 12, 5),
-            },
-          ]),
+          _CannedResponse(
+            rows: <PostgresRow>[
+              <String, Object?>{
+                'rollup_table': 'rollup_daypart',
+                'grain': 'daypart',
+                'last_processed_seq': 1042,
+                'last_run_status': 'leased',
+                'attempt_count': 0,
+                'lease_owner': 'host:1',
+                'leased_until': DateTime.utc(2026, 4, 28, 12, 5),
+              },
+            ],
+          ),
         ],
       );
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final snapshot = await worker.claimBatch(grain: RollupGrain.daypart);
 
       expect(snapshot, isNotNull);
@@ -727,34 +724,35 @@ void main() {
       expect(call.queries[1], contains('from public.aggregation_state'));
     });
 
-    test('claimBatch returns null when another worker holds the lease',
-        () async {
-      final fake = _FakeSystemRunner(
-        canned: <_CannedResponse>[
-          _CannedResponse(rows: <PostgresRow>[
-            <String, Object?>{'acquired': false},
-          ]),
-        ],
-      );
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
-      final snapshot = await worker.claimBatch(
-        grain: RollupGrain.businessDay,
-      );
-      expect(snapshot, isNull);
-      // Only the lease-take query ran; the state read was skipped.
-      expect(fake.calls.single.queries, hasLength(1));
-    });
+    test(
+      'claimBatch returns null when another worker holds the lease',
+      () async {
+        final fake = _FakeSystemRunner(
+          canned: <_CannedResponse>[
+            _CannedResponse(
+              rows: <PostgresRow>[
+                <String, Object?>{'acquired': false},
+              ],
+            ),
+          ],
+        );
+        final worker = RollupWorker(
+          runAsSystem: fake.run,
+          workerOwner: 'host:1',
+        );
+        final snapshot = await worker.claimBatch(
+          grain: RollupGrain.businessDay,
+        );
+        expect(snapshot, isNull);
+        // Only the lease-take query ran; the state read was skipped.
+        expect(fake.calls.single.queries, hasLength(1));
+      },
+    );
 
     test('flushBatch UPSERTs each row and advances last_processed_seq '
         'after success — Q3.6 idempotency', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_daypart',
@@ -777,10 +775,7 @@ void main() {
         businessDate: '2026-04-28',
         metricFamily: 'sales',
         dimensions: const <String, Object?>{'channel': 'in_house'},
-        metrics: const <String, Object?>{
-          'sum_sales': 12345.67,
-          'orders': 89,
-        },
+        metrics: const <String, Object?>{'sum_sales': 12345.67, 'orders': 89},
         sourceWatermarkSeq: 1050,
         sourceWatermarkAt: DateTime.utc(2026, 4, 28, 23),
         ruleVersion: 'v1',
@@ -807,7 +802,8 @@ void main() {
           'on conflict (operator_id, scoped_org_unit_id, location_id, '
           'period_start, daypart, metric_family, dimensions_fingerprint)',
         ),
-        reason: 'daypart UPSERT conflict target must include daypart '
+        reason:
+            'daypart UPSERT conflict target must include daypart '
             'because the unique index in 202604280010_b includes it',
       );
       // Watermark advance must come AFTER the UPSERT and pin the new
@@ -817,10 +813,7 @@ void main() {
       expect(advanceSql, contains('set last_processed_seq      = @new_seq'));
       expect(advanceSql, contains("last_run_status         = 'succeeded'"));
       expect(call.executeParams.last['new_seq'], equals(1050));
-      expect(
-        call.executeParams.last['rollup_table'],
-        equals('rollup_daypart'),
-      );
+      expect(call.executeParams.last['rollup_table'], equals('rollup_daypart'));
       // P1-2 CAS guards: watermark advance MUST filter on lease_owner,
       // expected prior watermark, and rebuild_in_progress = false so a
       // stale worker (whose lease expired mid-flight) cannot
@@ -837,9 +830,9 @@ void main() {
       // Dimensions / metrics flow through as serialized JSON (matches
       // event_outbox repository pattern; SQL casts back via ::jsonb).
       expect(call.executeParams.first['dimensions'], isA<String>());
-      final decoded = jsonDecode(
-        call.executeParams.first['dimensions'] as String,
-      ) as Map<String, Object?>;
+      final decoded =
+          jsonDecode(call.executeParams.first['dimensions'] as String)
+              as Map<String, Object?>;
       expect(decoded['channel'], equals('in_house'));
     });
 
@@ -858,10 +851,7 @@ void main() {
           return 1;
         },
       );
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_daypart',
@@ -892,17 +882,15 @@ void main() {
       );
       Object? thrown;
       try {
-        await worker.flushBatch(
-          batch: batch,
-          rows: <RollupUpsertRow>[row],
-        );
+        await worker.flushBatch(batch: batch, rows: <RollupUpsertRow>[row]);
       } catch (error) {
         thrown = error;
       }
       expect(
         thrown,
         isA<RollupLeaseLostException>(),
-        reason: 'lease-lost must surface as RollupLeaseLostException, '
+        reason:
+            'lease-lost must surface as RollupLeaseLostException, '
             'not a silent success',
       );
       // Acceptance: the exception carries enough context for the
@@ -916,10 +904,7 @@ void main() {
     test('flushBatch on a non-daypart grain omits the daypart column from '
         'the conflict target', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_business_day',
@@ -962,62 +947,62 @@ void main() {
       expect(
         upsertSql,
         isNot(contains('daypart')),
-        reason: 'non-daypart grains must NOT mention daypart in their '
+        reason:
+            'non-daypart grains must NOT mention daypart in their '
             'INSERT or conflict target',
       );
     });
 
-    test('flushBatch rejects mixed grains before opening a transaction',
-        () async {
-      final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
-      final batch = RollupBatchClaim(
-        state: const AggregationStateSnapshot(
-          rollupTable: 'rollup_daypart',
-          grain: RollupGrain.daypart,
-          lastProcessedSeq: 0,
-          lastRunStatus: 'leased',
-          attemptCount: 0,
-        ),
-        fromSeqExclusive: 0,
-        toSeqInclusive: 1,
-        maxRows: 100,
-      );
-      final wrongGrainRow = RollupUpsertRow(
-        grain: RollupGrain.week,
-        operatorId: _operatorAId,
-        scopedOrgUnitId: _orgUnitId,
-        periodStart: DateTime.utc(2026, 4, 27),
-        periodEnd: DateTime.utc(2026, 5, 4),
-        businessDate: '2026-04-27',
-        metricFamily: 'sales',
-        dimensions: const <String, Object?>{},
-        metrics: const <String, Object?>{},
-        sourceWatermarkSeq: 1,
-        sourceWatermarkAt: DateTime.utc(2026, 4, 28),
-        ruleVersion: 'v1',
-      );
-      await expectLater(
-        worker.flushBatch(
-          batch: batch,
-          rows: <RollupUpsertRow>[wrongGrainRow],
-        ),
-        throwsArgumentError,
-      );
-      // No transaction was opened — the guard fires before runAsSystem.
-      expect(fake.calls, isEmpty);
-    });
+    test(
+      'flushBatch rejects mixed grains before opening a transaction',
+      () async {
+        final fake = _FakeSystemRunner();
+        final worker = RollupWorker(
+          runAsSystem: fake.run,
+          workerOwner: 'host:1',
+        );
+        final batch = RollupBatchClaim(
+          state: const AggregationStateSnapshot(
+            rollupTable: 'rollup_daypart',
+            grain: RollupGrain.daypart,
+            lastProcessedSeq: 0,
+            lastRunStatus: 'leased',
+            attemptCount: 0,
+          ),
+          fromSeqExclusive: 0,
+          toSeqInclusive: 1,
+          maxRows: 100,
+        );
+        final wrongGrainRow = RollupUpsertRow(
+          grain: RollupGrain.week,
+          operatorId: _operatorAId,
+          scopedOrgUnitId: _orgUnitId,
+          periodStart: DateTime.utc(2026, 4, 27),
+          periodEnd: DateTime.utc(2026, 5, 4),
+          businessDate: '2026-04-27',
+          metricFamily: 'sales',
+          dimensions: const <String, Object?>{},
+          metrics: const <String, Object?>{},
+          sourceWatermarkSeq: 1,
+          sourceWatermarkAt: DateTime.utc(2026, 4, 28),
+          ruleVersion: 'v1',
+        );
+        await expectLater(
+          worker.flushBatch(
+            batch: batch,
+            rows: <RollupUpsertRow>[wrongGrainRow],
+          ),
+          throwsArgumentError,
+        );
+        // No transaction was opened — the guard fires before runAsSystem.
+        expect(fake.calls, isEmpty);
+      },
+    );
 
     test('flushBatch rejects rows.length > batch.maxRows before opening '
         'a transaction', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_business_day',
@@ -1070,10 +1055,7 @@ void main() {
     test('recordFailure stamps last_error/last_run_status WITHOUT '
         'advancing last_processed_seq (Q3.6 retry semantics)', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_business_day',
@@ -1103,7 +1085,8 @@ void main() {
       expect(
         failSql,
         isNot(contains('set last_processed_seq')),
-        reason: 'failure must NOT advance the watermark — re-run picks '
+        reason:
+            'failure must NOT advance the watermark — re-run picks '
             'up the same window per Q3.6',
       );
       // P1-2 CAS guards: lease_owner + rebuild_in_progress predicates
@@ -1125,10 +1108,7 @@ void main() {
         executeAffectedRows: (sql) =>
             sql.contains('update public.aggregation_state') ? 0 : 1,
       );
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_business_day',
@@ -1143,10 +1123,7 @@ void main() {
       );
       Object? thrown;
       try {
-        await worker.recordFailure(
-          batch: batch,
-          reason: 'aggregator threw',
-        );
+        await worker.recordFailure(batch: batch, reason: 'aggregator threw');
       } catch (error) {
         thrown = error;
       }
@@ -1159,10 +1136,7 @@ void main() {
 
     test('recordFailure rejects an empty reason', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       final batch = RollupBatchClaim(
         state: const AggregationStateSnapshot(
           rollupTable: 'rollup_week',
@@ -1182,44 +1156,42 @@ void main() {
       expect(fake.calls, isEmpty);
     });
 
-    test('markStale flips last_run_status to stale only for rows past the '
-        'staleness window AND not currently leased/rebuilding (Q3.7)',
-        () async {
-      final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
-      await worker.markStale(
-        grain: RollupGrain.daypart,
-        staleAfter: const Duration(seconds: 600),
-      );
-      final call = fake.calls.single;
-      final staleSql = call.executes.single;
-      expect(staleSql, contains('update public.aggregation_state'));
-      expect(staleSql, contains("set last_run_status = 'stale'"));
-      expect(
-        staleSql,
-        contains("last_run_status not in ('leased', 'rebuilding')"),
-      );
-      expect(
-        staleSql,
-        contains("updated_at < now() - (@stale_seconds * interval '1 second')"),
-      );
-      expect(call.executeParams.single['stale_seconds'], equals(600));
-    });
+    test(
+      'markStale flips last_run_status to stale only for rows past the '
+      'staleness window AND not currently leased/rebuilding (Q3.7)',
+      () async {
+        final fake = _FakeSystemRunner();
+        final worker = RollupWorker(
+          runAsSystem: fake.run,
+          workerOwner: 'host:1',
+        );
+        await worker.markStale(
+          grain: RollupGrain.daypart,
+          staleAfter: const Duration(seconds: 600),
+        );
+        final call = fake.calls.single;
+        final staleSql = call.executes.single;
+        expect(staleSql, contains('update public.aggregation_state'));
+        expect(staleSql, contains("set last_run_status = 'stale'"));
+        expect(
+          staleSql,
+          contains("last_run_status not in ('leased', 'rebuilding')"),
+        );
+        expect(
+          staleSql,
+          contains(
+            "updated_at < now() - (@stale_seconds * interval '1 second')",
+          ),
+        );
+        expect(call.executeParams.single['stale_seconds'], equals(600));
+      },
+    );
 
     test('markStale rejects a non-positive staleAfter', () async {
       final fake = _FakeSystemRunner();
-      final worker = RollupWorker(
-        runAsSystem: fake.run,
-        workerOwner: 'host:1',
-      );
+      final worker = RollupWorker(runAsSystem: fake.run, workerOwner: 'host:1');
       await expectLater(
-        worker.markStale(
-          grain: RollupGrain.daypart,
-          staleAfter: Duration.zero,
-        ),
+        worker.markStale(grain: RollupGrain.daypart, staleAfter: Duration.zero),
         throwsArgumentError,
       );
       expect(fake.calls, isEmpty);
@@ -1265,7 +1237,8 @@ void main() {
       expect(
         result.isClean,
         isTrue,
-        reason: 'every rollup_<grain>_per_tenant policy MUST read GUCs '
+        reason:
+            'every rollup_<grain>_per_tenant policy MUST read GUCs '
             'through the 9.0Σ.b wrappers; violations: '
             '${result.violations}',
       );
@@ -1352,9 +1325,7 @@ String _readSqlNormalized(String path) {
 /// rollup_acquire_lease declaration block) does not produce a
 /// false negative.
 String _extractFunctionBody(String sql, String functionName) {
-  final start = sql.indexOf(
-    'create or replace function public.$functionName(',
-  );
+  final start = sql.indexOf('create or replace function public.$functionName(');
   if (start < 0) {
     throw StateError(
       'function public.$functionName not found in migration body',
@@ -1443,7 +1414,7 @@ class _FakeExecutor implements PostgresExecutor {
   });
 
   final List<PostgresRow> Function(String sql, PostgresParameters params)
-      onQuery;
+  onQuery;
   final void Function(String sql, PostgresParameters params) onExecute;
   final int Function(String sql)? executeAffectedRows;
 

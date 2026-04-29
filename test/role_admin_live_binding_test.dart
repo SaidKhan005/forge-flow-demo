@@ -61,10 +61,7 @@ void main() {
       final sql = pool.transactions.single.executedSql.last;
       expect(sql, contains('from roles'));
       expect(sql, contains('deleted_at is null'));
-      expect(
-        sql,
-        contains('case when operator_id is null then 0 else 1 end'),
-      );
+      expect(sql, contains('case when operator_id is null then 0 else 1 end'));
     });
 
     test('insertOperatorRole inserts is_seeded=false + binds role_key + '
@@ -87,6 +84,62 @@ void main() {
       expect(tx.parameters.last['display_name'], equals('Kitchen Manager'));
     });
 
+    test(
+      'visibleRoleById filters by role_id and tenant-visible roles',
+      () async {
+        final pool = _RoleAdminPool(
+          roleRows: <PostgresRow>[
+            <String, Object?>{
+              'role_id': _validRoleId,
+              'operator_id': _validOpId,
+              'role_key': 'manager_kitchen',
+              'display_name': 'Kitchen Manager',
+              'description': '',
+              'is_seeded': false,
+              'is_editable': true,
+              'created_at': DateTime.utc(2026, 4, 26, 12),
+              'updated_at': DateTime.utc(2026, 4, 26, 12),
+              'deleted_at': null,
+            },
+          ],
+        );
+        final repo = RolesRepository(TenantTransactionWrapper(pool));
+        final role = await repo.visibleRoleById(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          roleId: _validRoleId,
+          actorUserId: _validUserId,
+        );
+        expect(role.roleKey, equals('manager_kitchen'));
+        final sql = pool.transactions.single.executedSql.last;
+        expect(sql, contains('where role_id = @role_id::uuid'));
+        expect(sql, contains('operator_id = @operator_id::uuid'));
+      },
+    );
+
+    test(
+      'updateOperatorRole only touches editable operator custom roles',
+      () async {
+        final pool = _RoleAdminPool();
+        final repo = RolesRepository(TenantTransactionWrapper(pool));
+        await repo.updateOperatorRole(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          updatedByUserId: _validUserId,
+          roleId: _validRoleId,
+          displayName: 'Kitchen Captain',
+          description: 'Owns kitchen handoff',
+        );
+        final tx = pool.transactions.single;
+        final sql = tx.executedSql.last;
+        expect(sql, contains('update roles'));
+        expect(sql, contains('operator_id = @operator_id::uuid'));
+        expect(sql, contains('is_seeded = false'));
+        expect(sql, contains('is_editable = true'));
+        expect(tx.parameters.last['display_name'], equals('Kitchen Captain'));
+      },
+    );
+
     test('softDeleteOperatorRole refuses when active grants exist', () async {
       final pool = _RoleAdminPool(
         returningRoleId: _validRoleId,
@@ -106,56 +159,62 @@ void main() {
       );
     });
 
-    test('softDeleteOperatorRole succeeds when no active grants exist',
-        () async {
-      final pool = _RoleAdminPool(returningRoleId: _validRoleId);
-      final repo = RolesRepository(TenantTransactionWrapper(pool));
-      await repo.softDeleteOperatorRole(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        updatedByUserId: _validUserId,
-        roleId: _validRoleId,
-      );
-      final tx = pool.transactions.single;
-      // Last executed SQL is the UPDATE.
-      expect(tx.executedSql.last, contains('update roles'));
-      expect(tx.executedSql.last, contains('deleted_at = now()'));
-    });
+    test(
+      'softDeleteOperatorRole succeeds when no active grants exist',
+      () async {
+        final pool = _RoleAdminPool(returningRoleId: _validRoleId);
+        final repo = RolesRepository(TenantTransactionWrapper(pool));
+        await repo.softDeleteOperatorRole(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          updatedByUserId: _validUserId,
+          roleId: _validRoleId,
+        );
+        final tx = pool.transactions.single;
+        // Last executed SQL is the UPDATE.
+        expect(tx.executedSql.last, contains('update roles'));
+        expect(tx.executedSql.last, contains('deleted_at = now()'));
+      },
+    );
   });
 
   group('RolePermissionsRepository (B17 — fake Postgres)', () {
-    test('listForRole filters by role_id and orders by permission_key',
-        () async {
-      final pool = _RoleAdminPool(returningRoleId: _validRoleId);
-      final repo = RolePermissionsRepository(TenantTransactionWrapper(pool));
-      await repo.listForRole(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        roleId: _validRoleId,
-      );
-      final sql = pool.transactions.single.executedSql.last;
-      expect(sql, contains('from role_permissions'));
-      expect(sql, contains('where role_id = @role_id'));
-      expect(sql, contains('order by permission_key'));
-    });
+    test(
+      'listForRole filters by role_id and orders by permission_key',
+      () async {
+        final pool = _RoleAdminPool(returningRoleId: _validRoleId);
+        final repo = RolePermissionsRepository(TenantTransactionWrapper(pool));
+        await repo.listForRole(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          roleId: _validRoleId,
+        );
+        final sql = pool.transactions.single.executedSql.last;
+        expect(sql, contains('from role_permissions'));
+        expect(sql, contains('where role_id = @role_id'));
+        expect(sql, contains('order by permission_key'));
+      },
+    );
 
-    test('upsertCell uses ON CONFLICT (role_id, permission_key) DO UPDATE',
-        () async {
-      final pool = _RoleAdminPool(returningRoleId: _validRoleId);
-      final repo = RolePermissionsRepository(TenantTransactionWrapper(pool));
-      await repo.upsertCell(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        updatedByUserId: _validUserId,
-        roleId: _validRoleId,
-        permissionKey: 'team.users.invite',
-        effect: 'allow',
-      );
-      final sql = pool.transactions.single.executedSql.last;
-      expect(sql, contains('on conflict (role_id, permission_key)'));
-      expect(sql, contains('do update'));
-      expect(sql, contains('set effect = excluded.effect'));
-    });
+    test(
+      'upsertCell uses ON CONFLICT (role_id, permission_key) DO UPDATE',
+      () async {
+        final pool = _RoleAdminPool(returningRoleId: _validRoleId);
+        final repo = RolePermissionsRepository(TenantTransactionWrapper(pool));
+        await repo.upsertCell(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          updatedByUserId: _validUserId,
+          roleId: _validRoleId,
+          permissionKey: 'team.users.invite',
+          effect: 'allow',
+        );
+        final sql = pool.transactions.single.executedSql.last;
+        expect(sql, contains('on conflict (role_id, permission_key)'));
+        expect(sql, contains('do update'));
+        expect(sql, contains('set effect = excluded.effect'));
+      },
+    );
 
     test('upsertCell rejects effects other than allow/deny', () async {
       final pool = _RoleAdminPool(returningRoleId: _validRoleId);
@@ -312,53 +371,57 @@ void main() {
       );
     });
 
-    test('revokeGrant bumps roles_version only when a row was affected',
-        () async {
-      final pool = _RoleAdminPool(
-        returningUserRoleId: _validUserRoleId,
-        revokeAffectedRows: 0,
-      );
-      final repo = UserRolesRepository(TenantTransactionWrapper(pool));
-      await repo.revokeGrant(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        actorUserId: _validUserId,
-        userRoleId: _validUserRoleId,
-        targetUserId: '99999999-9999-9999-9999-999999999999',
-      );
-      final tx = pool.transactions.single;
-      // UPDATE user_roles ran but UPDATE users.roles_version did NOT.
-      expect(
-        tx.executedSql.any((sql) => sql.contains('update user_roles')),
-        isTrue,
-      );
-      expect(
-        tx.executedSql.any((sql) => sql.contains('roles_version + 1')),
-        isFalse,
-      );
-    });
+    test(
+      'revokeGrant bumps roles_version only when a row was affected',
+      () async {
+        final pool = _RoleAdminPool(
+          returningUserRoleId: _validUserRoleId,
+          revokeAffectedRows: 0,
+        );
+        final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+        await repo.revokeGrant(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+          userRoleId: _validUserRoleId,
+          targetUserId: '99999999-9999-9999-9999-999999999999',
+        );
+        final tx = pool.transactions.single;
+        // UPDATE user_roles ran but UPDATE users.roles_version did NOT.
+        expect(
+          tx.executedSql.any((sql) => sql.contains('update user_roles')),
+          isTrue,
+        );
+        expect(
+          tx.executedSql.any((sql) => sql.contains('roles_version + 1')),
+          isFalse,
+        );
+      },
+    );
 
-    test('revokeGrant DOES bump roles_version when a row was affected',
-        () async {
-      final pool = _RoleAdminPool(
-        returningUserRoleId: _validUserRoleId,
-        revokeAffectedRows: 1,
-      );
-      final repo = UserRolesRepository(TenantTransactionWrapper(pool));
-      await repo.revokeGrant(
-        operatorId: _validOpId,
-        locationId: _validLocId,
-        actorUserId: _validUserId,
-        userRoleId: _validUserRoleId,
-        targetUserId: '99999999-9999-9999-9999-999999999999',
-      );
-      expect(
-        pool.transactions.single.executedSql.any(
-          (sql) => sql.contains('roles_version + 1'),
-        ),
-        isTrue,
-      );
-    });
+    test(
+      'revokeGrant DOES bump roles_version when a row was affected',
+      () async {
+        final pool = _RoleAdminPool(
+          returningUserRoleId: _validUserRoleId,
+          revokeAffectedRows: 1,
+        );
+        final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+        await repo.revokeGrant(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+          userRoleId: _validUserRoleId,
+          targetUserId: '99999999-9999-9999-9999-999999999999',
+        );
+        expect(
+          pool.transactions.single.executedSql.any(
+            (sql) => sql.contains('roles_version + 1'),
+          ),
+          isTrue,
+        );
+      },
+    );
 
     test('activeGrantsForUser filters by revoked_at + valid_until + '
         'valid_from', () async {
@@ -393,6 +456,26 @@ void main() {
       expect(sql, contains('valid_until is null or valid_until > now()'));
       expect(sql, contains('valid_from <= now()'));
     });
+
+    test(
+      'bumpActiveGrantHoldersForRole bumps users via active role grants',
+      () async {
+        final pool = _RoleAdminPool();
+        final repo = UserRolesRepository(TenantTransactionWrapper(pool));
+        await repo.bumpActiveGrantHoldersForRole(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+          roleId: _validRoleId,
+        );
+        final tx = pool.transactions.single;
+        final sql = tx.executedSql.last;
+        expect(sql, contains('update users'));
+        expect(sql, contains('roles_version = roles_version + 1'));
+        expect(sql, contains('exists ('));
+        expect(sql, contains('user_roles.role_id = @role_id::uuid'));
+      },
+    );
   });
 
   group('ProxyAdminPermissionGuard (B19)', () {
@@ -400,22 +483,24 @@ void main() {
     final freshAt = fixedNow.subtract(const Duration(minutes: 1));
     final staleAt = fixedNow.subtract(const Duration(minutes: 10));
 
-    test('ScaffoldFailingProxyAdminPermissionGuard throws on every call',
-        () async {
-      const guard = ScaffoldFailingProxyAdminPermissionGuard();
-      await expectLater(
-        guard.evaluate(
-          ProxyAdminGuardContext(
-            actorUserId: _validUserId,
-            operatorId: _validOpId,
-            locationId: _validLocId,
-            lastFreshAuthAt: freshAt,
-            requestedPermissionKey: 'team.users.view',
+    test(
+      'ScaffoldFailingProxyAdminPermissionGuard throws on every call',
+      () async {
+        const guard = ScaffoldFailingProxyAdminPermissionGuard();
+        await expectLater(
+          guard.evaluate(
+            ProxyAdminGuardContext(
+              actorUserId: _validUserId,
+              operatorId: _validOpId,
+              locationId: _validLocId,
+              lastFreshAuthAt: freshAt,
+              requestedPermissionKey: 'team.users.view',
+            ),
           ),
-        ),
-        throwsStateError,
-      );
-    });
+          throwsStateError,
+        );
+      },
+    );
 
     test('default deny when no entry exists for (user, key)', () async {
       final guard = InMemoryProxyAdminPermissionGuard(
@@ -493,27 +578,29 @@ void main() {
       expect(decision, isA<ProxyAdminMfaStaleAuth>());
     });
 
-    test('reCAPTCHA-protected key + reject outcome -> ProxyAdminRejected',
-        () async {
-      final guard = InMemoryProxyAdminPermissionGuard(
-        permissionEffects: <String, PermissionEffect>{
-          '$_validUserId|team.users.view': PermissionEffect.allow,
-        },
-        recaptchaProtectedKeys: const <String>{'team.users.view'},
-        now: () => fixedNow,
-      );
-      final decision = await guard.evaluate(
-        ProxyAdminGuardContext(
-          actorUserId: _validUserId,
-          operatorId: _validOpId,
-          locationId: _validLocId,
-          lastFreshAuthAt: freshAt,
-          requestedPermissionKey: 'team.users.view',
-          recaptchaOutcome: ProxyAdminGuardRecaptcha.reject,
-        ),
-      );
-      expect(decision, isA<ProxyAdminRejected>());
-    });
+    test(
+      'reCAPTCHA-protected key + reject outcome -> ProxyAdminRejected',
+      () async {
+        final guard = InMemoryProxyAdminPermissionGuard(
+          permissionEffects: <String, PermissionEffect>{
+            '$_validUserId|team.users.view': PermissionEffect.allow,
+          },
+          recaptchaProtectedKeys: const <String>{'team.users.view'},
+          now: () => fixedNow,
+        );
+        final decision = await guard.evaluate(
+          ProxyAdminGuardContext(
+            actorUserId: _validUserId,
+            operatorId: _validOpId,
+            locationId: _validLocId,
+            lastFreshAuthAt: freshAt,
+            requestedPermissionKey: 'team.users.view',
+            recaptchaOutcome: ProxyAdminGuardRecaptcha.reject,
+          ),
+        );
+        expect(decision, isA<ProxyAdminRejected>());
+      },
+    );
 
     test('reCAPTCHA-protected key + challenge outcome -> '
         'ProxyAdminChallengeRequired', () async {

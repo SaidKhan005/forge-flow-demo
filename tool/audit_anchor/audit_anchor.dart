@@ -136,10 +136,7 @@ class AuditChainAnchor {
 
 /// One unanchored completed chain identified by the sweep query.
 class AuditChainSummary {
-  const AuditChainSummary({
-    required this.operatorId,
-    required this.chainDate,
-  });
+  const AuditChainSummary({required this.operatorId, required this.chainDate});
 
   final String operatorId;
   final DateTime chainDate;
@@ -157,11 +154,11 @@ class AuditChainHasher {
   /// Canonical preimage bytes for `row`. Layout matches the SQL
   /// trigger:
   ///
-  ///   operator_id || \x00 || location_id || \x00 || chain_date ||
-  ///   \x00 || occurred_at_utc_iso_micros || \x00 || actor_kind ||
-  ///   \x00 || actor_user_id || \x00 || actor_principal_id || \x00 ||
-  ///   target_kind || \x00 || target_id || \x00 || action || \x00 ||
-  ///   payload::text || \x00
+  ///   operator_id || \x1F || location_id || \x1F || chain_date ||
+  ///   \x1F || occurred_at_utc_iso_micros || \x1F || actor_kind ||
+  ///   \x1F || actor_user_id || \x1F || actor_principal_id || \x1F ||
+  ///   target_kind || \x1F || target_id || \x1F || action || \x1F ||
+  ///   payload::text || \x1F
   ///
   /// NULL columns collapse to empty strings; the verifier reproduces
   /// the same bytes regardless of the driver's NULL representation.
@@ -169,7 +166,7 @@ class AuditChainHasher {
     final buffer = StringBuffer();
     void writeField(String value) {
       buffer.write(value);
-      buffer.writeCharCode(0);
+      buffer.writeCharCode(0x1f);
     }
 
     writeField(row.operatorId);
@@ -209,21 +206,25 @@ class AuditChainHasher {
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
       if (!_byteEquals(row.prevRowHash, expectedPrev)) {
-        violations.add(ChainHashViolation(
-          rowId: row.id,
-          kind: ChainHashViolationKind.prevHashMismatch,
-          expected: expectedPrev,
-          actual: row.prevRowHash,
-        ));
+        violations.add(
+          ChainHashViolation(
+            rowId: row.id,
+            kind: ChainHashViolationKind.prevHashMismatch,
+            expected: expectedPrev,
+            actual: row.prevRowHash,
+          ),
+        );
       }
       final recomputed = recomputeRowHash(row);
       if (!_byteEquals(row.rowHash, recomputed)) {
-        violations.add(ChainHashViolation(
-          rowId: row.id,
-          kind: ChainHashViolationKind.rowHashMismatch,
-          expected: recomputed,
-          actual: row.rowHash,
-        ));
+        violations.add(
+          ChainHashViolation(
+            rowId: row.id,
+            kind: ChainHashViolationKind.rowHashMismatch,
+            expected: recomputed,
+            actual: row.rowHash,
+          ),
+        );
       }
       expectedPrev = row.rowHash;
     }
@@ -421,9 +422,7 @@ class AuditAnchorEnvNames {
     azureBlobEndpoint,
   ];
 
-  static const List<String> optional = <String>[
-    postgresAdminUrl,
-  ];
+  static const List<String> optional = <String>[postgresAdminUrl];
 }
 
 /// Thrown by the production wiring when a required env var is missing.
@@ -443,8 +442,7 @@ class AuditAnchorConfigError implements Exception {
 /// Production-default Blob client. Throws on every call so the CLI
 /// fails closed when live Azure wiring has not landed yet. Pattern
 /// matches `ScaffoldRejectingProxyLlmProvider` in `tool/advisor_proxy/`.
-class ScaffoldRejectingAuditAnchorBlobClient
-    implements AuditAnchorBlobClient {
+class ScaffoldRejectingAuditAnchorBlobClient implements AuditAnchorBlobClient {
   const ScaffoldRejectingAuditAnchorBlobClient();
 
   static const String _msg =
@@ -533,19 +531,19 @@ class PostgresAuditChainReader implements AuditChainReader {
     required TenantTransactionWrapper wrapper,
     required String defaultLocationId,
     required String defaultUserId,
-  })  : _wrapper = wrapper,
-        _defaultLocationId = defaultLocationId,
-        _defaultUserId = defaultUserId;
+  }) : _wrapper = wrapper,
+       _defaultLocationId = defaultLocationId,
+       _defaultUserId = defaultUserId;
 
   final TenantTransactionWrapper _wrapper;
   final String _defaultLocationId;
   final String _defaultUserId;
 
   TenantContext _ctx(String operatorId) => TenantContext(
-        operatorId: operatorId,
-        locationId: _defaultLocationId,
-        userId: _defaultUserId,
-      );
+    operatorId: operatorId,
+    locationId: _defaultLocationId,
+    userId: _defaultUserId,
+  );
 
   @override
   Future<List<AuditChainSummary>> findUnanchoredCompletedChains({
@@ -587,31 +585,28 @@ class PostgresAuditChainReader implements AuditChainReader {
     required String operatorId,
     required DateTime chainDate,
   }) {
-    return _wrapper.runInTenantContext<List<AuditLogRow>>(
-      _ctx(operatorId),
-      (exec) async {
-        final rows = await exec.query(
-          'select id::text as id, operator_id::text as operator_id, '
-          '       location_id::text as location_id, chain_date, '
-          '       occurred_at, actor_kind, '
-          '       actor_user_id::text as actor_user_id, '
-          '       actor_principal_id, target_kind, target_id, '
-          '       action, payload::text as payload_text, '
-          '       prev_row_hash, row_hash '
-          '  from audit_logs '
-          ' where operator_id = @operator_id::uuid '
-          '   and chain_date  = @chain_date::date '
-          ' order by id',
-          parameters: <String, Object?>{
-            'operator_id': operatorId,
-            'chain_date': _formatChainDate(chainDate),
-          },
-        );
-        return <AuditLogRow>[
-          for (final row in rows) _coerceRow(row),
-        ];
-      },
-    );
+    return _wrapper.runInTenantContext<List<AuditLogRow>>(_ctx(operatorId), (
+      exec,
+    ) async {
+      final rows = await exec.query(
+        'select id::text as id, operator_id::text as operator_id, '
+        '       location_id::text as location_id, chain_date, '
+        '       occurred_at, actor_kind, '
+        '       actor_user_id::text as actor_user_id, '
+        '       actor_principal_id, target_kind, target_id, '
+        '       action, payload::text as payload_text, '
+        '       prev_row_hash, row_hash '
+        '  from audit_logs '
+        ' where operator_id = @operator_id::uuid '
+        '   and chain_date  = @chain_date::date '
+        ' order by id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'chain_date': _formatChainDate(chainDate),
+        },
+      );
+      return <AuditLogRow>[for (final row in rows) _coerceRow(row)];
+    });
   }
 
   @override
@@ -619,38 +614,36 @@ class PostgresAuditChainReader implements AuditChainReader {
     required String operatorId,
     required DateTime chainDate,
   }) {
-    return _wrapper.runInTenantContext<AuditChainAnchor?>(
-      _ctx(operatorId),
-      (exec) async {
-        final rows = await exec.query(
-          'select operator_id::text as operator_id, chain_date, '
-          '       terminal_row_hash, terminal_row_id::text as '
-          '       terminal_row_id, row_count::text as row_count, '
-          '       blob_uri, blob_etag, anchored_at '
-          '  from audit_chain_anchors '
-          ' where operator_id = @operator_id::uuid '
-          '   and chain_date  = @chain_date::date '
-          ' limit 1',
-          parameters: <String, Object?>{
-            'operator_id': operatorId,
-            'chain_date': _formatChainDate(chainDate),
-          },
-        );
-        if (rows.isEmpty) return null;
-        final row = rows.first;
-        return AuditChainAnchor(
-          operatorId: row['operator_id']! as String,
-          chainDate: _coerceUtcDate(row['chain_date']),
-          terminalRowHash:
-              _coerceBytes(row['terminal_row_hash'])!,
-          terminalRowId: BigInt.parse(row['terminal_row_id']! as String),
-          rowCount: BigInt.parse(row['row_count']! as String),
-          blobUri: row['blob_uri']! as String,
-          blobEtag: row['blob_etag']! as String,
-          anchoredAt: (row['anchored_at']! as DateTime).toUtc(),
-        );
-      },
-    );
+    return _wrapper.runInTenantContext<AuditChainAnchor?>(_ctx(operatorId), (
+      exec,
+    ) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, chain_date, '
+        '       terminal_row_hash, terminal_row_id::text as '
+        '       terminal_row_id, row_count::text as row_count, '
+        '       blob_uri, blob_etag, anchored_at '
+        '  from audit_chain_anchors '
+        ' where operator_id = @operator_id::uuid '
+        '   and chain_date  = @chain_date::date '
+        ' limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'chain_date': _formatChainDate(chainDate),
+        },
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.first;
+      return AuditChainAnchor(
+        operatorId: row['operator_id']! as String,
+        chainDate: _coerceUtcDate(row['chain_date']),
+        terminalRowHash: _coerceBytes(row['terminal_row_hash'])!,
+        terminalRowId: BigInt.parse(row['terminal_row_id']! as String),
+        rowCount: BigInt.parse(row['row_count']! as String),
+        blobUri: row['blob_uri']! as String,
+        blobEtag: row['blob_etag']! as String,
+        anchoredAt: (row['anchored_at']! as DateTime).toUtc(),
+      );
+    });
   }
 }
 
@@ -662,9 +655,9 @@ class PostgresAuditChainAnchorWriter implements AuditChainAnchorWriter {
     required TenantTransactionWrapper wrapper,
     required String defaultLocationId,
     required String defaultUserId,
-  })  : _wrapper = wrapper,
-        _defaultLocationId = defaultLocationId,
-        _defaultUserId = defaultUserId;
+  }) : _wrapper = wrapper,
+       _defaultLocationId = defaultLocationId,
+       _defaultUserId = defaultUserId;
 
   final TenantTransactionWrapper _wrapper;
   final String _defaultLocationId;
@@ -806,12 +799,12 @@ class AuditAnchorOrchestrator {
     required String containerName,
     AuditChainHasher hasher = const AuditChainHasher(),
     AnchorEvidenceCodec codec = const AnchorEvidenceCodec(),
-  })  : _reader = reader,
-        _anchorWriter = anchorWriter,
-        _blobClient = blobClient,
-        _containerName = containerName,
-        _hasher = hasher,
-        _codec = codec;
+  }) : _reader = reader,
+       _anchorWriter = anchorWriter,
+       _blobClient = blobClient,
+       _containerName = containerName,
+       _hasher = hasher,
+       _codec = codec;
 
   final AuditChainReader _reader;
   final AuditChainAnchorWriter _anchorWriter;
@@ -921,8 +914,7 @@ class AuditAnchorOrchestrator {
         chainDate: chainDate,
         outcome: VerifyOutcome.chainHashMismatch,
         violations: violations,
-        message:
-            'in-DB chain failed self-verification; escalate per runbook',
+        message: 'in-DB chain failed self-verification; escalate per runbook',
       );
     }
     final anchor = await _reader.readAnchor(
@@ -944,7 +936,8 @@ class AuditAnchorOrchestrator {
         operatorId: operatorId,
         chainDate: chainDate,
         outcome: VerifyOutcome.anchorTerminalMismatch,
-        message: 'anchor terminal_row_hash does not match in-DB '
+        message:
+            'anchor terminal_row_hash does not match in-DB '
             'chain terminal hash',
       );
     }
@@ -1024,8 +1017,7 @@ class AuditAnchorOrchestrator {
       return 'Blob evidence operator_id (${evidence.operatorId}) does '
           'not match requested operator_id ($requestedOperatorId)';
     }
-    if (evidence.operatorId.toLowerCase() !=
-        anchor.operatorId.toLowerCase()) {
+    if (evidence.operatorId.toLowerCase() != anchor.operatorId.toLowerCase()) {
       return 'Blob evidence operator_id (${evidence.operatorId}) does '
           'not match audit_chain_anchors.operator_id '
           '(${anchor.operatorId})';
@@ -1056,8 +1048,8 @@ class AuditAnchorOrchestrator {
           'match audit_chain_anchors.row_count (${anchor.rowCount})';
     }
     if (!evidence.anchoredAt.toUtc().isAtSameMomentAs(
-          anchor.anchoredAt.toUtc(),
-        )) {
+      anchor.anchoredAt.toUtc(),
+    )) {
       return 'Blob evidence anchored_at '
           '(${evidence.anchoredAt.toIso8601String()}) does not match '
           'audit_chain_anchors.anchored_at '

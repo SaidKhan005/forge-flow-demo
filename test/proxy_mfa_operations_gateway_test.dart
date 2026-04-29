@@ -168,6 +168,14 @@ class _FakeMfaHttpClient implements ProxyAuthOperationsHttpClient {
   final posts = <_CapturedMfaCall>[];
 
   @override
+  Future<ProxyAuthOperationsResponse> getJson({
+    required Uri url,
+    required Map<String, String> headers,
+  }) {
+    throw StateError('not used');
+  }
+
+  @override
   Future<ProxyAuthOperationsResponse> postJson({
     required Uri url,
     required Map<String, String> headers,
@@ -175,6 +183,15 @@ class _FakeMfaHttpClient implements ProxyAuthOperationsHttpClient {
   }) async {
     posts.add(_CapturedMfaCall(url, headers, body));
     return response;
+  }
+
+  @override
+  Future<ProxyAuthOperationsResponse> patchJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) {
+    throw StateError('not used');
   }
 
   @override

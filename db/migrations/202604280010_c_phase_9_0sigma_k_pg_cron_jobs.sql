@@ -58,15 +58,21 @@
 
 begin;
 
--- ─── pg_cron extension ─────────────────────────────────────────────
+-- ─── pg_cron topology ─────────────────────────────────────────────
 --
--- pg_cron lives in the `cron` schema by default on Azure DB
--- Flexible Server PG 16 (CLAUDE.md Proxy & API Conventions). The
--- migration role on staging + Production1 has `CREATE EXTENSION`
--- privilege; if the extension is already enabled (the staging
--- bootstrap script enables it), the IF NOT EXISTS is a no-op.
-
-create extension if not exists pg_cron;
+-- Azure DB Flexible Server keeps pg_cron metadata in the database named by
+-- the server parameter `cron.database_name` (currently `postgres` on staging
+-- and Production1). This migration is applied to the application database
+-- (`forgeflow`), so it creates the SQL functions the jobs will call but does
+-- not attempt `create extension pg_cron` here. The live apply runbook schedules
+-- from the `postgres` maintenance database with:
+--
+--   cron.schedule_in_database(
+--     job_name, schedule, command, 'forgeflow'
+--   )
+--
+-- Keeping function creation and schedule registration split avoids changing
+-- `cron.database_name`, which is restart-bound on Azure.
 
 -- ─── Function: rollup_acquire_lease ────────────────────────────────
 --
@@ -246,19 +252,24 @@ grant execute on function public.rollup_run_cold_path() to forge_admin;
 -- migration on a host where the schedule already exists is a clean
 -- no-op rather than a hard error.
 --
--- Schedule literals match Q3.1 wording exactly: `'60 seconds'` for
--- the hot path and `'300 seconds'` for the cold path. pg_cron 1.5+
--- supports the seconds-interval syntax used here; the Azure DB
--- Flexible Server PG 16 host (CLAUDE.md Proxy & API Conventions)
--- ships with pg_cron 1.6+ so the syntax is safe. The CLI command
--- string ends in `;` because pg_cron concatenates a wrapper around
--- the supplied SQL and the trailing semicolon makes the final form
--- a complete statement.
+-- Azure Flexible Server rejected pg_cron's seconds-interval literals during
+-- live apply, so the schedule uses standard cron equivalents: every minute
+-- for the hot path and every five minutes for the cold path. The command
+-- string ends in `;` because pg_cron concatenates a wrapper around the
+-- supplied SQL and the trailing semicolon makes the final form a complete
+-- statement.
 
 do $$
 declare
   v_jobid bigint;
 begin
+  if to_regnamespace('cron') is null
+     or to_regclass('cron.job') is null then
+    raise notice
+      'pg_cron metadata is not in this database; schedule from cron.database_name with cron.schedule_in_database(..., ''forgeflow'')';
+    return;
+  end if;
+
   -- Hot path — daypart + business_day every 60s.
   for v_jobid in
     select jobid from cron.job where jobname = 'forge_rollup_hot_path'
@@ -267,7 +278,7 @@ begin
   end loop;
   perform cron.schedule(
     'forge_rollup_hot_path',
-    '60 seconds',
+    '* * * * *',
     'select public.rollup_run_hot_path();'
   );
 
@@ -279,7 +290,7 @@ begin
   end loop;
   perform cron.schedule(
     'forge_rollup_cold_path',
-    '300 seconds',
+    '*/5 * * * *',
     'select public.rollup_run_cold_path();'
   );
 end$$;

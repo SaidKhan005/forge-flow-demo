@@ -173,6 +173,9 @@ for each row execute function public.cloud_foundation_set_updated_at();
 
 alter table public.service_principals enable row level security;
 
+drop policy if exists "service_principals_per_tenant"
+  on public.service_principals;
+
 create policy "service_principals_per_tenant"
   on public.service_principals for all to service_role
   using (operator_id = public.app_current_operator())

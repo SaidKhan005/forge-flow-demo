@@ -57,10 +57,7 @@ void main() {
         contains('create table if not exists public.audit_logs'),
       );
       expect(migrationSql, contains('id bigserial'));
-      expect(
-        migrationSql,
-        contains('operator_id uuid not null'),
-      );
+      expect(migrationSql, contains('operator_id uuid not null'));
       expect(migrationSql, contains('location_id uuid null'));
       expect(migrationSql, contains('chain_date date not null'));
       expect(
@@ -96,10 +93,7 @@ void main() {
         migrationSql,
         contains('primary key (operator_id, chain_date, id)'),
       );
-      expect(
-        migrationSql,
-        contains('partition by range (chain_date)'),
-      );
+      expect(migrationSql, contains('partition by range (chain_date)'));
       // No TIMESTAMP WITHOUT TIME ZONE anywhere.
       expect(
         migrationSql.toLowerCase(),
@@ -112,30 +106,12 @@ void main() {
       // The SQL CHECK is a single-line OR pair; the test asserts both
       // arms appear so a future contributor cannot relax one half
       // without the other.
-      expect(
-        migrationSql,
-        contains('actor_kind = \'user\''),
-      );
-      expect(
-        migrationSql,
-        contains('actor_user_id is not null'),
-      );
-      expect(
-        migrationSql,
-        contains('actor_principal_id is null'),
-      );
-      expect(
-        migrationSql,
-        contains('actor_kind = \'service\''),
-      );
-      expect(
-        migrationSql,
-        contains('actor_principal_id is not null'),
-      );
-      expect(
-        migrationSql,
-        contains('actor_user_id is null'),
-      );
+      expect(migrationSql, contains('actor_kind = \'user\''));
+      expect(migrationSql, contains('actor_user_id is not null'));
+      expect(migrationSql, contains('actor_principal_id is null'));
+      expect(migrationSql, contains('actor_kind = \'service\''));
+      expect(migrationSql, contains('actor_principal_id is not null'));
+      expect(migrationSql, contains('actor_user_id is null'));
     });
 
     test('chain_date is constrained to match occurred_at UTC date '
@@ -147,9 +123,7 @@ void main() {
       );
       expect(
         migrationSql,
-        contains(
-          "chain_date = (occurred_at at time zone 'UTC')::date",
-        ),
+        contains("chain_date = (occurred_at at time zone 'UTC')::date"),
       );
     });
 
@@ -162,42 +136,26 @@ void main() {
         contains('create or replace function public.audit_logs_set_chain()'),
       );
       // Advisory-lock on operator + chain_date (NOT a global chain).
+      expect(migrationSql, contains('pg_advisory_xact_lock'));
       expect(
         migrationSql,
-        contains('pg_advisory_xact_lock'),
-      );
-      expect(
-        migrationSql,
-        contains(
-          "new.operator_id::text || ':' || new.chain_date::text",
-        ),
+        contains("new.operator_id::text || ':' || new.chain_date::text"),
       );
       // Previous-row lookup IS scoped to (operator_id, chain_date).
-      expect(
-        migrationSql,
-        contains('where operator_id = new.operator_id'),
-      );
-      expect(
-        migrationSql,
-        contains('and chain_date  = new.chain_date'),
-      );
+      expect(migrationSql, contains('where operator_id = new.operator_id'));
+      expect(migrationSql, contains('and chain_date  = new.chain_date'));
       expect(migrationSql, contains('order by id desc'));
       expect(migrationSql, contains('limit 1'));
       // Hash composition matches the locked formula:
       //   row_hash = digest(coalesce(prev,''::bytea) || canonical, 'sha256').
       expect(
         migrationSql,
-        contains(
-          "coalesce(new.prev_row_hash, ''::bytea) || canonical",
-        ),
+        contains("coalesce(new.prev_row_hash, ''::bytea) || canonical"),
       );
       expect(migrationSql, contains("'sha256'"));
       // Trigger is BEFORE INSERT FOR EACH ROW (only point a producer
       // cannot bypass).
-      expect(
-        migrationSql,
-        contains('before insert on public.audit_logs'),
-      );
+      expect(migrationSql, contains('before insert on public.audit_logs'));
       expect(
         migrationSql,
         contains('execute function public.audit_logs_set_chain()'),
@@ -217,55 +175,45 @@ void main() {
       // Live result 2026-04-26: Azure installed pg_partman into the
       // public schema, so partman.create_parent / partman.part_config
       // would fail at apply time.
-      expect(
-        migrationSql,
-        contains('from public.part_config'),
-      );
-      expect(
-        migrationSql,
-        contains('public.create_parent'),
-      );
+      expect(migrationSql, contains('from public.part_config'));
+      expect(migrationSql, contains('public.create_parent'));
       expect(
         migrationSql.toLowerCase(),
         isNot(contains('partman.create_parent')),
-        reason: 'partman.create_parent is the wrong schema on Azure; '
+        reason:
+            'partman.create_parent is the wrong schema on Azure; '
             'use public.create_parent (live-verified 2026-04-26)',
       );
       expect(
         migrationSql.toLowerCase(),
         isNot(contains('partman.part_config')),
-        reason: 'partman.part_config is the wrong schema on Azure; '
+        reason:
+            'partman.part_config is the wrong schema on Azure; '
             'use public.part_config (live-verified 2026-04-26)',
       );
       // Verified argument shape from the audit script.
-      expect(
-        migrationSql,
-        contains("p_parent_table  := 'public.audit_logs'"),
-      );
-      expect(
-        migrationSql,
-        contains("p_control       := 'chain_date'"),
-      );
+      expect(migrationSql, contains("p_parent_table  := 'public.audit_logs'"));
+      expect(migrationSql, contains("p_control       := 'chain_date'"));
       expect(
         migrationSql,
         contains("p_interval      := '1 day'"),
-        reason: 'pg_partman v5 takes a Postgres interval expression, '
+        reason:
+            'pg_partman v5 takes a Postgres interval expression, '
             'not the legacy v4 keyword',
       );
-      expect(
-        migrationSql,
-        contains('p_premake       := 7'),
-      );
+      expect(migrationSql, contains('p_premake       := 7'));
       expect(
         migrationSql,
         contains('p_default_table := false'),
-        reason: 'matches the verified usage_logs registration in '
+        reason:
+            'matches the verified usage_logs registration in '
             'db/verification/202604250006_..._audits.sql',
       );
       expect(
         migrationSql,
         contains('p_jobmon        := false'),
-        reason: 'matches the verified usage_logs registration; pg_jobmon '
+        reason:
+            'matches the verified usage_logs registration; pg_jobmon '
             'is not present on Azure',
       );
       // Maintenance intent (run_maintenance, not partman.run_maintenance).
@@ -278,10 +226,7 @@ void main() {
       expect(migrationSql, contains('update public.part_config'));
       expect(migrationSql, contains('premake                  = 7'));
       expect(migrationSql, contains('retention_keep_table     = true'));
-      expect(
-        migrationSql,
-        contains('infinite_time_partitions = true'),
-      );
+      expect(migrationSql, contains('infinite_time_partitions = true'));
     });
 
     test('tenant-leading indexes for chain, actor, target, and time '
@@ -326,9 +271,7 @@ void main() {
         'current_setting (item 4)', () {
       expect(
         migrationSql,
-        contains(
-          'alter table public.audit_logs enable row level security',
-        ),
+        contains('alter table public.audit_logs enable row level security'),
       );
       expect(
         migrationSql,
@@ -356,24 +299,19 @@ void main() {
       for (final role in <String>['service_role', 'forge_admin']) {
         expect(
           migrationSql,
-          contains(
-            'grant select, insert on public.audit_logs to $role',
-          ),
+          contains('grant select, insert on public.audit_logs to $role'),
           reason: '$role gets read + append only',
         );
         expect(
           migrationSql,
-          contains(
-            'revoke update, delete on public.audit_logs from $role',
-          ),
-          reason: '$role explicitly loses UPDATE/DELETE so a future '
+          contains('revoke update, delete on public.audit_logs from $role'),
+          reason:
+              '$role explicitly loses UPDATE/DELETE so a future '
               'wider grant cannot weaken the append-only posture',
         );
         expect(
           migrationSql,
-          contains(
-            'grant usage on sequence public.audit_logs_id_seq to $role',
-          ),
+          contains('grant usage on sequence public.audit_logs_id_seq to $role'),
           reason: '$role needs the bigserial sequence to allocate ids',
         );
       }
@@ -402,10 +340,7 @@ void main() {
         migrationSql,
         contains('check (char_length(blob_etag) between 1 and 256)'),
       );
-      expect(
-        migrationSql,
-        contains('primary key (operator_id, chain_date)'),
-      );
+      expect(migrationSql, contains('primary key (operator_id, chain_date)'));
       // Tenant-leading retrieval index.
       expect(
         migrationSql,
@@ -417,15 +352,11 @@ void main() {
       // Wrapper-only RLS.
       expect(
         migrationSql,
-        contains(
-          'create policy "audit_chain_anchors_per_tenant_select"',
-        ),
+        contains('create policy "audit_chain_anchors_per_tenant_select"'),
       );
       expect(
         migrationSql,
-        contains(
-          'create policy "audit_chain_anchors_per_tenant_insert"',
-        ),
+        contains('create policy "audit_chain_anchors_per_tenant_insert"'),
       );
       // Append-only grant shape (SELECT + INSERT, UPDATE/DELETE
       // revoked).
@@ -458,7 +389,8 @@ void main() {
       expect(
         result.isClean,
         isTrue,
-        reason: 'audit_logs policies must read GUCs through the '
+        reason:
+            'audit_logs policies must read GUCs through the '
             '9.0Σ.b wrappers; violations: ${result.violations}',
       );
     });
@@ -468,8 +400,8 @@ void main() {
   group('AuditChainHasher (pure recomputation)', () {
     const hasher = AuditChainHasher();
 
-    test('canonicalPayload uses NUL-separated UTF-8 fields with NULL '
-        'collapsed to empty strings (matches the SQL trigger)', () {
+    test('canonicalPayload uses Unit Separator-delimited UTF-8 fields '
+        'with NULL collapsed to empty strings (matches the SQL trigger)', () {
       final row = _buildRow(
         id: BigInt.from(1),
         operatorId: _opA,
@@ -494,17 +426,17 @@ void main() {
       // Reproduce the expected layout in pure Dart so the test fails
       // if either the helper or the trigger drifts.
       final expected = utf8.encode(
-        '$_opA\x00'
-        '\x00' // location_id NULL → empty
-        '2026-04-27\x00'
-        '2026-04-27T12:34:56.000789Z\x00'
-        'user\x00'
-        '$_userA\x00'
-        '\x00' // actor_principal_id NULL → empty
-        'user\x00'
-        '$_userA\x00'
-        'auth.session.login\x00'
-        '{"event_id": "evt-1"}\x00',
+        '$_opA\x1f'
+        '\x1f' // location_id NULL → empty
+        '2026-04-27\x1f'
+        '2026-04-27T12:34:56.000789Z\x1f'
+        'user\x1f'
+        '$_userA\x1f'
+        '\x1f' // actor_principal_id NULL → empty
+        'user\x1f'
+        '$_userA\x1f'
+        'auth.session.login\x1f'
+        '{"event_id": "evt-1"}\x1f',
       );
       expect(canonical, equals(expected));
     });
@@ -552,12 +484,10 @@ void main() {
         rowHash: Uint8List(32),
       );
       final row2Hash = Uint8List.fromList(
-        sha256
-            .convert(<int>[
-              ...row1Hash,
-              ...hasher.canonicalPayload(row2),
-            ])
-            .bytes,
+        sha256.convert(<int>[
+          ...row1Hash,
+          ...hasher.canonicalPayload(row2),
+        ]).bytes,
       );
 
       expect(hasher.recomputeRowHash(row1), equals(row1Hash));
@@ -603,7 +533,8 @@ void main() {
               v.kind == ChainHashViolationKind.rowHashMismatch,
         ),
         isTrue,
-        reason: 'row[1] payload tampered → row_hash recomputation '
+        reason:
+            'row[1] payload tampered → row_hash recomputation '
             'must flag a violation',
       );
     });
@@ -682,8 +613,11 @@ void main() {
       var lastIndex = -1;
       for (final key in keyOrder) {
         final pos = text.indexOf('"$key"');
-        expect(pos, greaterThan(lastIndex),
-            reason: 'key "$key" must follow alphabetical predecessors');
+        expect(
+          pos,
+          greaterThan(lastIndex),
+          reason: 'key "$key" must follow alphabetical predecessors',
+        );
         lastIndex = pos;
       }
     });
@@ -741,9 +675,7 @@ void main() {
             chainDate: DateTime.utc(2026, 4, 27),
           ),
         ],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
         anchorsByDate: const <String, AuditChainAnchor>{},
       );
       final writer = _FakeAnchorWriter();
@@ -766,20 +698,13 @@ void main() {
       expect(blob.writes, hasLength(1));
       final write = blob.writes.single;
       expect(write.containerName, 'forge-flow-audit-anchors');
-      expect(
-        write.blobName,
-        'audit_anchors/$_opA/2026-04-27.json',
-      );
+      expect(write.blobName, 'audit_anchors/$_opA/2026-04-27.json');
       // Decoded evidence carries the chain's terminal data verbatim.
-      final evidence =
-          const AnchorEvidenceCodec().decode(write.evidenceBytes);
+      final evidence = const AnchorEvidenceCodec().decode(write.evidenceBytes);
       expect(evidence.schemaVersion, 1);
       expect(evidence.operatorId, _opA);
       expect(evidence.terminalRowId, clean.last.id);
-      expect(
-        evidence.terminalRowHashHex,
-        equals(_hex(clean.last.rowHash)),
-      );
+      expect(evidence.terminalRowHashHex, equals(_hex(clean.last.rowHash)));
       expect(evidence.rowCount, BigInt.from(clean.length));
 
       // Anchor row recorded with the same terminal hash + row count
@@ -798,10 +723,11 @@ void main() {
     test('refuses to anchor a self-inconsistent chain — emits a '
         'chainHashMismatch result and writes neither the Blob nor '
         'the anchor row', () async {
-      final tampered = _buildCleanChain()..[1] = _retamperRow(
-        _buildCleanChain()[1],
-        newPayloadText: '{"forged": true}',
-      );
+      final tampered = _buildCleanChain()
+        ..[1] = _retamperRow(
+          _buildCleanChain()[1],
+          newPayloadText: '{"forged": true}',
+        );
       final reader = _FakeReader(
         unanchored: <AuditChainSummary>[
           AuditChainSummary(
@@ -809,9 +735,7 @@ void main() {
             chainDate: DateTime.utc(2026, 4, 27),
           ),
         ],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': tampered,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': tampered},
         anchorsByDate: const <String, AuditChainAnchor>{},
       );
       final writer = _FakeAnchorWriter();
@@ -830,15 +754,20 @@ void main() {
       expect(results, hasLength(1));
       expect(results.single.outcome, AnchorOutcome.chainHashMismatch);
       expect(results.single.violations, isNotEmpty);
-      expect(blob.writes, isEmpty,
-          reason: 'no Blob write on self-verification failure');
-      expect(writer.inserts, isEmpty,
-          reason: 'no anchor row on self-verification failure');
+      expect(
+        blob.writes,
+        isEmpty,
+        reason: 'no Blob write on self-verification failure',
+      );
+      expect(
+        writer.inserts,
+        isEmpty,
+        reason: 'no anchor row on self-verification failure',
+      );
     });
 
     test('returns no results when there are no unanchored completed '
-        'chains for the operator (idempotent re-runs are safe)',
-        () async {
+        'chains for the operator (idempotent re-runs are safe)', () async {
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
         chainsByDate: const <String, List<AuditLogRow>>{},
@@ -865,8 +794,7 @@ void main() {
 
   // ───────────────────────────────────────────────────────────────────
   group('AuditAnchorOrchestrator (verify mode, fakes)', () {
-    test('returns ok when chain, anchor, and Blob evidence agree',
-        () async {
+    test('returns ok when chain, anchor, and Blob evidence agree', () async {
       final clean = _buildCleanChain();
       final blob = _FakeBlobClient();
       final evidenceBytes = const AnchorEvidenceCodec().encode(
@@ -897,12 +825,8 @@ void main() {
       );
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
-        anchorsByDate: <String, AuditChainAnchor>{
-          '$_opA|2026-04-27': anchor,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
       );
       final orchestrator = AuditAnchorOrchestrator(
         reader: reader,
@@ -917,14 +841,11 @@ void main() {
       expect(result.outcome, VerifyOutcome.ok);
     });
 
-    test('reports anchorMissing when the anchor row does not exist',
-        () async {
+    test('reports anchorMissing when the anchor row does not exist', () async {
       final clean = _buildCleanChain();
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
         anchorsByDate: const <String, AuditChainAnchor>{},
       );
       final orchestrator = AuditAnchorOrchestrator(
@@ -943,8 +864,7 @@ void main() {
     test('reports anchorTerminalMismatch when the in-DB chain disagrees '
         'with the anchor row terminal hash', () async {
       final clean = _buildCleanChain();
-      final wrongHash = Uint8List(32)
-        ..fillRange(0, 32, 0xAA);
+      final wrongHash = Uint8List(32)..fillRange(0, 32, 0xAA);
       final anchor = AuditChainAnchor(
         operatorId: _opA,
         chainDate: DateTime.utc(2026, 4, 27),
@@ -957,12 +877,8 @@ void main() {
       );
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
-        anchorsByDate: <String, AuditChainAnchor>{
-          '$_opA|2026-04-27': anchor,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
       );
       final orchestrator = AuditAnchorOrchestrator(
         reader: reader,
@@ -1010,12 +926,8 @@ void main() {
       );
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
-        anchorsByDate: <String, AuditChainAnchor>{
-          '$_opA|2026-04-27': anchor,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
       );
       final orchestrator = AuditAnchorOrchestrator(
         reader: reader,
@@ -1031,8 +943,7 @@ void main() {
     });
 
     test('reports blobUnavailable when the Blob client raises '
-        'AuditAnchorBlobUnavailable (no live Azure call needed)',
-        () async {
+        'AuditAnchorBlobUnavailable (no live Azure call needed)', () async {
       final clean = _buildCleanChain();
       final anchor = AuditChainAnchor(
         operatorId: _opA,
@@ -1046,12 +957,8 @@ void main() {
       );
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
-        anchorsByDate: <String, AuditChainAnchor>{
-          '$_opA|2026-04-27': anchor,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
       );
       final orchestrator = AuditAnchorOrchestrator(
         reader: reader,
@@ -1097,12 +1004,8 @@ void main() {
       );
       final reader = _FakeReader(
         unanchored: const <AuditChainSummary>[],
-        chainsByDate: <String, List<AuditLogRow>>{
-          '$_opA|2026-04-27': clean,
-        },
-        anchorsByDate: <String, AuditChainAnchor>{
-          '$_opA|2026-04-27': anchor,
-        },
+        chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+        anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
       );
       final orchestrator = AuditAnchorOrchestrator(
         reader: reader,
@@ -1117,25 +1020,25 @@ void main() {
     }
 
     AuditChainAnchor goodAnchor() => AuditChainAnchor(
-          operatorId: _opA,
-          chainDate: DateTime.utc(2026, 4, 27),
-          terminalRowHash: clean.last.rowHash,
-          terminalRowId: clean.last.id,
-          rowCount: BigInt.from(clean.length),
-          blobUri: 'https://fake/x',
-          blobEtag: 'etag-good',
-          anchoredAt: DateTime.utc(2026, 4, 28, 2),
-        );
+      operatorId: _opA,
+      chainDate: DateTime.utc(2026, 4, 27),
+      terminalRowHash: clean.last.rowHash,
+      terminalRowId: clean.last.id,
+      rowCount: BigInt.from(clean.length),
+      blobUri: 'https://fake/x',
+      blobEtag: 'etag-good',
+      anchoredAt: DateTime.utc(2026, 4, 28, 2),
+    );
 
     AnchorEvidence goodEvidence() => AnchorEvidence(
-          schemaVersion: 1,
-          operatorId: _opA,
-          chainDate: DateTime.utc(2026, 4, 27),
-          terminalRowId: clean.last.id,
-          terminalRowHashHex: _hex(clean.last.rowHash),
-          rowCount: BigInt.from(clean.length),
-          anchoredAt: DateTime.utc(2026, 4, 28, 2),
-        );
+      schemaVersion: 1,
+      operatorId: _opA,
+      chainDate: DateTime.utc(2026, 4, 27),
+      terminalRowId: clean.last.id,
+      terminalRowHashHex: _hex(clean.last.rowHash),
+      rowCount: BigInt.from(clean.length),
+      anchoredAt: DateTime.utc(2026, 4, 28, 2),
+    );
 
     test('forged operator_id (matching hash, wrong tenant) → '
         'blobEvidenceMismatch with operator_id message', () async {
@@ -1319,18 +1222,14 @@ void main() {
         (thrown as AuditAnchorConfigError).name,
         AuditAnchorEnvNames.azureBlobContainer,
       );
-      expect(
-        thrown.toString(),
-        contains('audit_chain_verify_runbook.md'),
-      );
+      expect(thrown.toString(), contains('audit_chain_verify_runbook.md'));
     });
 
     test('AuditAnchorRuntimeConfig.fromEnvironment loads the resolved '
         'POSTGRES_URL value (so PackagePostgresPool.fromUrl can open '
         'a real connection at deploy time) AND tracks env *names* in '
         'loadedSecretNames for the diagnostic line', () {
-      final config =
-          audit_anchor_main.AuditAnchorRuntimeConfig.fromEnvironment(
+      final config = audit_anchor_main.AuditAnchorRuntimeConfig.fromEnvironment(
         const <String, String>{
           AuditAnchorEnvNames.postgresUrl:
               'postgresql://user:pw@host:5432/db?sslmode=require',
@@ -1380,11 +1279,7 @@ void main() {
       // ignore: close_sinks - test sinks; close adds noise without value.
       final err = _StringSink();
       final code = await audit_anchor_main.runCli(
-        <String>[
-          'verify',
-          '--operator-id=$_opA',
-          '--chain-date=2026-04-27',
-        ],
+        <String>['verify', '--operator-id=$_opA', '--chain-date=2026-04-27'],
         environment: const <String, String>{
           AuditAnchorEnvNames.postgresUrl:
               'postgresql://user:pw@host:5432/db?sslmode=require',
@@ -1420,8 +1315,7 @@ void main() {
     });
 
     test('runCli verify path returns 0 with an injected orchestrator '
-        '(no env, no live wiring needed for the success path)',
-        () async {
+        '(no env, no live wiring needed for the success path)', () async {
       final clean = _buildCleanChain();
       final blob = _FakeBlobClient();
       final evidenceBytes = const AnchorEvidenceCodec().encode(
@@ -1453,12 +1347,8 @@ void main() {
       final orchestrator = AuditAnchorOrchestrator(
         reader: _FakeReader(
           unanchored: const <AuditChainSummary>[],
-          chainsByDate: <String, List<AuditLogRow>>{
-            '$_opA|2026-04-27': clean,
-          },
-          anchorsByDate: <String, AuditChainAnchor>{
-            '$_opA|2026-04-27': anchor,
-          },
+          chainsByDate: <String, List<AuditLogRow>>{'$_opA|2026-04-27': clean},
+          anchorsByDate: <String, AuditChainAnchor>{'$_opA|2026-04-27': anchor},
         ),
         anchorWriter: _FakeAnchorWriter(),
         blobClient: blob,
@@ -1469,11 +1359,7 @@ void main() {
       // ignore: close_sinks - test sinks; close adds noise without value.
       final err = _StringSink();
       final code = await audit_anchor_main.runCli(
-        <String>[
-          'verify',
-          '--operator-id=$_opA',
-          '--chain-date=2026-04-27',
-        ],
+        <String>['verify', '--operator-id=$_opA', '--chain-date=2026-04-27'],
         orchestratorOverride: orchestrator,
         out: out,
         err: err,
@@ -1490,11 +1376,7 @@ void main() {
       // ignore: close_sinks - test sinks; close adds noise without value.
       final err = _StringSink();
       final code = await audit_anchor_main.runCli(
-        <String>[
-          'verify',
-          '--operator-id=$_opA',
-          '--chain-date=2026-04-27',
-        ],
+        <String>['verify', '--operator-id=$_opA', '--chain-date=2026-04-27'],
         environment: const <String, String>{},
         out: out,
         err: err,
@@ -1503,14 +1385,8 @@ void main() {
       // Error message must name the missing env var but never the
       // value (the test environment provides no values, but defense
       // in depth: the message contains only the var name).
-      expect(
-        err.toString(),
-        contains(AuditAnchorEnvNames.azureBlobContainer),
-      );
-      expect(
-        err.toString(),
-        contains('audit_chain_verify_runbook.md'),
-      );
+      expect(err.toString(), contains(AuditAnchorEnvNames.azureBlobContainer));
+      expect(err.toString(), contains('audit_chain_verify_runbook.md'));
     });
 
     test('production blob client default is the scaffold rejecter — '
@@ -1530,10 +1406,7 @@ void main() {
         thrownWrite = e;
       }
       expect(thrownWrite, isA<AuditAnchorBlobUnavailable>());
-      expect(
-        thrownWrite.toString(),
-        contains('audit_chain_verify_runbook.md'),
-      );
+      expect(thrownWrite.toString(), contains('audit_chain_verify_runbook.md'));
     });
   });
 
@@ -1581,13 +1454,15 @@ void main() {
       expect(
         body,
         isNot(contains('?sv=')),
-        reason: 'SAS tokens leak credentials; runbook must use '
+        reason:
+            'SAS tokens leak credentials; runbook must use '
             'env-name placeholders only',
       );
       expect(
         body,
         isNot(contains('AccountKey=')),
-        reason: 'connection strings expose account keys; never embed '
+        reason:
+            'connection strings expose account keys; never embed '
             'one in the repo',
       );
       // Env names referenced (so an executor knows what to set), but
@@ -1602,10 +1477,7 @@ void main() {
         'mutation in repo")', () {
       final body = runbook.readAsStringSync();
       expect(body.toLowerCase(), contains('human approval'));
-      expect(
-        body,
-        contains('CLAUDE.md "no live Azure mutation in repo"'),
-      );
+      expect(body, contains('CLAUDE.md "no live Azure mutation in repo"'));
     });
 
     test('pg_partman verification snippet uses live-verified '
@@ -1616,23 +1488,22 @@ void main() {
       expect(
         body,
         contains('from public.part_config'),
-        reason: 'runbook must point operators at the live-verified '
+        reason:
+            'runbook must point operators at the live-verified '
             'schema; partman.* would send the next executor down '
             'the same bad path the migration just fixed',
       );
       expect(
         body,
         isNot(contains('from partman.part_config')),
-        reason: 'partman.part_config is the wrong schema on Azure; '
+        reason:
+            'partman.part_config is the wrong schema on Azure; '
             'live-verified 2026-04-26 confirmed pg_partman lives in '
             'public — see phase_11a_decision_register.md Lock 2',
       );
       // Cross-link to the verified pattern source so a future
       // contributor knows where to re-check.
-      expect(
-        body,
-        contains('phase_11a_decision_register.md'),
-      );
+      expect(body, contains('phase_11a_decision_register.md'));
     });
 
     test('evidence export emits true JSONL (one JSON object per line) '
@@ -1651,7 +1522,8 @@ void main() {
       expect(
         body,
         contains('with (format text)'),
-        reason: '`\\copy ... with (format text)` is the only output '
+        reason:
+            '`\\copy ... with (format text)` is the only output '
             'mode that writes a single value per line without '
             'quoting/header decoration',
       );
@@ -1660,14 +1532,18 @@ void main() {
       expect(
         body,
         isNot(contains("with (format csv, header, delimiter E'\\t')")),
-        reason: 'CSV mode quote-wraps values and writes a header — '
+        reason:
+            'CSV mode quote-wraps values and writes a header — '
             'breaks JSONL parsers even with a .jsonl file extension',
       );
       expect(
-        RegExp(r'with\s*\(\s*format\s+csv', caseSensitive: false)
-            .hasMatch(body),
+        RegExp(
+          r'with\s*\(\s*format\s+csv',
+          caseSensitive: false,
+        ).hasMatch(body),
         isFalse,
-        reason: 'no `format csv` anywhere in the export block — even '
+        reason:
+            'no `format csv` anywhere in the export block — even '
             'with whitespace variants',
       );
       // The export block names JSONL as canonical (Q9 lock).
@@ -1766,28 +1642,33 @@ List<AuditLogRow> _buildCleanChain() {
     final hash = Uint8List.fromList(
       sha256.convert(<int>[...?prev, ...canonical]).bytes,
     );
-    out.add(_buildRow(
-      id: row.id,
-      operatorId: row.operatorId,
-      locationId: row.locationId,
-      chainDate: row.chainDate,
-      occurredAt: row.occurredAt,
-      actorKind: row.actorKind,
-      actorUserId: row.actorUserId,
-      actorPrincipalId: row.actorPrincipalId,
-      targetKind: row.targetKind,
-      targetId: row.targetId,
-      action: row.action,
-      payloadText: row.payloadText,
-      prevRowHash: prev,
-      rowHash: hash,
-    ));
+    out.add(
+      _buildRow(
+        id: row.id,
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        chainDate: row.chainDate,
+        occurredAt: row.occurredAt,
+        actorKind: row.actorKind,
+        actorUserId: row.actorUserId,
+        actorPrincipalId: row.actorPrincipalId,
+        targetKind: row.targetKind,
+        targetId: row.targetId,
+        action: row.action,
+        payloadText: row.payloadText,
+        prevRowHash: prev,
+        rowHash: hash,
+      ),
+    );
     prev = hash;
   }
   return out;
 }
 
-AuditLogRow _retamperRow(AuditLogRow original, {required String newPayloadText}) {
+AuditLogRow _retamperRow(
+  AuditLogRow original, {
+  required String newPayloadText,
+}) {
   return _buildRow(
     id: original.id,
     operatorId: original.operatorId,
@@ -1929,14 +1810,9 @@ class _FakeBlobClient implements AuditAnchorBlobClient {
   }) async {
     final preloaded = _preload[blobName];
     if (preloaded == null) {
-      throw AuditAnchorBlobUnavailable(
-        'fake: blob $blobName not preloaded',
-      );
+      throw AuditAnchorBlobUnavailable('fake: blob $blobName not preloaded');
     }
-    return AnchorBlobReadResult(
-      bytes: preloaded.bytes,
-      etag: preloaded.etag,
-    );
+    return AnchorBlobReadResult(bytes: preloaded.bytes, etag: preloaded.etag);
   }
 }
 

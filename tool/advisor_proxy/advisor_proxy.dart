@@ -2031,6 +2031,8 @@ const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPrefix = '/v1/admin/auth/users/';
+const String adminAuthRolesPath = '/v1/admin/auth/roles';
+const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
 
@@ -2742,6 +2744,109 @@ Future<void> routeRequest(
       }
 
       try {
+        if (request.method == 'GET' && path == adminAuthRolesPath) {
+          if (!await requirePermission('team.roles.view')) return;
+          final listed = await authOperationsGateway.listRoles(
+            TeamRoleCatalogListCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              scope: request.uri.queryParameters['scope'],
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'roles': listed.roles.map(_teamRoleToJson).toList(),
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == adminAuthRolesPath) {
+          if (!await requirePermission('team.roles.create_custom')) return;
+          final roleKey = _nonBlankString(body['role_key']);
+          final displayName = _nonBlankString(body['display_name']);
+          if (roleKey == null || displayName == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_role_fields',
+              'message': 'role_key and display_name are required',
+            });
+            return;
+          }
+          final created = await authOperationsGateway.createRole(
+            TeamRoleCreateCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              roleKey: roleKey,
+              displayName: displayName,
+              description: _stringValue(body['description']) ?? '',
+              permissions: _rolePermissionUpdates(body['permissions']),
+              reason: _nonBlankString(body['reason']),
+            ),
+          );
+          _writeJson(response, 201, <String, Object?>{
+            'role': _teamRoleToJson(created.role),
+          });
+          return;
+        }
+
+        if (request.method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) {
+          if (!await requirePermission('team.roles.create_custom')) return;
+          final roleId = _pathSuffix(path, adminAuthRolePrefix);
+          if (roleId == null) {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'not found',
+              'method': request.method,
+              'path': path,
+            });
+            return;
+          }
+          final patched = await authOperationsGateway.patchRole(
+            TeamRolePatchCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              roleId: roleId,
+              displayName: _stringValue(body['display_name']),
+              description: _stringValue(body['description']),
+              permissions: _rolePermissionUpdates(body['permissions']),
+              reason: _nonBlankString(body['reason']),
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'role': _teamRoleToJson(patched.role),
+            'bumped_users': patched.bumpedUsers,
+          });
+          return;
+        }
+
+        if (request.method == 'DELETE' &&
+            path.startsWith(adminAuthRolePrefix)) {
+          if (!await requirePermission('team.roles.create_custom')) return;
+          final roleId = _pathSuffix(path, adminAuthRolePrefix);
+          if (roleId == null) {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'not found',
+              'method': request.method,
+              'path': path,
+            });
+            return;
+          }
+          final deleted = await authOperationsGateway.deleteRole(
+            TeamRoleDeleteCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              roleId: roleId,
+              reason: _nonBlankString(body['reason']),
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'deleted': deleted.deleted,
+          });
+          return;
+        }
+
         if (request.method == 'POST' && path == adminAuthInvitesPath) {
           if (!await requirePermission('team.users.invite')) return;
           final email = _nonBlankString(body['email']);
@@ -2918,6 +3023,12 @@ Future<void> routeRequest(
           });
           return;
         }
+      } on AuthOperationRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+        });
+        return;
       } catch (_) {
         _writeJson(response, 503, <String, Object?>{
           'error': 'auth_operations_unavailable',
@@ -3233,6 +3344,10 @@ Future<OperatorContext?> _resolveOperatorContextOrWrite(
 }
 
 bool _isAdminAuthOperation(String path, String method) {
+  if (method == 'GET' && path == adminAuthRolesPath) return true;
+  if (method == 'POST' && path == adminAuthRolesPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) return true;
+  if (method == 'DELETE' && path.startsWith(adminAuthRolePrefix)) return true;
   if (method == 'POST' && path == adminAuthInvitesPath) return true;
   if (method == 'DELETE' && path.startsWith(adminAuthInvitePrefix)) {
     return true;
@@ -3325,6 +3440,75 @@ String? _pathSuffix(String path, String prefix) {
   final suffix = path.substring(prefix.length);
   if (suffix.isEmpty || suffix.contains('/')) return null;
   return Uri.decodeComponent(suffix);
+}
+
+Map<String, Object?> _teamRoleToJson(TeamRoleCatalogEntry role) {
+  return <String, Object?>{
+    'role_id': role.roleId,
+    'role_key': role.roleKey,
+    'display_name': role.displayName,
+    'description': role.description,
+    'is_seeded': role.isSeeded,
+    'is_editable': role.isEditable,
+    'operator_id': role.operatorId,
+    'permissions': role.permissions
+        .map(
+          (permission) => <String, Object?>{
+            'permission_key': permission.permissionKey,
+            'effect': permission.effect,
+          },
+        )
+        .toList(growable: false),
+  };
+}
+
+List<TeamRolePermissionUpdate> _rolePermissionUpdates(Object? raw) {
+  if (raw == null) return const <TeamRolePermissionUpdate>[];
+  if (raw is! List) {
+    throw const AuthOperationRejected(
+      code: 'invalid_role_permissions',
+      message: 'permissions must be a list',
+      statusCode: 400,
+    );
+  }
+  final updates = <TeamRolePermissionUpdate>[];
+  for (final item in raw) {
+    if (item is! Map) {
+      throw const AuthOperationRejected(
+        code: 'invalid_role_permissions',
+        message: 'each permission update must be an object',
+        statusCode: 400,
+      );
+    }
+    final map = Map<String, Object?>.from(item);
+    final permissionKey = _nonBlankString(map['permission_key']);
+    final effect = _nonBlankString(map['effect']);
+    if (permissionKey == null || effect == null) {
+      throw const AuthOperationRejected(
+        code: 'invalid_role_permissions',
+        message: 'permission_key and effect are required',
+        statusCode: 400,
+      );
+    }
+    if (effect != 'allow' && effect != 'deny' && effect != 'inherit') {
+      throw const AuthOperationRejected(
+        code: 'invalid_permission_effect',
+        message: "permission effect must be 'allow', 'deny', or 'inherit'",
+        statusCode: 400,
+      );
+    }
+    updates.add(
+      TeamRolePermissionUpdate(
+        permissionKey: permissionKey,
+        effect: effect == 'inherit' ? null : effect,
+      ),
+    );
+  }
+  return List<TeamRolePermissionUpdate>.unmodifiable(updates);
+}
+
+String? _stringValue(Object? value) {
+  return value is String ? value : null;
 }
 
 _UserAction? _userActionFromPath(String path) {

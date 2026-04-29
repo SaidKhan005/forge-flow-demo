@@ -255,6 +255,7 @@ as $$
 declare
   prev bytea;
   canonical bytea;
+  delimiter text := chr(31);
 begin
   -- Lock the (operator_id, chain_date) chain for the duration of
   -- this transaction. hashtextextended takes a text and returns a
@@ -281,27 +282,29 @@ begin
 
   new.prev_row_hash := prev;
 
-  -- Canonical encoding: explicit NUL-separated fields. NULL columns
-  -- collapse to empty strings so the verifier can reproduce the bytes
-  -- without ambiguity. The jsonb text cast (`payload::text`)
+  -- Canonical encoding: explicit Unit Separator-delimited fields. NULL
+  -- columns collapse to empty strings so the verifier can reproduce the
+  -- bytes without ambiguity. PostgreSQL text values cannot contain NUL, so
+  -- the delimiter is ASCII 0x1F instead of 0x00. The jsonb text cast
+  -- (`payload::text`)
   -- normalizes key order and whitespace per PG jsonb storage, so two
   -- semantically equal payloads hash identically.
   canonical := convert_to(
-    coalesce(new.operator_id::text, '')           || E'\x00' ||
-    coalesce(new.location_id::text, '')           || E'\x00' ||
-    coalesce(new.chain_date::text, '')            || E'\x00' ||
+    coalesce(new.operator_id::text, '')           || delimiter ||
+    coalesce(new.location_id::text, '')           || delimiter ||
+    coalesce(new.chain_date::text, '')            || delimiter ||
     coalesce(
       to_char(new.occurred_at at time zone 'UTC',
               'YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
       ''
-    )                                             || E'\x00' ||
-    coalesce(new.actor_kind, '')                  || E'\x00' ||
-    coalesce(new.actor_user_id::text, '')         || E'\x00' ||
-    coalesce(new.actor_principal_id, '')          || E'\x00' ||
-    coalesce(new.target_kind, '')                 || E'\x00' ||
-    coalesce(new.target_id, '')                   || E'\x00' ||
-    coalesce(new.action, '')                      || E'\x00' ||
-    coalesce(new.payload::text, '')               || E'\x00',
+    )                                             || delimiter ||
+    coalesce(new.actor_kind, '')                  || delimiter ||
+    coalesce(new.actor_user_id::text, '')         || delimiter ||
+    coalesce(new.actor_principal_id, '')          || delimiter ||
+    coalesce(new.target_kind, '')                 || delimiter ||
+    coalesce(new.target_id, '')                   || delimiter ||
+    coalesce(new.action, '')                      || delimiter ||
+    coalesce(new.payload::text, '')               || delimiter,
     'UTF8'
   );
 

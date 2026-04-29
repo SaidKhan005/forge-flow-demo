@@ -1,6 +1,6 @@
 # Phase Production Cutover
 
-Updated: 2026-04-26
+Updated: 2026-04-29
 Status: Planned (opens after `11b` ships against staging and `11A.0-6`,
 `9`, `9.8` accept)
 Owner: F&F launch lane
@@ -17,12 +17,11 @@ content.
 B38 (queued) — Tier-M load test extending `9.0Σ.k` rollups foundation.
 Without B38 results, row 8 cannot clear.
 
-`cutover.0` pre-flight requires
-`runbooks/phase_9_production1_migration_apply_runbook.md` (B35, queued).
-This runbook covers the Production1 apply order for the 11 new 9.0Σ
-migrations (`...0004`-`...0010` plus `...0011`-`...0013` hotfix /
-grant slots). The runbook must exist and be reviewed before any
-Production1 mutation in `cutover.0` pre-flight.
+`cutover.0` pre-flight no longer needs the B35 apply itself: staging and
+Production1 applied `202604280000` through `202604280013` on 2026-04-29 after
+explicit approval. Keep
+`runbooks/phase_9_production1_migration_apply_runbook.md` as the audit trail
+and template for any future Production1 mutation gate.
 
 This plan formalizes the production cutover gate that was previously
 described as "a later explicit cutover gate" without a slice number.

@@ -211,6 +211,120 @@ void main() {
       },
     );
 
+    test('role catalog CRUD uses the custom role route contract', () async {
+      final roleJson = <String, Object?>{
+        'role_id': 'role-1',
+        'role_key': 'kitchen_lead',
+        'display_name': 'Kitchen Lead',
+        'description': '',
+        'is_seeded': false,
+        'is_editable': true,
+        'operator_id': 'op',
+        'permissions': <Object?>[
+          <String, Object?>{
+            'permission_key': 'team.users.view',
+            'effect': 'allow',
+          },
+        ],
+      };
+      final fake = _FakeAuthOpsHttpClient(
+        getResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'roles': <Object?>[roleJson],
+          },
+        ),
+        postResponse: ProxyAuthOperationsResponse(
+          statusCode: 201,
+          body: <String, Object?>{'role': roleJson},
+        ),
+        patchResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'role': roleJson, 'bumped_users': 1},
+        ),
+        deleteResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'deleted': true},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final listed = await gateway.listRoles(
+        const TeamRoleCatalogListCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          scope: 'custom',
+        ),
+      );
+      final created = await gateway.createRole(
+        const TeamRoleCreateCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          roleKey: 'kitchen_lead',
+          displayName: 'Kitchen Lead',
+          permissions: <TeamRolePermissionUpdate>[
+            TeamRolePermissionUpdate(
+              permissionKey: 'team.users.view',
+              effect: 'allow',
+            ),
+          ],
+        ),
+      );
+      final patched = await gateway.patchRole(
+        const TeamRolePatchCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          roleId: 'role-1',
+          permissions: <TeamRolePermissionUpdate>[
+            TeamRolePermissionUpdate(
+              permissionKey: 'team.users.invite',
+              effect: null,
+            ),
+          ],
+        ),
+      );
+      final deleted = await gateway.deleteRole(
+        const TeamRoleDeleteCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          roleId: 'role-1',
+        ),
+      );
+
+      expect(listed.roles.single.roleId, equals('role-1'));
+      expect(created.role.roleKey, equals('kitchen_lead'));
+      expect(patched.bumpedUsers, equals(1));
+      expect(deleted.deleted, isTrue);
+      expect(fake.gets.single.url.path, equals(proxy.adminAuthRolesPath));
+      expect(fake.gets.single.url.query, equals('scope=custom'));
+      expect(fake.posts.last.url.path, equals(proxy.adminAuthRolesPath));
+      expect(
+        fake.patches.single.url.path,
+        equals('${proxy.adminAuthRolePrefix}role-1'),
+      );
+      expect(
+        fake.patches.single.body['permissions'],
+        equals(<Object?>[
+          <String, Object?>{
+            'permission_key': 'team.users.invite',
+            'effect': 'inherit',
+          },
+        ]),
+      );
+      expect(
+        fake.deletes.last.url.path,
+        equals('${proxy.adminAuthRolePrefix}role-1'),
+      );
+    });
+
     test('transport failures collapse to transport_error', () async {
       final fake = _FakeAuthOpsHttpClient.throws(StateError('secret://dsn'));
       final gateway = ProxyAuthOperationsGateway(
@@ -249,10 +363,24 @@ Future<Object?> _captureError(Future<void> future) async {
 
 class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
   _FakeAuthOpsHttpClient({
+    ProxyAuthOperationsResponse? getResponse,
     ProxyAuthOperationsResponse? postResponse,
+    ProxyAuthOperationsResponse? patchResponse,
     ProxyAuthOperationsResponse? deleteResponse,
-  }) : _postResponse =
+  }) : _getResponse =
+           getResponse ??
+           const ProxyAuthOperationsResponse(
+             statusCode: 200,
+             body: <String, Object?>{'roles': <Object?>[]},
+           ),
+       _postResponse =
            postResponse ??
+           const ProxyAuthOperationsResponse(
+             statusCode: 200,
+             body: <String, Object?>{'ok': true},
+           ),
+       _patchResponse =
+           patchResponse ??
            const ProxyAuthOperationsResponse(
              statusCode: 200,
              body: <String, Object?>{'ok': true},
@@ -265,16 +393,38 @@ class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
            );
 
   _FakeAuthOpsHttpClient.throws(Object error)
-    : _postResponse = null,
+    : _getResponse = null,
+      _postResponse = null,
+      _patchResponse = null,
       _deleteResponse = null,
       _error = error;
 
+  final ProxyAuthOperationsResponse? _getResponse;
   final ProxyAuthOperationsResponse? _postResponse;
+  final ProxyAuthOperationsResponse? _patchResponse;
   final ProxyAuthOperationsResponse? _deleteResponse;
   Object? _error;
 
+  final List<_CapturedAuthOpsCall> gets = <_CapturedAuthOpsCall>[];
   final List<_CapturedAuthOpsCall> posts = <_CapturedAuthOpsCall>[];
+  final List<_CapturedAuthOpsCall> patches = <_CapturedAuthOpsCall>[];
   final List<_CapturedAuthOpsCall> deletes = <_CapturedAuthOpsCall>[];
+
+  @override
+  Future<ProxyAuthOperationsResponse> getJson({
+    required Uri url,
+    required Map<String, String> headers,
+  }) async {
+    if (_error != null) throw _error!;
+    gets.add(
+      _CapturedAuthOpsCall(
+        url: url,
+        headers: headers,
+        body: const <String, Object?>{},
+      ),
+    );
+    return _getResponse!;
+  }
 
   @override
   Future<ProxyAuthOperationsResponse> postJson({
@@ -285,6 +435,17 @@ class _FakeAuthOpsHttpClient implements ProxyAuthOperationsHttpClient {
     if (_error != null) throw _error!;
     posts.add(_CapturedAuthOpsCall(url: url, headers: headers, body: body));
     return _postResponse!;
+  }
+
+  @override
+  Future<ProxyAuthOperationsResponse> patchJson({
+    required Uri url,
+    required Map<String, String> headers,
+    required Map<String, Object?> body,
+  }) async {
+    if (_error != null) throw _error!;
+    patches.add(_CapturedAuthOpsCall(url: url, headers: headers, body: body));
+    return _patchResponse!;
   }
 
   @override

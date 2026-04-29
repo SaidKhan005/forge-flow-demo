@@ -197,9 +197,7 @@ class UserRolesRepository extends OperatorScopedRepository {
       }
       final id = rows.single['user_role_id'];
       if (id is! String || id.isEmpty) {
-        throw StateError(
-          'user_roles insert returned a malformed user_role_id',
-        );
+        throw StateError('user_roles insert returned a malformed user_role_id');
       }
       // Bump roles_version atomically inside the same transaction so
       // the proxy's permission cache invalidates exactly when the
@@ -250,6 +248,42 @@ class UserRolesRepository extends OperatorScopedRepository {
         );
       }
       return affected;
+    });
+  }
+
+  /// Bump every active holder of [roleId]. Used when an operator-scoped custom
+  /// role's permission bundle changes, so subsequent permission resolution sees
+  /// the new role definition as a real roles-version change.
+  Future<int> bumpActiveGrantHoldersForRole({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String roleId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      return exec.execute(
+        'update users '
+        'set roles_version = roles_version + 1, updated_at = now() '
+        'where operator_id = @operator_id::uuid '
+        'and exists ('
+        '  select 1 from user_roles '
+        '  where user_roles.user_id = users.user_id '
+        '  and user_roles.operator_id = @operator_id::uuid '
+        '  and user_roles.role_id = @role_id::uuid '
+        '  and user_roles.revoked_at is null '
+        '  and (user_roles.valid_until is null or user_roles.valid_until > now()) '
+        '  and user_roles.valid_from <= now()'
+        ')',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'role_id': roleId,
+        },
+      );
     });
   }
 

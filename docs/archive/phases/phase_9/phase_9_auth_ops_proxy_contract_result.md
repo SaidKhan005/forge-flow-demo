@@ -38,7 +38,7 @@ no Cloud Armor/reCAPTCHA dashboard mutation, no Production1 mutation.
 
 The production auth-ops binding and live permission-snapshot bridge landed in
 the next slice on 2026-04-28. See
-`docs/phases/phase_9/phase_9_auth_ops_binding_result.md`.
+`docs/archive/phases/phase_9/phase_9_auth_ops_binding_result.md`.
 
 ## Remaining
 
