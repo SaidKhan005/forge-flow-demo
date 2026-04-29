@@ -1,0 +1,966 @@
+// Phase 11A.0 — Admin auth gate.
+//
+// The admin console is F&F-internal back-office. Only Firebase users
+// whose ID token carries a `super_admin` or `ff_support` role claim
+// are admitted; everyone else is fail-closed to a "Forbidden" surface
+// that exposes a sign-out affordance.
+//
+// Two auth sources ship with this slice:
+//
+//   * [FirebaseAdminAuthSource] — production. Wraps
+//     `firebase_auth.FirebaseAuth.instance.userChanges()` and reads
+//     custom claims via `User.getIdTokenResult()`. Phase 11A.x slices
+//     wire the Firebase web init step against the production admin
+//     project; the source is a thin adapter so that wiring is
+//     additive rather than restructuring this gate.
+//   * [DemoAdminAuthSource] — tests + the kDemoMode walkthrough. Lets
+//     a widget exercise both the admit path (super_admin / ff_support)
+//     and the fail-closed path (any other role list, or signed-out)
+//     without touching live Firebase Authentication.
+//
+// The gate widget itself is auth-source agnostic — it watches a
+// [Stream] of [AdminAuthState] and renders one of three surfaces
+// (loading / unauthenticated / forbidden / admin shell). The same
+// shape works for both production and demo.
+//
+// Operator-app auth (`lib/state/auth_session_notifier.dart`,
+// `lib/screens/auth/login_screen.dart`) is intentionally NOT reused.
+// Phase 11A is admin-only, on a separate Cloud Run service, with a
+// different Firebase project / role catalog. Sharing the operator
+// notifier would couple two products that the Hard Promises keep
+// separate.
+
+import 'dart:async';
+
+import 'package:firebase_auth/firebase_auth.dart' as fb;
+import 'package:flutter/material.dart';
+
+import '../theme/app_theme.dart';
+
+/// Roles that are admitted to the admin console. Mirrors the
+/// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
+/// `super_admin` + `ff_support`. Operator roles
+/// (`operator_owner` / `operator_manager`) are explicitly NOT
+/// admitted here — the admin console is F&F-internal, not operator
+/// self-service.
+const Set<String> kAdminConsoleRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+/// Identity payload an admit decision was made against. Carries only
+/// what the gate / shell need to render the admin surface; it does
+/// not promise to be a full Firebase user object.
+@immutable
+class AdminAuthSession {
+  const AdminAuthSession({
+    required this.uid,
+    required this.email,
+    required this.displayName,
+    required this.roles,
+  });
+
+  /// Firebase user UID (or a synthetic id under demo mode).
+  final String uid;
+
+  /// Email if the IdP returned one. May be empty for demo fixtures.
+  final String email;
+
+  /// Display name. Falls back to email-localpart if Firebase did not
+  /// supply one.
+  final String displayName;
+
+  /// Role claims. Membership in [kAdminConsoleRoles] is what the
+  /// admit decision keys off.
+  final List<String> roles;
+
+  /// True if any admitted role is present.
+  bool get isAdmin => roles.any(kAdminConsoleRoles.contains);
+}
+
+/// Sealed state machine the gate switches on. `forbidden` is the
+/// fail-closed branch: signed-in but the ID token did not carry an
+/// admin role claim.
+sealed class AdminAuthState {
+  const AdminAuthState();
+}
+
+class AdminAuthLoading extends AdminAuthState {
+  const AdminAuthLoading();
+}
+
+class AdminAuthUnauthenticated extends AdminAuthState {
+  const AdminAuthUnauthenticated({this.lastErrorMessage});
+
+  final String? lastErrorMessage;
+}
+
+class AdminAuthForbidden extends AdminAuthState {
+  const AdminAuthForbidden(this.session);
+
+  final AdminAuthSession session;
+}
+
+class AdminAuthAuthenticated extends AdminAuthState {
+  const AdminAuthAuthenticated(this.session);
+
+  final AdminAuthSession session;
+}
+
+/// Source of admin auth state. Both live Firebase wiring and demo
+/// fixtures implement this so the gate stays implementation-blind.
+abstract class AdminAuthSource {
+  Stream<AdminAuthState> get stream;
+  AdminAuthState get current;
+
+  /// Sign-in entrypoint. Production source surfaces this through the
+  /// branded sign-in card; demo source flips a fixture.
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  });
+
+  Future<void> signOut();
+
+  void dispose();
+}
+
+/// Demo auth source. The admin walkthrough and widget tests run
+/// against this so the click path can be exercised without touching
+/// live Firebase Authentication.
+class DemoAdminAuthSource implements AdminAuthSource {
+  DemoAdminAuthSource({AdminAuthState? initial})
+      : _state = initial ?? const AdminAuthLoading() {
+    _controller.add(_state);
+  }
+
+  /// Convenience factory: starts signed-out so the walkthrough drives
+  /// the sign-in card explicitly.
+  factory DemoAdminAuthSource.signedOut() => DemoAdminAuthSource(
+        initial: const AdminAuthUnauthenticated(),
+      );
+
+  /// Convenience factory: starts already signed in as a super-admin.
+  /// Useful for widget tests that just need the shell rendered.
+  factory DemoAdminAuthSource.signedInAsSuperAdmin() => DemoAdminAuthSource(
+        initial: const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-super-admin',
+            email: 'demo.super.admin@forgeflow.test',
+            displayName: 'Demo Super Admin',
+            roles: <String>['super_admin'],
+          ),
+        ),
+      );
+
+  /// Convenience factory: starts signed in as a non-admin so the
+  /// fail-closed path renders.
+  factory DemoAdminAuthSource.signedInAsNonAdmin() => DemoAdminAuthSource(
+        initial: const AdminAuthForbidden(
+          AdminAuthSession(
+            uid: 'demo-non-admin',
+            email: 'demo.operator@forgeflow.test',
+            displayName: 'Demo Operator',
+            roles: <String>['operator_owner'],
+          ),
+        ),
+      );
+
+  final StreamController<AdminAuthState> _controller =
+      StreamController<AdminAuthState>.broadcast();
+  AdminAuthState _state;
+
+  /// Demo registry — matches against the email submitted on the
+  /// sign-in card. Keeps the walkthrough deterministic without
+  /// shipping live credentials.
+  static const Map<String, AdminAuthSession> _demoUsers =
+      <String, AdminAuthSession>{
+    'super.admin@forgeflow.test': AdminAuthSession(
+      uid: 'demo-super-admin',
+      email: 'super.admin@forgeflow.test',
+      displayName: 'Demo Super Admin',
+      roles: <String>['super_admin'],
+    ),
+    'support@forgeflow.test': AdminAuthSession(
+      uid: 'demo-ff-support',
+      email: 'support@forgeflow.test',
+      displayName: 'Demo F&F Support',
+      roles: <String>['ff_support'],
+    ),
+    'operator@forgeflow.test': AdminAuthSession(
+      uid: 'demo-operator',
+      email: 'operator@forgeflow.test',
+      displayName: 'Demo Operator',
+      roles: <String>['operator_owner'],
+    ),
+  };
+
+  @override
+  Stream<AdminAuthState> get stream => _controller.stream;
+
+  @override
+  AdminAuthState get current => _state;
+
+  @override
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    final fixture = _demoUsers[normalized];
+    if (fixture == null) {
+      _emit(
+        const AdminAuthUnauthenticated(
+          lastErrorMessage:
+              'Demo mode: unknown email. Try super.admin@forgeflow.test, '
+              'support@forgeflow.test, or operator@forgeflow.test.',
+        ),
+      );
+      return;
+    }
+    _emit(
+      fixture.isAdmin
+          ? AdminAuthAuthenticated(fixture)
+          : AdminAuthForbidden(fixture),
+    );
+  }
+
+  @override
+  Future<void> signOut() async {
+    _emit(const AdminAuthUnauthenticated());
+  }
+
+  /// Test helper: swap the state directly without going through
+  /// sign-in. Lets widget tests pin a fixture without async timing.
+  @visibleForTesting
+  void emitForTesting(AdminAuthState state) => _emit(state);
+
+  void _emit(AdminAuthState next) {
+    _state = next;
+    _controller.add(next);
+  }
+
+  @override
+  void dispose() {
+    _controller.close();
+  }
+}
+
+/// Live Firebase Authentication source. Reads custom claims from the
+/// ID token result and emits the matching admit / forbidden state.
+class FirebaseAdminAuthSource implements AdminAuthSource {
+  FirebaseAdminAuthSource({fb.FirebaseAuth? firebaseAuth})
+      : _auth = firebaseAuth ?? fb.FirebaseAuth.instance,
+        _state = const AdminAuthLoading() {
+    _controller.add(_state);
+    _subscription = _auth.userChanges().listen(
+      _handleUserChange,
+      onError: (Object error, StackTrace stack) {
+        _emit(AdminAuthUnauthenticated(lastErrorMessage: error.toString()));
+      },
+    );
+  }
+
+  final fb.FirebaseAuth _auth;
+  final StreamController<AdminAuthState> _controller =
+      StreamController<AdminAuthState>.broadcast();
+  StreamSubscription<fb.User?>? _subscription;
+  AdminAuthState _state;
+
+  @override
+  Stream<AdminAuthState> get stream => _controller.stream;
+
+  @override
+  AdminAuthState get current => _state;
+
+  @override
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    try {
+      await _auth.signInWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+      // The userChanges stream takes the next emit from here.
+    } on fb.FirebaseAuthException catch (error) {
+      _emit(
+        AdminAuthUnauthenticated(
+          lastErrorMessage: error.message ?? error.code,
+        ),
+      );
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> signOut() async {
+    await _auth.signOut();
+  }
+
+  Future<void> _handleUserChange(fb.User? user) async {
+    if (user == null) {
+      _emit(const AdminAuthUnauthenticated());
+      return;
+    }
+    try {
+      // Force-refresh to pick up role-claim rotations issued by the
+      // admin proxy without waiting on the default 1h cache window.
+      final tokenResult = await user.getIdTokenResult(true);
+      final claims = tokenResult.claims ?? const <String, Object?>{};
+      final roles = _extractRoles(claims);
+      final session = AdminAuthSession(
+        uid: user.uid,
+        email: user.email ?? '',
+        displayName: user.displayName ?? _localPartOrUid(user),
+        roles: roles,
+      );
+      _emit(
+        session.isAdmin
+            ? AdminAuthAuthenticated(session)
+            : AdminAuthForbidden(session),
+      );
+    } catch (error) {
+      _emit(
+        AdminAuthUnauthenticated(
+          lastErrorMessage: 'Could not read admin claims: $error',
+        ),
+      );
+    }
+  }
+
+  /// Projects Phase 9's locked admin claim shape onto the gate's
+  /// role list. The auth contract (`docs/phases/phase_9/
+  /// phase_9_auth_plan.md`, decision lock 2026-04-26) keeps the JWT
+  /// custom-claims payload tiny: `operator_id`, `is_super_admin`,
+  /// `is_ff_support`, `roles_version`. Postgres remains source of
+  /// truth for full role/permission resolution; the JWT only carries
+  /// the two boolean admin flags. Mirrors the canonical projection
+  /// in `lib/services/auth/firebase_auth_login_service.dart`
+  /// `_extractRoles` so the operator app and the admin console
+  /// agree on what "admin" means.
+  @visibleForTesting
+  static List<String> extractRolesFromClaims(Map<String, Object?> claims) {
+    final roles = <String>[];
+    if (claims['is_super_admin'] == true) roles.add('super_admin');
+    if (claims['is_ff_support'] == true) roles.add('ff_support');
+    return List<String>.unmodifiable(roles);
+  }
+
+  static List<String> _extractRoles(Map<String, Object?> claims) =>
+      extractRolesFromClaims(claims);
+
+  static String _localPartOrUid(fb.User user) {
+    final email = user.email;
+    if (email == null || !email.contains('@')) return user.uid;
+    return email.split('@').first;
+  }
+
+  void _emit(AdminAuthState next) {
+    _state = next;
+    _controller.add(next);
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _controller.close();
+  }
+}
+
+/// The gate widget. Subscribes to [source] and renders one of:
+///
+///   * branded sign-in card (unauthenticated)
+///   * branded "forbidden" card with sign-out (forbidden)
+///   * [adminShellBuilder] result (authenticated)
+///   * default loading splash (loading)
+///
+/// The shell is provided by the caller so this gate has no
+/// dependency on `lib/admin/admin_shell.dart` and can stay testable
+/// in isolation.
+class AdminAuthGate extends StatefulWidget {
+  const AdminAuthGate({
+    super.key,
+    required this.source,
+    required this.adminShellBuilder,
+    this.loadingBuilder,
+  });
+
+  final AdminAuthSource source;
+  final Widget Function(BuildContext context, AdminAuthSession session)
+      adminShellBuilder;
+  final WidgetBuilder? loadingBuilder;
+
+  @override
+  State<AdminAuthGate> createState() => _AdminAuthGateState();
+}
+
+class _AdminAuthGateState extends State<AdminAuthGate> {
+  late AdminAuthState _state;
+  late StreamSubscription<AdminAuthState> _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _state = widget.source.current;
+    _subscription = widget.source.stream.listen((next) {
+      if (!mounted) return;
+      setState(() => _state = next);
+    });
+  }
+
+  @override
+  void didUpdateWidget(covariant AdminAuthGate oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.source != widget.source) {
+      _subscription.cancel();
+      _state = widget.source.current;
+      _subscription = widget.source.stream.listen((next) {
+        if (!mounted) return;
+        setState(() => _state = next);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _subscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _state;
+    return switch (state) {
+      AdminAuthLoading() =>
+        widget.loadingBuilder?.call(context) ?? const _AdminLoading(),
+      AdminAuthUnauthenticated() => _AdminSignInScreen(
+          source: widget.source,
+          errorMessage: state.lastErrorMessage,
+        ),
+      AdminAuthForbidden() => _AdminForbiddenScreen(
+          source: widget.source,
+          session: state.session,
+        ),
+      AdminAuthAuthenticated() =>
+        widget.adminShellBuilder(context, state.session),
+    };
+  }
+}
+
+class _AdminLoading extends StatelessWidget {
+  const _AdminLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDeep,
+      body: const Center(
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.sunsetDark,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminSignInScreen extends StatefulWidget {
+  const _AdminSignInScreen({required this.source, this.errorMessage});
+
+  final AdminAuthSource source;
+  final String? errorMessage;
+
+  @override
+  State<_AdminSignInScreen> createState() => _AdminSignInScreenState();
+}
+
+class _AdminSignInScreenState extends State<_AdminSignInScreen> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _submitting = false;
+  String? _localError;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_submitting) return;
+    final email = _emailController.text.trim();
+    final password = _passwordController.text;
+    if (email.isEmpty || password.isEmpty) {
+      setState(() {
+        _localError = 'Email and password are required.';
+      });
+      return;
+    }
+    setState(() {
+      _submitting = true;
+      _localError = null;
+    });
+    try {
+      await widget.source.signInWithEmailPassword(
+        email: email,
+        password: password,
+      );
+    } catch (_) {
+      // The source is responsible for surfacing its own error via
+      // the stream. Local catch keeps the spinner from leaking.
+    } finally {
+      if (mounted) {
+        setState(() => _submitting = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final externalError = widget.errorMessage;
+    final error = _localError ?? externalError;
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDeep,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.backgroundDeep,
+              AppColors.backgroundMid,
+              AppColors.shimmer,
+            ],
+            stops: [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _AdminBrandMark(subtitle: 'Operations Console'),
+                    const SizedBox(height: 28),
+                    _AdminSignInCard(
+                      key: const Key('admin_signin_card'),
+                      emailController: _emailController,
+                      passwordController: _passwordController,
+                      submitting: _submitting,
+                      errorMessage: error,
+                      onSubmit: _submit,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'F&F internal access only.',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.mono11(
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AdminBrandMark extends StatelessWidget {
+  const _AdminBrandMark({required this.subtitle});
+
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 84,
+          height: 84,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.sunset.withValues(alpha: 0.18),
+                blurRadius: 22,
+                spreadRadius: 1,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: ClipOval(
+            child: Image.asset(
+              'assets/images/forge_flow_splash_icon.png',
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Text(
+          'Forge & Flow',
+          textAlign: TextAlign.center,
+          style: AppTextStyles.display28(color: AppColors.textPrimary),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+        ),
+      ],
+    );
+  }
+}
+
+class _AdminSignInCard extends StatelessWidget {
+  const _AdminSignInCard({
+    super.key,
+    required this.emailController,
+    required this.passwordController,
+    required this.submitting,
+    required this.errorMessage,
+    required this.onSubmit,
+  });
+
+  final TextEditingController emailController;
+  final TextEditingController passwordController;
+  final bool submitting;
+  final String? errorMessage;
+  final Future<void> Function() onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.backgroundSurface, AppColors.cardGlow],
+          ),
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.textPrimary.withValues(alpha: 0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Admin sign in',
+                style: AppTextStyles.mono15(
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                height: 2,
+                width: 28,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.sunset, AppColors.sunsetDark],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 18),
+              if (errorMessage != null) ...[
+                _ErrorBanner(message: errorMessage!),
+                const SizedBox(height: 14),
+              ],
+              _BrandedField(
+                fieldKey: const Key('admin_email_field'),
+                controller: emailController,
+                label: 'Email',
+                obscureText: false,
+                enabled: !submitting,
+                keyboardType: TextInputType.emailAddress,
+                autofillHints: const <String>[AutofillHints.username],
+              ),
+              const SizedBox(height: 14),
+              _BrandedField(
+                fieldKey: const Key('admin_password_field'),
+                controller: passwordController,
+                label: 'Password',
+                obscureText: true,
+                enabled: !submitting,
+                autofillHints: const <String>[AutofillHints.password],
+                onSubmitted: (_) => onSubmit(),
+              ),
+              const SizedBox(height: 20),
+              _SignInButton(
+                submitting: submitting,
+                onPressed: submitting ? null : onSubmit,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrandedField extends StatelessWidget {
+  const _BrandedField({
+    required this.fieldKey,
+    required this.controller,
+    required this.label,
+    required this.obscureText,
+    required this.enabled,
+    this.keyboardType,
+    this.autofillHints,
+    this.onSubmitted,
+  });
+
+  final Key fieldKey;
+  final TextEditingController controller;
+  final String label;
+  final bool obscureText;
+  final bool enabled;
+  final TextInputType? keyboardType;
+  final List<String>? autofillHints;
+  final ValueChanged<String>? onSubmitted;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(6),
+      borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
+    );
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      obscureText: obscureText,
+      enabled: enabled,
+      keyboardType: keyboardType,
+      autofillHints: autofillHints,
+      onSubmitted: onSubmitted,
+      cursorColor: AppColors.sunset,
+      style: AppTextStyles.body15(color: AppColors.textPrimary),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
+        filled: true,
+        fillColor: AppColors.backgroundSurface,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        border: border,
+        enabledBorder: border,
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: const BorderSide(color: AppColors.sunset, width: 1.6),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(6),
+          borderSide: BorderSide(
+            color: AppColors.borderSubtle.withValues(alpha: 0.6),
+            width: 1,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SignInButton extends StatelessWidget {
+  const _SignInButton({required this.submitting, required this.onPressed});
+
+  final bool submitting;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 48,
+      child: FilledButton(
+        key: const Key('admin_signin_submit'),
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.sunset,
+          foregroundColor: AppColors.backgroundSurface,
+          disabledBackgroundColor:
+              AppColors.sunset.withValues(alpha: 0.55),
+          disabledForegroundColor:
+              AppColors.backgroundSurface.withValues(alpha: 0.85),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(6),
+          ),
+          textStyle: AppTextStyles.mono14(
+            color: AppColors.backgroundSurface,
+            weight: FontWeight.w600,
+          ),
+        ),
+        child: submitting
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: AppColors.backgroundSurface,
+                ),
+              )
+            : const Text('Sign in'),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_signin_error_banner'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.negative.withValues(alpha: 0.45),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.error_outline,
+            size: 16,
+            color: AppColors.negative,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminForbiddenScreen extends StatelessWidget {
+  const _AdminForbiddenScreen({
+    required this.source,
+    required this.session,
+  });
+
+  final AdminAuthSource source;
+  final AdminAuthSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDeep,
+      body: SafeArea(
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  key: const Key('admin_forbidden_card'),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSurface,
+                    border: Border.all(
+                      color: AppColors.borderSubtle,
+                      width: 1,
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.lock_outline,
+                            size: 18,
+                            color: AppColors.negative,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Admin access required',
+                              style: AppTextStyles.mono15(
+                                color: AppColors.textPrimary,
+                                weight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        'Signed in as ${session.email.isEmpty ? session.uid : session.email}, '
+                        'but your account does not carry an admin role claim '
+                        '(${kAdminConsoleRoles.join(' / ')}). The Forge & Flow '
+                        'Operations Console is internal F&F access only.',
+                        style: AppTextStyles.body13(
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        height: 42,
+                        child: OutlinedButton(
+                          key: const Key('admin_forbidden_signout'),
+                          onPressed: () => source.signOut(),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.sunsetDark,
+                            side: const BorderSide(
+                              color: AppColors.sunsetDark,
+                              width: 1,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          child: const Text('Sign out'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

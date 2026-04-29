@@ -1,0 +1,136 @@
+// Phase 11A.0 — Admin route table.
+//
+// The admin console is a multi-surface back-office. 11A.0 lights up
+// the empty Home route only; later 11A.x slices fill in the rest.
+// Keeping the route catalog in a single typed list lets the shell
+// nav render placeholders for the surfaces that aren't online yet
+// without scattering `if (slice >= X)` flags across the UI.
+
+import 'package:flutter/material.dart';
+
+import 'screens/admin_home_screen.dart';
+
+/// One entry in the admin route catalog.
+@immutable
+class AdminRoute {
+  const AdminRoute({
+    required this.id,
+    required this.title,
+    required this.path,
+    required this.icon,
+    required this.builder,
+    this.subtitle,
+    this.placeholder = false,
+  });
+
+  /// Stable ID used by tests, deep-links, and audit logs.
+  final String id;
+
+  /// Human-readable label shown in the side nav.
+  final String title;
+
+  /// Canonical route path (`/`, `/operators`, `/pricing`, ...).
+  /// Future slices will use this with a router; 11A.0 only needs
+  /// stable IDs the shell can switch on.
+  final String path;
+
+  /// Material icon shown in the side nav.
+  final IconData icon;
+
+  /// Optional one-line description for the empty-state body when the
+  /// route is opened ahead of its slice landing.
+  final String? subtitle;
+
+  /// True when the route is a placeholder for a slice that hasn't
+  /// landed yet. The shell renders a "coming in 11A.x" empty state
+  /// instead of [builder] so the nav structure is visible from
+  /// 11A.0 without exposing scaffolding.
+  final bool placeholder;
+
+  /// Builds the route surface. For [placeholder] routes the shell
+  /// substitutes a branded "coming soon" panel; for live routes the
+  /// builder runs.
+  final Widget Function(BuildContext context) builder;
+}
+
+/// Canonical admin home route ID. Tests + the shell key off this so
+/// renaming the title can't accidentally drop the home surface.
+const String kAdminHomeRouteId = 'home';
+
+/// The admin route table. Order is the side-nav order. Only `home`
+/// is live in 11A.0; the rest are deliberately marked `placeholder`
+/// so the surface area is visible to operators walking the shell
+/// without leaking incomplete UX.
+const List<AdminRoute> kAdminRoutes = <AdminRoute>[
+  AdminRoute(
+    id: kAdminHomeRouteId,
+    title: 'Home',
+    path: '/',
+    icon: Icons.home_outlined,
+    subtitle: 'Operations console — landing surface.',
+    builder: _buildHome,
+  ),
+  AdminRoute(
+    id: 'operators',
+    title: 'Operators',
+    path: '/operators',
+    icon: Icons.business_outlined,
+    subtitle: 'Operator + location CRUD lands in 11A.1.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+  AdminRoute(
+    id: 'pricing',
+    title: 'Pricing',
+    path: '/pricing',
+    icon: Icons.tune_outlined,
+    subtitle: 'Tiered usage cap admin lands in 11A.2.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+  AdminRoute(
+    id: 'corpus',
+    title: 'Corpus',
+    path: '/corpus',
+    icon: Icons.menu_book_outlined,
+    subtitle: 'Markdown corpus admin lands in 11A.3.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+  AdminRoute(
+    id: 'integrations',
+    title: 'Integrations',
+    path: '/integrations',
+    icon: Icons.extension_outlined,
+    subtitle: 'Provider key rotation lands in 11A.4.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+  AdminRoute(
+    id: 'debug',
+    title: 'Debug',
+    path: '/debug',
+    icon: Icons.bug_report_outlined,
+    subtitle: 'Per-operator debug console lands in 11A.5.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+  AdminRoute(
+    id: 'observability',
+    title: 'Observability',
+    path: '/observability',
+    icon: Icons.insights_outlined,
+    subtitle: 'System health + cost dashboard lands in 11A.6.',
+    placeholder: true,
+    builder: _placeholderBuilder,
+  ),
+];
+
+Widget _buildHome(BuildContext context) => const AdminHomeScreen();
+
+Widget _placeholderBuilder(BuildContext context) {
+  // 11A.0 placeholder body. The shell wraps this with the branded
+  // empty-state surface using the route's [subtitle], so this builder
+  // never actually renders.
+  return const SizedBox.shrink();
+}
