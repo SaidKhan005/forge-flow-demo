@@ -223,9 +223,25 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   final String Function() _idempotencyKeyFactory;
 
   static const String invitesPath = '/v1/admin/auth/invites';
+  static const String usersPath = '/v1/admin/auth/users';
   static const String usersPrefix = '/v1/admin/auth/users/';
   static const String rolesPath = '/v1/admin/auth/roles';
   static const String roleGrantsPath = '/v1/admin/auth/role-grants';
+
+  @override
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
+    final response = await _get(usersPath);
+    _expectStatus(response, 200);
+    final rawUsers = response.body['users'];
+    if (rawUsers is! List) {
+      throw _malformed(response, 'team users response was incomplete');
+    }
+    return TeamUsersListed(
+      users: List<TeamUserListEntry>.unmodifiable(
+        rawUsers.map((raw) => _teamUserFromJson(response, raw)),
+      ),
+    );
+  }
 
   @override
   Future<TeamRoleCatalogListed> listRoles(
@@ -309,6 +325,21 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamInvitesListed> listInvites(TeamInviteListCommand command) async {
+    final response = await _get(invitesPath);
+    _expectStatus(response, 200);
+    final rawInvites = response.body['invites'];
+    if (rawInvites is! List) {
+      throw _malformed(response, 'team invites response was incomplete');
+    }
+    return TeamInvitesListed(
+      invites: List<TeamInviteListEntry>.unmodifiable(
+        rawInvites.map((raw) => _teamInviteFromJson(response, raw)),
+      ),
+    );
+  }
+
+  @override
   Future<TeamInviteCreated> createInvite(
     TeamInviteCreateCommand command,
   ) async {
@@ -318,6 +349,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       'scope_type': command.scopeType,
       if (command.targetLocationId != null)
         'location_id': command.targetLocationId,
+      if (command.targetOrgUnitId != null)
+        'org_unit_id': command.targetOrgUnitId,
     });
     _expectStatus(response, 201);
     final inviteId = _readNonBlankString(response.body['invite_id']);
@@ -385,6 +418,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       'scope_type': command.scopeType,
       if (command.targetLocationId != null)
         'location_id': command.targetLocationId,
+      if (command.targetOrgUnitId != null)
+        'org_unit_id': command.targetOrgUnitId,
       if (_readNonBlankString(command.reason) != null)
         'reason': command.reason!.trim(),
     });
@@ -540,6 +575,84 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     );
   }
 
+  TeamUserListEntry _teamUserFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'team user payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final userId = _readNonBlankString(json['user_id']);
+    final email = _readNonBlankString(json['email']);
+    final displayName = _readNonBlankString(json['display_name']);
+    final roleId = _readNonBlankString(json['role_id']);
+    final roleLabel = _readNonBlankString(json['role_label']);
+    final status = _readNonBlankString(json['status']);
+    final mfaEnrolled = json['mfa_enrolled'];
+    if (userId == null ||
+        email == null ||
+        displayName == null ||
+        roleId == null ||
+        roleLabel == null ||
+        status == null ||
+        mfaEnrolled is! bool) {
+      throw _malformed(response, 'team user payload was incomplete');
+    }
+    return TeamUserListEntry(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+      roleId: roleId,
+      roleLabel: roleLabel,
+      status: status,
+      locationId: _readNonBlankString(json['location_id']),
+      locationLabel: _readNonBlankString(json['location_label']),
+      mfaEnrolled: mfaEnrolled,
+      userRoleId: _readNonBlankString(json['user_role_id']),
+      lastActiveAt: _readDateTime(json['last_active_at']),
+    );
+  }
+
+  TeamInviteListEntry _teamInviteFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'team invite payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final inviteId = _readNonBlankString(json['invite_id']);
+    final email = _readNonBlankString(json['email']);
+    final roleId = _readNonBlankString(json['role_id']);
+    final roleLabel = _readNonBlankString(json['role_label']);
+    final scopeType = _readNonBlankString(json['scope_type']);
+    final expiresAt = _readDateTime(json['expires_at']);
+    final createdAt = _readDateTime(json['created_at']);
+    if (inviteId == null ||
+        email == null ||
+        roleId == null ||
+        roleLabel == null ||
+        scopeType == null ||
+        expiresAt == null ||
+        createdAt == null) {
+      throw _malformed(response, 'team invite payload was incomplete');
+    }
+    return TeamInviteListEntry(
+      inviteId: inviteId,
+      email: email,
+      roleId: roleId,
+      roleLabel: roleLabel,
+      scopeType: scopeType,
+      locationId: _readNonBlankString(json['location_id']),
+      locationLabel: _readNonBlankString(json['location_label']),
+      orgUnitId: _readNonBlankString(json['org_unit_id']),
+      orgUnitLabel: _readNonBlankString(json['org_unit_label']),
+      expiresAt: expiresAt,
+      createdAt: createdAt,
+    );
+  }
+
   Map<String, Object?> _permissionUpdateJson(TeamRolePermissionUpdate update) {
     return <String, Object?>{
       'permission_key': update.permissionKey,
@@ -608,6 +721,13 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     if (value is! String) return null;
     final trimmed = value.trim();
     return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static DateTime? _readDateTime(Object? value) {
+    if (value is DateTime) return value.toUtc();
+    final raw = _readNonBlankString(value);
+    if (raw == null) return null;
+    return DateTime.tryParse(raw)?.toUtc();
   }
 
   static String _describeTransportError(Object error) {

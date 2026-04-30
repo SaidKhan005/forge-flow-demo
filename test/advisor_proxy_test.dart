@@ -22,6 +22,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
@@ -2720,6 +2721,7 @@ void main() {
       ProxyHealthCheckStore? healthCheckStore,
       ProxyLlmProvider? llmProvider,
       AuthSessionLedgerWriter? authSessionLedgerWriter,
+      FirebaseAdminAuthClient? firebaseAdminAuthClient,
       bool trustProxyAuditHeaders = false,
       ProxyRequestLogPolicy requestLogPolicy =
           const ProxyRequestLogPolicy.metaOnly(),
@@ -2738,6 +2740,7 @@ void main() {
             healthCheckStore: healthCheckStore,
             llmProvider: llmProvider,
             authSessionLedgerWriter: authSessionLedgerWriter,
+            firebaseAdminAuthClient: firebaseAdminAuthClient,
             trustProxyAuditHeaders: trustProxyAuditHeaders,
             requestLogPolicy: requestLogPolicy,
             now: () => DateTime.utc(2026, 4, 26, 12),
@@ -2786,6 +2789,9 @@ void main() {
           );
           expect(response.statusCode, equals(503));
           final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['status'], equals('unavailable'));
+          expect(body['severity'], equals('red'));
+          expect(body['contract'], equals('proxy_health.v1'));
           expect(body['error'], equals('health_check_not_configured'));
         } finally {
           await shutDown();
@@ -2814,9 +2820,62 @@ void main() {
             expect(response.statusCode, equals(200));
             final body = jsonDecode(response.body) as Map<String, Object?>;
             expect(body['status'], equals('ok'));
+            expect(body['severity'], equals('green'));
+            expect(body['contract'], equals('proxy_health.v1'));
+            expect(body['schema_version'], equals(1));
+            expect(body['checked_at'], equals('2026-04-26T12:00:00.000Z'));
             expect(body['postgres_select_1'], equals('ok'));
             expect(body['age_cypher_match'], equals('ok'));
             expect(body['pgvector_similarity'], equals('ok'));
+            final dependencies = body['dependencies']! as Map<String, Object?>;
+            expect(
+              (dependencies['postgres']! as Map<String, Object?>)['status'],
+              equals('green'),
+            );
+            expect(
+              (dependencies['age']! as Map<String, Object?>)['legacy_key'],
+              equals('age_cypher_match'),
+            );
+            final metrics = body['metrics']! as Map<String, Object?>;
+            expect(metrics.keys, contains('audit_chain_lag_seconds'));
+            expect(metrics.keys, contains('event_outbox_undelivered_count'));
+            expect(metrics.keys, contains('event_outbox_lag_seconds'));
+            expect(metrics.keys, contains('usage_caps_breach_count'));
+            expect(metrics.keys, contains('graph_node_count'));
+            expect(metrics.keys, contains('graph_edge_count'));
+            expect(metrics.keys, contains('graph_traversal_latency_ms'));
+            expect(metrics.keys, contains('vector_index_size_per_corpus'));
+            expect(metrics.keys, contains('vector_query_latency_ms'));
+            expect(metrics.keys, contains('vector_recall'));
+            expect(metrics.keys, contains('rollup_freshness_per_grain'));
+            expect(
+              (metrics['graph_edge_count']! as Map<String, Object?>)['status'],
+              equals('unknown'),
+            );
+            expect(
+              (metrics['graph_edge_count']! as Map<String, Object?>)['value'],
+              isNull,
+            );
+            final surfaces = body['surfaces']! as Map<String, Object?>;
+            expect(
+              surfaces.keys,
+              containsAll(<String>[
+                'audit_chain',
+                'event_outbox',
+                'usage_caps',
+                'graph',
+                'vector',
+                'rollups',
+              ]),
+            );
+            expect(
+              (surfaces['graph']! as Map<String, Object?>)['metrics'],
+              containsAll(<String>[
+                'graph_node_count',
+                'graph_edge_count',
+                'graph_traversal_latency_ms',
+              ]),
+            );
           } finally {
             await shutDown();
           }
@@ -2839,7 +2898,56 @@ void main() {
           expect(response.statusCode, equals(503));
           final body = jsonDecode(response.body) as Map<String, Object?>;
           expect(body['status'], equals('unavailable'));
+          expect(body['severity'], equals('red'));
           expect(body['age_cypher_match'], equals('failed'));
+          final dependencies = body['dependencies']! as Map<String, Object?>;
+          expect(
+            (dependencies['age']! as Map<String, Object?>)['status'],
+            equals('red'),
+          );
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /health degrades for populated non-blocking metrics', () async {
+      await withRealHttp(() async {
+        await spinUpServer(
+          healthCheckStore: const _FixedHealthStore(
+            ProxyHealthStatus(
+              postgresOk: true,
+              ageOk: true,
+              pgvectorOk: true,
+              metrics: <String, ProxyHealthMetric>{
+                'usage_caps_breach_count': ProxyHealthMetric(
+                  status: 'yellow',
+                  value: 1,
+                  unit: 'count',
+                  description:
+                      'Requests refused because usage caps were reached.',
+                  owner: 'B33',
+                  thresholds: <String, Object?>{'yellow': 1, 'red': 10},
+                ),
+              },
+            ),
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(deepHealthPath),
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['status'], equals('degraded'));
+          expect(body['severity'], equals('yellow'));
+          final metrics = body['metrics']! as Map<String, Object?>;
+          expect(
+            (metrics['usage_caps_breach_count']!
+                as Map<String, Object?>)['status'],
+            equals('yellow'),
+          );
         } finally {
           await shutDown();
         }
@@ -3939,6 +4047,38 @@ void main() {
         }
       });
     });
+
+    test(
+      'POST /v1/auth/refresh-tokens/revoke-all revokes Firebase UID',
+      () async {
+        await withRealHttp(() async {
+          final firebaseAdmin = _RecordingFirebaseAdminAuthClient();
+          await spinUpServer(firebaseAdminAuthClient: firebaseAdmin);
+          try {
+            verifier.claims = const ProxyJwtClaims(
+              userId: 'postgres-user-uuid',
+              firebaseUid: 'firebase-uid',
+              operatorId: 'operator-uuid',
+              locationId: 'location-uuid',
+              roles: <String>[],
+            );
+            final response = await _httpPost(
+              client,
+              baseUri.resolve(authRefreshTokensRevokeAllPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{},
+            );
+            expect(response.statusCode, equals(200));
+            expect(
+              firebaseAdmin.revokedRefreshTokenUids,
+              equals(['firebase-uid']),
+            );
+          } finally {
+            await shutDown();
+          }
+        });
+      },
+    );
   });
 
   group('Phase 9.0Σ.g usage_caps two-slot key migration (B28 / item 6)', () {
@@ -5061,6 +5201,55 @@ class _SettableVerifier implements ProxyJwtVerifier {
     final value = claims;
     if (value != null) return value;
     throw ProxyJwtVerificationError('test verifier not configured');
+  }
+}
+
+class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
+  final List<String> revokedRefreshTokenUids = <String>[];
+
+  @override
+  Future<void> createUser({
+    required String uid,
+    required String email,
+    required Map<String, Object?> customClaims,
+  }) async {}
+
+  @override
+  Future<void> setCustomClaims({
+    required String uid,
+    required Map<String, Object?> customClaims,
+  }) async {}
+
+  @override
+  Future<void> setDisabled({
+    required String uid,
+    required bool disabled,
+  }) async {}
+
+  @override
+  Future<void> sendPasswordResetEmail({
+    required String email,
+    String? continueUrl,
+  }) async {}
+
+  @override
+  Future<bool> verifyPassword({
+    required String email,
+    required String password,
+    required String expectedUid,
+  }) async {
+    return true;
+  }
+
+  @override
+  Future<void> updatePassword({
+    required String uid,
+    required String password,
+  }) async {}
+
+  @override
+  Future<void> revokeRefreshTokens({required String uid}) async {
+    revokedRefreshTokenUids.add(uid);
   }
 }
 

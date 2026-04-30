@@ -54,6 +54,42 @@ Phase 9.5 does not own:
 - POS + labor vendor attribution (`Phase 8`)
 - Barrio V1.1 UX shell for Recognition / Coaching Dashboard (`Phase 9.75`)
 
+## Frontend Exposure
+
+Phase 9.5 is UX-led — the El Podio leaderboard surfaces (Barrio) ARE
+the deliverable. This section makes the operator/staff-visible
+surfaces explicit per Hard Promise #10.
+
+**Operator/staff-facing surfaces this phase requires:**
+
+- `lib/screens/barrio/el_podio_leaderboard_screen.dart` (extend or
+  rebuild from `el_podio_demo_data.dart` consumer): real authenticated
+  user identity, real points / mastery / streaks; week / month /
+  all-time tabs; rank badges; tie-breaker disclosure on hover.
+- Personal stats card on Barrio Home (current rank, points-to-next,
+  current streak).
+- Shared widget for badge / rank chip (reused by 9.75 Recognition).
+
+**Admin (11A) surfaces this phase requires:** none for 9.5. F&F-side
+points-model administration is post-launch; not in 9.5 scope.
+
+**UX sub-slice family:** owned inline by existing `9.5.x` slices.
+Each `9.5.x` slice that ships operator/staff-visible capability adds
+the `Operator walkthrough` block + walkthrough acceptance criterion.
+
+**Demo-mode walkthrough (`kDemoMode = true`):**
+
+- Sign in as a demo staff user → Barrio Home → personal stats card
+  shows real points / streak.
+- Tap leaderboard → see weekly tab → rank ordering matches points →
+  switch to monthly / all-time → ordering updates.
+- Tie-breaker disclosure renders when two users share points.
+- Recognition badge from 9.75 (when wired) increments the user's
+  points and re-ranks live.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract
 
 ```text

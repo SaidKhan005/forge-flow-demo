@@ -113,7 +113,9 @@
 --   pure overhead. This migration deliberately stops at the hook;
 --   the Phase 9 partition-policy slice locks the windowing rules.
 --
--- This migration is local framework only â€” no live database mutation.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 
 begin;
 

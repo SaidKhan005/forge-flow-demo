@@ -3,13 +3,8 @@
 // Email + password form with one "Sign in" action. On success the
 // notifier transitions to authenticated and the AuthGate swaps to
 // the app shell. On MFA required the gate swaps to the TOTP
-// challenge placeholder (real TOTP UI lands in 9.4). On failure the
-// error message renders in a banner above the form.
-//
-// Visual treatment uses the Forge & Flow brand palette (sunset +
-// cream + peacock) with the splash-icon mark above the form. Rich
-// branded action-link pages (invite, password reset, email verify)
-// are still owned by the F&F web app, not the Flutter shell.
+// challenge placeholder. On failure the error message renders in a
+// banner above the form.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -17,8 +12,23 @@ import 'package:provider/provider.dart';
 import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 
+const bool _demoOperatorSignInEnabled =
+    bool.fromEnvironment('kDemoMode') ||
+    bool.fromEnvironment('FORGE_FLOW_DEMO_MODE');
+const String _defaultDemoOperatorEmail = 'demo.operator@forgeflow.test';
+const String _defaultDemoOperatorPassword = 'forge-flow-demo';
+
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key});
+  const LoginScreen({
+    super.key,
+    this.showDemoOperatorSignIn = _demoOperatorSignInEnabled,
+    this.demoOperatorEmail = _defaultDemoOperatorEmail,
+    this.demoOperatorPassword = _defaultDemoOperatorPassword,
+  });
+
+  final bool showDemoOperatorSignIn;
+  final String demoOperatorEmail;
+  final String demoOperatorPassword;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -28,6 +38,9 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _submitting = false;
+  bool _requestingReset = false;
+  String? _localMessage;
+  bool _localMessageIsError = false;
 
   @override
   void dispose() {
@@ -40,19 +53,63 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_submitting) return;
     final email = _emailController.text.trim();
     final password = _passwordController.text;
-    if (email.isEmpty || password.isEmpty) {
-      return;
-    }
-    setState(() => _submitting = true);
+    if (email.isEmpty || password.isEmpty) return;
+
+    setState(() {
+      _submitting = true;
+      _localMessage = null;
+    });
     try {
       await context.read<AuthSessionNotifier>().signInWithEmailPassword(
         email: email,
         password: password,
       );
     } finally {
-      if (mounted) {
-        setState(() => _submitting = false);
-      }
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  Future<void> _submitDemoOperator() async {
+    if (_submitting) return;
+    _emailController.text = widget.demoOperatorEmail;
+    _passwordController.text = widget.demoOperatorPassword;
+    await _submit();
+  }
+
+  Future<void> _requestPasswordReset() async {
+    if (_submitting || _requestingReset) return;
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      setState(() {
+        _localMessage = 'Enter your email to reset your password.';
+        _localMessageIsError = true;
+      });
+      return;
+    }
+
+    setState(() {
+      _requestingReset = true;
+      _localMessage = null;
+    });
+    try {
+      await context.read<AuthSessionNotifier>().requestPasswordReset(
+        email: email,
+      );
+      if (!mounted) return;
+      setState(() {
+        _localMessage =
+            'If that email is registered, a password reset link is on the way.';
+        _localMessageIsError = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _localMessage =
+            'Password reset could not be started. Please try again.';
+        _localMessageIsError = true;
+      });
+    } finally {
+      if (mounted) setState(() => _requestingReset = false);
     }
   }
 
@@ -61,7 +118,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final notifier = context.watch<AuthSessionNotifier>();
     final state = notifier.state;
     final errorMessage = state is AuthSessionUnauthenticated
-        ? state.lastErrorMessage
+        ? _safeLoginError(state)
         : null;
 
     return Scaffold(
@@ -93,13 +150,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 32),
                     _LoginCard(
                       errorMessage: errorMessage,
+                      localMessage: _localMessage,
+                      localMessageIsError: _localMessageIsError,
                       emailController: _emailController,
                       passwordController: _passwordController,
                       submitting: _submitting,
+                      requestingReset: _requestingReset,
+                      showDemoOperatorSignIn: widget.showDemoOperatorSignIn,
                       onSubmit: _submit,
+                      onDemoOperatorSignIn: _submitDemoOperator,
+                      onRequestPasswordReset: _requestPasswordReset,
                     ),
-                    const SizedBox(height: 20),
-                    const _VersionMark(),
                   ],
                 ),
               ),
@@ -108,6 +169,26 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  String? _safeLoginError(AuthSessionUnauthenticated state) {
+    final code = state.lastErrorCode;
+    return switch (code) {
+      null =>
+        state.lastErrorMessage == null
+            ? null
+            : 'Sign-in could not be completed. Please try again.',
+      'invalid_credentials' => 'Email or password is incorrect.',
+      'account_suspended' =>
+        'This account cannot sign in right now. Contact your administrator.',
+      'email_not_verified' => 'Verify your email before signing in.',
+      'network_error' => 'Sign-in is temporarily unavailable. Try again.',
+      'too_many_attempts' =>
+        'Too many attempts. Please wait a moment and try again.',
+      'ledger_unavailable' =>
+        'Sign-in could not be recorded. Please try again in a moment.',
+      _ => 'Sign-in could not be completed. Please try again.',
+    };
   }
 }
 
@@ -153,17 +234,29 @@ class _BrandMark extends StatelessWidget {
 class _LoginCard extends StatelessWidget {
   const _LoginCard({
     required this.errorMessage,
+    required this.localMessage,
+    required this.localMessageIsError,
     required this.emailController,
     required this.passwordController,
     required this.submitting,
+    required this.requestingReset,
+    required this.showDemoOperatorSignIn,
     required this.onSubmit,
+    required this.onDemoOperatorSignIn,
+    required this.onRequestPasswordReset,
   });
 
   final String? errorMessage;
+  final String? localMessage;
+  final bool localMessageIsError;
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final bool submitting;
+  final bool requestingReset;
+  final bool showDemoOperatorSignIn;
   final Future<void> Function() onSubmit;
+  final Future<void> Function() onDemoOperatorSignIn;
+  final Future<void> Function() onRequestPasswordReset;
 
   @override
   Widget build(BuildContext context) {
@@ -213,6 +306,13 @@ class _LoginCard extends StatelessWidget {
                 _ErrorBanner(message: errorMessage!),
                 const SizedBox(height: 14),
               ],
+              if (localMessage != null) ...[
+                _LoginMessageBanner(
+                  message: localMessage!,
+                  isError: localMessageIsError,
+                ),
+                const SizedBox(height: 14),
+              ],
               _BrandedField(
                 fieldKey: const Key('login_email_field'),
                 controller: emailController,
@@ -237,7 +337,62 @@ class _LoginCard extends StatelessWidget {
                 submitting: submitting,
                 onPressed: submitting ? null : onSubmit,
               ),
+              if (showDemoOperatorSignIn) ...[
+                const SizedBox(height: 10),
+                _DemoOperatorButton(
+                  onPressed: submitting ? null : onDemoOperatorSignIn,
+                ),
+              ],
+              const SizedBox(height: 8),
+              TextButton(
+                key: const Key('login_forgot_password_button'),
+                onPressed: submitting || requestingReset
+                    ? null
+                    : onRequestPasswordReset,
+                style: TextButton.styleFrom(
+                  foregroundColor: AppColors.sunsetDark,
+                  textStyle: AppTextStyles.mono12(
+                    color: AppColors.sunsetDark,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+                child: requestingReset
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Forgot password?'),
+              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DemoOperatorButton extends StatelessWidget {
+  const _DemoOperatorButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 44,
+      child: OutlinedButton.icon(
+        key: const Key('login_demo_operator_button'),
+        onPressed: onPressed,
+        icon: const Icon(Icons.person_pin_circle_outlined, size: 18),
+        label: const Text('Use demo operator'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.sunsetDark,
+          side: const BorderSide(color: AppColors.borderSubtle),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          textStyle: AppTextStyles.mono12(
+            color: AppColors.sunsetDark,
+            weight: FontWeight.w700,
           ),
         ),
       ),
@@ -288,8 +443,10 @@ class _BrandedField extends StatelessWidget {
         floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
@@ -324,13 +481,11 @@ class _SignInButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.sunset,
           foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor:
-              AppColors.sunset.withValues(alpha: 0.55),
-          disabledForegroundColor:
-              AppColors.backgroundSurface.withValues(alpha: 0.85),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
+          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.55),
+          disabledForegroundColor: AppColors.backgroundSurface.withValues(
+            alpha: 0.85,
           ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           textStyle: AppTextStyles.mono14(
             color: AppColors.backgroundSurface,
             weight: FontWeight.w600,
@@ -351,21 +506,37 @@ class _SignInButton extends StatelessWidget {
   }
 }
 
-class _VersionMark extends StatelessWidget {
-  const _VersionMark();
+class _LoginMessageBanner extends StatelessWidget {
+  const _LoginMessageBanner({required this.message, required this.isError});
+
+  final String message;
+  final bool isError;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.bolt_rounded, size: 12, color: AppColors.textMuted),
-        const SizedBox(width: 6),
-        Text(
-          'Forge & Flow · v1.0.0',
-          style: AppTextStyles.mono8(color: AppColors.textMuted),
-        ),
-      ],
+    final color = isError ? AppColors.negative : AppColors.positive;
+    return Container(
+      key: const Key('login_local_message_banner'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            size: 16,
+            color: color,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(message, style: AppTextStyles.body13(color: color)),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -391,8 +562,7 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline,
-              size: 16, color: AppColors.negative),
+          Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

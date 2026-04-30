@@ -118,6 +118,52 @@ Phase 10.5 does not own:
   the contract needs new fields, that is a separate architectural
   change.
 
+## Frontend Exposure
+
+Phase 10.5 is UX-led — the daypart view IS the deliverable. The
+existing sub-slice sequence already owns this; this section makes the
+surfaces explicit per Hard Promise #10.
+
+**Operator-facing surfaces this phase requires:**
+
+- Daypart toggle / tab on `lib/screens/shift/` — alongside the existing
+  whole-day Shift view (additive, never replacing).
+- Daypart-scoped Variance lens consuming the same bucketing engine.
+- Time-into-service display when the active service period is in
+  progress (e.g., "Lunch · 1h 12m in").
+- Daypart-live primary-driver teaching surface (renders the per-period
+  driver alongside the whole-day driver).
+- Settings → Service periods editor (pre-requisite per the
+  deferred-foundation lock): editable `startLocalTime` /
+  `endLocalTime` per period, week-start day, business-day rollover
+  hour. New section in
+  `lib/screens/settings/settings_timing_section.dart` (extend existing).
+
+**Admin (11A) surfaces this phase requires:** none. Service-period
+defaults at operator/location level are managed via 11A.1 operator
+admin if multi-location consistency is needed; otherwise the operator
+edits per-location in Settings.
+
+**UX sub-slice family:** owned inline by existing `10.5.x` slices —
+no separate `10.5.UX.<n>` family. Each `10.5.x` slice that ships
+operator-visible capability adds the `Operator walkthrough` block +
+walkthrough acceptance criterion per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
+**Demo-mode walkthrough (`kDemoMode = true`):**
+
+- Settings → Timing → set service periods (Lunch 11:00-15:00,
+  Dinner 17:00-22:00) → save.
+- Open Shift during simulated Lunch → see daypart toggle → switch to
+  daypart view → see Lunch metrics + "1h 12m in" → switch to
+  whole-day → metrics aggregate across periods.
+- Open Variance → daypart toggle → see per-period variance.
+- Primary-driver teaching panel renders daypart-aware copy when in
+  daypart view.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract
 
 Once Phase 10.5 ships:

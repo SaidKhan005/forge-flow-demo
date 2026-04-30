@@ -41,7 +41,9 @@
 --     or proxy hot-zone changes.
 --   * No `forge_admin` RLS policy added.
 --
--- This migration is local framework only — no live database mutation.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 
 begin;
 

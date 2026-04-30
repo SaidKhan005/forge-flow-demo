@@ -117,6 +117,57 @@ Phase 9.75 does not own:
 - AI Coach Chatbot (staff + manager variants) (`Phase 11b` Agentic Advisor UX)
 - another internal architecture rewrite
 
+## Frontend Exposure
+
+Phase 9.75 is the most UX-heavy phase in the queue — the entire
+Barrio V1.1 staff shell IS the deliverable. This section makes the
+surface inventory explicit per Hard Promise #10.
+
+**Staff/operator-facing surfaces this phase requires:**
+
+- Barrio shell scaffolding: bottom-nav with Home, Team Board,
+  Recognition, Coaching, Profile.
+- `Team Board` tabs:
+  - Daily (today's focus, who's on, key reminders)
+  - Announcements (pinned + chronological)
+  - Focus (manager-set staff focus picker, AI-assist via 11a retrieval)
+  - Recognition (badge feed; "Award" entry point for managers)
+  - Coaching (post-shift coaching tips per staff member)
+- `My Shift`: pre-shift recap (what to focus on), post-shift recap
+  (what happened, badges earned, training prompts).
+- `Personal Trends`: my PPA, my SPLH, my reservations covered, with
+  context from Forge & Flow Variance.
+- Recognition award flow (manager-only): pick staff → pick badge →
+  optional note → award.
+- Push-notification triggers (FCM; new badge, pinned announcement,
+  shift starting).
+
+**Admin (11A) surfaces this phase requires:** badge-catalog editor
+(global, founders-only) lives in `11A.x` polish slot. Not in 9.75
+scope.
+
+**UX sub-slice family:** owned inline by existing `9.75.x` slices —
+the entire phase IS UX. Each slice adds the `Operator walkthrough`
+block + walkthrough acceptance criterion.
+
+**Demo-mode walkthrough (`kDemoMode = true`):**
+
+- Launch Barrio → land on staff Home with My Shift card → tap My
+  Shift → see pre-shift focus + coaching tip → tap Done → see
+  post-shift recap with PPA / SPLH delta + earned badge.
+- Team Board → Daily → see today's focus + who's on → switch to
+  Announcements → pinned message renders → Recognition tab → feed
+  of recent badges → Coaching tab → my coaching tip.
+- As manager: Recognition tab → Award → pick staff → pick badge
+  from catalog → optional note → tap Award → badge appears in feed
+  + recipient's points increment in El Podio.
+- Personal Trends → see weekly PPA chart + commentary from Variance.
+- Push-notification simulator fires "New badge" → tapping deep-links
+  to Recognition feed.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract
 
 ```text

@@ -1,13 +1,47 @@
 import 'package:flutter/material.dart';
 
+import '../../services/auth/auth_operations_gateway.dart';
 import '../../services/team/team_invite_form_controller.dart';
 import '../../services/team/team_scope_visibility_policy.dart';
 import '../../services/team/team_users_list_controller.dart';
 import '../../theme/app_theme.dart';
 
-typedef TeamInviteSubmitter = Future<void> Function(
-  Map<String, Object?> payload,
-);
+typedef TeamInviteSubmitter =
+    Future<TeamInviteCreated?> Function(Map<String, Object?> payload);
+
+typedef TeamInviteRevoker = Future<void> Function(String inviteId);
+
+typedef TeamUserActionHandler =
+    Future<void> Function(TeamUserActionRequest request);
+
+enum TeamUserAction {
+  suspend,
+  reactivate,
+  softDelete,
+  resetPassword,
+  createRoleGrant,
+  revokeRoleGrant,
+}
+
+class TeamUserActionRequest {
+  const TeamUserActionRequest({
+    required this.action,
+    required this.user,
+    this.roleId,
+    this.scopeType,
+    this.locationId,
+    this.replaceUserRoleId,
+    this.reason,
+  });
+
+  final TeamUserAction action;
+  final TeamUserListItem user;
+  final String? roleId;
+  final String? scopeType;
+  final String? locationId;
+  final String? replaceUserRoleId;
+  final String? reason;
+}
 
 class TeamRoleOption {
   const TeamRoleOption({required this.roleId, required this.label});
@@ -34,6 +68,8 @@ class TeamUserListItem {
     this.locationId,
     this.locationLabel,
     this.mfaEnrolled = false,
+    this.userRoleId,
+    this.lastActiveAt,
   });
 
   final String userId;
@@ -45,6 +81,47 @@ class TeamUserListItem {
   final String? locationId;
   final String? locationLabel;
   final bool mfaEnrolled;
+  final String? userRoleId;
+  final DateTime? lastActiveAt;
+}
+
+class TeamPendingInviteListItem {
+  const TeamPendingInviteListItem({
+    required this.inviteId,
+    required this.email,
+    required this.roleId,
+    required this.roleLabel,
+    required this.scopeType,
+    required this.expiresAt,
+    this.locationId,
+    this.locationLabel,
+  });
+
+  final String inviteId;
+  final String email;
+  final String roleId;
+  final String roleLabel;
+  final String scopeType;
+  final String? locationId;
+  final String? locationLabel;
+  final DateTime expiresAt;
+}
+
+class TeamSettingsDataLoadState {
+  const TeamSettingsDataLoadState({this.loading = false, this.loaded = true});
+
+  static const TeamSettingsDataLoadState ready = TeamSettingsDataLoadState();
+  static const TeamSettingsDataLoadState waiting = TeamSettingsDataLoadState(
+    loading: true,
+    loaded: false,
+  );
+  static const TeamSettingsDataLoadState unavailable =
+      TeamSettingsDataLoadState(loaded: false);
+
+  final bool loading;
+  final bool loaded;
+
+  bool get shouldShowLoadingMessage => loading || !loaded;
 }
 
 class TeamSettingsSection extends StatefulWidget {
@@ -54,9 +131,13 @@ class TeamSettingsSection extends StatefulWidget {
     this.users = const <TeamUserListItem>[],
     this.roleOptions = defaultRoleOptions,
     this.locationOptions = const <TeamLocationOption>[],
+    this.pendingInvites = const <TeamPendingInviteListItem>[],
     this.usersController,
     this.inviteFormController,
     this.onInviteSubmitted,
+    this.onInviteRevoked,
+    this.onUserAction,
+    this.dataLoadState = TeamSettingsDataLoadState.ready,
   });
 
   static const List<TeamRoleOption> defaultRoleOptions = <TeamRoleOption>[
@@ -70,9 +151,13 @@ class TeamSettingsSection extends StatefulWidget {
   final List<TeamUserListItem> users;
   final List<TeamRoleOption> roleOptions;
   final List<TeamLocationOption> locationOptions;
+  final List<TeamPendingInviteListItem> pendingInvites;
   final TeamUsersListController? usersController;
   final TeamInviteFormController? inviteFormController;
   final TeamInviteSubmitter? onInviteSubmitted;
+  final TeamInviteRevoker? onInviteRevoked;
+  final TeamUserActionHandler? onUserAction;
+  final TeamSettingsDataLoadState dataLoadState;
 
   @override
   State<TeamSettingsSection> createState() => _TeamSettingsSectionState();
@@ -85,6 +170,10 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   late final bool _ownsInviteController;
   late final TextEditingController _searchController;
   late final TextEditingController _emailController;
+  final Set<String> _busyUserIds = <String>{};
+  final Set<String> _busyInviteIds = <String>{};
+  final List<TeamPendingInviteListItem> _locallyCreatedInvites =
+      <TeamPendingInviteListItem>[];
   bool _submittingInvite = false;
 
   @override
@@ -137,25 +226,40 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   List<TeamUserListItem> get _visibleUsers {
     final filter = _usersController.filter;
     final q = filter.searchQuery.trim().toLowerCase();
-    return widget.users.where((user) {
-      if (filter.statusFilter != null && user.status != filter.statusFilter) {
-        return false;
-      }
-      if (filter.roleFilter != null && user.roleId != filter.roleFilter) {
-        return false;
-      }
-      if (filter.locationFilter != null &&
-          user.locationId != filter.locationFilter) {
-        return false;
-      }
-      if (filter.mfaEnrolledFilter != null &&
-          user.mfaEnrolled != filter.mfaEnrolledFilter) {
-        return false;
-      }
-      if (q.isEmpty) return true;
-      return user.email.toLowerCase().contains(q) ||
-          user.displayName.toLowerCase().contains(q);
-    }).toList(growable: false);
+    return widget.users
+        .where((user) {
+          if (filter.statusFilter != null &&
+              user.status != filter.statusFilter) {
+            return false;
+          }
+          if (filter.roleFilter != null && user.roleId != filter.roleFilter) {
+            return false;
+          }
+          if (filter.locationFilter != null &&
+              user.locationId != filter.locationFilter) {
+            return false;
+          }
+          if (filter.mfaEnrolledFilter != null &&
+              user.mfaEnrolled != filter.mfaEnrolledFilter) {
+            return false;
+          }
+          if (q.isEmpty) return true;
+          return user.email.toLowerCase().contains(q) ||
+              user.displayName.toLowerCase().contains(q);
+        })
+        .toList(growable: false);
+  }
+
+  List<TeamPendingInviteListItem> get _pendingInvites {
+    final serverInviteIds = widget.pendingInvites
+        .map((invite) => invite.inviteId)
+        .toSet();
+    return <TeamPendingInviteListItem>[
+      ...widget.pendingInvites,
+      ..._locallyCreatedInvites.where(
+        (invite) => !serverInviteIds.contains(invite.inviteId),
+      ),
+    ];
   }
 
   bool get _canInvite {
@@ -172,6 +276,22 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
     );
   }
 
+  bool get _canViewTeam =>
+      widget.actor.actorPermissions.contains('team.users.view');
+
+  bool get _canManageUsers =>
+      widget.onUserAction != null &&
+      widget.actor.actorPermissions.any(
+        const <String>{
+          'team.users.deactivate',
+          'team.users.reactivate',
+          'team.users.soft_delete',
+          'team.users.reset_password',
+          'team.roles.assign',
+          'team.roles.revoke',
+        }.contains,
+      );
+
   Future<void> _submitInvite() async {
     if (!_canInvite ||
         widget.onInviteSubmitted == null ||
@@ -180,11 +300,26 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
     }
     setState(() => _submittingInvite = true);
     try {
-      await widget.onInviteSubmitted!(_inviteController.toRequestPayload());
+      final payload = _inviteController.toRequestPayload();
+      final created = await widget.onInviteSubmitted!(payload);
+      if (created != null) {
+        _locallyCreatedInvites.add(
+          _pendingInviteFromPayload(payload: payload, created: created),
+        );
+      }
       _inviteController.reset();
       if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Invite submitted')));
+      }
+    } catch (error) {
+      debugPrint('Team invite submission failed: $error');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invite submitted')),
+          const SnackBar(
+            content: Text('Invite could not be sent. Please try again.'),
+          ),
         );
       }
     } finally {
@@ -192,29 +327,266 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
     }
   }
 
+  TeamPendingInviteListItem _pendingInviteFromPayload({
+    required Map<String, Object?> payload,
+    required TeamInviteCreated created,
+  }) {
+    final roleId = payload['role_id'] as String? ?? '';
+    final locationId = payload['location_id'] as String?;
+    return TeamPendingInviteListItem(
+      inviteId: created.inviteId,
+      email: payload['email'] as String? ?? 'Pending invite',
+      roleId: roleId,
+      roleLabel: _roleLabel(roleId),
+      scopeType: payload['scope_type'] as String? ?? 'operator_wide',
+      locationId: locationId,
+      locationLabel: locationId == null ? null : _locationLabel(locationId),
+      expiresAt: created.expiresAt,
+    );
+  }
+
+  String _roleLabel(String roleId) {
+    for (final role in widget.roleOptions) {
+      if (role.roleId == roleId) return role.label;
+    }
+    return roleId;
+  }
+
+  String? _locationLabel(String locationId) {
+    for (final location in widget.locationOptions) {
+      if (location.locationId == locationId) return location.label;
+    }
+    return null;
+  }
+
+  bool _canUsePermission(String permissionKey, {TeamUserListItem? user}) {
+    final targetLocationId = user?.locationId;
+    return TeamScopeVisibilityPolicy.canMutateTarget(
+      actor: widget.actor,
+      target: TeamScopeTarget(
+        targetOperatorId: widget.actor.actorOperatorId,
+        targetLocationId: targetLocationId,
+      ),
+      requiredPermissionKey: permissionKey,
+    );
+  }
+
+  Future<void> _revokeInvite(TeamPendingInviteListItem invite) async {
+    if (widget.onInviteRevoked == null ||
+        !widget.actor.actorPermissions.contains('team.users.invite')) {
+      _showSnack('Invite revoke is not available for this account.');
+      return;
+    }
+    final confirmed = await _confirm(
+      title: 'Revoke invite',
+      message: 'Revoke the pending invite for ${invite.email}?',
+      actionLabel: 'Revoke',
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _busyInviteIds.add(invite.inviteId));
+    try {
+      await widget.onInviteRevoked!(invite.inviteId);
+      _locallyCreatedInvites.removeWhere(
+        (item) => item.inviteId == invite.inviteId,
+      );
+      if (mounted) _showSnack('Invite revoked');
+    } catch (error) {
+      debugPrint('Team invite revoke failed: $error');
+      if (mounted) _showSnack('Invite could not be revoked.');
+    } finally {
+      if (mounted) setState(() => _busyInviteIds.remove(invite.inviteId));
+    }
+  }
+
+  Future<void> _handleUserAction(
+    TeamUserAction action,
+    TeamUserListItem user,
+  ) async {
+    if (widget.onUserAction == null) {
+      _showSnack('Team actions are not connected yet.');
+      return;
+    }
+    switch (action) {
+      case TeamUserAction.createRoleGrant:
+        await _openRoleDialog(user);
+      case TeamUserAction.resetPassword:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Reset password',
+          message: 'Send a password reset email to ${user.email}?',
+          actionLabel: 'Send',
+          success: 'Password reset email queued',
+        );
+      case TeamUserAction.suspend:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Suspend user',
+          message: 'Suspend ${user.displayName} and block sign-in?',
+          actionLabel: 'Suspend',
+          success: 'User suspended',
+        );
+      case TeamUserAction.reactivate:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Reactivate user',
+          message: 'Restore sign-in for ${user.displayName}?',
+          actionLabel: 'Reactivate',
+          success: 'User reactivated',
+        );
+      case TeamUserAction.softDelete:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Remove access',
+          message: 'Remove ${user.displayName} from this operator?',
+          actionLabel: 'Remove',
+          success: 'User access removed',
+        );
+      case TeamUserAction.revokeRoleGrant:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Revoke role',
+          message: 'Revoke the active role grant for ${user.displayName}?',
+          actionLabel: 'Revoke',
+          success: 'Role grant revoked',
+        );
+    }
+  }
+
+  Future<void> _runConfirmedUserAction({
+    required TeamUserAction action,
+    required TeamUserListItem user,
+    required String title,
+    required String message,
+    required String actionLabel,
+    required String success,
+  }) async {
+    final confirmed = await _confirm(
+      title: title,
+      message: message,
+      actionLabel: actionLabel,
+    );
+    if (!confirmed || !mounted) return;
+    setState(() => _busyUserIds.add(user.userId));
+    try {
+      await widget.onUserAction!(
+        TeamUserActionRequest(
+          action: action,
+          user: user,
+          replaceUserRoleId: action == TeamUserAction.revokeRoleGrant
+              ? user.userRoleId
+              : null,
+          reason: _reasonFor(action),
+        ),
+      );
+      if (mounted) _showSnack(success);
+    } catch (error) {
+      debugPrint('Team user action failed: $error');
+      if (mounted) _showSnack('Action could not be completed.');
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(user.userId));
+    }
+  }
+
+  Future<void> _openRoleDialog(TeamUserListItem user) async {
+    final draft = await showDialog<_RoleGrantDraft>(
+      context: context,
+      builder: (context) => _RoleGrantDialog(
+        user: user,
+        roleOptions: widget.roleOptions,
+        locationOptions: widget.locationOptions,
+      ),
+    );
+    if (draft == null || !mounted) return;
+    setState(() => _busyUserIds.add(user.userId));
+    try {
+      await widget.onUserAction!(
+        TeamUserActionRequest(
+          action: TeamUserAction.createRoleGrant,
+          user: user,
+          roleId: draft.roleId,
+          scopeType: draft.scopeType,
+          locationId: draft.locationId,
+          replaceUserRoleId: user.userRoleId,
+          reason: 'settings_team_role_change',
+        ),
+      );
+      if (mounted) _showSnack('Role update submitted');
+    } catch (error) {
+      debugPrint('Team role update failed: $error');
+      if (mounted) _showSnack('Role update could not be completed.');
+    } finally {
+      if (mounted) setState(() => _busyUserIds.remove(user.userId));
+    }
+  }
+
+  String _reasonFor(TeamUserAction action) {
+    return switch (action) {
+      TeamUserAction.suspend => 'settings_team_suspend',
+      TeamUserAction.reactivate => 'settings_team_reactivate',
+      TeamUserAction.softDelete => 'settings_team_remove_access',
+      TeamUserAction.resetPassword => 'settings_team_reset_password',
+      TeamUserAction.createRoleGrant => 'settings_team_role_change',
+      TeamUserAction.revokeRoleGrant => 'settings_team_role_revoke',
+    };
+  }
+
+  Future<bool> _confirm({
+    required String title,
+    required String message,
+    required String actionLabel,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(actionLabel),
+          ),
+        ],
+      ),
+    );
+    return result == true;
+  }
+
+  void _showSnack(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final users = _visibleUsers;
-    return Container(
-      key: const Key('team_settings_section'),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final narrow = constraints.maxWidth < 720;
-          return Column(
+    final pendingInvites = _pendingInvites;
+    final dataLoadState = widget.dataLoadState;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 760;
+        final membersPanel = _TeamSectionPanel(
+          title: 'Members',
+          icon: Icons.group_outlined,
+          trailing: Text(
+            '${users.length} of ${widget.users.length}',
+            style: AppTextStyles.mono12(
+              color: AppColors.textMuted,
+              weight: FontWeight.w700,
+            ),
+          ),
+          child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _TeamSummaryStrip(
-                visibleCount: users.length,
-                totalCount: widget.users.length,
-                canInvite: _canInvite,
-              ),
-              const SizedBox(height: 16),
               _TeamFilters(
                 controller: _usersController,
                 searchController: _searchController,
@@ -222,58 +594,384 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
                 locationOptions: widget.locationOptions,
                 narrow: narrow,
               ),
-              const SizedBox(height: 14),
-              _TeamUsersTable(users: users),
-              const SizedBox(height: 16),
-              _TeamInvitePanel(
-                controller: _inviteController,
-                emailController: _emailController,
-                roleOptions: widget.roleOptions,
-                locationOptions: widget.locationOptions,
-                enabled: _canInvite,
-                submitEnabled: _canInvite &&
-                    !_submittingInvite &&
-                    widget.onInviteSubmitted != null &&
-                    _inviteController.isReadyToSubmit,
-                submitting: _submittingInvite,
-                onSubmit: _submitInvite,
+              const SizedBox(height: 18),
+              _TeamMembersViewport(
+                narrow: narrow,
+                child: _TeamUsersTable(
+                  users: users,
+                  narrow: narrow,
+                  dataLoadState: dataLoadState,
+                  canSuspend: (user) =>
+                      _canUsePermission('team.users.deactivate', user: user),
+                  canReactivate: (user) =>
+                      _canUsePermission('team.users.reactivate', user: user),
+                  canSoftDelete: (user) =>
+                      _canUsePermission('team.users.soft_delete', user: user),
+                  canResetPassword: (user) => _canUsePermission(
+                    'team.users.reset_password',
+                    user: user,
+                  ),
+                  canAssignRole: (user) =>
+                      _canUsePermission('team.roles.assign', user: user),
+                  canRevokeRole: (user) =>
+                      _canUsePermission('team.roles.revoke', user: user),
+                  busyUserIds: _busyUserIds,
+                  onAction: _handleUserAction,
+                ),
               ),
             ],
-          );
-        },
+          ),
+        );
+        final inviteHasDraft =
+            _inviteController.email.trim().isNotEmpty ||
+            _inviteController.roleId != null ||
+            _inviteController.scope != null ||
+            _inviteController.locationId != null;
+        final invitePanel = _TeamInvitePanel(
+          controller: _inviteController,
+          emailController: _emailController,
+          roleOptions: widget.roleOptions,
+          locationOptions: widget.locationOptions,
+          enabled: _canInvite,
+          submitEnabled:
+              _canInvite &&
+              !_submittingInvite &&
+              widget.onInviteSubmitted != null &&
+              _inviteController.isReadyToSubmit,
+          submitting: _submittingInvite,
+          initiallyExpanded: inviteHasDraft,
+          onSubmit: _submitInvite,
+        );
+        final pendingPanel = _PendingInvitesPanel(
+          invites: pendingInvites,
+          canRevoke: _canInvite && widget.onInviteRevoked != null,
+          busyInviteIds: _busyInviteIds,
+          onRevoke: _revokeInvite,
+        );
+        final hasPendingInvites = pendingInvites.isNotEmpty;
+        final sidePanels = hasPendingInvites
+            ? <Widget>[pendingPanel, const SizedBox(height: 18), invitePanel]
+            : <Widget>[invitePanel, const SizedBox(height: 18), pendingPanel];
+        final content = Container(
+          key: const Key('team_settings_section'),
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _TeamCommandHeader(
+                visibleCount: users.length,
+                totalCount: widget.users.length,
+                pendingInviteCount: pendingInvites.length,
+                canInvite: _canInvite,
+                canManageUsers: _canManageUsers,
+              ),
+              _TeamAccessNotice(
+                canViewTeam: _canViewTeam,
+                canInvite: _canInvite,
+                canManageUsers: _canManageUsers,
+              ),
+              if (dataLoadState.shouldShowLoadingMessage) ...[
+                const SizedBox(height: 12),
+                _TeamDataLoadingNotice(loading: dataLoadState.loading),
+              ],
+              const SizedBox(height: 18),
+              if (narrow) ...[
+                membersPanel,
+                const SizedBox(height: 18),
+                ...sidePanels,
+              ] else
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 3, child: membersPanel),
+                    const SizedBox(width: 20),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: sidePanels,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        );
+        if (!constraints.hasBoundedHeight) return content;
+        return SingleChildScrollView(child: content);
+      },
+    );
+  }
+}
+
+class _TeamCommandHeader extends StatelessWidget {
+  const _TeamCommandHeader({
+    required this.visibleCount,
+    required this.totalCount,
+    required this.pendingInviteCount,
+    required this.canInvite,
+    required this.canManageUsers,
+  });
+
+  final int visibleCount;
+  final int totalCount;
+  final int pendingInviteCount;
+  final bool canInvite;
+  final bool canManageUsers;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          _TeamMetricChip(
+            icon: Icons.group_outlined,
+            label: 'VISIBLE',
+            value: '$visibleCount / $totalCount',
+          ),
+          _TeamMetricChip(
+            icon: canInvite ? Icons.person_add_alt_1 : Icons.lock_outline,
+            label: 'INVITES',
+            value: canInvite ? '$pendingInviteCount PENDING' : 'LOCKED',
+          ),
+          _TeamMetricChip(
+            icon: canManageUsers
+                ? Icons.admin_panel_settings_outlined
+                : Icons.visibility_outlined,
+            label: 'ACTIONS',
+            value: canManageUsers ? 'READY' : 'VIEW ONLY',
+          ),
+        ],
       ),
     );
   }
 }
 
-class _TeamSummaryStrip extends StatelessWidget {
-  const _TeamSummaryStrip({
-    required this.visibleCount,
-    required this.totalCount,
-    required this.canInvite,
+class _TeamSectionPanel extends StatefulWidget {
+  const _TeamSectionPanel({
+    super.key,
+    required this.title,
+    required this.icon,
+    required this.child,
+    this.trailing,
+    this.initiallyExpanded = true,
   });
 
-  final int visibleCount;
-  final int totalCount;
-  final bool canInvite;
+  final String title;
+  final IconData icon;
+  final Widget child;
+  final Widget? trailing;
+  final bool initiallyExpanded;
+
+  @override
+  State<_TeamSectionPanel> createState() => _TeamSectionPanelState();
+}
+
+class _TeamSectionPanelState extends State<_TeamSectionPanel> {
+  late bool _expanded = widget.initiallyExpanded;
+  final PageStorageBucket _bodyStorageBucket = PageStorageBucket();
+
+  @override
+  void didUpdateWidget(covariant _TeamSectionPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!oldWidget.initiallyExpanded && widget.initiallyExpanded) {
+      _expanded = true;
+    }
+  }
+
+  void _toggleExpanded() {
+    setState(() => _expanded = !_expanded);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _TeamMetricChip(
-          icon: Icons.group_outlined,
-          label: 'VISIBLE',
-          value: '$visibleCount / $totalCount',
-        ),
-        _TeamMetricChip(
-          icon: canInvite ? Icons.person_add_alt_1 : Icons.lock_outline,
-          label: 'INVITES',
-          value: canInvite ? 'AVAILABLE' : 'LOCKED',
-        ),
-      ],
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.cardGlow,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: _toggleExpanded,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
+              child: Row(
+                children: [
+                  _TeamPanelIcon(icon: widget.icon),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(widget.title, style: AppTextStyles.display16()),
+                  ),
+                  if (widget.trailing != null) ...[
+                    const SizedBox(width: 8),
+                    widget.trailing!,
+                  ],
+                  const SizedBox(width: 6),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: AppColors.textMuted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_expanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
+              child: PageStorage(
+                bucket: _bodyStorageBucket,
+                child: widget.child,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamMembersViewport extends StatelessWidget {
+  const _TeamMembersViewport({required this.narrow, required this.child});
+
+  final bool narrow;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxHeight: narrow ? 460 : 540),
+      child: SingleChildScrollView(
+        key: const Key('team_members_list_scroll'),
+        primary: false,
+        child: child,
+      ),
+    );
+  }
+}
+
+class _TeamPanelIcon extends StatelessWidget {
+  const _TeamPanelIcon({required this.icon});
+
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 34,
+      height: 34,
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.peacock.withValues(alpha: 0.25)),
+      ),
+      child: Icon(icon, size: 18, color: AppColors.peacockDark),
+    );
+  }
+}
+
+class _TeamAccessNotice extends StatelessWidget {
+  const _TeamAccessNotice({
+    required this.canViewTeam,
+    required this.canInvite,
+    required this.canManageUsers,
+  });
+
+  final bool canViewTeam;
+  final bool canInvite;
+  final bool canManageUsers;
+
+  @override
+  Widget build(BuildContext context) {
+    if (canInvite && canManageUsers) return const SizedBox.shrink();
+    final message = !canViewTeam
+        ? 'Team settings are visible, but membership data and actions are locked for this account.'
+        : !canInvite && !canManageUsers
+        ? 'This account can view team membership, but invite and management actions are locked by permissions.'
+        : !canInvite
+        ? 'Invite actions are locked by permissions. Existing team actions remain available where allowed.'
+        : 'Management actions are loading. Invite is available.';
+    return Container(
+      key: const Key('team_access_notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.info_outline, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamDataLoadingNotice extends StatelessWidget {
+  const _TeamDataLoadingNotice({required this.loading});
+
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('team_data_loading_notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            loading ? Icons.cloud_sync_outlined : Icons.wifi_off_outlined,
+            size: 18,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Wifi sucks... Data loading :(',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          if (loading) ...[
+            const SizedBox(width: 12),
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }
@@ -421,7 +1119,9 @@ class _TeamFilters extends StatelessWidget {
         key: const Key('team_clear_filters_button'),
         tooltip: 'Clear filters',
         icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-        onPressed: controller.filter.hasAnyFilter ? controller.clearFilter : null,
+        onPressed: controller.filter.hasAnyFilter
+            ? controller.clearFilter
+            : null,
       ),
     ];
     return Wrap(spacing: 10, runSpacing: 10, children: fields);
@@ -429,13 +1129,37 @@ class _TeamFilters extends StatelessWidget {
 }
 
 class _TeamUsersTable extends StatelessWidget {
-  const _TeamUsersTable({required this.users});
+  const _TeamUsersTable({
+    required this.users,
+    required this.narrow,
+    required this.dataLoadState,
+    required this.canSuspend,
+    required this.canReactivate,
+    required this.canSoftDelete,
+    required this.canResetPassword,
+    required this.canAssignRole,
+    required this.canRevokeRole,
+    required this.busyUserIds,
+    required this.onAction,
+  });
 
   final List<TeamUserListItem> users;
+  final bool narrow;
+  final TeamSettingsDataLoadState dataLoadState;
+  final bool Function(TeamUserListItem user) canSuspend;
+  final bool Function(TeamUserListItem user) canReactivate;
+  final bool Function(TeamUserListItem user) canSoftDelete;
+  final bool Function(TeamUserListItem user) canResetPassword;
+  final bool Function(TeamUserListItem user) canAssignRole;
+  final bool Function(TeamUserListItem user) canRevokeRole;
+  final Set<String> busyUserIds;
+  final Future<void> Function(TeamUserAction action, TeamUserListItem user)
+  onAction;
 
   @override
   Widget build(BuildContext context) {
     if (users.isEmpty) {
+      final dataStillLoading = dataLoadState.shouldShowLoadingMessage;
       return Container(
         key: const Key('team_users_empty'),
         padding: const EdgeInsets.all(16),
@@ -446,11 +1170,43 @@ class _TeamUsersTable extends StatelessWidget {
         ),
         child: Row(
           children: [
-            const Icon(Icons.group_off_outlined, size: 20),
+            const Icon(
+              Icons.group_off_outlined,
+              size: 20,
+              color: AppColors.textMuted,
+            ),
             const SizedBox(width: 10),
-            Text('No team members', style: AppTextStyles.body14()),
+            Expanded(
+              child: Text(
+                dataStillLoading
+                    ? 'Wifi sucks... Data loading :('
+                    : 'No team members',
+                style: AppTextStyles.body14(color: AppColors.textMuted),
+              ),
+            ),
           ],
         ),
+      );
+    }
+    if (narrow) {
+      return Column(
+        children: [
+          for (var i = 0; i < users.length; i++) ...[
+            if (i > 0) const SizedBox(height: 10),
+            _TeamUserCard(
+              key: Key('team_user_row_$i'),
+              user: users[i],
+              canSuspend: canSuspend(users[i]),
+              canReactivate: canReactivate(users[i]),
+              canSoftDelete: canSoftDelete(users[i]),
+              canResetPassword: canResetPassword(users[i]),
+              canAssignRole: canAssignRole(users[i]),
+              canRevokeRole: canRevokeRole(users[i]),
+              busy: busyUserIds.contains(users[i].userId),
+              onAction: onAction,
+            ),
+          ],
+        ],
       );
     }
     return ClipRRect(
@@ -463,7 +1219,18 @@ class _TeamUsersTable extends StatelessWidget {
           children: [
             const _TeamUsersHeader(),
             for (var i = 0; i < users.length; i++)
-              _TeamUserRow(key: Key('team_user_row_$i'), user: users[i]),
+              _TeamUserRow(
+                key: Key('team_user_row_$i'),
+                user: users[i],
+                canSuspend: canSuspend(users[i]),
+                canReactivate: canReactivate(users[i]),
+                canSoftDelete: canSoftDelete(users[i]),
+                canResetPassword: canResetPassword(users[i]),
+                canAssignRole: canAssignRole(users[i]),
+                canRevokeRole: canRevokeRole(users[i]),
+                busy: busyUserIds.contains(users[i].userId),
+                onAction: onAction,
+              ),
           ],
         ),
       ),
@@ -481,14 +1248,8 @@ class _TeamUsersHeader extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Row(
         children: [
-          Expanded(
-            flex: 4,
-            child: Text('USER', style: AppTextStyles.mono10()),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('ROLE', style: AppTextStyles.mono10()),
-          ),
+          Expanded(flex: 4, child: Text('USER', style: AppTextStyles.mono10())),
+          Expanded(flex: 2, child: Text('ROLE', style: AppTextStyles.mono10())),
           Expanded(
             flex: 2,
             child: Text('SCOPE', style: AppTextStyles.mono10()),
@@ -497,6 +1258,10 @@ class _TeamUsersHeader extends StatelessWidget {
             flex: 2,
             child: Text('STATUS', style: AppTextStyles.mono10()),
           ),
+          SizedBox(
+            width: 48,
+            child: Text('ACTIONS', style: AppTextStyles.mono10()),
+          ),
         ],
       ),
     );
@@ -504,9 +1269,29 @@ class _TeamUsersHeader extends StatelessWidget {
 }
 
 class _TeamUserRow extends StatelessWidget {
-  const _TeamUserRow({super.key, required this.user});
+  const _TeamUserRow({
+    super.key,
+    required this.user,
+    required this.canSuspend,
+    required this.canReactivate,
+    required this.canSoftDelete,
+    required this.canResetPassword,
+    required this.canAssignRole,
+    required this.canRevokeRole,
+    required this.busy,
+    required this.onAction,
+  });
 
   final TeamUserListItem user;
+  final bool canSuspend;
+  final bool canReactivate;
+  final bool canSoftDelete;
+  final bool canResetPassword;
+  final bool canAssignRole;
+  final bool canRevokeRole;
+  final bool busy;
+  final Future<void> Function(TeamUserAction action, TeamUserListItem user)
+  onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -532,10 +1317,16 @@ class _TeamUserRow extends StatelessWidget {
               ],
             ),
           ),
-          Expanded(flex: 2, child: Text(user.roleLabel)),
           Expanded(
             flex: 2,
-            child: Text(user.locationLabel ?? 'Operator-wide'),
+            child: Text(user.roleLabel, overflow: TextOverflow.ellipsis),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              user.locationLabel ?? 'Operator-wide',
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
           Expanded(
             flex: 2,
@@ -549,8 +1340,235 @@ class _TeamUserRow extends StatelessWidget {
               ],
             ),
           ),
+          SizedBox(
+            width: 48,
+            child: busy
+                ? const Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                : _TeamUserActionMenu(
+                    user: user,
+                    canSuspend: canSuspend,
+                    canReactivate: canReactivate,
+                    canSoftDelete: canSoftDelete,
+                    canResetPassword: canResetPassword,
+                    canAssignRole: canAssignRole,
+                    canRevokeRole: canRevokeRole,
+                    onAction: onAction,
+                  ),
+          ),
         ],
       ),
+    );
+  }
+}
+
+class _TeamUserCard extends StatelessWidget {
+  const _TeamUserCard({
+    super.key,
+    required this.user,
+    required this.canSuspend,
+    required this.canReactivate,
+    required this.canSoftDelete,
+    required this.canResetPassword,
+    required this.canAssignRole,
+    required this.canRevokeRole,
+    required this.busy,
+    required this.onAction,
+  });
+
+  final TeamUserListItem user;
+  final bool canSuspend;
+  final bool canReactivate;
+  final bool canSoftDelete;
+  final bool canResetPassword;
+  final bool canAssignRole;
+  final bool canRevokeRole;
+  final bool busy;
+  final Future<void> Function(TeamUserAction action, TeamUserListItem user)
+  onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(user.displayName, style: AppTextStyles.body14()),
+                    const SizedBox(height: 2),
+                    Text(
+                      user.email,
+                      style: AppTextStyles.mono12(color: AppColors.textMuted),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              busy
+                  ? const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Center(
+                        child: SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    )
+                  : _TeamUserActionMenu(
+                      user: user,
+                      canSuspend: canSuspend,
+                      canReactivate: canReactivate,
+                      canSoftDelete: canSoftDelete,
+                      canResetPassword: canResetPassword,
+                      canAssignRole: canAssignRole,
+                      canRevokeRole: canRevokeRole,
+                      onAction: onAction,
+                    ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _MiniPill(label: user.roleLabel, icon: Icons.badge_outlined),
+              _MiniPill(
+                label: user.locationLabel ?? 'Operator-wide',
+                icon: Icons.place_outlined,
+              ),
+              _StatusPill(status: user.status),
+              if (user.mfaEnrolled)
+                const _MiniPill(label: '2FA', icon: Icons.verified_user),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeamUserActionMenu extends StatelessWidget {
+  const _TeamUserActionMenu({
+    required this.user,
+    required this.canSuspend,
+    required this.canReactivate,
+    required this.canSoftDelete,
+    required this.canResetPassword,
+    required this.canAssignRole,
+    required this.canRevokeRole,
+    required this.onAction,
+  });
+
+  final TeamUserListItem user;
+  final bool canSuspend;
+  final bool canReactivate;
+  final bool canSoftDelete;
+  final bool canResetPassword;
+  final bool canAssignRole;
+  final bool canRevokeRole;
+  final Future<void> Function(TeamUserAction action, TeamUserListItem user)
+  onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    final actions = <PopupMenuEntry<TeamUserAction>>[
+      if (canAssignRole)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.createRoleGrant,
+          child: _MenuItemLabel(
+            icon: Icons.badge_outlined,
+            label: 'Change role',
+          ),
+        ),
+      if (canResetPassword)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.resetPassword,
+          child: _MenuItemLabel(
+            icon: Icons.mark_email_read_outlined,
+            label: 'Reset password',
+          ),
+        ),
+      if (user.status == 'suspended' && canReactivate)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.reactivate,
+          child: _MenuItemLabel(
+            icon: Icons.person_add_alt_1_outlined,
+            label: 'Reactivate',
+          ),
+        ),
+      if (user.status != 'suspended' && user.status != 'deleted' && canSuspend)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.suspend,
+          child: _MenuItemLabel(
+            icon: Icons.person_off_outlined,
+            label: 'Suspend',
+          ),
+        ),
+      if (user.userRoleId != null && canRevokeRole)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.revokeRoleGrant,
+          child: _MenuItemLabel(
+            icon: Icons.remove_circle_outline,
+            label: 'Revoke role',
+          ),
+        ),
+      if (user.status != 'deleted' && canSoftDelete)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.softDelete,
+          child: _MenuItemLabel(
+            icon: Icons.delete_outline,
+            label: 'Remove access',
+          ),
+        ),
+    ];
+    return Tooltip(
+      message: actions.isEmpty ? 'No available actions' : 'Team actions',
+      child: PopupMenuButton<TeamUserAction>(
+        key: Key('team_user_actions_${user.userId}'),
+        enabled: actions.isNotEmpty,
+        icon: const Icon(Icons.more_horiz, size: 20),
+        itemBuilder: (context) => actions,
+        onSelected: (action) => onAction(action, user),
+      ),
+    );
+  }
+}
+
+class _MenuItemLabel extends StatelessWidget {
+  const _MenuItemLabel({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 18),
+        const SizedBox(width: 10),
+        Flexible(child: Text(label)),
+      ],
     );
   }
 }
@@ -591,7 +1609,7 @@ class _MiniPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.peacock.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
@@ -600,12 +1618,307 @@ class _MiniPill extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 12, color: AppColors.peacockDark),
-          const SizedBox(width: 4),
-          Text(label, style: AppTextStyles.mono10(color: AppColors.peacockDark)),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: AppTextStyles.mono10(color: AppColors.peacockDark),
+          ),
         ],
       ),
     );
   }
+}
+
+class _PendingInvitesPanel extends StatelessWidget {
+  const _PendingInvitesPanel({
+    required this.invites,
+    required this.canRevoke,
+    required this.busyInviteIds,
+    required this.onRevoke,
+  });
+
+  final List<TeamPendingInviteListItem> invites;
+  final bool canRevoke;
+  final Set<String> busyInviteIds;
+  final Future<void> Function(TeamPendingInviteListItem invite) onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    return _TeamSectionPanel(
+      key: const Key('team_pending_invites_panel'),
+      title: 'Pending invites',
+      icon: Icons.outgoing_mail,
+      initiallyExpanded: invites.isNotEmpty,
+      trailing: Text(
+        '${invites.length}',
+        style: AppTextStyles.mono12(
+          color: AppColors.textMuted,
+          weight: FontWeight.w700,
+        ),
+      ),
+      child: invites.isEmpty
+          ? Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.backgroundSurface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.borderSubtle),
+              ),
+              child: Text(
+                'No pending invites',
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
+            )
+          : ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 320),
+              child: SingleChildScrollView(
+                primary: false,
+                child: Column(
+                  children: [
+                    for (final invite in invites)
+                      _PendingInviteRow(
+                        invite: invite,
+                        canRevoke: canRevoke,
+                        busy: busyInviteIds.contains(invite.inviteId),
+                        onRevoke: onRevoke,
+                      ),
+                  ],
+                ),
+              ),
+            ),
+    );
+  }
+}
+
+class _PendingInviteRow extends StatelessWidget {
+  const _PendingInviteRow({
+    required this.invite,
+    required this.canRevoke,
+    required this.busy,
+    required this.onRevoke,
+  });
+
+  final TeamPendingInviteListItem invite;
+  final bool canRevoke;
+  final bool busy;
+  final Future<void> Function(TeamPendingInviteListItem invite) onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    final scopeLabel = invite.scopeType == 'location'
+        ? invite.locationLabel ?? 'Location'
+        : 'Operator-wide';
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(invite.email, style: AppTextStyles.body14()),
+                const SizedBox(height: 2),
+                Text(
+                  '${invite.roleLabel} - $scopeLabel - Expires ${_shortDate(invite.expiresAt)}',
+                  style: AppTextStyles.body12(color: AppColors.textMuted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          busy
+              ? const SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Center(
+                    child: SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  ),
+                )
+              : IconButton(
+                  key: Key('team_invite_revoke_${invite.inviteId}'),
+                  tooltip: canRevoke ? 'Revoke invite' : 'Revoke unavailable',
+                  onPressed: canRevoke ? () => onRevoke(invite) : null,
+                  icon: const Icon(Icons.close, size: 18),
+                ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RoleGrantDraft {
+  const _RoleGrantDraft({
+    required this.roleId,
+    required this.scopeType,
+    this.locationId,
+  });
+
+  final String roleId;
+  final String scopeType;
+  final String? locationId;
+}
+
+class _RoleGrantDialog extends StatefulWidget {
+  const _RoleGrantDialog({
+    required this.user,
+    required this.roleOptions,
+    required this.locationOptions,
+  });
+
+  final TeamUserListItem user;
+  final List<TeamRoleOption> roleOptions;
+  final List<TeamLocationOption> locationOptions;
+
+  @override
+  State<_RoleGrantDialog> createState() => _RoleGrantDialogState();
+}
+
+class _RoleGrantDialogState extends State<_RoleGrantDialog> {
+  late String? _roleId =
+      widget.roleOptions.any((role) => role.roleId == widget.user.roleId)
+      ? widget.user.roleId
+      : (widget.roleOptions.isEmpty ? null : widget.roleOptions.first.roleId);
+  late TeamInviteScope _scope = widget.user.locationId == null
+      ? TeamInviteScope.operatorWide
+      : TeamInviteScope.location;
+  late String? _locationId =
+      widget.locationOptions.any(
+        (location) => location.locationId == widget.user.locationId,
+      )
+      ? widget.user.locationId
+      : null;
+
+  @override
+  Widget build(BuildContext context) {
+    final needsLocation = _scope == TeamInviteScope.location;
+    final canSubmit =
+        _roleId != null &&
+        _roleId!.isNotEmpty &&
+        (!needsLocation || (_locationId != null && _locationId!.isNotEmpty));
+    return AlertDialog(
+      title: const Text('Change Role'),
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(widget.user.email, style: AppTextStyles.body13()),
+            const SizedBox(height: 14),
+            DropdownButtonFormField<String>(
+              key: const Key('team_role_change_role_dropdown'),
+              initialValue: _roleId,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Role',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: [
+                for (final role in widget.roleOptions)
+                  DropdownMenuItem<String>(
+                    value: role.roleId,
+                    child: Text(role.label),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _roleId = value),
+            ),
+            const SizedBox(height: 12),
+            SegmentedButton<TeamInviteScope>(
+              key: const Key('team_role_change_scope_segmented'),
+              segments: const [
+                ButtonSegment<TeamInviteScope>(
+                  value: TeamInviteScope.operatorWide,
+                  icon: Icon(Icons.apartment, size: 16),
+                  label: Text('Operator'),
+                ),
+                ButtonSegment<TeamInviteScope>(
+                  value: TeamInviteScope.location,
+                  icon: Icon(Icons.place_outlined, size: 16),
+                  label: Text('Location'),
+                ),
+              ],
+              selected: {_scope},
+              onSelectionChanged: (selection) {
+                final next = selection.first;
+                setState(() {
+                  _scope = next;
+                  if (next == TeamInviteScope.operatorWide) {
+                    _locationId = null;
+                  }
+                });
+              },
+            ),
+            if (needsLocation) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('team_role_change_location_dropdown'),
+                initialValue: _locationId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Location',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  for (final location in widget.locationOptions)
+                    DropdownMenuItem<String>(
+                      value: location.locationId,
+                      child: Text(location.label),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _locationId = value),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('team_role_change_submit_button'),
+          onPressed: canSubmit
+              ? () {
+                  Navigator.of(context).pop(
+                    _RoleGrantDraft(
+                      roleId: _roleId!,
+                      scopeType: _scope == TeamInviteScope.operatorWide
+                          ? 'operator_wide'
+                          : 'location',
+                      locationId: _scope == TeamInviteScope.location
+                          ? _locationId
+                          : null,
+                    ),
+                  );
+                }
+              : null,
+          child: const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+String _shortDate(DateTime value) {
+  final local = value.toLocal();
+  return '${local.year}-${local.month.toString().padLeft(2, '0')}-'
+      '${local.day.toString().padLeft(2, '0')}';
 }
 
 class _TeamInvitePanel extends StatelessWidget {
@@ -617,6 +1930,7 @@ class _TeamInvitePanel extends StatelessWidget {
     required this.enabled,
     required this.submitEnabled,
     required this.submitting,
+    required this.initiallyExpanded,
     required this.onSubmit,
   });
 
@@ -627,38 +1941,40 @@ class _TeamInvitePanel extends StatelessWidget {
   final bool enabled;
   final bool submitEnabled;
   final bool submitting;
+  final bool initiallyExpanded;
   final VoidCallback onSubmit;
 
   @override
   Widget build(BuildContext context) {
     final violations = controller.validate();
     final showLocation = controller.scope == TeamInviteScope.location;
-    return Container(
+    return _TeamSectionPanel(
       key: const Key('team_invite_panel'),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.person_add_alt_1, size: 20),
-              const SizedBox(width: 8),
-              Text('Invite', style: AppTextStyles.display16()),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
+      title: 'Invite member',
+      icon: Icons.person_add_alt_1,
+      initiallyExpanded: initiallyExpanded,
+      trailing: enabled
+          ? null
+          : const Icon(
+              Icons.lock_outline,
+              size: 16,
+              color: AppColors.textMuted,
+            ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final maxWidth = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : 320.0;
+          final stacked = maxWidth < 520;
+          double fieldWidth(double preferred) =>
+              stacked ? maxWidth : preferred.clamp(160.0, maxWidth).toDouble();
+          return Wrap(
             spacing: 10,
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               SizedBox(
-                width: 260,
+                width: fieldWidth(260),
                 child: TextField(
                   key: const Key('team_invite_email_field'),
                   controller: emailController,
@@ -674,7 +1990,7 @@ class _TeamInvitePanel extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 200,
+                width: fieldWidth(200),
                 child: DropdownButtonFormField<String>(
                   key: const Key('team_invite_role_dropdown'),
                   initialValue: controller.roleId,
@@ -683,9 +1999,8 @@ class _TeamInvitePanel extends StatelessWidget {
                     labelText: 'Role',
                     border: const OutlineInputBorder(),
                     isDense: true,
-                    errorText: violations.contains(
-                      TeamInviteViolation.roleMissing,
-                    )
+                    errorText:
+                        violations.contains(TeamInviteViolation.roleMissing)
                         ? 'Required'
                         : null,
                   ),
@@ -699,35 +2014,36 @@ class _TeamInvitePanel extends StatelessWidget {
                   onChanged: enabled ? controller.setRoleId : null,
                 ),
               ),
-              SegmentedButton<TeamInviteScope>(
-                key: const Key('team_invite_scope_segmented'),
-                segments: const [
-                  ButtonSegment<TeamInviteScope>(
-                    value: TeamInviteScope.operatorWide,
-                    icon: Icon(Icons.apartment, size: 16),
-                    label: Text('Operator'),
-                  ),
-                  ButtonSegment<TeamInviteScope>(
-                    value: TeamInviteScope.location,
-                    icon: Icon(Icons.place_outlined, size: 16),
-                    label: Text('Location'),
-                  ),
-                ],
-                selected: {
-                  if (controller.scope != null) controller.scope!,
-                },
-                emptySelectionAllowed: true,
-                onSelectionChanged: enabled
-                    ? (selection) {
-                        controller.setScope(
-                          selection.isEmpty ? null : selection.first,
-                        );
-                      }
-                    : null,
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxWidth),
+                child: SegmentedButton<TeamInviteScope>(
+                  key: const Key('team_invite_scope_segmented'),
+                  segments: const [
+                    ButtonSegment<TeamInviteScope>(
+                      value: TeamInviteScope.operatorWide,
+                      icon: Icon(Icons.apartment, size: 16),
+                      label: Text('Operator'),
+                    ),
+                    ButtonSegment<TeamInviteScope>(
+                      value: TeamInviteScope.location,
+                      icon: Icon(Icons.place_outlined, size: 16),
+                      label: Text('Location'),
+                    ),
+                  ],
+                  selected: {if (controller.scope != null) controller.scope!},
+                  emptySelectionAllowed: true,
+                  onSelectionChanged: enabled
+                      ? (selection) {
+                          controller.setScope(
+                            selection.isEmpty ? null : selection.first,
+                          );
+                        }
+                      : null,
+                ),
               ),
               if (showLocation)
                 SizedBox(
-                  width: 210,
+                  width: fieldWidth(210),
                   child: DropdownButtonFormField<String>(
                     key: const Key('team_invite_location_dropdown'),
                     initialValue: controller.locationId,
@@ -736,9 +2052,10 @@ class _TeamInvitePanel extends StatelessWidget {
                       labelText: 'Location',
                       border: const OutlineInputBorder(),
                       isDense: true,
-                      errorText: violations.contains(
-                        TeamInviteViolation.locationMissingForLocationScope,
-                      )
+                      errorText:
+                          violations.contains(
+                            TeamInviteViolation.locationMissingForLocationScope,
+                          )
                           ? 'Required'
                           : null,
                     ),
@@ -761,12 +2078,12 @@ class _TeamInvitePanel extends StatelessWidget {
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.send_outlined, size: 18),
-                label: const Text('Send'),
+                label: const Text('Send invite'),
                 onPressed: submitEnabled ? onSubmit : null,
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }

@@ -28,6 +28,15 @@
 //   rollup_year, advisor_conversation_log, service_principals,
 //   event_outbox, graph_nodes, graph_edges.
 //
+// `user_effective_locations` (added in
+// `202604290101_phase_9_hierarchy_access_wiring.sql`) is trigger-
+// maintained from `user_roles` and needs a deeper fixture
+// (users + roles + user_roles seeds + the per-scope-type predicate
+// surface). RLS isolation for that table is covered alongside the
+// trigger-semantics integration test in
+// `test/phase_9_hierarchy_access_wiring_test.dart` so the sweep
+// fixture stays narrow.
+//
 // PASSIVE BY DEFAULT. The whole sweep runs only when
 // `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true` is set; without the flag
 // the suite skips with a clear name-only reason. With the flag set
@@ -927,6 +936,15 @@ Future<void> _cleanupFixtures(PostgresExecutor exec) async {
     'rollup_month',
     'rollup_quarter',
     'rollup_year',
+    // user_effective_locations is trigger-maintained from user_roles;
+    // its rows go away automatically when user_roles cascade-deletes
+    // through the operator delete below. Listed here defensively in
+    // case a future refactor breaks the cascade or a test leaves the
+    // cache populated outside the trigger path. Must precede
+    // user_roles so the explicit delete (which cascades) does not
+    // race a separate cleanup pass.
+    'user_effective_locations',
+    'user_roles',
     'org_units',
     'locations',
     'operators',
@@ -973,27 +991,13 @@ Future<void> _seedBaseFixtures(PostgresExecutor exec) async {
     );
   }
 
-  final locations = <List<String>>[
-    <String>[_opA, _locA, 'B36 Location A'],
-    <String>[_opB, _locB, 'B36 Location B'],
-  ];
-  for (final loc in locations) {
-    await exec.execute(
-      'insert into public.locations '
-      '(location_id, operator_id, name, timezone, '
-      'business_day_rollover_hour) '
-      'values (@locId::uuid, @opId::uuid, @name, @tz, @rollover) '
-      'on conflict (location_id) do nothing',
-      parameters: <String, Object?>{
-        'locId': loc[1],
-        'opId': loc[0],
-        'name': loc[2],
-        'tz': 'America/Toronto',
-        'rollover': 4,
-      },
-    );
-  }
-
+  // org_units seeded BEFORE locations because the
+  // `202604290101_phase_9_hierarchy_access_wiring.sql` migration
+  // requires `locations.parent_org_unit_id` NOT NULL with a composite
+  // FK to `org_units(operator_id, id)`. Locations attach to the
+  // operator's root org_unit; the BEFORE INSERT trigger
+  // `set_location_org_unit_path` denormalizes `org_unit_path` from
+  // the parent's `org_units.path`.
   final orgUnits = <List<String>>[
     <String>[_opA, _ouA, 'b36_a'],
     <String>[_opB, _ouB, 'b36_b'],
@@ -1010,6 +1014,34 @@ Future<void> _seedBaseFixtures(PostgresExecutor exec) async {
         'opId': ou[0],
         'path': ou[2],
         'name': 'B36 ${ou[2]}',
+      },
+    );
+  }
+
+  final locations = <List<String>>[
+    <String>[_opA, _locA, _ouA, 'B36 Location A'],
+    <String>[_opB, _locB, _ouB, 'B36 Location B'],
+  ];
+  for (final loc in locations) {
+    await exec.execute(
+      'insert into public.locations '
+      '(location_id, operator_id, parent_org_unit_id, name, timezone, '
+      'business_day_rollover_hour) '
+      'values (@locId::uuid, @opId::uuid, @parentOrgUnitId::uuid, '
+      '@name, @tz, @rollover) '
+      'on conflict (location_id) do nothing',
+      parameters: <String, Object?>{
+        'locId': loc[1],
+        'opId': loc[0],
+        // Pre-`202604290001` databases tolerated NULL parent_org_unit_id,
+        // but the post-migration NOT NULL + composite FK make this
+        // mandatory. Pointing at the operator's root org_unit so the
+        // BEFORE INSERT trigger can resolve `org_unit_path` from
+        // `org_units.path`.
+        'parentOrgUnitId': loc[2],
+        'name': loc[3],
+        'tz': 'America/Toronto',
+        'rollover': 4,
       },
     );
   }

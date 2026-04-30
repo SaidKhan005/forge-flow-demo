@@ -88,6 +88,58 @@ Phase 10b does not own:
 - Real-time cursor/presence indicators (different product shape)
 - Cross-restaurant synchronization (each restaurant stays isolated)
 
+## Frontend Exposure
+
+Phase 10b adds optimistic-concurrency, offline write queue, and
+explicit conflict-resolution UI for high-stakes objects. The
+operator-facing UX is the difference between "10a works fine for
+2-3 online devices" and "trusted across spotty connectivity with any
+device count."
+
+**Operator-facing surfaces this phase requires:**
+
+- Conflict-resolution surface: when an optimistic write rejects on
+  version mismatch, the user sees a side-by-side view ("their
+  version | your version") with three actions: Keep mine / Accept
+  theirs / Merge (where mergeable). New file
+  `lib/screens/_shared/conflict_resolution_screen.dart`.
+- Offline-queue indicator in app shell: small chip showing pending
+  write count when offline. Tappable to drill into queue.
+- Offline-queue drill-down: list of pending writes with target table,
+  operator action, queued-at timestamp, retry button.
+  `lib/screens/_shared/offline_queue_screen.dart` (new).
+- Optimistic-rollback toast: when a queued write rejects on
+  reconnect, surface toast + deep-link to the conflict resolution
+  surface for that write.
+- Per-object freshness chrome: "version N · last updated 12 min ago
+  by Maria" inline on high-stakes object screens (benchmark override,
+  weekly plan snapshot edit, manager override calendar).
+
+**Admin (11A) surfaces this phase requires:** conflict-rate +
+queue-depth telemetry tiles in `11A.6` observability dashboard. No
+additional 11A scope here.
+
+**UX sub-slice family:** `10b.UX.0-1`
+
+- `10b.UX.0` — conflict resolution surface + freshness chrome on
+  high-stakes objects.
+- `10b.UX.1` — offline queue indicator + drill-down + rollback toast.
+
+**Demo-mode walkthrough (`kDemoMode = true`; uses fake bridge state
++ simulated version mismatches):**
+
+- `10b.UX.0`: open benchmark override on device A → simulate device
+  B writing the same row first → user on A taps Save → conflict
+  surface renders side-by-side → tap Accept theirs → row reflects B's
+  value → toast confirms.
+- `10b.UX.1`: simulate offline → make 3 edits → offline-queue chip
+  shows "3 pending" → tap chip → drill-down lists the 3 writes →
+  simulate reconnect → 2 succeed silently, 1 rejects → toast surfaces
+  + deep-link → conflict resolution → resolve.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract (additive over 10a)
 
 Same Postgres + Realtime substrate as 10a. Adds:

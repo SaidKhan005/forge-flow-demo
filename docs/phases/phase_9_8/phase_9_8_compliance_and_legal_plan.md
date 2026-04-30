@@ -88,6 +88,68 @@ Phase 9.8 does not own:
   review and signoff
 - security-audit execution itself; that is adjacent launch work
 
+## Frontend Exposure
+
+Phase 9.8 is decision-makingly a legal/documentation lane (per the
+2026-04-23 lock above), but the app must surface the legal envelope
+to the operator before the first live data lands. Per Hard Promise #6
+(advisor speaks in recommendations) and the
+`cutover.2` non-negotiable ("no customer data is loaded before T&Cs
+acceptance is captured"), Phase 9.8 owns the operator-facing flows
+that capture and display compliance state.
+
+**Operator-facing surfaces this phase requires:**
+
+- T&Cs accept-on-first-login flow:
+  `lib/screens/legal/tos_acceptance_screen.dart` (new). Blocks app
+  entry until accepted; writes acceptance row to `tos_acceptances`
+  with version, timestamp, IP / user-agent, `operator_id`.
+- T&Cs version history viewer in Settings → Account → Legal.
+  `lib/screens/settings/settings_legal_section.dart` (new). Lists
+  every version the user has accepted, with download link to the
+  Markdown copy.
+- Privacy policy viewer (read-only) accessible from Settings → Legal
+  and from the bottom of the login screen.
+- GDPR data-request UI: Settings → Account → Privacy → Request
+  data export / Request account deletion. New file
+  `lib/screens/settings/settings_gdpr_section.dart`. Submits a
+  request row to `gdpr_requests`; F&F support fulfills via the 11A
+  GDPR queue.
+- New-T&Cs-prompt flow: when a new T&Cs version ships, returning
+  operators see a re-acceptance gate before next-action.
+
+**Admin (11A) surfaces this phase requires:** T&Cs version manager
+(upload new version, set effective date, force re-acceptance) and
+GDPR request queue (list pending requests, mark fulfilled with
+evidence link) live in `11A.x` polish slot.
+
+**UX sub-slice family:** `9.8.UX.0-3`
+
+- `9.8.UX.0` — T&Cs accept-on-first-login flow + version history
+  viewer + privacy policy viewer.
+- `9.8.UX.1` — GDPR data-request submission UI (operator side).
+- `9.8.UX.2` — Account-deletion request flow (separate from data
+  export; carries different fulfillment SLA per `redact-don't-delete`
+  decision).
+- `9.8.UX.3` — re-acceptance gate when new T&Cs version ships.
+
+**Demo-mode walkthrough (`kDemoMode = true`):**
+
+- `9.8.UX.0`: simulate first-login → T&Cs gate renders → scroll →
+  Accept → land on home → Settings → Legal → see acceptance row →
+  download copy → Privacy Policy renders → version-history list
+  shows entry.
+- `9.8.UX.1`: Settings → Privacy → Request data export → enter
+  reason → submit → see "Request received" with reference ID →
+  Settings → Privacy → see the request status as "Pending".
+- `9.8.UX.2`: Settings → Privacy → Request account deletion →
+  confirm with re-auth → request submitted → sign-out forced.
+- `9.8.UX.3`: simulate new T&Cs version published → app launch →
+  re-acceptance gate renders → user must accept before continuing.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract
 
 ```text

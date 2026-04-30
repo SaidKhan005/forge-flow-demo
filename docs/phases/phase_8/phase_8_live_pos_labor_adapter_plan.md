@@ -48,6 +48,54 @@ The rule is simple:
 - Phase 8 replaces transport
 - Phase 8 does not create a second UI-facing truth path
 
+## Frontend Exposure
+
+Phase 8 is transport-only by Hard Promise #1 — no app logic changes,
+no fixture changes, no service moves. Operator-facing UX is **only**
+the connect / configure / monitor flow that lets the operator turn the
+connector on for their location and see status. This still needs a
+home; demo mode keeps reading from `mock_integration_replay_seed.dart`,
+real mode reads from the new connectors. The UI must surface **which
+mode is in effect** so operators don't act on stale demo data.
+
+**Operator-facing surfaces this phase requires:**
+
+- Settings → Integrations → POS connector card. New section in
+  `lib/screens/settings/settings_integrations_section.dart` (new file)
+  with one card per supported vendor (Toast first).
+- Per-connector connect flow: vendor login (OAuth or API key entry),
+  webhook URL display, "Test connection" button with live-result
+  toast, connection-status indicator (connected / degraded / not
+  configured).
+- Last-sync timestamp + last-error display per connector.
+- "Demo mode" banner across operator app when `kDemoMode == true`,
+  rendered in app shell so it cannot be missed.
+- Settings → Integrations → Labor connector card (7shifts first), same
+  pattern as POS.
+
+**Admin (11A) surfaces this phase requires:** connector-config admin
+already covered by `11A.4` Integration management — credentials,
+webhook URL provisioning, per-operator enable/disable. No additional
+11A scope here.
+
+**UX sub-slice family:** `8.UX.0-1`
+
+- `8.UX.0` — POS connect flow + status panel + demo-mode banner.
+- `8.UX.1` — Labor connect flow + status panel.
+
+**Demo-mode walkthrough (`kDemoMode = true` for the banner; vendor
+sandbox for the connect flow):**
+
+- `8.UX.0`: launch app → demo banner visible → Settings →
+  Integrations → POS card → tap Connect → vendor sandbox login →
+  return to app → status flips to "Connected" → tap Test connection →
+  green toast "Sample fetch OK" → Shift screen now shows last-sync
+  timestamp.
+- `8.UX.1`: same path for Labor connector.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Readiness / Blockers
 
 The gate artifacts already document what must be true before connector work can

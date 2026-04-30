@@ -102,6 +102,7 @@ Future<void> main(List<String> args) async {
         healthCheckStore: healthCheckStore,
         llmProvider: llmProvider,
         authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
+        firebaseAdminAuthClient: productionBindings.firebaseAdminAuthClient,
         permissionSnapshotResolver:
             productionBindings.permissionSnapshotResolver,
         adminPermissionGuard: productionBindings.adminPermissionGuard,

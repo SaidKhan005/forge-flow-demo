@@ -82,6 +82,9 @@ class AuthSession {
   bool hasRole(String role) => roles.contains(role);
 
   AuthSession copyWith({
+    String? userId,
+    String? operatorId,
+    String? locationId,
     String? firebaseIdToken,
     DateTime? issuedAt,
     DateTime? expiresAt,
@@ -90,9 +93,9 @@ class AuthSession {
     bool? mfaEnrolled,
   }) {
     return AuthSession(
-      userId: userId,
-      operatorId: operatorId,
-      locationId: locationId,
+      userId: userId ?? this.userId,
+      operatorId: operatorId ?? this.operatorId,
+      locationId: locationId ?? this.locationId,
       firebaseIdToken: firebaseIdToken ?? this.firebaseIdToken,
       issuedAt: issuedAt ?? this.issuedAt,
       expiresAt: expiresAt ?? this.expiresAt,

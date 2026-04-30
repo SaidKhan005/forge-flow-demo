@@ -43,6 +43,64 @@ void main() {
         expect(request.jsonBody.containsKey('disabled'), isFalse);
       },
     );
+
+    test('revokeRefreshTokens sends validSince to accounts:update', () async {
+      final httpClient = _RecordingHttpClient(
+        responseBody: const <String, Object?>{'localId': 'user-1'},
+      );
+      final client = IdentityToolkitFirebaseAdminAuthClient(
+        projectId: 'forge-flow-staging',
+        apiKey: 'public-api-key',
+        accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+        httpClient: httpClient,
+        now: () =>
+            DateTime.fromMillisecondsSinceEpoch(1770000000123, isUtc: true),
+      );
+
+      await client.revokeRefreshTokens(uid: 'user-1');
+
+      // ignore: close_sinks - fake request was already closed by the client.
+      final request = httpClient.requests.single;
+      expect(
+        request.url.path,
+        equals('/v1/projects/forge-flow-staging/accounts:update'),
+      );
+      expect(
+        request.headers.values[HttpHeaders.authorizationHeader],
+        equals('Bearer oauth-token'),
+      );
+      expect(request.jsonBody['localId'], equals('user-1'));
+      expect(request.jsonBody['validSince'], equals('1770000000'));
+    });
+
+    test(
+      'updatePassword sends localId and new password to accounts:update',
+      () async {
+        final httpClient = _RecordingHttpClient(
+          responseBody: const <String, Object?>{'localId': 'firebase-uid'},
+        );
+        final client = IdentityToolkitFirebaseAdminAuthClient(
+          projectId: 'forge-flow-staging',
+          apiKey: 'public-api-key',
+          accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+          httpClient: httpClient,
+        );
+
+        await client.updatePassword(
+          uid: 'firebase-uid',
+          password: 'new-secret',
+        );
+
+        // ignore: close_sinks - fake request was already closed by the client.
+        final request = httpClient.requests.single;
+        expect(
+          request.url.path,
+          equals('/v1/projects/forge-flow-staging/accounts:update'),
+        );
+        expect(request.jsonBody['localId'], equals('firebase-uid'));
+        expect(request.jsonBody['password'], equals('new-secret'));
+      },
+    );
   });
 }
 

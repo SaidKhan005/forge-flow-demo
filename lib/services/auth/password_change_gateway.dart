@@ -12,6 +12,7 @@ class PasswordChangeCommand {
     required this.locationId,
     required this.currentPassword,
     required this.newPassword,
+    this.firebaseUid,
   });
 
   final String actorUserId;
@@ -19,6 +20,13 @@ class PasswordChangeCommand {
   final String locationId;
   final String currentPassword;
   final String newPassword;
+
+  /// Verified Firebase Auth subject for the currently signed-in account.
+  ///
+  /// Self-service password changes must update the account represented by the
+  /// bearer token. Some legacy staging rows predate the "Firebase UID equals
+  /// app user UUID" convention, so the database mapping is only a fallback.
+  final String? firebaseUid;
 }
 
 class PasswordChangeCompleted {

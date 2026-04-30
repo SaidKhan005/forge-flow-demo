@@ -40,9 +40,9 @@
 --   * Filters out soft-deleted / archived rows so the count tracks
 --     "active" rows the AGE projection rebuild would replay.
 --
--- This migration is local framework only — no live database mutation.
--- Live apply on staging + Production1 is queued under the Phase 9
--- live-mutation gate.
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 
 begin;
 

@@ -26,8 +26,92 @@
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
+class TeamUserRepositoryRow {
+  const TeamUserRepositoryRow({
+    required this.userId,
+    required this.email,
+    required this.displayName,
+    required this.roleId,
+    required this.roleLabel,
+    required this.status,
+    required this.mfaEnrolled,
+    this.userRoleId,
+    this.locationId,
+    this.locationLabel,
+    this.lastActiveAt,
+  });
+
+  final String userId;
+  final String email;
+  final String displayName;
+  final String roleId;
+  final String roleLabel;
+  final String status;
+  final bool mfaEnrolled;
+  final String? userRoleId;
+  final String? locationId;
+  final String? locationLabel;
+  final DateTime? lastActiveAt;
+}
+
 class UsersRepository extends OperatorScopedRepository {
   UsersRepository(super.tenantWrapper);
+
+  Future<List<TeamUserRepositoryRow>> listTeamUsers({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<List<TeamUserRepositoryRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        "select u.user_id::text as user_id, "
+        'u.email, '
+        "coalesce(nullif(u.display_name, ''), "
+        "nullif(trim(concat_ws(' ', u.first_name, u.last_name)), ''), "
+        'u.email) as display_name, '
+        'coalesce(ur.role_id::text, u.primary_role_id::text, '
+        "'unassigned') as role_id, "
+        "coalesce(r.display_name, 'Unassigned') as role_label, "
+        'u.status, '
+        'ur.user_role_id::text as user_role_id, '
+        'coalesce(ur.location_id::text, u.primary_location_id::text) '
+        'as location_id, '
+        'l.name as location_label, '
+        'exists ('
+        '  select 1 from mfa_factors mf '
+        '  where mf.user_id = u.user_id and mf.revoked_at is null'
+        ') as mfa_enrolled, '
+        'u.last_active_at '
+        'from users u '
+        'left join lateral ('
+        '  select user_role_id, role_id, location_id '
+        '  from user_roles '
+        '  where user_id = u.user_id '
+        '  and operator_id = @operator_id::uuid '
+        '  and revoked_at is null '
+        '  and valid_from <= now() '
+        '  and (valid_until is null or valid_until > now()) '
+        '  order by case when location_id is null then 0 else 1 end, '
+        '  valid_from desc '
+        '  limit 1'
+        ') ur on true '
+        'left join roles r on r.role_id = coalesce(ur.role_id, '
+        'u.primary_role_id) '
+        'left join locations l on l.location_id = coalesce(ur.location_id, '
+        'u.primary_location_id) '
+        'where u.operator_id = @operator_id::uuid '
+        'and u.deleted_at is null '
+        'order by u.status, lower(u.email)',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      return rows.map(_projectTeamUserRow).toList(growable: false);
+    });
+  }
 
   /// INSERT the cloud-foundation `users` row for a newly invited Team user.
   ///
@@ -315,5 +399,53 @@ class UsersRepository extends OperatorScopedRepository {
       if (value is String && value.isNotEmpty) return value;
       throw StateError('users lookup returned malformed $columnAlias');
     });
+  }
+
+  static TeamUserRepositoryRow _projectTeamUserRow(Map<String, Object?> row) {
+    final userId = row['user_id'];
+    final email = row['email'];
+    final displayName = row['display_name'];
+    final roleId = row['role_id'];
+    final roleLabel = row['role_label'];
+    final status = row['status'];
+    final mfaEnrolled = row['mfa_enrolled'];
+    if (userId is! String ||
+        userId.isEmpty ||
+        email is! String ||
+        email.isEmpty ||
+        displayName is! String ||
+        displayName.isEmpty ||
+        roleId is! String ||
+        roleId.isEmpty ||
+        roleLabel is! String ||
+        roleLabel.isEmpty ||
+        status is! String ||
+        status.isEmpty ||
+        mfaEnrolled is! bool) {
+      throw StateError('team users lookup returned a malformed row');
+    }
+    final userRoleId = row['user_role_id'];
+    final locationId = row['location_id'];
+    final locationLabel = row['location_label'];
+    final lastActiveAt = row['last_active_at'];
+    return TeamUserRepositoryRow(
+      userId: userId,
+      email: email,
+      displayName: displayName,
+      roleId: roleId,
+      roleLabel: roleLabel,
+      status: status,
+      mfaEnrolled: mfaEnrolled,
+      userRoleId: userRoleId is String && userRoleId.isNotEmpty
+          ? userRoleId
+          : null,
+      locationId: locationId is String && locationId.isNotEmpty
+          ? locationId
+          : null,
+      locationLabel: locationLabel is String && locationLabel.isNotEmpty
+          ? locationLabel
+          : null,
+      lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
+    );
   }
 }

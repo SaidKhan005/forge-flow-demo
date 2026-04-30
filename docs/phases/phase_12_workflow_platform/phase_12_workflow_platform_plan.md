@@ -1,6 +1,6 @@
 # Phase 12 — Workflow Platform Program
 
-Updated: 2026-04-26
+Updated: 2026-04-29
 Status: Planned (multi-quarter program, opens after `8.5` close)
 Owner: Future workflow automation lane
 
@@ -12,9 +12,10 @@ Owner: Future workflow automation lane
   `phase_9_execution_backlog.md`).
 - `9.0Σ.d.1` `sp:`-prefixed JWT verifier (verified at
   `tool/advisor_proxy/advisor_proxy.dart` lines 353-462).
-- B41 `service_principal` JWT issuance proxy route (queued — Phase 12
-  prerequisite). Without B41, workflows have no way to obtain an SP JWT
-  to act as a non-human principal.
+- B41 `service_principal` JWT issuance proxy route/client/tests are local
+  complete. Before Phase 12 depends on live issuance, apply
+  `202604290000_phase_9_b41_service_principal_issue_permission.sql` to staging
+  + Production1 and smoke the route with the deployed proxy.
 
 Workflows authenticate as service principals; the audit trail uses
 `actor_kind='service'` per `auth_events_audit` and `actor_principal_id`
@@ -279,6 +280,71 @@ Acceptance:
 - Catalog renders only allowed workflows per `operators.subscription_tier`
 - Activation creates schedule + cap row + audit log entry
 - Deactivation pauses schedule (doesn't delete; preserves history)
+
+## Frontend Exposure
+
+Phase 12 ships the workflow platform as the Pro / Enterprise tier
+differentiator. The platform is consumed by operators (run / approve /
+review workflows) and by F&F (catalog admin, per-operator activation).
+This section makes the surfaces explicit per Hard Promise #10.
+
+**Operator-facing surfaces this phase requires:**
+
+- Workflow catalog browser: which workflows the operator's tier
+  unlocks. New section in
+  `lib/screens/workflows/workflow_catalog_screen.dart`.
+- Workflow runner: schedule / trigger / cancel a workflow run.
+  `lib/screens/workflows/workflow_run_screen.dart`.
+- Approval queue: pending approval gates surfaced as actionable cards
+  on a dedicated screen + push notification when a gate fires.
+  `lib/screens/workflows/workflow_approvals_screen.dart`.
+- Run history + execution log viewer: per-workflow timeline of runs,
+  steps, artifacts, costs, errors.
+  `lib/screens/workflows/workflow_history_screen.dart`.
+- Per-workflow cost summary: spend-to-date vs cap, trend.
+  Surfaced inline on history screen.
+- Flagship surfaces (`12.4` Weekly P&L): rendered output (P&L
+  document) accessible to the operator after approval, including
+  outbound-write status (Phase 8.5) for any QBO journal entries
+  queued.
+
+**Admin (11A) surfaces this phase requires:** workflow definition
+admin (catalog editor, per-operator enable/disable, per-tier mapping)
+lives in `11A.x` polish. Per-operator workflow run inspection +
+cost-per-operator analytics live in `11A.6` observability.
+
+**UX sub-slice family:** owned inline by existing `12.x` slices —
+the platform IS UX. Each slice that ships operator-visible capability
+adds the `Operator walkthrough` block + walkthrough acceptance
+criterion.
+
+- `12.0` foundation: catalog browser + run-screen scaffolding (no
+  workflows yet).
+- `12.1` runtime: first end-to-end run renders in run-screen.
+- `12.2` approval gate UX: approval queue + cards + push.
+- `12.3` audit + cost: history viewer + per-run cost.
+- `12.4` Weekly P&L: flagship workflow renders P&L document +
+  outbound-write integration.
+- `12.5` workflow catalog: per-tier activation surface.
+
+**Demo-mode walkthrough (`kDemoMode = true`; workflow runs against
+staging proxy + simulated outbound writes):**
+
+- `12.0`: Workflows tab → catalog renders three workflows for the
+  operator's tier → tap one → see scheduling controls.
+- `12.1`: trigger a workflow run → run-screen shows step-by-step
+  progression → completes → artifact appears.
+- `12.2`: trigger a workflow with approval gate → run pauses → push
+  notification fires → operator opens Approvals → tap card → see
+  proposed action → Approve → workflow resumes.
+- `12.3`: open History → see prior runs with timestamps, durations,
+  costs → tap a run → see full execution log + artifacts.
+- `12.4`: trigger Weekly P&L → run completes → P&L document renders
+  → outbound write to QBO (Phase 8.5) shows "Pending review" → open
+  Outbound Review (8.5.UX.1) → Approve → write executes.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Workflow Catalog Backlog (12.x+)
 

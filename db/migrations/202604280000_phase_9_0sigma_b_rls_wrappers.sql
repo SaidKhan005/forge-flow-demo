@@ -52,8 +52,10 @@
 --                         BYPASSRLS` in 202604260000).
 --   * `PARALLEL SAFE`   — readonly GUC reads are parallel-safe.
 --
--- This migration is local framework only — no live database mutation.
--- The matching policy rewrite lands in 202604280001 (next file).
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
+--   * The matching policy rewrite lands in 202604280001 (next file).
 
 -- ─── app_current_operator ──────────────────────────────────────────
 create or replace function public.app_current_operator()

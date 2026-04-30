@@ -25,7 +25,10 @@ UserRoleGrant grant({
   String userId = _userX,
   String roleId = _roleStaff,
   String operatorId = _opA,
+  String? scopeType,
   String? locationId,
+  String? orgUnitId,
+  List<String> effectiveLocationIds = const <String>[],
   DateTime? validFrom,
   DateTime? validUntil,
   DateTime? revokedAt,
@@ -35,7 +38,10 @@ UserRoleGrant grant({
     userId: userId,
     roleId: roleId,
     operatorId: operatorId,
+    scopeType: scopeType ?? (locationId == null ? 'operator_wide' : 'location'),
     locationId: locationId,
+    orgUnitId: orgUnitId,
+    effectiveLocationIds: effectiveLocationIds,
     validFrom: validFrom ?? DateTime.utc(2026, 4, 1),
     validUntil: validUntil,
     revokedAt: revokedAt,
@@ -86,8 +92,7 @@ void main() {
       expect(result, equals(PermissionEffect.allow));
     });
 
-    test('deny wins over allow even when allow appears first in the list',
-        () {
+    test('deny wins over allow even when allow appears first in the list', () {
       final result = PermissionResolver.resolve(
         permissionKey: 'forgeflow.shift.view',
         grants: <UserRoleGrant>[
@@ -95,10 +100,7 @@ void main() {
           grant(userRoleId: 'ur-deny', roleId: _roleManager),
         ],
         rules: <RolePermissionRule>[
-          rule(
-            roleId: _roleStaff,
-            permissionKey: 'forgeflow.shift.view',
-          ),
+          rule(roleId: _roleStaff, permissionKey: 'forgeflow.shift.view'),
           rule(
             roleId: _roleManager,
             permissionKey: 'forgeflow.shift.view',
@@ -134,9 +136,7 @@ void main() {
     test('not-yet-valid grant (validFrom > now) does NOT apply', () {
       final result = PermissionResolver.resolve(
         permissionKey: 'forgeflow.shift.view',
-        grants: <UserRoleGrant>[
-          grant(validFrom: DateTime.utc(2026, 5, 1)),
-        ],
+        grants: <UserRoleGrant>[grant(validFrom: DateTime.utc(2026, 5, 1))],
         rules: <RolePermissionRule>[
           rule(permissionKey: 'forgeflow.shift.view'),
         ],
@@ -150,9 +150,7 @@ void main() {
     test('revoked grant (revokedAt <= now) does NOT apply', () {
       final result = PermissionResolver.resolve(
         permissionKey: 'forgeflow.shift.view',
-        grants: <UserRoleGrant>[
-          grant(revokedAt: DateTime.utc(2026, 4, 20)),
-        ],
+        grants: <UserRoleGrant>[grant(revokedAt: DateTime.utc(2026, 4, 20))],
         rules: <RolePermissionRule>[
           rule(permissionKey: 'forgeflow.shift.view'),
         ],
@@ -191,8 +189,7 @@ void main() {
       expect(result, equals(PermissionEffect.deny));
     });
 
-    test('operator-wide grant (locationId == null) covers any location',
-        () {
+    test('operator-wide grant (locationId == null) covers any location', () {
       final result = PermissionResolver.resolve(
         permissionKey: 'forgeflow.shift.view',
         grants: <UserRoleGrant>[grant(locationId: null)],
@@ -206,8 +203,45 @@ void main() {
       expect(result, equals(PermissionEffect.allow));
     });
 
-    test('resolveAll returns the full per-key map for the active grants',
-        () {
+    test('org-unit grant covers only materialized effective locations', () {
+      final covered = PermissionResolver.resolve(
+        permissionKey: 'forgeflow.shift.view',
+        grants: <UserRoleGrant>[
+          grant(
+            scopeType: 'org_unit',
+            orgUnitId: 'org-unit-1',
+            effectiveLocationIds: const <String>[_locA],
+          ),
+        ],
+        rules: <RolePermissionRule>[
+          rule(permissionKey: 'forgeflow.shift.view'),
+        ],
+        operatorId: _opA,
+        locationId: _locA,
+        now: now,
+      );
+      final uncovered = PermissionResolver.resolve(
+        permissionKey: 'forgeflow.shift.view',
+        grants: <UserRoleGrant>[
+          grant(
+            scopeType: 'org_unit',
+            orgUnitId: 'org-unit-1',
+            effectiveLocationIds: const <String>[_locA],
+          ),
+        ],
+        rules: <RolePermissionRule>[
+          rule(permissionKey: 'forgeflow.shift.view'),
+        ],
+        operatorId: _opA,
+        locationId: _locB,
+        now: now,
+      );
+
+      expect(covered, equals(PermissionEffect.allow));
+      expect(uncovered, equals(PermissionEffect.deny));
+    });
+
+    test('resolveAll returns the full per-key map for the active grants', () {
       final result = PermissionResolver.resolveAll(
         grants: <UserRoleGrant>[grant()],
         rules: <RolePermissionRule>[
@@ -222,11 +256,14 @@ void main() {
         locationId: _locA,
         now: now,
       );
-      expect(result, equals(<String, PermissionEffect>{
-        'forgeflow.shift.view': PermissionEffect.allow,
-        'forgeflow.variance.view': PermissionEffect.allow,
-        'forgeflow.shift.edit': PermissionEffect.deny,
-      }));
+      expect(
+        result,
+        equals(<String, PermissionEffect>{
+          'forgeflow.shift.view': PermissionEffect.allow,
+          'forgeflow.variance.view': PermissionEffect.allow,
+          'forgeflow.shift.edit': PermissionEffect.deny,
+        }),
+      );
     });
   });
 
@@ -259,8 +296,7 @@ void main() {
       );
     }
 
-    test('super_admin can edit anything (including locked seeded roles)',
-        () {
+    test('super_admin can edit anything (including locked seeded roles)', () {
       final decision = RoleManagementPolicy.evaluateRoleAction(
         actor: actor(),
         action: RoleManagementAction.editRole,
@@ -279,16 +315,18 @@ void main() {
       expect(decision.reason, contains('seeded'));
     });
 
-    test('non-super_admin cannot touch a global (operator_id IS NULL) role',
-        () {
-      final decision = RoleManagementPolicy.evaluateRoleAction(
-        actor: actor(roles: const <String>{'operator_owner'}),
-        action: RoleManagementAction.editRole,
-        role: role(global: true),
-      );
-      expect(decision.allowed, isFalse);
-      expect(decision.reason, contains('global roles'));
-    });
+    test(
+      'non-super_admin cannot touch a global (operator_id IS NULL) role',
+      () {
+        final decision = RoleManagementPolicy.evaluateRoleAction(
+          actor: actor(roles: const <String>{'operator_owner'}),
+          action: RoleManagementAction.editRole,
+          role: role(global: true),
+        );
+        expect(decision.allowed, isFalse);
+        expect(decision.reason, contains('global roles'));
+      },
+    );
 
     test('operator_owner can edit operator-scoped custom role within own '
         'operator', () {
@@ -300,8 +338,7 @@ void main() {
       expect(decision.allowed, isTrue);
     });
 
-    test('operator_owner cannot edit a role belonging to another operator',
-        () {
+    test('operator_owner cannot edit a role belonging to another operator', () {
       final decision = RoleManagementPolicy.evaluateRoleAction(
         actor: actor(roles: const <String>{'operator_owner'}),
         action: RoleManagementAction.editRole,
@@ -395,34 +432,39 @@ void main() {
       expect(decision.allowed, isFalse);
     });
 
-    test('operator_manager limited to operator_supervisor + operator_staff',
-        () {
-      final actorCtx = actor(roles: const <String>{'operator_manager'});
-      // Allowed sub-roles
-      for (final role in const <String>['operator_supervisor', 'operator_staff']) {
-        expect(
-          RoleManagementPolicy.evaluateGrantAction(
-            actor: actorCtx,
-            action: RoleManagementAction.grantRole,
-            grant: grantTarget(roleKey: role),
-          ).allowed,
-          isTrue,
-          reason: role,
-        );
-      }
-      // Not allowed: anything else (e.g. operator_owner, super_admin)
-      for (final role in const <String>['operator_owner', 'super_admin']) {
-        expect(
-          RoleManagementPolicy.evaluateGrantAction(
-            actor: actorCtx,
-            action: RoleManagementAction.grantRole,
-            grant: grantTarget(roleKey: role),
-          ).allowed,
-          isFalse,
-          reason: role,
-        );
-      }
-    });
+    test(
+      'operator_manager limited to operator_supervisor + operator_staff',
+      () {
+        final actorCtx = actor(roles: const <String>{'operator_manager'});
+        // Allowed sub-roles
+        for (final role in const <String>[
+          'operator_supervisor',
+          'operator_staff',
+        ]) {
+          expect(
+            RoleManagementPolicy.evaluateGrantAction(
+              actor: actorCtx,
+              action: RoleManagementAction.grantRole,
+              grant: grantTarget(roleKey: role),
+            ).allowed,
+            isTrue,
+            reason: role,
+          );
+        }
+        // Not allowed: anything else (e.g. operator_owner, super_admin)
+        for (final role in const <String>['operator_owner', 'super_admin']) {
+          expect(
+            RoleManagementPolicy.evaluateGrantAction(
+              actor: actorCtx,
+              action: RoleManagementAction.grantRole,
+              grant: grantTarget(roleKey: role),
+            ).allowed,
+            isFalse,
+            reason: role,
+          );
+        }
+      },
+    );
 
     test('operator_manager refused if target location differs', () {
       final decision = RoleManagementPolicy.evaluateGrantAction(
@@ -468,7 +510,8 @@ void main() {
         operatorId: operatorId,
         locationId: locationId,
         evaluatedAt: at ?? DateTime.utc(2026, 4, 26, 12),
-        entries: entries ??
+        entries:
+            entries ??
             <String, PermissionEffect>{
               'forgeflow.shift.view': PermissionEffect.allow,
             },

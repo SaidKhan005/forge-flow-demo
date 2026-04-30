@@ -1,6 +1,6 @@
 # Phase 11b - Agentic Advisor UX
 
-Updated: 2026-04-25
+Updated: 2026-04-29
 Status: Planned
 Owner: Future advisor UX lane
 
@@ -9,19 +9,25 @@ Owner: Future advisor UX lane
 `9.0Σ.h` `advisor_conversation_log` table is merged via `fe14b31` (B29 in
 `phase_9_execution_backlog.md`). Before any advisor turn writes a row:
 
-- B46 (queued): encryption-key reference + audit-privacy permission gate
-  must land. CMK provisioning (`cutover.0a`) must be live before
-  encrypted writes start.
-- The audit-privacy role + paired audit-on-read pattern is documented in
-  `docs/contracts/advisor_conversation_log_contract.md` once B46 lands.
+- B46 is local/code/test complete: encryption-key reference, audit-privacy
+  permission gate, and paired audit-on-read are documented in
+  `docs/contracts/advisor_conversation_log_contract.md`.
+- Before live advisor writes depend on this path, apply
+  `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` to staging +
+  Production1 under a fresh live-mutation gate. CMK provisioning
+  (`cutover.0a`) must be live before encrypted writes start.
 
 `11b.2` causal traversal depends on `9.0Σ.i` graph_canonical (B30
 merged) plus the tripwire metric exposure + projection rebuild runbook
-in B44 (queued). Read both before drafting `11b.2` prompts.
+in B44. B44 helper/runbook evidence exists; producer wiring into the B42
+health envelope remains follow-on work. Read both before drafting `11b.2`
+prompts.
 
 `11b` advisor retrieval depends on `9.0Σ.j` pgvector HNSW (B31 merged)
-plus B47 Health surface + filtered-search benchmark (queued); the
-HNSW->DiskANN switch trigger doc names exact thresholds.
+plus B47 vector health helper + filtered-search benchmark artifact. The
+helper/benchmark shape exists; producer wiring into the B42 health envelope
+remains follow-on work. The HNSW->DiskANN switch trigger doc names exact
+thresholds.
 
 ## Goal
 
@@ -92,6 +98,67 @@ Phase 11b does not own:
 - Barrio staff UX shell, Team Board, Schedule surfaces (`Phase 9.75`);
   11b provides the chat UI that lives inside the Barrio shell but does
   not own Barrio's non-chat surfaces
+
+## Frontend Exposure
+
+Phase 11b IS the agentic advisor UX. Coach Chatbot surfaces are
+embedded inside the existing Forge & Flow and Barrio apps — no new
+app, no new shell. This section makes the surfaces explicit per Hard
+Promise #10.
+
+**Operator/staff-facing surfaces this phase requires:**
+
+- Forge & Flow manager Coach Chatbot:
+  `lib/screens/advisor/coach_chat_screen.dart` (new). Entry point in
+  app shell (icon button or pill in app bar).
+- Barrio manager Coach Chatbot: same component, mounted under Barrio
+  manager-mode shell.
+- Barrio staff Coach Chatbot: same component, gated by
+  `barrio.advisor.staff_chat` permission and a different system-prompt
+  configuration. Suggested-question starters render above the input.
+- Citation rendering: every answer surfaces "Where this came from"
+  affordance — graph nodes traversed, MCP tools called, source
+  document IDs.
+- Answer-confidence chip: "High / Medium / Low" tier with hover
+  explainer. Refusal copy when below threshold.
+- Conversation history (per actor, paginated; reads
+  `advisor_conversation_log` gated by audit-privacy permission per
+  B46).
+- `11b.2` causal-chain renderer: when the advisor used AGE traversal
+  on the canonical graph, render the traversed-node sequence as a
+  collapsible chain ("here's why I said that"). Lives inside the
+  citation panel.
+
+**Admin (11A) surfaces this phase requires:** conversation review
++ audit-privacy gate live in `11A.9` audit log review. Refusal-rate
++ confidence-distribution tiles live in `11A.6` observability.
+
+**UX sub-slice family:** owned inline by existing `11b.x` slices.
+
+- `11b` core ships the chat surface in F&F manager + Barrio manager +
+  Barrio staff variants.
+- `11b.1` schema-foundation sweep is structural — no UX surface.
+- `11b.2` adds the causal-chain renderer in the citation panel
+  (carve-out: `11b.2.UX.0`).
+
+**Demo-mode walkthrough (`kDemoMode = true`; advisor uses staging
+proxy + corpus loaded):**
+
+- F&F → Coach icon → chat opens → ask "Why was my Tuesday lunch
+  PPA low?" → answer renders with confidence chip → tap "Where this
+  came from" → see citations + graph nodes + tool calls.
+- For `11b.2.UX.0`: same flow but the advisor used AGE traversal →
+  causal-chain renderer renders a node sequence inside the citation
+  panel.
+- Barrio staff → suggested-question starter "Why was my SPLH low?"
+  → answer renders → confidence + citations visible.
+- Refusal path: ask a question outside corpus → answer renders
+  refusal copy + suggestion to reach out to manager.
+- Settings → Account → Audit Log → see own advisor-conversation
+  events (per B46 audit-privacy role).
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Runtime Contract
 

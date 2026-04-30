@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reset password | Forge & Flow</title>
+  <style>
+    :root {
+      --background-deep: #f8ede6;
+      --background-mid: #efe8e0;
+      --background-surface: #ffffff;
+      --card-glow: #f2ece4;
+      --sunset: #cc7a3e;
+      --sunset-dark: #9a5c2a;
+      --text-primary: #2c2c2c;
+      --text-secondary: #5a524a;
+      --text-muted: #5e564e;
+      --border-subtle: #ddd6cc;
+      --negative: #c62828;
+      --positive: #256b29;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text-primary);
+      font-family: "IBM Plex Sans", system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+      background: linear-gradient(
+        180deg,
+        var(--background-deep) 0%,
+        var(--background-mid) 55%,
+        #e8e2da 100%
+      );
+    }
+
+    main {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 32px 20px;
+    }
+
+    .shell {
+      width: min(100%, 400px);
+    }
+
+    .brand {
+      display: grid;
+      justify-items: center;
+      gap: 16px;
+      margin-bottom: 30px;
+      text-align: center;
+    }
+
+    .brand img {
+      width: 92px;
+      height: 92px;
+      border-radius: 999px;
+      object-fit: cover;
+      box-shadow: 0 8px 26px rgb(204 122 62 / 22%);
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 30px;
+      line-height: 1.14;
+      font-weight: 700;
+    }
+
+    .card {
+      border: 1px solid var(--border-subtle);
+      border-radius: 8px;
+      background: linear-gradient(180deg, var(--background-surface), var(--card-glow));
+      box-shadow: 0 10px 24px rgb(44 44 44 / 8%);
+      padding: 22px 20px 20px;
+    }
+
+    .eyebrow {
+      margin: 0 0 4px;
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 15px;
+      font-weight: 700;
+    }
+
+    .rule {
+      width: 30px;
+      height: 2px;
+      margin-bottom: 18px;
+      background: linear-gradient(90deg, var(--sunset), var(--sunset-dark));
+    }
+
+    .copy {
+      margin: 0 0 16px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      margin-top: 12px;
+      color: var(--text-secondary);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    input {
+      width: 100%;
+      min-height: 46px;
+      padding: 12px;
+      border: 1px solid var(--border-subtle);
+      border-radius: 6px;
+      color: var(--text-primary);
+      background: var(--background-surface);
+      font: inherit;
+      outline: none;
+    }
+
+    input:focus {
+      border-color: var(--sunset);
+      box-shadow: 0 0 0 3px rgb(204 122 62 / 16%);
+    }
+
+    button,
+    .button-link {
+      width: 100%;
+      min-height: 46px;
+      margin-top: 18px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0;
+      border-radius: 6px;
+      color: #ffffff;
+      background: var(--sunset-dark);
+      font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      cursor: wait;
+      opacity: 0.68;
+    }
+
+    .message {
+      display: none;
+      margin: 14px 0 0;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      background: var(--background-surface);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .message[data-tone="error"] {
+      display: block;
+      border-color: rgb(198 40 40 / 35%);
+    }
+
+    .message[data-tone="success"] {
+      display: block;
+      border-color: rgb(37 107 41 / 35%);
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="shell">
+      <section class="brand" aria-label="Forge & Flow">
+        <img src="/assets/images/forge_flow_splash_icon.png" alt="Forge & Flow logo">
+        <h1>Forge & Flow</h1>
+      </section>
+
+      <section class="card" aria-live="polite">
+        <p class="eyebrow">Reset password</p>
+        <div class="rule" aria-hidden="true"></div>
+        <p class="copy" id="intro">Checking your reset link.</p>
+
+        <form id="reset-form" class="hidden" novalidate>
+          <label>
+            New password
+            <input id="new-password" type="password" autocomplete="new-password" required>
+          </label>
+          <label>
+            Confirm new password
+            <input id="confirm-password" type="password" autocomplete="new-password" required>
+          </label>
+          <button id="submit-button" type="submit">Update password</button>
+        </form>
+
+        <p id="message" class="message"></p>
+        <a id="continue-link" class="button-link hidden" href="forgeflow://sign-in">Back to sign in</a>
+      </section>
+    </div>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+    import {
+      getAuth,
+      checkActionCode,
+      applyActionCode,
+      verifyPasswordResetCode,
+      confirmPasswordReset
+    } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+    const params = new URLSearchParams(window.location.search);
+    const mode = params.get("mode");
+    const oobCode = params.get("oobCode");
+    const continueUrl = params.get("continueUrl");
+    const defaultReturnUrl = "forgeflow://sign-in";
+    const androidReturnUrl =
+      "intent://sign-in#Intent;scheme=forgeflow;package=com.forgeflow.app;end";
+    const intro = document.querySelector("#intro");
+    const form = document.querySelector("#reset-form");
+    const message = document.querySelector("#message");
+    const submitButton = document.querySelector("#submit-button");
+    const continueLink = document.querySelector("#continue-link");
+    const newPassword = document.querySelector("#new-password");
+    const confirmPassword = document.querySelector("#confirm-password");
+
+    continueLink.addEventListener("click", (event) => {
+      if (continueUrl) {
+        return;
+      }
+      if (/Android/i.test(navigator.userAgent)) {
+        event.preventDefault();
+        window.location.href = androidReturnUrl;
+      }
+    });
+
+    function showContinueLink() {
+      continueLink.href = continueUrl || defaultReturnUrl;
+      continueLink.classList.remove("hidden");
+    }
+
+    function showMessage(text, tone) {
+      message.textContent = text;
+      message.dataset.tone = tone;
+    }
+
+    function clearMessage() {
+      message.textContent = "";
+      message.removeAttribute("data-tone");
+    }
+
+    function validationMessage(candidate, confirmation) {
+      if (!candidate || !confirmation) {
+        return "All fields are required.";
+      }
+      if (candidate !== confirmation) {
+        return "Passwords do not match.";
+      }
+      const messages = [];
+      if (candidate.length < 8) {
+        messages.push("Use at least 8 characters.");
+      }
+      if (candidate.length > 256) {
+        messages.push("Use 256 characters or fewer.");
+      }
+      if (/[\u0000-\u001f\u007f]/.test(candidate)) {
+        messages.push("Remove tabs, line breaks, or control characters.");
+      }
+      if (candidate.trim() !== candidate) {
+        messages.push("Remove spaces at the beginning or end.");
+      }
+      return messages.join(" ");
+    }
+
+    async function loadFirebaseConfig() {
+      const response = await fetch("/firebase-config.js", {
+        cache: "no-store",
+        credentials: "same-origin"
+      });
+      if (!response.ok) {
+        throw new Error("config unavailable");
+      }
+      return response.json();
+    }
+
+    async function boot() {
+      if (!oobCode) {
+        intro.textContent = "This password reset link is invalid or expired.";
+        showMessage("Request a fresh link from the app.", "error");
+        return;
+      }
+
+      try {
+        const app = initializeApp(await loadFirebaseConfig());
+        const auth = getAuth(app);
+        if (mode === "verifyEmail") {
+          await applyActionCode(auth, oobCode);
+          intro.textContent = "Email verified.";
+          showMessage("Your email address has been verified. You can return to the app.", "success");
+          showContinueLink();
+          return;
+        }
+
+        if (mode === "recoverEmail") {
+          await checkActionCode(auth, oobCode);
+          await applyActionCode(auth, oobCode);
+          intro.textContent = "Email change recovered.";
+          showMessage("Your sign-in email has been restored. You can return to the app.", "success");
+          showContinueLink();
+          return;
+        }
+
+        if (mode !== "resetPassword") {
+          intro.textContent = "This account action link is not supported.";
+          showMessage("Request a fresh link from the app.", "error");
+          return;
+        }
+
+        await verifyPasswordResetCode(auth, oobCode);
+        intro.textContent = "Enter a new password that meets the same rules used in the app.";
+        form.classList.remove("hidden");
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          clearMessage();
+          const rejection = validationMessage(newPassword.value, confirmPassword.value);
+          if (rejection) {
+            showMessage(rejection, "error");
+            return;
+          }
+
+          submitButton.disabled = true;
+          submitButton.textContent = "Updating password";
+          try {
+            await confirmPasswordReset(auth, oobCode, newPassword.value);
+            form.classList.add("hidden");
+            intro.textContent = "Password updated.";
+            showMessage("Your password has been updated. You can return to the app and sign in.", "success");
+            showContinueLink();
+          } catch (_) {
+            showMessage("Password could not be updated. Request a new reset link and try again.", "error");
+          } finally {
+            submitButton.disabled = false;
+            submitButton.textContent = "Update password";
+          }
+        });
+      } catch (_) {
+        intro.textContent = "This password reset link is invalid or expired.";
+        showMessage("Request a fresh link from the app.", "error");
+      }
+    }
+
+    boot();
+  </script>
+</body>
+</html>

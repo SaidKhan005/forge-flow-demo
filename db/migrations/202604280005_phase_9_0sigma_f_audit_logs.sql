@@ -16,9 +16,9 @@
 -- recomputes every row hash, and compares the terminal hash to the
 -- anchor row + the Blob evidence.
 --
--- This migration is local framework only — no live database mutation.
--- Live apply on staging + Production1 is queued under the Phase 9
--- live-mutation gate (subject to user approval per Phase 9 lock).
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set.
 -- The pg_partman registration call is wrapped in a re-runnable DO
 -- block so the same migration is safe to apply repeatedly.
 --

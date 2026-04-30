@@ -11,15 +11,16 @@ Future<void> main() async {
     // default — sign-in then fails closed with a calm
     // `ledger_unavailable` message instead of silently dropping
     // `auth_sessions` rows.
-    const proxyUriRaw = String.fromEnvironment(
-      'FORGE_FLOW_PROXY_BASE_URI',
-    );
+    const proxyUriRaw = String.fromEnvironment('FORGE_FLOW_PROXY_BASE_URI');
     final proxyBaseUri = proxyUriRaw.isEmpty ? null : Uri.parse(proxyUriRaw);
     final bindings = await createFirebaseAuthRuntimeBindings(
       proxyBaseUri: proxyBaseUri,
     );
     await bootstrapAndRunApp(
-      const BarrioApp(),
+      BarrioApp(
+        requireAuth: true,
+        permissionContextLoader: bindings.permissionContextLoader,
+      ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
       authSessionLedgerWriter: bindings.authSessionLedgerWriter,

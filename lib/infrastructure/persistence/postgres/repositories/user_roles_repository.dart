@@ -28,6 +28,7 @@ import '../tenant_context.dart';
 /// `location_id` MUST be non-null.
 enum UserRoleScope {
   operatorWide,
+  orgUnit,
   location;
 
   /// SQL value matching the 9.0a CHECK constraint
@@ -36,6 +37,8 @@ enum UserRoleScope {
     switch (this) {
       case UserRoleScope.operatorWide:
         return 'operator_wide';
+      case UserRoleScope.orgUnit:
+        return 'org_unit';
       case UserRoleScope.location:
         return 'location';
     }
@@ -52,6 +55,19 @@ enum UserRoleScope {
     }
     return UserRoleScope.location;
   }
+
+  static UserRoleScope fromSqlKey(String value) {
+    return switch (value) {
+      'operator_wide' => UserRoleScope.operatorWide,
+      'org_unit' => UserRoleScope.orgUnit,
+      'location' => UserRoleScope.location,
+      _ => throw ArgumentError.value(
+        value,
+        'value',
+        "must be 'operator_wide', 'org_unit', or 'location'",
+      ),
+    };
+  }
 }
 
 class UserRoleGrantRow {
@@ -65,6 +81,9 @@ class UserRoleGrantRow {
     required this.createdAt,
     required this.updatedAt,
     this.locationId,
+    this.orgUnitId,
+    this.scopeType = 'operator_wide',
+    this.effectiveLocationIds = const <String>[],
     this.validUntil,
     this.revokedAt,
     this.revokedBy,
@@ -76,6 +95,9 @@ class UserRoleGrantRow {
   final String roleId;
   final String operatorId;
   final String? locationId;
+  final String? orgUnitId;
+  final String scopeType;
+  final List<String> effectiveLocationIds;
   final DateTime validFrom;
   final DateTime? validUntil;
   final String grantedBy;
@@ -139,6 +161,7 @@ class UserRolesRepository extends OperatorScopedRepository {
     required String roleId,
     required UserRoleScope scopeType,
     String? grantLocationId,
+    String? grantOrgUnitId,
     DateTime? validFrom,
     DateTime? validUntil,
     String? reason,
@@ -155,12 +178,41 @@ class UserRolesRepository extends OperatorScopedRepository {
             'scopeType=location requires a non-null grantLocationId',
           );
         }
+        if (grantOrgUnitId != null && grantOrgUnitId.isNotEmpty) {
+          throw ArgumentError.value(
+            grantOrgUnitId,
+            'grantOrgUnitId',
+            'scopeType=location requires grantOrgUnitId to be null',
+          );
+        }
+      case UserRoleScope.orgUnit:
+        if (grantOrgUnitId == null || grantOrgUnitId.isEmpty) {
+          throw ArgumentError.value(
+            grantOrgUnitId,
+            'grantOrgUnitId',
+            'scopeType=org_unit requires a non-null grantOrgUnitId',
+          );
+        }
+        if (grantLocationId != null && grantLocationId.isNotEmpty) {
+          throw ArgumentError.value(
+            grantLocationId,
+            'grantLocationId',
+            'scopeType=org_unit requires grantLocationId to be null',
+          );
+        }
       case UserRoleScope.operatorWide:
         if (grantLocationId != null && grantLocationId.isNotEmpty) {
           throw ArgumentError.value(
             grantLocationId,
             'grantLocationId',
             'scopeType=operator_wide requires grantLocationId to be null',
+          );
+        }
+        if (grantOrgUnitId != null && grantOrgUnitId.isNotEmpty) {
+          throw ArgumentError.value(
+            grantOrgUnitId,
+            'grantOrgUnitId',
+            'scopeType=operator_wide requires grantOrgUnitId to be null',
           );
         }
     }
@@ -172,10 +224,11 @@ class UserRolesRepository extends OperatorScopedRepository {
     return withTenant<String>(ctx, (exec) async {
       final rows = await exec.query(
         'insert into user_roles ('
-        'user_id, role_id, operator_id, location_id, scope_type, '
+        'user_id, role_id, operator_id, location_id, org_unit_id, scope_type, '
         'valid_from, valid_until, granted_by, reason) '
         'values (@user_id::uuid, @role_id::uuid, @operator_id::uuid, '
-        '@location_id::uuid, @scope_type, @valid_from, @valid_until, '
+        '@location_id::uuid, @org_unit_id::uuid, @scope_type, '
+        '@valid_from, @valid_until, '
         '@actor::uuid, @reason) '
         'returning user_role_id::text as user_role_id',
         parameters: <String, Object?>{
@@ -183,6 +236,7 @@ class UserRolesRepository extends OperatorScopedRepository {
           'role_id': roleId,
           'operator_id': operatorId,
           'location_id': grantLocationId,
+          'org_unit_id': grantOrgUnitId,
           'scope_type': scopeType.sqlKey,
           'valid_from': validFrom ?? DateTime.now().toUtc(),
           'valid_until': validUntil,
@@ -293,6 +347,15 @@ class UserRolesRepository extends OperatorScopedRepository {
       'role_id::text as role_id, '
       'operator_id::text as operator_id, '
       'location_id::text as location_id, '
+      'org_unit_id::text as org_unit_id, '
+      'scope_type, '
+      '(select coalesce(array_agg(uel.location_id::text order by '
+      'uel.location_id::text), array[]::text[]) '
+      'from user_effective_locations uel '
+      'where uel.operator_id = user_roles.operator_id '
+      'and uel.user_id = user_roles.user_id '
+      'and uel.source_user_role_id = user_roles.user_role_id) '
+      'as effective_location_ids, '
       'valid_from, valid_until, '
       'granted_by::text as granted_by, '
       'revoked_at, revoked_by::text as revoked_by, '
@@ -305,6 +368,9 @@ class UserRolesRepository extends OperatorScopedRepository {
       roleId: row['role_id'] as String,
       operatorId: row['operator_id'] as String,
       locationId: row['location_id'] as String?,
+      orgUnitId: row['org_unit_id'] as String?,
+      scopeType: row['scope_type'] as String? ?? 'operator_wide',
+      effectiveLocationIds: _stringList(row['effective_location_ids']),
       validFrom: row['valid_from'] as DateTime,
       validUntil: row['valid_until'] as DateTime?,
       grantedBy: row['granted_by'] as String,
@@ -314,5 +380,12 @@ class UserRolesRepository extends OperatorScopedRepository {
       createdAt: row['created_at'] as DateTime,
       updatedAt: row['updated_at'] as DateTime,
     );
+  }
+
+  static List<String> _stringList(Object? value) {
+    if (value is List) {
+      return value.whereType<String>().toList(growable: false);
+    }
+    return const <String>[];
   }
 }

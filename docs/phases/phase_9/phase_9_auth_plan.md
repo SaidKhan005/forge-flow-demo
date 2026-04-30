@@ -1083,6 +1083,131 @@ Sensitive actions (`team.users.soft_delete`, `team.roles.create_custom`,
   perf optimization if 50+ location operators see >500ms first-paint;
   not built unless metrics demand
 
+## Frontend Exposure
+
+Phase 9 ships substantial backend capability (auth, RLS, repos, MFA
+factors, sessions, audit chain, service principals, role catalog). The
+operator-facing UX that surfaces these capabilities is tracked as the
+`9.UX.0-7` sub-slice family, runs in parallel with `11A.0-6`, and is
+covered by Hard Promise #10 (every backend phase ships its UX before
+phase close).
+
+**Operator-facing surfaces this phase requires:**
+
+- `lib/screens/auth/login_screen.dart` — branded login + MFA challenge entry
+- `lib/screens/auth/password_reset_screen.dart` (new) — self-serve reset
+- `lib/screens/team/team_settings_section.dart` — invite, suspend,
+  reactivate, role grant / revoke (in flight)
+- `lib/screens/settings/settings_data_sections.dart` `SettingsAccountSection`
+  — password change, sign-out, T&Cs placeholder (in flight; T&Cs detail
+  lands with Phase 9.8)
+- `lib/screens/settings/settings_mfa_section.dart` (new) — TOTP
+  enrollment, factor management, recovery code generation
+- `lib/screens/settings/settings_custom_roles_section.dart` (new) —
+  role catalog viewer, role editor, permission key picker
+- `lib/screens/settings/settings_role_editor.dart` (new)
+- `lib/screens/settings/settings_permission_explainer.dart` (new) —
+  inheritance + deny-rule chain visualization
+- `lib/screens/settings/settings_org_hierarchy_section.dart` (new) —
+  `org_units` (`ltree`) browser + location-scoped grant editor
+- `lib/screens/settings/settings_active_sessions_section.dart` (new) —
+  `auth_sessions` viewer + sign-out-all-devices
+- `lib/screens/settings/settings_audit_log_section.dart` (new) —
+  per-actor audit trail (`auth_events_audit`)
+
+**Admin (11A) surfaces this phase requires:** operator/role/audit CRUD
+already covered by `11A.1` and `11A.7-10`. No additional 11A scope here.
+
+**UX sub-slice family:** `9.UX.0` through `9.UX.7`
+
+- `9.UX.0` (in flight, ~50% done) — auth + team + account shell:
+  branded login, team management, account section, MFA challenge entry,
+  permission resolution wiring across `forge_flow_app.dart` /
+  `barrio_app.dart`. Files: see git-status changes on `auth_session.dart`,
+  `permission_resolution.dart`, `team_settings_section.dart`,
+  `settings_data_sections.dart`, `settings_screen.dart`,
+  three Postgres repositories under
+  `lib/infrastructure/persistence/postgres/repositories/`.
+- `9.UX.1` — MFA self-enrollment + factor management. Reads/writes
+  `mfa_factors` via `auth_operations_gateway`. Recovery code download.
+- `9.UX.2` — custom role editor + role catalog viewer. Consumes
+  B17 `/v1/admin/auth/roles` (already deployed staging rev `00018-ztq`).
+- `9.UX.3` — permission explainer. Uses `permission_resolution.dart`
+  runtime + 9.0a deny rules; renders inheritance chain when a user
+  has unexpected access or is unexpectedly blocked.
+- `9.UX.4` — org hierarchy + location-scoped grants. Reads `org_units`
+  from 9.0Σ.c; lets the operator browse the location tree and grant
+  per-location roles.
+- `9.UX.5` — active sessions viewer + sign-out-all-devices. Reads
+  `auth_sessions`; writes revocation through proxy.
+- `9.UX.6` — personal audit log viewer. Reads `auth_events_audit`
+  scoped to the actor (or to team members for managers).
+- `9.UX.7` — self-serve password reset / recovery flow. Extends
+  `login_screen.dart` with "Forgot password?" link + new
+  `password_reset_screen.dart`.
+
+T&Cs version history viewer + GDPR data-request UI fold into Phase 9.8
+(legal copy and processor list aren't ready until 9.8 enumerates them).
+
+**Shared seams across lanes (sequence, do not parallelize):**
+
+- `lib/screens/settings_screen.dart` — registers tabs added by `9.UX.1`,
+  `9.UX.2`, `9.UX.4`, `9.UX.5`, `9.UX.6`. First lane lands its tab;
+  later lanes rebase and append. Additive-only patches OK if each
+  lane writes its own tab spec without re-ordering existing entries.
+- `lib/services/auth/auth_operations_gateway.dart` — gains methods
+  consumed by `9.UX.1` (MFA), `9.UX.2` (roles), `9.UX.4` (org units),
+  `9.UX.5` (sessions), `9.UX.6` (audit), `9.UX.7` (password reset).
+  Carve-out: each lane adds its own method to the interface; default
+  serialization unless the prompt explicitly authorizes additive
+  parallel patches.
+- `lib/auth/permission_resolution.dart` — touched by `9.UX.0` already;
+  `9.UX.3` (permission explainer) extends it. Sequence `9.UX.3` after
+  `9.UX.0` settles.
+- `lib/forge_flow_app.dart` / `lib/barrio_app.dart` — app shells gain
+  Coach Chatbot entry points in `11b`; `9.UX.*` may also touch them
+  for permission-gated nav. Phase 11b lane and `9.UX.*` lanes
+  serialize on these shells.
+
+Cross-phase shared seams (Phase 9 ↔ Phase 11A ↔ Phase 11b ↔
+Phase 8 / 8R / 8.5):
+
+- `lib/screens/settings/settings_integrations_section.dart` (new) is
+  established by Phase 8 `8.UX.0`; extended by Phase 8R `8R.UX.0` and
+  Phase 8.5 `8.5.UX.0`. Sequence cross-phase, not parallelize.
+- `lib/services/auth/auth_operations_gateway.dart` is also consumed by
+  Phase 11A `11A.1` (admin role CRUD already deployed via B17). 11A
+  uses the gateway interface only; Phase 9.UX lanes own the method
+  additions. No conflict if 11A doesn't add methods.
+
+**Demo-mode walkthrough (`kDemoMode = true`)** — exercise per slice:
+
+- `9.UX.0` (already in flight): launch ForgeFlow → land on branded login
+  → sign in with demo operator → reach Settings → see Account + Team
+  tabs gated by permissions → invite a user → suspend a user → role grant.
+- `9.UX.1`: Settings → Account → MFA → enroll TOTP factor → see QR →
+  enter code → factor listed → sign out / sign in → MFA challenge → enter
+  code → land on home → revoke factor → factor gone.
+- `9.UX.2`: Settings → Team → Roles → see role catalog → create custom
+  role → assign permission keys → save → grant role to user → user
+  sees expected surfaces.
+- `9.UX.3`: Settings → Team → tap user → Permission Explainer → see
+  inheritance chain (org-unit grants vs explicit grants vs deny rules)
+  → toggle a deny rule → user loses access.
+- `9.UX.4`: Settings → Team → Org Hierarchy → see location tree →
+  add child unit → move location → grant role at unit level → child
+  locations inherit.
+- `9.UX.5`: Settings → Account → Active Sessions → see device list →
+  sign out specific device → confirm session revoked → sign-out-all
+  → all devices forced to re-auth.
+- `9.UX.6`: Settings → Account → Audit Log → see own login / role /
+  password events → filter by date.
+- `9.UX.7`: Login → "Forgot password?" → enter email → receive reset
+  link → set new password → sign in.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Future Extensions (Out of Phase 9 Scope)
 
 | Slot | Trigger | Owner | Estimated effort |

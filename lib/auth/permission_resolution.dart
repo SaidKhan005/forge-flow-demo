@@ -17,10 +17,9 @@
 // them to [PermissionResolver]. Tests construct the input maps
 // directly.
 //
-// Location-scoped grants apply only when the requested
-// `location_id` matches the grant's `location_id` (or the grant has
-// no location scope, meaning operator-wide). Phase 9.7 wires this
-// into the runtime gates.
+// Location-scoped grants apply only when the requested `location_id` matches
+// the grant's direct location. Org-unit grants apply through the materialized
+// `user_effective_locations` cache. Operator-wide grants cover every location.
 
 import 'permission_effect.dart';
 
@@ -39,8 +38,8 @@ class RolePermissionRule {
 }
 
 /// One row from `user_roles` (Phase 9.0 schema), in the shape the
-/// resolver needs. Optional [locationId] makes the grant
-/// location-scoped; null means operator-wide.
+/// resolver needs. [scopeType] is one of `operator_wide`, `org_unit`, or
+/// `location`.
 class UserRoleGrant {
   const UserRoleGrant({
     required this.userRoleId,
@@ -48,7 +47,10 @@ class UserRoleGrant {
     required this.roleId,
     required this.operatorId,
     required this.validFrom,
+    this.scopeType = 'operator_wide',
     this.locationId,
+    this.orgUnitId,
+    this.effectiveLocationIds = const <String>[],
     this.validUntil,
     this.revokedAt,
   });
@@ -57,7 +59,10 @@ class UserRoleGrant {
   final String userId;
   final String roleId;
   final String operatorId;
+  final String scopeType;
   final String? locationId;
+  final String? orgUnitId;
+  final List<String> effectiveLocationIds;
   final DateTime validFrom;
   final DateTime? validUntil;
   final DateTime? revokedAt;
@@ -74,12 +79,20 @@ class UserRoleGrant {
     return true;
   }
 
-  /// True iff this grant covers [requestedLocationId]. Null grant
-  /// `locationId` means operator-wide (covers any location).
+  /// True iff this grant covers [requestedLocationId].
   bool coversLocation(String requestedLocationId) {
-    final scope = locationId;
-    if (scope == null) return true;
-    return scope == requestedLocationId;
+    switch (scopeType) {
+      case 'operator_wide':
+        return true;
+      case 'location':
+        return locationId == requestedLocationId;
+      case 'org_unit':
+        return effectiveLocationIds.contains(requestedLocationId);
+      default:
+        final scope = locationId;
+        if (scope == null) return true;
+        return scope == requestedLocationId;
+    }
   }
 }
 

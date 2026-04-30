@@ -371,6 +371,48 @@ Phase 11A does not own:
 - public status page authoring (a free service handles authoring;
   `11A.10` is the F&F-side incident-creation UX)
 
+## Frontend Exposure
+
+Phase 11A IS the admin frontend (Flutter for Web at
+`admin.forgeflow.app`). The Sub-Slice Sequence above already enumerates
+the admin surfaces; this section makes the operator-vs-admin split
+explicit per Hard Promise #10.
+
+**Admin (11A) surfaces this phase ships:** see `11A.0` through
+`11A.10` above. Each sub-slice IS a UX surface:
+
+- `11A.0` shell + auth gate
+- `11A.1` operator + location management
+- `11A.2` pricing tier admin + usage-cap editor
+- `11A.3` corpus management (upload, diff, Graphify-assisted review)
+- `11A.4` integration management (consumed by Phase 8 / 8R / 8.5)
+- `11A.5` graph + vector + rollup health (consumes B42 / B44 / B45 /
+  B47 producers)
+- `11A.6` observability dashboard
+- `11A.7` feature flag admin
+- `11A.8` API version management
+- `11A.9` audit log review (consumes B27 / B37)
+- `11A.10` status page management
+
+**Operator-facing surfaces this phase requires:** **none**. By
+design, 11A never surfaces to operators. Cross-checks: any operator-
+visible feature must NOT live under `admin.forgeflow.app` or
+`/v1/admin/*`; those surfaces are F&F super-admin only.
+
+**UX sub-slice family:** owned inline by existing `11A.x` slices —
+each `11A.x` IS a UX surface. Each slice adds the `Operator
+walkthrough` block (here it's an "Admin walkthrough" — same gate,
+different audience) + walkthrough acceptance criterion.
+
+**Admin walkthrough (per slice):** sign in to
+`admin.forgeflow.app` → exercise the new admin surface end-to-end
+against staging proxy + staging DB → verify RLS bypass works for
+admin role, RLS enforcement works for non-admin → screenshot or
+text trace.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Dependencies
 
 Required before Phase 11A can ship real:

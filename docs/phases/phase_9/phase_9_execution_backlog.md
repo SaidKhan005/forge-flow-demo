@@ -43,6 +43,15 @@ Closed and verified:
   scheduling, and first successful rollup cron runs are documented in
   `runbooks/phase_9_production1_migration_apply_runbook.md` and the archived
   apply result.
+- B42 proxy `/health` v1 envelope is implemented locally with compatibility
+  aliases, dependency checks, reserved metric keys, and reserved surface keys.
+  Focused proxy tests pin the wire shape.
+- B41 service-principal JWT issuance and B46 advisor audit-privacy are locally
+  implemented, contracted, and tested. Their additive live migrations
+  (`202604290000` and `202604280014`) still need explicit staging +
+  Production1 apply evidence before live phases depend on them.
+- B44/B45/B47 helper and runbook work exists, but the metric producer wiring
+  that fills the B42 reserved values remains follow-on work.
 - Latest local baseline: `flutter analyze --fatal-infos`,
   `dart run tool/rls_policy_lint.dart`, focused B17 auth/proxy tests,
   `git diff --check`, and full `flutter test --reporter compact` passed
@@ -71,20 +80,39 @@ already-completed Production1 apply unless explicitly stated.
 
 | B-item | Status | Owner phase / gate |
 | --- | --- | --- |
-| B33 usage/log reconciliation hardening | queued | Rollup/accounting hardening |
-| B34 audit attribution contract clarification | queued | Audit contract polish |
-| B36 cross-tenant RLS isolation integration sweep | queued | Post-apply regression hardening |
-| B37 audit hash-chain verifier E2E test | queued | Audit verification hardening |
-| B38 Tier-M rollup load test | queued | `cutover.0b` launch blocker |
-| B39 recovery code attempt-store refactor | queued | Code hygiene |
-| B40 `202604280013` hotfix cross-link | queued | Docs polish |
-| B41 service-principal issuance route | queued | Phase 12 prerequisite |
-| B42 proxy `/health` expansion | complete | Contract: `docs/contracts/proxy_health_contract.md`; B44/B45/B47 fill reserved metric values |
-| B43 Cloud Run audit anchor deploy | queued | Audit operations |
-| B44 graph/vector health metrics and rebuild runbook | queued | 11A.5 health surface |
-| B45 rollup worker/freshness UI integration | queued | Rollup operations |
-| B46 advisor conversation encryption/audit privacy | queued | 11b prerequisite |
-| B47 vector health + filtered-search benchmark | queued | 11A.5 vector health surface |
+| B33 usage/log reconciliation hardening | complete | Two-slot writer at `advisor_proxy.dart:2906`; `usage_logs_two_slot_rollup_uq` constraint flipped in `202604280006_c` |
+| B34 audit attribution contract clarification | complete | `docs/contracts/audit_attribution_contract.md` (Active authority) pins `actor_kind` discriminator + `text` vs `uuid` divergence |
+| B36 cross-tenant RLS isolation integration sweep | complete | `test/phase_9_0sigma_rls_isolation_sweep_test.dart` — passive-by-default 13-table sweep gated on `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true` |
+| B37 audit hash-chain verifier E2E test | complete | `test/phase_9_0sigma_f_audit_chain_e2e_test.dart` — 100 rows × 3 ops × 2 dates; `tool/audit_anchor/test/anchor_e2e_test.dart` covers anchor surface |
+| B38 Tier-M rollup load test | partial | Synth seed at `tool/rollups_load_test/synth_seed.dart` + focused test landed; perf-gate execution still owed for `cutover.0b` launch blocker |
+| B39 recovery code attempt-store refactor | complete | `lib/infrastructure/persistence/postgres/repositories/user_scoped_repository.dart` base class; `RecoveryCodeAttemptStore` migrated |
+| B40 `202604280013` hotfix cross-link | complete | Cross-linked in `docs/contracts/audit_attribution_contract.md:19` |
+| B41 service-principal issuance route | local complete; live apply pending | Route/client/tests landed; apply `202604290000` to staging + Production1 before live Phase 12 dependence |
+| B42 proxy `/health` expansion | complete | Contract/code/tests landed; B44/B45/B47 fill reserved metric values |
+| B43 Cloud Run audit anchor deploy | partial | Binary at `tool/audit_anchor/main.dart`, deploy script `scripts/deploy_audit_anchor_job.ps1`, runbook `runbooks/audit_chain_verify_runbook.md` all landed; live Cloud Run deploy still owed |
+| B44 graph health metrics and rebuild runbook | helper/runbook landed; producer wiring pending | 11A.5 health surface |
+| B45 rollup worker/freshness UI integration | freshness helper/runbook landed; route/UI pending | Rollup operations |
+| B46 advisor conversation encryption/audit privacy | local complete; live apply pending | Apply `202604280014` to staging + Production1 before live 11b writes |
+| B47 vector health + filtered-search benchmark | helper/benchmark artifact landed; producer wiring pending | 11A.5 vector health surface |
+
+## UX Hand-Off Notes
+
+The B-items above land **backend** capability. Operator-facing UX that
+surfaces these capabilities is tracked under the `9.UX.0-7` family in
+`phase_9_auth_plan.md` `Frontend Exposure` section. Mapping:
+
+- B17 role catalog CRUD → `9.UX.2` (custom role editor, role catalog viewer)
+- B27 audit hash chain + B37 verifier → `9.UX.6` (personal audit log viewer)
+- B41 service-principal JWT issuance → no operator UX (admin-only;
+  surfaces in `11A.7-10` audit log review)
+- B42 / B44 / B45 / B47 health producers → no operator UX (surface in
+  `11A.5` health dashboard)
+- B46 advisor conversation encryption → operator UX lands with `11b`
+  Coach Chatbot, gated by audit-privacy permission
+
+Do not block a B-item's status on its consumer UX slice; the B-items are
+backend acceptance, the `9.UX.<n>` slices are frontend acceptance, and
+both ladders close before Phase 9 fully retires.
 
 ## Operating Rules
 

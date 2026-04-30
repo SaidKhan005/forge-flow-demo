@@ -58,6 +58,14 @@ Every slice respects these. Origin:
 9. **AI cost is metered by class.** No flat-rate AI at scale.
    `usage_caps` two-slot key + 5 cost-discipline levers keep margin
    75-95%. Detail: decision register + scalability decisions doc.
+10. **Every backend phase ships its operator-facing UX before phase
+    close.** Phase docs include a `Frontend Exposure` section listing
+    operator and admin surfaces. Backend-heavy phases ship
+    `<phase>.UX.<n>` sub-slices interleaved with backend slices.
+    UX-exposing slices include a demo-mode walkthrough in their
+    acceptance; Codex returns `FOLLOW-UP NEEDED` when walkthrough
+    evidence is missing. Detail:
+    `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Workflow
 
@@ -67,6 +75,17 @@ Every slice respects these. Origin:
 - Do not update trackers during implementation unless the prompt asks.
 - If docs move or are materially touched, update touched links and
   report `Links updated: yes/no`.
+- **Parallel lanes.** Codex runs one lane on `master`; Claude runs N
+  parallel implementation lanes in `.claude/worktrees/<lane-name>`.
+  Multiple phases — not just slices within a phase — may be active
+  simultaneously. Lane assignment, file ownership, shared-seam
+  serialization, walkthrough evidence per lane, and merge sequencing
+  rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes
+  (Worktrees)" section.
+- **Main-chat read-only across worktrees.** When worktrees are
+  running, the main chat on master is read-only across all of them —
+  it observes, diffs, reviews. Tracker / memory / coordination edits
+  on master are still allowed.
 
 ## Review Loop (user pastes an Execution Report)
 

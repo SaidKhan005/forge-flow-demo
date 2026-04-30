@@ -173,6 +173,60 @@ engineering).
 For cash reconciliation. Lights up only if Phase 12 workflow demand
 justifies. Lower priority than accounting integrations.
 
+## Frontend Exposure
+
+Phase 8.5 ships outbound integrations consumed primarily by Phase 12
+workflows. Operator-facing UX is a connect / configure flow per vendor
+plus a "what's about to be written to your accounting system" preview
+surface that operators see before any outbound write happens.
+
+**Operator-facing surfaces this phase requires:**
+
+- Settings → Integrations → Finance section (extends the
+  `lib/screens/settings/settings_integrations_section.dart` shell from
+  Phase 8). Cards per vendor: QBO, Xero, Bill.com, Plaid (when 8.5.5
+  ships).
+- OAuth connect flow per vendor (handled by `/v1/admin/integrations/*`
+  endpoints), with status / disconnect / re-connect controls.
+- "Test connection" diagnostic with live result toast.
+- **Outbound write preview surface** (separate from connect flow):
+  before any Phase 12 workflow writes to QBO / Xero / Bill.com, an
+  operator-facing review screen renders the proposed write payload
+  (journal entry, invoice, bill) and requires explicit "Approve" or
+  "Reject" with reason. New file
+  `lib/screens/integrations/outbound_write_review_screen.dart`.
+- Per-vendor write history viewer ("what we've written to your
+  accounting system in the last 30 days, with status + linkable
+  reference").
+
+**Admin (11A) surfaces this phase requires:** vendor-credential
+storage, OAuth callback, token-refresh telemetry, and per-operator
+enable/disable already covered by `11A.4` Integration management.
+"Test connection" diagnostic surface lives in 11A.4 mirror.
+
+**UX sub-slice family:** `8.5.UX.0-1`
+
+- `8.5.UX.0` — Finance connector connect flow + status panel (one
+  pattern, runs alongside each `8.5.x` vendor sub-slice as it lands).
+- `8.5.UX.1` — Outbound write preview / approval surface + write
+  history viewer. Wires up alongside the first Phase 12 workflow
+  that produces outbound writes.
+
+**Demo-mode walkthrough:**
+
+- `8.5.UX.0`: Settings → Integrations → Finance → QBO card → Connect
+  → vendor sandbox OAuth → return to app → status "Connected" → Test
+  connection → green toast.
+- `8.5.UX.1`: simulate a Phase 12 workflow producing a draft journal
+  entry → operator opens Outbound Review surface → sees JSON / human
+  preview of the proposed write → tap Approve → write executes,
+  history shows confirmation → simulate another workflow producing
+  an entry → tap Reject → enter reason → entry stays unwritten,
+  history records rejection.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Acceptance
 
 Per sub-slice:

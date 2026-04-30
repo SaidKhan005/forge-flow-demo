@@ -88,6 +88,36 @@ void main() {
       },
     );
 
+    test('POST invite create forwards org-unit scope payload', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: _RecordingAdminGuard(),
+        );
+        try {
+          final response = await harness
+              .postJson(adminAuthInvitesPath, <String, Object?>{
+                'email': 'regional.user@example.test',
+                'role_id': _roleId,
+                'scope_type': 'org_unit',
+                'org_unit_id': '55555555-5555-4555-8555-555555555555',
+              });
+
+          expect(response.statusCode, equals(201));
+          final command = gateway.inviteCreates.single;
+          expect(command.scopeType, equals('org_unit'));
+          expect(
+            command.targetOrgUnitId,
+            equals('55555555-5555-4555-8555-555555555555'),
+          );
+          expect(command.targetLocationId, isNull);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test('admin guard denial stops auth operation before gateway', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -142,6 +172,42 @@ void main() {
         });
       },
     );
+
+    test('GET users and invites list Team data for Settings', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final users = await harness.get(adminAuthUsersPath);
+          final invites = await harness.get(adminAuthInvitesPath);
+
+          expect(users.statusCode, equals(200));
+          expect(invites.statusCode, equals(200));
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.users.view', 'team.users.view']),
+          );
+          expect(gateway.userLists.single.actorUserId, equals(_userId));
+          expect(gateway.inviteLists.single.operatorId, equals(_operatorId));
+          final userBody = users.json['users'] as List<Object?>;
+          final inviteBody = invites.json['invites'] as List<Object?>;
+          expect(
+            Map<String, Object?>.from(userBody.single as Map)['user_role_id'],
+            equals('grant-1'),
+          );
+          expect(
+            Map<String, Object?>.from(inviteBody.single as Map)['invite_id'],
+            equals('invite-1'),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('POST role create delegates custom role command', () async {
       await _withRealHttp(() async {
@@ -245,6 +311,7 @@ void main() {
           expect(response.statusCode, equals(200));
           expect(response.json['hibp_unavailable'], isTrue);
           expect(gateway.commands.single.actorUserId, equals(_userId));
+          expect(gateway.commands.single.firebaseUid, equals(_firebaseUid));
           expect(gateway.commands.single.currentPassword, equals('old-secret'));
         } finally {
           await harness.close();
@@ -315,6 +382,7 @@ void main() {
 }
 
 const _userId = '11111111-1111-4111-8111-111111111111';
+const _firebaseUid = 'firebase-auth-uid';
 const _operatorId = '22222222-2222-4222-8222-222222222222';
 const _locationId = '33333333-3333-4333-8333-333333333333';
 const _roleId = '44444444-4444-4444-8444-444444444444';
@@ -447,6 +515,7 @@ class _StaticVerifier implements ProxyJwtVerifier {
   Future<ProxyJwtClaims> verify(String bearerToken) async {
     return ProxyJwtClaims(
       userId: _userId,
+      firebaseUid: _firebaseUid,
       operatorId: _operatorId,
       locationId: _locationId,
       roles: const <String>['roles_version:7'],
@@ -536,11 +605,32 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
 }
 
 class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
+  final userLists = <TeamUserListCommand>[];
   final roleLists = <TeamRoleCatalogListCommand>[];
   final roleCreates = <TeamRoleCreateCommand>[];
   final rolePatches = <TeamRolePatchCommand>[];
   final roleDeletes = <TeamRoleDeleteCommand>[];
+  final inviteLists = <TeamInviteListCommand>[];
   final inviteCreates = <TeamInviteCreateCommand>[];
+
+  @override
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
+    userLists.add(command);
+    return const TeamUsersListed(
+      users: <TeamUserListEntry>[
+        TeamUserListEntry(
+          userId: 'target-user',
+          email: 'target@example.test',
+          displayName: 'Target User',
+          roleId: _roleId,
+          roleLabel: 'Kitchen Lead',
+          status: 'active',
+          mfaEnrolled: true,
+          userRoleId: 'grant-1',
+        ),
+      ],
+    );
+  }
 
   @override
   Future<TeamRoleCatalogListed> listRoles(
@@ -566,6 +656,24 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command) async {
     roleDeletes.add(command);
     return const TeamRoleDeleted(deleted: true);
+  }
+
+  @override
+  Future<TeamInvitesListed> listInvites(TeamInviteListCommand command) async {
+    inviteLists.add(command);
+    return TeamInvitesListed(
+      invites: <TeamInviteListEntry>[
+        TeamInviteListEntry(
+          inviteId: 'invite-1',
+          email: 'new@example.test',
+          roleId: _roleId,
+          roleLabel: 'Kitchen Lead',
+          scopeType: 'operator_wide',
+          expiresAt: DateTime.utc(2026, 5, 5, 12),
+          createdAt: DateTime.utc(2026, 4, 29, 12),
+        ),
+      ],
+    );
   }
 
   @override

@@ -254,6 +254,56 @@ Phase 10a does not own:
 - Real-time UI animations on peer-device changes (post-launch UX
   polish)
 
+## Frontend Exposure
+
+Phase 10a is infrastructure-heavy (event_outbox + Pub/Sub bridge +
+WebSocket). The operator-facing UX that surfaces sync state lands as
+the `10a.UX.0-1` family. Per Hard Promise #10, both backend and UX
+families close before phase acceptance.
+
+**Operator-facing surfaces this phase requires:**
+
+- App-bar sync-state badge (live / stale / reconnecting / offline) on
+  Forge & Flow + Barrio shells. Shared widget under
+  `lib/screens/_shared/sync_state_badge.dart` (new).
+- Per-device freshness row in
+  `lib/screens/settings/settings_data_sections.dart` (new section)
+  showing last-sync timestamp per shared-state table.
+- Toast / inline notice when a peer device just changed the row the
+  current user is viewing (LWW outcome surfaced, not concealed).
+  Triggered by WebSocket frame; suppressed when the same device made
+  the change.
+
+**Admin (11A) surfaces this phase requires:** outbox lag tile +
+undelivered-count tile in the `11A.6` health dashboard (B26 → B42
+producer wiring). No additional 11A scope here.
+
+**UX sub-slice family:** `10a.UX.0-1`
+
+- `10a.UX.0` — sync-state badge + reconnect chrome. Reads bridge
+  connection state from a shared notifier; renders pill in app bar.
+- `10a.UX.1` — peer-edit toast + freshness row in Settings. Wires
+  WebSocket frames to a notification surface; renders per-table
+  last-sync rows.
+
+Conflict-resolution UI (high-stakes object collisions, "keep yours /
+accept theirs / merge") is **out of scope for 10a** and lives in
+Phase 10b.
+
+**Demo-mode walkthrough (`kDemoMode = true`)** — needs a fake bridge
+notifier to simulate state transitions:
+
+- `10a.UX.0`: launch app → bridge notifier reports `connected` →
+  badge shows green "Live" → notifier reports `disconnected` → badge
+  shows amber "Reconnecting…" → notifier reports `connected` again →
+  badge returns to green.
+- `10a.UX.1`: open Shift → notifier injects a peer-edit frame for the
+  shift the user is viewing → toast appears with "Updated by another
+  device" → Settings → Sync → see last-sync timestamps per table.
+
+Walkthrough evidence required at slice acceptance per
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+
 ## Runtime Contract
 
 ```text

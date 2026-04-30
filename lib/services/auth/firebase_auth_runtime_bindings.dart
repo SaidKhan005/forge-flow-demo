@@ -13,6 +13,7 @@
 // scaffold-failing default (matches the pre-B6 behavior).
 
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/widgets.dart';
 
 import '../auth_login_service.dart';
 import '../mfa/mfa_operations_gateway.dart';
@@ -30,6 +31,7 @@ import 'proxy_auth_session_ledger_writer.dart';
 import 'proxy_auth_operations_gateway.dart';
 import 'proxy_password_change_gateway.dart';
 import 'proxy_permission_snapshot_loader.dart';
+import 'proxy_refresh_token_revoker.dart';
 
 class FirebaseAuthRuntimeBindings {
   const FirebaseAuthRuntimeBindings({
@@ -73,11 +75,25 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   RevokeAllRefreshTokens? revokeAllRefreshTokens,
   Uri? proxyBaseUri,
 }) async {
+  WidgetsFlutterBinding.ensureInitialized();
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
-  final FirebaseAuthClient authClient = FirebaseAuthSdkClient(
-    revokeAllRefreshTokens: revokeAllRefreshTokens,
+  late final FirebaseAuthClient authClient;
+  final RevokeAllRefreshTokens? effectiveRevokeAllRefreshTokens =
+      revokeAllRefreshTokens ??
+      (proxyBaseUri == null
+          ? null
+          : () {
+              final revoker = ProxyRefreshTokenRevoker(
+                proxyBaseUri: proxyBaseUri,
+                idTokenProvider: authClient.currentIdToken,
+                httpClient: DartIoProxyHttpJsonClient(),
+              );
+              return revoker.revokeAllRefreshTokens();
+            });
+  authClient = FirebaseAuthSdkClient(
+    revokeAllRefreshTokens: effectiveRevokeAllRefreshTokens,
   );
   AuthSessionLedgerWriter? ledgerWriter;
   PermissionContextLoader? permissionContextLoader;

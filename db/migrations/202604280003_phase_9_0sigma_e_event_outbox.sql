@@ -14,7 +14,9 @@
 -- truth, since notifications are dropped under Postgres connection
 -- failures and queue-pressure conditions.
 --
--- This migration is local framework only — no live mutation. The
+-- Live apply status:
+--   * Applied and verified on staging + Production1 on 2026-04-29 as part of
+--     the Phase 9 `202604280000` through `202604280013` migration set. The
 -- bridge worker, the WebSocket leg, and dead-letter handling all
 -- land in Phase 10a per the backlog gate. The repository in
 -- `lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart`

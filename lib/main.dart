@@ -4,9 +4,19 @@ import 'services/auth/firebase_auth_runtime_bindings.dart';
 
 Future<void> main() async {
   if (const bool.fromEnvironment('FORGE_FLOW_USE_FIREBASE_AUTH')) {
-    final bindings = await createFirebaseAuthRuntimeBindings();
+    const proxyUriRaw = String.fromEnvironment('FORGE_FLOW_PROXY_BASE_URI');
+    final proxyBaseUri = proxyUriRaw.isEmpty ? null : Uri.parse(proxyUriRaw);
+    final bindings = await createFirebaseAuthRuntimeBindings(
+      proxyBaseUri: proxyBaseUri,
+    );
     await bootstrapAndRunApp(
-      const ForgeFlowApp(),
+      ForgeFlowApp(
+        requireAuth: true,
+        permissionContextLoader: bindings.permissionContextLoader,
+        authOperationsGateway: bindings.authOperationsGateway,
+        passwordChangeGateway: bindings.passwordChangeGateway,
+        mfaOperationsGateway: bindings.mfaOperationsGateway,
+      ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
     );

@@ -1,10 +1,13 @@
 // Settings screen widget tests.
 // ignore_for_file: curly_braces_in_flow_control_structures
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:forge_and_flow/auth/auth_session.dart';
 import 'package:forge_and_flow/services/schedule_plan_read_service.dart';
 import 'package:forge_and_flow/state/restaurant_scope_notifier.dart';
 import 'package:forge_and_flow/services/wage_standard_context_service.dart';
@@ -20,9 +23,13 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
+import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
+import 'package:forge_and_flow/services/auth_login_service.dart';
+import 'package:forge_and_flow/services/secure_session_storage.dart';
 import 'package:forge_and_flow/services/team/team_scope_visibility_policy.dart';
+import 'package:forge_and_flow/state/auth_session_notifier.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 bool _includePrunedLabelGroups() => false;
@@ -33,6 +40,27 @@ const TeamScopeActor _settingsTeamOwnerActor = TeamScopeActor(
   actorAssignedLocationIds: <String>{},
   actorPermissions: <String>{'team.users.view', 'team.users.invite'},
 );
+
+const TeamScopeActor _settingsTeamLockedActor = TeamScopeActor(
+  actorRoles: <String>{'operator_owner'},
+  actorOperatorId: 'op-1',
+  actorAssignedLocationIds: <String>{},
+  actorPermissions: <String>{},
+);
+
+AuthSession _settingsAuthSession() {
+  return AuthSession(
+    userId: 'user-1',
+    operatorId: 'op-1',
+    locationId: 'loc-1',
+    firebaseIdToken: 'token',
+    issuedAt: DateTime.utc(2026, 4, 29, 12),
+    expiresAt: DateTime.utc(2026, 4, 29, 13),
+    lastFreshAuthAt: DateTime.utc(2026, 4, 29, 12),
+    roles: const <String>['operator_owner'],
+    mfaEnrolled: true,
+  );
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -116,6 +144,379 @@ void main() {
       expect(find.text('TEAM', skipOffstage: false), findsNothing);
     });
 
+    testWidgets('signed-in Settings renders account actions', (tester) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('settings_tab_account')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ACCOUNT', skipOffstage: false), findsOneWidget);
+      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
+      expect(find.text('Sign Out', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Sign Out Everywhere', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Terms & Conditions', skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('signed-in Settings hides Team tab without view permission', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: _settingsTeamLockedActor,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('settings_tab_team')), findsNothing);
+      expect(find.text('TEAM', skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('Settings tab header stays compact across team visibility', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      Future<void> pumpSettings(TeamScopeActor actor) async {
+        await tester.pumpWidget(
+          ChangeNotifierProvider<AuthSessionNotifier>(
+            create: (_) => AuthSessionNotifier(
+              loginService: const ScaffoldFailingAuthLoginService(),
+              storage: InMemorySecureSessionStorage(),
+            )..debugSetSession(_settingsAuthSession()),
+            child: MaterialApp(
+              home: SettingsScreen(
+                initialStatus: AppDataStatus.current(),
+                initialMockDate: '2026-03-27',
+                teamActor: actor,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      Finder tabIcon(Key tabKey, IconData icon) {
+        return find.descendant(
+          of: find.byKey(tabKey),
+          matching: find.byIcon(icon),
+        );
+      }
+
+      await pumpSettings(_settingsTeamLockedActor);
+
+      expect(find.byKey(const Key('settings_tab_team')), findsNothing);
+      expect(
+        tabIcon(const Key('settings_tab_data'), Icons.storage_rounded),
+        findsNothing,
+      );
+      expect(
+        tabIcon(const Key('settings_tab_account'), Icons.person_outline),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+
+      await pumpSettings(_settingsTeamOwnerActor);
+
+      expect(find.byKey(const Key('settings_tab_team')), findsOneWidget);
+      expect(
+        tabIcon(const Key('settings_tab_data'), Icons.storage_rounded),
+        findsNothing,
+      );
+      expect(
+        tabIcon(const Key('settings_tab_team'), Icons.group_outlined),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('account password dialog submits on a phone viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      final gateway = _RecordingPasswordChangeGateway();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              passwordChangeGateway: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'initial settings render');
+
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'account tab render');
+      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'password dialog render');
+
+      await tester.enterText(
+        find.byKey(const Key('settings_current_password_field')),
+        'current-password',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_new_password_field')),
+        'next-password',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_confirm_password_field')),
+        'next-password',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.commands, hasLength(1));
+      expect(gateway.commands.single.currentPassword, 'current-password');
+      expect(gateway.commands.single.newPassword, 'next-password');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('account password rejection stays inside the dialog', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      final gateway = _RecordingPasswordChangeGateway(
+        error: const PasswordChangeRejected(
+          code: 'password_reused',
+          message: 'reused',
+          rejections: <String>['reused_from_history'],
+        ),
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              passwordChangeGateway: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('settings_current_password_field')),
+        'current-password',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_new_password_field')),
+        'next-password',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_confirm_password_field')),
+        'next-password',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.commands, hasLength(1));
+      expect(find.text('Change password'), findsOneWidget);
+      expect(
+        find.text('Choose a password you have not used recently.'),
+        findsOneWidget,
+      );
+      expect(find.text('Password updated.'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('account password requirements wrap on a phone viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      final gateway = _RecordingPasswordChangeGateway();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              passwordChangeGateway: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.byKey(const Key('settings_current_password_field')),
+        'current-password',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_new_password_field')),
+        ' short ',
+      );
+      await tester.enterText(
+        find.byKey(const Key('settings_confirm_password_field')),
+        ' short ',
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Update'));
+      await tester.pumpAndSettle();
+
+      expect(gateway.commands, isEmpty);
+      expect(
+        find.text(
+          'Use at least 8 characters. Remove spaces at the beginning or end.',
+        ),
+        findsOneWidget,
+      );
+      final message = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const Key('settings_password_dialog_message')),
+          matching: find.byType(Text),
+        ),
+      );
+      expect(message.softWrap, isTrue);
+      expect(message.maxLines, isNull);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('sign out everywhere shows the captain progress message', (
+      tester,
+    ) async {
+      final loginService = _CompletingAuthLoginService();
+      addTearDown(loginService.completeSignOutAll);
+      final notifier = AuthSessionNotifier(
+        loginService: loginService,
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Sign Out Everywhere', skipOffstage: false));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
+      await tester.pump();
+
+      expect(
+        find.text('Chit times rising, Signing you off Captain'),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_sign_out_everywhere_progress')),
+        findsOneWidget,
+      );
+
+      loginService.completeSignOutAll();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('data status timestamp truncates on a phone viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(
+              importStatus: 'completed',
+              timestamp:
+                  '2026-04-29T12:34:56.789123Z-very-long-import-id-for-ui',
+            ),
+            initialMockDate: '2026-03-27',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Last import:'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('Team tab renders for an allowed actor', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -149,6 +550,99 @@ void main() {
       );
       expect(find.text('Jane Owner', skipOffstage: false), findsOneWidget);
     });
+
+    testWidgets('Team role options can hydrate after Settings opens', (
+      tester,
+    ) async {
+      final roles = ValueNotifier<List<TeamRoleOption>>(
+        TeamSettingsSection.defaultRoleOptions,
+      );
+      addTearDown(roles.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsTeamOwnerActor,
+            teamRoleOptionsListenable: roles,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      TeamSettingsSection section() {
+        return tester.widget<TeamSettingsSection>(
+          find.byType(TeamSettingsSection, skipOffstage: false),
+        );
+      }
+
+      expect(section().roleOptions.first.label, equals('Owner'));
+
+      roles.value = const <TeamRoleOption>[
+        TeamRoleOption(roleId: 'role-chef', label: 'Chef Lead'),
+      ];
+      await tester.pump();
+
+      expect(section().roleOptions, hasLength(1));
+      expect(section().roleOptions.single.label, equals('Chef Lead'));
+    });
+
+    testWidgets(
+      'Team tab shows a friendly loading fallback before data lands',
+      (tester) async {
+        final dataLoadState = ValueNotifier<TeamSettingsDataLoadState>(
+          TeamSettingsDataLoadState.waiting,
+        );
+        addTearDown(dataLoadState.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: _settingsTeamOwnerActor,
+              teamDataLoadState: TeamSettingsDataLoadState.waiting,
+              teamDataLoadStateListenable: dataLoadState,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_team')));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        expect(
+          find.text('Wifi sucks... Data loading :(', skipOffstage: false),
+          findsWidgets,
+        );
+        expect(
+          find.byKey(
+            const Key('team_data_loading_notice'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+
+        dataLoadState.value = TeamSettingsDataLoadState.ready;
+        await tester.pump();
+
+        expect(
+          find.byKey(
+            const Key('team_data_loading_notice'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+        expect(
+          find.text('No team members', skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   });
 
   if (_includePrunedLabelGroups())
@@ -1911,4 +2405,64 @@ void _advisorCorpusSectionTests() {
       expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsNothing);
     });
   });
+}
+
+class _RecordingPasswordChangeGateway implements PasswordChangeGateway {
+  _RecordingPasswordChangeGateway({this.error});
+
+  final commands = <PasswordChangeCommand>[];
+  final Object? error;
+
+  @override
+  Future<PasswordChangeCompleted> changePassword(
+    PasswordChangeCommand command,
+  ) async {
+    commands.add(command);
+    final error = this.error;
+    if (error != null) throw error;
+    return const PasswordChangeCompleted();
+  }
+}
+
+class _CompletingAuthLoginService implements AuthLoginService {
+  final Completer<void> _signOutAllCompleter = Completer<void>();
+
+  void completeSignOutAll() {
+    if (!_signOutAllCompleter.isCompleted) {
+      _signOutAllCompleter.complete();
+    }
+  }
+
+  @override
+  Future<AuthLoginResult> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AuthLoginResult> completeTotpChallenge({
+    required String mfaSessionToken,
+    required String factorId,
+    required String oneTimeCode,
+  }) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> requestPasswordReset({required String email}) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<AuthSession?> refreshSession(AuthSession current) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<void> signOutThisSession() async {}
+
+  @override
+  Future<void> signOutAllSessions() => _signOutAllCompleter.future;
 }

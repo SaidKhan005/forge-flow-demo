@@ -21,6 +21,100 @@ Every prompt cycle follows this order:
 If the user pivots into architecture, workflow, or docs cleanup, pause prompt
 sequencing until that cleanup is handled.
 
+## Parallel Lanes (Worktrees)
+
+Codex runs one lane on `master` (planning, prompts, tracker truth,
+acceptance verdicts). Claude runs N parallel implementation lanes in
+git worktrees (`.claude/worktrees/<lane-name>`). Each lane carries a
+single slice from a single phase to acceptance, then merges to master.
+Multiple phases — not just multiple slices within a phase — may be
+active simultaneously across the worktree set.
+
+**Lane identification.** Every prompt names its lane in Block 1:
+
+```
+Lane: <slice-id> — worktree <.claude/worktrees/<lane-name>> on
+branch <branch-name> off master @ <short-sha>.
+```
+
+If the lane has not been created yet, the prompt says
+`Lane: <slice-id> — to be created off master @ <short-sha>.` Claude
+creates the worktree before starting.
+
+**File ownership.** Each active lane has exclusive checkout of its
+`Files to modify` for the slice's lifetime. Codex must verify, before
+emitting a parallel prompt, that no other active lane's `Files to
+modify` overlaps with this slice's set. Overlap = sequence, not
+parallelize.
+
+**Shared seams.** Some files are written by multiple slices across
+lanes (e.g., `lib/screens/settings_screen.dart` registers tabs added
+by `9.UX.1`, `9.UX.2`, `9.UX.4`; `lib/services/auth/auth_operations_gateway.dart`
+gains methods consumed by `9.UX.1`–`9.UX.7`). The phase doc lists
+**Shared seams across lanes** and the rule per file. Default rule:
+serialize lanes that touch a shared seam; first lane lands the seam
+extension, later lanes rebase. Phase doc may carve out additive-only
+patches (e.g., new methods on a gateway interface) as parallel-safe
+when the seam tolerates it.
+
+**Walkthrough evidence per lane.** Each Claude lane captures
+walkthrough evidence inside its worktree (screenshot path or text
+trace committed to the lane's branch as
+`docs/_walkthroughs/<slice-id>.md`, or attached to the execution
+report). Codex on master inspects worktree evidence, not the master
+checkout.
+
+**Merge sequencing.** Codex declares merge order when accepting. A
+lane that landed first can ship its merge to master immediately. A
+lane that landed second rebases on top of the first lane's merge,
+re-runs `dart analyze` + the slice's focused tests on master HEAD,
+then merges. The merge order is set in the acceptance verdict, not
+chosen by the lane.
+
+**Master-side post-merge gate.** After each merge to master, Codex
+runs `flutter analyze --fatal-infos` and the targeted test set for
+the merged slice on master HEAD. If a regression appears that was
+absent in the worktree, Codex returns `FOLLOW-UP NEEDED` to the
+worktree (which still has its branch alive) for fix-and-rebase.
+
+**Cross-lane coordination.** When a slice in lane B depends on lane
+A's outcome (e.g., `9.UX.2` role editor consumes `9.UX.1`'s gateway
+extension), Codex either (a) sequences A → B in one lane, or
+(b) splits A into "interface land" + "implementation land" so B can
+start against the interface alone. Phase docs name dependent slices
+explicitly.
+
+**Main-chat read-only.** When parallel worktrees are running, the
+main Claude chat on master is read-only across all of them — it
+inspects worktrees (`git worktree list`, `git -C <path> diff`,
+file reads) but does not edit. Tracker / memory / coordination doc
+updates on master from the main chat are still allowed (those are
+not project-code edits).
+
+## Frontend Exposure & UX Acceptance Gate
+
+Every phase that ships operator- or admin-visible capability owes a
+`Frontend Exposure` section in its phase doc. The section names:
+
+- Operator-facing surfaces (file paths or screen names)
+- Admin (11A) surfaces (or "None / covered elsewhere")
+- The UX sub-slice family naming (`<phase>.UX.<n>` for backend-heavy
+  phases; or "owned inline by existing slices" for UX-led phases)
+- A demo-mode click path that proves the surface works
+
+Backend-heavy phases (`9`, `7.58`, `10a`, `7.61`, `8`, `8R`, `8.5`,
+`9.8`, `10b`, `11b.2`) ship a `<phase>.UX.<n>` sub-slice family
+interleaved with backend slices. UX-led phases (`10.5`, `9.5`, `9.75`,
+`11A`, `11b`, `12`) own their UX inside their existing sub-slice
+sequence.
+
+UX-exposing slices add an `Operator walkthrough` block in Block 3 and a
+walkthrough acceptance criterion. Codex returns `FOLLOW-UP NEEDED` if
+walkthrough evidence (screenshot OR text trace) is absent at review.
+
+A phase plan that opens without a `Frontend Exposure` section is a
+prompt defect. Fix the doc before the first slice ships.
+
 ## Lean Authority Law
 
 `PROJECT_TRACKER.md` and `CLAUDE.md` must stay lean.
@@ -92,6 +186,9 @@ Before sending the prompt:
   setup, tokens, billing setup, or live-service access, name the exact human
   action needed and whether it blocks this slice or the next one. If none are
   needed, say `None for this slice`.
+- Block 1 must include a `Lane:` line naming the worktree path, branch,
+  and base sha (or "to be created"). Skip only if the slice runs on master
+  in a non-parallel session.
 - Inside `Human prerequisites:`, also include `Decision needed for this slice:`.
   This names what the user must decide now based on documented constraints,
   gates, guardrails, blockers, live-service availability, or architecture
@@ -164,6 +261,11 @@ Use this shape:
 
 Plain English: [1 to 3 concise sentences; include an example when helpful]
 
+Lane: [slice-id] — worktree [.claude/worktrees/<lane-name>] on branch
+[branch-name] off master @ [short-sha].
+[If the lane is not yet created, say "to be created off master @
+<short-sha>" — Claude creates the worktree before starting.]
+
 Important context:
 - [only what helps the user understand the slice]
 
@@ -213,10 +315,19 @@ Required tests
 - dart analyze
 - [focused test files]
 
+[Required for UX-exposing slices] Operator walkthrough (kDemoMode = true)
+1. [exact click path that exercises the new surface]
+2. [expected outcome at each step]
+
 Acceptance criteria
 - [ ] [checkable criterion]
+- [ ] [for UX slices] Operator walkthrough completes end-to-end in demo mode
+- [ ] [for UX slices] Permission gating verified: user without <key> cannot see surface
+- [ ] [for UX slices] Brand styling matches lib/theme/app_theme.dart
 
-When finished, report using the standard report format.
+When finished, report using the standard report format. UX-exposing
+slices add a `Walkthrough evidence` line confirming the click path was
+exercised (screenshot OR text trace).
 ```
 
 Use repo-root-relative paths. Add repo root only for external handoffs.
@@ -334,6 +445,9 @@ When Claude reports:
 2. Confirm claimed "left alone" files are actually untouched.
 3. Check acceptance criteria against repo content.
 4. Confirm test evidence.
+4.5. For UX-exposing slices: confirm walkthrough evidence is present
+   (screenshot or text trace describing each step's outcome). Absent
+   walkthrough on a UX-exposing slice = `FOLLOW-UP NEEDED`.
 5. Run a small targeted rerun only when needed.
 6. Return findings if there are issues.
 7. If clean, update trackers and generate the next prompt.

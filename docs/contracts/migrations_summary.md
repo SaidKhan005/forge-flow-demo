@@ -1571,3 +1571,59 @@ Migration count: **34**
   now includes this row for fresh installs; this additive seed keeps
   already-applied staging/Production1 databases in sync without
   replaying the foundation migration.
+
+## `202604290101_phase_9_hierarchy_access_wiring.sql`
+
+- **Applied:** 2026-04-29 00:01 (local; live apply pending)
+- **Title:** phase 9 hierarchy access wiring
+- **Description:**
+
+  Phase 9 hierarchy access wiring. Bridges the gap between
+  `9.0Σ.c` (`org_units` ltree foundation) and the auth/team grant
+  path, which was previously wired only for operator-wide and
+  direct-location scopes.
+
+  1. `locations` attaches to an `org_units` parent
+     (`parent_org_unit_id`) and carries a denormalized ltree path
+     (`org_unit_path`). A `before insert/update` trigger
+     (`set_location_org_unit_path`) keeps the denormalized path in
+     sync from the parent's `org_units.path`. A GIST index on
+     `org_unit_path` supports subtree access checks.
+
+  2. `user_roles` and `auth_invites` gain `scope_type` of
+     `'operator_wide' | 'org_unit' | 'location'` plus a paired
+     `org_unit_id` column. CHECK constraints enforce the payload
+     shape per scope type. Active-grant and org-unit-scoped indexes
+     lead with `operator_id` per the locked tenant-leading-index
+     discipline.
+
+  3. New table `public.user_effective_locations` materializes which
+     locations each active grant reaches, including org-unit
+     inheritance via the `loc.org_unit_path <@ ou.path` predicate.
+     RLS uses `app_current_operator()` per the 9.0Σ.b wrapper lock.
+     Triggers on `user_roles`, `locations`, and `org_units` keep
+     the cache fresh.
+
+  Operational shape:
+
+  * The `user_roles` change path uses a narrow per-user refresh
+    (`refresh_user_effective_locations(user_id, operator_id)`).
+    This is the high-frequency path (hires, role changes,
+    revocations).
+  * The `locations` and `org_units` change paths use an operator-
+    wide refresh. These are onboarding-rare admin operations
+    (additive: new restaurant, new department) — re-parents are
+    not part of normal operation.
+
+  Idempotent and additive. Existing single-location/operator-wide
+  rows are backfilled to the operator root org unit and continue to
+  behave exactly as they did before this migration.
+
+  Live apply note:
+
+  * Phase 9 closeout evidence covers staging + Production1 through
+    `202604280013`. Apply this migration alongside `202604280014`
+    (B46 audit-privacy) and `202604290000` (B41 service-principal
+    permission) under a fresh live-mutation gate before live
+    consumers depend on `user_effective_locations` or org-unit
+    scoped grants.

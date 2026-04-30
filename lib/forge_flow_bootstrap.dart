@@ -41,26 +41,6 @@ Future<void> bootstrapAndRunApp(
     ),
   );
 
-  // Compatibility bridge: prime in-memory BaselineData from persisted
-  // selection for the few remaining bridge-era helpers. This no longer
-  // re-authors the persisted profile; cycle-backed ActiveTargetProfile
-  // authority is repaired below before the UI loads.
-  await BaselineManagerService.instance.primeManagerOverride();
-
-  // 7.55p.5h-review-fix: rehydrate Benchmark graph honesty from the
-  // persisted active cycle so a fresh app launch gets the correct
-  // recommendation-quality signals (RANGE UNCONFIRMED / RANGE
-  // UNCERTAIN / RANGE TOO WIDE TO TEACH / GOOD OPZ RANGE) without
-  // depending on an in-process cycle write. Manager-override cycles
-  // explicitly clear the signals here so that branch keeps driving
-  // from BaselineData.
-  final restaurantId = await SqliteRestaurantScopeRepository.instance
-      .getActiveRestaurantId();
-  await WageStandardContextService.instance
-      .loadOrBootstrapProfile(restaurantId);
-  await TargetCycleService.instance
-      .hydrateBenchmarkHonestyFromActiveCycle(restaurantId);
-
   final loginService =
       authLoginService ?? const ScaffoldFailingAuthLoginService();
   final storage =
@@ -80,10 +60,6 @@ Future<void> bootstrapAndRunApp(
     storage: storage,
     ledgerWriter: ledgerWriter,
   );
-  // Fire-and-forget rehydrate. The AuthGate renders the loading
-  // state until rehydrate resolves; the notifier handles storage
-  // failures internally and falls through to "unauthenticated".
-  unawaited(authNotifier.rehydrate());
 
   runApp(
     ChangeNotifierProvider<AuthSessionNotifier>.value(
@@ -91,4 +67,38 @@ Future<void> bootstrapAndRunApp(
       child: app,
     ),
   );
+
+  // Fire-and-forget startup work after the first frame is unblocked.
+  // AuthGate renders a Flutter loading/login surface while session
+  // rehydrate resolves instead of leaving Android/iOS on the native
+  // splash screen during SQLite/profile warm-up.
+  unawaited(authNotifier.rehydrate());
+  unawaited(_warmUpPersistedState());
+}
+
+Future<void> _warmUpPersistedState() async {
+  try {
+    // Compatibility bridge: prime in-memory BaselineData from persisted
+    // selection for the few remaining bridge-era helpers. This no longer
+    // re-authors the persisted profile; cycle-backed ActiveTargetProfile
+    // authority is repaired below after the first Flutter frame.
+    await BaselineManagerService.instance.primeManagerOverride();
+
+    // 7.55p.5h-review-fix: rehydrate Benchmark graph honesty from the
+    // persisted active cycle so a fresh app launch gets the correct
+    // recommendation-quality signals (RANGE UNCONFIRMED / RANGE
+    // UNCERTAIN / RANGE TOO WIDE TO TEACH / GOOD OPZ RANGE) without
+    // depending on an in-process cycle write. Manager-override cycles
+    // explicitly clear the signals here so that branch keeps driving
+    // from BaselineData.
+    final restaurantId = await SqliteRestaurantScopeRepository.instance
+        .getActiveRestaurantId();
+    await WageStandardContextService.instance
+        .loadOrBootstrapProfile(restaurantId);
+    await TargetCycleService.instance
+        .hydrateBenchmarkHonestyFromActiveCycle(restaurantId);
+  } catch (error, stackTrace) {
+    debugPrint('Startup warm-up failed: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
 }

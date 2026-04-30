@@ -67,24 +67,26 @@ void main() {
       expect(TeamScopeVisibilityPolicy.canSeeTeamNav(actor), isFalse);
     });
 
-    test('operator_manager sees nav only when assigned at least one location',
-        () {
-      const noLocations = TeamScopeActor(
-        actorRoles: <String>{'operator_manager'},
-        actorOperatorId: 'op-1',
-        actorAssignedLocationIds: <String>{},
-        actorPermissions: <String>{'team.users.view'},
-      );
-      expect(TeamScopeVisibilityPolicy.canSeeTeamNav(noLocations), isFalse);
+    test(
+      'operator_manager sees nav only when assigned at least one location',
+      () {
+        const noLocations = TeamScopeActor(
+          actorRoles: <String>{'operator_manager'},
+          actorOperatorId: 'op-1',
+          actorAssignedLocationIds: <String>{},
+          actorPermissions: <String>{'team.users.view'},
+        );
+        expect(TeamScopeVisibilityPolicy.canSeeTeamNav(noLocations), isFalse);
 
-      const withLocations = TeamScopeActor(
-        actorRoles: <String>{'operator_manager'},
-        actorOperatorId: 'op-1',
-        actorAssignedLocationIds: <String>{'loc-a'},
-        actorPermissions: <String>{'team.users.view'},
-      );
-      expect(TeamScopeVisibilityPolicy.canSeeTeamNav(withLocations), isTrue);
-    });
+        const withLocations = TeamScopeActor(
+          actorRoles: <String>{'operator_manager'},
+          actorOperatorId: 'op-1',
+          actorAssignedLocationIds: <String>{'loc-a'},
+          actorPermissions: <String>{'team.users.view'},
+        );
+        expect(TeamScopeVisibilityPolicy.canSeeTeamNav(withLocations), isTrue);
+      },
+    );
 
     test('operator_supervisor never sees nav', () {
       const actor = TeamScopeActor(
@@ -243,7 +245,10 @@ void main() {
       final controller = TeamUsersListController();
       expect(controller.filter.hasAnyFilter, isFalse);
       expect(controller.pageIndex, equals(0));
-      expect(controller.pageSize, equals(TeamUsersListController.defaultPageSize));
+      expect(
+        controller.pageSize,
+        equals(TeamUsersListController.defaultPageSize),
+      );
     });
 
     test('setStatus updates filter + resets page + notifies', () {
@@ -275,22 +280,24 @@ void main() {
       expect(controller.pageIndex, equals(0));
     });
 
-    test('toQueryParameters omits null filters but includes the present ones',
-        () {
-      const filter = TeamUsersFilter(
-        statusFilter: 'active',
-        roleFilter: null,
-        locationFilter: 'loc-a',
-        mfaEnrolledFilter: true,
-        searchQuery: 'jane',
-      );
-      final params = filter.toQueryParameters();
-      expect(params['status'], equals('active'));
-      expect(params.containsKey('role_key'), isFalse);
-      expect(params['location_id'], equals('loc-a'));
-      expect(params['mfa_enrolled'], isTrue);
-      expect(params['q'], equals('jane'));
-    });
+    test(
+      'toQueryParameters omits null filters but includes the present ones',
+      () {
+        const filter = TeamUsersFilter(
+          statusFilter: 'active',
+          roleFilter: null,
+          locationFilter: 'loc-a',
+          mfaEnrolledFilter: true,
+          searchQuery: 'jane',
+        );
+        final params = filter.toQueryParameters();
+        expect(params['status'], equals('active'));
+        expect(params.containsKey('role_key'), isFalse);
+        expect(params['location_id'], equals('loc-a'));
+        expect(params['mfa_enrolled'], isTrue);
+        expect(params['q'], equals('jane'));
+      },
+    );
 
     test('setPageSize rejects non-positive', () {
       final controller = TeamUsersListController();
@@ -323,10 +330,7 @@ void main() {
         ..setRoleId('role-1')
         ..setScope(TeamInviteScope.location);
       final v = controller.validate();
-      expect(
-        v,
-        contains(TeamInviteViolation.locationMissingForLocationScope),
-      );
+      expect(v, contains(TeamInviteViolation.locationMissingForLocationScope));
     });
 
     test('operator-wide scope refuses a location_id', () {
@@ -419,16 +423,49 @@ void main() {
       expect(find.text('Jane Owner'), findsOneWidget);
       expect(find.text('Sam Manager'), findsOneWidget);
 
-      await tester.enterText(
-        find.byKey(const Key('team_search_field')),
-        'sam',
-      );
+      await tester.enterText(find.byKey(const Key('team_search_field')), 'sam');
       await tester.pump();
 
       expect(find.text('Jane Owner'), findsNothing);
       expect(find.text('Sam Manager'), findsOneWidget);
       expect(find.text('VISIBLE'), findsOneWidget);
       expect(find.text('1 / 2'), findsOneWidget);
+    });
+
+    testWidgets('team dropdown state does not poison nested text scrolling', (
+      tester,
+    ) async {
+      final bucket = PageStorageBucket();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: PageStorage(
+              bucket: bucket,
+              child: TeamSettingsSection(
+                actor: _fullTeamActor,
+                users: _teamUsers,
+                locationOptions: _teamLocations,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Members'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('team_search_field')), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(find.text('Members'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('team_search_field')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.enterText(find.byKey(const Key('team_search_field')), 'sam');
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(find.text('Sam Manager'), findsOneWidget);
     });
 
     testWidgets('submits invite payload when the form is valid', (
@@ -447,7 +484,10 @@ void main() {
               actor: _ownerActor,
               inviteFormController: inviteController,
               locationOptions: _teamLocations,
-              onInviteSubmitted: (payload) async => submitted = payload,
+              onInviteSubmitted: (payload) async {
+                submitted = payload;
+                return null;
+              },
             ),
           ),
         ),
@@ -477,7 +517,7 @@ void main() {
             body: TeamSettingsSection(
               actor: _viewOnlyActor,
               inviteFormController: inviteController,
-              onInviteSubmitted: (_) async {},
+              onInviteSubmitted: (_) async => null,
             ),
           ),
         ),
@@ -488,6 +528,101 @@ void main() {
       );
       expect(button.onPressed, isNull);
       expect(find.text('LOCKED'), findsOneWidget);
+    });
+
+    testWidgets('runs reset password from the user action menu', (
+      tester,
+    ) async {
+      TeamUserActionRequest? request;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              users: _teamUsers,
+              locationOptions: _teamLocations,
+              onUserAction: (next) async => request = next,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Reset password'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Send').last);
+      await tester.pumpAndSettle();
+
+      expect(request, isNotNull);
+      expect(request!.action, TeamUserAction.resetPassword);
+      expect(request!.user.userId, 'user-1');
+    });
+
+    testWidgets('opens role change dialog from the user action menu', (
+      tester,
+    ) async {
+      TeamUserActionRequest? request;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              users: _teamUsers,
+              locationOptions: _teamLocations,
+              onUserAction: (next) async => request = next,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Change role'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('team_role_change_submit_button')));
+      await tester.pumpAndSettle();
+
+      expect(request, isNotNull);
+      expect(request!.action, TeamUserAction.createRoleGrant);
+      expect(request!.user.userId, 'user-2');
+      expect(request!.replaceUserRoleId, 'grant-2');
+    });
+
+    testWidgets('revokes pending invite from the invite lane', (tester) async {
+      String? revokedInviteId;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              pendingInvites: <TeamPendingInviteListItem>[
+                TeamPendingInviteListItem(
+                  inviteId: 'invite-1',
+                  email: 'new.user@example.test',
+                  roleId: 'operator_staff',
+                  roleLabel: 'Staff',
+                  scopeType: 'operator_wide',
+                  expiresAt: DateTime.utc(2026, 5, 6),
+                ),
+              ],
+              onInviteRevoked: (inviteId) async {
+                revokedInviteId = inviteId;
+              },
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_invite_revoke_invite-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Revoke'));
+      await tester.pumpAndSettle();
+
+      expect(revokedInviteId, 'invite-1');
     });
   });
 }
@@ -506,6 +641,22 @@ const TeamScopeActor _viewOnlyActor = TeamScopeActor(
   actorPermissions: <String>{'team.users.view'},
 );
 
+const TeamScopeActor _fullTeamActor = TeamScopeActor(
+  actorRoles: <String>{'operator_owner'},
+  actorOperatorId: 'op-1',
+  actorAssignedLocationIds: <String>{},
+  actorPermissions: <String>{
+    'team.users.view',
+    'team.users.invite',
+    'team.users.deactivate',
+    'team.users.reactivate',
+    'team.users.soft_delete',
+    'team.users.reset_password',
+    'team.roles.assign',
+    'team.roles.revoke',
+  },
+);
+
 const List<TeamLocationOption> _teamLocations = <TeamLocationOption>[
   TeamLocationOption(locationId: 'loc-a', label: 'Water Street'),
   TeamLocationOption(locationId: 'loc-b', label: 'Harbour Drive'),
@@ -520,6 +671,7 @@ const List<TeamUserListItem> _teamUsers = <TeamUserListItem>[
     roleLabel: 'Owner',
     status: 'active',
     mfaEnrolled: true,
+    userRoleId: 'grant-1',
   ),
   TeamUserListItem(
     userId: 'user-2',
@@ -530,5 +682,6 @@ const List<TeamUserListItem> _teamUsers = <TeamUserListItem>[
     status: 'active',
     locationId: 'loc-a',
     locationLabel: 'Water Street',
+    userRoleId: 'grant-2',
   ),
 ];

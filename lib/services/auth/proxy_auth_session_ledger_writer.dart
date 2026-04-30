@@ -201,7 +201,8 @@ class ProxyAuthSessionLedgerError implements Exception {
 /// `session_id`; this writer refuses to persist the session id unless
 /// the echo matches the local AuthSession scope that produced the
 /// ledger call.
-class ProxyAuthSessionLedgerWriter implements AuthSessionLedgerWriter {
+class ProxyAuthSessionLedgerWriter
+    implements AuthSessionLedgerWriter, AuthSessionLedgerScopeResolvingWriter {
   ProxyAuthSessionLedgerWriter({
     required Uri proxyBaseUri,
     required Future<String?> Function() idTokenProvider,
@@ -239,23 +240,18 @@ class ProxyAuthSessionLedgerWriter implements AuthSessionLedgerWriter {
 
   @override
   Future<String> recordLogin(AuthSessionLedgerLogin login) async {
-    final response = await _post(
-      relativePath: _loginPath,
-      body: <String, Object?>{'token_hash': login.tokenHash},
-    );
-    if (response.statusCode != 200) {
-      throw _errorFromResponse(response);
-    }
-    final sessionId = response.body['session_id'];
-    if (sessionId is! String || sessionId.trim().isEmpty) {
-      throw ProxyAuthSessionLedgerError(
-        code: 'malformed_response',
-        message: 'proxy /v1/auth/session/login returned no session_id',
-        statusCode: response.statusCode,
-      );
-    }
+    final response = await _postLogin(login);
+    final record = _recordFromLoginResponse(response);
     _validateLoginScopeEcho(response: response, login: login);
-    return sessionId;
+    return record.sessionId;
+  }
+
+  @override
+  Future<AuthSessionLedgerLoginRecord> recordLoginAndResolveScope(
+    AuthSessionLedgerLogin login,
+  ) async {
+    final response = await _postLogin(login);
+    return _recordFromLoginResponse(response);
   }
 
   @override
@@ -360,6 +356,46 @@ class ProxyAuthSessionLedgerWriter implements AuthSessionLedgerWriter {
       code: code,
       message: message,
       statusCode: response.statusCode,
+    );
+  }
+
+  Future<ProxyHttpJsonResponse> _postLogin(AuthSessionLedgerLogin login) async {
+    final response = await _post(
+      relativePath: _loginPath,
+      body: <String, Object?>{'token_hash': login.tokenHash},
+    );
+    if (response.statusCode != 200) {
+      throw _errorFromResponse(response);
+    }
+    return response;
+  }
+
+  AuthSessionLedgerLoginRecord _recordFromLoginResponse(
+    ProxyHttpJsonResponse response,
+  ) {
+    final sessionId = _readNonBlankString(response.body['session_id']);
+    final userId = _readNonBlankString(response.body['user_id']);
+    final operatorId = _readNonBlankString(response.body['operator_id']);
+    final locationId = _readNonBlankString(response.body['location_id']);
+    if (sessionId == null) {
+      throw ProxyAuthSessionLedgerError(
+        code: 'malformed_response',
+        message: 'proxy /v1/auth/session/login returned no session_id',
+        statusCode: response.statusCode,
+      );
+    }
+    if (userId == null || operatorId == null || locationId == null) {
+      throw ProxyAuthSessionLedgerError(
+        code: 'malformed_response',
+        message: 'proxy /v1/auth/session/login returned incomplete scope',
+        statusCode: response.statusCode,
+      );
+    }
+    return AuthSessionLedgerLoginRecord(
+      sessionId: sessionId,
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
     );
   }
 

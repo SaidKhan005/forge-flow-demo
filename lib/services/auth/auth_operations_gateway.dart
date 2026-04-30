@@ -15,6 +15,7 @@ class TeamInviteCreateCommand {
     required this.roleId,
     required this.scopeType,
     this.targetLocationId,
+    this.targetOrgUnitId,
   });
 
   final String actorUserId;
@@ -24,6 +25,7 @@ class TeamInviteCreateCommand {
   final String roleId;
   final String scopeType;
   final String? targetLocationId;
+  final String? targetOrgUnitId;
 }
 
 class TeamInviteCreated {
@@ -41,6 +43,52 @@ class TeamInviteCreated {
   /// server-side orchestration such as 11A.1 onboarding uses it to attach
   /// `operator_admins` without fabricating a second user row.
   final String? userId;
+}
+
+class TeamInviteListCommand {
+  const TeamInviteListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+}
+
+class TeamInviteListEntry {
+  const TeamInviteListEntry({
+    required this.inviteId,
+    required this.email,
+    required this.roleId,
+    required this.roleLabel,
+    required this.scopeType,
+    required this.expiresAt,
+    required this.createdAt,
+    this.locationId,
+    this.locationLabel,
+    this.orgUnitId,
+    this.orgUnitLabel,
+  });
+
+  final String inviteId;
+  final String email;
+  final String roleId;
+  final String roleLabel;
+  final String scopeType;
+  final String? locationId;
+  final String? locationLabel;
+  final String? orgUnitId;
+  final String? orgUnitLabel;
+  final DateTime expiresAt;
+  final DateTime createdAt;
+}
+
+class TeamInvitesListed {
+  const TeamInvitesListed({required this.invites});
+
+  final List<TeamInviteListEntry> invites;
 }
 
 class TeamInviteRevokeCommand {
@@ -85,6 +133,52 @@ class TeamUserStatusUpdated {
   final bool updated;
 }
 
+class TeamUserListCommand {
+  const TeamUserListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+}
+
+class TeamUserListEntry {
+  const TeamUserListEntry({
+    required this.userId,
+    required this.email,
+    required this.displayName,
+    required this.roleId,
+    required this.roleLabel,
+    required this.status,
+    this.locationId,
+    this.locationLabel,
+    this.mfaEnrolled = false,
+    this.userRoleId,
+    this.lastActiveAt,
+  });
+
+  final String userId;
+  final String email;
+  final String displayName;
+  final String roleId;
+  final String roleLabel;
+  final String status;
+  final String? locationId;
+  final String? locationLabel;
+  final bool mfaEnrolled;
+  final String? userRoleId;
+  final DateTime? lastActiveAt;
+}
+
+class TeamUsersListed {
+  const TeamUsersListed({required this.users});
+
+  final List<TeamUserListEntry> users;
+}
+
 class TeamPasswordResetCommand {
   const TeamPasswordResetCommand({
     required this.actorUserId,
@@ -112,6 +206,7 @@ class TeamRoleGrantCreateCommand {
     required this.roleId,
     required this.scopeType,
     this.targetLocationId,
+    this.targetOrgUnitId,
     this.reason,
   });
 
@@ -122,6 +217,7 @@ class TeamRoleGrantCreateCommand {
   final String roleId;
   final String scopeType;
   final String? targetLocationId;
+  final String? targetOrgUnitId;
   final String? reason;
 }
 
@@ -319,6 +415,8 @@ class AuthOperationRejected implements Exception {
 }
 
 abstract class AuthOperationsGateway {
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command);
+
   Future<TeamRoleCatalogListed> listRoles(TeamRoleCatalogListCommand command);
 
   Future<TeamRoleCreated> createRole(TeamRoleCreateCommand command);
@@ -326,6 +424,8 @@ abstract class AuthOperationsGateway {
   Future<TeamRolePatched> patchRole(TeamRolePatchCommand command);
 
   Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command);
+
+  Future<TeamInvitesListed> listInvites(TeamInviteListCommand command);
 
   Future<TeamInviteCreated> createInvite(TeamInviteCreateCommand command);
 
@@ -354,6 +454,11 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   const ScaffoldFailingAuthOperationsGateway();
 
   @override
+  Future<TeamUsersListed> listUsers(TeamUserListCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
   Future<TeamRoleCatalogListed> listRoles(TeamRoleCatalogListCommand command) {
     throw StateError(_message);
   }
@@ -370,6 +475,11 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
 
   @override
   Future<TeamRoleDeleted> deleteRole(TeamRoleDeleteCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamInvitesListed> listInvites(TeamInviteListCommand command) {
     throw StateError(_message);
   }
 

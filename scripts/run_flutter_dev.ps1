@@ -5,6 +5,7 @@
 #   scripts/run_flutter_dev.ps1 -App barrio -Device chrome
 #   scripts/run_flutter_dev.ps1 -App forgeflow -PrintCommandOnly
 #   scripts/run_flutter_dev.ps1 -App forgeflow -UseFirebaseAuth
+#   scripts/run_flutter_dev.ps1 -App barrio -UseFirebaseAuth
 #
 # This is for local development only. Production provider keys stay server-side.
 
@@ -65,10 +66,6 @@ if (-not $NoProviderKeys) {
 }
 
 if ($UseFirebaseAuth) {
-  if ($App -ne 'forgeflow') {
-    Write-Warning '-UseFirebaseAuth is currently wired for the Forge Flow app entrypoint.'
-    exit 1
-  }
   if ([string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
     Write-Warning 'FORGE_FLOW_PROXY_BASE_URI is missing from the unified local secrets file.'
     Write-Host "Expected it in: $secretsFile"

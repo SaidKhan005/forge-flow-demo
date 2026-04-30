@@ -5,6 +5,12 @@
 -- now includes this row for fresh installs; this additive seed keeps
 -- already-applied staging/Production1 databases in sync without
 -- replaying the foundation migration.
+--
+-- Live apply note:
+--   * Phase 9 closeout evidence only covers staging + Production1 through
+--     `202604280013`. Apply this additive seed under a fresh live-mutation
+--     gate before Phase 12 depends on service-principal JWT issuance in live
+--     environments.
 
 begin;
 

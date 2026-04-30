@@ -121,6 +121,16 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   `https://staging-api.feflow.org`. Staging and Production1 applied and
   verified `202604280000` through `202604280013`; Azure `ltree` allow-listing
   and `pg_cron` maintenance-database scheduling are documented in the runbook.
+- **Phase 9 audit cleanup:** B42 proxy `/health` now returns the
+  `proxy_health.v1` envelope with compatibility aliases, dependency checks,
+  reserved metric keys, and reserved surface keys. B41 service-principal JWT
+  issuance and B46 audit-privacy are local/code/test complete, but their
+  additive live migrations (`202604290000`, `202604280014`) still need fresh
+  staging + Production1 apply evidence before live phases depend on them.
+- **Health producer status:** B44 graph tripwire/runbook, B45 rollup freshness
+  reporter/runbook, and B47 vector health helper/benchmark artifact exist;
+  producer wiring that fills the B42 reserved metric values remains follow-on
+  work for the 11A health surface.
 - **Cloud Armor status:** staging WAF remains preview-only. B17 role CRUD
   found false positives in the original SQLi/XSS preview rule, so the policy
   was tuned to sensitivity 2 with the B17 false-positive SQLi signatures
@@ -156,9 +166,23 @@ friend-beta, no demo-mode launch, no split-and-defer of compliance.
 Realigned 2026-04-29 after the Production1 apply, B17 staging smoke, Cloud
 Armor preview tuning, Apple simulator recheck, and docs lean pass.
 
-**Next active slice:**
+**Active lanes** (Codex on master; Claude in `.claude/worktrees/<lane>`):
 
-1. `11A.0-6` - F&F Operations Console foundation.
+Multiple phases may be active simultaneously. Each lane carries one
+slice from one phase to acceptance. File ownership, shared-seam
+serialization, walkthrough evidence per lane, and merge sequencing
+follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
+
+1. `11A.0-6` - F&F Operations Console foundation. Scope:
+   `phase_11A_operations_console_plan.md`.
+2. `9.UX.0-7` - Phase 9 operator-facing UX family. Parallel with
+   `11A.0-6` (different code surfaces). Scope:
+   `phase_9_auth_plan.md` `Frontend Exposure` section. Within-family
+   shared seams (e.g., `auth_operations_gateway.dart`,
+   `settings_screen.dart`) require sequencing per phase doc.
+
+Codex sets the per-lane queue; this tracker lists which phases are
+active, not which slices are next per lane.
 
 **Monitored/deferred Phase 9 follow-ups:**
 
@@ -168,6 +192,13 @@ Armor preview tuning, Apple simulator recheck, and docs lean pass.
 2. iOS physical device matrix - deferred; the user will come back to it later
    with an Apple device/signing lane.
 3. `cutover.0b` - Tier-M 14-row perf-gate run; launch blocker.
+4. `202604280014` + `202604290000` + `202604290001` live apply/smoke -
+   required before live 11b audit-privacy reads (`202604280014`),
+   Phase 12 service-principal issuance dependence (`202604290000`), or
+   any consumer of `user_effective_locations` / org-unit scoped grants
+   (`202604290001` hierarchy access wiring).
+5. B44/B45/B47 metric producers - fill the B42 `/health` reserved values for
+   the 11A.5 health surface.
 
 **Then continue:**
 
@@ -195,6 +226,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
+| `9.UX.0-7` | active in flight (`9.UX.0` ~50% done) | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
 | `11A.0-6` | next | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
@@ -203,7 +235,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `8R` | queued | phase 8R plan |
 | `8.5` | queued | `phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md` |
 | `11b` / `11b.1` / `11b.2` | queued | `phase_11b/phase_11b_advisor_ux_plan.md` |
-| `12.0-12.5` | queued (gated by `9.0d`) | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
+| `12.0-12.5` | queued (gated by B41 live apply/smoke) | `phase_12_workflow_platform/phase_12_workflow_platform_plan.md` |
 | `11A.7-10` | queued | `phase_11A_operations_console_plan.md` |
 | `10b` | queued | `phase_10b/phase_10b_full_offline_sync_plan.md` |
 | `9.8` | queued (lands last) | `phase_9_8/phase_9_8_compliance_and_legal_plan.md` |
@@ -211,6 +243,10 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 
 ## Hard Gates
 
+- Every backend phase ships its operator-facing UX before phase close
+  (Hard Promise #10). Phase docs include a `Frontend Exposure` section;
+  UX-exposing slices add a demo-mode walkthrough to acceptance. Detail:
+  `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 - Tracker truth cannot move ahead of repo truth.
 - Postgres host = Azure DB Flexible Server, Canada Central, PG 16.
 - AGE infrastructure live before `11b` (Hard Promise #5).

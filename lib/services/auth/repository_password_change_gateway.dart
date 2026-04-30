@@ -42,12 +42,14 @@ class RepositoryPasswordChangeGateway implements PasswordChangeGateway {
       userId: command.actorUserId,
       actorUserId: command.actorUserId,
     );
-    final firebaseUid = await usersRepository.firebaseUidForUser(
-      operatorId: command.operatorId,
-      locationId: command.locationId,
-      userId: command.actorUserId,
-      actorUserId: command.actorUserId,
-    );
+    final firebaseUid =
+        command.firebaseUid ??
+        await usersRepository.firebaseUidForUser(
+          operatorId: command.operatorId,
+          locationId: command.locationId,
+          userId: command.actorUserId,
+          actorUserId: command.actorUserId,
+        );
 
     final verified = await firebaseAdmin.verifyPassword(
       email: email,
