@@ -191,6 +191,73 @@ void main() {
       );
     });
 
+    testWidgets(
+      'signed-in Account tab renders the Active Sessions section with the '
+      'current device tagged via AuthOperationsGateway.listActiveSessions',
+      (tester) async {
+        final notifier = AuthSessionNotifier(
+          loginService: const ScaffoldFailingAuthLoginService(),
+          storage: InMemorySecureSessionStorage(),
+        )..debugSetSession(_settingsAuthSession());
+        notifier.debugSetActiveSessionId('session-current');
+        final gateway = _ActiveSessionsRecordingGateway(
+          sessions: <AuthSessionSummary>[
+            AuthSessionSummary(
+              sessionId: 'session-current',
+              deviceLabel: 'Forge & Flow app · iOS',
+              userAgent: 'Forge&Flow/1.0',
+              createdAt: DateTime.utc(2026, 4, 29, 8),
+              lastSeenAt: DateTime.utc(2026, 4, 29, 12),
+            ),
+            AuthSessionSummary(
+              sessionId: 'session-tablet',
+              deviceLabel: 'Safari · iPad',
+              userAgent: 'Mozilla/5.0',
+              createdAt: DateTime.utc(2026, 4, 28, 8),
+              lastSeenAt: DateTime.utc(2026, 4, 29, 7),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ChangeNotifierProvider<AuthSessionNotifier>.value(
+            value: notifier,
+            child: MaterialApp(
+              home: SettingsScreen(
+                initialStatus: AppDataStatus.current(),
+                initialMockDate: '2026-03-27',
+                authOperationsGateway: gateway,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_account')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text('Active sessions', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+        expect(
+          find.byKey(const Key('active_sessions_row_session-current'),
+              skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('active_sessions_row_session-tablet'),
+              skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('active_sessions_current_badge'),
+              skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(gateway.listCalls.single.actorUserId, equals('user-1'));
+      },
+    );
+
     testWidgets('signed-in Settings renders My info above account actions', (
       tester,
     ) async {
@@ -2943,6 +3010,26 @@ class _PendingAccountInfoGateway implements AccountInfoGateway {
   Future<AccountInfo> load(AccountInfoRequest request) {
     requests.add(request);
     return _completer.future;
+  }
+}
+
+class _ActiveSessionsRecordingGateway
+    extends ScaffoldFailingAuthOperationsGateway {
+  _ActiveSessionsRecordingGateway({required List<AuthSessionSummary> sessions})
+    : _sessions = List<AuthSessionSummary>.of(sessions);
+
+  final List<AuthSessionSummary> _sessions;
+  final List<AuthActiveSessionsListCommand> listCalls =
+      <AuthActiveSessionsListCommand>[];
+
+  @override
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  ) async {
+    listCalls.add(command);
+    return AuthActiveSessionsListed(
+      sessions: List<AuthSessionSummary>.unmodifiable(_sessions),
+    );
   }
 }
 

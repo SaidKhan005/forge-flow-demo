@@ -230,6 +230,14 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   // Phase 9.UX.4 — org hierarchy admin client paths.
   static const String orgUnitsPath = '/v1/admin/auth/org-units';
   static const String locationsPrefix = '/v1/admin/auth/locations/';
+  // Phase 9.UX.5 — self-service Active Sessions client paths. The
+  // GET reads through the new `/v1/auth/sessions` projection; revoke
+  // calls reuse the existing single / all session-revoke routes from
+  // the B6 ledger surface so notifier state and refresh-token revoke
+  // semantics stay aligned.
+  static const String authSessionsPath = '/v1/auth/sessions';
+  static const String authSessionRevokePath = '/v1/auth/session/revoke';
+  static const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
@@ -548,6 +556,85 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       throw _malformed(response, 'org unit move response was incomplete');
     }
     return TeamLocationOrgUnitMoved(moved: moved);
+  }
+
+  @override
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  ) async {
+    final response = await _get(authSessionsPath);
+    _expectStatus(response, 200);
+    final rawSessions = response.body['sessions'];
+    if (rawSessions is! List) {
+      throw _malformed(response, 'active sessions response was incomplete');
+    }
+    return AuthActiveSessionsListed(
+      sessions: List<AuthSessionSummary>.unmodifiable(
+        rawSessions.map((raw) => _authSessionFromJson(response, raw)),
+      ),
+    );
+  }
+
+  @override
+  Future<AuthSessionRevoked> revokeSession(
+    AuthSessionRevokeCommand command,
+  ) async {
+    final response = await _post(authSessionRevokePath, <String, Object?>{
+      'session_id': command.sessionId,
+      if (_readNonBlankString(command.reason) != null)
+        'reason': command.reason!.trim(),
+    });
+    _expectStatus(response, 200);
+    final ok = response.body['ok'];
+    final revoked = response.body['revoked'];
+    final result = revoked is bool
+        ? revoked
+        : ok is bool
+              ? ok
+              : false;
+    return AuthSessionRevoked(revoked: result);
+  }
+
+  @override
+  Future<AuthAllSessionsRevoked> signOutAll(
+    AuthAllSessionsRevokeCommand command,
+  ) async {
+    final response = await _post(authSessionRevokeAllPath, <String, Object?>{
+      if (_readNonBlankString(command.reason) != null)
+        'reason': command.reason!.trim(),
+    });
+    _expectStatus(response, 200);
+    final raw = response.body['revoked_count'];
+    final count = raw is int ? raw : 0;
+    return AuthAllSessionsRevoked(revokedCount: count);
+  }
+
+  AuthSessionSummary _authSessionFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'auth session payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final sessionId = _readNonBlankString(json['session_id']);
+    final createdAt = _readDateTime(json['created_at']);
+    final lastSeenAt = _readDateTime(json['last_seen_at']);
+    if (sessionId == null || createdAt == null || lastSeenAt == null) {
+      throw _malformed(response, 'auth session payload was incomplete');
+    }
+    return AuthSessionSummary(
+      sessionId: sessionId,
+      createdAt: createdAt,
+      lastSeenAt: lastSeenAt,
+      deviceLabel: _readNonBlankString(json['device_label']),
+      userAgent: _readNonBlankString(json['user_agent']),
+      ip: _readNonBlankString(json['ip']),
+      geoCountry: _readNonBlankString(json['geo_country']),
+      deviceFingerprint: _readNonBlankString(json['device_fingerprint']),
+      revokedAt: _readDateTime(json['revoked_at']),
+      revokedReason: _readNonBlankString(json['revoked_reason']),
+    );
   }
 
   TeamOrgUnitEntry _orgUnitFromJson(

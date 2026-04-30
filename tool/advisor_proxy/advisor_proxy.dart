@@ -3257,6 +3257,12 @@ const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
 const String authRefreshTokensRevokeAllPath =
     '/v1/auth/refresh-tokens/revoke-all';
 
+// Phase 9.UX.5 — self-service Active Sessions read projection. Auth-
+// gated; reads only the verified caller's own auth_sessions rows.
+// The single / all revoke paths above already exist for B6; the new
+// surface adds a list endpoint plus reuses those routes for revokes.
+const String authSessionsListPath = '/v1/auth/sessions';
+
 class ProxyPermissionSnapshot {
   const ProxyPermissionSnapshot({
     required this.userId,
@@ -4821,6 +4827,56 @@ Future<void> routeRequest(
       return;
     }
 
+    if (request.method == 'GET' && path == authSessionsListPath) {
+      if (authOperationsGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_operations_not_configured',
+          'message': 'route requires an AuthOperationsGateway to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      try {
+        final listed = await authOperationsGateway.listActiveSessions(
+          AuthActiveSessionsListCommand(
+            actorUserId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+          ),
+        );
+        _writeJson(response, 200, <String, Object?>{
+          'sessions': listed.sessions
+              .map(_authSessionSummaryToJson)
+              .toList(growable: false),
+        });
+      } on AuthOperationRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_sessions_unavailable',
+          'message': 'active sessions are unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (request.method == 'POST' && path == authSessionLoginPath) {
       if (authSessionLedgerWriter == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -5795,6 +5851,23 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
     'parent_org_unit_id': entry.parentOrgUnitId,
     'org_unit_path': entry.orgUnitPath,
     'label': entry.label,
+  };
+}
+
+Map<String, Object?> _authSessionSummaryToJson(AuthSessionSummary session) {
+  return <String, Object?>{
+    'session_id': session.sessionId,
+    'created_at': session.createdAt.toUtc().toIso8601String(),
+    'last_seen_at': session.lastSeenAt.toUtc().toIso8601String(),
+    if (session.deviceLabel != null) 'device_label': session.deviceLabel,
+    if (session.userAgent != null) 'user_agent': session.userAgent,
+    if (session.ip != null) 'ip': session.ip,
+    if (session.geoCountry != null) 'geo_country': session.geoCountry,
+    if (session.deviceFingerprint != null)
+      'device_fingerprint': session.deviceFingerprint,
+    if (session.revokedAt != null)
+      'revoked_at': session.revokedAt!.toUtc().toIso8601String(),
+    if (session.revokedReason != null) 'revoked_reason': session.revokedReason,
   };
 }
 

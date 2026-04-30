@@ -404,6 +404,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           passwordChangeGateway: widget.passwordChangeGateway,
           accountInfoGateway: widget.accountInfoGateway,
           mfaOperationsGateway: widget.mfaOperationsGateway,
+          // Phase 9.UX.5 — Active Sessions in Account tab. Demo /
+          // unauth shells fall back to the in-memory fixture so the
+          // walkthrough can show multiple devices without a backend.
+          authOperationsGateway: widget.authOperationsGateway,
+          allowDemoActiveSessionsFallback: widget.authOperationsGateway == null,
         ),
         fullscreenDialog: true,
       ),

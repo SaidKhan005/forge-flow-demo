@@ -21,8 +21,100 @@
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
+/// Read projection of an `auth_sessions` row for the self-service
+/// Active Sessions viewer (Phase 9.UX.5). Carries device / network
+/// metadata the proxy collected at login time so the operator can
+/// recognise their own devices without leaking token material.
+class AuthSessionRow {
+  const AuthSessionRow({
+    required this.sessionId,
+    required this.createdAt,
+    required this.lastSeenAt,
+    this.userAgent,
+    this.ip,
+    this.geoCountry,
+    this.deviceFingerprint,
+    this.revokedAt,
+    this.revokedReason,
+  });
+
+  final String sessionId;
+  final DateTime createdAt;
+  final DateTime lastSeenAt;
+  final String? userAgent;
+  final String? ip;
+  final String? geoCountry;
+  final String? deviceFingerprint;
+  final DateTime? revokedAt;
+  final String? revokedReason;
+}
+
 class AuthSessionsRepository extends OperatorScopedRepository {
   AuthSessionsRepository(super.tenantWrapper);
+
+  /// Returns the actor's own active (non-revoked) sessions, newest
+  /// first. The per-user RLS policy filters cross-user rows server-
+  /// side; this method only ever reads the actor's own audit ledger.
+  Future<List<AuthSessionRow>> listActiveSessionsForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<AuthSessionRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select session_id::text as session_id, '
+        'created_at, last_seen_at, '
+        'user_agent, host(ip) as ip, geo_country, device_fingerprint, '
+        'revoked_at, revoked_reason '
+        'from auth_sessions '
+        'where user_id = @user_id::uuid '
+        'and revoked_at is null '
+        'order by last_seen_at desc, created_at desc',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      return rows.map(_projectSessionRow).toList(growable: false);
+    });
+  }
+
+  static AuthSessionRow _projectSessionRow(Map<String, Object?> row) {
+    DateTime asDateTime(Object? value) {
+      if (value is DateTime) return value.toUtc();
+      if (value is String) return DateTime.parse(value).toUtc();
+      throw StateError('auth_sessions row missing timestamp');
+    }
+
+    DateTime? asOptionalDateTime(Object? value) {
+      if (value == null) return null;
+      return asDateTime(value);
+    }
+
+    String? asOptionalString(Object? value) {
+      if (value is! String) return null;
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    final sessionId = row['session_id'];
+    if (sessionId is! String || sessionId.isEmpty) {
+      throw StateError('auth_sessions row missing session_id');
+    }
+    return AuthSessionRow(
+      sessionId: sessionId,
+      createdAt: asDateTime(row['created_at']),
+      lastSeenAt: asDateTime(row['last_seen_at']),
+      userAgent: asOptionalString(row['user_agent']),
+      ip: asOptionalString(row['ip']),
+      geoCountry: asOptionalString(row['geo_country']),
+      deviceFingerprint: asOptionalString(row['device_fingerprint']),
+      revokedAt: asOptionalDateTime(row['revoked_at']),
+      revokedReason: asOptionalString(row['revoked_reason']),
+    );
+  }
 
   /// INSERT a new `auth_sessions` row at login time. Returns the
   /// freshly generated `session_id`. Caller stores the `session_id`

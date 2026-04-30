@@ -790,6 +790,58 @@ void main() {
       });
     });
 
+    test(
+      'GET active sessions delegates to AuthOperationsGateway with the '
+      'verified scope and returns the projected payload',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.get(authSessionsListPath);
+
+            expect(response.statusCode, equals(200));
+            final sessions = response.json['sessions'] as List<Object?>;
+            expect(sessions, hasLength(1));
+            final entry = sessions.single as Map<Object?, Object?>;
+            expect(
+              entry['session_id'],
+              equals('88888888-8888-4888-8888-888888888888'),
+            );
+            expect(entry['device_label'], equals('Forge & Flow app · iOS'));
+            expect(gateway.activeSessionsLists.single.actorUserId,
+                equals(_userId));
+            expect(gateway.activeSessionsLists.single.operatorId,
+                equals(_operatorId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'GET active sessions returns 503 when the gateway is not configured',
+      () async {
+        await _withRealHttp(() async {
+          final harness = await _RouteHarness.start();
+          try {
+            final response = await harness.get(authSessionsListPath);
+
+            expect(response.statusCode, equals(503));
+            expect(
+              response.json['error'],
+              equals('auth_operations_not_configured'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST MFA factors revoke requires a fresh sign-in', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaOperationsGateway();
@@ -1330,6 +1382,48 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   ) async {
     locationOrgUnitMoves.add(command);
     return const TeamLocationOrgUnitMoved(moved: true);
+  }
+
+  final activeSessionsLists = <AuthActiveSessionsListCommand>[];
+  final sessionRevokes = <AuthSessionRevokeCommand>[];
+  final allSessionsRevokes = <AuthAllSessionsRevokeCommand>[];
+
+  List<AuthSessionSummary> activeSessions = <AuthSessionSummary>[
+    AuthSessionSummary(
+      sessionId: '88888888-8888-4888-8888-888888888888',
+      deviceLabel: 'Forge & Flow app · iOS',
+      userAgent: 'Forge&Flow/1.0',
+      ip: '203.0.113.10',
+      geoCountry: 'CA',
+      createdAt: DateTime.utc(2026, 4, 28, 12),
+      lastSeenAt: DateTime.utc(2026, 4, 28, 12),
+    ),
+  ];
+
+  @override
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  ) async {
+    activeSessionsLists.add(command);
+    return AuthActiveSessionsListed(
+      sessions: List<AuthSessionSummary>.unmodifiable(activeSessions),
+    );
+  }
+
+  @override
+  Future<AuthSessionRevoked> revokeSession(
+    AuthSessionRevokeCommand command,
+  ) async {
+    sessionRevokes.add(command);
+    return const AuthSessionRevoked(revoked: true);
+  }
+
+  @override
+  Future<AuthAllSessionsRevoked> signOutAll(
+    AuthAllSessionsRevokeCommand command,
+  ) async {
+    allSessionsRevokes.add(command);
+    return const AuthAllSessionsRevoked(revokedCount: 2);
   }
 }
 

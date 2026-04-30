@@ -11,6 +11,7 @@ import 'package:crypto/crypto.dart';
 
 import '../../infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
+import '../../infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/roles_repository.dart';
@@ -29,6 +30,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required this.authInvitesRepository,
     required this.auditRepository,
     this.orgUnitsRepository,
+    this.authSessionsRepository,
     DateTime Function()? now,
     String Function()? idFactory,
     String Function()? tokenFactory,
@@ -44,6 +46,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   final AuthInvitesRepository authInvitesRepository;
   final AuthEventsAuditRepository auditRepository;
   final OrgUnitsRepository? orgUnitsRepository;
+  final AuthSessionsRepository? authSessionsRepository;
   final DateTime Function() _now;
   final String Function() _idFactory;
   final String Function() _tokenFactory;
@@ -747,6 +750,153 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       );
     }
     return TeamLocationOrgUnitMoved(moved: affected > 0);
+  }
+
+  // Phase 9.UX.5 — self-service Active Sessions surface. Reads stay
+  // bound to the actor's own user_id; the per-user RLS policy on
+  // `auth_sessions` filters cross-user rows server-side as a backup
+  // even though the WHERE clause already pins user_id.
+  @override
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  ) async {
+    final repo = _requireAuthSessionsRepository();
+    final rows = await repo.listActiveSessionsForUser(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+    );
+    return AuthActiveSessionsListed(
+      sessions: List<AuthSessionSummary>.unmodifiable(
+        rows.map(_authSessionSummaryFromRow),
+      ),
+    );
+  }
+
+  @override
+  Future<AuthSessionRevoked> revokeSession(
+    AuthSessionRevokeCommand command,
+  ) async {
+    final repo = _requireAuthSessionsRepository();
+    final reason =
+        _readNonBlankString(command.reason) ?? 'user_revoked_active_session';
+    final affected = await repo.revokeSession(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+      sessionId: command.sessionId,
+      reason: reason,
+    );
+    if (affected > 0) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        targetUserId: command.actorUserId,
+        eventType: 'auth.session_revoked',
+        payload: <String, Object?>{
+          'session_id': command.sessionId,
+          'reason': reason,
+        },
+      );
+    }
+    return AuthSessionRevoked(revoked: affected > 0);
+  }
+
+  @override
+  Future<AuthAllSessionsRevoked> signOutAll(
+    AuthAllSessionsRevokeCommand command,
+  ) async {
+    final repo = _requireAuthSessionsRepository();
+    final reason =
+        _readNonBlankString(command.reason) ?? 'user_signed_out_all_sessions';
+    final affected = await repo.revokeAllSessionsForUser(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+      reason: reason,
+    );
+    if (affected > 0) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        targetUserId: command.actorUserId,
+        eventType: 'auth.all_sessions_revoked',
+        payload: <String, Object?>{
+          'revoked_count': affected,
+          'reason': reason,
+        },
+      );
+    }
+    return AuthAllSessionsRevoked(revokedCount: affected);
+  }
+
+  AuthSessionsRepository _requireAuthSessionsRepository() {
+    final repo = authSessionsRepository;
+    if (repo == null) {
+      throw const AuthOperationRejected(
+        code: 'auth_sessions_gateway_not_bound',
+        message: 'self-service auth sessions gateway is not wired',
+        statusCode: 503,
+      );
+    }
+    return repo;
+  }
+
+  static AuthSessionSummary _authSessionSummaryFromRow(AuthSessionRow row) {
+    return AuthSessionSummary(
+      sessionId: row.sessionId,
+      createdAt: row.createdAt,
+      lastSeenAt: row.lastSeenAt,
+      deviceLabel: _deviceLabelForUserAgent(row.userAgent),
+      userAgent: row.userAgent,
+      ip: row.ip,
+      geoCountry: row.geoCountry,
+      deviceFingerprint: row.deviceFingerprint,
+      revokedAt: row.revokedAt,
+      revokedReason: row.revokedReason,
+    );
+  }
+
+  static String? _deviceLabelForUserAgent(String? userAgent) {
+    if (userAgent == null) return null;
+    final ua = userAgent.toLowerCase();
+    String os;
+    if (ua.contains('iphone') || ua.contains('ios')) {
+      os = 'iOS';
+    } else if (ua.contains('ipad')) {
+      os = 'iPad';
+    } else if (ua.contains('android')) {
+      os = 'Android';
+    } else if (ua.contains('mac os') || ua.contains('macintosh')) {
+      os = 'macOS';
+    } else if (ua.contains('windows')) {
+      os = 'Windows';
+    } else if (ua.contains('linux')) {
+      os = 'Linux';
+    } else {
+      return null;
+    }
+    String? browser;
+    if (ua.contains('forge') || ua.contains('flutter')) {
+      browser = 'Forge & Flow app';
+    } else if (ua.contains('chrome')) {
+      browser = 'Chrome';
+    } else if (ua.contains('safari')) {
+      browser = 'Safari';
+    } else if (ua.contains('firefox')) {
+      browser = 'Firefox';
+    } else if (ua.contains('edg')) {
+      browser = 'Edge';
+    }
+    return browser == null ? os : '$browser · $os';
+  }
+
+  static String? _readNonBlankString(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
   }
 
   /// Phase 9.UX.4 server-side target-scope gate. Hierarchy mutations,

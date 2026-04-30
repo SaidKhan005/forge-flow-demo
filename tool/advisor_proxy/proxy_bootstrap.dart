@@ -130,6 +130,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     // policies on `org_units` + `locations` are the gate, so the
     // repo runs through the tenant pool, not the admin pool.
     orgUnitsRepository: OrgUnitsRepository(tenantWrapper),
+    // Phase 9.UX.5: self-service Active Sessions reads / revokes
+    // also go through the tenant pool — the per-user RLS policy on
+    // `auth_sessions` is the gate, and admin-grade revoke-all paths
+    // remain on the existing AuthSessionLedgerWriter binding.
+    authSessionsRepository: AuthSessionsRepository(tenantWrapper),
   );
 
   final permissionSnapshotResolver = RepositoryProxyPermissionSnapshotResolver(

@@ -637,6 +637,105 @@ class MfaSelfFactorRevoked {
   final DateTime? executeAfter;
 }
 
+// Phase 9.UX.5 — self-service Active Sessions viewer.
+//
+// Operators inspect and revoke their own auth_sessions ledger rows
+// from Settings → Account → Active Sessions. The DTOs intentionally
+// stay thin — only metadata that helps a person recognise their own
+// device (UA / approximate location / last-seen time) is surfaced;
+// raw token material never crosses this seam.
+
+class AuthSessionSummary {
+  const AuthSessionSummary({
+    required this.sessionId,
+    required this.createdAt,
+    required this.lastSeenAt,
+    this.deviceLabel,
+    this.userAgent,
+    this.ip,
+    this.geoCountry,
+    this.deviceFingerprint,
+    this.revokedAt,
+    this.revokedReason,
+  });
+
+  final String sessionId;
+  final DateTime createdAt;
+  final DateTime lastSeenAt;
+
+  /// Friendly label the proxy/repository can derive (e.g. parsed
+  /// browser / OS pairing). Optional — UI falls back to the raw UA.
+  final String? deviceLabel;
+  final String? userAgent;
+  final String? ip;
+
+  /// ISO-3166 alpha-2 country code captured at login time.
+  final String? geoCountry;
+  final String? deviceFingerprint;
+  final DateTime? revokedAt;
+  final String? revokedReason;
+}
+
+class AuthActiveSessionsListCommand {
+  const AuthActiveSessionsListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+}
+
+class AuthActiveSessionsListed {
+  const AuthActiveSessionsListed({required this.sessions});
+
+  final List<AuthSessionSummary> sessions;
+}
+
+class AuthSessionRevokeCommand {
+  const AuthSessionRevokeCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.sessionId,
+    this.reason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String sessionId;
+  final String? reason;
+}
+
+class AuthSessionRevoked {
+  const AuthSessionRevoked({required this.revoked});
+
+  final bool revoked;
+}
+
+class AuthAllSessionsRevokeCommand {
+  const AuthAllSessionsRevokeCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.reason,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String? reason;
+}
+
+class AuthAllSessionsRevoked {
+  const AuthAllSessionsRevoked({required this.revokedCount});
+
+  final int revokedCount;
+}
+
 class AuthOperationRejected implements Exception {
   const AuthOperationRejected({
     required this.code,
@@ -701,6 +800,17 @@ abstract class AuthOperationsGateway {
 
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
+  );
+
+  // Phase 9.UX.5 — self-service Active Sessions surface.
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  );
+
+  Future<AuthSessionRevoked> revokeSession(AuthSessionRevokeCommand command);
+
+  Future<AuthAllSessionsRevoked> signOutAll(
+    AuthAllSessionsRevokeCommand command,
   );
 }
 
@@ -810,6 +920,25 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
     TeamLocationOrgUnitMoveCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<AuthActiveSessionsListed> listActiveSessions(
+    AuthActiveSessionsListCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<AuthSessionRevoked> revokeSession(AuthSessionRevokeCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<AuthAllSessionsRevoked> signOutAll(
+    AuthAllSessionsRevokeCommand command,
   ) {
     throw StateError(_message);
   }
