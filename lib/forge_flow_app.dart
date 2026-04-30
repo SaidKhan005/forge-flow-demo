@@ -751,7 +751,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         IconButton(
           icon: const Icon(
             Icons.notifications_none_outlined,
-            size: 20,
+            size: 24,
             color: AppColors.textMuted,
           ),
           onPressed: () => _openNotifications(context),
@@ -759,7 +759,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         IconButton(
           icon: const Icon(
             Icons.settings_outlined,
-            size: 20,
+            size: 24,
             color: AppColors.textMuted,
           ),
           onPressed: () => _openSettings(context),
@@ -771,7 +771,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // they read as actionable, separated by a soft border line at the
     // bottom from the underlying screen content.
     final standaloneAppBar = PreferredSize(
-      preferredSize: const Size.fromHeight(56),
+      preferredSize: const Size.fromHeight(64),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -924,10 +924,10 @@ class _AppShellIconButton extends StatelessWidget {
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(22),
         child: Container(
-          width: 38,
-          height: 38,
+          width: 44,
+          height: 44,
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: AppColors.backgroundMid.withValues(alpha: 0.7),
@@ -935,9 +935,9 @@ class _AppShellIconButton extends StatelessWidget {
               color: AppColors.borderSubtle.withValues(alpha: 0.7),
               width: 1,
             ),
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
           ),
-          child: Icon(icon, size: 18, color: AppColors.textSecondary),
+          child: Icon(icon, size: 22, color: AppColors.textSecondary),
         ),
       ),
     );

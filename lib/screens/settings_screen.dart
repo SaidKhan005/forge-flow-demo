@@ -243,7 +243,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             _SettingsTabScrollView(
               tabId: 'data',
               slivers: [
-                _settingsHeroSliver(),
                 _settingsSection(
                   title: 'DATA STATUS',
                   child: SettingsDataStatusSection(status: _status),
@@ -261,13 +260,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onAfterWrite: _refreshAfterWrite,
                   ),
                 ),
-                _settingsFooterSliver(),
               ],
             ),
             _SettingsTabScrollView(
               tabId: 'authority',
               slivers: [
-                _settingsHeroSliver(),
                 if (restaurant != null)
                   _settingsSection(
                     title: 'TIMING AUTHORITY',
@@ -279,14 +276,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   title: 'WAGE AUTHORITY',
                   child: WageAuthoritySection(onChanged: _refreshAppState),
                 ),
-                _settingsFooterSliver(),
               ],
             ),
             if (showAccount)
               _SettingsTabScrollView(
                 tabId: 'account',
                 slivers: [
-                  _settingsHeroSliver(),
                   _settingsSection(
                     title: 'ACCOUNT',
                     child: SettingsAccountSection(
@@ -300,14 +295,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       actor: widget.mfaActor ?? _mfaActorForSession(session),
                     ),
                   ),
-                  _settingsFooterSliver(),
                 ],
               ),
             if (showTeam)
               _SettingsTabScrollView(
                 tabId: 'team',
                 slivers: [
-                  _settingsHeroSliver(),
                   _settingsSection(
                     title: 'TEAM',
                     child: _TeamSettingsLiveDataScope(
@@ -339,13 +332,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               ),
                     ),
                   ),
-                  _settingsFooterSliver(),
                 ],
               ),
             _SettingsTabScrollView(
               tabId: 'developer',
               slivers: [
-                _settingsHeroSliver(),
                 _settingsSection(
                   title: 'AUDIT',
                   child: const SettingsAuditSection(),
@@ -368,7 +359,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           AdvisorCorpusAdminService(),
                     ),
                   ),
-                _settingsFooterSliver(),
               ],
             ),
           ],
@@ -676,15 +666,6 @@ class _SettingsTabScrollView extends StatelessWidget {
   }
 }
 
-Widget _settingsHeroSliver() {
-  return SliverToBoxAdapter(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      child: const SettingsRestaurantHero(),
-    ),
-  );
-}
-
 Widget _settingsSection({required String title, required Widget child}) {
   return SliverMainAxisGroup(
     slivers: [
@@ -699,14 +680,5 @@ Widget _settingsSection({required String title, required Widget child}) {
         ),
       ),
     ],
-  );
-}
-
-Widget _settingsFooterSliver() {
-  return SliverToBoxAdapter(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 24, 16, 32),
-      child: const SettingsFooter(),
-    ),
   );
 }
