@@ -92,20 +92,39 @@ void main() {
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
 
-    // Click into the operators placeholder.
-    await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
+    // Click into the pricing placeholder. Operators went live in
+    // 11A.1; pricing is the next still-placeholder route in the
+    // catalog.
+    await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_placeholder_operators')),
+      find.byKey(const Key('admin_placeholder_pricing')),
       findsOneWidget,
     );
     expect(
-      find.text('Operator + location CRUD lands in 11A.1.'),
+      find.text('Tiered usage cap admin lands in 11A.2.'),
       findsOneWidget,
     );
     // Home card should no longer be in the tree.
     expect(find.byKey(const Key('admin_home_card')), findsNothing);
+  });
+
+  testWidgets('operators route renders the live admin surface (11A.1)',
+      (tester) async {
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+
+    await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
+    await tester.pumpAndSettle();
+
+    // 11A.1 promoted operators from placeholder to live.
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(find.byKey(const Key('admin_placeholder_operators')), findsNothing);
   });
 
   testWidgets('header sign-out routes through the auth source', (tester) async {

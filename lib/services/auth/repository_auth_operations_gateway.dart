@@ -274,7 +274,11 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         'scope_type': command.scopeType,
       },
     );
-    return TeamInviteCreated(inviteId: inviteId, expiresAt: expiresAt);
+    return TeamInviteCreated(
+      inviteId: inviteId,
+      expiresAt: expiresAt,
+      userId: userId,
+    );
   }
 
   @override

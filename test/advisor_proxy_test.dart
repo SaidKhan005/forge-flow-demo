@@ -317,6 +317,31 @@ void main() {
       expect(context.hasRole('advisor.read'), isTrue);
       expect(context.hasRole('admin.write'), isFalse);
     });
+
+    test(
+      'verified claims path allows global admin tokens without tenant scope',
+      () async {
+        final guard = ProxyRequestGuard(
+          verifier: _FixedClaimsVerifier(
+            const ProxyJwtClaims(
+              userId: 'admin_user',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          ),
+        );
+
+        final claims = await guard.requireVerifiedClaims(
+          authorizationHeader: 'Bearer fake.token.value',
+        );
+
+        expect(claims.userId, equals('admin_user'));
+        expect(claims.operatorId, isNull);
+        expect(claims.locationId, isNull);
+        expect(claims.roles, contains('super_admin'));
+      },
+    );
   });
 
   group('ProxyUsageGuard (11a.10b)', () {
@@ -4187,6 +4212,805 @@ void main() {
       );
     });
   });
+
+  group('11A.1 admin operator/location routes', () {
+    Future<T> withRealHttp<T>(Future<T> Function() body) async {
+      final saved = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        return await body();
+      } finally {
+        HttpOverrides.global = saved;
+      }
+    }
+
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _SettableVerifier verifier,
+        _FakeAdminGateway gateway,
+      })
+    >
+    spinUp({
+      ProxyJwtClaims? initialClaims,
+      _FakeAdminGateway? customGateway,
+      bool gatewayConfigured = true,
+    }) async {
+      final verifier = _SettableVerifier();
+      verifier.claims = initialClaims;
+      final guard = ProxyRequestGuard(verifier: verifier);
+      final gateway = customGateway ?? _FakeAdminGateway();
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      // ignore: unawaited_futures
+      server.listen((request) async {
+        try {
+          await routeRequest(
+            request,
+            guard,
+            operatorLocationAdminGateway: gatewayConfigured ? gateway : null,
+            now: () => DateTime.utc(2026, 4, 29, 12),
+          );
+        } catch (_) {
+          try {
+            request.response.statusCode = 500;
+            await request.response.close();
+          } catch (_) {}
+        }
+      });
+      final client = HttpClient();
+      final baseUri = Uri.parse('http://${server.address.host}:${server.port}');
+      return (
+        server: server,
+        client: client,
+        baseUri: baseUri,
+        verifier: verifier,
+        gateway: gateway,
+      );
+    }
+
+    test('11A.1 OPTIONS preflight returns CORS headers without auth', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final request = await ctx.client.openUrl(
+            'OPTIONS',
+            ctx.baseUri.resolve(adminOperatorsPath),
+          );
+          request.persistentConnection = false;
+          request.headers.set('Origin', 'https://admin.forgeflow.app');
+          request.headers.set('Access-Control-Request-Method', 'POST');
+          request.headers.set(
+            'Access-Control-Request-Headers',
+            'authorization,content-type',
+          );
+          request.contentLength = 0;
+
+          final response = await request.close();
+          await response.drain<void>();
+
+          expect(response.statusCode, equals(HttpStatus.noContent));
+          expect(
+            response.headers.value('access-control-allow-origin'),
+            equals('*'),
+          );
+          expect(
+            response.headers.value('access-control-allow-methods'),
+            contains('OPTIONS'),
+          );
+          expect(
+            response.headers
+                .value('access-control-allow-headers')
+                ?.toLowerCase(),
+            contains('authorization'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.1 GET /v1/admin/operators returns 503 without a gateway',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(gatewayConfigured: false);
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(503));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              equals('operator_location_admin_not_configured'),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 GET /v1/admin/operators rejects a non-admin caller with 403',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_x',
+              operatorId: 'op_x',
+              locationId: 'loc_x',
+              roles: <String>['operator_owner'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 POST /v1/admin/operators rejects ff_support with 403',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: 'op_support',
+              locationId: 'loc_support',
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{
+                'business_name': 'Cafe',
+                'owner_email': 'a@b.c',
+                'subscription_tier': 'launch',
+                'preferred_currency': 'CAD',
+                'admin_user_email': 'admin@b.c',
+                'primary_location': <String, Object?>{
+                  'name': 'Main',
+                  'timezone': 'America/Toronto',
+                  'business_day_rollover_hour': 4,
+                },
+              },
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(body['required_roles'], contains('super_admin'));
+            expect(gateway.lastOnboardCommand, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 GET /v1/admin/operators returns the gateway list as 200',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.listResult = <Map<String, Object?>>[
+            <String, Object?>{
+              'operator': <String, Object?>{
+                'operator_id': 'op-1',
+                'business_name': 'Cafe One',
+              },
+              'locations': <Map<String, Object?>>[],
+            },
+          ];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final operators = (body['operators']! as List)
+                .cast<Map<String, Object?>>();
+            expect(operators, hasLength(1));
+            final firstOperator = (operators.first['operator']! as Map)
+                .cast<String, Object?>();
+            expect(firstOperator['business_name'], equals('Cafe One'));
+            expect(gateway.lastReason, contains('admin.operator_location.GET'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 GET /v1/admin/operators accepts global super_admin token',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastActorUserId, equals('user_admin'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 POST /v1/admin/operators rejects missing primary_location with 400',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{
+                'business_name': 'Cafe',
+                'owner_email': 'a@b.c',
+                'subscription_tier': 'launch',
+                'preferred_currency': 'CAD',
+                'admin_user_email': 'admin@b.c',
+              },
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('missing_primary_location'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 POST /v1/admin/operators rejects an invalid IANA timezone with 400',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{
+                'business_name': 'Cafe',
+                'owner_email': 'a@b.c',
+                'subscription_tier': 'launch',
+                'preferred_currency': 'CAD',
+                'admin_user_email': 'admin@b.c',
+                'primary_location': <String, Object?>{
+                  'name': 'Main',
+                  'timezone': 'Mars/Olympus',
+                  'business_day_rollover_hour': 4,
+                },
+              },
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('invalid_timezone'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 POST /v1/admin/operators returns 201 with bundle on success',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.onboardResult = <String, Object?>{
+            'operator': <String, Object?>{
+              'operator_id': 'op-new',
+              'business_name': 'Cafe New',
+            },
+            'locations': <Map<String, Object?>>[
+              <String, Object?>{
+                'location_id': 'loc-new',
+                'operator_id': 'op-new',
+              },
+            ],
+            'admin_user_id': 'user-new',
+          };
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(adminOperatorsPath),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{
+                'business_name': 'Cafe New',
+                'owner_email': 'a@b.c',
+                'subscription_tier': 'launch',
+                'preferred_currency': 'CAD',
+                'admin_user_email': 'admin@b.c',
+                'primary_location': <String, Object?>{
+                  'name': 'Main',
+                  'timezone': 'America/Toronto',
+                  'business_day_rollover_hour': 4,
+                },
+              },
+            );
+            expect(response.statusCode, equals(201));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            final operatorJson = (body['operator'] as Map)
+                .cast<String, Object?>();
+            expect(operatorJson['operator_id'], equals('op-new'));
+            expect(
+              gateway.lastOnboardCommand?['business_name'],
+              equals('Cafe New'),
+            );
+            expect(
+              gateway.lastOnboardCommand?['preferred_currency'],
+              equals('CAD'),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.1 POST /v1/admin/operators/{id}/suspend returns 200', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminGateway();
+        gateway.suspendResult = <String, Object?>{
+          'operator_id': 'op-1',
+          'business_name': 'Cafe',
+          'suspended_at': '2026-04-29T12:00:00.000Z',
+        };
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve('$adminOperatorsPath/op-1/suspend'),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.suspendOperatorId, equals('op-1'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.1 POST /v1/admin/operators/{id}/reactivate returns 200',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.reactivateResult = <String, Object?>{
+            'operator_id': 'op-1',
+            'suspended_at': null,
+          };
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve('$adminOperatorsPath/op-1/reactivate'),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.reactivateOperatorId, equals('op-1'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 PATCH /v1/admin/operators/{id} returns 404 when not found',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.patchResult = null;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('$adminOperatorsPath/missing'),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{'business_name': 'Renamed'},
+            );
+            expect(response.statusCode, equals(404));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_operator'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.1 POST /v1/admin/locations returns 201 on success', () async {
+      await withRealHttp(() async {
+        final gateway = _FakeAdminGateway();
+        gateway.addLocationResult = <String, Object?>{
+          'location_id': 'loc-new',
+          'operator_id': 'op-1',
+          'name': 'West Coast',
+          'timezone': 'America/Vancouver',
+        };
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'POST',
+            ctx.baseUri.resolve(adminLocationsPath),
+            authorization: 'Bearer fake.token',
+            body: <String, Object?>{
+              'operator_id': 'op-1',
+              'name': 'West Coast',
+              'timezone': 'America/Vancouver',
+              'business_day_rollover_hour': 5,
+            },
+          );
+          expect(response.statusCode, equals(201));
+          expect(gateway.lastAddLocationOperatorId, equals('op-1'));
+          expect(gateway.lastAddLocationTimezone, equals('America/Vancouver'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.1 DELETE /v1/admin/locations/{id} primary-protected returns 400',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.removeLocationResult =
+              AdminLocationRemovalResult.primaryLocationProtected;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{'operator_id': 'op-1'},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('cannot_remove_primary_location'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 DELETE /v1/admin/locations/{id} returns 200 on success',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakeAdminGateway();
+          gateway.removeLocationResult = AdminLocationRemovalResult.removed;
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'DELETE',
+              ctx.baseUri.resolve('$adminLocationsPath/loc-1'),
+              authorization: 'Bearer fake.token',
+              body: <String, Object?>{'operator_id': 'op-1'},
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.removeLocationId, equals('loc-1'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.1 GET /v1/admin/operators without Authorization returns 401',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminOperatorsPath),
+            );
+            expect(response.statusCode, equals(401));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+  });
+}
+
+class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
+  List<Map<String, Object?>> listResult = const <Map<String, Object?>>[];
+  Map<String, Object?> onboardResult = <String, Object?>{
+    'operator': <String, Object?>{},
+    'locations': <Map<String, Object?>>[],
+  };
+  Map<String, Object?>? patchResult = <String, Object?>{'operator_id': 'op'};
+  Map<String, Object?>? suspendResult = <String, Object?>{};
+  Map<String, Object?>? reactivateResult = <String, Object?>{};
+  Map<String, Object?> addLocationResult = <String, Object?>{};
+  Map<String, Object?>? patchLocationResult = <String, Object?>{};
+  AdminLocationRemovalResult removeLocationResult =
+      AdminLocationRemovalResult.removed;
+
+  String? lastReason;
+  String? lastActorUserId;
+  Map<String, Object?>? lastOnboardCommand;
+  String? suspendOperatorId;
+  String? reactivateOperatorId;
+  String? lastAddLocationOperatorId;
+  String? lastAddLocationTimezone;
+  String? removeLocationId;
+
+  @override
+  Future<List<Map<String, Object?>>> listOperatorsWithLocations({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return listResult;
+  }
+
+  @override
+  Future<Map<String, Object?>> onboardOperator({
+    required String actorUserId,
+    required String businessName,
+    required String ownerEmail,
+    required String subscriptionTier,
+    required String preferredCurrency,
+    required String adminUserEmail,
+    required String primaryLocationName,
+    required String primaryLocationTimezone,
+    required int primaryLocationRolloverHour,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastOnboardCommand = <String, Object?>{
+      'business_name': businessName,
+      'owner_email': ownerEmail,
+      'subscription_tier': subscriptionTier,
+      'preferred_currency': preferredCurrency,
+      'admin_user_email': adminUserEmail,
+      'primary_location_name': primaryLocationName,
+      'primary_location_timezone': primaryLocationTimezone,
+      'primary_location_rollover_hour': primaryLocationRolloverHour,
+    };
+    return onboardResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> patchOperator({
+    required String actorUserId,
+    required String operatorId,
+    String? businessName,
+    String? ownerEmail,
+    String? subscriptionTier,
+    String? preferredCurrency,
+    String? primaryLocationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return patchResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> suspendOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    suspendOperatorId = operatorId;
+    lastReason = adminReason;
+    return suspendResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> reactivateOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    reactivateOperatorId = operatorId;
+    lastReason = adminReason;
+    return reactivateResult;
+  }
+
+  @override
+  Future<Map<String, Object?>> addLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String name,
+    required String address,
+    required String timezone,
+    required int businessDayRolloverHour,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastAddLocationOperatorId = operatorId;
+    lastAddLocationTimezone = timezone;
+    lastReason = adminReason;
+    return addLocationResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> patchLocation({
+    required String actorUserId,
+    required String locationId,
+    String? name,
+    String? address,
+    String? timezone,
+    int? businessDayRolloverHour,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return patchLocationResult;
+  }
+
+  @override
+  Future<AdminLocationRemovalResult> removeLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    removeLocationId = locationId;
+    lastReason = adminReason;
+    return removeLocationResult;
+  }
 }
 
 // ─── Test helpers ────────────────────────────────────────────────────────────
@@ -4587,6 +5411,37 @@ Future<_HttpResponseSnapshot> _httpPost(
   }
   headers?.forEach(request.headers.set);
   if (body != null) {
+    final encoded = utf8.encode(jsonEncode(body));
+    request.contentLength = encoded.length;
+    request.add(encoded);
+  } else {
+    request.contentLength = 0;
+  }
+  final response = await request.close();
+  final responseBody = await response.transform(utf8.decoder).join();
+  return _HttpResponseSnapshot(
+    statusCode: response.statusCode,
+    body: responseBody,
+  );
+}
+
+/// Generic JSON helper used by the 11A.1 admin-route tests. Handles
+/// arbitrary HTTP methods (POST / PATCH / DELETE) with an optional
+/// JSON body.
+Future<_HttpResponseSnapshot> _httpJson(
+  HttpClient client,
+  String method,
+  Uri uri, {
+  String? authorization,
+  Map<String, Object?>? body,
+}) async {
+  final request = await client.openUrl(method, uri);
+  request.persistentConnection = false;
+  if (authorization != null) {
+    request.headers.set(HttpHeaders.authorizationHeader, authorization);
+  }
+  if (body != null) {
+    request.headers.contentType = ContentType.json;
     final encoded = utf8.encode(jsonEncode(body));
     request.contentLength = encoded.length;
     request.add(encoded);

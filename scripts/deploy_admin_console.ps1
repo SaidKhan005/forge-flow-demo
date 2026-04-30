@@ -13,8 +13,11 @@
 # Dart options mirrored from `web/firebase-config.js`, and the gate
 # admits `is_super_admin: true` / `is_ff_support: true` Firebase
 # identities only; everything else fail-closes to the forbidden
-# surface. The script refuses to publish demo auth onto a public
-# `--allow-unauthenticated` Cloud Run service silently.
+# surface. Live deploys must also compile in the admin proxy base URI
+# through `ADMIN_PROXY_BASE_URI`; the script refuses to publish a live
+# build that would fall back to fixtures. The script refuses to publish
+# demo auth onto a public `--allow-unauthenticated` Cloud Run service
+# silently.
 #
 # Demo opt-in (NOT FOR PRODUCTION): pass `-DemoMode`. The deploy
 # emits a loud warning and requires the operator to type
@@ -25,7 +28,7 @@
 # acknowledge.
 #
 # Examples:
-#   scripts/deploy_admin_console.ps1
+#   scripts/deploy_admin_console.ps1 -AdminProxyBaseUri https://admin-proxy.forgeflow.app
 #   scripts/deploy_admin_console.ps1 -PrintCommandOnly
 #   scripts/deploy_admin_console.ps1 -DemoMode -Service forge-flow-admin-sandbox
 
@@ -34,6 +37,8 @@ param(
   [string] $Region = 'northamerica-northeast2',
   [string] $Service = 'forge-flow-admin-console',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
+  [string] $ArtifactRepository = 'forge-flow-cloud-run',
+  [string] $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI,
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
   [switch] $SkipApiEnable,
@@ -50,6 +55,14 @@ if (-not (Test-Path -LiteralPath $gcloud)) {
 
 if (Test-Path -LiteralPath $SecretsFile) {
   . $SecretsFile
+}
+
+if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
+  if (-not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_ADMIN_PROXY_BASE_URI)) {
+    $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI
+  } elseif (-not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
+    $AdminProxyBaseUri = $env:FORGE_FLOW_PROXY_BASE_URI
+  }
 }
 
 # Resolve the demo flag. Live is the default; demo requires an
@@ -79,26 +92,65 @@ if ($DemoMode) {
   }
   $adminDemoAuth = 'true'
 } else {
+  if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
+    Write-Host 'BLOCKED: live admin console deploy requires ADMIN_PROXY_BASE_URI.'
+    Write-Host 'Pass -AdminProxyBaseUri or set FORGE_FLOW_ADMIN_PROXY_BASE_URI / FORGE_FLOW_PROXY_BASE_URI in the secrets file.'
+    exit 1
+  }
   Write-Host "Deploying LIVE Firebase admin auth (ADMIN_DEMO_AUTH=$adminDemoAuth)."
+  Write-Host "Admin proxy base URI: $AdminProxyBaseUri"
 }
+
+$imageTag = (Get-Date).ToUniversalTime().ToString('yyyyMMddHHmmss')
+$image = "$Region-docker.pkg.dev/$Project/$ArtifactRepository/${Service}:$imageTag"
 
 $cloudRunArgs = @(
   'run', 'deploy', $Service,
   '--project', $Project,
   '--region', $Region,
-  '--source', '.',
+  '--image', $image,
   '--service-account', $ServiceAccount,
   '--allow-unauthenticated',
   '--no-invoker-iam-check',
   '--min-instances', '0',
   '--max-instances', '2',
   '--port', '8080',
-  '--quiet',
-  '--dockerfile', 'Dockerfile.admin_console',
-  '--build-env-vars', "ADMIN_DEMO_AUTH=$adminDemoAuth"
+  '--quiet'
+)
+
+function Quote-CloudBuildYamlValue([string] $Value) {
+  return "'" + ($Value -replace "'", "''") + "'"
+}
+
+$cloudBuildConfigPath = Join-Path ([System.IO.Path]::GetTempPath()) "forge-flow-admin-console-cloudbuild-$PID.yaml"
+$cloudBuildConfig = @(
+  'steps:',
+  "- name: 'gcr.io/cloud-builders/docker'",
+  '  args:',
+  "  - 'build'",
+  "  - '-f'",
+  "  - 'Dockerfile.admin_console'",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "ADMIN_DEMO_AUTH=$adminDemoAuth")",
+  "  - '--build-arg'",
+  "  - $(Quote-CloudBuildYamlValue "ADMIN_PROXY_BASE_URI=$AdminProxyBaseUri")",
+  "  - '-t'",
+  "  - $(Quote-CloudBuildYamlValue $image)",
+  "  - '.'",
+  'images:',
+  "- $(Quote-CloudBuildYamlValue $image)"
+) -join "`n"
+
+$cloudBuildArgs = @(
+  'builds', 'submit', $repoRoot,
+  '--project', $Project,
+  '--config', $cloudBuildConfigPath,
+  '--quiet'
 )
 
 if ($PrintCommandOnly) {
+  Write-Host "Set-Content -LiteralPath $cloudBuildConfigPath -Value <cloudbuild-yaml-with-docker-build-args>"
+  Write-Host "$gcloud $($cloudBuildArgs -join ' ')"
   Write-Host "$gcloud $($cloudRunArgs -join ' ')"
   exit 0
 }
@@ -113,11 +165,32 @@ if (-not $SkipApiEnable) {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
+& $gcloud artifacts repositories describe $ArtifactRepository `
+  --project $Project `
+  --location $Region `
+  --quiet *> $null
+if ($LASTEXITCODE -ne 0) {
+  & $gcloud artifacts repositories create $ArtifactRepository `
+    --project $Project `
+    --location $Region `
+    --repository-format docker `
+    --description 'Forge Flow Cloud Run images' `
+    --quiet
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+}
+
 Push-Location $repoRoot
 try {
+  Set-Content -LiteralPath $cloudBuildConfigPath -Value $cloudBuildConfig -Encoding UTF8
+  & $gcloud @cloudBuildArgs
+  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
   & $gcloud @cloudRunArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
+  if (Test-Path -LiteralPath $cloudBuildConfigPath) {
+    Remove-Item -LiteralPath $cloudBuildConfigPath -Force
+  }
   Pop-Location
 }
 

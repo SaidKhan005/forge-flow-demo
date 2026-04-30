@@ -14,11 +14,14 @@
 # Examples:
 #   scripts/run_admin_console_dev.ps1
 #   scripts/run_admin_console_dev.ps1 -Device chrome
+#   scripts/run_admin_console_dev.ps1 -AdminProxyBaseUri http://localhost:8080
 #   scripts/run_admin_console_dev.ps1 -DemoMode
 #   scripts/run_admin_console_dev.ps1 -PrintCommandOnly
 
 param(
   [string] $Device = 'chrome',
+
+  [string] $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI,
 
   [switch] $DemoMode,
 
@@ -32,6 +35,11 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
+if ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri) -and
+    -not [string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
+  $AdminProxyBaseUri = $env:FORGE_FLOW_PROXY_BASE_URI
+}
+
 $argsList = @(
   'run',
   '-t', 'lib/main_admin.dart',
@@ -40,6 +48,10 @@ $argsList = @(
 
 if ($DemoMode) {
   $argsList += '--dart-define=ADMIN_DEMO_AUTH=true'
+} elseif ([string]::IsNullOrWhiteSpace($AdminProxyBaseUri)) {
+  Write-Warning 'ADMIN_PROXY_BASE_URI is missing; live admin dev will fail closed until -AdminProxyBaseUri or FORGE_FLOW_ADMIN_PROXY_BASE_URI is set.'
+} else {
+  $argsList += "--dart-define=ADMIN_PROXY_BASE_URI=$AdminProxyBaseUri"
 }
 
 if ($FlutterArgs.Count -gt 0) {

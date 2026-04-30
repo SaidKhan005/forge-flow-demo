@@ -328,6 +328,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     return TeamInviteCreated(
       inviteId: inviteId,
       expiresAt: DateTime.parse(expiresAtRaw).toUtc(),
+      userId: _readNonBlankString(response.body['user_id']),
     );
   }
 

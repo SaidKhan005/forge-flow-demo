@@ -117,6 +117,69 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     });
   }
 
+  /// INSERT a single system-scope audit row.
+  ///
+  /// F&F global admin surfaces can legitimately operate before a tenant scope
+  /// exists (for example, listing all operators or onboarding a new operator).
+  /// The table schema allows nullable `operator_id` / `location_id`; this
+  /// helper uses the audited system transaction path instead of manufacturing a
+  /// fake [TenantContext].
+  Future<String> insertSystemEvent({
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+    required String adminReason,
+  }) {
+    return withSystem<String>((exec) async {
+      final rows = await exec.query(
+        'insert into auth_events_audit ('
+        'actor_user_id, actor_kind, actor_service_principal_id, '
+        'target_user_id, operator_id, location_id, '
+        'event_type, event_payload, ip, user_agent, '
+        'geo_country, request_id) '
+        'values (@actor_user_id::uuid, @actor_kind, '
+        '@actor_service_principal_id::uuid, @target_user_id::uuid, '
+        '@operator_id::uuid, @location_id::uuid, @event_type, '
+        '@payload::jsonb, @ip::inet, @user_agent, @geo_country, '
+        '@request_id::uuid) '
+        'returning event_id::text as event_id',
+        parameters: <String, Object?>{
+          'actor_user_id': actorUserId,
+          'actor_kind': actorKind,
+          'actor_service_principal_id': actorServicePrincipalId,
+          'target_user_id': targetUserId,
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'event_type': eventType,
+          'payload': jsonEncode(payload),
+          'ip': ip,
+          'user_agent': userAgent,
+          'geo_country': geoCountry,
+          'request_id': requestId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError('auth_events_audit system insert returned no rows');
+      }
+      final id = rows.single['event_id'];
+      if (id is! String || id.isEmpty) {
+        throw StateError(
+          'auth_events_audit system insert returned a malformed event_id',
+        );
+      }
+      return id;
+    }, reason: adminReason);
+  }
+
   /// GDPR redaction of `auth_events_audit` rows targeting [userId].
   ///
   /// **Fails closed by design.** `auth_events_audit` is append-only at

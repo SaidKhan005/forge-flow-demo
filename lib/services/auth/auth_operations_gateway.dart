@@ -27,10 +27,20 @@ class TeamInviteCreateCommand {
 }
 
 class TeamInviteCreated {
-  const TeamInviteCreated({required this.inviteId, required this.expiresAt});
+  const TeamInviteCreated({
+    required this.inviteId,
+    required this.expiresAt,
+    this.userId,
+  });
 
   final String inviteId;
   final DateTime expiresAt;
+
+  /// Postgres/Firebase user id created for the invite when the backing gateway
+  /// owns identity creation. HTTP clients may omit it from the public response;
+  /// server-side orchestration such as 11A.1 onboarding uses it to attach
+  /// `operator_admins` without fabricating a second user row.
+  final String? userId;
 }
 
 class TeamInviteRevokeCommand {

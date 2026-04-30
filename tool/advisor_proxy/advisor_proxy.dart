@@ -52,6 +52,7 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
 // ─── Secret name registry ────────────────────────────────────────────────────
@@ -1212,6 +1213,32 @@ class ProxyRequestGuard {
 
   final ProxyJwtVerifier _verifier;
 
+  /// Verifies the Authorization bearer token without requiring tenant scope.
+  ///
+  /// Global F&F admin surfaces such as 11A.1 operator/location management use
+  /// this path because Phase 9 keeps admin custom claims tiny and does not
+  /// require `operator_id` / `location_id` for global super-admin visibility.
+  Future<ProxyJwtClaims> requireVerifiedClaims({
+    required String? authorizationHeader,
+  }) async {
+    final token = extractBearerToken(authorizationHeader);
+    if (token == null) {
+      throw ProxyAuthError(
+        'missing or malformed Authorization bearer token',
+        statusCode: 401,
+      );
+    }
+
+    try {
+      return await _verifier.verify(token);
+    } on ProxyJwtVerificationError catch (error) {
+      throw ProxyAuthError(
+        'token verification failed: ${error.message}',
+        statusCode: 401,
+      );
+    }
+  }
+
   /// Resolves a scoped [OperatorContext] from an Authorization header.
   ///
   ///   - Missing / malformed header -> 401.
@@ -1223,23 +1250,9 @@ class ProxyRequestGuard {
   Future<OperatorContext> requireOperatorContext({
     required String? authorizationHeader,
   }) async {
-    final token = extractBearerToken(authorizationHeader);
-    if (token == null) {
-      throw ProxyAuthError(
-        'missing or malformed Authorization bearer token',
-        statusCode: 401,
-      );
-    }
-
-    ProxyJwtClaims claims;
-    try {
-      claims = await _verifier.verify(token);
-    } on ProxyJwtVerificationError catch (error) {
-      throw ProxyAuthError(
-        'token verification failed: ${error.message}',
-        statusCode: 401,
-      );
-    }
+    final claims = await requireVerifiedClaims(
+      authorizationHeader: authorizationHeader,
+    );
 
     final operatorId = claims.operatorId;
     final locationId = claims.locationId;
@@ -2807,6 +2820,116 @@ const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
 
+// Phase 11A.1 — Operator + location admin routes. F&F internal-only;
+// caller must be a `super_admin` Firebase user. The
+// admin Flutter client never touches Postgres directly; every
+// operator/location write fans through these routes which delegate
+// to an injected [OperatorLocationAdminProxyGateway].
+const String adminOperatorsPath = '/v1/admin/operators';
+const String adminOperatorsPrefix = '$adminOperatorsPath/';
+const String adminLocationsPath = '/v1/admin/locations';
+const String adminLocationsPrefix = '$adminLocationsPath/';
+
+/// Roles that admit a caller to `/v1/admin/operators` and
+/// `/v1/admin/locations`. This 11A.1 surface is intentionally
+/// super-admin-only because it exposes unscoped cross-operator reads
+/// and writes; `ff_support` stays out until support-scoped reads land.
+const Set<String> kFfOperatorLocationAdminRoles = <String>{'super_admin'};
+
+/// Gateway the proxy delegates to for `/v1/admin/operators` and
+/// `/v1/admin/locations` route handling. The gateway returns
+/// JSON-ready maps so the proxy handler can wrap them in a 200/201
+/// response without translating shapes a second time.
+abstract class OperatorLocationAdminProxyGateway {
+  /// Returns `[{'operator': {...}, 'locations': [{...}, ...]}]`
+  /// across every operator. The list is sorted by operator
+  /// `business_name` so the admin console renders deterministically.
+  Future<List<Map<String, Object?>>> listOperatorsWithLocations({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Inserts the operator + primary location, then uses the Phase 9 auth
+  /// gateway to create the owner invite/user/custom claims/user_roles grant
+  /// before attaching the `operator_admins` row. Returns the same
+  /// `{'operator': ..., 'locations': [...]}` bundle shape as
+  /// [listOperatorsWithLocations] for the new operator.
+  Future<Map<String, Object?>> onboardOperator({
+    required String actorUserId,
+    required String businessName,
+    required String ownerEmail,
+    required String subscriptionTier,
+    required String preferredCurrency,
+    required String adminUserEmail,
+    required String primaryLocationName,
+    required String primaryLocationTimezone,
+    required int primaryLocationRolloverHour,
+    required String adminReason,
+  });
+
+  /// PATCH-style update of one operator. Each field is optional; only
+  /// the supplied columns are rewritten. Returns the operator JSON
+  /// when the row exists, or null when the operator was not found.
+  Future<Map<String, Object?>?> patchOperator({
+    required String actorUserId,
+    required String operatorId,
+    String? businessName,
+    String? ownerEmail,
+    String? subscriptionTier,
+    String? preferredCurrency,
+    String? primaryLocationId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> suspendOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> reactivateOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> addLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String name,
+    required String address,
+    required String timezone,
+    required int businessDayRolloverHour,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> patchLocation({
+    required String actorUserId,
+    required String locationId,
+    String? name,
+    String? address,
+    String? timezone,
+    int? businessDayRolloverHour,
+    required String adminReason,
+  });
+
+  /// Returns the result of removing a location:
+  /// [AdminLocationRemovalResult.removed] (200), `notFound` (404), or
+  /// `primaryLocationProtected` (400) when the caller tried to
+  /// delete the operator's `primary_location_id` (the schema's
+  /// `ON DELETE SET NULL` would silently null the pointer if we let
+  /// the delete proceed; the proxy refuses the call up-front
+  /// instead).
+  Future<AdminLocationRemovalResult> removeLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  });
+}
+
+enum AdminLocationRemovalResult { removed, notFound, primaryLocationProtected }
+
 // Phase 9 live-closeout B6 — auth-session ledger endpoints. The Flutter
 // app holds no Postgres credentials; every `auth_sessions` mutation
 // flows through these routes. The proxy verifies the Firebase ID token
@@ -2911,6 +3034,7 @@ Future<void> routeRequest(
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
   PasswordChangeGateway? passwordChangeGateway,
   MfaOperationsGateway? mfaOperationsGateway,
+  OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -2920,6 +3044,15 @@ Future<void> routeRequest(
   final clock = now ?? DateTime.now;
   try {
     final path = request.uri.path;
+    final isAdminOperatorLocationPath = _isAdminOperatorOrLocationPath(path);
+    if (isAdminOperatorLocationPath) {
+      _setAdminOperatorLocationCorsHeaders(response);
+      if (request.method == 'OPTIONS') {
+        response.statusCode = HttpStatus.noContent;
+        response.contentLength = 0;
+        return;
+      }
+    }
 
     if (request.method == 'GET' &&
         (path == healthPath || path == readinessPath)) {
@@ -3707,6 +3840,7 @@ Future<void> routeRequest(
           _writeJson(response, 201, <String, Object?>{
             'invite_id': created.inviteId,
             'expires_at': created.expiresAt.toUtc().toIso8601String(),
+            if (created.userId != null) 'user_id': created.userId,
           });
           return;
         }
@@ -4148,6 +4282,69 @@ Future<void> routeRequest(
       return;
     }
 
+    if (_isAdminOperatorOrLocationOperation(path, request.method)) {
+      if (operatorLocationAdminGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'operator_location_admin_not_configured',
+          'message':
+              'route requires an OperatorLocationAdminProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      if (!_isFfOperatorLocationAdminCaller(actor)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': kFfOperatorLocationAdminRoles.toList(),
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        await _routeOperatorLocationAdmin(
+          request: request,
+          response: response,
+          path: path,
+          gateway: operatorLocationAdminGateway,
+          actorUserId: actor.userId,
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'operator_location_admin_unavailable',
+          'message':
+              'operator/location admin operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     _writeJson(response, 404, <String, Object?>{
       'error': 'not found',
       'method': request.method,
@@ -4155,6 +4352,383 @@ Future<void> routeRequest(
     });
   } finally {
     await response.close();
+  }
+}
+
+bool _isFfOperatorLocationAdminCaller(ProxyJwtClaims actor) {
+  return actor.roles.any(kFfOperatorLocationAdminRoles.contains);
+}
+
+bool _isAdminOperatorOrLocationPath(String path) {
+  if (path == adminOperatorsPath || path.startsWith(adminOperatorsPrefix)) {
+    return true;
+  }
+  if (path == adminLocationsPath || path.startsWith(adminLocationsPrefix)) {
+    return true;
+  }
+  return false;
+}
+
+bool _isAdminOperatorOrLocationOperation(String path, String method) {
+  if (method == 'GET' && path == adminOperatorsPath) return true;
+  if (method == 'POST' && path == adminOperatorsPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminOperatorsPrefix)) return true;
+  if (method == 'POST' && path.startsWith(adminOperatorsPrefix)) return true;
+  if (method == 'POST' && path == adminLocationsPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminLocationsPrefix)) return true;
+  if (method == 'DELETE' && path.startsWith(adminLocationsPrefix)) return true;
+  return false;
+}
+
+Future<void> _routeOperatorLocationAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required OperatorLocationAdminProxyGateway gateway,
+  required String actorUserId,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.operator_location.$method:$actorUserId';
+
+  if (method == 'GET' && path == adminOperatorsPath) {
+    final operators = await gateway.listOperatorsWithLocations(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, <String, Object?>{'operators': operators});
+    return;
+  }
+
+  if (method == 'POST' && path == adminOperatorsPath) {
+    final businessName = _requireBodyString(body, 'business_name');
+    final ownerEmail = _requireBodyString(body, 'owner_email');
+    final subscriptionTier = _requireBodyString(body, 'subscription_tier');
+    final preferredCurrency = _requireBodyCurrency(body, 'preferred_currency');
+    final adminEmail = _requireBodyString(body, 'admin_user_email');
+    final primary = body['primary_location'];
+    if (primary is! Map) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'missing_primary_location',
+        message: 'primary_location object is required',
+      );
+    }
+    final primaryMap = primary.cast<String, Object?>();
+    final locationName = _requireBodyString(primaryMap, 'name');
+    final locationTimezone = _requireBodyTimezone(primaryMap, 'timezone');
+    final rolloverHour = _requireBodyRolloverHour(
+      primaryMap,
+      'business_day_rollover_hour',
+    );
+    final bundle = await gateway.onboardOperator(
+      actorUserId: actorUserId,
+      businessName: businessName,
+      ownerEmail: ownerEmail,
+      subscriptionTier: subscriptionTier,
+      preferredCurrency: preferredCurrency,
+      adminUserEmail: adminEmail,
+      primaryLocationName: locationName,
+      primaryLocationTimezone: locationTimezone,
+      primaryLocationRolloverHour: rolloverHour,
+      adminReason: '$reasonPrefix:onboard',
+    );
+    _writeJson(response, 201, bundle);
+    return;
+  }
+
+  if (method == 'PATCH' && path.startsWith(adminOperatorsPrefix)) {
+    final operatorId = _pathSuffix(path, adminOperatorsPrefix);
+    if (operatorId == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    String? preferredCurrency;
+    if (body.containsKey('preferred_currency')) {
+      preferredCurrency = _requireBodyCurrency(body, 'preferred_currency');
+    }
+    final patched = await gateway.patchOperator(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      businessName: _optionalBodyString(body, 'business_name'),
+      ownerEmail: _optionalBodyString(body, 'owner_email'),
+      subscriptionTier: _optionalBodyString(body, 'subscription_tier'),
+      preferredCurrency: preferredCurrency,
+      primaryLocationId: _optionalBodyString(body, 'primary_location_id'),
+      adminReason: '$reasonPrefix:patch:$operatorId',
+    );
+    if (patched == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_operator',
+        'message': 'operator not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'operator': patched});
+    return;
+  }
+
+  if (method == 'POST' && path.startsWith(adminOperatorsPrefix)) {
+    final action = _operatorActionFromPath(path);
+    if (action == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    Map<String, Object?>? updated;
+    if (action.action == 'suspend') {
+      updated = await gateway.suspendOperator(
+        actorUserId: actorUserId,
+        operatorId: action.operatorId,
+        adminReason: '$reasonPrefix:suspend:${action.operatorId}',
+      );
+    } else if (action.action == 'reactivate') {
+      updated = await gateway.reactivateOperator(
+        actorUserId: actorUserId,
+        operatorId: action.operatorId,
+        adminReason: '$reasonPrefix:reactivate:${action.operatorId}',
+      );
+    } else {
+      _writeNotFound(response, request);
+      return;
+    }
+    if (updated == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_operator',
+        'message': 'operator not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'operator': updated});
+    return;
+  }
+
+  if (method == 'POST' && path == adminLocationsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final name = _requireBodyString(body, 'name');
+    final timezone = _requireBodyTimezone(body, 'timezone');
+    final rolloverHour = _requireBodyRolloverHour(
+      body,
+      'business_day_rollover_hour',
+    );
+    final address = _optionalBodyString(body, 'address') ?? '';
+    final created = await gateway.addLocation(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      name: name,
+      address: address,
+      timezone: timezone,
+      businessDayRolloverHour: rolloverHour,
+      adminReason: '$reasonPrefix:add_location:$operatorId',
+    );
+    _writeJson(response, 201, <String, Object?>{'location': created});
+    return;
+  }
+
+  if (method == 'PATCH' && path.startsWith(adminLocationsPrefix)) {
+    final locationId = _pathSuffix(path, adminLocationsPrefix);
+    if (locationId == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    String? timezone;
+    if (body.containsKey('timezone')) {
+      timezone = _requireBodyTimezone(body, 'timezone');
+    }
+    int? rolloverHour;
+    if (body.containsKey('business_day_rollover_hour')) {
+      rolloverHour = _requireBodyRolloverHour(
+        body,
+        'business_day_rollover_hour',
+      );
+    }
+    final patched = await gateway.patchLocation(
+      actorUserId: actorUserId,
+      locationId: locationId,
+      name: _optionalBodyString(body, 'name'),
+      address: _optionalBodyString(body, 'address'),
+      timezone: timezone,
+      businessDayRolloverHour: rolloverHour,
+      adminReason: '$reasonPrefix:patch_location:$locationId',
+    );
+    if (patched == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_location',
+        'message': 'location not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'location': patched});
+    return;
+  }
+
+  if (method == 'DELETE' && path.startsWith(adminLocationsPrefix)) {
+    final locationId = _pathSuffix(path, adminLocationsPrefix);
+    if (locationId == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final result = await gateway.removeLocation(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      adminReason: '$reasonPrefix:remove_location:$locationId',
+    );
+    switch (result) {
+      case AdminLocationRemovalResult.removed:
+        _writeJson(response, 200, <String, Object?>{
+          'ok': true,
+          'removed': true,
+        });
+        return;
+      case AdminLocationRemovalResult.notFound:
+        _writeJson(response, 404, <String, Object?>{
+          'error': 'unknown_location',
+          'message': 'location not found',
+        });
+        return;
+      case AdminLocationRemovalResult.primaryLocationProtected:
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'cannot_remove_primary_location',
+          'message':
+              "reassign the operator's primary_location_id before removing this location",
+        });
+        return;
+    }
+  }
+
+  _writeNotFound(response, request);
+}
+
+void _writeNotFound(HttpResponse response, HttpRequest request) {
+  _writeJson(response, 404, <String, Object?>{
+    'error': 'not found',
+    'method': request.method,
+    'path': request.uri.path,
+  });
+}
+
+class _AdminInputError implements Exception {
+  const _AdminInputError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+}
+
+class _OperatorAction {
+  const _OperatorAction({required this.operatorId, required this.action});
+
+  final String operatorId;
+  final String action;
+}
+
+_OperatorAction? _operatorActionFromPath(String path) {
+  if (!path.startsWith(adminOperatorsPrefix)) return null;
+  final rest = path.substring(adminOperatorsPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts.any((part) => part.isEmpty)) return null;
+  return _OperatorAction(
+    operatorId: Uri.decodeComponent(parts[0]),
+    action: Uri.decodeComponent(parts[1]),
+  );
+}
+
+String _requireBodyString(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw is! String || raw.trim().isEmpty) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'missing_$field',
+      message: '$field is required',
+    );
+  }
+  return raw.trim();
+}
+
+String? _optionalBodyString(Map<String, Object?> body, String field) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! String) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be a string',
+    );
+  }
+  if (raw.trim().isEmpty) return null;
+  return raw.trim();
+}
+
+String _requireBodyCurrency(Map<String, Object?> body, String field) {
+  final raw = _requireBodyString(body, field).toUpperCase();
+  if (!RegExp(r'^[A-Z]{3}$').hasMatch(raw)) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be a 3-letter ISO currency code',
+    );
+  }
+  return raw;
+}
+
+String _requireBodyTimezone(Map<String, Object?> body, String field) {
+  final raw = _requireBodyString(body, field);
+  if (!_isLikelyIanaTimezoneInternal(raw)) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an IANA timezone (e.g. America/Toronto)',
+    );
+  }
+  return raw;
+}
+
+int _requireBodyRolloverHour(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw is! int) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an integer between 0 and 23',
+    );
+  }
+  if (raw < 0 || raw > 23) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be between 0 and 23',
+    );
+  }
+  return raw;
+}
+
+/// Same catalog-backed validation as the admin client.
+bool _isLikelyIanaTimezoneInternal(String value) {
+  return isValidIanaTimezoneName(value);
+}
+
+Future<ProxyJwtClaims?> _resolveVerifiedClaimsOrWrite(
+  HttpRequest request,
+  HttpResponse response,
+  ProxyRequestGuard authGuard,
+) async {
+  try {
+    return await authGuard.requireVerifiedClaims(
+      authorizationHeader: request.headers.value(
+        HttpHeaders.authorizationHeader,
+      ),
+    );
+  } on ProxyAuthError catch (error) {
+    _writeJson(response, error.statusCode, <String, Object?>{
+      'error': error.message,
+    });
+    return null;
   }
 }
 
@@ -4465,6 +5039,19 @@ void _writeJson(
   response.statusCode = statusCode;
   response.headers.contentType = ContentType.json;
   response.write(jsonEncode(body));
+}
+
+void _setAdminOperatorLocationCorsHeaders(HttpResponse response) {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET,POST,PATCH,DELETE,OPTIONS',
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Authorization,Content-Type,Accept',
+  );
+  response.headers.set('Access-Control-Max-Age', '3600');
 }
 
 String _nonBlankOr(String? raw, String fallback) {

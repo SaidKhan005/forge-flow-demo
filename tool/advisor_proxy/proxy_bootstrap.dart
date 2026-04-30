@@ -8,7 +8,10 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/recovery_code_attempt_store.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
@@ -52,6 +55,7 @@ class ProxyProductionBindings {
     required this.servicePrincipalJwtIssuanceGateway,
     required this.passwordChangeGateway,
     required this.mfaOperationsGateway,
+    required this.operatorLocationAdminGateway,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -62,6 +66,7 @@ class ProxyProductionBindings {
   final ServicePrincipalJwtIssuanceGateway servicePrincipalJwtIssuanceGateway;
   final PasswordChangeGateway passwordChangeGateway;
   final MfaOperationsGateway mfaOperationsGateway;
+  final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -86,6 +91,16 @@ ProxyProductionBindings buildProxyProductionBindings(
   final tenantAudit = AuthEventsAuditRepository(tenantWrapper);
   final tenantUsers = UsersRepository(tenantWrapper);
   final tenantMfaFactors = MfaFactorsRepository(tenantWrapper);
+  final adminAudit = AuthEventsAuditRepository(adminWrapper);
+  final authOperationsGateway = RepositoryAuthOperationsGateway(
+    firebaseAdmin: firebaseAdmin,
+    usersRepository: UsersRepository(adminWrapper),
+    rolesRepository: RolesRepository(adminWrapper),
+    rolePermissionsRepository: RolePermissionsRepository(adminWrapper),
+    userRolesRepository: UserRolesRepository(adminWrapper),
+    authInvitesRepository: AuthInvitesRepository(adminWrapper),
+    auditRepository: adminAudit,
+  );
 
   final permissionSnapshotResolver = RepositoryProxyPermissionSnapshotResolver(
     userRolesRepository: tenantUserRoles,
@@ -104,15 +119,7 @@ ProxyProductionBindings buildProxyProductionBindings(
       rolePermissionsRepository: tenantRolePermissions,
       requiresMfaKeys: PermissionKeys.requiresMfa,
     ),
-    authOperationsGateway: RepositoryAuthOperationsGateway(
-      firebaseAdmin: firebaseAdmin,
-      usersRepository: UsersRepository(adminWrapper),
-      rolesRepository: RolesRepository(adminWrapper),
-      rolePermissionsRepository: RolePermissionsRepository(adminWrapper),
-      userRolesRepository: UserRolesRepository(adminWrapper),
-      authInvitesRepository: AuthInvitesRepository(adminWrapper),
-      auditRepository: AuthEventsAuditRepository(adminWrapper),
-    ),
+    authOperationsGateway: authOperationsGateway,
     servicePrincipalJwtIssuanceGateway:
         PostgresServicePrincipalJwtIssuanceGateway(
           wrapper: tenantWrapper,
@@ -157,7 +164,370 @@ ProxyProductionBindings buildProxyProductionBindings(
       ),
       auditRepository: tenantAudit,
     ),
+    // Phase 11A.1 — operator/location admin gateway. The repos run
+    // through the admin pool (POSTGRES_ADMIN_URL) because the F&F
+    // admin console scans / writes across operators; per-tenant RLS
+    // would block cross-operator listings.
+    operatorLocationAdminGateway: RepositoryOperatorLocationAdminProxyGateway(
+      operatorsRepository: OperatorsRepository(adminWrapper),
+      locationsRepository: LocationsRepository(adminWrapper),
+      operatorAdminsRepository: OperatorAdminsRepository(adminWrapper),
+      authOperationsGateway: authOperationsGateway,
+      auditRepository: adminAudit,
+    ),
   );
+}
+
+/// Production [OperatorLocationAdminProxyGateway] backed by
+/// [OperatorsRepository] / [LocationsRepository] /
+/// [OperatorAdminsRepository]. Translates the proxy's command shape
+/// into repo calls and projects the row results into JSON-ready
+/// maps the route handler can return as-is. Every UUID is generated
+/// by Postgres (`default gen_random_uuid()`) and returned via
+/// `RETURNING`, so multiple Cloud Run instances cannot collide on
+/// IDs.
+class RepositoryOperatorLocationAdminProxyGateway
+    implements OperatorLocationAdminProxyGateway {
+  RepositoryOperatorLocationAdminProxyGateway({
+    required OperatorsRepository operatorsRepository,
+    required LocationsRepository locationsRepository,
+    required OperatorAdminsRepository operatorAdminsRepository,
+    required AuthOperationsGateway authOperationsGateway,
+    required AuthEventsAuditRepository auditRepository,
+  }) : _operators = operatorsRepository,
+       _locations = locationsRepository,
+       _operatorAdmins = operatorAdminsRepository,
+       _authOperationsGateway = authOperationsGateway,
+       _auditRepository = auditRepository;
+
+  final OperatorsRepository _operators;
+  final LocationsRepository _locations;
+  final OperatorAdminsRepository _operatorAdmins;
+  final AuthOperationsGateway _authOperationsGateway;
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<List<Map<String, Object?>>> listOperatorsWithLocations({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final operators = await _operators.listOperators(adminReason: adminReason);
+    final locationsByOperator = <String, List<LocationAdminRow>>{};
+    final allLocations = await _locations.listAllLocations(
+      adminReason: adminReason,
+    );
+    for (final loc in allLocations) {
+      locationsByOperator
+          .putIfAbsent(loc.operatorId, () => <LocationAdminRow>[])
+          .add(loc);
+    }
+    final bundles = <Map<String, Object?>>[
+      for (final op in operators)
+        <String, Object?>{
+          'operator': op.toJson(),
+          'locations': <Map<String, Object?>>[
+            for (final loc
+                in locationsByOperator[op.operatorId] ??
+                    const <LocationAdminRow>[])
+              loc.toJson(),
+          ],
+          // Per-operator admin-grant count. The full list is loaded
+          // on demand via the future per-operator detail endpoint
+          // (Phase 11A.x). Surfacing the count here lets the admin
+          // console flag operators without an admin attached.
+          'admin_grant_count': (await _operatorAdmins.listForOperator(
+            operatorId: op.operatorId,
+            adminReason: '$adminReason:admin_grants:${op.operatorId}',
+          )).length,
+        },
+    ];
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.operator_location.list',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'operator_count': operators.length,
+        'location_count': allLocations.length,
+      },
+    );
+    return bundles;
+  }
+
+  @override
+  Future<Map<String, Object?>> onboardOperator({
+    required String actorUserId,
+    required String businessName,
+    required String ownerEmail,
+    required String subscriptionTier,
+    required String preferredCurrency,
+    required String adminUserEmail,
+    required String primaryLocationName,
+    required String primaryLocationTimezone,
+    required int primaryLocationRolloverHour,
+    required String adminReason,
+  }) async {
+    final result = await _operators.onboardOperatorAtomically(
+      businessName: businessName,
+      ownerEmail: ownerEmail,
+      subscriptionTier: subscriptionTier,
+      preferredCurrency: preferredCurrency,
+      locationName: primaryLocationName,
+      locationAddress: '',
+      locationTimezone: primaryLocationTimezone,
+      locationRolloverHour: primaryLocationRolloverHour,
+      adminReason: adminReason,
+    );
+    final invite = await _authOperationsGateway.createInvite(
+      TeamInviteCreateCommand(
+        actorUserId: actorUserId,
+        operatorId: result.operator.operatorId,
+        locationId: result.location.locationId,
+        email: adminUserEmail,
+        roleId: 'operator_owner',
+        scopeType: 'operator_wide',
+      ),
+    );
+    final adminUserId = invite.userId;
+    if (adminUserId == null || adminUserId.isEmpty) {
+      throw StateError(
+        'auth operations invite did not return the created user_id',
+      );
+    }
+    await _operatorAdmins.upsertAdminGrant(
+      userId: adminUserId,
+      operatorId: result.operator.operatorId,
+      isSuperAdmin: false,
+      scopeType: 'operator_owner',
+      adminReason: '$adminReason:operator_admins',
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      targetUserId: adminUserId,
+      operatorId: result.operator.operatorId,
+      locationId: result.location.locationId,
+      eventType: 'admin.operator_location.onboarded',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'business_name': businessName,
+        'owner_email': ownerEmail,
+        'admin_user_email': adminUserEmail,
+        'invite_id': invite.inviteId,
+      },
+    );
+    return <String, Object?>{
+      'operator': result.operator.toJson(),
+      'locations': <Map<String, Object?>>[result.location.toJson()],
+      'admin_user_id': adminUserId,
+      'admin_invite_id': invite.inviteId,
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>?> patchOperator({
+    required String actorUserId,
+    required String operatorId,
+    String? businessName,
+    String? ownerEmail,
+    String? subscriptionTier,
+    String? preferredCurrency,
+    String? primaryLocationId,
+    required String adminReason,
+  }) async {
+    final updated = await _operators.updateOperator(
+      operatorId: operatorId,
+      businessName: businessName,
+      ownerEmail: ownerEmail,
+      subscriptionTier: subscriptionTier,
+      preferredCurrency: preferredCurrency,
+      primaryLocationId: primaryLocationId,
+      adminReason: adminReason,
+    );
+    if (updated != null) {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: updated.operatorId,
+        locationId: updated.primaryLocationId,
+        eventType: 'admin.operator_location.operator_patched',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'changed_fields': <String>[
+            if (businessName != null) 'business_name',
+            if (ownerEmail != null) 'owner_email',
+            if (subscriptionTier != null) 'subscription_tier',
+            if (preferredCurrency != null) 'preferred_currency',
+            if (primaryLocationId != null) 'primary_location_id',
+          ],
+        },
+      );
+    }
+    return updated?.toJson();
+  }
+
+  @override
+  Future<Map<String, Object?>?> suspendOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    final updated = await _operators.suspendOperator(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    if (updated != null) {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: updated.operatorId,
+        locationId: updated.primaryLocationId,
+        eventType: 'admin.operator_location.operator_suspended',
+        adminReason: adminReason,
+      );
+    }
+    return updated?.toJson();
+  }
+
+  @override
+  Future<Map<String, Object?>?> reactivateOperator({
+    required String actorUserId,
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    final updated = await _operators.reactivateOperator(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    if (updated != null) {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: updated.operatorId,
+        locationId: updated.primaryLocationId,
+        eventType: 'admin.operator_location.operator_reactivated',
+        adminReason: adminReason,
+      );
+    }
+    return updated?.toJson();
+  }
+
+  @override
+  Future<Map<String, Object?>> addLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String name,
+    required String address,
+    required String timezone,
+    required int businessDayRolloverHour,
+    required String adminReason,
+  }) async {
+    final created = await _locations.insertLocation(
+      operatorId: operatorId,
+      name: name,
+      address: address,
+      timezone: timezone,
+      businessDayRolloverHour: businessDayRolloverHour,
+      adminReason: adminReason,
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: created.operatorId,
+      locationId: created.locationId,
+      eventType: 'admin.operator_location.location_added',
+      adminReason: adminReason,
+      payload: <String, Object?>{'name': name},
+    );
+    return created.toJson();
+  }
+
+  @override
+  Future<Map<String, Object?>?> patchLocation({
+    required String actorUserId,
+    required String locationId,
+    String? name,
+    String? address,
+    String? timezone,
+    int? businessDayRolloverHour,
+    required String adminReason,
+  }) async {
+    final patched = await _locations.updateLocation(
+      locationId: locationId,
+      name: name,
+      address: address,
+      timezone: timezone,
+      businessDayRolloverHour: businessDayRolloverHour,
+      adminReason: adminReason,
+    );
+    if (patched != null) {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: patched.operatorId,
+        locationId: patched.locationId,
+        eventType: 'admin.operator_location.location_patched',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'changed_fields': <String>[
+            if (name != null) 'name',
+            if (address != null) 'address',
+            if (timezone != null) 'timezone',
+            if (businessDayRolloverHour != null) 'business_day_rollover_hour',
+          ],
+        },
+      );
+    }
+    return patched?.toJson();
+  }
+
+  @override
+  Future<AdminLocationRemovalResult> removeLocation({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) async {
+    final operator = await _operators.findById(
+      operatorId: operatorId,
+      adminReason: '$adminReason:lookup',
+    );
+    if (operator == null) {
+      return AdminLocationRemovalResult.notFound;
+    }
+    if (operator.primaryLocationId == locationId) {
+      return AdminLocationRemovalResult.primaryLocationProtected;
+    }
+    final affected = await _locations.deleteLocation(
+      locationId: locationId,
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    if (affected == 0) {
+      return AdminLocationRemovalResult.notFound;
+    }
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: 'admin.operator_location.location_removed',
+      adminReason: adminReason,
+    );
+    return AdminLocationRemovalResult.removed;
+  }
+
+  Future<void> _audit({
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      targetUserId: targetUserId,
+      eventType: eventType,
+      adminReason: adminReason,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
 }
 
 /// Builds the production auth-session ledger writer for the proxy.

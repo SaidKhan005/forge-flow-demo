@@ -86,7 +86,8 @@ Future<void> main(List<String> args) async {
     'auth_operations: postgres, '
     'service_principal_issuance: postgres, '
     'password_change: postgres, '
-    'mfa_operations: postgres_identitytoolkit_firebase_mfa)',
+    'mfa_operations: postgres_identitytoolkit_firebase_mfa, '
+    'operator_location_admin: postgres)',
   );
 
   await for (final request in server) {
@@ -109,6 +110,8 @@ Future<void> main(List<String> args) async {
             productionBindings.servicePrincipalJwtIssuanceGateway,
         passwordChangeGateway: productionBindings.passwordChangeGateway,
         mfaOperationsGateway: productionBindings.mfaOperationsGateway,
+        operatorLocationAdminGateway:
+            productionBindings.operatorLocationAdminGateway,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');

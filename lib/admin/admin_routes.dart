@@ -1,14 +1,25 @@
-// Phase 11A.0 — Admin route table.
+// Phase 11A.0 - Admin route table.
 //
 // The admin console is a multi-surface back-office. 11A.0 lights up
 // the empty Home route only; later 11A.x slices fill in the rest.
 // Keeping the route catalog in a single typed list lets the shell
 // nav render placeholders for the surfaces that aren't online yet
 // without scattering `if (slice >= X)` flags across the UI.
+//
+// 11A.1 - the Operators route flips from placeholder to live; its
+// builder reads the [OperatorLocationAdminGateway] from
+// [AdminConsoleServicesScope] so production can bind the HTTP
+// gateway without rewriting the route catalog. The default
+// fallback is an in-memory demo gateway preloaded with two
+// fixtures so the kDemoMode walkthrough click path runs without
+// the Cloud Run admin proxy.
 
 import 'package:flutter/material.dart';
 
+import 'models/operator_location_admin_models.dart';
 import 'screens/admin_home_screen.dart';
+import 'screens/operator_location_admin_screen.dart';
+import 'services/operator_location_admin_gateway.dart';
 
 /// One entry in the admin route catalog.
 @immutable
@@ -57,27 +68,29 @@ class AdminRoute {
 /// renaming the title can't accidentally drop the home surface.
 const String kAdminHomeRouteId = 'home';
 
-/// The admin route table. Order is the side-nav order. Only `home`
-/// is live in 11A.0; the rest are deliberately marked `placeholder`
-/// so the surface area is visible to operators walking the shell
-/// without leaking incomplete UX.
+/// Canonical Operators route ID (11A.1).
+const String kAdminOperatorsRouteId = 'operators';
+
+/// The admin route table. Order is the side-nav order. 11A.1 promotes
+/// `operators` from placeholder to live; the rest are deliberately
+/// marked `placeholder` so the surface area is visible to operators
+/// walking the shell without leaking incomplete UX.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
     id: kAdminHomeRouteId,
     title: 'Home',
     path: '/',
     icon: Icons.home_outlined,
-    subtitle: 'Operations console — landing surface.',
+    subtitle: 'Operations console - landing surface.',
     builder: _buildHome,
   ),
   AdminRoute(
-    id: 'operators',
+    id: kAdminOperatorsRouteId,
     title: 'Operators',
     path: '/operators',
     icon: Icons.business_outlined,
-    subtitle: 'Operator + location CRUD lands in 11A.1.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle: 'Operator + location CRUD.',
+    builder: _buildOperators,
   ),
   AdminRoute(
     id: 'pricing',
@@ -128,9 +141,110 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
 
 Widget _buildHome(BuildContext context) => const AdminHomeScreen();
 
+Widget _buildOperators(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
+  return OperatorLocationAdminScreen(gateway: gateway);
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
   // never actually renders.
   return const SizedBox.shrink();
 }
+
+/// Inherited services scope for the admin console. Production wires
+/// the HTTP-backed [OperatorLocationAdminGateway] above the auth
+/// gate; demo + widget tests fall back to a seeded in-memory
+/// gateway so the click path runs without the Cloud Run admin proxy.
+class AdminConsoleServicesScope extends InheritedWidget {
+  const AdminConsoleServicesScope({
+    super.key,
+    required super.child,
+    required this.operatorLocationGateway,
+  });
+
+  final OperatorLocationAdminGateway operatorLocationGateway;
+
+  static OperatorLocationAdminGateway operatorLocationGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.operatorLocationGateway ?? _defaultDemoGateway;
+  }
+
+  @override
+  bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
+      operatorLocationGateway != oldWidget.operatorLocationGateway;
+}
+
+/// Demo gateway shared by walkthrough + admin shell when no
+/// production scope is mounted. Seeded with two fixture operators
+/// so the click path has something to show on first paint without
+/// asking the F&F admin to manually run onboarding.
+final OperatorLocationAdminGateway _defaultDemoGateway =
+    InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        OperatorAdminBundle(
+          operator: OperatorAdminRecord(
+            operatorId: '00000000-0000-4000-8000-000000000001',
+            businessName: 'Demo Diner Co.',
+            ownerEmail: 'owner@demo-diner.test',
+            subscriptionTier: 'launch',
+            preferredCurrency: 'CAD',
+            primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+            suspendedAt: null,
+            createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+            updatedAt: DateTime.utc(2026, 4, 1, 10, 0),
+          ),
+          locations: <LocationAdminRecord>[
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000a1',
+              operatorId: '00000000-0000-4000-8000-000000000001',
+              name: 'Toronto Yorkville',
+              address: '123 Main St, Toronto, ON',
+              timezone: 'America/Toronto',
+              businessDayRolloverHour: 4,
+              createdAt: DateTime.utc(2026, 1, 12, 14, 30),
+              updatedAt: DateTime.utc(2026, 1, 12, 14, 30),
+            ),
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000a2',
+              operatorId: '00000000-0000-4000-8000-000000000001',
+              name: 'Vancouver Robson',
+              address: '456 Robson St, Vancouver, BC',
+              timezone: 'America/Vancouver',
+              businessDayRolloverHour: 4,
+              createdAt: DateTime.utc(2026, 2, 1, 9, 0),
+              updatedAt: DateTime.utc(2026, 2, 1, 9, 0),
+            ),
+          ],
+        ),
+        OperatorAdminBundle(
+          operator: OperatorAdminRecord(
+            operatorId: '00000000-0000-4000-8000-000000000002',
+            businessName: 'Sunset Cafe Group',
+            ownerEmail: 'owner@sunset-cafe.test',
+            subscriptionTier: 'pilot',
+            preferredCurrency: 'USD',
+            primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+            suspendedAt: null,
+            createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+            updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
+          ),
+          locations: <LocationAdminRecord>[
+            LocationAdminRecord(
+              locationId: '00000000-0000-4000-8000-0000000000b1',
+              operatorId: '00000000-0000-4000-8000-000000000002',
+              name: 'Brooklyn Williamsburg',
+              address: '78 Bedford Ave, Brooklyn, NY',
+              timezone: 'America/New_York',
+              businessDayRolloverHour: 5,
+              createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+              updatedAt: DateTime.utc(2026, 3, 5, 11, 0),
+            ),
+          ],
+        ),
+      ],
+    );

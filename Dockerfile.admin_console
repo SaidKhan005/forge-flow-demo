@@ -22,7 +22,9 @@
 # loud `-DemoMode` switch.
 #
 # Build (live, default):
-#   docker build -f Dockerfile.admin_console -t forge-flow-admin-console .
+#   docker build -f Dockerfile.admin_console \
+#     --build-arg ADMIN_PROXY_BASE_URI=https://admin-proxy.forgeflow.app \
+#     -t forge-flow-admin-console .
 # Build (demo, local sandbox only):
 #   docker build -f Dockerfile.admin_console \
 #     --build-arg ADMIN_DEMO_AUTH=true \
@@ -34,6 +36,7 @@ FROM ghcr.io/cirruslabs/flutter:stable AS build
 # local sandbox build; never set true in a Cloud Run deploy without
 # the corresponding deploy-script `-DemoMode` warning path.
 ARG ADMIN_DEMO_AUTH=false
+ARG ADMIN_PROXY_BASE_URI=
 ARG ADMIN_BUILD_FLAVOR=admin
 
 WORKDIR /workspace
@@ -46,11 +49,17 @@ COPY assets ./assets
 COPY web ./web
 COPY analysis_options.yaml ./analysis_options.yaml
 
+RUN if [ "${ADMIN_DEMO_AUTH}" != "true" ] && [ -z "${ADMIN_PROXY_BASE_URI}" ]; then \
+        echo "ADMIN_PROXY_BASE_URI build arg is required when ADMIN_DEMO_AUTH=false"; \
+        exit 1; \
+    fi
+
 RUN flutter config --enable-web \
     && flutter build web \
         --target=lib/main_admin.dart \
         --release \
-        --dart-define=ADMIN_DEMO_AUTH=${ADMIN_DEMO_AUTH}
+        --dart-define=ADMIN_DEMO_AUTH=${ADMIN_DEMO_AUTH} \
+        --dart-define=ADMIN_PROXY_BASE_URI=${ADMIN_PROXY_BASE_URI}
 
 FROM nginx:1.27-alpine
 
