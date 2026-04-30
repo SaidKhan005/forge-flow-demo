@@ -634,6 +634,21 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   TeamUserListItem _teamUserFromEntry(TeamUserListEntry entry) {
+    // Phase 9.UX inheritance-hint slice — `grants` is intentionally
+    // left at its `const []` default. The current `TeamUserListEntry`
+    // shape projects `coalesce(ur.location_id, u.primary_location_id)`
+    // into `entry.locationId` (see
+    // `users_repository.dart` `selectTeamUsersByOperator`), so a
+    // non-null `entry.locationId` is ambiguous: it can be either a
+    // `location`-scoped grant's `ur.location_id` OR a primary-display
+    // location attached to an `operator_wide` grant. There is no
+    // field on the entry that disambiguates `scope_type`, so any
+    // best-effort derivation here would mislabel real rows
+    // (e.g., "Direct at Vancouver" for an operator-wide grant whose
+    // owner has a primary location). The Active grants block stays
+    // hidden on the production path until the gateway slice that
+    // Block 2 forbids in this lane lands and `TeamUserListEntry`
+    // carries the full grant set with authoritative `scope_type`.
     return TeamUserListItem(
       userId: entry.userId,
       email: entry.email,

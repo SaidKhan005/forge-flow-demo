@@ -81,6 +81,35 @@ class TeamOrgUnitOption {
   final String path;
 }
 
+/// Phase 9.UX inheritance-hint slice — UI projection of one row from
+/// `user_roles` (Postgres) so the role-change dialog can render an
+/// inheritance hint per grant. Mirrors the gateway-side
+/// `UserRoleGrantRow` shape (read-only). `effectiveLocationIds` is the
+/// denormalized list `user_effective_locations` materializes for an
+/// org-unit grant — the count drives the "({n} locations)" copy.
+class TeamUserRoleGrant {
+  const TeamUserRoleGrant({
+    required this.userRoleId,
+    required this.roleId,
+    required this.roleLabel,
+    required this.scopeType,
+    this.locationId,
+    this.orgUnitId,
+    this.effectiveLocationIds = const <String>[],
+  });
+
+  final String userRoleId;
+  final String roleId;
+  final String roleLabel;
+
+  /// `'operator_wide'`, `'org_unit'`, or `'location'`. Matches the
+  /// `user_roles.scope_type` CHECK constraint values.
+  final String scopeType;
+  final String? locationId;
+  final String? orgUnitId;
+  final List<String> effectiveLocationIds;
+}
+
 class TeamUserListItem {
   const TeamUserListItem({
     required this.userId,
@@ -96,6 +125,7 @@ class TeamUserListItem {
     this.mfaRemovalRequestId,
     this.userRoleId,
     this.lastActiveAt,
+    this.grants = const <TeamUserRoleGrant>[],
   });
 
   final String userId;
@@ -111,6 +141,7 @@ class TeamUserListItem {
   final String? mfaRemovalRequestId;
   final String? userRoleId;
   final DateTime? lastActiveAt;
+  final List<TeamUserRoleGrant> grants;
 }
 
 class TeamPendingInviteListItem {
@@ -2216,11 +2247,20 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
       title: const Text('Change Role'),
       content: SizedBox(
         width: 420,
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text(widget.user.email, style: AppTextStyles.body13()),
+            if (widget.user.grants.isNotEmpty) ...[
+              const SizedBox(height: 14),
+              _ActiveGrantsList(
+                grants: widget.user.grants,
+                locationOptions: widget.locationOptions,
+                orgUnitOptions: widget.orgUnitOptions,
+              ),
+            ],
             const SizedBox(height: 14),
             DropdownButtonFormField<String>(
               key: const Key('team_role_change_role_dropdown'),
@@ -2326,6 +2366,7 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
             ],
           ],
         ),
+        ),
       ),
       actions: [
         TextButton(
@@ -2358,6 +2399,128 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
         ),
       ],
     );
+  }
+}
+
+/// Renders the user's existing role grants inside the role-change
+/// dialog with a per-row inheritance hint. Phase 9.UX inheritance-hint
+/// slice. Label lookup uses the section's already-loaded
+/// `TeamLocationOption` and `TeamOrgUnitOption` lists (mirrored from
+/// the gateway's `TeamOrgLocationEntry` / `TeamOrgUnitEntry` shape) so
+/// no second load path is introduced.
+class _ActiveGrantsList extends StatelessWidget {
+  const _ActiveGrantsList({
+    required this.grants,
+    required this.locationOptions,
+    required this.orgUnitOptions,
+  });
+
+  final List<TeamUserRoleGrant> grants;
+  final List<TeamLocationOption> locationOptions;
+  final List<TeamOrgUnitOption> orgUnitOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('team_role_change_active_grants'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Active grants',
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          for (final grant in grants) _GrantRow(
+            grant: grant,
+            locationOptions: locationOptions,
+            orgUnitOptions: orgUnitOptions,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GrantRow extends StatelessWidget {
+  const _GrantRow({
+    required this.grant,
+    required this.locationOptions,
+    required this.orgUnitOptions,
+  });
+
+  final TeamUserRoleGrant grant;
+  final List<TeamLocationOption> locationOptions;
+  final List<TeamOrgUnitOption> orgUnitOptions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: Key('team_role_change_grant_${grant.userRoleId}'),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            grant.roleLabel,
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            _hintCopy(),
+            key: Key('team_role_change_grant_hint_${grant.userRoleId}'),
+            style: AppTextStyles.body12(color: AppColors.textMuted),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _hintCopy() {
+    switch (grant.scopeType) {
+      case 'operator_wide':
+        return 'Applies operator-wide';
+      case 'org_unit':
+        final orgUnitId = grant.orgUnitId;
+        final label = orgUnitId == null
+            ? null
+            : _lookupOrgUnitLabel(orgUnitId);
+        if (label == null) return 'org_unit (unknown)';
+        final count = grant.effectiveLocationIds.length;
+        final noun = count == 1 ? 'location' : 'locations';
+        return 'Inherited via $label ($count $noun)';
+      case 'location':
+        final locationId = grant.locationId;
+        final label = locationId == null
+            ? null
+            : _lookupLocationLabel(locationId);
+        if (label == null) return 'location (unknown)';
+        return 'Direct at $label';
+      default:
+        return '${grant.scopeType} (unknown)';
+    }
+  }
+
+  String? _lookupOrgUnitLabel(String orgUnitId) {
+    for (final unit in orgUnitOptions) {
+      if (unit.orgUnitId == orgUnitId) return unit.label;
+    }
+    return null;
+  }
+
+  String? _lookupLocationLabel(String locationId) {
+    for (final location in locationOptions) {
+      if (location.locationId == locationId) return location.label;
+    }
+    return null;
   }
 }
 
