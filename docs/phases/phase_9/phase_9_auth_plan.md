@@ -1161,40 +1161,53 @@ already covered by `11A.1` and `11A.7-10`. No additional 11A scope here.
 **UX sub-slice family:** `9.UX.0` through `9.UX.7`, plus `9.UX.1a`
 as the MFA hardening sub-slice
 
-- `9.UX.0` (in flight, ~50% done) — auth + team + account shell:
-  branded login, team management, account section, MFA challenge entry,
-  permission resolution wiring across `forge_flow_app.dart` /
-  `barrio_app.dart`. Files: see git-status changes on `auth_session.dart`,
-  `permission_resolution.dart`, `team_settings_section.dart`,
-  `settings_data_sections.dart`, `settings_screen.dart`,
-  three Postgres repositories under
-  `lib/infrastructure/persistence/postgres/repositories/`.
-- `9.UX.1` — MFA self-enrollment + factor management. Reads/writes
-  `mfa_factors` via `auth_operations_gateway`. Recovery-code UX removed
-  for launch; lost-authenticator support routes through admin reset.
-- `9.UX.1a` — MFA production hardening inside the `9.UX.1` lane:
-  backend completion of 24h removals, fresh-auth + opaque proof for self
-  and admin reset, admin-help queued-false copy and cooldown,
-  no recovery-code display or challenge entry, Firebase/local drift repair for
-  self-removal, self/admin pending-removal cancel, and explicit no phone/SMS
-  MFA scope. Note: this slice queues `event_outbox` rows only. True
-  in-app/email notification delivery is not finished until the Phase 10a
+- `9.UX.0` **accepted** (commit `97b519c`) — auth + team + account
+  shell: branded login, team management, account section, MFA challenge
+  entry, permission resolution wiring across `forge_flow_app.dart` /
+  `barrio_app.dart`. Walkthrough: `docs/_walkthroughs/9.UX.0.md`.
+- `9.UX.1` **accepted** (commits `509e7bc`, `9cb1e42`, `3a11c57`,
+  `78337de`, `b7b61f5`) — MFA self-enrollment + factor management via
+  `settings_mfa_section.dart`. Recovery-code UX removed for launch;
+  lost-authenticator support routes through admin reset. Walkthrough:
+  `docs/_walkthroughs/9.UX.1.md`.
+- `9.UX.1a` **accepted (folded into `9.UX.1`)** — MFA production
+  hardening: backend-scheduled 24h removals, fresh-auth + opaque proof
+  for self/admin reset, admin-help queued-false copy and cooldown, no
+  recovery-code display or challenge entry, Firebase/local drift repair
+  for self-removal, self/admin pending-removal cancel, no phone/SMS MFA.
+  Migrations `202604300000`, `202604300001`, `202604300002` landed.
+  Note: this slice queues `event_outbox` rows only. True in-app/email
+  notification delivery (B49/B50) is not finished until the Phase 10a
   outbox bridge/provider drains those events.
-- `9.UX.2` — custom role editor + role catalog viewer. Consumes
-  B17 `/v1/admin/auth/roles` (already deployed staging rev `00018-ztq`).
-- `9.UX.3` — permission explainer. Uses `permission_resolution.dart`
-  runtime + 9.0a deny rules; renders inheritance chain when a user
-  has unexpected access or is unexpectedly blocked.
-- `9.UX.4` — org hierarchy + location-scoped grants. Reads `org_units`
-  from 9.0Σ.c; lets the operator browse the location tree and grant
-  per-location roles.
-- `9.UX.5` — active sessions viewer + sign-out-all-devices. Reads
-  `auth_sessions`; writes revocation through proxy.
-- `9.UX.6` — personal audit log viewer. Reads `auth_events_audit`
-  scoped to the actor (or to team members for managers).
-- `9.UX.7` — self-serve password reset / recovery flow. Extends
-  `login_screen.dart` with "Forgot password?" link + new
-  `password_reset_screen.dart`.
+- `9.UX.account-info` **accepted** (commits `0119025`, `57979b8`) —
+  read-only My info tile in Account section; self-scoped
+  `GET /v1/auth/account` contract; safe fallback while backend profile
+  refreshes. Walkthrough: `docs/_walkthroughs/9.UX.account-info.md`.
+  Operational gate: live proxy must include `account_info: postgres`
+  binding before device QA expects backend profile data.
+- `9.UX.2` **owed** — custom role editor + role catalog viewer.
+  Consumes B17 `/v1/admin/auth/roles` (already deployed staging rev
+  `00018-ztq`).
+- `9.UX.3` **owed** — permission explainer. Uses
+  `permission_resolution.dart` runtime + 9.0a deny rules; renders
+  inheritance chain when a user has unexpected access or is unexpectedly
+  blocked. Depends on `9.UX.2` role data + `9.UX.4` org-unit data
+  (`9.UX.4` already accepted).
+- `9.UX.4` **accepted** (commit `e61a2ee`) — org hierarchy +
+  location-scoped grants via `settings_org_hierarchy_section.dart`.
+  Reads `org_units` from 9.0Σ.c; operator browses the location tree
+  and grants per-location roles. Migration `202604290101`. Walkthrough:
+  `docs/_walkthroughs/9.UX.4.md`.
+- `9.UX.5` **owed** — active sessions viewer + sign-out-all-devices.
+  Reads `auth_sessions`; writes revocation through proxy.
+- `9.UX.6` **owed** — personal audit log viewer. Reads
+  `auth_events_audit` scoped to the actor (or to team members for
+  managers).
+- `9.UX.7` **owed** — self-serve password reset / recovery flow.
+  Extends `login_screen.dart` with "Forgot password?" link + new
+  `password_reset_screen.dart`. B48 backend (proxy
+  `POST /v1/auth/password/reset/confirm` + Firebase action page) is
+  local complete; this slice is the operator UX layer plus live deploy.
 
 T&Cs version history viewer + GDPR data-request UI fold into Phase 9.8
 (legal copy and processor list aren't ready until 9.8 enumerates them).

@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-30
+Updated: 2026-04-30 (slice-acceptance + parallel-lanes refresh)
 Owner: You
 Execution model: We think, Claude codes
 
@@ -189,14 +189,19 @@ slice from one phase to acceptance. File ownership, shared-seam
 serialization, walkthrough evidence per lane, and merge sequencing
 follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 
-1. `11A.0-6` - F&F Operations Console foundation. Scope:
-   `phase_11A_operations_console_plan.md`.
-2. `9.UX.0-7` plus `9.UX.1a` - Phase 9 operator-facing UX family and MFA
-   production-hardening sub-slice. Parallel with
-   `11A.0-6` (different code surfaces). Scope:
+1. `11A.0-6` - F&F Operations Console foundation.
+   Accepted: `11A.0`, `11A.1`. Owed: `11A.2-6`. Scope:
+   `phase_11A_operations_console_plan.md`. `11A.5` and `11A.6` blocked
+   on B44/B45/B47 producer wiring (see backlog).
+2. `9.UX.0-7` plus `9.UX.1a` and `9.UX.account-info` - Phase 9
+   operator-facing UX family. Accepted: `9.UX.0`, `9.UX.1` (incl.
+   `9.UX.1a` MFA production-hardening, folded), `9.UX.4`,
+   `9.UX.account-info`. Owed: `9.UX.2`, `9.UX.3`, `9.UX.5`, `9.UX.6`,
+   `9.UX.7`. Parallel with `11A.0-6` (different code surfaces). Scope:
    `phase_9_auth_plan.md` `Frontend Exposure` section. Within-family
    shared seams (e.g., `auth_operations_gateway.dart`,
-   `settings_screen.dart`) require sequencing per phase doc.
+   `settings_screen.dart`) require sequencing per phase doc;
+   additive-safe carve-outs allowed when the prompt names them.
 
 Codex sets the per-lane queue; this tracker lists which phases are
 active, not which slices are next per lane.
@@ -255,8 +260,8 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
-| `9.UX.0-7` + `9.UX.1a` | active in flight (`9.UX.0` ~50% done; `9.UX.1a` added after auth/MFA pressure test) | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
-| `11A.0-6` | next | `phase_11A_operations_console_plan.md` |
+| `9.UX.0-7` + `9.UX.1a` + `9.UX.account-info` | active; accepted: `9.UX.0`, `9.UX.1` (incl. `9.UX.1a`), `9.UX.4`, `9.UX.account-info`; owed: `9.UX.2`, `9.UX.3`, `9.UX.5`, `9.UX.6`, `9.UX.7` | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
+| `11A.0-6` | active; accepted: `11A.0`, `11A.1`; owed: `11A.2-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
 | `9.5`, `9.75` | queued | their respective plans |
@@ -305,7 +310,9 @@ and `phase_9/phase_9_scalability_decisions_2026-04-27.md`.
 
 ## Active Guardrails
 
-- Build cadence is sequential, not parallel.
+- Build cadence runs N parallel implementation lanes (worktrees) under
+  one Codex master lane. Active phases and per-lane shared-seam rules
+  follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 - Phase 8 is a pure transport swap. Fixture extraction, service moves,
   freshness audits, or behavior decisions belong in `7.57`, `7.58`, or `7.61`.
 - No app logic changes before `7.58` except scoped additive infrastructure

@@ -108,20 +108,26 @@ Specifically:
 
 ### Foundation (launch-blocking before 11b)
 
-- `11A.0` Flutter for Web project bootstrap. Brand styling
-  shared with operator app via the same `app_theme.dart`. Route
-  shell. Firebase Auth integration. Deploys to a separate Cloud
-  Run service. Empty admin home page rendering with brand
-  styling. Acceptance: navigable shell on `admin.forgeflow.app`
-  with auth gate.
-- `11A.1` **Operator + location management.** CRUD on
-  `operators`, `locations`, `users`, `operator_admins`. Onboard
-  new operator (creates rows, assigns subscription tier, sets
-  `preferred_currency`, sets `primary_location_id`). Edit
-  existing. Suspend / reactivate. Add / remove locations per
-  operator. Set per-location `timezone` (IANA picker) and
-  `business_day_rollover_hour`. Replaces "manual SQL INSERT"
-  as the new-operator onboarding path.
+- `11A.0` **accepted** (commit `0ca800c`) — Flutter for Web project
+  bootstrap. Brand styling shared with operator app via the same
+  `app_theme.dart`. Route shell. Firebase admin auth gate
+  (`FirebaseAdminAuthSource` in production; demo source under
+  `-DemoMode`). Deploys to a separate Cloud Run service. Six placeholder
+  routes (Operators, Pricing, Corpus, Integrations, Debug,
+  Observability). Walkthrough: `docs/_walkthroughs/11A.0.md`.
+- `11A.1` **accepted** (commit `d66e3c3`) — Operator + location
+  management. CRUD on `operators`, `locations`, `users`,
+  `operator_admins`. Onboard new operator (creates rows, assigns
+  subscription tier, sets `preferred_currency`, sets
+  `primary_location_id`). Edit existing. Suspend / reactivate. Add /
+  remove locations per operator. Set per-location `timezone` (IANA
+  picker) and `business_day_rollover_hour`. Replaces "manual SQL
+  INSERT" as the new-operator onboarding path. Migration
+  `202604290100` (`operators.suspended_at`). New-operator admin
+  identity goes through the Phase 9 auth gateway (Firebase user +
+  custom claims + `users` + `user_roles` + invite + audit), then
+  attaches `operator_admins` with `scope_type = 'operator_owner'`.
+  Walkthrough: `docs/_walkthroughs/11A.1.md`.
 - `11A.2` **Pricing tier admin.** Table editor for `usage_caps` per
   `(operator_id, location_id, staff_id NULL, workflow_id NULL,
   usage_class)` (Hard Promise #9 metering axes). Lists all operators,
