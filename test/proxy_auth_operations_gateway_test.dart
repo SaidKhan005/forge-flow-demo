@@ -626,6 +626,120 @@ void main() {
       },
     );
 
+    test('listActiveSessions GETs /v1/auth/sessions and parses payload', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        getResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'sessions': <Object?>[
+              <String, Object?>{
+                'session_id': 'session-1',
+                'device_label': 'Forge & Flow app · iOS',
+                'user_agent': 'Forge&Flow/1.0',
+                'ip': '203.0.113.10',
+                'geo_country': 'CA',
+                'created_at': DateTime.utc(2026, 4, 28).toIso8601String(),
+                'last_seen_at': DateTime.utc(2026, 4, 30).toIso8601String(),
+              },
+              <String, Object?>{
+                'session_id': 'session-2',
+                'device_label': 'Safari · iPad',
+                'user_agent': 'Mozilla/5.0',
+                'created_at': DateTime.utc(2026, 4, 27).toIso8601String(),
+                'last_seen_at': DateTime.utc(2026, 4, 29).toIso8601String(),
+              },
+            ],
+          },
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final listed = await gateway.listActiveSessions(
+        const AuthActiveSessionsListCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+        ),
+      );
+
+      expect(listed.sessions, hasLength(2));
+      expect(listed.sessions.first.sessionId, equals('session-1'));
+      expect(
+        listed.sessions.first.deviceLabel,
+        equals('Forge & Flow app · iOS'),
+      );
+      expect(fake.gets.single.url.path, equals('/v1/auth/sessions'));
+    });
+
+    test('revokeSession POSTs the existing session/revoke route', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'revoked': true},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final result = await gateway.revokeSession(
+        const AuthSessionRevokeCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          sessionId: 'session-2',
+          reason: 'user_revoked_active_session',
+        ),
+      );
+
+      expect(result.revoked, isTrue);
+      expect(
+        fake.posts.single.url.path,
+        equals('/v1/auth/session/revoke'),
+      );
+      expect(
+        fake.posts.single.body,
+        equals(<String, Object?>{
+          'session_id': 'session-2',
+          'reason': 'user_revoked_active_session',
+        }),
+      );
+    });
+
+    test('signOutAll POSTs the existing session/revoke-all route', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'revoked_count': 3},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final result = await gateway.signOutAll(
+        const AuthAllSessionsRevokeCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+        ),
+      );
+
+      expect(result.revokedCount, equals(3));
+      expect(
+        fake.posts.single.url.path,
+        equals('/v1/auth/session/revoke-all'),
+      );
+    });
+
     test('transport failures collapse to transport_error', () async {
       final fake = _FakeAuthOpsHttpClient.throws(StateError('secret://dsn'));
       final gateway = ProxyAuthOperationsGateway(

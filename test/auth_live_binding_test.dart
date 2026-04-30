@@ -654,6 +654,51 @@ void main() {
     });
 
     test(
+      'listActiveSessionsForUser projects rows ordered by last_seen_at and '
+      'filters revoked rows via SET LOCAL tenant context',
+      () async {
+        final pool = _AuthSessionsListPool(
+          rows: <PostgresRow>[
+            <String, Object?>{
+              'session_id': '11111111-aaaa-4bbb-8ccc-111111111111',
+              'created_at': DateTime.utc(2026, 4, 28),
+              'last_seen_at': DateTime.utc(2026, 4, 30),
+              'user_agent': 'Forge&Flow/1.0',
+              'ip': '203.0.113.10',
+              'geo_country': 'CA',
+              'device_fingerprint': null,
+              'revoked_at': null,
+              'revoked_reason': null,
+            },
+          ],
+        );
+        final repo = AuthSessionsRepository(TenantTransactionWrapper(pool));
+
+        final rows = await repo.listActiveSessionsForUser(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          userId: _validUserId,
+        );
+
+        expect(rows, hasLength(1));
+        expect(
+          rows.single.sessionId,
+          equals('11111111-aaaa-4bbb-8ccc-111111111111'),
+        );
+        expect(rows.single.userAgent, equals('Forge&Flow/1.0'));
+
+        final tx = pool.transactions.single;
+        final selectSql = tx.executedSql.last;
+        expect(selectSql, contains('select session_id::text as session_id'));
+        expect(selectSql, contains('from auth_sessions'));
+        expect(selectSql, contains('where user_id = @user_id::uuid'));
+        expect(selectSql, contains('and revoked_at is null'));
+        expect(selectSql, contains('order by last_seen_at desc'));
+        expect(tx.parameters.last['user_id'], equals(_validUserId));
+      },
+    );
+
+    test(
       'revokeAllSessionsForUserAsAdmin uses withSystem with audited reason',
       () async {
         final pool = _AuthSessionsPool(returningSessionId: _validSessionId);
@@ -1419,6 +1464,67 @@ class _AuthSessionsTransaction extends PostgresTransaction {
     if (_finalized) return;
     _finalized = true;
     rollbackCount += 1;
+  }
+}
+
+// Fake PostgresPool that returns a fixed set of SELECT rows for the
+// listActiveSessionsForUser path. Records the executed SQL so the
+// test can assert the WHERE / ORDER BY clauses without needing a
+// real Postgres instance.
+class _AuthSessionsListPool implements PostgresPool {
+  _AuthSessionsListPool({required this.rows});
+
+  final List<PostgresRow> rows;
+  final List<_AuthSessionsListTransaction> transactions =
+      <_AuthSessionsListTransaction>[];
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    final tx = _AuthSessionsListTransaction(rows: rows);
+    transactions.add(tx);
+    return tx;
+  }
+}
+
+class _AuthSessionsListTransaction extends PostgresTransaction {
+  _AuthSessionsListTransaction({required this.rows});
+
+  final List<PostgresRow> rows;
+  final List<String> executedSql = <String>[];
+  final List<PostgresParameters> parameters = <PostgresParameters>[];
+  bool _finalized = false;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    if (_finalized) throw StateError('transaction already finalized');
+    executedSql.add(sql);
+    this.parameters.add(parameters);
+    if (sql.contains('select session_id::text')) return rows;
+    return <PostgresRow>[];
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    if (_finalized) throw StateError('transaction already finalized');
+    executedSql.add(sql);
+    this.parameters.add(parameters);
+    return 1;
+  }
+
+  @override
+  Future<void> commit() async {
+    _finalized = true;
+  }
+
+  @override
+  Future<void> rollback() async {
+    _finalized = true;
   }
 }
 

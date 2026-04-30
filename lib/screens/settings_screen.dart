@@ -22,6 +22,7 @@ import '../state/auth_session_notifier.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
+import 'settings/settings_active_sessions_section.dart';
 import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
@@ -102,6 +103,14 @@ class SettingsScreen extends StatefulWidget {
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaActorContext? mfaActor;
 
+  /// Phase 9.UX.5 — self-service Active Sessions surface in the
+  /// Account tab. Production passes the proxy-backed gateway; demo /
+  /// preview shells set [allowDemoActiveSessionsFallback] so the
+  /// walkthrough click path completes without a backend.
+  final AuthOperationsGateway? authOperationsGateway;
+  final ActiveSessionsActor? activeSessionsActor;
+  final bool allowDemoActiveSessionsFallback;
+
   /// Test-only override: when true, renders Team with an owner-shaped
   /// actor even when no runtime actor snapshot is installed.
   final bool forceShowTeamSection;
@@ -141,6 +150,9 @@ class SettingsScreen extends StatefulWidget {
     this.teamDataLoadStateListenable,
     this.mfaOperationsGateway,
     this.mfaActor,
+    this.authOperationsGateway,
+    this.activeSessionsActor,
+    this.allowDemoActiveSessionsFallback = false,
     this.forceShowTeamSection = false,
   });
 
@@ -295,6 +307,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: SettingsAccountSection(
                       accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
+                    ),
+                  ),
+                  _settingsSection(
+                    title: 'Active sessions',
+                    child: SettingsActiveSessionsSection(
+                      gateway: widget.authOperationsGateway,
+                      actor: widget.activeSessionsActor ??
+                          _activeSessionsActorForSession(
+                            session,
+                            authNotifier?.activeSessionId,
+                          ),
+                      allowDemoGatewayFallback:
+                          widget.allowDemoActiveSessionsFallback,
+                      onSignOutAllDevices: () async {
+                        await authNotifier?.signOutAllSessions();
+                      },
                     ),
                   ),
                 ],
@@ -462,6 +490,18 @@ bool _isAdminTier(TeamScopeActor? actor) {
       actor.actorRoles.contains('operator_manager') ||
       actor.actorRoles.contains('super_admin') ||
       actor.actorRoles.contains('ff_support');
+}
+
+ActiveSessionsActor _activeSessionsActorForSession(
+  AuthSession session,
+  String? activeSessionId,
+) {
+  return ActiveSessionsActor(
+    actorUserId: session.userId,
+    operatorId: session.operatorId,
+    locationId: session.locationId,
+    currentSessionId: activeSessionId,
+  );
 }
 
 MfaActorContext _mfaActorForSession(
