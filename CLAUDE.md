@@ -69,19 +69,25 @@ Every slice respects these. Origin:
 
 ## Workflow
 
-- Codex plans, reviews, advances trackers. Claude implements the
-  scoped prompt, runs focused tests, reports back.
-- Do not broaden scope.
-- Do not update trackers during implementation unless the prompt asks.
+- **Phase loop.** End of phase → post-commit hook refreshes graph →
+  **Claude plans** the next phase's slices off the fresh graph
+  (`graphify` MCP) → **Codex reviews** the plan, drafts per-slice
+  prompts, advances trackers → parallel worktrees implement → ship +
+  audit → loop.
+- Do not broaden scope. Do not update trackers during implementation
+  unless the prompt asks.
 - If docs move or are materially touched, update touched links and
   report `Links updated: yes/no`.
-- **Parallel lanes.** Codex runs one lane on `master`; Claude runs N
-  parallel implementation lanes in `.claude/worktrees/<lane-name>`.
-  Multiple phases — not just slices within a phase — may be active
-  simultaneously. Lane assignment, file ownership, shared-seam
-  serialization, walkthrough evidence per lane, and merge sequencing
-  rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes
-  (Worktrees)" section.
+- **Parallel lanes.** Codex runs on `master`; Claude runs N
+  implementation lanes in `.claude/worktrees/<lane-name>`. Multiple
+  phases — not just slices within a phase — may be active
+  simultaneously. File-ownership, shared-seam, walkthrough, and
+  merge-sequencing rules:
+  `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
+- **Audit + next-batch recommendation.** Between parallel batches,
+  Claude on master runs
+  `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md` to confirm clean
+  merges and propose the next file-disjoint batch.
 - **Main-chat read-only across worktrees.** When worktrees are
   running, the main chat on master is read-only across all of them —
   it observes, diffs, reviews. Tracker / memory / coordination edits
@@ -90,10 +96,10 @@ Every slice respects these. Origin:
 ## Review Loop (user pastes an Execution Report)
 
 1. Review changed files plus nearby runtime seams.
-2. Issues found → return findings; keep the slice active.
+2. Issues → return findings; keep the slice active.
 3. Clean → Codex advances trackers and the next prompt.
-4. Ignore stale findings if the current code no longer matches them.
-5. User pivots into architecture, workflow, or docs cleanup → stop
+4. Ignore stale findings the current code no longer matches.
+5. User pivots into architecture / workflow / docs cleanup → stop
    the prompt loop and consolidate.
 
 ## Service-Layer Split
