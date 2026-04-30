@@ -3142,6 +3142,125 @@ const String adminOperatorsPrefix = '$adminOperatorsPath/';
 const String adminLocationsPath = '/v1/admin/locations';
 const String adminLocationsPrefix = '$adminLocationsPath/';
 
+// Phase 11A.2 — Pricing tier admin routes. F&F internal-only with a
+// method-scoped role split: GET admits `super_admin` and `ff_support`
+// so support users can load the read-only pricing view in live mode;
+// PATCH / PUT / POST stay strictly `super_admin` because pricing
+// changes affect billing posture. Operator-side roles are rejected
+// at the proxy layer for every method. See [kFfPricingAdminReadRoles]
+// and [kFfPricingAdminWriteRoles].
+const String adminPricingOperatorsPath = '/v1/admin/pricing/operators';
+const String adminPricingOperatorsPrefix = '$adminPricingOperatorsPath/';
+const String adminPricingUsageCapsPath = '/v1/admin/pricing/usage-caps';
+
+/// Roles that admit a caller to the pricing admin **write** surface
+/// (PATCH / PUT / POST). Super-admin-only by design; pricing
+/// decisions sit on the billing posture so support roles do not get
+/// a write path here.
+const Set<String> kFfPricingAdminWriteRoles = <String>{'super_admin'};
+
+/// Roles that admit a caller to the pricing admin **read** surface
+/// (GET). `ff_support` joins `super_admin` here so the read-only
+/// pricing view actually loads for support users — without this the
+/// initial GET 403s before the client can render the read-only
+/// banner. Mirrors the read/write split asserted by the screen
+/// shell tests in `test/admin_pricing_tier_screen_test.dart`.
+const Set<String> kFfPricingAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+/// Backwards-compatible alias for the write-only set. Existing call
+/// sites that read this name now get the strict super_admin-only set.
+const Set<String> kFfPricingAdminRoles = kFfPricingAdminWriteRoles;
+
+/// Locked tier-template keys the proxy accepts on `apply-template`.
+/// Mirrors `kPricingTierTemplates` in
+/// `lib/admin/models/pricing_tier_admin_models.dart`. Keep in sync.
+const Set<String> kProxyPricingTierTemplateKeys = <String>{
+  'pilot',
+  'starter',
+  'premium',
+  'elite',
+  'pro',
+  'enterprise',
+};
+
+/// Validation error raised by [PricingTierAdminProxyGateway]
+/// implementations when a request is rejected for business reasons
+/// (e.g. operator missing a primary_location_id). The proxy
+/// route handler maps it back to a structured 4xx response.
+class PricingTierAdminGatewayValidationError implements Exception {
+  const PricingTierAdminGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'PricingTierAdminGatewayValidationError($statusCode/$code): $message';
+}
+
+/// Gateway the proxy delegates to for `/v1/admin/pricing/*` route
+/// handling. Returns JSON-ready maps so the proxy handler can wrap
+/// them in a 200/201 response without translating shapes a second
+/// time.
+abstract class PricingTierAdminProxyGateway {
+  /// Returns `[{'operator': {...}, 'caps': [{...}, ...]}]` across
+  /// every operator. Sorted by `business_name` so the admin console
+  /// renders deterministically.
+  Future<List<Map<String, Object?>>> listOperatorsWithCaps({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// PATCH `operators.subscription_tier`. Returns the bundle for the
+  /// operator post-update, or null when the operator was not found.
+  Future<Map<String, Object?>?> updateOperatorTier({
+    required String actorUserId,
+    required String operatorId,
+    required String subscriptionTier,
+    required String adminReason,
+  });
+
+  /// UPSERT one cap row keyed on the post-9.0Σ.g logical key
+  /// `(operator_id, billing_owner_org_unit_id, scoped_org_unit_id,
+  /// location_id, staff_id, workflow_id, usage_class)` enforced by
+  /// the `usage_caps_two_slot_uq` UNIQUE NULLS NOT DISTINCT
+  /// constraint. NULL `staff_id` / `workflow_id` rows still collide
+  /// on the cap identity. The production gateway resolves the
+  /// operator's root `org_units` row and passes its id for both
+  /// org-unit axes (corp pays for corp scope). Returns the upserted
+  /// cap row JSON.
+  Future<Map<String, Object?>> upsertUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String usageClass,
+    required double monthlyCapUsd,
+    required double perInvocationCapUsd,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  });
+
+  /// Apply a tier template: update `operators.subscription_tier` and
+  /// upsert each cap row from the template under one admin reason.
+  /// Returns the bundle for the operator post-application, or null
+  /// when the operator was not found.
+  Future<Map<String, Object?>?> applyTierTemplate({
+    required String actorUserId,
+    required String operatorId,
+    required String tierKey,
+    required String adminReason,
+  });
+}
+
 /// Roles that admit a caller to `/v1/admin/operators` and
 /// `/v1/admin/locations`. This 11A.1 surface is intentionally
 /// super-admin-only because it exposes unscoped cross-operator reads
@@ -3359,6 +3478,7 @@ Future<void> routeRequest(
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
+  PricingTierAdminProxyGateway? pricingTierAdminGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -3371,6 +3491,15 @@ Future<void> routeRequest(
     final isAdminOperatorLocationPath = _isAdminOperatorOrLocationPath(path);
     if (isAdminOperatorLocationPath) {
       _setAdminOperatorLocationCorsHeaders(response);
+      if (request.method == 'OPTIONS') {
+        response.statusCode = HttpStatus.noContent;
+        response.contentLength = 0;
+        return;
+      }
+    }
+    final isAdminPricingPath = _isAdminPricingPath(path);
+    if (isAdminPricingPath) {
+      _setAdminPricingCorsHeaders(response);
       if (request.method == 'OPTIONS') {
         response.statusCode = HttpStatus.noContent;
         response.contentLength = 0;
@@ -5167,6 +5296,85 @@ Future<void> routeRequest(
       return;
     }
 
+    if (_isAdminPricingOperation(path, request.method)) {
+      if (pricingTierAdminGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'pricing_tier_admin_not_configured',
+          'message':
+              'route requires a PricingTierAdminProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      // Method-scoped gate: GET admits `super_admin` + `ff_support` so
+      // support users can load the read-only pricing view; PATCH /
+      // PUT / POST stay strictly `super_admin`. The screen renders
+      // mutate affordances based on the same role list, but the proxy
+      // is the source of truth.
+      final pricingMethod = request.method;
+      final pricingRoles = pricingMethod == 'GET'
+          ? kFfPricingAdminReadRoles
+          : kFfPricingAdminWriteRoles;
+      if (!_callerHasAnyRole(actor, pricingRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': pricingRoles.toList(),
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        await _routePricingAdmin(
+          request: request,
+          response: response,
+          path: path,
+          gateway: pricingTierAdminGateway,
+          actorUserId: actor.userId,
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is PricingTierAdminGatewayValidationError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'pricing_tier_admin_unavailable',
+          'message':
+              'pricing tier admin operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (_isAdminOperatorOrLocationOperation(path, request.method)) {
       if (operatorLocationAdminGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -5491,6 +5699,186 @@ void _writeNotFound(HttpResponse response, HttpRequest request) {
     'method': request.method,
     'path': request.uri.path,
   });
+}
+
+bool _callerHasAnyRole(ProxyJwtClaims actor, Set<String> allowed) {
+  return actor.roles.any(allowed.contains);
+}
+
+bool _isAdminPricingPath(String path) {
+  if (path == adminPricingOperatorsPath ||
+      path.startsWith(adminPricingOperatorsPrefix)) {
+    return true;
+  }
+  if (path == adminPricingUsageCapsPath) return true;
+  return false;
+}
+
+bool _isAdminPricingOperation(String path, String method) {
+  if (method == 'GET' && path == adminPricingOperatorsPath) return true;
+  if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && path.startsWith(adminPricingOperatorsPrefix)) {
+    // /apply-template suffix
+    return true;
+  }
+  if (method == 'PUT' && path == adminPricingUsageCapsPath) return true;
+  return false;
+}
+
+Future<void> _routePricingAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required PricingTierAdminProxyGateway gateway,
+  required String actorUserId,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.pricing.$method:$actorUserId';
+
+  if (method == 'GET' && path == adminPricingOperatorsPath) {
+    final operators = await gateway.listOperatorsWithCaps(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, <String, Object?>{'operators': operators});
+    return;
+  }
+
+  if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
+    final tail = _pathSuffix(path, adminPricingOperatorsPrefix);
+    if (tail == null || tail.contains('/')) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final operatorId = tail;
+    final subscriptionTier = _requireBodyString(body, 'subscription_tier');
+    if (!kProxyPricingTierTemplateKeys.contains(subscriptionTier)) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_subscription_tier',
+        message:
+            'subscription_tier must be one of: '
+            '${kProxyPricingTierTemplateKeys.join(', ')}',
+      );
+    }
+    final updated = await gateway.updateOperatorTier(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      subscriptionTier: subscriptionTier,
+      adminReason: '$reasonPrefix:tier:$operatorId',
+    );
+    if (updated == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_operator',
+        'message': 'operator not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, updated);
+    return;
+  }
+
+  if (method == 'POST' && path.startsWith(adminPricingOperatorsPrefix)) {
+    final tail = path.substring(adminPricingOperatorsPrefix.length);
+    if (tail.isEmpty) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final parts = tail.split('/');
+    if (parts.length != 2 || parts.any((p) => p.isEmpty)) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final operatorId = Uri.decodeComponent(parts[0]);
+    final action = Uri.decodeComponent(parts[1]);
+    if (action != 'apply-template') {
+      _writeNotFound(response, request);
+      return;
+    }
+    final tierKey = _requireBodyString(body, 'tier_key');
+    if (!kProxyPricingTierTemplateKeys.contains(tierKey)) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'unknown_tier_template',
+        message: 'tier_key "$tierKey" is not a known pricing template',
+      );
+    }
+    final result = await gateway.applyTierTemplate(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      tierKey: tierKey,
+      adminReason: '$reasonPrefix:apply_template:$operatorId:$tierKey',
+    );
+    if (result == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_operator',
+        'message': 'operator not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, result);
+    return;
+  }
+
+  if (method == 'PUT' && path == adminPricingUsageCapsPath) {
+    final operatorId = _requireBodyString(body, 'operator_id');
+    final locationId = _requireBodyString(body, 'location_id');
+    final usageClass = _requireBodyString(body, 'usage_class');
+    final monthlyCap = _requireBodyMoney(body, 'monthly_cap_usd');
+    final perInvocation = _requireBodyMoney(body, 'per_invocation_cap_usd');
+    final staffId = _optionalBodyString(body, 'staff_id');
+    final workflowId = _optionalBodyString(body, 'workflow_id');
+    final cap = await gateway.upsertUsageCap(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      usageClass: usageClass,
+      monthlyCapUsd: monthlyCap,
+      perInvocationCapUsd: perInvocation,
+      staffId: staffId,
+      workflowId: workflowId,
+      adminReason:
+          '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
+    );
+    _writeJson(response, 200, <String, Object?>{'cap': cap});
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+double _requireBodyMoney(Map<String, Object?> body, String field) {
+  final raw = body[field];
+  if (raw is num) {
+    final value = raw.toDouble();
+    if (value < 0 || value.isNaN || value.isInfinite) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a finite number >= 0',
+      );
+    }
+    return value;
+  }
+  if (raw is String) {
+    final parsed = double.tryParse(raw);
+    if (parsed == null || parsed < 0 || parsed.isNaN || parsed.isInfinite) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be a finite number >= 0',
+      );
+    }
+    return parsed;
+  }
+  throw _AdminInputError(
+    statusCode: 400,
+    code: 'missing_$field',
+    message: '$field is required',
+  );
 }
 
 class _AdminInputError implements Exception {
@@ -6089,6 +6477,24 @@ void _setAdminOperatorLocationCorsHeaders(HttpResponse response) {
   response.headers.set(
     'Access-Control-Allow-Methods',
     'GET,POST,PATCH,DELETE,OPTIONS',
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Authorization,Content-Type,Accept',
+  );
+  response.headers.set('Access-Control-Max-Age', '3600');
+}
+
+// Phase 11A.2 — pricing routes use PUT for `/v1/admin/pricing/usage-caps`
+// upserts. Browser preflight refuses any method missing from
+// Access-Control-Allow-Methods, so the pricing surface gets its own
+// header set with PUT included; the 11A.1 operator/location helper
+// stays unchanged.
+void _setAdminPricingCorsHeaders(HttpResponse response) {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   );
   response.headers.set(
     'Access-Control-Allow-Headers',

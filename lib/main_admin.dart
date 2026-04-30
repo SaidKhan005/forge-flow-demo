@@ -34,6 +34,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
+import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'theme/app_theme.dart';
 
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
@@ -70,14 +71,21 @@ Future<void> main() async {
   try {
     final source = await _resolveAuthSource();
     final gateway = _resolveOperatorLocationGateway();
+    final pricingGateway =
+        gateway == null ? null : _resolvePricingTierAdminGateway();
     final adminApp = AdminConsoleApp(authSource: source);
+    // Always wrap with `AdminConsoleServicesScope` so the Pricing
+    // route can read `adminAuthSource` and switch to the read-only
+    // branch for `ff_support`. Live gateways are still null in demo
+    // mode; the route accessors fall back to the seeded in-memory
+    // demo gateways in `admin_routes.dart`.
     runApp(
-      gateway == null
-          ? adminApp
-          : AdminConsoleServicesScope(
-              operatorLocationGateway: gateway,
-              child: adminApp,
-            ),
+      AdminConsoleServicesScope(
+        operatorLocationGateway: gateway,
+        pricingTierGateway: pricingGateway,
+        adminAuthSource: source,
+        child: adminApp,
+      ),
     );
   } catch (error, stack) {
     // Fail-closed: any wiring error (Firebase init failure, missing
@@ -115,6 +123,22 @@ OperatorLocationAdminGateway? _resolveOperatorLocationGateway() {
     throw StateError('ADMIN_PROXY_BASE_URI must be an absolute URI');
   }
   return HttpOperatorLocationAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: _firebaseIdTokenProvider,
+  );
+}
+
+/// Phase 11A.2 — pricing tier admin gateway. Lives on the same admin
+/// proxy base URI as the operator/location gateway. Demo mode returns
+/// null and the route falls back to the seeded in-memory pricing
+/// gateway in `admin_routes.dart`.
+PricingTierAdminGateway? _resolvePricingTierAdminGateway() {
+  if (_kAdminDemoAuth) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpPricingTierAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: _firebaseIdTokenProvider,
   );

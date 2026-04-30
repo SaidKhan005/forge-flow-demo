@@ -19,6 +19,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
@@ -65,6 +66,7 @@ class ProxyProductionBindings {
     required this.mfaRecoveryRequestGateway,
     required this.mfaRemovalWorker,
     required this.operatorLocationAdminGateway,
+    required this.pricingTierAdminGateway,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -81,6 +83,7 @@ class ProxyProductionBindings {
   final MfaRecoveryRequestGateway mfaRecoveryRequestGateway;
   final MfaRemovalWorker mfaRemovalWorker;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
+  final PricingTierAdminProxyGateway pricingTierAdminGateway;
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -219,6 +222,19 @@ ProxyProductionBindings buildProxyProductionBindings(
       locationsRepository: LocationsRepository(adminWrapper),
       operatorAdminsRepository: OperatorAdminsRepository(adminWrapper),
       authOperationsGateway: authOperationsGateway,
+      auditRepository: adminAudit,
+    ),
+    // Phase 11A.2 — pricing tier admin gateway. Same admin pool
+    // rationale: the F&F admin browses caps across the fleet and
+    // edits subscription tiers without any operator session in flight,
+    // so per-tenant RLS would block reads. The OrgUnitsRepository
+    // resolves each operator's root org_unit id to populate the
+    // 9.0Σ.g `usage_caps.billing_owner_org_unit_id` /
+    // `scoped_org_unit_id` NOT NULL columns.
+    pricingTierAdminGateway: RepositoryPricingTierAdminProxyGateway(
+      operatorsRepository: OperatorsRepository(adminWrapper),
+      usageCapsRepository: UsageCapsRepository(adminWrapper),
+      orgUnitsRepository: OrgUnitsRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
   );
@@ -575,6 +591,355 @@ class RepositoryOperatorLocationAdminProxyGateway
     );
   }
 }
+
+/// Locked tier-template caps the proxy seeds when the admin applies
+/// a template. Mirrors the launch-time defaults in
+/// `lib/admin/models/pricing_tier_admin_models.dart`. Keep in sync.
+const Map<String, List<_PricingTierTemplateCap>> _kPricingTierTemplateCaps =
+    <String, List<_PricingTierTemplateCap>>{
+  'pilot': <_PricingTierTemplateCap>[
+    _PricingTierTemplateCap(
+      usageClass: 'advisor_qa',
+      monthlyCapUsd: 50.0,
+      perInvocationCapUsd: 0.10,
+    ),
+  ],
+  'starter': <_PricingTierTemplateCap>[
+    _PricingTierTemplateCap(
+      usageClass: 'advisor_qa',
+      monthlyCapUsd: 50.0,
+      perInvocationCapUsd: 0.10,
+    ),
+  ],
+  'premium': <_PricingTierTemplateCap>[
+    _PricingTierTemplateCap(
+      usageClass: 'advisor_qa',
+      monthlyCapUsd: 200.0,
+      perInvocationCapUsd: 0.20,
+    ),
+  ],
+  'elite': <_PricingTierTemplateCap>[
+    _PricingTierTemplateCap(
+      usageClass: 'advisor_qa',
+      monthlyCapUsd: 400.0,
+      perInvocationCapUsd: 0.20,
+    ),
+    _PricingTierTemplateCap(
+      usageClass: 'coach_qa',
+      monthlyCapUsd: 300.0,
+      perInvocationCapUsd: 0.20,
+    ),
+  ],
+  'pro': <_PricingTierTemplateCap>[
+    _PricingTierTemplateCap(
+      usageClass: 'advisor_qa',
+      monthlyCapUsd: 600.0,
+      perInvocationCapUsd: 0.20,
+    ),
+    _PricingTierTemplateCap(
+      usageClass: 'coach_qa',
+      monthlyCapUsd: 400.0,
+      perInvocationCapUsd: 0.20,
+    ),
+    _PricingTierTemplateCap(
+      usageClass: 'workflow_pl',
+      monthlyCapUsd: 500.0,
+      perInvocationCapUsd: 5.0,
+    ),
+    _PricingTierTemplateCap(
+      usageClass: 'workflow_schedule',
+      monthlyCapUsd: 300.0,
+      perInvocationCapUsd: 5.0,
+    ),
+  ],
+  'enterprise': <_PricingTierTemplateCap>[],
+};
+
+class _PricingTierTemplateCap {
+  const _PricingTierTemplateCap({
+    required this.usageClass,
+    required this.monthlyCapUsd,
+    required this.perInvocationCapUsd,
+  });
+
+  final String usageClass;
+  final double monthlyCapUsd;
+  final double perInvocationCapUsd;
+}
+
+/// Production [PricingTierAdminProxyGateway] backed by
+/// [OperatorsRepository] + [UsageCapsRepository] +
+/// [OrgUnitsRepository]. Translates the proxy's command shape into
+/// repo calls and projects the row results into JSON-ready maps the
+/// route handler can return as-is. Every edit threads `actorUserId`
+/// into the repository's `created_by` / `updated_by` audit columns.
+///
+/// 9.0Σ.g `usage_caps` carries `billing_owner_org_unit_id` /
+/// `scoped_org_unit_id` as NOT NULL columns on the post-flip schema.
+/// For the launch admin pricing UX both axes resolve to the
+/// operator's root `org_units` row (corp pays for corp scope); future
+/// surfaces can pass distinct ids when corp / sub-brand billing
+/// splits are wired.
+class RepositoryPricingTierAdminProxyGateway
+    implements PricingTierAdminProxyGateway {
+  RepositoryPricingTierAdminProxyGateway({
+    required OperatorsRepository operatorsRepository,
+    required UsageCapsRepository usageCapsRepository,
+    required OrgUnitsRepository orgUnitsRepository,
+    required AuthEventsAuditRepository auditRepository,
+  })  : _operators = operatorsRepository,
+        _caps = usageCapsRepository,
+        _orgUnits = orgUnitsRepository,
+        _auditRepository = auditRepository;
+
+  final OperatorsRepository _operators;
+  final UsageCapsRepository _caps;
+  final OrgUnitsRepository _orgUnits;
+  final AuthEventsAuditRepository _auditRepository;
+
+  /// Resolves the operator's root `org_units` id (the row with
+  /// `parent_id IS NULL`). The 9.0Σ.g step-b backfill plus the
+  /// `OrgUnitsRepository.createRoot` onboarding path guarantees one
+  /// per operator. Throws [PricingTierAdminGatewayValidationError] if
+  /// the operator has no root row (shouldn't happen post-backfill,
+  /// but the admin path fails closed instead of letting the FK throw
+  /// a 503).
+  Future<String> _rootOrgUnitId({
+    required String operatorId,
+    required String adminReason,
+  }) async {
+    final roots = await _orgUnits.listAllRootsAsAdmin(
+      adminReason: '$adminReason:org_units_root:$operatorId',
+    );
+    for (final row in roots) {
+      if (row.operatorId == operatorId) return row.id;
+    }
+    throw const PricingTierAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'no_org_unit_root',
+      message:
+          'operator has no root org_units row; run the 9.0Σ.g backfill before editing usage_caps',
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listOperatorsWithCaps({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final operators = await _operators.listOperators(adminReason: adminReason);
+    final allCaps = await _caps.listAllCaps(adminReason: adminReason);
+    final capsByOperator = <String, List<UsageCapAdminRow>>{};
+    for (final cap in allCaps) {
+      capsByOperator
+          .putIfAbsent(cap.operatorId, () => <UsageCapAdminRow>[])
+          .add(cap);
+    }
+    final bundles = <Map<String, Object?>>[
+      for (final op in operators)
+        <String, Object?>{
+          'operator': <String, Object?>{
+            'operator_id': op.operatorId,
+            'business_name': op.businessName,
+            'subscription_tier': op.subscriptionTier,
+            'preferred_currency': op.preferredCurrency,
+            'primary_location_id': op.primaryLocationId,
+            'suspended': op.suspendedAt != null,
+          },
+          'caps': <Map<String, Object?>>[
+            for (final cap
+                in capsByOperator[op.operatorId] ?? const <UsageCapAdminRow>[])
+              cap.toJson(),
+          ],
+        },
+    ];
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.pricing.list',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'operator_count': operators.length,
+        'cap_count': allCaps.length,
+      },
+    );
+    return bundles;
+  }
+
+  @override
+  Future<Map<String, Object?>?> updateOperatorTier({
+    required String actorUserId,
+    required String operatorId,
+    required String subscriptionTier,
+    required String adminReason,
+  }) async {
+    final updated = await _operators.updateOperator(
+      operatorId: operatorId,
+      subscriptionTier: subscriptionTier,
+      adminReason: adminReason,
+    );
+    if (updated == null) return null;
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: updated.operatorId,
+      locationId: updated.primaryLocationId,
+      eventType: 'admin.pricing.tier_patched',
+      adminReason: adminReason,
+      payload: <String, Object?>{'subscription_tier': subscriptionTier},
+    );
+    return _bundleFor(updated, adminReason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String usageClass,
+    required double monthlyCapUsd,
+    required double perInvocationCapUsd,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  }) async {
+    final orgUnitId = await _rootOrgUnitId(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    final cap = await _caps.upsertCap(
+      operatorId: operatorId,
+      billingOwnerOrgUnitId: orgUnitId,
+      scopedOrgUnitId: orgUnitId,
+      locationId: locationId,
+      usageClass: usageClass,
+      monthlyCapUsd: monthlyCapUsd,
+      perInvocationCapUsd: perInvocationCapUsd,
+      staffId: staffId,
+      workflowId: workflowId,
+      actorUserId: actorUserId,
+      adminReason: adminReason,
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: 'admin.pricing.cap_upserted',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'usage_class': usageClass,
+        'monthly_cap_usd': monthlyCapUsd,
+        'per_invocation_cap_usd': perInvocationCapUsd,
+        if (staffId != null) 'staff_id': staffId,
+        if (workflowId != null) 'workflow_id': workflowId,
+      },
+    );
+    return cap.toJson();
+  }
+
+  @override
+  Future<Map<String, Object?>?> applyTierTemplate({
+    required String actorUserId,
+    required String operatorId,
+    required String tierKey,
+    required String adminReason,
+  }) async {
+    final template = _kPricingTierTemplateCaps[tierKey];
+    if (template == null) return null;
+    // Validate every precondition BEFORE any write so a failure can
+    // never leave the operator in a partial state (subscription_tier
+    // updated but cap rows never seeded). Specifically: confirm the
+    // operator exists, has a primary_location_id, and has a root
+    // org_units row.
+    final existing = await _operators.findById(
+      operatorId: operatorId,
+      adminReason: '$adminReason:lookup',
+    );
+    if (existing == null) return null;
+    final primaryLocation = existing.primaryLocationId;
+    if (primaryLocation == null) {
+      throw const PricingTierAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'no_primary_location',
+        message:
+            'operator must have a primary_location_id before a tier template can be applied',
+      );
+    }
+    final orgUnitId = await _rootOrgUnitId(
+      operatorId: operatorId,
+      adminReason: adminReason,
+    );
+    final updatedOperator = await _operators.updateOperator(
+      operatorId: operatorId,
+      subscriptionTier: tierKey,
+      adminReason: adminReason,
+    );
+    if (updatedOperator == null) return null;
+    for (final cap in template) {
+      await _caps.upsertCap(
+        operatorId: operatorId,
+        billingOwnerOrgUnitId: orgUnitId,
+        scopedOrgUnitId: orgUnitId,
+        locationId: primaryLocation,
+        usageClass: cap.usageClass,
+        monthlyCapUsd: cap.monthlyCapUsd,
+        perInvocationCapUsd: cap.perInvocationCapUsd,
+        actorUserId: actorUserId,
+        adminReason: '$adminReason:${cap.usageClass}',
+      );
+    }
+    await _audit(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: primaryLocation,
+      eventType: 'admin.pricing.template_applied',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'tier_key': tierKey,
+        'cap_rows': template.length,
+      },
+    );
+    return _bundleFor(updatedOperator, adminReason: adminReason);
+  }
+
+  Future<Map<String, Object?>> _bundleFor(
+    OperatorAdminRow operator, {
+    required String adminReason,
+  }) async {
+    final caps = await _caps.listForOperator(
+      operatorId: operator.operatorId,
+      adminReason: '$adminReason:bundle:${operator.operatorId}',
+    );
+    return <String, Object?>{
+      'operator': <String, Object?>{
+        'operator_id': operator.operatorId,
+        'business_name': operator.businessName,
+        'subscription_tier': operator.subscriptionTier,
+        'preferred_currency': operator.preferredCurrency,
+        'primary_location_id': operator.primaryLocationId,
+        'suspended': operator.suspendedAt != null,
+      },
+      'caps': <Map<String, Object?>>[for (final cap in caps) cap.toJson()],
+    };
+  }
+
+  Future<void> _audit({
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: eventType,
+      adminReason: adminReason,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+}
+
 
 /// Builds the production auth-session ledger writer for the proxy.
 ///
