@@ -1,9 +1,7 @@
 // Phase 7.55o.4 — Settings data-facing sections.
 //
-// Houses the restaurant hero, data status, mock replay, data
-// management, audit-panel wrapper, and footer sections. Callbacks
-// and state are supplied by SettingsScreen; the actions, dialogs,
-// snackbars, and labels are unchanged from the pre-split file.
+// Houses the data status, mock replay, data management, and audit-panel
+// wrapper sections. Callbacks and state are supplied by SettingsScreen.
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,91 +17,6 @@ import '../../theme/app_theme.dart';
 import '../../widgets/data_alignment_audit_panel.dart';
 import 'settings_shared_widgets.dart';
 
-// ─── Hero ────────────────────────────────────────────────────────
-
-class SettingsRestaurantHero extends StatelessWidget {
-  const SettingsRestaurantHero({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(top: 4, bottom: 8),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                AppColors.shimmer,
-                AppColors.cardGlow,
-                AppColors.backgroundMid,
-              ],
-            ),
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-          ),
-          child: IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Container(width: 4, color: AppColors.sunset),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 16, 18, 16),
-                    child: Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          alignment: Alignment.center,
-                          decoration: BoxDecoration(
-                            color: AppColors.sunset.withValues(alpha: 0.14),
-                            border: Border.all(
-                              color: AppColors.sunset.withValues(alpha: 0.5),
-                            ),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Icon(
-                            Icons.storefront_rounded,
-                            size: 22,
-                            color: AppColors.sunset,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'SETTINGS WORKSPACE',
-                                style: AppTextStyles.mono8(
-                                  color: AppColors.textMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                'Access, data, and team controls',
-                                style: AppTextStyles.mono15(
-                                  color: AppColors.textPrimary,
-                                  weight: FontWeight.w700,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 // ─── Section wrappers ────────────────────────────────────────────
 
 /// Data status card — wraps [_DataStatusTile] for dispatch from the
@@ -1089,42 +1002,6 @@ class _SettingsMockReplayCard extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-// ─── Footer ──────────────────────────────────────────────────────
-
-class SettingsFooter extends StatelessWidget {
-  const SettingsFooter({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(4, 16, 4, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            height: 1,
-            color: AppColors.borderSubtle.withValues(alpha: 0.5),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(Icons.bolt_rounded, size: 12, color: AppColors.textMuted),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  'Settings session ready',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono8(color: AppColors.textMuted),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
     );
   }
 }

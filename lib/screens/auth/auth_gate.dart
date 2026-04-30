@@ -18,8 +18,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../state/auth_session_notifier.dart';
 import '../../services/mfa/mfa_recovery_request_gateway.dart';
+import '../../state/auth_session_notifier.dart';
+import '../../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'mfa_challenge_screen.dart';
 
@@ -34,9 +35,8 @@ class AuthGate extends StatelessWidget {
   /// The app shell to render once the user is authenticated.
   final Widget authenticatedChild;
 
-  /// Optional override for the loading state. Defaults to a
-  /// centered [CircularProgressIndicator] on a black background to
-  /// match the existing splash visuals.
+  /// Optional override for the loading state. Defaults to the branded
+  /// splash that mirrors the login screen gradient + brand mark.
   final Widget? loadingChild;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
 
@@ -59,13 +59,65 @@ class _DefaultLoading extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Colors.black,
-      body: Center(
-        child: SizedBox(
-          width: 40,
-          height: 40,
-          child: CircularProgressIndicator(strokeWidth: 2),
+    return Scaffold(
+      backgroundColor: AppColors.backgroundDeep,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.backgroundDeep,
+              AppColors.backgroundMid,
+              AppColors.shimmer,
+            ],
+            stops: [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.sunset.withValues(alpha: 0.18),
+                        blurRadius: 24,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/forge_flow_splash_icon.png',
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Forge & Flow',
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.display28(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 28),
+                SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.sunset,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
