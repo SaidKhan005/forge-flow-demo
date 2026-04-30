@@ -21,6 +21,7 @@ import '../mfa/proxy_mfa_operations_gateway.dart';
 import '../mfa/mfa_recovery_request_gateway.dart';
 import '../mfa/proxy_mfa_recovery_request_gateway.dart';
 import '../secure_session_storage.dart';
+import 'account_info_gateway.dart';
 import 'auth_operations_gateway.dart';
 import 'auth_session_ledger_writer.dart';
 import 'firebase_auth_client.dart';
@@ -29,6 +30,7 @@ import 'firebase_auth_login_service.dart';
 import 'flutter_secure_storage_backend.dart';
 import 'password_change_gateway.dart';
 import 'platform_secure_session_storage.dart';
+import 'proxy_account_info_gateway.dart';
 import 'proxy_auth_session_ledger_writer.dart';
 import 'proxy_auth_operations_gateway.dart';
 import 'proxy_password_change_gateway.dart';
@@ -40,6 +42,7 @@ class FirebaseAuthRuntimeBindings {
     required this.authLoginService,
     required this.secureSessionStorage,
     this.authSessionLedgerWriter,
+    this.accountInfoGateway,
     this.permissionContextLoader,
     this.authOperationsGateway,
     this.passwordChangeGateway,
@@ -56,6 +59,7 @@ class FirebaseAuthRuntimeBindings {
   /// default so a misconfigured deploy surfaces the gap.
   final AuthSessionLedgerWriter? authSessionLedgerWriter;
 
+  final AccountInfoGateway? accountInfoGateway;
   final PermissionContextLoader? permissionContextLoader;
   final AuthOperationsGateway? authOperationsGateway;
   final PasswordChangeGateway? passwordChangeGateway;
@@ -100,6 +104,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     revokeAllRefreshTokens: effectiveRevokeAllRefreshTokens,
   );
   AuthSessionLedgerWriter? ledgerWriter;
+  AccountInfoGateway? accountInfoGateway;
   PermissionContextLoader? permissionContextLoader;
   AuthOperationsGateway? authOperationsGateway;
   PasswordChangeGateway? passwordChangeGateway;
@@ -119,6 +124,11 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
       proxyBaseUri: proxyBaseUri,
       idTokenProvider: authClient.currentIdToken,
       httpClient: DartIoProxyPermissionSnapshotHttpClient(),
+    );
+    accountInfoGateway = ProxyAccountInfoGateway(
+      proxyBaseUri: proxyBaseUri,
+      idTokenProvider: authClient.currentIdToken,
+      httpClient: DartIoProxyAuthOperationsHttpClient(),
     );
     authOperationsGateway = ProxyAuthOperationsGateway(
       proxyBaseUri: proxyBaseUri,
@@ -149,6 +159,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
       backend: const FlutterSecureStorageBackend(),
     ),
     authSessionLedgerWriter: ledgerWriter,
+    accountInfoGateway: accountInfoGateway,
     permissionContextLoader: permissionContextLoader,
     authOperationsGateway: authOperationsGateway,
     passwordChangeGateway: passwordChangeGateway,

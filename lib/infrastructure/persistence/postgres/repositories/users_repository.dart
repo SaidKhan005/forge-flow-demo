@@ -58,6 +58,30 @@ class TeamUserRepositoryRow {
   final DateTime? lastActiveAt;
 }
 
+class SelfProfileRepositoryRow {
+  const SelfProfileRepositoryRow({
+    required this.displayName,
+    required this.email,
+    required this.status,
+    required this.locationLabel,
+    required this.roleLabels,
+    required this.mfaEnabled,
+    this.lastActiveAt,
+    this.lastLoginAt,
+    this.passwordUpdatedAt,
+  });
+
+  final String displayName;
+  final String email;
+  final String status;
+  final String locationLabel;
+  final List<String> roleLabels;
+  final bool mfaEnabled;
+  final DateTime? lastActiveAt;
+  final DateTime? lastLoginAt;
+  final DateTime? passwordUpdatedAt;
+}
+
 class MfaRecoveryAdminRecipientRow {
   const MfaRecoveryAdminRecipientRow({
     required this.userId,
@@ -172,6 +196,73 @@ class UsersRepository extends OperatorScopedRepository {
         parameters: <String, Object?>{'operator_id': operatorId},
       );
       return rows.map(_projectTeamUserRow).toList(growable: false);
+    });
+  }
+
+  Future<SelfProfileRepositoryRow?> findSelfProfile({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    return withTenant<SelfProfileRepositoryRow?>(ctx, (exec) async {
+      final rows = await exec.query(
+        "select coalesce(nullif(u.display_name, ''), "
+        "nullif(trim(concat_ws(' ', u.first_name, u.last_name)), ''), "
+        'u.email) as display_name, '
+        'u.email, '
+        'u.status, '
+        "coalesce(l.name, primary_l.name, 'Current location') "
+        'as location_label, '
+        'coalesce('
+        '  array_agg(distinct r.display_name) '
+        '    filter (where r.display_name is not null), '
+        '  array_remove(array[pr.display_name], null), '
+        "  array[]::text[]"
+        ') as role_labels, '
+        'exists ('
+        '  select 1 from mfa_factors mf '
+        '  where mf.user_id = u.user_id '
+        "  and mf.factor_type = 'totp' "
+        '  and mf.revoked_at is null'
+        ') as mfa_enabled, '
+        'u.last_active_at, '
+        'u.last_login_at, '
+        'u.password_set_at as password_updated_at '
+        'from users u '
+        'left join locations l '
+        '  on l.location_id = @location_id::uuid '
+        '  and l.operator_id = @operator_id::uuid '
+        'left join locations primary_l '
+        '  on primary_l.location_id = u.primary_location_id '
+        'left join roles pr on pr.role_id = u.primary_role_id '
+        'left join user_roles ur '
+        '  on ur.user_id = u.user_id '
+        '  and ur.operator_id = @operator_id::uuid '
+        '  and ur.revoked_at is null '
+        '  and ur.valid_from <= now() '
+        '  and (ur.valid_until is null or ur.valid_until > now()) '
+        'left join roles r on r.role_id = ur.role_id '
+        'where u.user_id = @user_id::uuid '
+        'and u.operator_id = @operator_id::uuid '
+        'and u.deleted_at is null '
+        "and u.status != 'deleted' "
+        'group by u.user_id, u.display_name, u.first_name, u.last_name, '
+        'u.email, u.status, l.name, primary_l.name, pr.display_name, '
+        'u.last_active_at, u.last_login_at, u.password_set_at '
+        'limit 1',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'user_id': actorUserId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      return _projectSelfProfileRow(rows.single);
     });
   }
 
@@ -655,6 +746,51 @@ class UsersRepository extends OperatorScopedRepository {
           ? locationLabel
           : null,
       lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
+    );
+  }
+
+  static SelfProfileRepositoryRow _projectSelfProfileRow(
+    Map<String, Object?> row,
+  ) {
+    final displayName = row['display_name'];
+    final email = row['email'];
+    final status = row['status'];
+    final locationLabel = row['location_label'];
+    final rawRoleLabels = row['role_labels'];
+    final mfaEnabled = row['mfa_enabled'];
+    if (displayName is! String ||
+        displayName.isEmpty ||
+        email is! String ||
+        email.isEmpty ||
+        status is! String ||
+        status.isEmpty ||
+        locationLabel is! String ||
+        locationLabel.isEmpty ||
+        mfaEnabled is! bool) {
+      throw StateError('self profile lookup returned a malformed row');
+    }
+    final roleLabels = rawRoleLabels is List
+        ? rawRoleLabels
+              .whereType<String>()
+              .map((label) => label.trim())
+              .where((label) => label.isNotEmpty)
+              .toList(growable: false)
+        : const <String>[];
+    final lastActiveAt = row['last_active_at'];
+    final lastLoginAt = row['last_login_at'];
+    final passwordUpdatedAt = row['password_updated_at'];
+    return SelfProfileRepositoryRow(
+      displayName: displayName,
+      email: email,
+      status: status,
+      locationLabel: locationLabel,
+      roleLabels: List<String>.unmodifiable(roleLabels),
+      mfaEnabled: mfaEnabled,
+      lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
+      lastLoginAt: lastLoginAt is DateTime ? lastLoginAt : null,
+      passwordUpdatedAt: passwordUpdatedAt is DateTime
+          ? passwordUpdatedAt
+          : null,
     );
   }
 }

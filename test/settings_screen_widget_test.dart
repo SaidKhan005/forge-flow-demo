@@ -23,6 +23,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database
 import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
+import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
@@ -187,6 +188,225 @@ void main() {
         find.text('Terms & Conditions', skipOffstage: false),
         findsOneWidget,
       );
+    });
+
+    testWidgets('signed-in Settings renders My info above account actions', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      final gateway = _FixedAccountInfoGateway(
+        info: AccountInfo(
+          displayName: 'Jane Operator',
+          email: 'jane@example.test',
+          statusLabel: 'Active',
+          locationLabel: 'Downtown',
+          roleLabels: const <String>['Kitchen Lead'],
+          mfaEnabled: true,
+          lastLoginAt: DateTime.utc(2026, 4, 29, 12),
+          lastActiveAt: DateTime.utc(2026, 4, 29, 12, 15),
+          passwordUpdatedAt: DateTime.utc(2026, 4, 20, 9),
+        ),
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              accountInfoGateway: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('account_my_info_card'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('My info', skipOffstage: false), findsOneWidget);
+      expect(find.text('Jane Operator', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('jane@example.test', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('Downtown', skipOffstage: false), findsOneWidget);
+      expect(find.text('Kitchen Lead', skipOffstage: false), findsOneWidget);
+      expect(find.text('Enabled', skipOffstage: false), findsOneWidget);
+      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
+      expect(gateway.requests.single.actorUserId, equals('user-1'));
+      expect(
+        tester
+            .getTopLeft(
+              find.byKey(
+                const Key('account_my_info_card'),
+                skipOffstage: false,
+              ),
+            )
+            .dy,
+        lessThan(
+          tester
+              .getTopLeft(find.text('Change Password', skipOffstage: false))
+              .dy,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('account My info uses safe session copy while refreshing', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      final gateway = _PendingAccountInfoGateway();
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              accountInfoGateway: gateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('account_my_info_card'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_my_info_loading'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('account_my_info_error'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.text('Signed-in operator', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Refreshing profile details.', skipOffstage: false),
+        findsOneWidget,
+      );
+
+      gateway.complete(
+        AccountInfo(
+          displayName: 'Jane Operator',
+          email: 'jane@example.test',
+          statusLabel: 'Active',
+          locationLabel: 'Downtown',
+          roleLabels: const <String>['Kitchen Lead'],
+          mfaEnabled: true,
+          lastLoginAt: DateTime.utc(2026, 4, 29, 12),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Jane Operator', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Refreshing profile details.', skipOffstage: false),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('account_my_info_fallback'), skipOffstage: false),
+        findsNothing,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('account My info failure falls back to safe session copy', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              accountInfoGateway: _FailingAccountInfoGateway(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_account')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('account_my_info_card'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('account_my_info_fallback'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Signed-in operator', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(find.text('Signed in', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Current location', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
+      expect(find.text('Operator Owner', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text(
+          'Some profile details are temporarily unavailable.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      final fallbackCard = find.byKey(
+        const Key('account_my_info_card'),
+        skipOffstage: false,
+      );
+      expect(
+        find.descendant(
+          of: fallbackCard,
+          matching: find.textContaining('uuid', skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: fallbackCard,
+          matching: find.textContaining('permission', skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: fallbackCard,
+          matching: find.textContaining('Firebase', skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('signed-in Settings hides Team tab without view permission', (
@@ -481,7 +701,9 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Sign out of all devices', skipOffstage: false));
+      await tester.tap(
+        find.text('Sign out of all devices', skipOffstage: false),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
       await tester.pump();
@@ -627,10 +849,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
 
         expect(
-          find.text(
-            'Staff late looking for Parking lol',
-            skipOffstage: false,
-          ),
+          find.text('Staff late looking for Parking lol', skipOffstage: false),
           findsWidgets,
         );
         expect(
@@ -2436,6 +2655,43 @@ class _RecordingPasswordChangeGateway implements PasswordChangeGateway {
     final error = this.error;
     if (error != null) throw error;
     return const PasswordChangeCompleted();
+  }
+}
+
+class _FixedAccountInfoGateway implements AccountInfoGateway {
+  _FixedAccountInfoGateway({required this.info});
+
+  final AccountInfo info;
+  final requests = <AccountInfoRequest>[];
+
+  @override
+  Future<AccountInfo> load(AccountInfoRequest request) async {
+    requests.add(request);
+    return info;
+  }
+}
+
+class _FailingAccountInfoGateway implements AccountInfoGateway {
+  @override
+  Future<AccountInfo> load(AccountInfoRequest request) async {
+    throw StateError(
+      'raw uuid 11111111-1111-4111-8111-111111111111 permission.key Firebase',
+    );
+  }
+}
+
+class _PendingAccountInfoGateway implements AccountInfoGateway {
+  final _completer = Completer<AccountInfo>();
+  final requests = <AccountInfoRequest>[];
+
+  void complete(AccountInfo info) {
+    if (!_completer.isCompleted) _completer.complete(info);
+  }
+
+  @override
+  Future<AccountInfo> load(AccountInfoRequest request) {
+    requests.add(request);
+    return _completer.future;
   }
 }
 

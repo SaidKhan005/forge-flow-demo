@@ -3,13 +3,17 @@
 // Houses the data status, mock replay, data management, and audit-panel
 // wrapper sections. Callbacks and state are supplied by SettingsScreen.
 
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/password_policy.dart';
+import '../../auth/auth_session.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import '../../data/mock_integration_replay_seed.dart';
 import '../../models/app_data_status.dart';
+import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/password_change_gateway.dart';
 import '../../services/shift_service.dart';
 import '../../state/auth_session_notifier.dart';
@@ -252,8 +256,13 @@ class SettingsDataManagementSection extends StatelessWidget {
 }
 
 class SettingsAccountSection extends StatefulWidget {
-  const SettingsAccountSection({super.key, this.passwordChangeGateway});
+  const SettingsAccountSection({
+    super.key,
+    this.accountInfoGateway,
+    this.passwordChangeGateway,
+  });
 
+  final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
 
   @override
@@ -264,6 +273,73 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
   bool _changingPassword = false;
   bool _signingOut = false;
   bool _signingOutEverywhere = false;
+  bool _loadingAccountInfo = false;
+  bool _usingAccountInfoFallback = false;
+  AccountInfo? _accountInfo;
+  Object? _accountInfoError;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAccountInfoIfAvailable();
+  }
+
+  @override
+  void didUpdateWidget(SettingsAccountSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.accountInfoGateway != widget.accountInfoGateway) {
+      _accountInfo = null;
+      _accountInfoError = null;
+      _usingAccountInfoFallback = false;
+      _loadAccountInfoIfAvailable();
+    }
+  }
+
+  Future<void> _loadAccountInfoIfAvailable() async {
+    final gateway = widget.accountInfoGateway;
+    if (gateway == null) return;
+    AuthSession? session;
+    try {
+      session = context.read<AuthSessionNotifier>().session;
+    } catch (_) {
+      session = null;
+    }
+    if (session == null) return;
+    final hadBackendInfo = _accountInfo != null && !_usingAccountInfoFallback;
+    final fallback = _fallbackAccountInfoForSession(session);
+    setState(() {
+      _loadingAccountInfo = true;
+      _accountInfoError = null;
+      if (_accountInfo == null && fallback != null) {
+        _accountInfo = fallback;
+        _usingAccountInfoFallback = true;
+      }
+    });
+    try {
+      final info = await gateway.load(
+        AccountInfoRequest(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+        ),
+      );
+      if (!mounted || widget.accountInfoGateway != gateway) return;
+      setState(() {
+        _accountInfo = info;
+        _loadingAccountInfo = false;
+        _usingAccountInfoFallback = false;
+      });
+    } catch (error) {
+      if (!mounted || widget.accountInfoGateway != gateway) return;
+      final safeInfo = _accountInfo ?? fallback;
+      setState(() {
+        _accountInfo = safeInfo;
+        _accountInfoError = error;
+        _loadingAccountInfo = false;
+        _usingAccountInfoFallback = !hadBackendInfo && safeInfo != null;
+      });
+    }
+  }
 
   Future<void> _changePassword() async {
     final gateway = widget.passwordChangeGateway;
@@ -380,6 +456,38 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
 
   @override
   Widget build(BuildContext context) {
+    final accountInfoGateway = widget.accountInfoGateway;
+    final actions = _buildAccountActionsCard();
+    if (accountInfoGateway == null) return actions;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [_buildAccountInfoCard(), const SizedBox(height: 10), actions],
+    );
+  }
+
+  Widget _buildAccountInfoCard() {
+    if (_loadingAccountInfo && _accountInfo == null) {
+      return const _AccountInfoLoadingCard();
+    }
+    final error = _accountInfoError;
+    if (error != null && _accountInfo == null) {
+      return _AccountInfoErrorCard(onRetry: _loadAccountInfoIfAvailable);
+    }
+    final info = _accountInfo;
+    if (info == null || !info.hasAnyDisplayValue) {
+      return _AccountInfoEmptyCard(onRetry: _loadAccountInfoIfAvailable);
+    }
+    return _AccountInfoSummaryCard(
+      info: info,
+      degraded: _usingAccountInfoFallback,
+      refreshing: _loadingAccountInfo && _usingAccountInfoFallback,
+      onRetry: _usingAccountInfoFallback && !_loadingAccountInfo
+          ? _loadAccountInfoIfAvailable
+          : null,
+    );
+  }
+
+  Widget _buildAccountActionsCard() {
     return SettingsCard(
       children: [
         SettingsActionRow(
@@ -417,6 +525,324 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
               'Legal copy is in review for Phase 9.8. Existing operator agreements remain in effect until the official version is published.',
         ),
       ],
+    );
+  }
+}
+
+class _AccountInfoLoadingCard extends StatelessWidget {
+  const _AccountInfoLoadingCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsCard(
+      children: [
+        Padding(
+          key: const Key('account_my_info_loading'),
+          padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
+          child: Row(
+            children: [
+              const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Loading My info',
+                style: AppTextStyles.mono11(color: AppColors.textMuted),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountInfoErrorCard extends StatelessWidget {
+  const _AccountInfoErrorCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsCard(
+      children: [
+        Padding(
+          key: const Key('account_my_info_error'),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.info_outline_rounded,
+                size: 20,
+                color: AppColors.sunsetDark,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'My info',
+                      style: AppTextStyles.mono12(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      "We couldn't load your account details. Please try again.",
+                      style: AppTextStyles.body13(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      key: const Key('account_my_info_retry'),
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountInfoEmptyCard extends StatelessWidget {
+  const _AccountInfoEmptyCard({required this.onRetry});
+
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingsCard(
+      children: [
+        Padding(
+          key: const Key('account_my_info_empty'),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.person_search_rounded,
+                size: 20,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'My info',
+                      style: AppTextStyles.mono12(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Account details are not available yet.',
+                      style: AppTextStyles.body13(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh_rounded, size: 16),
+                      label: const Text('Retry'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _AccountInfoSummaryCard extends StatelessWidget {
+  const _AccountInfoSummaryCard({
+    required this.info,
+    this.degraded = false,
+    this.refreshing = false,
+    this.onRetry,
+  });
+
+  final AccountInfo info;
+  final bool degraded;
+  final bool refreshing;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <_AccountInfoDetail>[
+      _AccountInfoDetail('Display name', _valueOrFallback(info.displayName)),
+      _AccountInfoDetail('Email', _valueOrFallback(info.email)),
+      _AccountInfoDetail('Account status', _valueOrFallback(info.statusLabel)),
+      _AccountInfoDetail(
+        'Current location',
+        _valueOrFallback(info.locationLabel),
+      ),
+      _AccountInfoDetail(
+        info.roleLabels.length == 1 ? 'Role' : 'Roles',
+        info.roleLabels.isEmpty
+            ? 'No role label available'
+            : info.roleLabels.join(', '),
+      ),
+      _AccountInfoDetail('MFA', info.mfaEnabled ? 'Enabled' : 'Not enabled'),
+      _AccountInfoDetail('Last login', _formatAccountDate(info.lastLoginAt)),
+      _AccountInfoDetail('Last active', _formatAccountDate(info.lastActiveAt)),
+      _AccountInfoDetail(
+        'Password updated',
+        _formatAccountDate(info.passwordUpdatedAt),
+      ),
+    ];
+
+    return SettingsCard(
+      children: [
+        Padding(
+          key: const Key('account_my_info_card'),
+          padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: AppColors.sunset.withValues(alpha: 0.12),
+                  border: Border.all(
+                    color: AppColors.sunset.withValues(alpha: 0.4),
+                  ),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(
+                  Icons.badge_outlined,
+                  size: 19,
+                  color: AppColors.sunsetDark,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'My info',
+                style: AppTextStyles.mono12(
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (degraded) ...[
+          const SettingsRowDivider(),
+          _AccountInfoFallbackNotice(refreshing: refreshing, onRetry: onRetry),
+        ],
+        const SettingsRowDivider(),
+        for (var i = 0; i < rows.length; i++) ...[
+          _AccountInfoDetailRow(detail: rows[i]),
+          if (i != rows.length - 1) const SettingsRowDivider(),
+        ],
+      ],
+    );
+  }
+
+  static String _valueOrFallback(String value) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? 'Not available' : trimmed;
+  }
+}
+
+class _AccountInfoFallbackNotice extends StatelessWidget {
+  const _AccountInfoFallbackNotice({this.refreshing = false, this.onRetry});
+
+  final bool refreshing;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: const Key('account_my_info_fallback'),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.info_outline_rounded,
+            size: 18,
+            color: AppColors.sunsetDark,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              refreshing
+                  ? 'Refreshing profile details.'
+                  : 'Some profile details are temporarily unavailable.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          if (refreshing)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            TextButton.icon(
+              key: const Key('account_my_info_fallback_retry'),
+              onPressed: onRetry,
+              icon: const Icon(Icons.refresh_rounded, size: 15),
+              label: const Text('Retry'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountInfoDetail {
+  const _AccountInfoDetail(this.label, this.value);
+
+  final String label;
+  final String value;
+}
+
+class _AccountInfoDetailRow extends StatelessWidget {
+  const _AccountInfoDetailRow({required this.detail});
+
+  final _AccountInfoDetail detail;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 128,
+            child: Text(
+              detail.label,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              detail.value,
+              softWrap: true,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -770,6 +1196,102 @@ String _passwordRejectionText(String code) {
     'reused_from_history' => 'Choose one you have not used recently.',
     _ => 'Review the password requirements and try again.',
   };
+}
+
+AccountInfo? _fallbackAccountInfoForSession(AuthSession session) {
+  final payload = _firebaseTokenPayload(session.firebaseIdToken);
+  final email = _payloadString(payload, 'email');
+  final displayName =
+      _payloadString(payload, 'name') ??
+      _payloadString(payload, 'display_name') ??
+      email ??
+      'Signed-in operator';
+  final roleLabels = _friendlySessionRoleLabels(session.roles);
+  return AccountInfo(
+    displayName: displayName,
+    email: email ?? 'Email unavailable',
+    statusLabel: 'Signed in',
+    locationLabel: 'Current location',
+    roleLabels: roleLabels.isEmpty
+        ? const <String>['Role unavailable']
+        : roleLabels,
+    mfaEnabled: session.mfaEnrolled,
+  );
+}
+
+Map<String, Object?> _firebaseTokenPayload(String token) {
+  final parts = token.split('.');
+  if (parts.length < 2) return const <String, Object?>{};
+  try {
+    final payload = utf8.decode(
+      base64Url.decode(base64Url.normalize(parts[1])),
+    );
+    final decoded = jsonDecode(payload);
+    if (decoded is Map) return Map<String, Object?>.from(decoded);
+  } catch (_) {
+    // The backend verifies the token. Local decode is only for a safe
+    // read-only fallback when account-info is temporarily unavailable.
+  }
+  return const <String, Object?>{};
+}
+
+String? _payloadString(Map<String, Object?> payload, String key) {
+  final value = payload[key];
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+List<String> _friendlySessionRoleLabels(List<String> roles) {
+  final labels = <String>{};
+  for (final role in roles) {
+    final trimmed = role.trim();
+    if (trimmed.isEmpty ||
+        trimmed.startsWith('roles_version:') ||
+        trimmed.contains('.') ||
+        _looksLikeUuid(trimmed)) {
+      continue;
+    }
+    labels.add(_roleLabel(trimmed));
+  }
+  return List<String>.unmodifiable(labels);
+}
+
+String _roleLabel(String role) {
+  return role
+      .split('_')
+      .where((part) => part.isNotEmpty)
+      .map((part) => '${part[0].toUpperCase()}${part.substring(1)}')
+      .join(' ');
+}
+
+bool _looksLikeUuid(String value) {
+  return RegExp(
+    r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-'
+    r'[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$',
+  ).hasMatch(value);
+}
+
+String _formatAccountDate(DateTime? value) {
+  if (value == null) return 'Not available';
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  final local = value.toLocal();
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+  return '${months[local.month - 1]} ${local.day}, ${local.year} $hour:$minute';
 }
 
 /// Audit panel wrapper. The shell previously rendered

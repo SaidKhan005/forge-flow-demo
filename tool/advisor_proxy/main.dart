@@ -82,6 +82,7 @@ Future<void> main(List<String> args) async {
     'auth_session_ledger: postgres, '
     'accounting_store: postgres, '
     'permission_snapshot: postgres, '
+    'account_info: postgres, '
     'admin_permission_guard: postgres, '
     'auth_operations: postgres, '
     'service_principal_issuance: postgres, '
@@ -105,6 +106,7 @@ Future<void> main(List<String> args) async {
         llmProvider: llmProvider,
         authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
         firebaseAdminAuthClient: productionBindings.firebaseAdminAuthClient,
+        accountInfoGateway: productionBindings.accountInfoGateway,
         permissionSnapshotResolver:
             productionBindings.permissionSnapshotResolver,
         adminPermissionGuard: productionBindings.adminPermissionGuard,

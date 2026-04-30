@@ -46,6 +46,7 @@ import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
@@ -3104,6 +3105,7 @@ const String usageSmokePath = '/v1/usage-smoke';
 const String advisorSmokePath = '/v1/advisor-smoke';
 
 // Phase 9 live-closeout - auth operations / permission snapshot routes.
+const String authAccountInfoPath = '/v1/auth/account';
 const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
 const String authPasswordChangePath = '/v1/auth/password/change';
 const String authPasswordResetConfirmPath = '/v1/auth/password/reset/confirm';
@@ -3336,6 +3338,7 @@ Future<void> routeRequest(
   ProxyLlmProvider? llmProvider,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
   FirebaseAdminAuthClient? firebaseAdminAuthClient,
+  AccountInfoGateway? accountInfoGateway,
   ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
   AuthOperationsGateway? authOperationsGateway,
   ProxyAdminPermissionGuard? adminPermissionGuard,
@@ -3687,6 +3690,45 @@ Future<void> routeRequest(
     //      `{ok: true}` (refresh / revoke), `{revoked_count}`
     //      (revoke-all). NEVER echoes the bearer token, the
     //      `token_hash`, or any error stack.
+
+    if (request.method == 'GET' && path == authAccountInfoPath) {
+      if (accountInfoGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'account_info_not_configured',
+          'message': 'route requires an AccountInfoGateway to be installed',
+        });
+        return;
+      }
+
+      final scope = await _resolveOperatorContextOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (scope == null) return;
+
+      try {
+        final info = await accountInfoGateway.load(
+          AccountInfoRequest(
+            actorUserId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+          ),
+        );
+        _writeJson(response, 200, info.toJson());
+      } on AccountInfoUnavailable {
+        _writeJson(response, 404, <String, Object?>{
+          'error': 'account_info_unavailable',
+          'message': 'account info is unavailable; please retry',
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'account_info_unavailable',
+          'message': 'account info is unavailable; please retry',
+        });
+      }
+      return;
+    }
 
     if (request.method == 'GET' && path == authPermissionsSnapshotPath) {
       if (permissionSnapshotResolver == null) {

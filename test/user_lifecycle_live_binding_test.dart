@@ -118,6 +118,47 @@ void main() {
     });
 
     test(
+      'findSelfProfile reads only the current user in tenant context',
+      () async {
+        final pool = _LifecyclePool(
+          selfProfileRows: <PostgresRow>[
+            <String, Object?>{
+              'display_name': 'Jane Operator',
+              'email': 'jane@example.test',
+              'status': 'active',
+              'location_label': 'Downtown',
+              'role_labels': <String>['Kitchen Lead'],
+              'mfa_enabled': true,
+              'last_active_at': DateTime.utc(2026, 4, 29, 12),
+              'last_login_at': DateTime.utc(2026, 4, 29, 11),
+              'password_updated_at': DateTime.utc(2026, 4, 20, 9),
+            },
+          ],
+        );
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        final profile = await repo.findSelfProfile(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+        );
+
+        expect(profile, isNotNull);
+        expect(profile!.displayName, equals('Jane Operator'));
+        expect(profile.roleLabels, equals(<String>['Kitchen Lead']));
+        expect(profile.mfaEnabled, isTrue);
+        final tx = pool.transactions.single;
+        expect(tx.executedSql.first, contains("'app.operator_id'"));
+        final sql = tx.executedSql.last;
+        expect(sql, contains('from users u'));
+        expect(sql, contains('where u.user_id = @user_id::uuid'));
+        expect(sql, contains('and u.operator_id = @operator_id::uuid'));
+        expect(sql, contains("and u.status != 'deleted'"));
+        expect(tx.parameters.last['user_id'], equals(_validUserId));
+      },
+    );
+
+    test(
       'MFA recovery admin lookup trusts explicit operator_admins assignment',
       () async {
         const adminUserId = '66666666-6666-6666-6666-666666666666';
@@ -413,12 +454,14 @@ class _LifecyclePool implements PostgresPool {
   _LifecyclePool({
     this.returningInviteId,
     this.returningEventId,
+    this.selfProfileRows = const <PostgresRow>[],
     this.mfaRecoveryTargetRows = const <PostgresRow>[],
     this.mfaRecoveryAdminRows = const <PostgresRow>[],
   });
 
   final String? returningInviteId;
   final String? returningEventId;
+  final List<PostgresRow> selfProfileRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
 
@@ -429,6 +472,7 @@ class _LifecyclePool implements PostgresPool {
     final tx = _LifecycleTransaction(
       returningInviteId: returningInviteId,
       returningEventId: returningEventId,
+      selfProfileRows: selfProfileRows,
       mfaRecoveryTargetRows: mfaRecoveryTargetRows,
       mfaRecoveryAdminRows: mfaRecoveryAdminRows,
     );
@@ -441,12 +485,14 @@ class _LifecycleTransaction extends PostgresTransaction {
   _LifecycleTransaction({
     required this.returningInviteId,
     required this.returningEventId,
+    required this.selfProfileRows,
     required this.mfaRecoveryTargetRows,
     required this.mfaRecoveryAdminRows,
   });
 
   final String? returningInviteId;
   final String? returningEventId;
+  final List<PostgresRow> selfProfileRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
   final List<String> executedSql = <String>[];
@@ -478,6 +524,10 @@ class _LifecycleTransaction extends PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{'event_id': id},
       ];
+    }
+    if (sql.contains('from users u') &&
+        sql.contains('where u.user_id = @user_id::uuid')) {
+      return selfProfileRows;
     }
     if (sql.contains('from users u') &&
         sql.contains('where lower(u.email) = lower(@email)')) {

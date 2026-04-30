@@ -23,6 +23,7 @@ import 'state/auth_session_notifier.dart';
 import 'state/demand_forecast_context_notifier.dart';
 import 'state/permission_context.dart';
 import 'state/restaurant_scope_notifier.dart';
+import 'services/auth/account_info_gateway.dart';
 import 'state/schedule_distribution_weights_notifier.dart';
 import 'state/shift_dashboard_notifier.dart';
 import 'state/week_data_notifier.dart';
@@ -48,6 +49,7 @@ class ForgeFlowApp extends StatelessWidget {
     this.requireAuth = false,
     this.permissionContextLoader,
     this.authOperationsGateway,
+    this.accountInfoGateway,
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.mfaRecoveryRequestGateway,
@@ -56,6 +58,7 @@ class ForgeFlowApp extends StatelessWidget {
   final bool requireAuth;
   final PermissionContextLoader? permissionContextLoader;
   final AuthOperationsGateway? authOperationsGateway;
+  final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
@@ -65,6 +68,7 @@ class ForgeFlowApp extends StatelessWidget {
     final shell = AppShell(
       permissionContextLoader: permissionContextLoader,
       authOperationsGateway: authOperationsGateway,
+      accountInfoGateway: accountInfoGateway,
       passwordChangeGateway: passwordChangeGateway,
       mfaOperationsGateway: mfaOperationsGateway,
     );
@@ -166,6 +170,7 @@ class AppShell extends StatefulWidget {
   final bool embeddedInBarrio;
   final PermissionContextLoader? permissionContextLoader;
   final AuthOperationsGateway? authOperationsGateway;
+  final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
 
@@ -180,6 +185,7 @@ class AppShell extends StatefulWidget {
     this.embeddedInBarrio = false,
     this.permissionContextLoader,
     this.authOperationsGateway,
+    this.accountInfoGateway,
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.testBusinessDateResolver,
@@ -360,6 +366,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onTeamInviteRevoked: _teamInviteRevoker(session),
           onTeamUserAction: _teamUserActionHandler(session),
           passwordChangeGateway: widget.passwordChangeGateway,
+          accountInfoGateway: widget.accountInfoGateway,
           mfaOperationsGateway: widget.mfaOperationsGateway,
         ),
         fullscreenDialog: true,

@@ -5,6 +5,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
+import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
@@ -50,6 +51,59 @@ void main() {
             }),
           );
           expect(body['requires_mfa'], equals(<Object?>['billing.manage']));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test(
+      'GET account info is self-scoped and returns friendly payload',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAccountInfoGateway();
+          final harness = await _RouteHarness.start(
+            accountInfoGateway: gateway,
+          );
+          try {
+            final response = await harness.get(
+              '$authAccountInfoPath?user_id=someone-else',
+            );
+            final body = response.json;
+
+            expect(response.statusCode, equals(200));
+            expect(gateway.requests.single.actorUserId, equals(_userId));
+            expect(gateway.requests.single.operatorId, equals(_operatorId));
+            expect(body['display_name'], equals('Jane Operator'));
+            expect(body['location_label'], equals('Downtown'));
+            expect(body['role_labels'], equals(<Object?>['Kitchen Lead']));
+            expect(body['mfa_enabled'], isTrue);
+            expect(body.containsKey('user_id'), isFalse);
+            expect(body.containsKey('operator_id'), isFalse);
+            expect(body.containsKey('location_id'), isFalse);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('GET account info does not require Team permission', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAccountInfoGateway();
+        final guard = _RecordingAdminGuard(
+          decision: const ProxyAdminDeniedDefault(),
+        );
+        final harness = await _RouteHarness.start(
+          accountInfoGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.get(authAccountInfoPath);
+
+          expect(response.statusCode, equals(200));
+          expect(guard.permissionKeys, isEmpty);
+          expect(gateway.requests, hasLength(1));
         } finally {
           await harness.close();
         }
@@ -695,6 +749,7 @@ class _RouteHarness {
   final Uri baseUri;
 
   static Future<_RouteHarness> start({
+    AccountInfoGateway? accountInfoGateway,
     ProxyPermissionSnapshotResolver? permissionSnapshotResolver,
     AuthOperationsGateway? authOperationsGateway,
     ProxyAdminPermissionGuard? adminPermissionGuard,
@@ -710,6 +765,7 @@ class _RouteHarness {
       await routeRequest(
         request,
         guard,
+        accountInfoGateway: accountInfoGateway,
         permissionSnapshotResolver: permissionSnapshotResolver,
         authOperationsGateway: authOperationsGateway,
         adminPermissionGuard: adminPermissionGuard,
@@ -829,6 +885,26 @@ class _FixedSnapshotResolver implements ProxyPermissionSnapshotResolver {
 
   @override
   Future<ProxyPermissionSnapshot> load(OperatorContext scope) async => snapshot;
+}
+
+class _RecordingAccountInfoGateway implements AccountInfoGateway {
+  final requests = <AccountInfoRequest>[];
+
+  @override
+  Future<AccountInfo> load(AccountInfoRequest request) async {
+    requests.add(request);
+    return AccountInfo(
+      displayName: 'Jane Operator',
+      email: 'jane@example.test',
+      statusLabel: 'Active',
+      locationLabel: 'Downtown',
+      roleLabels: const <String>['Kitchen Lead'],
+      mfaEnabled: true,
+      lastLoginAt: DateTime.utc(2026, 4, 28, 11),
+      lastActiveAt: DateTime.utc(2026, 4, 28, 12),
+      passwordUpdatedAt: DateTime.utc(2026, 4, 20, 9),
+    );
+  }
 }
 
 class _RecordingAdminGuard implements ProxyAdminPermissionGuard {
