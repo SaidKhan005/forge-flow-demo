@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/auth_session_notifier.dart';
+import '../../theme/app_theme.dart';
 
 class MfaChallengeScreen extends StatefulWidget {
   const MfaChallengeScreen({super.key});
@@ -70,7 +71,7 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
     final state = notifier.state;
     if (state is! AuthSessionMfaChallenge) {
       return const Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: AppColors.backgroundDeep,
         body: SizedBox.shrink(),
       );
     }
@@ -81,27 +82,32 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
     final errorMessage = _localError ?? notifierError;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: AppColors.backgroundDeep,
       body: Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360),
+          constraints: const BoxConstraints(maxWidth: 400),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(
-                  Icons.shield_outlined,
-                  color: Colors.white70,
-                  size: 36,
+                Center(
+                  child: ClipOval(
+                    child: Image.asset(
+                      'assets/images/forge_flow_splash_icon.png',
+                      width: 54,
+                      height: 54,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 const Text(
                   'Two-factor verification',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: AppColors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w500,
                   ),
@@ -110,7 +116,7 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                 Text(
                   challenge.email,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(color: Colors.white60),
+                  style: const TextStyle(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 24),
                 if (errorMessage != null) ...[
@@ -131,10 +137,19 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                   decoration: InputDecoration(
                     labelText: _useRecoveryCode
                         ? 'Recovery code (e.g. ABCD-EFGH-JKMN)'
-                        : '6-digit authenticator code',
+                        : '6-digit code',
+                    helperText: _useRecoveryCode
+                        ? 'Use one of the recovery codes saved during setup.'
+                        : 'Displayed on your authenticator app.',
                     border: const OutlineInputBorder(),
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  style: const TextStyle(color: AppColors.textPrimary),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'No access to your authenticator app or recovery codes? Contact your restaurant admin.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -155,7 +170,7 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                             },
                       child: Text(
                         _useRecoveryCode
-                            ? 'Use authenticator'
+                            ? 'Use authenticator app'
                             : 'Use recovery code',
                       ),
                     ),
@@ -200,11 +215,14 @@ class _ErrorBanner extends StatelessWidget {
       key: const Key('mfa_error_banner'),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0x33B00020),
-        border: Border.all(color: const Color(0xFFB00020)),
+        color: AppColors.negative.withValues(alpha: 0.14),
+        border: Border.all(color: AppColors.negative),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(message, style: const TextStyle(color: Colors.white)),
+      child: Text(
+        message,
+        style: const TextStyle(color: AppColors.textPrimary),
+      ),
     );
   }
 }

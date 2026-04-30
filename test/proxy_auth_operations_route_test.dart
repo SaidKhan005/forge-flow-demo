@@ -348,6 +348,73 @@ void main() {
       });
     });
 
+    test(
+      'POST MFA factors list delegates and returns factor summaries',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingMfaOperationsGateway(
+            factors: <MfaFactorSummary>[
+              MfaFactorSummary(
+                factorId: 'totp-db-factor',
+                factorType: 'totp',
+                enrolledAt: DateTime.utc(2026, 4, 30, 12),
+                issuerLabel: 'Forge & Flow',
+              ),
+            ],
+          );
+          final harness = await _RouteHarness.start(
+            mfaOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authMfaFactorsListPath,
+              const <String, Object?>{},
+            );
+
+            expect(response.statusCode, equals(200));
+            final factors = response.json['factors']! as List<Object?>;
+            final factor = Map<String, Object?>.from(factors.single! as Map);
+            expect(factor['factor_id'], equals('totp-db-factor'));
+            expect(gateway.lists.single.actorUserId, equals(_userId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST MFA factors revoke delegates and returns delayed removal',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingMfaOperationsGateway(
+            revokeResult: MfaRevokeFactorCompleted(
+              revoked: false,
+              requestId: 'mfa-removal-1',
+              executeAfter: DateTime.utc(2026, 5, 1, 12),
+            ),
+          );
+          final harness = await _RouteHarness.start(
+            mfaOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authMfaFactorsRevokePath,
+              const <String, Object?>{'factor_id': 'totp-db-factor'},
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(response.json['revoked'], isFalse);
+            expect(response.json['request_id'], equals('mfa-removal-1'));
+            expect(gateway.revokes.single.factorId, equals('totp-db-factor'));
+            expect(gateway.revokes.single.stepUpProofId, equals('test-token'));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST recovery-code consume maps rate limit details', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaOperationsGateway(
@@ -567,10 +634,18 @@ class _RecordingPasswordChangeGateway implements PasswordChangeGateway {
 }
 
 class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
-  _RecordingMfaOperationsGateway({this.consumeError});
+  _RecordingMfaOperationsGateway({
+    this.consumeError,
+    this.factors = const <MfaFactorSummary>[],
+    this.revokeResult = const MfaRevokeFactorCompleted(revoked: false),
+  });
 
   final MfaOperationRejected? consumeError;
+  final List<MfaFactorSummary> factors;
+  final MfaRevokeFactorCompleted revokeResult;
   final begins = <MfaTotpBeginCommand>[];
+  final lists = <MfaListFactorsCommand>[];
+  final revokes = <MfaRevokeFactorCommand>[];
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
@@ -582,6 +657,22 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
       secretBase32: 'JBSWY3DPEHPK3PXP',
       otpAuthUrl: 'otpauth://totp/Forge%20%26%20Flow:owner@example.test',
     );
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    lists.add(command);
+    return MfaListFactorsCompleted(factors: factors);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) async {
+    revokes.add(command);
+    return revokeResult;
   }
 
   @override

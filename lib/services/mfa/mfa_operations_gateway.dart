@@ -8,7 +8,9 @@
 
 import '../../infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
+import 'firebase_mfa_client.dart';
 import 'mfa_enrollment_service.dart';
+import 'mfa_removal_service.dart';
 import 'recovery_code_consumer.dart';
 
 class MfaTotpBeginCommand {
@@ -79,6 +81,74 @@ class RecoveryCodeConsumeCompleted {
   final String factorId;
 }
 
+class MfaFactorSummary {
+  const MfaFactorSummary({
+    required this.factorId,
+    required this.factorType,
+    required this.enrolledAt,
+    required this.issuerLabel,
+    this.lastUsedAt,
+    this.canRevoke = true,
+  });
+
+  final String factorId;
+  final String factorType;
+  final DateTime enrolledAt;
+  final DateTime? lastUsedAt;
+  final String issuerLabel;
+  final bool canRevoke;
+}
+
+class MfaListFactorsCommand {
+  const MfaListFactorsCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.authorizationIdToken = '',
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String authorizationIdToken;
+}
+
+class MfaListFactorsCompleted {
+  const MfaListFactorsCompleted({required this.factors});
+
+  final List<MfaFactorSummary> factors;
+}
+
+class MfaRevokeFactorCommand {
+  const MfaRevokeFactorCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.factorId,
+    this.stepUpProofId = '',
+    this.authorizationIdToken = '',
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String factorId;
+  final String stepUpProofId;
+  final String authorizationIdToken;
+}
+
+class MfaRevokeFactorCompleted {
+  const MfaRevokeFactorCompleted({
+    required this.revoked,
+    this.requestId,
+    this.executeAfter,
+  });
+
+  final bool revoked;
+  final String? requestId;
+  final DateTime? executeAfter;
+}
+
 class MfaOperationRejected implements Exception {
   const MfaOperationRejected({
     required this.code,
@@ -101,6 +171,10 @@ class MfaOperationRejected implements Exception {
 abstract class MfaOperationsGateway {
   Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command);
 
+  Future<MfaListFactorsCompleted> listFactors(MfaListFactorsCommand command);
+
+  Future<MfaRevokeFactorCompleted> revokeFactor(MfaRevokeFactorCommand command);
+
   Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
     MfaTotpConfirmCommand command,
   );
@@ -115,6 +189,18 @@ class ScaffoldFailingMfaOperationsGateway implements MfaOperationsGateway {
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(MfaListFactorsCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) {
     throw StateError(_message);
   }
 
@@ -143,23 +229,173 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
     required MfaFactorsRepository mfaFactorsRepository,
     required RecoveryCodeConsumer recoveryCodeConsumer,
     required AuthEventsAuditRepository auditRepository,
+    FirebaseMfaClient? firebaseMfaClient,
+    DateTime Function()? now,
   }) : _enrollmentService = enrollmentService,
        _mfaFactorsRepository = mfaFactorsRepository,
        _recoveryCodeConsumer = recoveryCodeConsumer,
-       _auditRepository = auditRepository;
+       _auditRepository = auditRepository,
+       _firebaseMfaClient = firebaseMfaClient,
+       _now = now ?? DateTime.now;
 
   final MfaEnrollmentService _enrollmentService;
   final MfaFactorsRepository _mfaFactorsRepository;
   final RecoveryCodeConsumer _recoveryCodeConsumer;
   final AuthEventsAuditRepository _auditRepository;
+  final FirebaseMfaClient? _firebaseMfaClient;
+  final DateTime Function() _now;
 
   @override
-  Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command) {
+  Future<TotpEnrollmentSetup> beginTotpEnrollment(
+    MfaTotpBeginCommand command,
+  ) async {
+    final existing = await _activeTotpSummaries(command);
+    if (existing.isNotEmpty) {
+      throw const MfaOperationRejected(
+        code: 'mfa_factor_already_enrolled',
+        message: 'An authenticator app is already enrolled.',
+        statusCode: 409,
+      );
+    }
     return _enrollmentService.beginTotpEnrollment(
       authorizationIdToken: command.authorizationIdToken,
       userId: command.actorUserId,
       userEmail: command.userEmail,
       issuerName: command.issuerName,
+    );
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    return MfaListFactorsCompleted(
+      factors: await _activeTotpSummaries(command),
+    );
+  }
+
+  Future<List<MfaFactorSummary>> _activeTotpSummaries(Object command) async {
+    final actorUserId = switch (command) {
+      MfaListFactorsCommand(:final actorUserId) => actorUserId,
+      MfaTotpBeginCommand(:final actorUserId) => actorUserId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final operatorId = switch (command) {
+      MfaListFactorsCommand(:final operatorId) => operatorId,
+      MfaTotpBeginCommand(:final operatorId) => operatorId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final locationId = switch (command) {
+      MfaListFactorsCommand(:final locationId) => locationId,
+      MfaTotpBeginCommand(:final locationId) => locationId,
+      _ => throw ArgumentError.value(command, 'command'),
+    };
+    final authorizationIdToken = switch (command) {
+      MfaListFactorsCommand(:final authorizationIdToken) =>
+        authorizationIdToken,
+      MfaTotpBeginCommand(:final authorizationIdToken) => authorizationIdToken,
+      _ => '',
+    };
+    final records = await _mfaFactorsRepository.listActiveTotpFactors(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: actorUserId,
+    );
+    final factors = <MfaFactorSummary>[
+      for (final record in records)
+        MfaFactorSummary(
+          factorId: record.factorId,
+          factorType: record.factorType,
+          enrolledAt: record.enrolledAt,
+          lastUsedAt: record.lastUsedAt,
+          issuerLabel:
+              (record.factorMetadata['issuer'] as String?) ?? 'Forge & Flow',
+        ),
+    ];
+    final knownFirebaseUids = records
+        .map((record) => record.factorMetadata['firebase_factor_uid'])
+        .whereType<String>()
+        .where((uid) => uid.trim().isNotEmpty)
+        .toSet();
+    final firebaseClient = _firebaseMfaClient;
+    if (firebaseClient == null || authorizationIdToken.trim().isEmpty) {
+      return List<MfaFactorSummary>.unmodifiable(factors);
+    }
+    final firebaseFactors = await firebaseClient.listTotpFactors(
+      authorizationIdToken: authorizationIdToken,
+      userId: actorUserId,
+    );
+    for (final firebaseFactor in firebaseFactors) {
+      if (knownFirebaseUids.contains(firebaseFactor.factorId)) continue;
+      factors.add(
+        MfaFactorSummary(
+          factorId: 'firebase:${firebaseFactor.factorId}',
+          factorType: 'totp',
+          enrolledAt: firebaseFactor.enrolledAt,
+          issuerLabel: firebaseFactor.displayName ?? 'Forge & Flow',
+          canRevoke: false,
+        ),
+      );
+    }
+    return List<MfaFactorSummary>.unmodifiable(factors);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) async {
+    final stepUpProofId = command.stepUpProofId.trim();
+    if (stepUpProofId.isEmpty) {
+      throw const MfaOperationRejected(
+        code: 'mfa_freshness_required',
+        message: 'Sign in again before removing MFA.',
+        statusCode: 403,
+      );
+    }
+    final factors = await _mfaFactorsRepository.listActiveTotpFactors(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+    );
+    final factorExists = factors.any(
+      (factor) => factor.factorId == command.factorId,
+    );
+    if (!factorExists) {
+      throw const MfaOperationRejected(
+        code: 'mfa_factor_not_found',
+        message: 'MFA factor was already removed or does not exist.',
+        statusCode: 404,
+      );
+    }
+    final requestedAt = _now().toUtc();
+    final request =
+        MfaRemovalService(
+          delay: MfaRemovalService.defaultDelay,
+          now: () => requestedAt,
+        ).requestRemoval(
+          requestId:
+              'mfa-removal-${command.factorId}-${requestedAt.microsecondsSinceEpoch}',
+          userId: command.actorUserId,
+          factorId: command.factorId,
+          stepUpProofId: stepUpProofId,
+        );
+    await _auditRepository.insertEvent(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      targetUserId: command.actorUserId,
+      eventType: 'mfa_factor_revocation_initiated',
+      payload: <String, Object?>{
+        'factor_id': command.factorId,
+        'request_id': request.requestId,
+        'execute_after': request.executeAfter.toUtc().toIso8601String(),
+        'step_up_proof_present': true,
+      },
+    );
+    return MfaRevokeFactorCompleted(
+      revoked: false,
+      requestId: request.requestId,
+      executeAfter: request.executeAfter,
     );
   }
 

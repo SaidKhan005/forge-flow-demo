@@ -356,6 +356,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           onTeamInviteRevoked: _teamInviteRevoker(session),
           onTeamUserAction: _teamUserActionHandler(session),
           passwordChangeGateway: widget.passwordChangeGateway,
+          mfaOperationsGateway: widget.mfaOperationsGateway,
         ),
         fullscreenDialog: true,
       ),

@@ -3107,6 +3107,8 @@ const String authPasswordChangePath = '/v1/auth/password/change';
 const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
 const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
 const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
+const String authMfaFactorsListPath = '/v1/auth/mfa/factors/list';
+const String authMfaFactorsRevokePath = '/v1/auth/mfa/factors/revoke';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPath = '/v1/admin/auth/users';
@@ -3891,6 +3893,64 @@ Future<void> routeRequest(
           _writeJson(response, 200, <String, Object?>{
             'ok': true,
             'factor_id': completed.factorId,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMfaFactorsListPath) {
+          final listed = await mfaOperationsGateway.listFactors(
+            MfaListFactorsCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              authorizationIdToken: authorizationIdToken,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'factors': <Map<String, Object?>>[
+              for (final factor in listed.factors)
+                <String, Object?>{
+                  'factor_id': factor.factorId,
+                  'factor_type': factor.factorType,
+                  'enrolled_at': factor.enrolledAt.toUtc().toIso8601String(),
+                  'last_used_at': factor.lastUsedAt?.toUtc().toIso8601String(),
+                  'issuer_label': factor.issuerLabel,
+                  'can_revoke': factor.canRevoke,
+                },
+            ],
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
+          final factorId = _nonBlankString(body['factor_id']);
+          if (factorId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_factor_id',
+              'message': 'request body must include factor_id',
+            });
+            return;
+          }
+          final completed = await mfaOperationsGateway.revokeFactor(
+            MfaRevokeFactorCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              authorizationIdToken: authorizationIdToken,
+              factorId: factorId,
+              stepUpProofId:
+                  _nonBlankString(body['step_up_proof_id']) ??
+                  authorizationIdToken,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'revoked': completed.revoked,
+            if (completed.requestId != null) 'request_id': completed.requestId,
+            if (completed.executeAfter != null)
+              'execute_after': completed.executeAfter!
+                  .toUtc()
+                  .toIso8601String(),
           });
           return;
         }
@@ -5173,7 +5233,9 @@ bool _isMfaOperation(String path, String method) {
   if (method != 'POST') return false;
   return path == authMfaTotpBeginPath ||
       path == authMfaTotpConfirmPath ||
-      path == authMfaRecoveryConsumePath;
+      path == authMfaRecoveryConsumePath ||
+      path == authMfaFactorsListPath ||
+      path == authMfaFactorsRevokePath;
 }
 
 Future<bool> _requireAdminPermissionOrWrite({

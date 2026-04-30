@@ -85,6 +85,153 @@ void main() {
         );
       },
     );
+
+    test('listFactors projects active TOTP summaries', () async {
+      final enrolledAt = DateTime.utc(2026, 4, 30, 12);
+      final mfaRepo = _RecordingMfaFactorsRepository(
+        activeTotpFactors: <MfaFactorRecord>[
+          MfaFactorRecord(
+            factorId: 'totp-db-factor',
+            userId: _userId,
+            factorType: 'totp',
+            factorMetadata: const <String, Object?>{'issuer': 'Forge & Flow'},
+            enrolledAt: enrolledAt,
+          ),
+        ],
+      );
+      final gateway = RepositoryMfaOperationsGateway(
+        enrollmentService: const _SuccessfulEnrollmentService(),
+        mfaFactorsRepository: mfaRepo,
+        recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
+        auditRepository: _RecordingAuditRepository(),
+      );
+
+      final result = await gateway.listFactors(
+        const MfaListFactorsCommand(
+          actorUserId: _userId,
+          operatorId: _operatorId,
+          locationId: _locationId,
+        ),
+      );
+
+      expect(result.factors.single.factorId, equals('totp-db-factor'));
+      expect(result.factors.single.factorType, equals('totp'));
+      expect(result.factors.single.enrolledAt, equals(enrolledAt));
+      expect(mfaRepo.listActiveTotpCalls, equals(1));
+    });
+
+    test(
+      'begin rejects when an active authenticator app already exists',
+      () async {
+        final mfaRepo = _RecordingMfaFactorsRepository(
+          activeTotpFactors: <MfaFactorRecord>[
+            MfaFactorRecord(
+              factorId: 'totp-db-factor',
+              userId: _userId,
+              factorType: 'totp',
+              factorMetadata: const <String, Object?>{},
+              enrolledAt: DateTime.utc(2026, 4, 30),
+            ),
+          ],
+        );
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: mfaRepo,
+          recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
+          auditRepository: _RecordingAuditRepository(),
+        );
+
+        final error = await _captureError(
+          gateway.beginTotpEnrollment(
+            const MfaTotpBeginCommand(
+              actorUserId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              userEmail: 'owner@example.test',
+              issuerName: 'Forge & Flow',
+            ),
+          ),
+        );
+
+        expect(error, isA<MfaOperationRejected>());
+        expect(
+          (error! as MfaOperationRejected).code,
+          equals('mfa_factor_already_enrolled'),
+        );
+      },
+    );
+
+    test(
+      'revokeFactor initiates delayed removal and audits contract event',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final now = DateTime.utc(2026, 4, 30, 12);
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: _RecordingMfaFactorsRepository(
+            activeTotpFactors: <MfaFactorRecord>[
+              MfaFactorRecord(
+                factorId: 'totp-db-factor',
+                userId: _userId,
+                factorType: 'totp',
+                factorMetadata: const <String, Object?>{},
+                enrolledAt: now,
+              ),
+            ],
+          ),
+          recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
+          auditRepository: auditRepo,
+          now: () => now,
+        );
+
+        final result = await gateway.revokeFactor(
+          const MfaRevokeFactorCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            factorId: 'totp-db-factor',
+            stepUpProofId: 'fresh-proof',
+          ),
+        );
+
+        expect(result.revoked, isFalse);
+        expect(result.executeAfter, equals(now.add(const Duration(hours: 24))));
+        expect(
+          auditRepo.events.single.eventType,
+          equals('mfa_factor_revocation_initiated'),
+        );
+        expect(
+          auditRepo.events.single.payload['factor_id'],
+          equals('totp-db-factor'),
+        );
+      },
+    );
+
+    test('revokeFactor without fresh proof is rejected', () async {
+      final gateway = RepositoryMfaOperationsGateway(
+        enrollmentService: const _SuccessfulEnrollmentService(),
+        mfaFactorsRepository: _RecordingMfaFactorsRepository(),
+        recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
+        auditRepository: _RecordingAuditRepository(),
+      );
+
+      final error = await _captureError(
+        gateway.revokeFactor(
+          const MfaRevokeFactorCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            factorId: 'totp-db-factor',
+          ),
+        ),
+      );
+
+      expect(error, isA<MfaOperationRejected>());
+      expect(
+        (error! as MfaOperationRejected).code,
+        equals('mfa_freshness_required'),
+      );
+    });
   });
 }
 
@@ -138,10 +285,14 @@ class _SuccessfulEnrollmentService implements MfaEnrollmentService {
 }
 
 class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
-  _RecordingMfaFactorsRepository()
-    : super(TenantTransactionWrapper(_NoopPool()));
+  _RecordingMfaFactorsRepository({
+    List<MfaFactorRecord> activeTotpFactors = const <MfaFactorRecord>[],
+  }) : _activeTotpFactors = activeTotpFactors,
+       super(TenantTransactionWrapper(_NoopPool()));
 
   final persisted = <_PersistedEnrollment>[];
+  final List<MfaFactorRecord> _activeTotpFactors;
+  int listActiveTotpCalls = 0;
 
   @override
   Future<MfaEnrollmentPersistenceResult> insertTotpEnrollment({
@@ -162,6 +313,16 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
       totpFactorId: 'totp-db-factor',
       recoveryCodeFactorIds: <String>['recovery-db-factor'],
     );
+  }
+
+  @override
+  Future<List<MfaFactorRecord>> listActiveTotpFactors({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+  }) async {
+    listActiveTotpCalls += 1;
+    return _activeTotpFactors;
   }
 }
 

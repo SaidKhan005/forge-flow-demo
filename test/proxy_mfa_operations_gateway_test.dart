@@ -121,6 +121,92 @@ void main() {
       },
     );
 
+    test(
+      'listFactors posts to factor list path and parses summaries',
+      () async {
+        final enrolledAt = DateTime.utc(2026, 4, 30, 12);
+        final fake = _FakeMfaHttpClient(
+          response: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'factors': <Map<String, Object?>>[
+                <String, Object?>{
+                  'factor_id': 'totp-db-factor',
+                  'factor_type': 'totp',
+                  'enrolled_at': enrolledAt.toIso8601String(),
+                  'issuer_label': 'Forge & Flow',
+                  'can_revoke': true,
+                },
+              ],
+            },
+          ),
+        );
+        final gateway = ProxyMfaOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final result = await gateway.listFactors(
+          const MfaListFactorsCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+          ),
+        );
+
+        expect(result.factors.single.factorId, equals('totp-db-factor'));
+        expect(result.factors.single.enrolledAt, equals(enrolledAt));
+        expect(
+          fake.posts.single.url.path,
+          equals(ProxyMfaOperationsGateway.factorsListPath),
+        );
+      },
+    );
+
+    test(
+      'revokeFactor posts factor id and parses delayed removal request',
+      () async {
+        final executeAfter = DateTime.utc(2026, 5, 1, 12);
+        final fake = _FakeMfaHttpClient(
+          response: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'revoked': false,
+              'request_id': 'mfa-removal-1',
+              'execute_after': executeAfter.toIso8601String(),
+            },
+          ),
+        );
+        final gateway = ProxyMfaOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final result = await gateway.revokeFactor(
+          const MfaRevokeFactorCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            factorId: 'totp-db-factor',
+            stepUpProofId: 'fresh-proof',
+          ),
+        );
+
+        expect(result.revoked, isFalse);
+        expect(result.requestId, equals('mfa-removal-1'));
+        expect(result.executeAfter, equals(executeAfter));
+        final call = fake.posts.single;
+        expect(
+          call.url.path,
+          equals(ProxyMfaOperationsGateway.factorsRevokePath),
+        );
+        expect(call.body['factor_id'], equals('totp-db-factor'));
+        expect(call.body['step_up_proof_id'], equals('fresh-proof'));
+      },
+    );
+
     test('missing ID token fails before network', () async {
       final fake = _FakeMfaHttpClient();
       final gateway = ProxyMfaOperationsGateway(

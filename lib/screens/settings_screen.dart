@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 
+import '../auth/auth_session.dart';
 import '../models/app_data_status.dart';
 import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
 import '../services/auth/password_change_gateway.dart';
+import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
 import '../services/team/team_invite_form_controller.dart';
 import '../services/team/team_scope_visibility_policy.dart';
@@ -19,6 +23,7 @@ import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
+import 'settings/settings_mfa_section.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
 import 'team/team_settings_section.dart';
@@ -77,6 +82,8 @@ class SettingsScreen extends StatefulWidget {
   final ValueListenable<List<TeamPendingInviteListItem>>?
   teamPendingInvitesListenable;
   final ValueListenable<TeamSettingsDataLoadState>? teamDataLoadStateListenable;
+  final MfaOperationsGateway? mfaOperationsGateway;
+  final MfaActorContext? mfaActor;
 
   /// Test-only override: when true, renders Team with an owner-shaped
   /// actor even when no runtime actor snapshot is installed.
@@ -106,6 +113,8 @@ class SettingsScreen extends StatefulWidget {
     this.teamUsersListenable,
     this.teamPendingInvitesListenable,
     this.teamDataLoadStateListenable,
+    this.mfaOperationsGateway,
+    this.mfaActor,
     this.forceShowTeamSection = false,
   });
 
@@ -173,7 +182,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
     final authNotifier = context.watch<AuthSessionNotifier?>();
-    final showAccount = authNotifier?.session != null;
+    final session = authNotifier?.session;
+    final showAccount = session != null;
     final showAdvisorModels =
         widget.forceShowAdvisorModelSection ||
         (advisorModelSectionEnabled &&
@@ -283,6 +293,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       passwordChangeGateway: widget.passwordChangeGateway,
                     ),
                   ),
+                  _settingsSection(
+                    title: 'MFA',
+                    child: SettingsMfaSection(
+                      gateway: widget.mfaOperationsGateway,
+                      actor: widget.mfaActor ?? _mfaActorForSession(session),
+                    ),
+                  ),
                   _settingsFooterSliver(),
                 ],
               ),
@@ -359,6 +376,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
+}
+
+MfaActorContext _mfaActorForSession(AuthSession session) {
+  return MfaActorContext(
+    actorUserId: session.userId,
+    operatorId: session.operatorId,
+    locationId: session.locationId,
+    userEmail: _mfaEmailForSession(session),
+    authorizationIdToken: session.firebaseIdToken,
+  );
+}
+
+String _mfaEmailForSession(AuthSession session) {
+  final token = session.firebaseIdToken;
+  final parts = token.split('.');
+  if (parts.length < 2) return session.userId;
+  try {
+    final payload = utf8.decode(
+      base64Url.decode(base64Url.normalize(parts[1])),
+    );
+    final json = jsonDecode(payload);
+    if (json is Map) {
+      final email = json['email'];
+      if (email is String && email.trim().isNotEmpty) return email.trim();
+    }
+  } catch (_) {
+    // Token verification happens server-side. This local decode is only for
+    // the authenticator app label, so malformed payloads fall back quietly.
+  }
+  return session.userId;
 }
 
 const List<_SettingsTabSpec> _baseSettingsTabs = [

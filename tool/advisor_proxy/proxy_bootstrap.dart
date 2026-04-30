@@ -93,6 +93,9 @@ ProxyProductionBindings buildProxyProductionBindings(
   final tenantAudit = AuthEventsAuditRepository(tenantWrapper);
   final tenantUsers = UsersRepository(tenantWrapper);
   final tenantMfaFactors = MfaFactorsRepository(tenantWrapper);
+  final firebaseMfaClient = IdentityToolkitFirebaseMfaClient(
+    apiKey: config.secretFor(ProxySecretNames.firebaseWebApiKey),
+  );
   final adminAudit = AuthEventsAuditRepository(adminWrapper);
   final authOperationsGateway = RepositoryAuthOperationsGateway(
     firebaseAdmin: firebaseAdmin,
@@ -144,9 +147,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     ),
     mfaOperationsGateway: RepositoryMfaOperationsGateway(
       enrollmentService: FirebaseMfaEnrollmentService(
-        client: IdentityToolkitFirebaseMfaClient(
-          apiKey: config.secretFor(ProxySecretNames.firebaseWebApiKey),
-        ),
+        client: firebaseMfaClient,
         codeGenerator: RecoveryCodeGenerator(),
         codeHasher: const Sha256RecoveryCodeHasher(),
         saltSource: SecureRandomRecoveryCodeSaltSource(),
@@ -166,6 +167,7 @@ ProxyProductionBindings buildProxyProductionBindings(
         ),
       ),
       auditRepository: tenantAudit,
+      firebaseMfaClient: firebaseMfaClient,
     ),
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F

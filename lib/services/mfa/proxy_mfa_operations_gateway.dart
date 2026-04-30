@@ -26,6 +26,8 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
   static const String totpBeginPath = '/v1/auth/mfa/totp/begin';
   static const String totpConfirmPath = '/v1/auth/mfa/totp/confirm';
   static const String recoveryConsumePath = '/v1/auth/mfa/recovery/consume';
+  static const String factorsListPath = '/v1/auth/mfa/factors/list';
+  static const String factorsRevokePath = '/v1/auth/mfa/factors/revoke';
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
@@ -49,6 +51,50 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
       factorId: factorId,
       secretBase32: secretBase32,
       otpAuthUrl: otpAuthUrl,
+    );
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    final response = await _post(factorsListPath, const <String, Object?>{});
+    _expectStatus(response, 200);
+    final rawFactors = response.body['factors'];
+    if (rawFactors is! List) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA factors response was incomplete.',
+      );
+    }
+    return MfaListFactorsCompleted(
+      factors: List<MfaFactorSummary>.unmodifiable(
+        rawFactors.map(_factorFromJson),
+      ),
+    );
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) async {
+    final response = await _post(factorsRevokePath, <String, Object?>{
+      'factor_id': command.factorId,
+      if (command.stepUpProofId.trim().isNotEmpty)
+        'step_up_proof_id': command.stepUpProofId,
+    });
+    _expectStatus(response, 200);
+    final revoked = response.body['revoked'];
+    if (revoked is! bool) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA revoke response was incomplete.',
+      );
+    }
+    return MfaRevokeFactorCompleted(
+      revoked: revoked,
+      requestId: _readString(response.body['request_id']),
+      executeAfter: _readDateTime(response.body['execute_after']),
     );
   }
 
@@ -140,5 +186,33 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
     final raw = _readString(value);
     if (raw == null) return null;
     return DateTime.tryParse(raw)?.toUtc();
+  }
+
+  static MfaFactorSummary _factorFromJson(Object? value) {
+    if (value is! Map) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA factor payload was incomplete.',
+      );
+    }
+    final json = Map<String, Object?>.from(value);
+    final factorId = _readString(json['factor_id']);
+    final factorType = _readString(json['factor_type']);
+    final enrolledAt = _readDateTime(json['enrolled_at']);
+    final issuerLabel = _readString(json['issuer_label']) ?? 'Forge & Flow';
+    if (factorId == null || factorType == null || enrolledAt == null) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA factor payload was incomplete.',
+      );
+    }
+    return MfaFactorSummary(
+      factorId: factorId,
+      factorType: factorType,
+      enrolledAt: enrolledAt,
+      lastUsedAt: _readDateTime(json['last_used_at']),
+      issuerLabel: issuerLabel,
+      canRevoke: json['can_revoke'] is bool ? json['can_revoke'] as bool : true,
+    );
   }
 }

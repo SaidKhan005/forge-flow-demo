@@ -232,6 +232,37 @@ class MfaFactorsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Lists the user's active TOTP factors for Settings -> Account -> MFA.
+  /// Recovery-code rows are intentionally excluded; the UI only shows
+  /// authenticator apps the user can recognize and manage.
+  Future<List<MfaFactorRecord>> listActiveTotpFactors({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<MfaFactorRecord>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select factor_id::text as factor_id, '
+        'user_id::text as user_id, '
+        'factor_type, '
+        'factor_metadata::text as factor_metadata, '
+        'enrolled_at, last_used_at, revoked_at '
+        'from mfa_factors '
+        'where user_id = @user_id::uuid '
+        "and factor_type = 'totp' "
+        'and revoked_at is null '
+        'order by enrolled_at desc',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      return rows.map(_projectRow).toList(growable: false);
+    });
+  }
+
   /// Lists every active recovery-code factor row for [userId]. The
   /// consumer service iterates these and tries the hash against each
   /// in constant-time (see `RecoveryCodeConsumer`).

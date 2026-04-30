@@ -67,6 +67,18 @@ class FirebaseMfaConfirmFailed extends FirebaseMfaConfirmOutcome {
   final String message;
 }
 
+class FirebaseMfaTotpFactor {
+  const FirebaseMfaTotpFactor({
+    required this.factorId,
+    required this.enrolledAt,
+    this.displayName,
+  });
+
+  final String factorId;
+  final DateTime enrolledAt;
+  final String? displayName;
+}
+
 /// What the production [MfaEnrollmentService] needs from a Firebase
 /// Auth MultiFactor SDK. Production wires a thin adapter around
 /// `MultiFactor.beginEnrollment` + `TotpMultiFactorGenerator`. Tests
@@ -88,6 +100,14 @@ abstract class FirebaseMfaClient {
     required String factorId,
     required String oneTimeCode,
     String issuerName = 'Forge & Flow',
+  });
+
+  /// Lists Firebase-side TOTP factors for the current user. The Settings MFA
+  /// screen uses this as a safety net when Firebase has an enrolled factor
+  /// before the local `mfa_factors` row is visible.
+  Future<List<FirebaseMfaTotpFactor>> listTotpFactors({
+    String authorizationIdToken = '',
+    required String userId,
   });
 
   /// Removes a previously enrolled factor (Firebase-side). The
@@ -123,6 +143,14 @@ class ScaffoldFailingFirebaseMfaClient implements FirebaseMfaClient {
     required String factorId,
     required String oneTimeCode,
     String issuerName = 'Forge & Flow',
+  }) async {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<List<FirebaseMfaTotpFactor>> listTotpFactors({
+    String authorizationIdToken = '',
+    required String userId,
   }) async {
     throw StateError(_message);
   }

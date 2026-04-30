@@ -623,6 +623,14 @@ class _FakeFirebaseMfaClient implements FirebaseMfaClient {
   }) async {
     unenrollCalls += 1;
   }
+
+  @override
+  Future<List<FirebaseMfaTotpFactor>> listTotpFactors({
+    String authorizationIdToken = '',
+    required String userId,
+  }) async {
+    return const <FirebaseMfaTotpFactor>[];
+  }
 }
 
 class _StaticSaltSource implements RecoveryCodeSaltSource {

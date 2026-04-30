@@ -120,6 +120,42 @@ class IdentityToolkitFirebaseMfaClient implements FirebaseMfaClient {
   }
 
   @override
+  Future<List<FirebaseMfaTotpFactor>> listTotpFactors({
+    String authorizationIdToken = '',
+    required String userId,
+  }) async {
+    final body = await _postWithApiKey('/v1/accounts:lookup', <String, Object?>{
+      'idToken': authorizationIdToken,
+    }, expectedStatus: 200);
+    final users = body['users'];
+    if (users is! List || users.isEmpty || users.first is! Map) {
+      return const <FirebaseMfaTotpFactor>[];
+    }
+    final user = Map<String, Object?>.from(users.first as Map);
+    final mfaInfo = user['mfaInfo'];
+    if (mfaInfo is! List) return const <FirebaseMfaTotpFactor>[];
+    final factors = <FirebaseMfaTotpFactor>[];
+    for (final entry in mfaInfo) {
+      if (entry is! Map) continue;
+      final item = Map<String, Object?>.from(entry);
+      if (!item.containsKey('totpInfo')) continue;
+      final id = _optionalString(item['mfaEnrollmentId']);
+      if (id == null) continue;
+      final enrolledAt =
+          DateTime.tryParse(_optionalString(item['enrolledAt']) ?? '') ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+      factors.add(
+        FirebaseMfaTotpFactor(
+          factorId: id,
+          enrolledAt: enrolledAt.toUtc(),
+          displayName: _optionalString(item['displayName']),
+        ),
+      );
+    }
+    return List<FirebaseMfaTotpFactor>.unmodifiable(factors);
+  }
+
+  @override
   Future<void> unenrollFactor({
     String authorizationIdToken = '',
     required String userId,
