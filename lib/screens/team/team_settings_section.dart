@@ -1035,14 +1035,6 @@ class _TeamFilters extends StatelessWidget {
           onChanged: controller.setLocation,
         ),
       ),
-      IconButton.filledTonal(
-        key: const Key('team_clear_filters_button'),
-        tooltip: 'Clear filters',
-        icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
-        onPressed: controller.filter.hasAnyFilter
-            ? controller.clearFilter
-            : null,
-      ),
     ];
     return Wrap(spacing: 10, runSpacing: 10, children: fields);
   }
