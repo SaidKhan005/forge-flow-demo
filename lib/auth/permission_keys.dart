@@ -28,14 +28,14 @@
 //   - forgeflow.*     (20 keys) Forge & Flow surfaces and actions
 //   - barrio.*        (12 keys) Barrio destinations and actions
 //   - admin.*         (27 keys) admin actions
-//   - team.*          (12 keys) operator-self-service team management
+//   - team.*          (13 keys) operator-self-service team management
 //                                (added 9.0a; consumed by 9.10 operator-
 //                                facing Settings → Team UX)
 //   - billing.*       (5 keys)  billing-related actions
 //   - integration.*   (9 keys)  integration management
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 95 keys (81 baseline + 12 team.* added in 9.0a + 2
+// Total: 96 keys (81 baseline + 13 team.* keys + 2 later admin
 // later admin keys added in 9.0Σ.h2/B41). Some keys are flagged
 // MFA-required via PermissionKeys.requiresMfa; the migration mirrors
 // that in the permission_keys.requires_mfa column.
@@ -128,7 +128,7 @@ class PermissionKeys {
   // conversation content is F&F-internal at launch.
   static const String adminAuditPrivacyRead = 'admin.audit_privacy.read'; // MFA
 
-  // ─── team.* (12) ──────────────────────────────────────────────────
+  // ─── team.* (13) ──────────────────────────────────────────────────
   // Added 9.0a (2026-04-27). Operator-self-service team management;
   // consumed by 9.10 Settings → Team UX. Distinct from admin.* which
   // gates F&F-side admin paths.
@@ -138,6 +138,7 @@ class PermissionKeys {
   static const String teamUsersReactivate = 'team.users.reactivate';
   static const String teamUsersSoftDelete = 'team.users.soft_delete';
   static const String teamUsersResetPassword = 'team.users.reset_password';
+  static const String teamUsersResetMfa = 'team.users.reset_mfa';
   static const String teamRolesView = 'team.roles.view';
   static const String teamRolesCreateCustom = 'team.roles.create_custom';
   static const String teamRolesAssign = 'team.roles.assign';
@@ -247,6 +248,7 @@ class PermissionKeys {
     teamUsersReactivate,
     teamUsersSoftDelete,
     teamUsersResetPassword,
+    teamUsersResetMfa,
     teamRolesView,
     teamRolesCreateCustom,
     teamRolesAssign,

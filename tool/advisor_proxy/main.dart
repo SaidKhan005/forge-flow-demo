@@ -86,6 +86,7 @@ Future<void> main(List<String> args) async {
     'auth_operations: postgres, '
     'service_principal_issuance: postgres, '
     'password_change: postgres, '
+    'password_reset_confirm: postgres, '
     'mfa_operations: postgres_identitytoolkit_firebase_mfa, '
     'mfa_recovery_request: postgres_event_outbox, '
     'operator_location_admin: postgres)',
@@ -111,6 +112,8 @@ Future<void> main(List<String> args) async {
         servicePrincipalJwtIssuanceGateway:
             productionBindings.servicePrincipalJwtIssuanceGateway,
         passwordChangeGateway: productionBindings.passwordChangeGateway,
+        passwordResetConfirmGateway:
+            productionBindings.passwordResetConfirmGateway,
         mfaOperationsGateway: productionBindings.mfaOperationsGateway,
         mfaRecoveryRequestGateway: productionBindings.mfaRecoveryRequestGateway,
         operatorLocationAdminGateway:

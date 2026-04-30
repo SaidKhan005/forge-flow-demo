@@ -1627,3 +1627,63 @@ Migration count: **34**
     permission) under a fresh live-mutation gate before live
     consumers depend on `user_effective_locations` or org-unit
     scoped grants.
+
+## `202604300000_phase_9_mfa_factor_removal_requests.sql`
+
+- **Applied:** 2026-04-30 00:00 (local; live apply pending)
+- **Title:** phase 9 mfa factor removal requests
+- **Description:**
+
+  Phase 9.UX.1a delayed MFA factor removal ledger.
+
+  Creates `public.mfa_factor_removal_requests`, the durable 24-hour queue
+  between a self/admin MFA removal request and backend completion. The table
+  records operator/location/user scope, the target `mfa_factors.factor_id`,
+  requester, opaque step-up proof id, requested/executable timestamps,
+  processing lease metadata, completion timestamp, optional cancellation
+  timestamp, and last error.
+
+  Indexes cover active-request de-duplication, due worker scans, stale
+  processing leases, and recent per-user Settings/Team status reads. RLS is
+  tenant/user-scoped for `service_role`; `forge_admin` receives DML for the
+  scheduled worker path.
+
+## `202604300001_phase_9_mfa_recovery_request_attempts.sql`
+
+- **Applied:** 2026-04-30 00:01 (local; live apply pending)
+- **Title:** phase 9 mfa recovery request attempts
+- **Description:**
+
+  Phase 9.UX.1a public MFA recovery-request abuse ledger.
+
+  Creates `public.mfa_recovery_request_attempts` for the public "contact
+  restaurant admin" endpoint. It stores hashed email and IP identifiers with
+  attempt timestamps, supporting a per-email cooldown and per-IP rolling
+  window without retaining raw email or address values in the limiter table.
+
+  Grants `service_role` and `forge_admin` read/insert/delete access plus
+  sequence usage. The table is intentionally system-scoped; callers still
+  receive generic responses so the endpoint cannot enumerate accounts.
+
+## `202604300002_phase_9_mfa_hardening_launch_roles.sql`
+
+- **Applied:** 2026-04-30 00:02 (local; live apply pending)
+- **Title:** phase 9 mfa hardening launch roles
+- **Description:**
+
+  Phase 9.UX.1a MFA hardening and launch account role enforcement.
+
+  Adds the dedicated `team.users.reset_mfa` permission key for delayed
+  authenticator-app removal/reset actions and grants it only to
+  `super_admin` and `operator_owner` by default. Reset-MFA stays outside
+  the catalog-level mandatory-MFA set, but the proxy route still enforces
+  fresh sign-in before starting admin removal.
+
+  The migration also makes launch smoke-account roles durable: when the
+  accounts exist in the target database, `saidumarkhan005@gmail.com` is
+  granted the global `super_admin` role and operator-admin assignment for
+  the regular account's operator, while `newoundlandlimited@gmail.com`
+  has elevated/admin grants revoked and receives the seeded
+  `operator_staff` role. If either account is absent in a non-production
+  database, the role block emits a NOTICE and skips without failing the
+  permission catalog seed.

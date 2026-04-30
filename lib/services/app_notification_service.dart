@@ -65,6 +65,27 @@ class AppNotificationService {
     await _repo.insertIfAbsent(notification);
   }
 
+  Future<void> emitMfaAuthenticatorRemoved({
+    required String restaurantId,
+    required String userId,
+    required String requestId,
+    required String businessDate,
+  }) async {
+    final eventKey = 'mfa_authenticator_removed_${userId}_$requestId';
+    final notification = AppNotification(
+      notificationId: '${restaurantId}_$eventKey',
+      restaurantId: restaurantId,
+      type: 'mfa_authenticator_removed',
+      eventKey: eventKey,
+      title: 'Authenticator App Removed',
+      body:
+          'Two-factor authentication was removed. Add a new authenticator app if this was unexpected.',
+      businessDate: businessDate,
+      createdAt: nowIsoUtc(),
+    );
+    await _repo.insertIfAbsent(notification);
+  }
+
   /// Returns the most recent notifications for [restaurantId], newest first.
   Future<List<AppNotification>> getNotifications(
       String restaurantId, {int limit = 20}) {

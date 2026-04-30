@@ -17,7 +17,7 @@
 //       operator_manager gets the manager-tier subset
 //   * The audit-fix migration grants the post-9.0 team.* keys to
 //     super_admin so "super_admin has every key" stays true.
-//   * `lib/auth/permission_keys.dart` exposes 12 team.* constants
+//   * `lib/auth/permission_keys.dart` exposes 13 team.* constants
 //     and PermissionKeys.all goes from 81 → 93.
 //   * No timestamp without time zone is used (CLAUDE.md storage rule).
 
@@ -189,7 +189,7 @@ void main() {
   });
 
   group('PermissionKeys catalog mirror (9.0a)', () {
-    test('12 team.* constants are present', () {
+    test('13 team.* constants are present', () {
       const expectedKeys = <String>{
         'team.users.view',
         'team.users.invite',
@@ -197,6 +197,7 @@ void main() {
         'team.users.reactivate',
         'team.users.soft_delete',
         'team.users.reset_password',
+        'team.users.reset_mfa',
         'team.roles.view',
         'team.roles.create_custom',
         'team.roles.assign',
@@ -213,15 +214,17 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 95 entries (81 baseline + 12 team.* + '
+    test('PermissionKeys.all has 96 entries (81 baseline + 13 team.* + '
         '2 later admin keys)', () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
       // advisor-conversation audit-privacy gate. B41 then added
       // admin.service_principal.issue_token, bringing the catalog to
-      // 95. This test tracks the running total so a future catalog
-      // addition that forgets to grow the count is caught here.
-      expect(PermissionKeys.all.length, equals(95));
+      // 95. The MFA hardening slice added team.users.reset_mfa,
+      // bringing the catalog to 96. This test tracks the running total
+      // so a future catalog addition that forgets to grow the count is
+      // caught here.
+      expect(PermissionKeys.all.length, equals(96));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '
@@ -233,6 +236,7 @@ void main() {
         'team.users.reactivate',
         'team.users.soft_delete',
         'team.users.reset_password',
+        'team.users.reset_mfa',
         'team.roles.view',
         'team.roles.create_custom',
         'team.roles.assign',

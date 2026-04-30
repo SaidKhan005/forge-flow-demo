@@ -1,25 +1,30 @@
 // Phase 9.UX.1 - MFA account-recovery request seam.
 //
-// Used from the pre-auth MFA challenge screen when a user has neither their
-// authenticator app nor saved recovery codes. The client receives only a
+// Used from the pre-auth MFA challenge screen when a user cannot access their
+// authenticator app. The client receives only a
 // generic accepted response so the endpoint cannot be used to enumerate
 // accounts. The proxy-side implementation resolves the restaurant admin
-// recipients internally and queues an event_outbox notification.
+// recipients internally and queues an event_outbox event. A separate
+// notification bridge is still required before this produces inbox/email
+// delivery.
 
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../../infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'mfa_recovery_request_rate_limiter.dart';
 
 class MfaRecoveryRequestCommand {
   const MfaRecoveryRequestCommand({
     required this.email,
     this.reason = 'mfa_challenge_no_factor_access',
+    this.clientIp = '',
   });
 
   final String email;
   final String reason;
+  final String clientIp;
 }
 
 class MfaRecoveryRequestAccepted {
@@ -34,11 +39,13 @@ class MfaRecoveryRequestRejected implements Exception {
     required this.code,
     required this.message,
     this.statusCode = 422,
+    this.retryAfter,
   });
 
   final String code;
   final String message;
   final int statusCode;
+  final DateTime? retryAfter;
 
   @override
   String toString() {
@@ -72,15 +79,18 @@ class RepositoryMfaRecoveryRequestGateway implements MfaRecoveryRequestGateway {
   RepositoryMfaRecoveryRequestGateway({
     required UsersRepository usersRepository,
     required EventOutboxRepository eventOutboxRepository,
+    MfaRecoveryRequestRateLimiter? rateLimiter,
     String Function()? idFactory,
     DateTime Function()? now,
   }) : _usersRepository = usersRepository,
        _eventOutboxRepository = eventOutboxRepository,
+       _rateLimiter = rateLimiter,
        _idFactory = idFactory ?? _uuidV4,
        _now = now ?? DateTime.now;
 
   final UsersRepository _usersRepository;
   final EventOutboxRepository _eventOutboxRepository;
+  final MfaRecoveryRequestRateLimiter? _rateLimiter;
   final String Function() _idFactory;
   final DateTime Function() _now;
 
@@ -95,6 +105,21 @@ class RepositoryMfaRecoveryRequestGateway implements MfaRecoveryRequestGateway {
         message: 'Enter a valid email address.',
         statusCode: 400,
       );
+    }
+    final limiter = _rateLimiter;
+    if (limiter != null) {
+      final decision = await limiter.checkAndRecord(
+        normalizedEmail: email,
+        clientIp: command.clientIp,
+      );
+      if (!decision.isAllowed) {
+        throw MfaRecoveryRequestRejected(
+          code: 'mfa_recovery_request_rate_limited',
+          message: 'Too many recovery requests. Try again later.',
+          statusCode: 429,
+          retryAfter: decision.retryAfter,
+        );
+      }
     }
 
     final target = await _usersRepository.findMfaRecoveryTargetByEmail(

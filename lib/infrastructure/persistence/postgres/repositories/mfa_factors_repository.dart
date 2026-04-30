@@ -16,10 +16,9 @@
 //   revoked_at timestamptz null
 //   created_at / updated_at timestamptz default now()
 //
-// Recovery codes are stored ONE ROW PER CODE so consumption can mark
-// individual codes used without re-writing the bundle. This matches
-// the `recovery_code_hasher.dart` "salt per user, hash per code"
-// model.
+// Older compatibility recovery-code rows may exist, but launch enrollment only
+// creates TOTP rows. Lost-authenticator recovery routes through delayed
+// self/admin reset instead of local recovery codes.
 
 import 'dart:convert';
 
@@ -52,27 +51,20 @@ class MfaFactorRecord {
 }
 
 class MfaEnrollmentPersistenceResult {
-  const MfaEnrollmentPersistenceResult({
-    required this.totpFactorId,
-    required this.recoveryCodeFactorIds,
-  });
+  const MfaEnrollmentPersistenceResult({required this.totpFactorId});
 
   final String totpFactorId;
-  final List<String> recoveryCodeFactorIds;
 }
 
 class MfaFactorsRepository extends OperatorScopedRepository {
   MfaFactorsRepository(super.tenantWrapper);
 
-  /// Persist one confirmed TOTP factor and its generated recovery-code rows in
-  /// a single tenant-scoped transaction. The plaintext recovery codes never
-  /// reach this layer; each row receives only `{salt, hash}` metadata.
+  /// Persist one confirmed TOTP factor.
   Future<MfaEnrollmentPersistenceResult> insertTotpEnrollment({
     required String operatorId,
     required String locationId,
     required String userId,
     required String firebaseFactorUid,
-    required List<Map<String, Object?>> hashedRecoveryCodes,
     String issuerName = 'Forge & Flow',
   }) {
     final ctx = TenantContext(
@@ -95,23 +87,7 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         },
       );
       final totpFactorId = _projectFactorId(totpRows);
-      final recoveryFactorIds = <String>[];
-      for (final hashedCode in hashedRecoveryCodes) {
-        final recoveryRows = await exec.query(
-          'insert into mfa_factors (user_id, factor_type, factor_metadata) '
-          "values (@user_id::uuid, 'recovery_code', @metadata::jsonb) "
-          'returning factor_id::text as factor_id',
-          parameters: <String, Object?>{
-            'user_id': userId,
-            'metadata': jsonEncode(hashedCode),
-          },
-        );
-        recoveryFactorIds.add(_projectFactorId(recoveryRows));
-      }
-      return MfaEnrollmentPersistenceResult(
-        totpFactorId: totpFactorId,
-        recoveryCodeFactorIds: List<String>.unmodifiable(recoveryFactorIds),
-      );
+      return MfaEnrollmentPersistenceResult(totpFactorId: totpFactorId);
     });
   }
 
@@ -146,6 +122,61 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         },
       );
       return _projectFactorId(rows);
+    });
+  }
+
+  /// Ensures a local TOTP row exists for a Firebase-only enrollment. This
+  /// repairs drift where Firebase has an authenticator app but an older local
+  /// enrollment write never landed, so Settings can still initiate the normal
+  /// delayed removal flow.
+  Future<String> ensureTotpFactorForFirebaseUid({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String firebaseFactorUid,
+    String issuerName = 'Forge & Flow',
+    DateTime? firebaseEnrolledAt,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    final metadata = <String, Object?>{
+      'firebase_factor_uid': firebaseFactorUid,
+      'issuer': issuerName,
+      'source': 'firebase_inventory_repair',
+      if (firebaseEnrolledAt != null)
+        'firebase_enrolled_at': firebaseEnrolledAt.toUtc().toIso8601String(),
+    };
+    return withTenant<String>(ctx, (exec) async {
+      final existing = await exec.query(
+        'select factor_id::text as factor_id '
+        'from mfa_factors '
+        'where user_id = @user_id::uuid '
+        "and factor_type = 'totp' "
+        "and factor_metadata->>'firebase_factor_uid' = @firebase_factor_uid "
+        'and revoked_at is null '
+        'order by enrolled_at desc '
+        'limit 1',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'firebase_factor_uid': firebaseFactorUid,
+        },
+      );
+      if (existing.isNotEmpty) {
+        return _projectFactorId(existing);
+      }
+      final inserted = await exec.query(
+        'insert into mfa_factors (user_id, factor_type, factor_metadata) '
+        "values (@user_id::uuid, 'totp', @metadata::jsonb) "
+        'returning factor_id::text as factor_id',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'metadata': jsonEncode(metadata),
+        },
+      );
+      return _projectFactorId(inserted);
     });
   }
 
@@ -228,6 +259,31 @@ class MfaFactorsRepository extends OperatorScopedRepository {
         "and factor_type = 'totp' "
         'and revoked_at is null',
         parameters: <String, Object?>{'factor_id': factorId, 'user_id': userId},
+      );
+    });
+  }
+
+  /// Revokes all still-active legacy recovery-code rows for a user. Launch
+  /// reset/removal uses delayed TOTP removal, but old rows must not survive
+  /// completion and keep the account looking enrolled.
+  Future<int> revokeActiveRecoveryCodeFactorsForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      return exec.execute(
+        'update mfa_factors '
+        'set revoked_at = coalesce(revoked_at, now()), updated_at = now() '
+        'where user_id = @user_id::uuid '
+        "and factor_type = 'recovery_code' "
+        'and revoked_at is null',
+        parameters: <String, Object?>{'user_id': userId},
       );
     });
   }

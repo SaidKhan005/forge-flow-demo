@@ -20,6 +20,13 @@ class FirebaseAdminAuthError implements Exception {
       'FirebaseAdminAuthError(code: $code, status: $statusCode)';
 }
 
+class FirebasePasswordResetCodeInfo {
+  const FirebasePasswordResetCodeInfo({required this.email, this.uid});
+
+  final String email;
+  final String? uid;
+}
+
 abstract class FirebaseAdminAuthClient {
   Future<void> createUser({
     required String uid,
@@ -39,6 +46,15 @@ abstract class FirebaseAdminAuthClient {
     String? continueUrl,
   });
 
+  Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
+    required String oobCode,
+  });
+
+  Future<void> confirmPasswordReset({
+    required String oobCode,
+    required String newPassword,
+  });
+
   Future<bool> verifyPassword({
     required String email,
     required String password,
@@ -48,6 +64,8 @@ abstract class FirebaseAdminAuthClient {
   Future<void> updatePassword({required String uid, required String password});
 
   Future<void> revokeRefreshTokens({required String uid});
+
+  Future<void> clearMfaEnrollments({required String uid});
 }
 
 class ScaffoldFailingFirebaseAdminAuthClient
@@ -85,6 +103,21 @@ class ScaffoldFailingFirebaseAdminAuthClient
   }
 
   @override
+  Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
+    required String oobCode,
+  }) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
+  Future<void> confirmPasswordReset({
+    required String oobCode,
+    required String newPassword,
+  }) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
   Future<bool> verifyPassword({
     required String email,
     required String password,
@@ -100,6 +133,11 @@ class ScaffoldFailingFirebaseAdminAuthClient
 
   @override
   Future<void> revokeRefreshTokens({required String uid}) {
+    throw const FirebaseAdminAuthError('firebase_admin_not_configured');
+  }
+
+  @override
+  Future<void> clearMfaEnrollments({required String uid}) {
     throw const FirebaseAdminAuthError('firebase_admin_not_configured');
   }
 }
@@ -296,6 +334,50 @@ class IdentityToolkitFirebaseAdminAuthClient
         'localId': uid,
         'validSince': (_now().toUtc().millisecondsSinceEpoch ~/ 1000)
             .toString(),
+      },
+      expectedStatus: 200,
+    );
+  }
+
+  @override
+  Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
+    required String oobCode,
+  }) async {
+    final body = await _postWithApiKey(
+      '/v1/accounts:resetPassword',
+      <String, Object?>{'oobCode': oobCode},
+      expectedStatus: 200,
+    );
+    final email = body['email'];
+    final localId = body['localId'];
+    if (email is! String || email.trim().isEmpty) {
+      throw const FirebaseAdminAuthError('password_reset_code_malformed');
+    }
+    return FirebasePasswordResetCodeInfo(
+      email: email,
+      uid: localId is String && localId.trim().isNotEmpty ? localId : null,
+    );
+  }
+
+  @override
+  Future<void> confirmPasswordReset({
+    required String oobCode,
+    required String newPassword,
+  }) async {
+    await _postWithApiKey(
+      '/v1/accounts:resetPassword',
+      <String, Object?>{'oobCode': oobCode, 'newPassword': newPassword},
+      expectedStatus: 200,
+    );
+  }
+
+  @override
+  Future<void> clearMfaEnrollments({required String uid}) async {
+    await _post(
+      '/v1/projects/${Uri.encodeComponent(projectId)}/accounts:update',
+      <String, Object?>{
+        'localId': uid,
+        'mfa': const <String, Object?>{'enrollments': <Object?>[]},
       },
       expectedStatus: 200,
     );

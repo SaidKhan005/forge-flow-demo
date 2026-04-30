@@ -76,11 +76,16 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/images/logo.png"
 
 flutter_native_splash:
-  background_image: "assets/images/splash.png"
+  # Match the login screen: backgroundDeep (#F8EDE6) cream background with
+  # the round forge_flow_splash_icon — same brand mark used in login,
+  # MFA challenge, and the settings header. Solid color stands in for
+  # the login's deep -> mid -> shimmer gradient (top stop is #F8EDE6).
+  color: "#F8EDE6"
+  image: "assets/images/forge_flow_splash_icon.png"
   android_12:
-    color: "#E5F0EC"
-    image: "assets/images/splash_icon.png"
-    icon_background_color: "#E5F0EC"
+    color: "#F8EDE6"
+    image: "assets/images/forge_flow_splash_icon.png"
+    icon_background_color: "#F8EDE6"
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

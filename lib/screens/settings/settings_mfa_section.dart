@@ -11,6 +11,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/mfa/mfa_enrollment_service.dart';
 import '../../services/mfa/mfa_operations_gateway.dart';
+import '../../services/app_notification_service.dart';
 import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
@@ -23,6 +24,7 @@ class MfaActorContext {
     required this.userEmail,
     this.issuerName = 'Forge & Flow',
     this.authorizationIdToken = '',
+    this.notificationRestaurantId,
   });
 
   final String actorUserId;
@@ -31,6 +33,7 @@ class MfaActorContext {
   final String userEmail;
   final String issuerName;
   final String authorizationIdToken;
+  final String? notificationRestaurantId;
 }
 
 const MfaActorContext kDemoMfaActorContext = MfaActorContext(
@@ -56,7 +59,7 @@ class SettingsMfaSection extends StatefulWidget {
   State<SettingsMfaSection> createState() => _SettingsMfaSectionState();
 }
 
-enum _EnrollmentStage { idle, scanning, displayingRecoveryCodes }
+enum _EnrollmentStage { idle, scanning }
 
 class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   late final MfaOperationsGateway _gateway;
@@ -66,14 +69,18 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   bool _loadingFactors = true;
   bool _busyEnroll = false;
   bool _busyRevoke = false;
+  bool _busyCancelRemoval = false;
+  bool _redirectingForFreshSignIn = false;
   String? _errorCode;
   String? _errorMessage;
   String? _infoMessage;
   List<MfaFactorSummary> _factors = const <MfaFactorSummary>[];
   List<MfaFactorSummary> _optimisticFactors = const <MfaFactorSummary>[];
+  List<MfaRemovalRequestSummary> _removalRequests =
+      const <MfaRemovalRequestSummary>[];
+  final Set<String> _notifiedRemovalRequestIds = <String>{};
   _EnrollmentStage _enrollStage = _EnrollmentStage.idle;
   TotpEnrollmentSetup? _pendingSetup;
-  List<String> _displayOnceRecoveryCodes = const <String>[];
 
   @override
   void initState() {
@@ -112,9 +119,11 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           authorizationIdToken: _actor.authorizationIdToken,
         ),
       );
+      await _emitCompletedRemovalNotifications(result.removalRequests);
       if (!mounted) return;
       setState(() {
         _factors = result.factors;
+        _removalRequests = result.removalRequests;
         _optimisticFactors = _pendingOptimisticFactors(result.factors);
         _loadingFactors = false;
       });
@@ -195,8 +204,9 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (!mounted) return;
       setState(() {
         _busyEnroll = false;
-        _enrollStage = _EnrollmentStage.displayingRecoveryCodes;
-        _displayOnceRecoveryCodes = completed.recoveryCodesPlaintext;
+        _enrollStage = _EnrollmentStage.idle;
+        _pendingSetup = null;
+        _codeController.clear();
         _optimisticFactors = _mergeOptimisticFactor(
           MfaFactorSummary(
             factorId: completed.factorId,
@@ -205,7 +215,8 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
             issuerLabel: _actor.issuerName,
           ),
         );
-        _infoMessage = 'Authenticator app added. Save your recovery codes now.';
+        _infoMessage =
+            'Authenticator app added. If you lose access, ask your restaurant admin to reset MFA.';
       });
       await _refreshFactors(clearMessages: false);
     } on MfaOperationRejected catch (rejected) {
@@ -218,20 +229,10 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     }
   }
 
-  void _onAcknowledgeRecoveryCodes() {
-    setState(() {
-      _enrollStage = _EnrollmentStage.idle;
-      _pendingSetup = null;
-      _displayOnceRecoveryCodes = const <String>[];
-      _codeController.clear();
-    });
-  }
-
   void _onCancelEnrollment() {
     setState(() {
       _enrollStage = _EnrollmentStage.idle;
       _pendingSetup = null;
-      _displayOnceRecoveryCodes = const <String>[];
       _codeController.clear();
       _errorCode = null;
       _errorMessage = null;
@@ -254,15 +255,27 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           locationId: _actor.locationId,
           authorizationIdToken: _actor.authorizationIdToken,
           factorId: factor.factorId,
-          stepUpProofId: _actor.authorizationIdToken,
+          stepUpProofId: '',
         ),
       );
       if (!mounted) return;
       setState(() {
         _busyRevoke = false;
+        if (!completed.revoked &&
+            completed.requestId != null &&
+            completed.executeAfter != null) {
+          _removalRequests = _upsertRemovalRequest(
+            MfaRemovalRequestSummary(
+              requestId: completed.requestId!,
+              factorId: factor.factorId,
+              status: 'pending',
+              executeAfter: completed.executeAfter!,
+            ),
+          );
+        }
         _infoMessage = completed.revoked
             ? 'Authenticator app removed.'
-            : 'MFA removal requested. The authenticator app stays active during the security window.';
+            : _scheduledRemovalMessage(completed.executeAfter);
       });
       if (completed.revoked) await _refreshFactors();
     } on MfaOperationRejected catch (rejected) {
@@ -275,9 +288,60 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     }
   }
 
+  Future<void> _onCancelRemoval(MfaRemovalRequestSummary removal) async {
+    setState(() {
+      _busyCancelRemoval = true;
+      _errorCode = null;
+      _errorMessage = null;
+      _infoMessage = null;
+    });
+    try {
+      final completed = await _gateway.cancelFactorRemoval(
+        MfaCancelFactorRemovalCommand(
+          actorUserId: _actor.actorUserId,
+          operatorId: _actor.operatorId,
+          locationId: _actor.locationId,
+          authorizationIdToken: _actor.authorizationIdToken,
+          requestId: removal.requestId,
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _busyCancelRemoval = false;
+        _removalRequests = _upsertRemovalRequest(
+          MfaRemovalRequestSummary(
+            requestId: removal.requestId,
+            factorId: removal.factorId,
+            status: completed.cancelled ? 'cancelled' : removal.status,
+            executeAfter: removal.executeAfter,
+            completedAt: removal.completedAt,
+          ),
+        );
+        _infoMessage = completed.cancelled
+            ? 'Authenticator app removal cancelled.'
+            : 'Authenticator app removal was not changed.';
+      });
+      await _refreshFactors(clearMessages: false);
+    } on MfaOperationRejected catch (rejected) {
+      if (!mounted) return;
+      setState(() {
+        _busyCancelRemoval = false;
+        _errorCode = rejected.code;
+        _errorMessage = rejected.message;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibleFactors = _visibleFactors;
+    final needsFreshSignIn = _errorCode == 'mfa_freshness_required';
+    final statusLabel = needsFreshSignIn
+        ? 'SECURITY CHECK REQUIRED'
+        : 'MFA ERROR';
+    final statusMessage = needsFreshSignIn
+        ? 'Please sign in again before removing your authenticator app. This protects your account settings.'
+        : _errorMessage;
     return SettingsCard(
       key: const Key('settings_mfa_section'),
       children: [
@@ -286,10 +350,13 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
         _MfaFactorsList(
           loading: _loadingFactors,
           factors: visibleFactors,
+          removalRequests: _removalRequests,
           onRevoke: _busyRevoke ? null : _onRevoke,
+          onCancelRemoval: _busyCancelRemoval ? null : _onCancelRemoval,
         ),
         const SettingsRowDivider(),
         if (_enrollStage == _EnrollmentStage.idle &&
+            !_loadingFactors &&
             visibleFactors.isEmpty &&
             _errorMessage == null)
           _MfaEnrollButton(
@@ -304,23 +371,19 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
             onConfirm: _onConfirmEnrollment,
             onCancel: _onCancelEnrollment,
           ),
-        if (_enrollStage == _EnrollmentStage.displayingRecoveryCodes)
-          _MfaRecoveryCodesRow(
-            recoveryCodes: _displayOnceRecoveryCodes,
-            onAcknowledge: _onAcknowledgeRecoveryCodes,
-          ),
         if (_errorMessage != null) ...[
           const SettingsRowDivider(),
           _MfaStatusRow(
             key: const Key('mfa_error_row'),
-            label: 'MFA ERROR',
-            message: _errorMessage!,
-            color: AppColors.negative,
-            action: _errorCode == 'mfa_freshness_required'
-                ? TextButton(
-                    key: const Key('mfa_sign_in_again_button'),
-                    onPressed: () => _signInAgain(context),
-                    child: const Text('Sign in again'),
+            label: statusLabel,
+            message: statusMessage!,
+            color: needsFreshSignIn ? AppColors.warning : AppColors.negative,
+            action: needsFreshSignIn
+                ? _MfaSignInAgainButton(
+                    busy: _redirectingForFreshSignIn,
+                    onPressed: () {
+                      _signInAgain(context);
+                    },
                   )
                 : null,
           ),
@@ -348,13 +411,59 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     return List<MfaFactorSummary>.unmodifiable(merged);
   }
 
-  void _signInAgain(BuildContext context) {
+  List<MfaRemovalRequestSummary> _upsertRemovalRequest(
+    MfaRemovalRequestSummary next,
+  ) {
+    return List<MfaRemovalRequestSummary>.unmodifiable(
+      <MfaRemovalRequestSummary>[
+        for (final existing in _removalRequests)
+          if (existing.requestId != next.requestId) existing,
+        next,
+      ],
+    );
+  }
+
+  Future<void> _signInAgain(BuildContext context) async {
+    if (_redirectingForFreshSignIn) return;
+    final AuthSessionNotifier notifier;
+    final NavigatorState navigator;
     try {
-      context.read<AuthSessionNotifier>().signOutThisSession();
-    } catch (_) {
+      notifier = context.read<AuthSessionNotifier>();
+      navigator = Navigator.of(context);
+    } catch (error) {
+      debugPrint('SettingsMfaSection sign-in redirect setup failed: $error');
+      if (!mounted) return;
       setState(() {
-        _errorCode = null;
-        _errorMessage = 'Sign out and sign in again before removing MFA.';
+        _errorCode = 'mfa_freshness_required';
+        _errorMessage =
+            'Close settings, sign out, and sign in again before removing MFA.';
+        _infoMessage = null;
+      });
+      return;
+    }
+    setState(() {
+      _redirectingForFreshSignIn = true;
+      _infoMessage = null;
+    });
+    var routeClosed = false;
+    try {
+      if (navigator.canPop()) {
+        navigator.pop();
+        routeClosed = true;
+        await Future<void>.delayed(Duration.zero);
+      }
+      await notifier.signOutThisSession();
+      if (!routeClosed && mounted) {
+        setState(() => _redirectingForFreshSignIn = false);
+      }
+    } catch (error) {
+      debugPrint('SettingsMfaSection sign-in redirect failed: $error');
+      if (!mounted) return;
+      setState(() {
+        _redirectingForFreshSignIn = false;
+        _errorCode = 'mfa_freshness_required';
+        _errorMessage =
+            'Close settings, sign out, and sign in again before removing MFA.';
         _infoMessage = null;
       });
     }
@@ -378,6 +487,27 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
         (factor) => !refreshedIds.contains(factor.factorId),
       ),
     );
+  }
+
+  Future<void> _emitCompletedRemovalNotifications(
+    List<MfaRemovalRequestSummary> removals,
+  ) async {
+    final restaurantId = _actor.notificationRestaurantId;
+    if (restaurantId == null || restaurantId.trim().isEmpty) return;
+    for (final removal in removals) {
+      if (removal.status != 'completed') continue;
+      if (!_notifiedRemovalRequestIds.add(removal.requestId)) continue;
+      try {
+        await AppNotificationService.instance.emitMfaAuthenticatorRemoved(
+          restaurantId: restaurantId,
+          userId: _actor.actorUserId,
+          requestId: removal.requestId,
+          businessDate: _todayIsoUtc(),
+        );
+      } catch (_) {
+        // Notification write is best effort; MFA status stays authoritative.
+      }
+    }
   }
 }
 
@@ -407,16 +537,46 @@ class _MfaHeader extends StatelessWidget {
   }
 }
 
+class _MfaSignInAgainButton extends StatelessWidget {
+  const _MfaSignInAgainButton({required this.busy, required this.onPressed});
+
+  final bool busy;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: FilledButton.icon(
+        key: const Key('mfa_sign_in_again_button'),
+        onPressed: busy ? null : onPressed,
+        icon: busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.login_rounded, size: 18),
+        label: Text(busy ? 'Opening sign-in...' : 'Sign in again'),
+      ),
+    );
+  }
+}
+
 class _MfaFactorsList extends StatelessWidget {
   const _MfaFactorsList({
     required this.loading,
     required this.factors,
+    required this.removalRequests,
     required this.onRevoke,
+    required this.onCancelRemoval,
   });
 
   final bool loading;
   final List<MfaFactorSummary> factors;
+  final List<MfaRemovalRequestSummary> removalRequests;
   final ValueChanged<MfaFactorSummary>? onRevoke;
+  final ValueChanged<MfaRemovalRequestSummary>? onCancelRemoval;
 
   @override
   Widget build(BuildContext context) {
@@ -449,23 +609,42 @@ class _MfaFactorsList extends StatelessWidget {
           for (final factor in factors)
             _MfaFactorRow(
               factor: factor,
+              removalRequest: _pendingRemovalFor(factor.factorId),
               onRevoke: onRevoke == null ? null : () => onRevoke!(factor),
+              onCancelRemoval: onCancelRemoval,
             ),
         ],
       ),
     );
   }
+
+  MfaRemovalRequestSummary? _pendingRemovalFor(String factorId) {
+    for (final removal in removalRequests) {
+      if (removal.factorId == factorId && removal.status == 'pending') {
+        return removal;
+      }
+    }
+    return null;
+  }
 }
 
 class _MfaFactorRow extends StatelessWidget {
-  const _MfaFactorRow({required this.factor, required this.onRevoke});
+  const _MfaFactorRow({
+    required this.factor,
+    required this.removalRequest,
+    required this.onRevoke,
+    required this.onCancelRemoval,
+  });
 
   final MfaFactorSummary factor;
+  final MfaRemovalRequestSummary? removalRequest;
   final VoidCallback? onRevoke;
+  final ValueChanged<MfaRemovalRequestSummary>? onCancelRemoval;
 
   @override
   Widget build(BuildContext context) {
     final enrolledLabel = _formatDate(factor.enrolledAt);
+    final removal = removalRequest;
     final lastUsedLabel = factor.lastUsedAt == null
         ? 'Not used yet'
         : 'Last used ${_formatDate(factor.lastUsedAt!)}';
@@ -488,7 +667,9 @@ class _MfaFactorRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Added $enrolledLabel. $lastUsedLabel.',
+                  removal == null
+                      ? 'Added $enrolledLabel. $lastUsedLabel.'
+                      : 'Removal pending. Scheduled after ${_formatDate(removal.executeAfter)}.',
                   style: const TextStyle(
                     color: AppColors.textMuted,
                     fontSize: 12,
@@ -498,9 +679,17 @@ class _MfaFactorRow extends StatelessWidget {
             ),
           ),
           TextButton(
-            key: Key('mfa_revoke_button_${factor.factorId}'),
-            onPressed: factor.canRevoke ? onRevoke : null,
-            child: const Text('Remove / reset'),
+            key: Key(
+              removal == null
+                  ? 'mfa_revoke_button_${factor.factorId}'
+                  : 'mfa_cancel_removal_button_${factor.factorId}',
+            ),
+            onPressed: removal == null
+                ? (factor.canRevoke ? onRevoke : null)
+                : onCancelRemoval == null
+                ? null
+                : () => onCancelRemoval!(removal),
+            child: Text(removal == null ? 'Remove / reset' : 'Cancel removal'),
           ),
         ],
       ),
@@ -681,62 +870,6 @@ class _CopyValueRow extends StatelessWidget {
   }
 }
 
-class _MfaRecoveryCodesRow extends StatelessWidget {
-  const _MfaRecoveryCodesRow({
-    required this.recoveryCodes,
-    required this.onAcknowledge,
-  });
-
-  final List<String> recoveryCodes;
-  final VoidCallback onAcknowledge;
-
-  @override
-  Widget build(BuildContext context) {
-    final joined = recoveryCodes.join('\n');
-    return Padding(
-      key: const Key('mfa_recovery_codes_row'),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const Text(
-            'Recovery codes',
-            style: TextStyle(
-              color: AppColors.textPrimary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 6),
-          for (final code in recoveryCodes)
-            SelectableText(
-              code,
-              key: Key('mfa_recovery_code_$code'),
-              style: const TextStyle(color: AppColors.textPrimary),
-            ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              OutlinedButton.icon(
-                key: const Key('mfa_copy_recovery_codes_button'),
-                onPressed: () => Clipboard.setData(ClipboardData(text: joined)),
-                icon: const Icon(Icons.copy_rounded, size: 18),
-                label: const Text('Copy recovery codes'),
-              ),
-              FilledButton(
-                key: const Key('mfa_recovery_codes_acknowledge_button'),
-                onPressed: onAcknowledge,
-                child: const Text("I've saved them"),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MfaStatusRow extends StatelessWidget {
   const _MfaStatusRow({
     super.key,
@@ -778,6 +911,8 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
 
   final DateTime _now;
   final List<MfaFactorSummary> _factors = <MfaFactorSummary>[];
+  final List<MfaRemovalRequestSummary> _removalRequests =
+      <MfaRemovalRequestSummary>[];
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
@@ -813,10 +948,7 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
           issuerLabel: command.issuerName,
         ),
       );
-    return const MfaTotpConfirmCompleted(
-      factorId: factorId,
-      recoveryCodesPlaintext: <String>['AAAA-BBBB-CCCC', 'DDDD-EEEE-FFFF'],
-    );
+    return const MfaTotpConfirmCompleted(factorId: factorId);
   }
 
   @override
@@ -825,6 +957,9 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
   ) async {
     return MfaListFactorsCompleted(
       factors: List<MfaFactorSummary>.unmodifiable(_factors),
+      removalRequests: List<MfaRemovalRequestSummary>.unmodifiable(
+        _removalRequests,
+      ),
     );
   }
 
@@ -832,15 +967,59 @@ class DemoMfaOperationsGateway implements MfaOperationsGateway {
   Future<MfaRevokeFactorCompleted> revokeFactor(
     MfaRevokeFactorCommand command,
   ) async {
-    _factors.removeWhere((factor) => factor.factorId == command.factorId);
-    return const MfaRevokeFactorCompleted(revoked: true);
+    final executeAfter = _now.add(const Duration(hours: 24));
+    const requestId = 'demo-removal-request';
+    _removalRequests
+      ..removeWhere((request) => request.factorId == command.factorId)
+      ..add(
+        MfaRemovalRequestSummary(
+          requestId: requestId,
+          factorId: command.factorId,
+          status: 'pending',
+          executeAfter: executeAfter,
+        ),
+      );
+    return MfaRevokeFactorCompleted(
+      revoked: false,
+      requestId: requestId,
+      executeAfter: executeAfter,
+    );
   }
 
   @override
-  Future<RecoveryCodeConsumeCompleted> consumeRecoveryCode(
-    RecoveryCodeConsumeCommand command,
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
   ) async {
-    return const RecoveryCodeConsumeCompleted(factorId: 'demo-recovery-factor');
+    final index = _removalRequests.indexWhere(
+      (request) => request.requestId == command.requestId,
+    );
+    if (index == -1) {
+      throw const MfaOperationRejected(
+        code: 'mfa_removal_request_not_found',
+        message: 'MFA removal request was already completed or cancelled.',
+        statusCode: 404,
+      );
+    }
+    final existing = _removalRequests[index];
+    _removalRequests[index] = MfaRemovalRequestSummary(
+      requestId: existing.requestId,
+      factorId: existing.factorId,
+      status: 'cancelled',
+      executeAfter: existing.executeAfter,
+      completedAt: existing.completedAt,
+    );
+    return const MfaCancelFactorRemovalCompleted(cancelled: true);
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) async {
+    _factors.clear();
+    return const MfaRevokeUserFactorsCompleted(
+      requestedCount: 1,
+      requestIds: <String>['demo-removal-request'],
+    );
   }
 }
 
@@ -872,8 +1051,15 @@ class _UnavailableMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
-  Future<RecoveryCodeConsumeCompleted> consumeRecoveryCode(
-    RecoveryCodeConsumeCommand command,
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) {
+    throw _rejected();
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
   ) {
     throw _rejected();
   }
@@ -904,4 +1090,18 @@ String _formatDate(DateTime when) {
   ];
   final utc = when.toUtc();
   return '${months[utc.month - 1]} ${utc.day}, ${utc.year}';
+}
+
+String _scheduledRemovalMessage(DateTime? executeAfter) {
+  final suffix = executeAfter == null
+      ? 'in 24 hours'
+      : 'after ${_formatDate(executeAfter)}';
+  return 'Authenticator app removal started. For security purposes, it will be removed $suffix. Check back after the security window to confirm it is done.';
+}
+
+String _todayIsoUtc() {
+  final now = DateTime.now().toUtc();
+  final month = now.month.toString().padLeft(2, '0');
+  final day = now.day.toString().padLeft(2, '0');
+  return '${now.year}-$month-$day';
 }

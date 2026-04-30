@@ -49,8 +49,8 @@ void main() {
     });
   });
 
-  group('MfaPolicy.evaluate (decision lock 2026-04-26)', () {
-    test('admin tier always required, regardless of operator tier', () {
+  group('MfaPolicy.evaluate (launch enforcement deferred 2026-04-30)', () {
+    test('admin tier is optional at launch, regardless of operator tier', () {
       for (final tier in OperatorSubscriptionTier.values) {
         for (final role in const <String>[
           'super_admin',
@@ -64,8 +64,8 @@ void main() {
               subscriptionTier: tier,
               mfaEnrolled: false,
             ),
-            equals(MfaRequirement.requiredAndNotEnrolled),
-            reason: '$role @ $tier (not enrolled) must require MFA',
+            equals(MfaRequirement.optional),
+            reason: '$role @ $tier (not enrolled) is optional at launch',
           );
           expect(
             MfaPolicy.evaluate(
@@ -73,8 +73,8 @@ void main() {
               subscriptionTier: tier,
               mfaEnrolled: true,
             ),
-            equals(MfaRequirement.requiredAndEnrolled),
-            reason: '$role @ $tier (enrolled) is required + ok',
+            equals(MfaRequirement.optional),
+            reason: '$role @ $tier (enrolled) is still not forced',
           );
         }
       }
@@ -98,24 +98,20 @@ void main() {
       }
     });
 
-    test('mixed-roles: admin tier wins over staff tier', () {
-      // operator_owner + operator_staff (rare but possible: a F&F
-      // owner who also covers a shift). Owner wins: MFA required.
+    test('mixed roles stay optional until post-launch enforcement', () {
       expect(
         MfaPolicy.evaluate(
           authRoles: const <String>['operator_staff', 'operator_owner'],
           subscriptionTier: OperatorSubscriptionTier.pilot,
           mfaEnrolled: false,
         ),
-        equals(MfaRequirement.requiredAndNotEnrolled),
+        equals(MfaRequirement.optional),
       );
     });
 
     test('null subscriptionTier defaults to optional for staff', () {
-      // The proxy normally resolves the tier before evaluating; a
-      // null tier means "we could not look it up." For staff this is
-      // safe-default optional (explicit MFA enrollment is still
-      // possible), and admins are never optional regardless.
+      // The proxy normally resolves the tier before evaluating; a null tier
+      // means "we could not look it up." Launch policy stays optional.
       expect(
         MfaPolicy.evaluate(
           authRoles: const <String>['operator_staff'],
@@ -130,18 +126,18 @@ void main() {
           subscriptionTier: null,
           mfaEnrolled: false,
         ),
-        equals(MfaRequirement.requiredAndNotEnrolled),
+        equals(MfaRequirement.optional),
       );
     });
 
-    test('case-insensitive role matching', () {
+    test('case-insensitive admin roles still do not force launch MFA', () {
       expect(
         MfaPolicy.evaluate(
           authRoles: const <String>['SUPER_ADMIN'],
           subscriptionTier: OperatorSubscriptionTier.pilot,
           mfaEnrolled: false,
         ),
-        equals(MfaRequirement.requiredAndNotEnrolled),
+        equals(MfaRequirement.optional),
       );
     });
   });
@@ -449,7 +445,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Two-factor verification'), findsOneWidget);
       expect(find.text('mfa@example.test'), findsOneWidget);
-      expect(find.byKey(const Key('mfa_recovery_toggle')), findsOneWidget);
+      expect(find.byKey(const Key('mfa_recovery_toggle')), findsNothing);
+      expect(
+        tester.getTopLeft(find.byKey(const Key('mfa_code_field'))).dy,
+        lessThan(
+          tester.getTopLeft(find.byKey(const Key('mfa_trailing_actions'))).dy,
+        ),
+      );
     });
 
     testWidgets('submit with empty code shows local error', (tester) async {
@@ -504,39 +506,6 @@ void main() {
       expect(notifier.state, isA<AuthSessionAuthenticated>());
     });
 
-    testWidgets('toggling recovery code path sets factorId = recovery_code', (
-      tester,
-    ) async {
-      final service = _FakeMfaService(
-        totpResult: AuthLoginSuccess(buildSession()),
-      );
-      final notifier = AuthSessionNotifier(
-        loginService: service,
-        storage: InMemorySecureSessionStorage(),
-      );
-      notifier.debugSetState(
-        const AuthSessionMfaChallenge(
-          email: 'mfa@example.test',
-          mfaSessionToken: 'tok',
-          factorIds: <String>['totp-1'],
-        ),
-      );
-      await tester.pumpWidget(wrap(notifier));
-      await tester.pumpAndSettle();
-
-      await tester.tap(find.byKey(const Key('mfa_recovery_toggle')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const Key('mfa_code_field')),
-        'ABCD-EFGH-JKMN',
-      );
-      await tester.tap(find.byKey(const Key('mfa_submit_button')));
-      await tester.pumpAndSettle();
-
-      expect(service.lastFactorId, equals('recovery_code'));
-      expect(service.lastOneTimeCode, equals('ABCD-EFGH-JKMN'));
-    });
-
     testWidgets('cancel button calls signOutThisSession on the notifier', (
       tester,
     ) async {
@@ -559,7 +528,7 @@ void main() {
       expect(service.signOutThisSessionCalls, equals(1));
     });
 
-    testWidgets('contact admin requests MFA recovery help', (tester) async {
+    testWidgets('contact admin requests MFA help', (tester) async {
       final service = _FakeMfaService();
       final recoveryGateway = _FakeMfaRecoveryRequestGateway();
       final notifier = AuthSessionNotifier(
@@ -583,7 +552,9 @@ void main() {
 
       expect(recoveryGateway.commands.single.email, equals('mfa@example.test'));
       expect(
-        find.text('Recovery request sent to your restaurant admin.'),
+        find.text(
+          'Help request recorded. Contact your restaurant admin directly if you need urgent access.',
+        ),
         findsOneWidget,
       );
     });

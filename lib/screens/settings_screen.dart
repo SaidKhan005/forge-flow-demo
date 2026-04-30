@@ -199,11 +199,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         effectiveTeamActor != null &&
         (widget.forceShowTeamSection ||
             TeamScopeVisibilityPolicy.canSeeTeamNav(effectiveTeamActor));
+    // Non-admin signed-in users see only the Account tab. Admin tier
+    // (operator_owner / operator_manager / super_admin / ff_support)
+    // sees the rest. The gate is opt-in: a null teamActor (e.g.
+    // demo / unauth flows or pre-Phase-9 test setups) keeps admin
+    // tabs visible. Once the Phase 9 permission snapshot bridge
+    // populates teamActor in production, non-admin roles will
+    // collapse to Account-only automatically.
+    final showAdminTabs =
+        !showAccount ||
+        effectiveTeamActor == null ||
+        _isAdminTier(effectiveTeamActor);
     final tabs = <_SettingsTabSpec>[
-      ..._baseSettingsTabs,
       if (showAccount) _accountSettingsTab,
       if (showTeam) _teamSettingsTab,
-      _developerSettingsTab,
+      if (showAdminTabs) _authoritySettingsTab,
+      if (showAdminTabs) _dataSettingsTab,
+      if (showAdminTabs) _developerSettingsTab,
     ];
 
     return DefaultTabController(
@@ -220,79 +232,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ClipOval(
                 child: Image.asset(
                   'assets/images/forge_flow_splash_icon.png',
-                  width: 26,
-                  height: 26,
+                  width: 36,
+                  height: 36,
                   fit: BoxFit.cover,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Text('Settings', style: AppTextStyles.display20()),
             ],
           ),
           leading: IconButton(
-            icon: const Icon(Icons.close, size: 20),
+            icon: const Icon(Icons.close, size: 28),
             onPressed: () => Navigator.of(context).pop(),
-          ),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(60),
-            child: _SettingsTabBar(tabs: tabs),
           ),
         ),
         body: TabBarView(
           children: [
-            _SettingsTabScrollView(
-              tabId: 'data',
-              slivers: [
-                _settingsSection(
-                  title: 'DATA STATUS',
-                  child: SettingsDataStatusSection(status: _status),
-                ),
-                _settingsSection(
-                  title: 'DATA MANAGEMENT',
-                  child: SettingsDataManagementSection(
-                    onAfterWrite: _refreshAfterWrite,
-                  ),
-                ),
-                _settingsSection(
-                  title: 'MOCK REPLAY',
-                  child: SettingsMockReplaySection(
-                    mockReplayDate: () => _mockReplayDate,
-                    onAfterWrite: _refreshAfterWrite,
-                  ),
-                ),
-              ],
-            ),
-            _SettingsTabScrollView(
-              tabId: 'authority',
-              slivers: [
-                if (restaurant != null)
-                  _settingsSection(
-                    title: 'TIMING AUTHORITY',
-                    child: TimingAuthoritySection(
-                      restaurantId: restaurant.restaurantId,
-                    ),
-                  ),
-                _settingsSection(
-                  title: 'WAGE AUTHORITY',
-                  child: WageAuthoritySection(onChanged: _refreshAppState),
-                ),
-              ],
-            ),
             if (showAccount)
               _SettingsTabScrollView(
                 tabId: 'account',
                 slivers: [
                   _settingsSection(
-                    title: 'ACCOUNT',
-                    child: SettingsAccountSection(
-                      passwordChangeGateway: widget.passwordChangeGateway,
+                    title: 'Two-factor security',
+                    child: SettingsMfaSection(
+                      gateway: widget.mfaOperationsGateway,
+                      actor:
+                          widget.mfaActor ??
+                          _mfaActorForSession(
+                            session,
+                            restaurant?.restaurantId,
+                          ),
                     ),
                   ),
                   _settingsSection(
-                    title: 'MFA',
-                    child: SettingsMfaSection(
-                      gateway: widget.mfaOperationsGateway,
-                      actor: widget.mfaActor ?? _mfaActorForSession(session),
+                    title: 'Account',
+                    child: SettingsAccountSection(
+                      passwordChangeGateway: widget.passwordChangeGateway,
                     ),
                   ),
                 ],
@@ -301,8 +276,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _SettingsTabScrollView(
                 tabId: 'team',
                 slivers: [
-                  _settingsSection(
-                    title: 'TEAM',
+                  SliverToBoxAdapter(
                     child: _TeamSettingsLiveDataScope(
                       roleOptions: widget.teamRoleOptions,
                       roleOptionsListenable: widget.teamRoleOptionsListenable,
@@ -334,47 +308,122 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ],
               ),
-            _SettingsTabScrollView(
-              tabId: 'developer',
-              slivers: [
-                _settingsSection(
-                  title: 'AUDIT',
-                  child: const SettingsAuditSection(),
-                ),
-                if (showAdvisorModels)
+            if (showAdminTabs)
+              _SettingsTabScrollView(
+                tabId: 'authority',
+                slivers: [
+                  if (restaurant == null)
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 24,
+                        ),
+                        child: _SettingsEmptyNotice(
+                          icon: Icons.storefront_outlined,
+                          title: 'No restaurant selected',
+                          description:
+                              'Pick a restaurant to configure timing and wage authority.',
+                        ),
+                      ),
+                    ),
+                  if (restaurant != null)
+                    _settingsSection(
+                      title: 'Timing authority',
+                      child: TimingAuthoritySection(
+                        restaurantId: restaurant.restaurantId,
+                      ),
+                    ),
                   _settingsSection(
-                    title: 'ADVISOR MODELS',
-                    child: SettingsAdvisorModelSection(
-                      service:
-                          widget.advisorModelConfigService ??
-                          AdvisorModelConfigService(),
+                    title: 'Wage authority',
+                    child: WageAuthoritySection(onChanged: _refreshAppState),
+                  ),
+                ],
+              ),
+            if (showAdminTabs)
+              _SettingsTabScrollView(
+                tabId: 'data',
+                slivers: [
+                  _settingsSection(
+                    title: 'Data status',
+                    child: SettingsDataStatusSection(status: _status),
+                  ),
+                  _settingsSection(
+                    title: 'Data management',
+                    child: SettingsDataManagementSection(
+                      onAfterWrite: _refreshAfterWrite,
                     ),
                   ),
-                if (showAdvisorCorpus)
-                  _settingsSection(
-                    title: 'ADVISOR CORPUS',
-                    child: SettingsAdvisorCorpusSection(
-                      service:
-                          widget.advisorCorpusAdminService ??
-                          AdvisorCorpusAdminService(),
+                  if (kDebugMode)
+                    _settingsSection(
+                      title: 'Mock replay',
+                      child: SettingsMockReplaySection(
+                        mockReplayDate: () => _mockReplayDate,
+                        onAfterWrite: _refreshAfterWrite,
+                      ),
                     ),
+                ],
+              ),
+            if (showAdminTabs)
+              _SettingsTabScrollView(
+                tabId: 'developer',
+                slivers: [
+                  _settingsSection(
+                    title: 'Audit',
+                    child: const SettingsAuditSection(),
                   ),
-              ],
-            ),
+                  if (showAdvisorModels)
+                    _settingsSection(
+                      title: 'Advisor models',
+                      child: SettingsAdvisorModelSection(
+                        service:
+                            widget.advisorModelConfigService ??
+                            AdvisorModelConfigService(),
+                      ),
+                    ),
+                  if (showAdvisorCorpus)
+                    _settingsSection(
+                      title: 'Advisor corpus',
+                      child: SettingsAdvisorCorpusSection(
+                        service:
+                            widget.advisorCorpusAdminService ??
+                            AdvisorCorpusAdminService(),
+                      ),
+                    ),
+                ],
+              ),
           ],
         ),
+        bottomNavigationBar: tabs.length >= 2
+            ? _SettingsBottomNav(tabs: tabs)
+            : null,
       ),
     );
   }
 }
 
-MfaActorContext _mfaActorForSession(AuthSession session) {
+/// Tabs other than Account are only visible to admin-tier roles.
+/// Operator owners, operator managers, super_admin, and ff_support
+/// qualify. operator_supervisor / operator_staff / null actors do not.
+bool _isAdminTier(TeamScopeActor? actor) {
+  if (actor == null) return false;
+  return actor.actorRoles.contains('operator_owner') ||
+      actor.actorRoles.contains('operator_manager') ||
+      actor.actorRoles.contains('super_admin') ||
+      actor.actorRoles.contains('ff_support');
+}
+
+MfaActorContext _mfaActorForSession(
+  AuthSession session,
+  String? notificationRestaurantId,
+) {
   return MfaActorContext(
     actorUserId: session.userId,
     operatorId: session.operatorId,
     locationId: session.locationId,
     userEmail: _mfaEmailForSession(session),
     authorizationIdToken: session.firebaseIdToken,
+    notificationRestaurantId: notificationRestaurantId,
   );
 }
 
@@ -398,14 +447,11 @@ String _mfaEmailForSession(AuthSession session) {
   return session.userId;
 }
 
-const List<_SettingsTabSpec> _baseSettingsTabs = [
-  _SettingsTabSpec(id: 'data', label: 'Data', icon: Icons.storage_rounded),
-  _SettingsTabSpec(
-    id: 'authority',
-    label: 'Authority',
-    icon: Icons.tune_rounded,
-  ),
-];
+const _SettingsTabSpec _accountSettingsTab = _SettingsTabSpec(
+  id: 'account',
+  label: 'Account',
+  icon: Icons.person_outline,
+);
 
 const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
   id: 'team',
@@ -413,15 +459,21 @@ const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
   icon: Icons.group_outlined,
 );
 
-const _SettingsTabSpec _accountSettingsTab = _SettingsTabSpec(
-  id: 'account',
-  label: 'Account',
-  icon: Icons.person_outline,
+const _SettingsTabSpec _authoritySettingsTab = _SettingsTabSpec(
+  id: 'authority',
+  label: 'Authority',
+  icon: Icons.tune_rounded,
+);
+
+const _SettingsTabSpec _dataSettingsTab = _SettingsTabSpec(
+  id: 'data',
+  label: 'Data',
+  icon: Icons.storage_rounded,
 );
 
 const _SettingsTabSpec _developerSettingsTab = _SettingsTabSpec(
   id: 'developer',
-  label: 'Developer',
+  label: 'Dev',
   icon: Icons.terminal_rounded,
 );
 
@@ -436,6 +488,7 @@ const TeamScopeActor _debugTeamActor = TeamScopeActor(
     'team.users.reactivate',
     'team.users.soft_delete',
     'team.users.reset_password',
+    'team.users.reset_mfa',
     'team.roles.assign',
     'team.roles.revoke',
   },
@@ -536,116 +589,54 @@ class _TeamSettingsLiveDataScope extends StatelessWidget {
   }
 }
 
-class _SettingsTabBar extends StatelessWidget {
+class _SettingsBottomNav extends StatelessWidget {
   final List<_SettingsTabSpec> tabs;
 
-  const _SettingsTabBar({required this.tabs});
-
-  static const double _compactBreakpoint = 560;
+  const _SettingsBottomNav({required this.tabs});
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < _compactBreakpoint;
+    final controller = DefaultTabController.of(context);
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, _) {
         return Container(
-          margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-          height: 44,
-          decoration: BoxDecoration(
-            color: AppColors.backgroundMid,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: TabBar(
-            isScrollable: false,
-            labelStyle: compact
-                ? AppTextStyles.mono10(color: AppColors.backgroundSurface)
-                : AppTextStyles.mono12(color: AppColors.backgroundSurface),
-            unselectedLabelStyle: compact
-                ? AppTextStyles.mono10(color: AppColors.textMuted)
-                : AppTextStyles.mono12(color: AppColors.textMuted),
-            labelPadding: EdgeInsets.symmetric(horizontal: compact ? 4 : 10),
-            labelColor: AppColors.backgroundSurface,
-            unselectedLabelColor: AppColors.textMuted,
-            dividerColor: Colors.transparent,
-            indicatorSize: TabBarIndicatorSize.tab,
-            indicatorPadding: const EdgeInsets.all(3),
-            indicator: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [AppColors.sunset, AppColors.sunsetDark],
-              ),
-              borderRadius: BorderRadius.circular(4),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.sunset.withValues(alpha: 0.25),
-                  blurRadius: 6,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+          decoration: const BoxDecoration(
+            border: Border(
+              top: BorderSide(color: AppColors.borderSubtle, width: 1),
             ),
-            splashFactory: NoSplash.splashFactory,
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            tabs: [
+          ),
+          child: BottomNavigationBar(
+            currentIndex: controller.index,
+            onTap: controller.animateTo,
+            backgroundColor: AppColors.backgroundDeep,
+            selectedItemColor: AppColors.sunsetDark,
+            unselectedItemColor: AppColors.textMuted,
+            type: BottomNavigationBarType.fixed,
+            elevation: 0,
+            selectedLabelStyle: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.5,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0.5,
+            ),
+            items: [
               for (final tab in tabs)
-                Tab(
-                  key: Key('settings_tab_${tab.id}'),
-                  height: 38,
-                  child: _SettingsTabLabel(tab: tab, showIcon: !compact),
+                BottomNavigationBarItem(
+                  icon: KeyedSubtree(
+                    key: Key('settings_tab_${tab.id}'),
+                    child: Icon(tab.icon, size: 22),
+                  ),
+                  label: tab.label,
                 ),
             ],
           ),
         );
       },
-    );
-  }
-}
-
-class _SettingsTabLabel extends StatelessWidget {
-  final _SettingsTabSpec tab;
-  final bool showIcon;
-
-  const _SettingsTabLabel({required this.tab, required this.showIcon});
-
-  @override
-  Widget build(BuildContext context) {
-    final label = tab.id == 'developer' ? 'Dev' : tab.label;
-    if (!showIcon) {
-      return _ScaledSettingsTabText(label: label);
-    }
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(tab.icon, size: 16),
-        const SizedBox(width: 6),
-        Flexible(
-          child: _ScaledSettingsTabText(
-            label: label,
-            alignment: Alignment.centerLeft,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _ScaledSettingsTabText extends StatelessWidget {
-  const _ScaledSettingsTabText({
-    required this.label,
-    this.alignment = Alignment.center,
-  });
-
-  final String label;
-  final Alignment alignment;
-
-  @override
-  Widget build(BuildContext context) {
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: alignment,
-      child: Text(label, maxLines: 1, softWrap: false),
     );
   }
 }
@@ -681,4 +672,66 @@ Widget _settingsSection({required String title, required Widget child}) {
       ),
     ],
   );
+}
+
+class _SettingsEmptyNotice extends StatelessWidget {
+  const _SettingsEmptyNotice({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.sunset.withValues(alpha: 0.10),
+              border: Border.all(
+                color: AppColors.sunset.withValues(alpha: 0.4),
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 18, color: AppColors.sunsetDark),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

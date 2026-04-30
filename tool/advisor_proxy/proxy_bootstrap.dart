@@ -10,11 +10,12 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
-import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/recovery_code_attempt_store.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
@@ -28,6 +29,7 @@ import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/hibp_pwned_password_screener.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/auth/rate_limited_hibp_range_fetcher.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
@@ -38,10 +40,7 @@ import 'package:forge_and_flow/services/mfa/firebase_mfa_enrollment_service.dart
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_attempt_limiter.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_consumer.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_generator.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_hasher.dart';
+import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
 
 import 'advisor_proxy.dart';
 
@@ -57,8 +56,10 @@ class ProxyProductionBindings {
     required this.authOperationsGateway,
     required this.servicePrincipalJwtIssuanceGateway,
     required this.passwordChangeGateway,
+    required this.passwordResetConfirmGateway,
     required this.mfaOperationsGateway,
     required this.mfaRecoveryRequestGateway,
+    required this.mfaRemovalWorker,
     required this.operatorLocationAdminGateway,
   });
 
@@ -70,8 +71,10 @@ class ProxyProductionBindings {
   final AuthOperationsGateway authOperationsGateway;
   final ServicePrincipalJwtIssuanceGateway servicePrincipalJwtIssuanceGateway;
   final PasswordChangeGateway passwordChangeGateway;
+  final PasswordResetConfirmGateway passwordResetConfirmGateway;
   final MfaOperationsGateway mfaOperationsGateway;
   final MfaRecoveryRequestGateway mfaRecoveryRequestGateway;
+  final MfaRemovalWorker mfaRemovalWorker;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
 }
 
@@ -97,6 +100,15 @@ ProxyProductionBindings buildProxyProductionBindings(
   final tenantAudit = AuthEventsAuditRepository(tenantWrapper);
   final tenantUsers = UsersRepository(tenantWrapper);
   final tenantMfaFactors = MfaFactorsRepository(tenantWrapper);
+  final tenantMfaRemovalRequests = MfaFactorRemovalRequestsRepository(
+    tenantWrapper,
+  );
+  final tenantEventOutbox = EventOutboxRepository(tenantWrapper);
+  final adminMfaFactors = MfaFactorsRepository(adminWrapper);
+  final adminMfaRemovalRequests = MfaFactorRemovalRequestsRepository(
+    adminWrapper,
+  );
+  final adminEventOutbox = EventOutboxRepository(adminWrapper);
   final firebaseMfaClient = IdentityToolkitFirebaseMfaClient(
     apiKey: config.secretFor(ProxySecretNames.firebaseWebApiKey),
   );
@@ -149,33 +161,37 @@ ProxyProductionBindings buildProxyProductionBindings(
       ),
       passwordHistoryHasher: const Sha256PasswordHistoryHasher(),
     ),
+    passwordResetConfirmGateway: RepositoryPasswordResetConfirmGateway(
+      firebaseAdmin: firebaseAdmin,
+      usersRepository: UsersRepository(adminWrapper),
+      passwordHistoryRepository: PasswordHistoryRepository(tenantWrapper),
+      auditRepository: adminAudit,
+      hibpScreener: HibpPwnedPasswordScreener(
+        fetcher: RateLimitedHibpRangeFetcher(inner: HttpHibpRangeFetcher()),
+      ),
+      passwordHistoryHasher: const Sha256PasswordHistoryHasher(),
+    ),
     mfaOperationsGateway: RepositoryMfaOperationsGateway(
       enrollmentService: FirebaseMfaEnrollmentService(
         client: firebaseMfaClient,
-        codeGenerator: RecoveryCodeGenerator(),
-        codeHasher: const Sha256RecoveryCodeHasher(),
-        saltSource: SecureRandomRecoveryCodeSaltSource(),
       ),
       mfaFactorsRepository: tenantMfaFactors,
-      recoveryCodeConsumer: RecoveryCodeConsumer(
-        hasher: const Sha256RecoveryCodeHasher(),
-        repository: tenantMfaFactors,
-        limiter: RecoveryCodeAttemptLimiter(
-          // `recovery_code_attempts` is a per-user table whose RLS
-          // policy filters by `public.app_current_actor_user()`. The
-          // store therefore wires through the TENANT pool (POSTGRES_URL)
-          // so SET LOCAL `app.user_id` admits the row — NOT through
-          // the admin pool (POSTGRES_ADMIN_URL), which would silently
-          // engage `forge_admin` BYPASSRLS and skip the per-user gate.
-          store: PostgresRecoveryCodeAttemptStore(tenantWrapper),
-        ),
-      ),
       auditRepository: tenantAudit,
       firebaseMfaClient: firebaseMfaClient,
+      removalRequestsRepository: tenantMfaRemovalRequests,
     ),
     mfaRecoveryRequestGateway: RepositoryMfaRecoveryRequestGateway(
       usersRepository: UsersRepository(adminWrapper),
-      eventOutboxRepository: EventOutboxRepository(tenantWrapper),
+      eventOutboxRepository: tenantEventOutbox,
+      rateLimiter: PostgresMfaRecoveryRequestRateLimiter(adminWrapper),
+    ),
+    mfaRemovalWorker: MfaRemovalWorker(
+      removalRequestsRepository: adminMfaRemovalRequests,
+      mfaFactorsRepository: adminMfaFactors,
+      usersRepository: UsersRepository(adminWrapper),
+      auditRepository: adminAudit,
+      firebaseAdmin: firebaseAdmin,
+      eventOutboxRepository: adminEventOutbox,
     ),
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F

@@ -399,8 +399,8 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
         SettingsActionRow(
           icon: Icons.phonelink_lock_rounded,
           label: _signingOutEverywhere
-              ? 'Signing Out Everywhere'
-              : 'Sign Out Everywhere',
+              ? 'Signing out of all devices'
+              : 'Sign out of all devices',
           description: 'Revoke other active sessions for this account.',
           tone: SettingsRowTone.danger,
           onTap: _signingOut ? () {} : _signOutAllSessions,

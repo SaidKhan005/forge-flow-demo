@@ -73,6 +73,32 @@ void main() {
       expect(request.jsonBody['validSince'], equals('1770000000'));
     });
 
+    test('clearMfaEnrollments sends empty MFA enrollment list', () async {
+      final httpClient = _RecordingHttpClient(
+        responseBody: const <String, Object?>{'localId': 'user-1'},
+      );
+      final client = IdentityToolkitFirebaseAdminAuthClient(
+        projectId: 'forge-flow-staging',
+        apiKey: 'public-api-key',
+        accessTokenProvider: const _StaticAccessTokenProvider('oauth-token'),
+        httpClient: httpClient,
+      );
+
+      await client.clearMfaEnrollments(uid: 'user-1');
+
+      // ignore: close_sinks - fake request was already closed by the client.
+      final request = httpClient.requests.single;
+      expect(
+        request.url.path,
+        equals('/v1/projects/forge-flow-staging/accounts:update'),
+      );
+      expect(request.jsonBody['localId'], equals('user-1'));
+      expect(
+        request.jsonBody['mfa'],
+        equals(<String, Object?>{'enrollments': <Object?>[]}),
+      );
+    });
+
     test(
       'updatePassword sends localId and new password to accounts:update',
       () async {

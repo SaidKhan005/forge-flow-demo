@@ -344,6 +344,16 @@ class _LoginCard extends StatelessWidget {
                 ),
               ],
               const SizedBox(height: 8),
+              Padding(
+                key: const Key('login_reset_link_hint'),
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
+                child: Text(
+                  "New here, forgot your password, or last link expired? "
+                  "We'll email a fresh one.",
+                  textAlign: TextAlign.center,
+                  style: AppTextStyles.body11(color: AppColors.textMuted),
+                ),
+              ),
               TextButton(
                 key: const Key('login_forgot_password_button'),
                 onPressed: submitting || requestingReset
@@ -362,7 +372,7 @@ class _LoginCard extends StatelessWidget {
                         width: 18,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Forgot password?'),
+                    : const Text('Email me a reset link'),
               ),
             ],
           ),

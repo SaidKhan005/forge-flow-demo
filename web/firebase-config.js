@@ -6,5 +6,6 @@
   "authDomain": "forge-flow-staging.firebaseapp.com",
   "messagingSenderId": "78630909582",
   "projectNumber": "78630909582",
+  "proxyBaseUri": "https://staging-api.feflow.org",
   "version": "2"
 }

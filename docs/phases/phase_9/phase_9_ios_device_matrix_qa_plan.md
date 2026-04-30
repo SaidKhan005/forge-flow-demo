@@ -49,7 +49,7 @@ Minimum launch-blocking matrix:
 | Device lane | Flavor | Required checks |
 | --- | --- | --- |
 | Oldest available supported iPhone | ForgeFlow | Install, first launch, email/password sign-in, secure-session restore after app restart, sign out |
-| Current primary iPhone | ForgeFlow | Sign-in, TOTP challenge/enrollment path if account requires MFA, recovery-code consume smoke with disposable account |
+| Current primary iPhone | ForgeFlow | Sign-in, TOTP challenge/enrollment path if account requires MFA, admin-contact recovery copy with disposable account |
 | Current primary iPhone | Barrio | Install, first launch, email/password sign-in, secure-session restore after app restart, sign out |
 
 Optional, if available before launch:
@@ -65,7 +65,7 @@ Optional, if available before launch:
 - Use staging only.
 - Use disposable or dedicated smoke users; do not use operator production data.
 - Do not paste credentials, tokens, Firebase values, device identifiers, or
-  recovery-code plaintext into docs.
+  recovery material into docs.
 - Record device lane, flavor, commit SHA, workflow run, pass/fail, and blocker
   summary only.
 
@@ -75,7 +75,7 @@ Optional, if available before launch:
 - [ ] ForgeFlow passes the minimum physical iPhone checks.
 - [ ] Barrio passes the minimum physical iPhone checks.
 - [ ] Secure-session restore works after force-close/reopen.
-- [ ] MFA/recovery-code smoke uses disposable staging identity and cleanup is
-      confirmed.
+- [ ] MFA/admin-contact recovery smoke uses disposable staging identity and
+      cleanup is confirmed.
 - [ ] Any physical-device blocker is captured as a B-item before 9.10 UX work
       proceeds.

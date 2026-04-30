@@ -6,17 +6,13 @@
 // reads codes off a printout). Uses `Random.secure` for
 // cryptographically-strong randomness.
 //
-// The plaintext codes leave this generator exactly once: the caller
-// renders them in the display-once enrollment screen and immediately
-// hands the hashed representations to the recovery-code store. The
-// generator itself is stateless so the same instance is safe for
-// repeated calls.
+// The launch app UX does not display or accept recovery codes. This generator
+// remains for backend compatibility tests and hash-only storage paths.
 
 import 'dart:math';
 
 class RecoveryCodeGenerator {
-  RecoveryCodeGenerator({Random? random})
-    : _random = random ?? Random.secure();
+  RecoveryCodeGenerator({Random? random}) : _random = random ?? Random.secure();
 
   final Random _random;
 

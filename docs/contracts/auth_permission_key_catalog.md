@@ -3,8 +3,9 @@
 **Status:** Active. Lands with Phase 9.0.
 **Authority order:** This contract documents the frozen catalog. The
 canonical sources are the SQL seed in
-`db/migrations/202604250008_auth_schema_foundation.sql` and the constants
-in `lib/auth/permission_keys.dart`. This doc must stay in sync with both.
+`db/migrations/202604250008_auth_schema_foundation.sql`, additive catalog
+migrations in `db/migrations/`, and the constants in
+`lib/auth/permission_keys.dart`. This doc must stay in sync with those.
 
 ## Why a frozen catalog
 
@@ -24,8 +25,8 @@ universe of keys. Freezing the catalog at code level keeps:
 
 When adding, renaming, or removing a key, update all three together:
 
-1. `db/migrations/202604250008_auth_schema_foundation.sql` — the
-   `insert into public.permission_keys` block.
+1. `db/migrations/` - either the foundation `insert into
+   public.permission_keys` block or an additive follow-up migration.
 2. `lib/auth/permission_keys.dart` — add the constant + add to
    `PermissionKeys.all` (and `requiresMfa` if applicable).
 3. This document — add the row to the table for the right category.
@@ -38,9 +39,9 @@ the constants without seeding it, the test catches that.
 ## Categories
 
 The catalog carries 83 keys across 7 categories in the core catalog
-(81 original + 2 admin keys added after baseline). The 12 `team.*` keys added in
-9.0a live in their own section below; the running total across all
-8 categories is 95 keys.
+(81 original + 2 admin keys added after baseline). The 13 `team.*` keys
+added across 9.0a and the MFA hardening slice live in their own section
+below; the running total across all 8 categories is 96 keys.
 
 ### `product.*` (2)
 
@@ -145,7 +146,7 @@ not by the 9.0 foundation seed.
 | `admin.service_principal.issue_token` | Issue short-lived service-principal JWTs for automation identities. MFA required. | yes |
 | `admin.audit_privacy.read` | Read raw advisor conversation content (encrypted columns) under the audit-privacy access path. Every call writes an `audit_logs` provenance row capturing reader, reason, target, and records-read count. MFA required. | yes |
 
-### `team.*` (12)
+### `team.*` (13)
 
 Operator self-service team management. Distinct from `admin.*` —
 `team.*` keys gate the operator-facing Settings → Team UX (lands in
@@ -153,9 +154,11 @@ Operator self-service team management. Distinct from `admin.*` —
 without touching F&F-side admin paths.
 
 Added 2026-04-27 by the 9.0a multi-location scale-flow extensions
-slice. None require MFA at the catalog level; the launch tier
-treats team management as low-friction so a single operator
-admin can run a small team without a step-up gate per action.
+slice, with `team.users.reset_mfa` added by the 2026-04-30 MFA
+hardening migration. None require MFA at the catalog level; the launch
+tier avoids mandatory MFA enforcement for admin-tier accounts until
+post-launch stability. The reset-MFA routes still require fresh sign-in
+through route logic because removing a second factor is sensitive.
 
 | Key | Description | MFA |
 |---|---|---|
@@ -165,6 +168,7 @@ admin can run a small team without a step-up gate per action.
 | `team.users.reactivate` | Reactivate a suspended user. | — |
 | `team.users.soft_delete` | Soft-delete a user in own operator. | — |
 | `team.users.reset_password` | Admin-initiated password reset for a team member. | — |
+| `team.users.reset_mfa` | Start or cancel delayed authenticator-app removal for a team member after fresh authentication. | — |
 | `team.roles.view` | View the operator's role list. | — |
 | `team.roles.create_custom` | Create operator-scoped custom role. | — |
 | `team.roles.assign` | Grant role to user within own operator. | — |
@@ -176,14 +180,15 @@ Baseline grants seeded by 9.0a:
 
 - `super_admin` gets every key in the catalog. The 9.0 seed grants all
   original keys, and the 9.0a audit-fix migration grants the later `team.*`
-  keys.
-- `operator_owner` gets ALL `team.*` keys.
+  keys. The MFA hardening migration grants `team.users.reset_mfa`.
+- `operator_owner` gets ALL `team.*` keys, including
+  `team.users.reset_mfa`.
 - `operator_manager` gets the manager-tier subset:
   `team.users.view`, `team.users.invite`, `team.users.reactivate`,
   `team.users.reset_password`, `team.roles.view`,
   `team.roles.assign`, `team.roles.revoke`, `team.audit_log.view`,
-  `team.session.force_logout`. Manager **cannot** create custom
-  roles or soft-delete users (locked).
+  `team.session.force_logout`. Manager **cannot** create custom roles,
+  soft-delete users, or reset MFA by default (locked).
 - `operator_supervisor` and `operator_staff` get nothing in
   `team.*`.
 

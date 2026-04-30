@@ -50,14 +50,11 @@ void main() {
       expect(call.body['user_email'], equals('user@example.test'));
     });
 
-    test('confirmTotpEnrollment parses display-once recovery codes', () async {
+    test('confirmTotpEnrollment parses confirmed factor id', () async {
       final fake = _FakeMfaHttpClient(
         response: const ProxyAuthOperationsResponse(
           statusCode: 200,
-          body: <String, Object?>{
-            'factor_id': 'totp-db-factor',
-            'recovery_codes': <String>['ABCD-EFGH-JKMN'],
-          },
+          body: <String, Object?>{'factor_id': 'totp-db-factor'},
         ),
       );
       final gateway = ProxyMfaOperationsGateway(
@@ -78,7 +75,6 @@ void main() {
       );
 
       expect(result.factorId, equals('totp-db-factor'));
-      expect(result.recoveryCodesPlaintext, equals(<String>['ABCD-EFGH-JKMN']));
       expect(
         fake.posts.single.url.path,
         equals(ProxyMfaOperationsGateway.totpConfirmPath),
@@ -93,7 +89,7 @@ void main() {
           response: ProxyAuthOperationsResponse(
             statusCode: 429,
             body: <String, Object?>{
-              'error': 'recovery_code_rate_limited',
+              'error': 'mfa_rate_limited',
               'message': 'Too many attempts.',
               'retry_after': retryAt.toIso8601String(),
             },
@@ -106,19 +102,18 @@ void main() {
         );
 
         final error = await _captureError(
-          gateway.consumeRecoveryCode(
-            const RecoveryCodeConsumeCommand(
+          gateway.listFactors(
+            const MfaListFactorsCommand(
               actorUserId: 'actor',
               operatorId: 'op',
               locationId: 'loc',
-              rawCode: 'ABCD-EFGH-JKMN',
             ),
           ),
         );
 
         expect(error, isA<MfaOperationRejected>());
         final rejected = error! as MfaOperationRejected;
-        expect(rejected.code, equals('recovery_code_rate_limited'));
+        expect(rejected.code, equals('mfa_rate_limited'));
         expect(rejected.retryAfter, equals(retryAt));
       },
     );
@@ -209,6 +204,40 @@ void main() {
       },
     );
 
+    test(
+      'cancelFactorRemoval posts request id and parses cancelled response',
+      () async {
+        final fake = _FakeMfaHttpClient(
+          response: const ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{'cancelled': true},
+          ),
+        );
+        final gateway = ProxyMfaOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final result = await gateway.cancelFactorRemoval(
+          const MfaCancelFactorRemovalCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            requestId: 'mfa-removal-1',
+          ),
+        );
+
+        expect(result.cancelled, isTrue);
+        final call = fake.posts.single;
+        expect(
+          call.url.path,
+          equals(ProxyMfaOperationsGateway.factorsRemovalCancelPath),
+        );
+        expect(call.body['request_id'], equals('mfa-removal-1'));
+      },
+    );
+
     test('missing ID token fails before network', () async {
       final fake = _FakeMfaHttpClient();
       final gateway = ProxyMfaOperationsGateway(
@@ -218,12 +247,13 @@ void main() {
       );
 
       final error = await _captureError(
-        gateway.consumeRecoveryCode(
-          const RecoveryCodeConsumeCommand(
+        gateway.beginTotpEnrollment(
+          const MfaTotpBeginCommand(
             actorUserId: 'actor',
             operatorId: 'op',
             locationId: 'loc',
-            rawCode: 'ABCD-EFGH-JKMN',
+            userEmail: 'user@example.test',
+            issuerName: 'Forge & Flow',
           ),
         ),
       );

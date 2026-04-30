@@ -35,6 +35,8 @@ class TeamUserRepositoryRow {
     required this.roleLabel,
     required this.status,
     required this.mfaEnrolled,
+    required this.mfaRemovalPending,
+    this.mfaRemovalRequestId,
     this.userRoleId,
     this.locationId,
     this.locationLabel,
@@ -48,6 +50,8 @@ class TeamUserRepositoryRow {
   final String roleLabel;
   final String status;
   final bool mfaEnrolled;
+  final bool mfaRemovalPending;
+  final String? mfaRemovalRequestId;
   final String? userRoleId;
   final String? locationId;
   final String? locationLabel;
@@ -84,6 +88,22 @@ class MfaRecoveryTargetRow {
   final List<MfaRecoveryAdminRecipientRow> admins;
 }
 
+class UserAuthLookupRow {
+  const UserAuthLookupRow({
+    required this.userId,
+    required this.operatorId,
+    required this.locationId,
+    required this.email,
+    this.firebaseUid,
+  });
+
+  final String userId;
+  final String operatorId;
+  final String locationId;
+  final String email;
+  final String? firebaseUid;
+}
+
 class UsersRepository extends OperatorScopedRepository {
   UsersRepository(super.tenantWrapper);
 
@@ -114,8 +134,20 @@ class UsersRepository extends OperatorScopedRepository {
         'l.name as location_label, '
         'exists ('
         '  select 1 from mfa_factors mf '
-        '  where mf.user_id = u.user_id and mf.revoked_at is null'
+        '  where mf.user_id = u.user_id '
+        "  and mf.factor_type = 'totp' "
+        '  and mf.revoked_at is null'
         ') as mfa_enrolled, '
+        '('
+        '  select mfr.request_id::text '
+        '  from mfa_factor_removal_requests mfr '
+        '  where mfr.user_id = u.user_id '
+        '  and mfr.operator_id = @operator_id::uuid '
+        '  and mfr.completed_at is null '
+        '  and mfr.cancelled_at is null'
+        '  order by mfr.requested_at desc '
+        '  limit 1'
+        ') as mfa_removal_request_id, '
         'u.last_active_at '
         'from users u '
         'left join lateral ('
@@ -311,6 +343,55 @@ class UsersRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  Future<UserAuthLookupRow?> findActiveAuthUserByEmail({
+    required String email,
+    required String adminReason,
+  }) {
+    return withSystem<UserAuthLookupRow?>((exec) async {
+      final rows = await exec.query(
+        'select u.user_id::text as user_id, '
+        'u.operator_id::text as operator_id, '
+        'coalesce(u.primary_location_id::text, '
+        'o.primary_location_id::text) as location_id, '
+        'u.email, '
+        'u.firebase_uid::text as firebase_uid '
+        'from users u '
+        'left join operators o on o.operator_id = u.operator_id '
+        'where lower(u.email) = lower(@email) '
+        'and u.deleted_at is null '
+        "and u.status != 'deleted' "
+        'limit 1',
+        parameters: <String, Object?>{'email': email},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final userId = row['user_id'];
+      final operatorId = row['operator_id'];
+      final locationId = row['location_id'];
+      final userEmail = row['email'];
+      final firebaseUid = row['firebase_uid'];
+      if (userId is! String ||
+          userId.isEmpty ||
+          operatorId is! String ||
+          operatorId.isEmpty ||
+          locationId is! String ||
+          locationId.isEmpty ||
+          userEmail is! String ||
+          userEmail.isEmpty) {
+        throw StateError('auth user lookup returned malformed row');
+      }
+      return UserAuthLookupRow(
+        userId: userId,
+        operatorId: operatorId,
+        locationId: locationId,
+        email: userEmail,
+        firebaseUid: firebaseUid is String && firebaseUid.isNotEmpty
+            ? firebaseUid
+            : null,
+      );
+    }, reason: adminReason);
+  }
+
   /// SELECT the user's email inside the actor's tenant. Used by server-side
   /// Firebase Admin calls; the value never flows back to Flutter unless a
   /// specific route intentionally returns it.
@@ -349,6 +430,31 @@ class UsersRepository extends OperatorScopedRepository {
       columnAlias: 'firebase_uid',
       missingMessage: 'users lookup returned no firebase_uid for target user',
     );
+  }
+
+  /// System/background lookup for Firebase UID. Workers run outside a live
+  /// operator session, so they use the admin wrapper and an explicit audit
+  /// reason instead of trying to borrow a user's tenant context.
+  Future<String> firebaseUidForUserSystem({
+    required String userId,
+    required String adminReason,
+  }) {
+    return withSystem<String>((exec) async {
+      final rows = await exec.query(
+        'select firebase_uid::text as firebase_uid '
+        'from users '
+        'where user_id = @user_id::uuid '
+        'and deleted_at is null '
+        'limit 1',
+        parameters: <String, Object?>{'user_id': userId},
+      );
+      if (rows.isEmpty) {
+        throw StateError('users lookup returned no firebase_uid');
+      }
+      final value = rows.single['firebase_uid'];
+      if (value is String && value.isNotEmpty) return value;
+      throw StateError('users lookup returned malformed firebase_uid');
+    }, reason: adminReason);
   }
 
   /// SELECT `roles_version` so Firebase custom claims can be refreshed after
@@ -504,6 +610,12 @@ class UsersRepository extends OperatorScopedRepository {
     final roleLabel = row['role_label'];
     final status = row['status'];
     final mfaEnrolled = row['mfa_enrolled'];
+    final mfaRemovalRequestId = row['mfa_removal_request_id'];
+    final pendingRemovalRequestId =
+        mfaRemovalRequestId is String && mfaRemovalRequestId.isNotEmpty
+        ? mfaRemovalRequestId
+        : null;
+    final mfaRemovalPending = pendingRemovalRequestId != null;
     if (userId is! String ||
         userId.isEmpty ||
         email is! String ||
@@ -531,6 +643,8 @@ class UsersRepository extends OperatorScopedRepository {
       roleLabel: roleLabel,
       status: status,
       mfaEnrolled: mfaEnrolled,
+      mfaRemovalPending: mfaRemovalPending,
+      mfaRemovalRequestId: pendingRemovalRequestId,
       userRoleId: userRoleId is String && userRoleId.isNotEmpty
           ? userRoleId
           : null,

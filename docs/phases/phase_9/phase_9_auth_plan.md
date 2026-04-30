@@ -33,8 +33,9 @@ permission checks. None of these can survive the production cutover gate.
 Five product decisions locked alongside the slice plan:
 
 1. **Identity layer: Firebase Identity Platform tier** (not Firebase Auth
-   standard). Required for MFA enforcement, future blocking functions, and
-   per-tenant project config. Free up to 50k MAU then ~$0.0055/MAU.
+   standard). Required for TOTP enrollment, future MFA enforcement,
+   future blocking functions, and per-tenant project config. Free up to
+   50k MAU then ~$0.0055/MAU.
    Live setup note (2026-04-26): official Identity Platform docs list
    email/password, phone, federated/OIDC/SAML, and custom-auth integration
    paths; TOTP is documented as a supported MFA factor. No official
@@ -48,10 +49,11 @@ Five product decisions locked alongside the slice plan:
    where graph relationships actually pay off.
 3. **SSO / SAML / SCIM: WorkOS, deferred** to first Enterprise-tier
    customer demand. Don't build SAML in-house; WorkOS at $125/mo/connection.
-4. **MFA enforcement policy**: required for admin roles at every
-   tier. Staff-level users do not have mandatory MFA by subscription
-   tier; they may opt in, and sensitive actions can still require
-   fresh auth.
+4. **MFA enrollment policy**: TOTP MFA is available at launch, but
+   mandatory MFA enforcement for admin-tier accounts is deferred until
+   post-launch stability. Staff-level users do not have mandatory MFA by
+   subscription tier; they may opt in, and sensitive actions can still
+   require fresh auth.
 5. **GDPR right-to-erasure**: redact-don't-delete with documented runbook
    and break-glass approval. Operational record carve-out under GDPR
    Art. 17(3); preserves audit integrity. Hard-delete is reserved for
@@ -178,6 +180,11 @@ Plus the locked architectural rules already in CLAUDE.md:
 - No plaintext passwords stored anywhere; bcrypt cost 12 minimum
   (Firebase manages); no custom password hashing.
 - No SMS as a primary MFA factor (NIST SP 800-63B-4 deprecated).
+  Phone/SMS MFA is killed for this launch track: do not add SMS
+  plumbing, settings copy, tests, or phase slices unless a later
+  architecture decision explicitly reverses this. Authenticator app
+  TOTP plus admin reset/support are the supported launch UX. Recovery-code
+  display and challenge entry are not exposed in the app UX.
 - Login persists until explicit logout (Hard Promise from prior plan;
   preserved).
 - No biometric unlock layer in the app (Hard Promise from prior plan;
@@ -434,6 +441,8 @@ that gate F&F-side admin paths.
 - `team.users.soft_delete` — soft-delete a user in own operator
 - `team.users.reset_password` — admin-initiated password reset for
   a team member
+- `team.users.reset_mfa` - start or cancel delayed authenticator-app
+  removal/reset for a team member after fresh authentication
 - `team.roles.view` — view operator's role list
 - `team.roles.create_custom` — create operator-scoped custom role
   (mirrors `admin.roles.create_custom` but scoped to own operator)
@@ -444,16 +453,18 @@ that gate F&F-side admin paths.
 
 **Seed updates:** add `team.*` keys to baseline role grants:
 - `super_admin` already gets every key (cross-join seed handles this)
-- `operator_owner` gets all `team.*` keys
+- `operator_owner` gets all `team.*` keys, including
+  `team.users.reset_mfa`
 - `operator_manager` gets `team.users.view`, `team.users.invite`,
   `team.users.reactivate`, `team.users.reset_password`,
   `team.roles.view`, `team.roles.assign`, `team.roles.revoke`,
   `team.audit_log.view`, `team.session.force_logout` (manager-tier
-  team management; cannot create custom roles or soft-delete users)
+  team management; cannot create custom roles, soft-delete users, or
+  reset MFA)
 - Other baseline roles get nothing in `team.*`
 
 **Mirror updates required (catalog discipline):**
-- `lib/auth/permission_keys.dart` — add 12 new constants + add to
+- `lib/auth/permission_keys.dart` — add 13 team constants + add to
   `PermissionKeys.all`
 - `docs/contracts/auth_permission_key_catalog.md` — document each new
   key
@@ -642,7 +653,7 @@ perform the live staging RLS flip once integration tests are ready.
   via integration test)
 - `BarrioPreviewRole` removed; real role context wired
 
-### `9.4` MFA enrollment + enforcement (TOTP + recovery codes; passkeys future follow-up) (~5-7 days)
+### `9.4` MFA enrollment + enforcement (TOTP + admin reset/support; passkeys future follow-up) (~5-7 days)
 
 - Passkeys are parked as a future follow-up unless Firebase / Identity
   Platform exposes an official supported path before cutover. Do not build
@@ -651,36 +662,60 @@ perform the live staging RLS flip once integration tests are ready.
 - TOTP enrollment via Firebase Identity Platform
   - QR code display once (issuer = `Forge & Flow`)
   - `mfa_factors` row with `factor_type='totp'`
-- Recovery codes:
-  - 10 single-use codes generated at MFA enrollment
-  - Display-once with download/print prompt
-  - Hashed in `mfa_factors` with `factor_type='recovery_code'`
-  - Each code single-use; `used_at` set on consumption
-  - Rate limit on attempts: 1/min, max 5/24h
-- MFA enforcement policy (the locked decision):
-  - **All admin users (super_admin, ff_support, operator_owner,
-    operator_manager) must enroll MFA at every tier**
+- Recovery-code UX:
+  - Do not show recovery codes after enrollment
+  - Do not expose a recovery-code entry fallback on the MFA challenge screen
+  - Lost-authenticator support routes through "Contact your admin" plus
+    admin reset / delayed removal
+  - Hash-only backend recovery-code primitives may remain for compatibility
+    tests, but they are not a launch product surface
+- MFA enrollment and future enforcement policy (reopened 2026-04-30):
+  - **Do not enforce mandatory MFA for admin-tier accounts at launch**
+  - Post-launch stability can roll enforcement out later, starting with
+    highest admin / owner accounts before managers
+  - Admin users (super_admin, ff_support, operator_owner,
+    operator_manager) can self-enroll in MFA at every tier
   - Staff-level users do not have mandatory MFA by subscription tier
   - Operators may let staff opt in, and sensitive actions can still
     require fresh auth
   - Read from `operators.subscription_tier`
-  - Login refused if `mfa_required = true` and no enrolled factor;
-    user routed to enrollment flow
+  - Launch behavior: do not refuse login solely because an admin-tier
+    account has no enrolled factor
+  - Future behavior, after explicit post-launch approval: if
+    `mfa_required = true` and no enrolled factor, route the user to
+    enrollment rather than letting them continue
 - MFA removal flow:
   - Requires step-up auth + 24h delay window (security best practice
     against account-takeover-then-remove-MFA)
   - Audit: `mfa_factor_revocation_initiated` event + scheduled
     `mfa_factor_revocation_completed` event 24h later
+  - Removal completion is backend-scheduled, not triggered by a user
+    refreshing the Settings screen
+  - Pending self-removal requests can be cancelled during the delay window via
+    `POST /v1/auth/mfa/factors/removal/cancel`; admin/staff removals can be
+    cancelled from the Team action menu when a pending request id is available.
+    Both paths audit `mfa_factor_revocation_cancelled`
+  - Step-up proof stores an opaque proof / audit reference, never a raw
+    Firebase ID token or bearer token
+  - Admin-initiated reset/removal requires fresh admin auth before the
+    request starts
+  - Firebase/local MFA drift on the self-service removal path is repaired
+    by creating the missing local row before the 24h removal starts; broader
+    cross-user support tooling belongs in Phase 11A support consoles
 
 **Acceptance:**
 
 - TOTP fallback works on all tiers
 - Passkeys remain documented as not launch-blocking unless official Firebase /
   Identity Platform support appears before cutover
-- Recovery codes single-use; hashed at rest
-- MFA enforcement triggers for admin roles without forcing staff by tier
+- Recovery-code display and challenge entry are absent from the app UX
+- MFA enrollment is available for admin roles without forcing staff by tier
+- Mandatory admin MFA enforcement remains deferred until post-launch
+  stability and explicit approval
 - MFA-removal-delay enforced; audit trail complete
-- Recovery code rate limit triggers
+- Public MFA help-request cooldown triggers
+- MFA removal cannot complete instantly; initiated, pending, cancelled, and
+  completed states are visible/audited where the surface exposes them
 
 ### `9.5` Password policy + HIBP screening + brute-force protection + Cloud Armor (~5-7 days)
 
@@ -929,10 +964,11 @@ surface.
   - search free text
   - export CSV for authorized admins; every export is audited
   - sub-second response on indexed queries
-- MFA enforcement policy editor:
-  - per-tier defaults (locked: super_admin / ff_support / owner /
-    manager require MFA; staff MFA remains optional by tier)
-  - per-operator override (super_admin only)
+- MFA enrollment / future enforcement policy surface:
+  - launch: show enrollment status and future enforcement readiness only
+  - mandatory admin-tier MFA enforcement is deferred until post-launch
+    stability and explicit approval
+  - future per-operator override remains super_admin-only
 - Scope visibility:
   - super_admin sees all operators in dropdown
   - ff_support sees only assigned operators
@@ -941,8 +977,8 @@ surface.
 
 - F&F admin can do all of the above without manual SQL
 - Audit log query response < 1s on indexed dimensions
-- MFA enforcement policy editor live; changes propagate via
-  `roles_version` bump
+- MFA enrollment / future enforcement policy surface is visible without
+  activating mandatory admin-tier enforcement
 - Per-scope visibility enforced (ff_support cannot see other
   operators)
 
@@ -1046,6 +1082,8 @@ lifecycle services).
 - `team.users.reactivate` — reactivate action visible
 - `team.users.soft_delete` — soft-delete action visible (operator_owner only by default)
 - `team.users.reset_password` — reset-password action visible
+- `team.users.reset_mfa` - delayed authenticator-app removal/reset
+  visible (operator_owner and super_admin only by default)
 - `team.roles.view` — Roles list visible
 - `team.roles.create_custom` — create custom role action (operator_owner only)
 - `team.roles.assign` — add-role surface visible
@@ -1054,8 +1092,9 @@ lifecycle services).
 - `team.session.force_logout` — force-logout action visible
 
 Sensitive actions (`team.users.soft_delete`, `team.roles.create_custom`,
-`team.users.reset_password`) layer step-up auth via the
-`PermissionGate` MFA-fresh check from 9.7.
+`team.users.reset_password`, `team.users.reset_mfa`) layer step-up auth
+or fresh-auth route checks. `team.users.reset_mfa` uses a dedicated fresh
+sign-in gate because removing a second factor is sensitive.
 
 **Mobile vs desktop UX rule:**
 
@@ -1102,7 +1141,8 @@ phase close).
   — password change, sign-out, T&Cs placeholder (in flight; T&Cs detail
   lands with Phase 9.8)
 - `lib/screens/settings/settings_mfa_section.dart` (new) — TOTP
-  enrollment, factor management, recovery code generation
+  enrollment, factor management, pending-removal status, and admin reset
+  support. Recovery-code UX is not exposed for launch
 - `lib/screens/settings/settings_custom_roles_section.dart` (new) —
   role catalog viewer, role editor, permission key picker
 - `lib/screens/settings/settings_role_editor.dart` (new)
@@ -1118,7 +1158,8 @@ phase close).
 **Admin (11A) surfaces this phase requires:** operator/role/audit CRUD
 already covered by `11A.1` and `11A.7-10`. No additional 11A scope here.
 
-**UX sub-slice family:** `9.UX.0` through `9.UX.7`
+**UX sub-slice family:** `9.UX.0` through `9.UX.7`, plus `9.UX.1a`
+as the MFA hardening sub-slice
 
 - `9.UX.0` (in flight, ~50% done) — auth + team + account shell:
   branded login, team management, account section, MFA challenge entry,
@@ -1129,7 +1170,16 @@ already covered by `11A.1` and `11A.7-10`. No additional 11A scope here.
   three Postgres repositories under
   `lib/infrastructure/persistence/postgres/repositories/`.
 - `9.UX.1` — MFA self-enrollment + factor management. Reads/writes
-  `mfa_factors` via `auth_operations_gateway`. Recovery code download.
+  `mfa_factors` via `auth_operations_gateway`. Recovery-code UX removed
+  for launch; lost-authenticator support routes through admin reset.
+- `9.UX.1a` — MFA production hardening inside the `9.UX.1` lane:
+  backend completion of 24h removals, fresh-auth + opaque proof for self
+  and admin reset, admin-help queued-false copy and cooldown,
+  no recovery-code display or challenge entry, Firebase/local drift repair for
+  self-removal, self/admin pending-removal cancel, and explicit no phone/SMS
+  MFA scope. Note: this slice queues `event_outbox` rows only. True
+  in-app/email notification delivery is not finished until the Phase 10a
+  outbox bridge/provider drains those events.
 - `9.UX.2` — custom role editor + role catalog viewer. Consumes
   B17 `/v1/admin/auth/roles` (already deployed staging rev `00018-ztq`).
 - `9.UX.3` — permission explainer. Uses `permission_resolution.dart`
@@ -1152,7 +1202,8 @@ T&Cs version history viewer + GDPR data-request UI fold into Phase 9.8
 **Shared seams across lanes (sequence, do not parallelize):**
 
 - `lib/screens/settings_screen.dart` — registers tabs added by `9.UX.1`,
-  `9.UX.2`, `9.UX.4`, `9.UX.5`, `9.UX.6`. First lane lands its tab;
+  `9.UX.1a`, `9.UX.2`, `9.UX.4`, `9.UX.5`, `9.UX.6`. First lane
+  lands its tab;
   later lanes rebase and append. Additive-only patches OK if each
   lane writes its own tab spec without re-ordering existing entries.
 - `lib/services/auth/auth_operations_gateway.dart` — gains methods
@@ -1187,7 +1238,12 @@ Phase 8 / 8R / 8.5):
   tabs gated by permissions → invite a user → suspend a user → role grant.
 - `9.UX.1`: Settings → Account → MFA → enroll TOTP factor → see QR →
   enter code → factor listed → sign out / sign in → MFA challenge → enter
-  code → land on home → revoke factor → factor gone.
+  code → land on home → start removal → see 24h pending-removal state.
+- `9.UX.1a`: Settings → Account → MFA → start removal → stale auth
+  routes to sign-in again → fresh auth starts 24h delayed removal →
+  admin starts user 2FA reset from Team with fresh auth → admin-help request
+  failure states distinguish queued vs not queued → Firebase/local drift
+  fixture starts the normal delayed removal.
 - `9.UX.2`: Settings → Team → Roles → see role catalog → create custom
   role → assign permission keys → save → grant role to user → user
   sees expected surfaces.
@@ -1219,6 +1275,7 @@ Walkthrough evidence required at slice acceptance per
 | 9-future-5 IP allowlist | Enterprise tier feature | Phase 9 lane (post-launch) | ~1 week |
 | 9-future-6 DPoP / token binding | Firebase Auth supports it (~2027?) | Phase 9 lane (when ready) | ~3 days |
 | 9-future-7 BYO-IDP / OIDC federation | Post-MVP if anyone asks | Phase 9 lane (post-launch) | ~2 weeks |
+| 9-future-8 Mandatory admin-tier MFA enforcement | Post-launch stability and explicit approval | Phase 9 lane (post-launch) | ~3-5 days |
 
 These have placeholder slots; none block Phase 9 close.
 

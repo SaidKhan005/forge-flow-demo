@@ -5,6 +5,7 @@ import '../../services/team/team_invite_form_controller.dart';
 import '../../services/team/team_scope_visibility_policy.dart';
 import '../../services/team/team_users_list_controller.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/sticky_section_delegate.dart';
 
 typedef TeamInviteSubmitter =
     Future<TeamInviteCreated?> Function(Map<String, Object?> payload);
@@ -19,6 +20,8 @@ enum TeamUserAction {
   reactivate,
   softDelete,
   resetPassword,
+  resetMfa,
+  cancelMfaRemoval,
   createRoleGrant,
   revokeRoleGrant,
 }
@@ -68,6 +71,8 @@ class TeamUserListItem {
     this.locationId,
     this.locationLabel,
     this.mfaEnrolled = false,
+    this.mfaRemovalPending = false,
+    this.mfaRemovalRequestId,
     this.userRoleId,
     this.lastActiveAt,
   });
@@ -81,6 +86,8 @@ class TeamUserListItem {
   final String? locationId;
   final String? locationLabel;
   final bool mfaEnrolled;
+  final bool mfaRemovalPending;
+  final String? mfaRemovalRequestId;
   final String? userRoleId;
   final DateTime? lastActiveAt;
 }
@@ -172,6 +179,8 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   late final TextEditingController _emailController;
   final Set<String> _busyUserIds = <String>{};
   final Set<String> _busyInviteIds = <String>{};
+  final Set<String> _pendingMfaResetUserIds = <String>{};
+  final Set<String> _cancelledMfaResetUserIds = <String>{};
   final List<TeamPendingInviteListItem> _locallyCreatedInvites =
       <TeamPendingInviteListItem>[];
   bool _submittingInvite = false;
@@ -199,6 +208,17 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
         oldWidget.inviteFormController != widget.inviteFormController) {
       throw StateError('TeamSettingsSection controllers must stay stable');
     }
+    _pendingMfaResetUserIds.removeWhere((userId) {
+      return !widget.users.any((user) {
+        return user.userId == userId &&
+            (user.mfaEnrolled || user.mfaRemovalPending);
+      });
+    });
+    _cancelledMfaResetUserIds.removeWhere((userId) {
+      return !widget.users.any((user) {
+        return user.userId == userId && user.mfaRemovalPending;
+      });
+    });
   }
 
   @override
@@ -287,6 +307,7 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
           'team.users.reactivate',
           'team.users.soft_delete',
           'team.users.reset_password',
+          'team.users.reset_mfa',
           'team.roles.assign',
           'team.roles.revoke',
         }.contains,
@@ -418,6 +439,26 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
           actionLabel: 'Send',
           success: 'Password reset email queued',
         );
+      case TeamUserAction.resetMfa:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Remove two-factor authentication',
+          message:
+              'Start removing two-factor authentication for ${user.email}? It will be removed in 24 hours for security purposes. Check back after the security window to confirm it is done.',
+          actionLabel: 'Start removal',
+          success:
+              'Two-factor authentication removal started. It will be removed in 24 hours.',
+        );
+      case TeamUserAction.cancelMfaRemoval:
+        await _runConfirmedUserAction(
+          action: action,
+          user: user,
+          title: 'Cancel two-factor removal',
+          message: 'Keep two-factor authentication active for ${user.email}?',
+          actionLabel: 'Cancel removal',
+          success: 'Two-factor authentication removal cancelled.',
+        );
       case TeamUserAction.suspend:
         await _runConfirmedUserAction(
           action: action,
@@ -483,10 +524,20 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
           reason: _reasonFor(action),
         ),
       );
-      if (mounted) _showSnack(success);
+      if (mounted) {
+        if (action == TeamUserAction.resetMfa) {
+          _pendingMfaResetUserIds.add(user.userId);
+          _cancelledMfaResetUserIds.remove(user.userId);
+        }
+        if (action == TeamUserAction.cancelMfaRemoval) {
+          _pendingMfaResetUserIds.remove(user.userId);
+          _cancelledMfaResetUserIds.add(user.userId);
+        }
+        _showSnack(success);
+      }
     } catch (error) {
       debugPrint('Team user action failed: $error');
-      if (mounted) _showSnack('Action could not be completed.');
+      if (mounted) _showSnack(_messageForUserActionError(error, action));
     } finally {
       if (mounted) setState(() => _busyUserIds.remove(user.userId));
     }
@@ -530,9 +581,28 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
       TeamUserAction.reactivate => 'settings_team_reactivate',
       TeamUserAction.softDelete => 'settings_team_remove_access',
       TeamUserAction.resetPassword => 'settings_team_reset_password',
+      TeamUserAction.resetMfa => 'settings_team_reset_mfa',
+      TeamUserAction.cancelMfaRemoval => 'settings_team_cancel_mfa_removal',
       TeamUserAction.createRoleGrant => 'settings_team_role_change',
       TeamUserAction.revokeRoleGrant => 'settings_team_role_revoke',
     };
+  }
+
+  String _messageForUserActionError(Object error, TeamUserAction action) {
+    final code = switch (error) {
+      AuthOperationRejected(:final code) => code,
+      _ => error.toString(),
+    };
+    if (code.contains('mfa_freshness_required')) {
+      return 'Sign in again before removing two-factor authentication.';
+    }
+    if (action == TeamUserAction.resetMfa) {
+      return 'Two-factor removal could not be started.';
+    }
+    if (action == TeamUserAction.cancelMfaRemoval) {
+      return 'Two-factor removal could not be cancelled.';
+    }
+    return 'Action could not be completed.';
   }
 
   Future<bool> _confirm({
@@ -571,280 +641,134 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
     final users = _visibleUsers;
     final pendingInvites = _pendingInvites;
     final dataLoadState = widget.dataLoadState;
+    final inviteHasDraft =
+        _inviteController.email.trim().isNotEmpty ||
+        _inviteController.roleId != null ||
+        _inviteController.scope != null ||
+        _inviteController.locationId != null;
+    final filter = _usersController.filter;
+    final hasMemberQuery =
+        filter.searchQuery.trim().isNotEmpty ||
+        filter.statusFilter != null ||
+        filter.roleFilter != null ||
+        filter.locationFilter != null ||
+        filter.mfaEnrolledFilter != null;
+    // Show the full list inline for small teams (the common restaurant
+    // case). Above this size, hide behind search to keep the tab quiet
+    // and let the operator find a single member without scrolling
+    // through everyone.
+    const memberSearchThreshold = 8;
+    final showMembersList =
+        widget.users.length <= memberSearchThreshold || hasMemberQuery;
+    const inset = EdgeInsets.symmetric(horizontal: 16);
+    final content = Column(
+      key: const Key('team_settings_section'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: inset,
+          child: _TeamAccessNotice(
+            canViewTeam: _canViewTeam,
+            canInvite: _canInvite,
+            canManageUsers: _canManageUsers,
+          ),
+        ),
+        if (dataLoadState.shouldShowLoadingMessage) ...[
+          const SizedBox(height: 8),
+          Padding(
+            padding: inset,
+            child: _TeamDataLoadingNotice(loading: dataLoadState.loading),
+          ),
+        ],
+        const SizedBox(height: 8),
+        const SectionLabel('Members'),
+        const SizedBox(height: 8),
+        Padding(
+          padding: inset,
+          child: _TeamFilters(
+            controller: _usersController,
+            searchController: _searchController,
+            roleOptions: widget.roleOptions,
+            locationOptions: widget.locationOptions,
+            narrow: true,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: inset,
+          child: showMembersList
+              ? _TeamMembersViewport(
+                  narrow: true,
+                  child: _TeamUsersTable(
+                    users: users,
+                    narrow: true,
+                    dataLoadState: dataLoadState,
+                    canSuspend: (user) =>
+                        _canUsePermission('team.users.deactivate', user: user),
+                    canReactivate: (user) =>
+                        _canUsePermission('team.users.reactivate', user: user),
+                    canSoftDelete: (user) =>
+                        _canUsePermission('team.users.soft_delete', user: user),
+                    canResetPassword: (user) => _canUsePermission(
+                      'team.users.reset_password',
+                      user: user,
+                    ),
+                    canResetMfa: (user) => _canUsePermission(
+                      'team.users.reset_mfa',
+                      user: user,
+                    ),
+                    canAssignRole: (user) =>
+                        _canUsePermission('team.roles.assign', user: user),
+                    canRevokeRole: (user) =>
+                        _canUsePermission('team.roles.revoke', user: user),
+                    busyUserIds: _busyUserIds,
+                    pendingMfaResetUserIds: _pendingMfaResetUserIds,
+                    cancelledMfaResetUserIds: _cancelledMfaResetUserIds,
+                    onAction: _handleUserAction,
+                  ),
+                )
+              : _TeamMembersSearchPrompt(totalCount: widget.users.length),
+        ),
+        const SizedBox(height: 16),
+        const SectionLabel('Pending invites'),
+        const SizedBox(height: 8),
+        Padding(
+          padding: inset,
+          child: _PendingInvitesPanel(
+            invites: pendingInvites,
+            canRevoke: _canInvite && widget.onInviteRevoked != null,
+            busyInviteIds: _busyInviteIds,
+            onRevoke: _revokeInvite,
+          ),
+        ),
+        const SizedBox(height: 16),
+        const SectionLabel('Invite members'),
+        const SizedBox(height: 8),
+        Padding(
+          padding: inset,
+          child: _TeamInvitePanel(
+            controller: _inviteController,
+            emailController: _emailController,
+            roleOptions: widget.roleOptions,
+            locationOptions: widget.locationOptions,
+            enabled: _canInvite,
+            submitEnabled:
+                _canInvite &&
+                !_submittingInvite &&
+                widget.onInviteSubmitted != null &&
+                _inviteController.isReadyToSubmit,
+            submitting: _submittingInvite,
+            initiallyExpanded: inviteHasDraft,
+            onSubmit: _submitInvite,
+          ),
+        ),
+      ],
+    );
     return LayoutBuilder(
       builder: (context, constraints) {
-        final narrow = constraints.maxWidth < 760;
-        final membersPanel = _TeamSectionPanel(
-          title: 'Members',
-          icon: Icons.group_outlined,
-          trailing: Text(
-            '${users.length} of ${widget.users.length}',
-            style: AppTextStyles.mono12(
-              color: AppColors.textMuted,
-              weight: FontWeight.w700,
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _TeamFilters(
-                controller: _usersController,
-                searchController: _searchController,
-                roleOptions: widget.roleOptions,
-                locationOptions: widget.locationOptions,
-                narrow: narrow,
-              ),
-              const SizedBox(height: 18),
-              _TeamMembersViewport(
-                narrow: narrow,
-                child: _TeamUsersTable(
-                  users: users,
-                  narrow: narrow,
-                  dataLoadState: dataLoadState,
-                  canSuspend: (user) =>
-                      _canUsePermission('team.users.deactivate', user: user),
-                  canReactivate: (user) =>
-                      _canUsePermission('team.users.reactivate', user: user),
-                  canSoftDelete: (user) =>
-                      _canUsePermission('team.users.soft_delete', user: user),
-                  canResetPassword: (user) => _canUsePermission(
-                    'team.users.reset_password',
-                    user: user,
-                  ),
-                  canAssignRole: (user) =>
-                      _canUsePermission('team.roles.assign', user: user),
-                  canRevokeRole: (user) =>
-                      _canUsePermission('team.roles.revoke', user: user),
-                  busyUserIds: _busyUserIds,
-                  onAction: _handleUserAction,
-                ),
-              ),
-            ],
-          ),
-        );
-        final inviteHasDraft =
-            _inviteController.email.trim().isNotEmpty ||
-            _inviteController.roleId != null ||
-            _inviteController.scope != null ||
-            _inviteController.locationId != null;
-        final invitePanel = _TeamInvitePanel(
-          controller: _inviteController,
-          emailController: _emailController,
-          roleOptions: widget.roleOptions,
-          locationOptions: widget.locationOptions,
-          enabled: _canInvite,
-          submitEnabled:
-              _canInvite &&
-              !_submittingInvite &&
-              widget.onInviteSubmitted != null &&
-              _inviteController.isReadyToSubmit,
-          submitting: _submittingInvite,
-          initiallyExpanded: inviteHasDraft,
-          onSubmit: _submitInvite,
-        );
-        final pendingPanel = _PendingInvitesPanel(
-          invites: pendingInvites,
-          canRevoke: _canInvite && widget.onInviteRevoked != null,
-          busyInviteIds: _busyInviteIds,
-          onRevoke: _revokeInvite,
-        );
-        final hasPendingInvites = pendingInvites.isNotEmpty;
-        final sidePanels = hasPendingInvites
-            ? <Widget>[pendingPanel, const SizedBox(height: 18), invitePanel]
-            : <Widget>[invitePanel, const SizedBox(height: 18), pendingPanel];
-        final content = Container(
-          key: const Key('team_settings_section'),
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.borderSubtle),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _TeamCommandHeader(
-                visibleCount: users.length,
-                totalCount: widget.users.length,
-                pendingInviteCount: pendingInvites.length,
-                canInvite: _canInvite,
-                canManageUsers: _canManageUsers,
-              ),
-              _TeamAccessNotice(
-                canViewTeam: _canViewTeam,
-                canInvite: _canInvite,
-                canManageUsers: _canManageUsers,
-              ),
-              if (dataLoadState.shouldShowLoadingMessage) ...[
-                const SizedBox(height: 12),
-                _TeamDataLoadingNotice(loading: dataLoadState.loading),
-              ],
-              const SizedBox(height: 18),
-              if (narrow) ...[
-                membersPanel,
-                const SizedBox(height: 18),
-                ...sidePanels,
-              ] else
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(flex: 3, child: membersPanel),
-                    const SizedBox(width: 20),
-                    Expanded(
-                      flex: 2,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: sidePanels,
-                      ),
-                    ),
-                  ],
-                ),
-            ],
-          ),
-        );
         if (!constraints.hasBoundedHeight) return content;
         return SingleChildScrollView(child: content);
       },
-    );
-  }
-}
-
-class _TeamCommandHeader extends StatelessWidget {
-  const _TeamCommandHeader({
-    required this.visibleCount,
-    required this.totalCount,
-    required this.pendingInviteCount,
-    required this.canInvite,
-    required this.canManageUsers,
-  });
-
-  final int visibleCount;
-  final int totalCount;
-  final int pendingInviteCount;
-  final bool canInvite;
-  final bool canManageUsers;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 14),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _TeamMetricChip(
-            icon: Icons.group_outlined,
-            label: 'VISIBLE',
-            value: '$visibleCount / $totalCount',
-          ),
-          _TeamMetricChip(
-            icon: canInvite ? Icons.person_add_alt_1 : Icons.lock_outline,
-            label: 'INVITES',
-            value: canInvite ? '$pendingInviteCount PENDING' : 'LOCKED',
-          ),
-          _TeamMetricChip(
-            icon: canManageUsers
-                ? Icons.admin_panel_settings_outlined
-                : Icons.visibility_outlined,
-            label: 'ACTIONS',
-            value: canManageUsers ? 'READY' : 'VIEW ONLY',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TeamSectionPanel extends StatefulWidget {
-  const _TeamSectionPanel({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.child,
-    this.trailing,
-    this.initiallyExpanded = true,
-  });
-
-  final String title;
-  final IconData icon;
-  final Widget child;
-  final Widget? trailing;
-  final bool initiallyExpanded;
-
-  @override
-  State<_TeamSectionPanel> createState() => _TeamSectionPanelState();
-}
-
-class _TeamSectionPanelState extends State<_TeamSectionPanel> {
-  late bool _expanded = widget.initiallyExpanded;
-  final PageStorageBucket _bodyStorageBucket = PageStorageBucket();
-
-  @override
-  void didUpdateWidget(covariant _TeamSectionPanel oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!oldWidget.initiallyExpanded && widget.initiallyExpanded) {
-      _expanded = true;
-    }
-  }
-
-  void _toggleExpanded() {
-    setState(() => _expanded = !_expanded);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.cardGlow,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(8),
-            onTap: _toggleExpanded,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 8, 10, 8),
-              child: Row(
-                children: [
-                  _TeamPanelIcon(icon: widget.icon),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(widget.title, style: AppTextStyles.display16()),
-                  ),
-                  if (widget.trailing != null) ...[
-                    const SizedBox(width: 8),
-                    widget.trailing!,
-                  ],
-                  const SizedBox(width: 6),
-                  Icon(
-                    _expanded ? Icons.expand_less : Icons.expand_more,
-                    size: 20,
-                    color: AppColors.textMuted,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_expanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 14),
-              child: PageStorage(
-                bucket: _bodyStorageBucket,
-                child: widget.child,
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
@@ -857,33 +781,68 @@ class _TeamMembersViewport extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: BoxConstraints(maxHeight: narrow ? 460 : 540),
-      child: SingleChildScrollView(
-        key: const Key('team_members_list_scroll'),
-        primary: false,
-        child: child,
-      ),
+    return _ScrollViewportPanel(
+      maxHeight: narrow ? 380 : 540,
+      scrollKey: const Key('team_members_list_scroll'),
+      child: child,
     );
   }
 }
 
-class _TeamPanelIcon extends StatelessWidget {
-  const _TeamPanelIcon({required this.icon});
+/// Bounded, visually distinct scroll panel used by Members and Pending
+/// Invites. Renders the child inside a rounded border with a visible
+/// scrollbar so the user sees the inner scroll surface and can drag
+/// inside it without hijacking the page scroll.
+class _ScrollViewportPanel extends StatefulWidget {
+  const _ScrollViewportPanel({
+    required this.maxHeight,
+    required this.scrollKey,
+    required this.child,
+  });
 
-  final IconData icon;
+  final double maxHeight;
+  final Key scrollKey;
+  final Widget child;
+
+  @override
+  State<_ScrollViewportPanel> createState() => _ScrollViewportPanelState();
+}
+
+class _ScrollViewportPanelState extends State<_ScrollViewportPanel> {
+  final ScrollController _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 34,
-      height: 34,
       decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.12),
+        color: AppColors.backgroundDeep.withValues(alpha: 0.4),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.peacock.withValues(alpha: 0.25)),
+        border: Border.all(color: AppColors.borderSubtle),
       ),
-      child: Icon(icon, size: 18, color: AppColors.peacockDark),
+      padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: widget.maxHeight),
+        child: Scrollbar(
+          controller: _controller,
+          thumbVisibility: true,
+          thickness: 6,
+          radius: const Radius.circular(3),
+          child: SingleChildScrollView(
+            key: widget.scrollKey,
+            controller: _controller,
+            primary: false,
+            physics: const ClampingScrollPhysics(),
+            padding: const EdgeInsets.only(right: 6),
+            child: widget.child,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -958,7 +917,8 @@ class _TeamDataLoadingNotice extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Wifi sucks... Data loading :(',
+              'Staff late looking for Parking lol',
+              softWrap: true,
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
@@ -970,46 +930,6 @@ class _TeamDataLoadingNotice extends StatelessWidget {
               child: CircularProgressIndicator(strokeWidth: 2),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _TeamMetricChip extends StatelessWidget {
-  const _TeamMetricChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundMid,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: AppColors.peacockDark),
-          const SizedBox(width: 8),
-          Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
-          const SizedBox(width: 8),
-          Text(
-            value,
-            style: AppTextStyles.mono12(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
@@ -1137,9 +1057,12 @@ class _TeamUsersTable extends StatelessWidget {
     required this.canReactivate,
     required this.canSoftDelete,
     required this.canResetPassword,
+    required this.canResetMfa,
     required this.canAssignRole,
     required this.canRevokeRole,
     required this.busyUserIds,
+    required this.pendingMfaResetUserIds,
+    required this.cancelledMfaResetUserIds,
     required this.onAction,
   });
 
@@ -1150,16 +1073,18 @@ class _TeamUsersTable extends StatelessWidget {
   final bool Function(TeamUserListItem user) canReactivate;
   final bool Function(TeamUserListItem user) canSoftDelete;
   final bool Function(TeamUserListItem user) canResetPassword;
+  final bool Function(TeamUserListItem user) canResetMfa;
   final bool Function(TeamUserListItem user) canAssignRole;
   final bool Function(TeamUserListItem user) canRevokeRole;
   final Set<String> busyUserIds;
+  final Set<String> pendingMfaResetUserIds;
+  final Set<String> cancelledMfaResetUserIds;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
 
   @override
   Widget build(BuildContext context) {
     if (users.isEmpty) {
-      final dataStillLoading = dataLoadState.shouldShowLoadingMessage;
       return Container(
         key: const Key('team_users_empty'),
         padding: const EdgeInsets.all(16),
@@ -1178,9 +1103,8 @@ class _TeamUsersTable extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                dataStillLoading
-                    ? 'Wifi sucks... Data loading :('
-                    : 'No team members',
+                'No team members',
+                softWrap: true,
                 style: AppTextStyles.body14(color: AppColors.textMuted),
               ),
             ),
@@ -1200,9 +1124,11 @@ class _TeamUsersTable extends StatelessWidget {
               canReactivate: canReactivate(users[i]),
               canSoftDelete: canSoftDelete(users[i]),
               canResetPassword: canResetPassword(users[i]),
+              canResetMfa: canResetMfa(users[i]),
               canAssignRole: canAssignRole(users[i]),
               canRevokeRole: canRevokeRole(users[i]),
               busy: busyUserIds.contains(users[i].userId),
+              mfaResetPending: _mfaResetPendingFor(users[i]),
               onAction: onAction,
             ),
           ],
@@ -1226,15 +1152,23 @@ class _TeamUsersTable extends StatelessWidget {
                 canReactivate: canReactivate(users[i]),
                 canSoftDelete: canSoftDelete(users[i]),
                 canResetPassword: canResetPassword(users[i]),
+                canResetMfa: canResetMfa(users[i]),
                 canAssignRole: canAssignRole(users[i]),
                 canRevokeRole: canRevokeRole(users[i]),
                 busy: busyUserIds.contains(users[i].userId),
+                mfaResetPending: _mfaResetPendingFor(users[i]),
                 onAction: onAction,
               ),
           ],
         ),
       ),
     );
+  }
+
+  bool _mfaResetPendingFor(TeamUserListItem user) {
+    if (cancelledMfaResetUserIds.contains(user.userId)) return false;
+    return pendingMfaResetUserIds.contains(user.userId) ||
+        user.mfaRemovalPending;
   }
 }
 
@@ -1276,9 +1210,11 @@ class _TeamUserRow extends StatelessWidget {
     required this.canReactivate,
     required this.canSoftDelete,
     required this.canResetPassword,
+    required this.canResetMfa,
     required this.canAssignRole,
     required this.canRevokeRole,
     required this.busy,
+    required this.mfaResetPending,
     required this.onAction,
   });
 
@@ -1287,9 +1223,11 @@ class _TeamUserRow extends StatelessWidget {
   final bool canReactivate;
   final bool canSoftDelete;
   final bool canResetPassword;
+  final bool canResetMfa;
   final bool canAssignRole;
   final bool canRevokeRole;
   final bool busy;
+  final bool mfaResetPending;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
 
@@ -1335,7 +1273,13 @@ class _TeamUserRow extends StatelessWidget {
               runSpacing: 6,
               children: [
                 _StatusPill(status: user.status),
-                if (user.mfaEnrolled)
+                if (mfaResetPending)
+                  const _MiniPill(
+                    label: '24h',
+                    icon: Icons.schedule_rounded,
+                    color: AppColors.warning,
+                  )
+                else if (user.mfaEnrolled)
                   const _MiniPill(label: '2FA', icon: Icons.verified_user),
               ],
             ),
@@ -1356,6 +1300,8 @@ class _TeamUserRow extends StatelessWidget {
                     canReactivate: canReactivate,
                     canSoftDelete: canSoftDelete,
                     canResetPassword: canResetPassword,
+                    canResetMfa: canResetMfa,
+                    mfaResetPending: mfaResetPending,
                     canAssignRole: canAssignRole,
                     canRevokeRole: canRevokeRole,
                     onAction: onAction,
@@ -1375,9 +1321,11 @@ class _TeamUserCard extends StatelessWidget {
     required this.canReactivate,
     required this.canSoftDelete,
     required this.canResetPassword,
+    required this.canResetMfa,
     required this.canAssignRole,
     required this.canRevokeRole,
     required this.busy,
+    required this.mfaResetPending,
     required this.onAction,
   });
 
@@ -1386,82 +1334,137 @@ class _TeamUserCard extends StatelessWidget {
   final bool canReactivate;
   final bool canSoftDelete;
   final bool canResetPassword;
+  final bool canResetMfa;
   final bool canAssignRole;
   final bool canRevokeRole;
   final bool busy;
+  final bool mfaResetPending;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+    final stripe = _statusStripeColor(user.status);
+    final primary = _resolvePrimaryAction(
+      user: user,
+      mfaResetPending: mfaResetPending,
+      canReactivate: canReactivate,
+    );
+    final showLocation =
+        user.locationLabel != null && user.locationLabel!.isNotEmpty;
+    final showPersistentStatus = _showStatusPill(user.status);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.backgroundSurface,
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Container(width: 3, color: stripe ?? Colors.transparent),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(user.displayName, style: AppTextStyles.body14()),
-                    const SizedBox(height: 2),
-                    Text(
-                      user.email,
-                      style: AppTextStyles.mono12(color: AppColors.textMuted),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 10),
-              busy
-                  ? const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: Center(
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _InitialsAvatar(displayName: user.displayName),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    user.displayName,
+                                    style: AppTextStyles.body14(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                _MfaIndicator(
+                                  enrolled: user.mfaEnrolled,
+                                  removalPending: mfaResetPending,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              user.email,
+                              style: AppTextStyles.mono10(
+                                color: AppColors.textMuted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                _RoleChip(label: user.roleLabel),
+                                if (showLocation)
+                                  _ScopePill(label: user.locationLabel!),
+                                if (showPersistentStatus)
+                                  _StatusPill(status: user.status),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    )
-                  : _TeamUserActionMenu(
-                      user: user,
-                      canSuspend: canSuspend,
-                      canReactivate: canReactivate,
-                      canSoftDelete: canSoftDelete,
-                      canResetPassword: canResetPassword,
-                      canAssignRole: canAssignRole,
-                      canRevokeRole: canRevokeRole,
-                      onAction: onAction,
-                    ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _MiniPill(label: user.roleLabel, icon: Icons.badge_outlined),
-              _MiniPill(
-                label: user.locationLabel ?? 'Operator-wide',
-                icon: Icons.place_outlined,
+                      const SizedBox(width: 4),
+                      if (busy)
+                        const SizedBox(
+                          width: 32,
+                          height: 32,
+                          child: Center(
+                            child: SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        )
+                      else
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (primary != null)
+                              _PrimaryActionButton(
+                                userId: user.userId,
+                                descriptor: primary,
+                                onPressed: () => onAction(primary.action, user),
+                              ),
+                            _TeamUserActionMenu(
+                              user: user,
+                              canSuspend: canSuspend,
+                              canReactivate: canReactivate,
+                              canSoftDelete: canSoftDelete,
+                              canResetPassword: canResetPassword,
+                              canResetMfa: canResetMfa,
+                              mfaResetPending: mfaResetPending,
+                              canAssignRole: canAssignRole,
+                              canRevokeRole: canRevokeRole,
+                              onAction: onAction,
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ),
               ),
-              _StatusPill(status: user.status),
-              if (user.mfaEnrolled)
-                const _MiniPill(label: '2FA', icon: Icons.verified_user),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1474,6 +1477,8 @@ class _TeamUserActionMenu extends StatelessWidget {
     required this.canReactivate,
     required this.canSoftDelete,
     required this.canResetPassword,
+    required this.canResetMfa,
+    required this.mfaResetPending,
     required this.canAssignRole,
     required this.canRevokeRole,
     required this.onAction,
@@ -1484,6 +1489,8 @@ class _TeamUserActionMenu extends StatelessWidget {
   final bool canReactivate;
   final bool canSoftDelete;
   final bool canResetPassword;
+  final bool canResetMfa;
+  final bool mfaResetPending;
   final bool canAssignRole;
   final bool canRevokeRole;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
@@ -1506,6 +1513,22 @@ class _TeamUserActionMenu extends StatelessWidget {
           child: _MenuItemLabel(
             icon: Icons.mark_email_read_outlined,
             label: 'Reset password',
+          ),
+        ),
+      if (canResetMfa && mfaResetPending && user.mfaRemovalRequestId != null)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.cancelMfaRemoval,
+          child: _MenuItemLabel(
+            icon: Icons.event_busy_outlined,
+            label: 'Cancel 2FA removal',
+          ),
+        )
+      else if (canResetMfa && !mfaResetPending)
+        const PopupMenuItem<TeamUserAction>(
+          value: TeamUserAction.resetMfa,
+          child: _MenuItemLabel(
+            icon: Icons.admin_panel_settings_outlined,
+            label: 'Remove/reset 2FA',
           ),
         ),
       if (user.status == 'suspended' && canReactivate)
@@ -1601,33 +1624,220 @@ class _StatusPill extends StatelessWidget {
 }
 
 class _MiniPill extends StatelessWidget {
-  const _MiniPill({required this.label, required this.icon});
+  const _MiniPill({
+    required this.label,
+    required this.icon,
+    this.color = AppColors.peacockDark,
+  });
 
   final String label;
   final IconData icon;
+  final Color color;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.peacock.withValues(alpha: 0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: AppColors.peacockDark),
+          Icon(icon, size: 12, color: color),
           const SizedBox(width: 3),
-          Text(
-            label,
-            style: AppTextStyles.mono10(color: AppColors.peacockDark),
-          ),
+          Text(label, style: AppTextStyles.mono10(color: color)),
         ],
       ),
     );
   }
 }
+
+class _InitialsAvatar extends StatelessWidget {
+  const _InitialsAvatar({required this.displayName});
+
+  final String displayName;
+
+  String get _initials {
+    final parts = displayName
+        .trim()
+        .split(RegExp(r'\s+'))
+        .where((p) => p.isNotEmpty)
+        .toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.substring(0, 1).toUpperCase();
+    return (parts.first.substring(0, 1) + parts.last.substring(0, 1))
+        .toUpperCase();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 32,
+      height: 32,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppColors.sunset.withValues(alpha: 0.14),
+        border: Border.all(
+          color: AppColors.sunset.withValues(alpha: 0.5),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Text(
+        _initials,
+        style: AppTextStyles.mono12(
+          color: AppColors.sunsetDark,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _ScopePill extends StatelessWidget {
+  const _ScopePill({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.borderSubtle.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+class _RoleChip extends StatelessWidget {
+  const _RoleChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.borderSubtle.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: AppColors.textSecondary),
+      ),
+    );
+  }
+}
+
+class _MfaIndicator extends StatelessWidget {
+  const _MfaIndicator({required this.enrolled, required this.removalPending});
+
+  final bool enrolled;
+  final bool removalPending;
+
+  @override
+  Widget build(BuildContext context) {
+    final IconData icon;
+    final Color color;
+    final String tooltip;
+    if (removalPending) {
+      icon = Icons.timer_outlined;
+      color = AppColors.warning;
+      tooltip = '2FA removal pending (24h window)';
+    } else if (enrolled) {
+      icon = Icons.verified_user_outlined;
+      color = AppColors.positive;
+      tooltip = '2FA enrolled';
+    } else {
+      icon = Icons.gpp_maybe_outlined;
+      color = AppColors.warning;
+      tooltip = '2FA not enrolled';
+    }
+    return Tooltip(
+      message: tooltip,
+      child: Icon(icon, size: 16, color: color),
+    );
+  }
+}
+
+class _PrimaryActionDescriptor {
+  const _PrimaryActionDescriptor({
+    required this.action,
+    required this.label,
+    required this.icon,
+  });
+
+  final TeamUserAction action;
+  final String label;
+  final IconData icon;
+}
+
+_PrimaryActionDescriptor? _resolvePrimaryAction({
+  required TeamUserListItem user,
+  required bool mfaResetPending,
+  required bool canReactivate,
+}) {
+  if (user.status == 'suspended' && canReactivate) {
+    return const _PrimaryActionDescriptor(
+      action: TeamUserAction.reactivate,
+      label: 'Reactivate',
+      icon: Icons.person_add_alt_1_outlined,
+    );
+  }
+  return null;
+}
+
+class _PrimaryActionButton extends StatelessWidget {
+  const _PrimaryActionButton({
+    required this.userId,
+    required this.descriptor,
+    required this.onPressed,
+  });
+
+  final String userId;
+  final _PrimaryActionDescriptor descriptor;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: Key('team_user_primary_action_$userId'),
+      onPressed: onPressed,
+      icon: Icon(descriptor.icon, size: 14, color: AppColors.sunsetDark),
+      label: Text(descriptor.label),
+      style: TextButton.styleFrom(
+        foregroundColor: AppColors.sunsetDark,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+        minimumSize: const Size(0, 28),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        textStyle: AppTextStyles.mono12(
+          color: AppColors.sunsetDark,
+          weight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+Color? _statusStripeColor(String status) {
+  return switch (status) {
+    'suspended' => AppColors.warning,
+    'deleted' => AppColors.negative,
+    'invited' => AppColors.peacockDark,
+    _ => null,
+  };
+}
+
+bool _showStatusPill(String status) => status != 'active';
 
 class _PendingInvitesPanel extends StatelessWidget {
   const _PendingInvitesPanel({
@@ -1644,49 +1854,123 @@ class _PendingInvitesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _TeamSectionPanel(
-      key: const Key('team_pending_invites_panel'),
-      title: 'Pending invites',
-      icon: Icons.outgoing_mail,
-      initiallyExpanded: invites.isNotEmpty,
-      trailing: Text(
-        '${invites.length}',
-        style: AppTextStyles.mono12(
-          color: AppColors.textMuted,
-          weight: FontWeight.w700,
+    if (invites.isEmpty) {
+      return Container(
+        key: const Key('team_pending_invites_panel'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppColors.backgroundSurface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: AppColors.borderSubtle),
         ),
-      ),
-      child: invites.isEmpty
-          ? Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.backgroundSurface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: AppColors.borderSubtle),
-              ),
-              child: Text(
-                'No pending invites',
-                style: AppTextStyles.body13(color: AppColors.textMuted),
-              ),
-            )
-          : ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 320),
-              child: SingleChildScrollView(
-                primary: false,
-                child: Column(
-                  children: [
-                    for (final invite in invites)
-                      _PendingInviteRow(
-                        invite: invite,
-                        canRevoke: canRevoke,
-                        busy: busyInviteIds.contains(invite.inviteId),
-                        onRevoke: onRevoke,
-                      ),
-                  ],
-                ),
-              ),
+        child: Text(
+          'No pending invites',
+          style: AppTextStyles.body13(color: AppColors.textMuted),
+        ),
+      );
+    }
+    final inviteList = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final invite in invites)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _PendingInviteRow(
+              invite: invite,
+              canRevoke: canRevoke,
+              busy: busyInviteIds.contains(invite.inviteId),
+              onRevoke: onRevoke,
             ),
+          ),
+      ],
+    );
+    // Short list (≤3 invites) renders inline with no nested scroll —
+    // page scroll handles it. Longer lists go into a bounded scroll
+    // panel with a visible scrollbar so list scroll vs page scroll
+    // is visually unambiguous.
+    if (invites.length <= 3) {
+      return KeyedSubtree(
+        key: const Key('team_pending_invites_panel'),
+        child: inviteList,
+      );
+    }
+    return KeyedSubtree(
+      key: const Key('team_pending_invites_panel'),
+      child: _ScrollViewportPanel(
+        maxHeight: 320,
+        scrollKey: const Key('team_pending_invites_scroll'),
+        child: inviteList,
+      ),
+    );
+  }
+}
+
+class _TeamMembersSearchPrompt extends StatelessWidget {
+  const _TeamMembersSearchPrompt({required this.totalCount});
+
+  final int totalCount;
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = totalCount == 0
+        ? 'No team members yet. Invite the first one below.'
+        : totalCount == 1
+        ? 'Search by name or email to open the member.'
+        : 'Search by name or email, or filter by role, location, or status to see team members.';
+    return Container(
+      key: const Key('team_members_search_prompt'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: AppColors.sunset.withValues(alpha: 0.10),
+              border: Border.all(
+                color: AppColors.sunset.withValues(alpha: 0.4),
+                width: 1,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(
+              Icons.search_rounded,
+              size: 18,
+              color: AppColors.sunsetDark,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  totalCount == 0
+                      ? 'No team members yet'
+                      : '$totalCount team ${totalCount == 1 ? 'member' : 'members'}',
+                  style: AppTextStyles.body14(
+                    color: AppColors.textPrimary,
+                  ).copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: AppTextStyles.body13(color: AppColors.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1706,57 +1990,103 @@ class _PendingInviteRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scopeLabel = invite.scopeType == 'location'
-        ? invite.locationLabel ?? 'Location'
-        : 'Operator-wide';
-    return Container(
-      margin: const EdgeInsets.only(top: 8),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: AppColors.borderSubtle),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(invite.email, style: AppTextStyles.body14()),
-                const SizedBox(height: 2),
-                Text(
-                  '${invite.roleLabel} - $scopeLabel - Expires ${_shortDate(invite.expiresAt)}',
-                  style: AppTextStyles.body12(color: AppColors.textMuted),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 8),
-          busy
-              ? const SizedBox(
-                  width: 32,
-                  height: 32,
-                  child: Center(
-                    child: SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
+    final showLocation =
+        invite.scopeType == 'location' &&
+        invite.locationLabel != null &&
+        invite.locationLabel!.isNotEmpty;
+    final synthName = _inviteEmailToName(invite.email);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppColors.backgroundSurface,
+          border: Border.all(color: AppColors.borderSubtle),
+        ),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Container(width: 3, color: AppColors.peacockDark),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 10, 4, 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _InitialsAvatar(displayName: synthName),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              invite.email,
+                              style: AppTextStyles.body14(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Expires ${_shortDate(invite.expiresAt)}',
+                              style: AppTextStyles.mono10(
+                                color: AppColors.textMuted,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Wrap(
+                              spacing: 6,
+                              runSpacing: 4,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                _RoleChip(label: invite.roleLabel),
+                                if (showLocation)
+                                  _ScopePill(label: invite.locationLabel!),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      busy
+                          ? const SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: Center(
+                                child: SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : IconButton(
+                              key: Key('team_invite_revoke_${invite.inviteId}'),
+                              tooltip: canRevoke
+                                  ? 'Revoke invite'
+                                  : 'Revoke unavailable',
+                              onPressed: canRevoke
+                                  ? () => onRevoke(invite)
+                                  : null,
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
+                    ],
                   ),
-                )
-              : IconButton(
-                  key: Key('team_invite_revoke_${invite.inviteId}'),
-                  tooltip: canRevoke ? 'Revoke invite' : 'Revoke unavailable',
-                  onPressed: canRevoke ? () => onRevoke(invite) : null,
-                  icon: const Icon(Icons.close, size: 18),
                 ),
-        ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+String _inviteEmailToName(String email) {
+  final at = email.indexOf('@');
+  final local = at >= 0 ? email.substring(0, at) : email;
+  return local.replaceAll(RegExp(r'[._\-]'), ' ').trim();
 }
 
 class _RoleGrantDraft {
@@ -1948,18 +2278,14 @@ class _TeamInvitePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final violations = controller.validate();
     final showLocation = controller.scope == TeamInviteScope.location;
-    return _TeamSectionPanel(
+    return Container(
       key: const Key('team_invite_panel'),
-      title: 'Invite member',
-      icon: Icons.person_add_alt_1,
-      initiallyExpanded: initiallyExpanded,
-      trailing: enabled
-          ? null
-          : const Icon(
-              Icons.lock_outline,
-              size: 16,
-              color: AppColors.textMuted,
-            ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final maxWidth = constraints.maxWidth.isFinite

@@ -1,20 +1,15 @@
 // Phase 9.4 - MFA TOTP challenge screen.
 //
-// Replaces the 9.3 [MfaChallengePlaceholder]. Renders a single 6-digit
-// TOTP entry with an optional "use a recovery code instead" path.
+// Replaces the 9.3 [MfaChallengePlaceholder]. Renders a focused
+// authenticator-app code entry with a restaurant-admin help path.
 // On submit, drives the existing
 // [AuthSessionNotifier.completeTotpChallenge] (which 9.3 already
 // wired) — the difference vs. the placeholder is real form input,
 // per-attempt rate-limit guarding (1 / minute, 5 / 24h per the
-// decision lock), and a recovery-code fallback.
+// decision lock).
 //
-// The actual recovery-code consumption happens server-side: the proxy
-// receives the recovery-code path's `oneTimeCode` value, looks it up
-// via [RecoveryCodeHasher.verify] against the user's stored hashes,
-// marks the matching `mfa_factors` row's `used_at`, and emits the
-// completion audit row. This screen only collects the input.
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../services/mfa/mfa_recovery_request_gateway.dart';
@@ -32,11 +27,10 @@ class MfaChallengeScreen extends StatefulWidget {
 
 class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
   final _codeController = TextEditingController();
-  bool _useRecoveryCode = false;
   bool _submitting = false;
-  bool _requestingRecoveryHelp = false;
+  bool _requestingAdminHelp = false;
   String? _localError;
-  String? _recoveryHelpMessage;
+  String? _adminHelpMessage;
 
   @override
   void dispose() {
@@ -51,14 +45,14 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
       setState(() => _localError = 'Enter a code to continue.');
       return;
     }
-    final factorId = _useRecoveryCode
-        ? 'recovery_code'
-        : (challenge.factorIds.isNotEmpty ? challenge.factorIds.first : 'totp');
     setState(() {
       _localError = null;
       _submitting = true;
     });
     try {
+      final factorId = challenge.factorIds.isNotEmpty
+          ? challenge.factorIds.first
+          : 'totp';
       await context.read<AuthSessionNotifier>().completeTotpChallenge(
         factorId: factorId,
         oneTimeCode: code,
@@ -71,43 +65,45 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
   }
 
   Future<void> _requestAdminHelp(AuthSessionMfaChallenge challenge) async {
-    if (_requestingRecoveryHelp) return;
+    if (_requestingAdminHelp) return;
     final gateway = widget.recoveryRequestGateway;
     if (gateway == null) {
       setState(() {
-        _recoveryHelpMessage = 'Contact your restaurant admin directly.';
+        _adminHelpMessage = 'Contact your restaurant admin directly.';
       });
       return;
     }
     setState(() {
       _localError = null;
-      _recoveryHelpMessage = null;
-      _requestingRecoveryHelp = true;
+      _adminHelpMessage = null;
+      _requestingAdminHelp = true;
     });
     try {
-      await gateway.requestRecovery(
+      final accepted = await gateway.requestRecovery(
         MfaRecoveryRequestCommand(email: challenge.email),
       );
       if (!mounted) return;
       setState(() {
-        _recoveryHelpMessage =
-            'Recovery request sent to your restaurant admin.';
+        _adminHelpMessage = accepted.queued
+            ? 'Help request recorded. Contact your restaurant admin directly if you need urgent access.'
+            : 'We could not route this automatically. Contact your restaurant admin directly.';
       });
-    } on MfaRecoveryRequestRejected {
+    } on MfaRecoveryRequestRejected catch (error) {
       if (!mounted) return;
       setState(() {
-        _recoveryHelpMessage =
-            'Recovery request could not be sent. Contact your restaurant admin directly.';
+        _adminHelpMessage = error.code == 'mfa_recovery_request_rate_limited'
+            ? 'Too many access requests. Try again later or contact your restaurant admin directly.'
+            : 'Help request could not be recorded. Contact your restaurant admin directly.';
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _recoveryHelpMessage =
-            'Recovery request could not be sent. Contact your restaurant admin directly.';
+        _adminHelpMessage =
+            'Help request could not be sent. Contact your restaurant admin directly.';
       });
     } finally {
       if (mounted) {
-        setState(() => _requestingRecoveryHelp = false);
+        setState(() => _requestingAdminHelp = false);
       }
     }
   }
@@ -130,121 +126,113 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.backgroundDeep,
-      body: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 400),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Center(
-                  child: ClipOval(
-                    child: Image.asset(
-                      'assets/images/forge_flow_splash_icon.png',
-                      width: 54,
-                      height: 54,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Two-factor verification',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: AppColors.textPrimary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  challenge.email,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(color: AppColors.textMuted),
-                ),
-                const SizedBox(height: 24),
-                if (errorMessage != null) ...[
-                  _ErrorBanner(message: errorMessage),
-                  const SizedBox(height: 16),
-                ],
-                TextField(
-                  key: const Key('mfa_code_field'),
-                  controller: _codeController,
-                  enabled: !_submitting,
-                  keyboardType: _useRecoveryCode
-                      ? TextInputType.text
-                      : TextInputType.number,
-                  autofillHints: _useRecoveryCode
-                      ? const <String>[]
-                      : const <String>[AutofillHints.oneTimeCode],
-                  onSubmitted: (_) => _submit(challenge),
-                  decoration: InputDecoration(
-                    labelText: _useRecoveryCode
-                        ? 'Recovery code (e.g. ABCD-EFGH-JKMN)'
-                        : '6-digit code',
-                    helperText: _useRecoveryCode
-                        ? 'Use one of the recovery codes saved during setup.'
-                        : 'Displayed on your authenticator app.',
-                    border: const OutlineInputBorder(),
-                  ),
-                  style: const TextStyle(color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 12),
-                _RestaurantAdminRecoveryHelp(
-                  requesting: _requestingRecoveryHelp,
-                  message: _recoveryHelpMessage,
-                  onPressed: _submitting
-                      ? null
-                      : () => _requestAdminHelp(challenge),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  alignment: WrapAlignment.spaceBetween,
-                  spacing: 8,
-                  runSpacing: 4,
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              AppColors.backgroundDeep,
+              AppColors.backgroundMid,
+              AppColors.shimmer,
+            ],
+            stops: [0.0, 0.55, 1.0],
+          ),
+        ),
+        child: SafeArea(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 400),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TextButton(
-                      key: const Key('mfa_recovery_toggle'),
-                      onPressed: _submitting
-                          ? null
-                          : () {
-                              setState(() {
-                                _useRecoveryCode = !_useRecoveryCode;
-                                _codeController.clear();
-                                _localError = null;
-                              });
-                            },
-                      child: Text(
-                        _useRecoveryCode
-                            ? 'Use authenticator app'
-                            : 'Use recovery code',
+                    if (_adminHelpMessage != null) ...[
+                      _AdminHelpBanner(message: _adminHelpMessage!),
+                      const SizedBox(height: 14),
+                    ],
+                    Center(
+                      child: Container(
+                        width: 52,
+                        height: 52,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppColors.sunset.withValues(alpha: 0.18),
+                              blurRadius: 14,
+                              spreadRadius: 1,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: Image.asset(
+                            'assets/images/forge_flow_splash_icon.png',
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                     ),
-                    TextButton(
-                      key: const Key('mfa_cancel_button'),
-                      onPressed: _submitting
-                          ? null
-                          : notifier.signOutThisSession,
-                      child: const Text('Cancel'),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Two-factor verification',
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.mono15(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      challenge.email,
+                      textAlign: TextAlign.center,
+                      style: AppTextStyles.mono10(color: AppColors.textMuted),
+                    ),
+                    const SizedBox(height: 16),
+                    if (errorMessage != null) ...[
+                      _ErrorBanner(message: errorMessage),
+                      const SizedBox(height: 12),
+                    ],
+                    _ChallengeSection(
+                      title: 'Authenticator app',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _BrandedMfaField(
+                            controller: _codeController,
+                            enabled: !_submitting,
+                            onSubmitted: () => _submit(challenge),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Open your authenticator app and enter the 6-digit code.',
+                            style: AppTextStyles.body11(
+                              color: AppColors.textMuted,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          _VerifyButton(
+                            submitting: _submitting,
+                            onPressed: _submitting
+                                ? null
+                                : () => _submit(challenge),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    _ChallengeTrailingActions(
+                      submitting: _submitting,
+                      requestingAdminHelp: _requestingAdminHelp,
+                      onRequestAdminHelp: () => _requestAdminHelp(challenge),
+                      onCancel: notifier.signOutThisSession,
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                FilledButton(
-                  key: const Key('mfa_submit_button'),
-                  onPressed: _submitting ? null : () => _submit(challenge),
-                  child: _submitting
-                      ? const SizedBox(
-                          height: 18,
-                          width: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Text('Verify'),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -253,52 +241,332 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
   }
 }
 
-class _RestaurantAdminRecoveryHelp extends StatelessWidget {
-  const _RestaurantAdminRecoveryHelp({
-    required this.requesting,
-    required this.message,
-    required this.onPressed,
+class _BrandedMfaField extends StatefulWidget {
+  const _BrandedMfaField({
+    required this.controller,
+    required this.enabled,
+    required this.onSubmitted,
   });
 
-  final bool requesting;
-  final String? message;
+  final TextEditingController controller;
+  final bool enabled;
+  final VoidCallback onSubmitted;
+
+  @override
+  State<_BrandedMfaField> createState() => _BrandedMfaFieldState();
+}
+
+class _BrandedMfaFieldState extends State<_BrandedMfaField> {
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_handleControllerChanged);
+    _focusNode.addListener(_handleFocusChanged);
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrandedMfaField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      oldWidget.controller.removeListener(_handleControllerChanged);
+      widget.controller.addListener(_handleControllerChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
+    _focusNode.removeListener(_handleFocusChanged);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _handleControllerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _handleFocusChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _buildSegmentedTotp();
+  }
+
+  Widget _buildSegmentedTotp() {
+    final text = widget.controller.text;
+    final activeIndex = text.length.clamp(0, 5);
+    final isFocused = _focusNode.hasFocus;
+    return SizedBox(
+      height: 56,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: TextField(
+              key: const Key('mfa_code_field'),
+              controller: widget.controller,
+              focusNode: _focusNode,
+              enabled: widget.enabled,
+              autofocus: true,
+              showCursor: false,
+              keyboardType: TextInputType.number,
+              autofillHints: const <String>[AutofillHints.oneTimeCode],
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+                LengthLimitingTextInputFormatter(6),
+              ],
+              maxLength: 6,
+              onSubmitted: (_) => widget.onSubmitted(),
+              style: const TextStyle(
+                color: Colors.transparent,
+                fontSize: 22,
+                height: 1,
+              ),
+              cursorColor: Colors.transparent,
+              decoration: const InputDecoration(
+                counterText: '',
+                isCollapsed: true,
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                disabledBorder: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+          IgnorePointer(
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: List<Widget>.generate(6, (i) {
+                final digit = i < text.length ? text[i] : '';
+                final isActive =
+                    isFocused && i == activeIndex && widget.enabled;
+                final hasValue = digit.isNotEmpty;
+                final borderColor = isActive
+                    ? AppColors.sunset
+                    : (hasValue
+                          ? AppColors.sunset.withValues(alpha: 0.5)
+                          : AppColors.borderSubtle);
+                return Opacity(
+                  opacity: widget.enabled ? 1.0 : 0.7,
+                  child: Container(
+                    width: 40,
+                    height: 56,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSurface,
+                      border: Border.all(
+                        color: borderColor,
+                        width: isActive ? 1.6 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(6),
+                      boxShadow: isActive
+                          ? [
+                              BoxShadow(
+                                color: AppColors.sunset.withValues(alpha: 0.18),
+                                blurRadius: 6,
+                                offset: const Offset(0, 2),
+                              ),
+                            ]
+                          : null,
+                    ),
+                    child: Text(
+                      digit,
+                      style: AppTextStyles.mono14(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w700,
+                      ).copyWith(fontSize: 22, height: 1),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VerifyButton extends StatelessWidget {
+  const _VerifyButton({required this.submitting, required this.onPressed});
+
+  final bool submitting;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: FilledButton(
+        key: const Key('mfa_submit_button'),
+        onPressed: onPressed,
+        style: FilledButton.styleFrom(
+          backgroundColor: AppColors.sunset,
+          foregroundColor: AppColors.backgroundSurface,
+          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.55),
+          disabledForegroundColor: AppColors.backgroundSurface.withValues(
+            alpha: 0.85,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+          textStyle: AppTextStyles.mono15(
+            color: AppColors.backgroundSurface,
+            weight: FontWeight.w700,
+          ),
+        ),
+        child: submitting
+            ? const SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.4,
+                  color: AppColors.backgroundSurface,
+                ),
+              )
+            : const Text('Verify'),
+      ),
+    );
+  }
+}
+
+class _ChallengeSection extends StatelessWidget {
+  const _ChallengeSection({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [AppColors.backgroundSurface, AppColors.cardGlow],
+          ),
+          border: Border.all(color: AppColors.borderSubtle, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.textPrimary.withValues(alpha: 0.04),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                title,
+                style: AppTextStyles.mono15(
+                  color: AppColors.textPrimary,
+                  weight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Container(
+                height: 2,
+                width: 28,
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [AppColors.sunset, AppColors.sunsetDark],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              child,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChallengeTrailingActions extends StatelessWidget {
+  const _ChallengeTrailingActions({
+    required this.submitting,
+    required this.requestingAdminHelp,
+    required this.onRequestAdminHelp,
+    required this.onCancel,
+  });
+
+  final bool submitting;
+  final bool requestingAdminHelp;
+  final VoidCallback onRequestAdminHelp;
+  final VoidCallback onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallbackStyle = OutlinedButton.styleFrom(
+      foregroundColor: AppColors.textSecondary,
+      side: BorderSide(
+        color: AppColors.borderSubtle.withValues(alpha: 0.9),
+        width: 1,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+      textStyle: AppTextStyles.mono12(
+        color: AppColors.textSecondary,
+        weight: FontWeight.w600,
+      ),
+    );
     return Column(
-      key: const Key('mfa_admin_recovery_help'),
+      key: const Key('mfa_trailing_actions'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
-          'No access to your authenticator app or recovery codes?',
+        Text(
+          "Can't access your authenticator app?",
           textAlign: TextAlign.center,
-          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+          style: AppTextStyles.mono10(color: AppColors.textMuted),
         ),
-        const SizedBox(height: 6),
-        OutlinedButton.icon(
-          key: const Key('mfa_contact_admin_button'),
-          onPressed: requesting ? null : onPressed,
-          icon: requesting
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              : const Icon(Icons.support_agent_rounded, size: 18),
-          label: Text(
-            requesting ? 'Sending request...' : 'Contact restaurant admin',
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 44,
+          child: OutlinedButton.icon(
+            key: const Key('mfa_contact_admin_button'),
+            onPressed: submitting || requestingAdminHelp
+                ? null
+                : onRequestAdminHelp,
+            style: fallbackStyle,
+            icon: requestingAdminHelp
+                ? const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(
+                    Icons.support_agent_rounded,
+                    size: 16,
+                    color: AppColors.textSecondary,
+                  ),
+            label: Text(
+              requestingAdminHelp ? 'Sending…' : 'Contact your admin',
+            ),
           ),
         ),
-        if (message != null) ...[
-          const SizedBox(height: 6),
-          Text(
-            message!,
-            key: const Key('mfa_admin_recovery_message'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 44,
+          child: OutlinedButton.icon(
+            key: const Key('mfa_cancel_button'),
+            onPressed: submitting ? null : onCancel,
+            style: fallbackStyle,
+            icon: const Icon(
+              Icons.logout_rounded,
+              size: 16,
+              color: AppColors.textSecondary,
+            ),
+            label: const Text('Sign out'),
           ),
-        ],
+        ),
       ],
     );
   }
@@ -313,15 +581,66 @@ class _ErrorBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       key: const Key('mfa_error_banner'),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
-        color: AppColors.negative.withValues(alpha: 0.14),
-        border: Border.all(color: AppColors.negative),
+        color: AppColors.negative.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.negative.withValues(alpha: 0.45),
+          width: 1,
+        ),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(color: AppColors.textPrimary),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.error_outline, size: 16, color: AppColors.negative),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.negative),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminHelpBanner extends StatelessWidget {
+  const _AdminHelpBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('mfa_admin_help_message'),
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_outline, size: 16, color: AppColors.sunsetDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body11(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
       ),
     );
   }

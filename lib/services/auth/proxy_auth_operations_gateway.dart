@@ -409,6 +409,46 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   @override
+  Future<TeamMfaResetQueued> requestMfaReset(
+    TeamMfaResetCommand command,
+  ) async {
+    final response = await _post(
+      _userActionPath(command.targetUserId, 'reset-mfa'),
+      <String, Object?>{
+        if (_readNonBlankString(command.stepUpProofId) != null)
+          'step_up_proof_id': command.stepUpProofId.trim(),
+      },
+    );
+    _expectStatus(response, 200);
+    final requestedCount = response.body['requested_count'];
+    final rawRequestIds = response.body['request_ids'];
+    if (requestedCount is! int || rawRequestIds is! List) {
+      throw _malformed(response, 'MFA reset response was incomplete');
+    }
+    return TeamMfaResetQueued(
+      requestedCount: requestedCount,
+      requestIds: List<String>.unmodifiable(rawRequestIds.whereType<String>()),
+      executeAfter: _readDateTime(response.body['execute_after']),
+    );
+  }
+
+  @override
+  Future<TeamMfaRemovalCancelled> cancelMfaRemoval(
+    TeamMfaRemovalCancelCommand command,
+  ) async {
+    final response = await _post(
+      _userActionPath(command.targetUserId, 'cancel-mfa-removal'),
+      <String, Object?>{'request_id': command.requestId},
+    );
+    _expectStatus(response, 200);
+    final cancelled = response.body['cancelled'];
+    if (cancelled is! bool) {
+      throw _malformed(response, 'MFA removal cancel response was incomplete');
+    }
+    return TeamMfaRemovalCancelled(cancelled: cancelled);
+  }
+
+  @override
   Future<TeamRoleGrantCreated> createRoleGrant(
     TeamRoleGrantCreateCommand command,
   ) async {
@@ -590,6 +630,10 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final roleLabel = _readNonBlankString(json['role_label']);
     final status = _readNonBlankString(json['status']);
     final mfaEnrolled = json['mfa_enrolled'];
+    final mfaRemovalPending = json['mfa_removal_pending'];
+    final mfaRemovalRequestId = _readNonBlankString(
+      json['mfa_removal_request_id'],
+    );
     if (userId == null ||
         email == null ||
         displayName == null ||
@@ -609,6 +653,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       locationId: _readNonBlankString(json['location_id']),
       locationLabel: _readNonBlankString(json['location_label']),
       mfaEnrolled: mfaEnrolled,
+      mfaRemovalPending: mfaRemovalPending is bool ? mfaRemovalPending : false,
+      mfaRemovalRequestId: mfaRemovalRequestId,
       userRoleId: _readNonBlankString(json['user_role_id']),
       lastActiveAt: _readDateTime(json['last_active_at']),
     );

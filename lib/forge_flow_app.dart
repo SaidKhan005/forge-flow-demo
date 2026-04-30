@@ -565,6 +565,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       locationId: entry.locationId,
       locationLabel: entry.locationLabel,
       mfaEnrolled: entry.mfaEnrolled,
+      mfaRemovalPending: entry.mfaRemovalPending,
+      mfaRemovalRequestId: entry.mfaRemovalRequestId,
       userRoleId: entry.userRoleId,
       lastActiveAt: entry.lastActiveAt,
     );
@@ -656,6 +658,30 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               operatorId: session.operatorId,
               locationId: session.locationId,
               targetUserId: request.user.userId,
+            ),
+          );
+        case TeamUserAction.resetMfa:
+          await gateway.requestMfaReset(
+            TeamMfaResetCommand(
+              actorUserId: session.userId,
+              operatorId: session.operatorId,
+              locationId: session.locationId,
+              targetUserId: request.user.userId,
+              stepUpProofId: session.firebaseIdToken,
+            ),
+          );
+        case TeamUserAction.cancelMfaRemoval:
+          final requestId = request.user.mfaRemovalRequestId;
+          if (requestId == null || requestId.isEmpty) {
+            throw StateError('Team MFA removal request id was missing.');
+          }
+          await gateway.cancelMfaRemoval(
+            TeamMfaRemovalCancelCommand(
+              actorUserId: session.userId,
+              operatorId: session.operatorId,
+              locationId: session.locationId,
+              targetUserId: request.user.userId,
+              requestId: requestId,
             ),
           );
         case TeamUserAction.createRoleGrant:
@@ -751,7 +777,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         IconButton(
           icon: const Icon(
             Icons.notifications_none_outlined,
-            size: 24,
+            size: 26,
             color: AppColors.textMuted,
           ),
           onPressed: () => _openNotifications(context),
@@ -759,7 +785,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         IconButton(
           icon: const Icon(
             Icons.settings_outlined,
-            size: 24,
+            size: 26,
             color: AppColors.textMuted,
           ),
           onPressed: () => _openSettings(context),
@@ -771,7 +797,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // they read as actionable, separated by a soft border line at the
     // bottom from the underlying screen content.
     final standaloneAppBar = PreferredSize(
-      preferredSize: const Size.fromHeight(64),
+      preferredSize: const Size.fromHeight(56),
       child: Container(
         decoration: BoxDecoration(
           gradient: LinearGradient(
@@ -937,7 +963,7 @@ class _AppShellIconButton extends StatelessWidget {
             ),
             borderRadius: BorderRadius.circular(22),
           ),
-          child: Icon(icon, size: 22, color: AppColors.textSecondary),
+          child: Icon(icon, size: 24, color: AppColors.textSecondary),
         ),
       ),
     );

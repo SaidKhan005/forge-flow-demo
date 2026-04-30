@@ -2064,6 +2064,7 @@ void main() {
                   key.startsWith('forgeflow.') ||
                   key.startsWith('barrio.') ||
                   key.startsWith('admin.') ||
+                  key.startsWith('team.') ||
                   key.startsWith('billing.') ||
                   key.startsWith('integration.') ||
                   key.startsWith('workflow.'),
@@ -5248,9 +5249,25 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async {}
 
   @override
+  Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({
+    required String oobCode,
+  }) async {
+    return const FirebasePasswordResetCodeInfo(email: 'owner@example.com');
+  }
+
+  @override
+  Future<void> confirmPasswordReset({
+    required String oobCode,
+    required String newPassword,
+  }) async {}
+
+  @override
   Future<void> revokeRefreshTokens({required String uid}) async {
     revokedRefreshTokenUids.add(uid);
   }
+
+  @override
+  Future<void> clearMfaEnrollments({required String uid}) async {}
 }
 
 /// Counter store fake that records read/write call counts so tests

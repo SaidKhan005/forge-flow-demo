@@ -1,17 +1,19 @@
 // Phase 9 live-closeout - RepositoryMfaOperationsGateway tests.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'dart:typed_data';
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
+import 'package:forge_and_flow/services/mfa/firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_attempt_limiter.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_consumer.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_hasher.dart';
+import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
 
 void main() {
   group('RepositoryMfaOperationsGateway', () {
@@ -21,7 +23,6 @@ void main() {
       final gateway = RepositoryMfaOperationsGateway(
         enrollmentService: const _SuccessfulEnrollmentService(),
         mfaFactorsRepository: mfaRepo,
-        recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
         auditRepository: auditRepo,
       );
 
@@ -37,54 +38,15 @@ void main() {
       );
 
       expect(result.factorId, equals('totp-db-factor'));
-      expect(result.recoveryCodesPlaintext, equals(<String>['ABCD-EFGH-JKMN']));
       expect(
         mfaRepo.persisted.single.firebaseFactorUid,
         equals('firebase-factor-uid'),
       );
-      expect(mfaRepo.persisted.single.hashedRecoveryCodes, hasLength(1));
       expect(
         auditRepo.events.single.eventType,
         equals('auth.mfa_totp_enrolled'),
       );
-      expect(auditRepo.events.single.payload['recovery_code_count'], equals(1));
     });
-
-    test(
-      'recovery-code invalid path audits and returns generic rejection',
-      () async {
-        final auditRepo = _RecordingAuditRepository();
-        final gateway = RepositoryMfaOperationsGateway(
-          enrollmentService: const _SuccessfulEnrollmentService(),
-          mfaFactorsRepository: _RecordingMfaFactorsRepository(),
-          recoveryCodeConsumer: _FakeRecoveryCodeConsumer(
-            result: const RecoveryCodeInvalid(),
-          ),
-          auditRepository: auditRepo,
-        );
-
-        final error = await _captureError(
-          gateway.consumeRecoveryCode(
-            const RecoveryCodeConsumeCommand(
-              actorUserId: _userId,
-              operatorId: _operatorId,
-              locationId: _locationId,
-              rawCode: 'wrong',
-            ),
-          ),
-        );
-
-        expect(error, isA<MfaOperationRejected>());
-        expect(
-          (error! as MfaOperationRejected).code,
-          equals('recovery_code_invalid'),
-        );
-        expect(
-          auditRepo.events.single.eventType,
-          equals('auth.recovery_code_failed'),
-        );
-      },
-    );
 
     test('listFactors projects active TOTP summaries', () async {
       final enrolledAt = DateTime.utc(2026, 4, 30, 12);
@@ -102,7 +64,6 @@ void main() {
       final gateway = RepositoryMfaOperationsGateway(
         enrollmentService: const _SuccessfulEnrollmentService(),
         mfaFactorsRepository: mfaRepo,
-        recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
         auditRepository: _RecordingAuditRepository(),
       );
 
@@ -137,7 +98,6 @@ void main() {
         final gateway = RepositoryMfaOperationsGateway(
           enrollmentService: const _SuccessfulEnrollmentService(),
           mfaFactorsRepository: mfaRepo,
-          recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
           auditRepository: _RecordingAuditRepository(),
         );
 
@@ -165,6 +125,7 @@ void main() {
       'revokeFactor initiates delayed removal and audits contract event',
       () async {
         final auditRepo = _RecordingAuditRepository();
+        final removalRepo = _RecordingRemovalRequestsRepository();
         final now = DateTime.utc(2026, 4, 30, 12);
         final gateway = RepositoryMfaOperationsGateway(
           enrollmentService: const _SuccessfulEnrollmentService(),
@@ -179,8 +140,8 @@ void main() {
               ),
             ],
           ),
-          recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
           auditRepository: auditRepo,
+          removalRequestsRepository: removalRepo,
           now: () => now,
         );
 
@@ -204,6 +165,167 @@ void main() {
           auditRepo.events.single.payload['factor_id'],
           equals('totp-db-factor'),
         );
+        expect(removalRepo.records.single.factorId, equals('totp-db-factor'));
+      },
+    );
+
+    test(
+      'revokeFactor repairs Firebase-only inventory before removal',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final removalRepo = _RecordingRemovalRequestsRepository();
+        final mfaRepo = _RecordingMfaFactorsRepository();
+        final firebaseMfa = _RecordingFirebaseMfaClient(
+          factors: <FirebaseMfaTotpFactor>[
+            FirebaseMfaTotpFactor(
+              factorId: 'firebase-factor-uid',
+              enrolledAt: DateTime.utc(2026, 4, 30, 11),
+              displayName: 'Forge & Flow',
+            ),
+          ],
+        );
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: mfaRepo,
+          auditRepository: auditRepo,
+          removalRequestsRepository: removalRepo,
+          firebaseMfaClient: firebaseMfa,
+          now: () => DateTime.utc(2026, 4, 30, 12),
+        );
+
+        final result = await gateway.revokeFactor(
+          const MfaRevokeFactorCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            authorizationIdToken: 'id-token',
+            factorId: 'firebase:firebase-factor-uid',
+            stepUpProofId: 'fresh-proof',
+          ),
+        );
+
+        expect(result.revoked, isFalse);
+        expect(
+          mfaRepo.ensuredFirebaseUids,
+          equals(<String>['firebase-factor-uid']),
+        );
+        expect(
+          removalRepo.records.single.factorId,
+          equals('repaired-totp-db-factor'),
+        );
+      },
+    );
+
+    test(
+      'cancelFactorRemoval cancels pending request and audits event',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final removalRepo = _RecordingRemovalRequestsRepository(
+          records: <MfaFactorRemovalRequestRecord>[
+            MfaFactorRemovalRequestRecord(
+              requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              operatorId: _operatorId,
+              locationId: _locationId,
+              userId: _userId,
+              factorId: 'totp-db-factor',
+              requestedByUserId: _userId,
+              stepUpProofId: 'fresh-proof',
+              requestedAt: DateTime.utc(2026, 4, 30, 12),
+              executeAfter: DateTime.utc(2026, 5, 1, 12),
+            ),
+          ],
+        );
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: _RecordingMfaFactorsRepository(),
+          auditRepository: auditRepo,
+          removalRequestsRepository: removalRepo,
+          now: () => DateTime.utc(2026, 4, 30, 13),
+        );
+
+        final result = await gateway.cancelFactorRemoval(
+          const MfaCancelFactorRemovalCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+            requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          ),
+        );
+
+        expect(result.cancelled, isTrue);
+        expect(removalRepo.records.single.cancelledAt, isNotNull);
+        expect(
+          auditRepo.events.single.eventType,
+          equals('mfa_factor_revocation_cancelled'),
+        );
+        expect(
+          auditRepo.events.single.payload['request_id'],
+          equals('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'),
+        );
+      },
+    );
+
+    test(
+      'removal worker completes due delayed removal and queues event',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final removalRepo = _RecordingRemovalRequestsRepository(
+          records: <MfaFactorRemovalRequestRecord>[
+            MfaFactorRemovalRequestRecord(
+              requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              operatorId: _operatorId,
+              locationId: _locationId,
+              userId: _userId,
+              factorId: 'totp-db-factor',
+              requestedByUserId: _userId,
+              stepUpProofId: 'fresh-proof',
+              requestedAt: DateTime.utc(2026, 4, 30, 12),
+              executeAfter: DateTime.utc(2026, 5, 1, 12),
+            ),
+          ],
+        );
+        final mfaRepo = _RecordingMfaFactorsRepository(
+          activeTotpFactors: <MfaFactorRecord>[
+            MfaFactorRecord(
+              factorId: 'totp-db-factor',
+              userId: _userId,
+              factorType: 'totp',
+              factorMetadata: const <String, Object?>{
+                'firebase_factor_uid': 'firebase-factor-uid',
+              },
+              enrolledAt: DateTime.utc(2026, 4, 30, 12),
+            ),
+          ],
+        );
+        final firebaseAdmin = _RecordingFirebaseAdminAuthClient();
+        final outboxRepo = _RecordingEventOutboxRepository();
+        final worker = MfaRemovalWorker(
+          removalRequestsRepository: removalRepo,
+          mfaFactorsRepository: mfaRepo,
+          usersRepository: _RecordingUsersRepository(
+            firebaseUid: 'firebase-uid',
+          ),
+          auditRepository: auditRepo,
+          firebaseAdmin: firebaseAdmin,
+          eventOutboxRepository: outboxRepo,
+          now: () => DateTime.utc(2026, 5, 1, 13),
+        );
+
+        final result = await worker.processDue();
+
+        expect(firebaseAdmin.clearedMfaUids, equals(<String>['firebase-uid']));
+        expect(mfaRepo.revokedTotpFactors, equals(<String>['totp-db-factor']));
+        expect(mfaRepo.revokedRecoveryCodeRows, equals(1));
+        expect(result.claimed, equals(1));
+        expect(result.completed, equals(1));
+        expect(
+          auditRepo.events.single.eventType,
+          equals('mfa_factor_revocation_completed'),
+        );
+        expect(
+          outboxRepo.enqueued.single.topic,
+          'auth.user.mfa_factor_removed',
+        );
       },
     );
 
@@ -211,7 +333,6 @@ void main() {
       final gateway = RepositoryMfaOperationsGateway(
         enrollmentService: const _SuccessfulEnrollmentService(),
         mfaFactorsRepository: _RecordingMfaFactorsRepository(),
-        recoveryCodeConsumer: _FakeRecoveryCodeConsumer(),
         auditRepository: _RecordingAuditRepository(),
       );
 
@@ -273,13 +394,7 @@ class _SuccessfulEnrollmentService implements MfaEnrollmentService {
     String issuerName = 'Forge & Flow',
   }) async {
     return const MfaEnrollmentConfirmSuccess(
-      MfaEnrollmentCompleted(
-        factorId: 'firebase-factor-uid',
-        recoveryCodesPlaintext: <String>['ABCD-EFGH-JKMN'],
-        hashedRecoveryCodes: <HashedRecoveryCode>[
-          HashedRecoveryCode(saltBase64: 'c2FsdA==', hashBase64: 'aGFzaA=='),
-        ],
-      ),
+      MfaEnrollmentCompleted(factorId: 'firebase-factor-uid'),
     );
   }
 }
@@ -292,6 +407,9 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
 
   final persisted = <_PersistedEnrollment>[];
   final List<MfaFactorRecord> _activeTotpFactors;
+  final revokedTotpFactors = <String>[];
+  final ensuredFirebaseUids = <String>[];
+  int revokedRecoveryCodeRows = 0;
   int listActiveTotpCalls = 0;
 
   @override
@@ -300,19 +418,10 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
     required String locationId,
     required String userId,
     required String firebaseFactorUid,
-    required List<Map<String, Object?>> hashedRecoveryCodes,
     String issuerName = 'Forge & Flow',
   }) async {
-    persisted.add(
-      _PersistedEnrollment(
-        firebaseFactorUid: firebaseFactorUid,
-        hashedRecoveryCodes: hashedRecoveryCodes,
-      ),
-    );
-    return const MfaEnrollmentPersistenceResult(
-      totpFactorId: 'totp-db-factor',
-      recoveryCodeFactorIds: <String>['recovery-db-factor'],
-    );
+    persisted.add(_PersistedEnrollment(firebaseFactorUid: firebaseFactorUid));
+    return const MfaEnrollmentPersistenceResult(totpFactorId: 'totp-db-factor');
   }
 
   @override
@@ -322,18 +431,50 @@ class _RecordingMfaFactorsRepository extends MfaFactorsRepository {
     required String userId,
   }) async {
     listActiveTotpCalls += 1;
-    return _activeTotpFactors;
+    return _activeTotpFactors
+        .where((factor) => !revokedTotpFactors.contains(factor.factorId))
+        .toList(growable: false);
+  }
+
+  @override
+  Future<String> ensureTotpFactorForFirebaseUid({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String firebaseFactorUid,
+    String issuerName = 'Forge & Flow',
+    DateTime? firebaseEnrolledAt,
+  }) async {
+    ensuredFirebaseUids.add(firebaseFactorUid);
+    return 'repaired-totp-db-factor';
+  }
+
+  @override
+  Future<int> revokeTotpFactor({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String factorId,
+  }) async {
+    revokedTotpFactors.add(factorId);
+    return 1;
+  }
+
+  @override
+  Future<int> revokeActiveRecoveryCodeFactorsForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+  }) async {
+    revokedRecoveryCodeRows += 1;
+    return 3;
   }
 }
 
 class _PersistedEnrollment {
-  const _PersistedEnrollment({
-    required this.firebaseFactorUid,
-    required this.hashedRecoveryCodes,
-  });
+  const _PersistedEnrollment({required this.firebaseFactorUid});
 
   final String firebaseFactorUid;
-  final List<Map<String, Object?>> hashedRecoveryCodes;
 }
 
 class _RecordingAuditRepository extends AuthEventsAuditRepository {
@@ -359,6 +500,26 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     events.add(_AuditEvent(eventType: eventType, payload: payload));
     return 'event-1';
   }
+
+  @override
+  Future<String> insertSystemEvent({
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+    required String adminReason,
+  }) async {
+    events.add(_AuditEvent(eventType: eventType, payload: payload));
+    return 'event-1';
+  }
 }
 
 class _AuditEvent {
@@ -368,51 +529,262 @@ class _AuditEvent {
   final Map<String, Object?> payload;
 }
 
-class _FakeRecoveryCodeConsumer extends RecoveryCodeConsumer {
-  _FakeRecoveryCodeConsumer({
-    RecoveryCodeConsumeResult result = const RecoveryCodeConsumed(
-      factorId: 'recovery-db-factor',
-    ),
-  }) : _result = result,
-       super(
-         hasher: const _NoopRecoveryCodeHasher(),
-         repository: _RecordingMfaFactorsRepository(),
-         limiter: RecoveryCodeAttemptLimiter(
-           store: InMemoryRecoveryCodeAttemptStore(),
-         ),
-       );
+class _RecordingRemovalRequestsRepository
+    extends MfaFactorRemovalRequestsRepository {
+  _RecordingRemovalRequestsRepository({
+    List<MfaFactorRemovalRequestRecord> records =
+        const <MfaFactorRemovalRequestRecord>[],
+  }) : records = <MfaFactorRemovalRequestRecord>[...records],
+       super(TenantTransactionWrapper(_NoopPool()));
 
-  final RecoveryCodeConsumeResult _result;
+  final List<MfaFactorRemovalRequestRecord> records;
 
   @override
-  Future<RecoveryCodeConsumeResult> consume({
+  Future<MfaFactorRemovalRequestRecord> insertPending({
     required String operatorId,
     required String locationId,
     required String userId,
-    required String rawCode,
+    required String factorId,
+    required String requestedByUserId,
+    required String stepUpProofId,
+    required String requestId,
+    required DateTime requestedAt,
+    required DateTime executeAfter,
   }) async {
-    return _result;
+    final existing = records.where(
+      (record) =>
+          record.operatorId == operatorId &&
+          record.userId == userId &&
+          record.factorId == factorId &&
+          record.completedAt == null &&
+          record.cancelledAt == null,
+    );
+    if (existing.isNotEmpty) return existing.first;
+    final record = MfaFactorRemovalRequestRecord(
+      requestId: requestId,
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+      factorId: factorId,
+      requestedByUserId: requestedByUserId,
+      stepUpProofId: stepUpProofId,
+      requestedAt: requestedAt,
+      executeAfter: executeAfter,
+    );
+    records.add(record);
+    return record;
+  }
+
+  @override
+  Future<List<MfaFactorRemovalRequestRecord>> listRecentForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    int limit = 20,
+  }) async {
+    return records
+        .where(
+          (record) =>
+              record.operatorId == operatorId &&
+              record.locationId == locationId &&
+              record.userId == userId,
+        )
+        .take(limit)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<MfaFactorRemovalRequestRecord>> listDuePendingForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required DateTime now,
+    int limit = 10,
+  }) async {
+    return records
+        .where(
+          (record) =>
+              record.operatorId == operatorId &&
+              record.locationId == locationId &&
+              record.userId == userId &&
+              record.completedAt == null &&
+              record.cancelledAt == null &&
+              !record.executeAfter.isAfter(now),
+        )
+        .take(limit)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<List<MfaFactorRemovalRequestRecord>> claimDuePending({
+    required DateTime now,
+    required String workerOwner,
+    int limit = 50,
+    Duration staleAfter = const Duration(minutes: 15),
+  }) async {
+    return records
+        .where(
+          (record) =>
+              record.completedAt == null &&
+              record.cancelledAt == null &&
+              !record.executeAfter.isAfter(now),
+        )
+        .take(limit)
+        .toList(growable: false);
+  }
+
+  @override
+  Future<int> markCompleted({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required DateTime completedAt,
+  }) async {
+    final index = records.indexWhere((record) => record.requestId == requestId);
+    if (index < 0) return 0;
+    final current = records[index];
+    records[index] = MfaFactorRemovalRequestRecord(
+      requestId: current.requestId,
+      operatorId: current.operatorId,
+      locationId: current.locationId,
+      userId: current.userId,
+      factorId: current.factorId,
+      requestedByUserId: current.requestedByUserId,
+      stepUpProofId: current.stepUpProofId,
+      requestedAt: current.requestedAt,
+      executeAfter: current.executeAfter,
+      completedAt: completedAt,
+      cancelledAt: current.cancelledAt,
+      lastError: current.lastError,
+    );
+    return 1;
+  }
+
+  @override
+  Future<int> markCancelled({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required DateTime cancelledAt,
+  }) async {
+    final index = records.indexWhere(
+      (record) =>
+          record.requestId == requestId &&
+          record.operatorId == operatorId &&
+          record.locationId == locationId &&
+          record.userId == userId &&
+          record.completedAt == null &&
+          record.cancelledAt == null,
+    );
+    if (index < 0) return 0;
+    final current = records[index];
+    records[index] = MfaFactorRemovalRequestRecord(
+      requestId: current.requestId,
+      operatorId: current.operatorId,
+      locationId: current.locationId,
+      userId: current.userId,
+      factorId: current.factorId,
+      requestedByUserId: current.requestedByUserId,
+      stepUpProofId: current.stepUpProofId,
+      requestedAt: current.requestedAt,
+      executeAfter: current.executeAfter,
+      completedAt: current.completedAt,
+      cancelledAt: cancelledAt,
+      lastError: current.lastError,
+    );
+    return 1;
+  }
+
+  @override
+  Future<int> markFailed({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required String requestId,
+    required String error,
+  }) async {
+    return 1;
   }
 }
 
-class _NoopRecoveryCodeHasher implements RecoveryCodeHasher {
-  const _NoopRecoveryCodeHasher();
+class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
+  final clearedMfaUids = <String>[];
 
   @override
-  HashedRecoveryCode hash({
-    required String normalizedCode,
-    required Uint8List saltBytes,
-  }) {
-    throw UnimplementedError();
+  Future<void> clearMfaEnrollments({required String uid}) async {
+    clearedMfaUids.add(uid);
   }
 
   @override
-  bool verify({
-    required String normalizedCode,
-    required HashedRecoveryCode stored,
-  }) {
-    throw UnimplementedError();
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingFirebaseMfaClient implements FirebaseMfaClient {
+  _RecordingFirebaseMfaClient({this.factors = const <FirebaseMfaTotpFactor>[]});
+
+  final List<FirebaseMfaTotpFactor> factors;
+
+  @override
+  Future<List<FirebaseMfaTotpFactor>> listTotpFactors({
+    String authorizationIdToken = '',
+    required String userId,
+  }) async {
+    return factors;
   }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _RecordingUsersRepository extends UsersRepository {
+  _RecordingUsersRepository({required this.firebaseUid})
+    : super(TenantTransactionWrapper(_NoopPool()));
+
+  final String firebaseUid;
+
+  @override
+  Future<String> firebaseUidForUserSystem({
+    required String userId,
+    required String adminReason,
+  }) async {
+    return firebaseUid;
+  }
+
+  @override
+  Future<UserAuthLookupRow?> findActiveAuthUserByEmail({
+    required String email,
+    required String adminReason,
+  }) async {
+    return null;
+  }
+}
+
+class _RecordingEventOutboxRepository extends EventOutboxRepository {
+  _RecordingEventOutboxRepository()
+    : super(TenantTransactionWrapper(_NoopPool()));
+
+  final enqueued = <_OutboxEvent>[];
+
+  @override
+  Future<String> enqueue({
+    required String operatorId,
+    required String locationId,
+    required String topic,
+    required Map<String, Object?> payload,
+    String? userId,
+  }) async {
+    enqueued.add(_OutboxEvent(topic: topic, payload: payload));
+    return 'outbox-1';
+  }
+}
+
+class _OutboxEvent {
+  const _OutboxEvent({required this.topic, required this.payload});
+
+  final String topic;
+  final Map<String, Object?> payload;
 }
 
 class _NoopPool implements PostgresPool {

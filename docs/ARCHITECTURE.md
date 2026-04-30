@@ -117,7 +117,7 @@ Key pieces, one at a time:
 
 - **What it is:** Server-side API layer
 - **What it does:** Verifies identity, checks permissions, protects secrets, and talks to privileged services
-- **Example in the app:** App asks proxy to consume a recovery code.
+- **Example in the app:** App asks proxy to start a delayed MFA reset.
 - **Why it matters:** The app can request protected work without holding database passwords, vendor secrets, or admin power
 - **How this helps long term:** Creates one server boundary for future vendor secrets, admin actions, and workflow APIs.
 
@@ -500,7 +500,7 @@ Key pieces, one at a time:
 
 - **What it is:** Automated tests
 - **What it does:** Verifies app behavior, proxy behavior, auth, migrations, RLS, contracts
-- **Example in the app:** MFA recovery-code tests live here.
+- **Example in the app:** MFA enrollment, reset, and route tests live here.
 - **Why it matters:** Safety-critical behavior gets checked before changes ship
 - **How this helps long term:** Gives future refactors a safety net.
 
@@ -1297,7 +1297,7 @@ Key pieces, one at a time:
 
 - **What it is:** Server-side HTTP API
 - **What it does:** Protects secrets and performs privileged work
-- **Example in the app:** App asks proxy to consume a recovery code.
+- **Example in the app:** App asks proxy to start a delayed MFA reset.
 - **Why it matters:** The app can stay untrusted/thin while sensitive operations happen on the server
 - **How this helps long term:** Provides the server boundary future admin, vendor, and workflow routes can reuse.
 
@@ -1305,7 +1305,7 @@ Key pieces, one at a time:
 
 - **What it is:** URL path handled by the proxy
 - **What it does:** Defines what operation the caller is requesting
-- **Example in the app:** `POST /v1/auth/mfa/recovery/consume`.
+- **Example in the app:** `POST /v1/auth/mfa/factors/revoke`.
 - **Why it matters:** Each capability has a clear, testable entry point
 - **How this helps long term:** New capabilities can be versioned, tested, and documented cleanly.
 
@@ -1320,7 +1320,7 @@ Key pieces, one at a time:
 
 - **What it is:** Data Transfer Object
 - **What it does:** Safe request/response shape crossing the API boundary
-- **Example in the app:** Recovery-code request body with typed fields.
+- **Example in the app:** MFA reset request body with typed fields.
 - **Why it matters:** The app receives only the fields it should know about, not raw database internals
 - **How this helps long term:** Lets API contracts evolve without exposing database internals.
 
@@ -1394,6 +1394,11 @@ Representative routes:
 - `POST /v1/auth/mfa/totp/begin`
 - `POST /v1/auth/mfa/totp/confirm`
 - `POST /v1/auth/mfa/recovery/consume`
+- `POST /v1/auth/mfa/recovery/challenge`
+- `POST /v1/auth/mfa/recovery/request`
+- `POST /v1/auth/mfa/factors/list`
+- `POST /v1/auth/mfa/factors/revoke`
+- `POST /v1/auth/mfa/factors/removal/cancel`
 - `/v1/admin/auth/*`
 
 ### Where It Lives
@@ -1685,7 +1690,7 @@ If required claims are missing, the app/proxy should fail closed.
 - Proxy gateway: `lib/services/auth/proxy_auth_operations_gateway.dart`
 - Auth schema: `db/migrations/202604250008_auth_schema_foundation.sql`
 
-## 11. MFA And Recovery Codes
+## 11. MFA And Admin Reset
 
 ### Plain English
 
@@ -1693,7 +1698,7 @@ MFA means "password plus another proof."
 
 The launch MFA path is TOTP: the rotating six-digit codes from an authenticator app.
 
-Recovery codes are backup one-time codes. They are used if someone loses access to their authenticator app. They should be shown once, stored hashed, and consumed through the proxy.
+Recovery-code display and challenge entry are not a launch UX surface. If someone loses access to their authenticator app, the visible product path is restaurant-admin reset with the 24-hour removal delay.
 
 ### MFA Protection
 
@@ -1701,7 +1706,7 @@ We use MFA protection because a password alone is not enough for sensitive opera
 
 In restaurant operations terms, MFA is like requiring more than a memorized POS passcode for manager-level access. A password proves one thing; the second factor is an extra check before sensitive actions such as admin changes, recovery, or high-risk account access.
 
-Technically, MFA protection defines the second-factor authentication and recovery safety model. It covers TOTP setup/confirmation, recovery-code generation and one-time consumption, hash-only storage, attempt ledgers, Firebase Identity Toolkit integration, and throttling controls to reduce credential-stuffing and brute-force risk.
+Technically, MFA protection defines the second-factor authentication and reset safety model. It covers TOTP setup/confirmation, admin reset / delayed removal, Firebase Identity Toolkit integration, audit events, and throttling controls to reduce credential-stuffing and brute-force risk. Hash-only recovery-code primitives may remain for compatibility tests, but they are not exposed in the app UX.
 
 Key pieces, one at a time:
 
@@ -1721,27 +1726,27 @@ Key pieces, one at a time:
 - **Why it matters:** Strong MFA works without SMS and without storing reusable codes
 - **How this helps long term:** Avoids SMS dependency while supporting standard authenticator apps.
 
-#### Recovery code
+#### Admin reset
 
-- **What it is:** One-time backup code
-- **What it does:** Lets a user recover access if MFA device is unavailable
-- **Example in the app:** One backup code used once if phone is lost.
-- **Why it matters:** Users have a controlled recovery path that does not require weakening MFA
-- **How this helps long term:** Keeps a secure account-recovery path without weakening MFA.
+- **What it is:** Restaurant-admin reset path for lost authenticator access
+- **What it does:** Lets an authorized admin start the controlled MFA removal/reset flow
+- **Example in the app:** User selects Contact your admin; admin starts reset from Team.
+- **Why it matters:** Users have a controlled support path without exposing backup codes that remove MFA
+- **How this helps long term:** Keeps account recovery tied to ownership and audit.
 
 #### Hash
 
 - **What it is:** One-way fingerprint
-- **What it does:** Stores proof of a code without storing the code itself
-- **Example in the app:** Stored fingerprint of a recovery code.
-- **Why it matters:** If the database leaks, raw recovery codes are not exposed
+- **What it does:** Stores proof of a sensitive value without storing the value itself
+- **Example in the app:** Stored fingerprint of a recovery/help-request key.
+- **Why it matters:** If the database leaks, raw recovery material is not exposed
 - **How this helps long term:** Reduces blast radius if stored recovery data is exposed.
 
 #### Attempt ledger
 
 - **What it is:** Record of MFA/recovery attempts
 - **What it does:** Supports rate limits, abuse detection, and audit
-- **Example in the app:** Three failed recovery attempts from one account.
+- **Example in the app:** Repeated MFA help requests for one account.
 - **Why it matters:** Suspicious guessing or repeated failures can be detected and limited
 - **How this helps long term:** Supports future risk scoring, throttling, and investigation.
 
@@ -1757,8 +1762,8 @@ Key pieces, one at a time:
 
 - **What it is:** Attempt throttling
 - **What it does:** Prevents unlimited guessing
-- **Example in the app:** Slow down repeated recovery-code guesses.
-- **Why it matters:** Attackers cannot brute-force recovery or MFA codes freely
+- **Example in the app:** Slow down repeated MFA recovery/help requests.
+- **Why it matters:** Attackers cannot hammer recovery or MFA flows freely
 - **How this helps long term:** Protects future public auth flows from automated guessing.
 
 
@@ -1775,16 +1780,16 @@ user begins TOTP setup
   -> proxy records MFA factor state
 ```
 
-Recovery code consume:
+Admin reset / delayed removal:
 
 ```text
-user submits recovery code
-  -> app sends code to proxy
-  -> proxy checks attempt limits
-  -> proxy hashes submitted code
-  -> proxy compares hash to stored hash
-  -> proxy consumes code once
-  -> audit/attempt records are written
+user requests reset or admin starts reset
+  -> app sends reset request to proxy
+  -> proxy checks freshness and permissions
+  -> proxy schedules 24-hour removal
+  -> user/admin may cancel while pending
+  -> worker completes the removal when due
+  -> audit records are written
 ```
 
 ### Where It Lives
@@ -3479,7 +3484,7 @@ Key pieces, one at a time:
 #### Proxy
 
 - **What it means:** Server-side API gatekeeper
-- **Example in the app:** App asks proxy to consume a recovery code.
+- **Example in the app:** App asks proxy to start a delayed MFA reset.
 - **Why it matters:** Keeps secrets and privileged actions off the client
 
 #### RAG

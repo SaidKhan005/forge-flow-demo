@@ -50,6 +50,7 @@ import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
@@ -3105,12 +3106,14 @@ const String advisorSmokePath = '/v1/advisor-smoke';
 // Phase 9 live-closeout - auth operations / permission snapshot routes.
 const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
 const String authPasswordChangePath = '/v1/auth/password/change';
+const String authPasswordResetConfirmPath = '/v1/auth/password/reset/confirm';
 const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
 const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
-const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
 const String authMfaRecoveryRequestPath = '/v1/auth/mfa/recovery/request';
 const String authMfaFactorsListPath = '/v1/auth/mfa/factors/list';
 const String authMfaFactorsRevokePath = '/v1/auth/mfa/factors/revoke';
+const String authMfaFactorsRemovalCancelPath =
+    '/v1/auth/mfa/factors/removal/cancel';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
 const String adminAuthInvitePrefix = '$adminAuthInvitesPath/';
 const String adminAuthUsersPath = '/v1/admin/auth/users';
@@ -3338,6 +3341,7 @@ Future<void> routeRequest(
   ProxyAdminPermissionGuard? adminPermissionGuard,
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
   PasswordChangeGateway? passwordChangeGateway,
+  PasswordResetConfirmGateway? passwordResetConfirmGateway,
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
@@ -3781,6 +3785,62 @@ Future<void> routeRequest(
       return;
     }
 
+    if (request.method == 'POST' && path == authPasswordResetConfirmPath) {
+      if (passwordResetConfirmGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'password_reset_confirm_not_configured',
+          'message':
+              'route requires a PasswordResetConfirmGateway to be installed',
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+      final oobCode = _nonBlankString(body['oob_code']);
+      final newPassword = _nonBlankString(body['new_password']);
+      if (oobCode == null || newPassword == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_password_reset_fields',
+          'message': 'oob_code and new_password are required',
+        });
+        return;
+      }
+      try {
+        final completed = await passwordResetConfirmGateway
+            .confirmPasswordReset(
+              PasswordResetConfirmCommand(
+                oobCode: oobCode,
+                newPassword: newPassword,
+              ),
+            );
+        _writeJson(response, 200, <String, Object?>{
+          'ok': true,
+          'hibp_unavailable': completed.hibpUnavailable,
+        });
+      } on PasswordChangeRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+          'rejections': error.rejections,
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'password_reset_confirm_unavailable',
+          'message': 'password reset is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (request.method == 'POST' && path == authMfaRecoveryRequestPath) {
       if (mfaRecoveryRequestGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -3814,6 +3874,12 @@ Future<void> routeRequest(
         final accepted = await mfaRecoveryRequestGateway.requestRecovery(
           MfaRecoveryRequestCommand(
             email: email,
+            clientIp:
+                _resolveLedgerContextFromHeaders(
+                  request,
+                  trustProxyAuditHeaders: trustProxyAuditHeaders,
+                ).ip ??
+                'unknown',
             reason:
                 _nonBlankString(body['reason']) ??
                 'mfa_challenge_no_factor_access',
@@ -3828,6 +3894,8 @@ Future<void> routeRequest(
         _writeJson(response, error.statusCode, <String, Object?>{
           'error': error.code,
           'message': error.message,
+          if (error.retryAfter != null)
+            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
         });
       } catch (_) {
         _writeJson(response, 503, <String, Object?>{
@@ -3937,31 +4005,6 @@ Future<void> routeRequest(
           );
           _writeJson(response, 200, <String, Object?>{
             'factor_id': completed.factorId,
-            'recovery_codes': completed.recoveryCodesPlaintext,
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path == authMfaRecoveryConsumePath) {
-          final rawCode = _nonBlankString(body['recovery_code']);
-          if (rawCode == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_recovery_code',
-              'message': 'request body must include recovery_code',
-            });
-            return;
-          }
-          final completed = await mfaOperationsGateway.consumeRecoveryCode(
-            RecoveryCodeConsumeCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              rawCode: rawCode,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'factor_id': completed.factorId,
           });
           return;
         }
@@ -3987,6 +4030,21 @@ Future<void> routeRequest(
                   'can_revoke': factor.canRevoke,
                 },
             ],
+            'removal_requests': <Map<String, Object?>>[
+              for (final removal in listed.removalRequests)
+                <String, Object?>{
+                  'request_id': removal.requestId,
+                  'factor_id': removal.factorId,
+                  'status': removal.status,
+                  'execute_after': removal.executeAfter
+                      .toUtc()
+                      .toIso8601String(),
+                  if (removal.completedAt != null)
+                    'completed_at': removal.completedAt!
+                        .toUtc()
+                        .toIso8601String(),
+                },
+            ],
           });
           return;
         }
@@ -4007,9 +4065,11 @@ Future<void> routeRequest(
               locationId: scope.locationId,
               authorizationIdToken: authorizationIdToken,
               factorId: factorId,
-              stepUpProofId:
-                  _nonBlankString(body['step_up_proof_id']) ??
-                  authorizationIdToken,
+              stepUpProofId: _freshAuthProofId(
+                scope: scope,
+                path: path,
+                requestedAt: clock().toUtc(),
+              ),
             ),
           );
           _writeJson(response, 200, <String, Object?>{
@@ -4020,6 +4080,32 @@ Future<void> routeRequest(
               'execute_after': completed.executeAfter!
                   .toUtc()
                   .toIso8601String(),
+          });
+          return;
+        }
+
+        if (request.method == 'POST' &&
+            path == authMfaFactorsRemovalCancelPath) {
+          final requestId = _nonBlankString(body['request_id']);
+          if (requestId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_removal_request_id',
+              'message': 'request body must include request_id',
+            });
+            return;
+          }
+          final completed = await mfaOperationsGateway.cancelFactorRemoval(
+            MfaCancelFactorRemovalCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              authorizationIdToken: authorizationIdToken,
+              requestId: requestId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'cancelled': completed.cancelled,
           });
           return;
         }
@@ -4358,6 +4444,8 @@ Future<void> routeRequest(
             'reactivate' => 'team.users.reactivate',
             'soft-delete' => 'team.users.soft_delete',
             'reset-password' => 'team.users.reset_password',
+            'reset-mfa' => PermissionKeys.teamUsersResetMfa,
+            'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
             _ => null,
           };
           if (permissionKey == null) {
@@ -4379,6 +4467,75 @@ Future<void> routeRequest(
               ),
             );
             _writeJson(response, 200, <String, Object?>{'ok': true});
+            return;
+          }
+          if (action.action == 'reset-mfa') {
+            if (mfaOperationsGateway == null) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'mfa_operations_not_configured',
+                'message':
+                    'route requires an MfaOperationsGateway to be installed',
+              });
+              return;
+            }
+            final freshEnough = _requireFreshAuthenticationOrWrite(
+              response: response,
+              scope: scope,
+              requestedAt: clock().toUtc(),
+            );
+            if (!freshEnough) return;
+            final queued = await mfaOperationsGateway.revokeUserFactors(
+              MfaRevokeUserFactorsCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                targetUserId: action.userId,
+                stepUpProofId: _freshAuthProofId(
+                  scope: scope,
+                  path: path,
+                  requestedAt: clock().toUtc(),
+                ),
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'requested_count': queued.requestedCount,
+              'request_ids': queued.requestIds,
+              if (queued.executeAfter != null)
+                'execute_after': queued.executeAfter!.toUtc().toIso8601String(),
+            });
+            return;
+          }
+          if (action.action == 'cancel-mfa-removal') {
+            if (mfaOperationsGateway == null) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'mfa_operations_not_configured',
+                'message':
+                    'route requires an MfaOperationsGateway to be installed',
+              });
+              return;
+            }
+            final requestId = _nonBlankString(body['request_id']);
+            if (requestId == null) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_removal_request_id',
+                'message': 'request body must include request_id',
+              });
+              return;
+            }
+            final completed = await mfaOperationsGateway.cancelFactorRemoval(
+              MfaCancelFactorRemovalCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                targetUserId: action.userId,
+                requestId: requestId,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'cancelled': completed.cancelled,
+            });
             return;
           }
 
@@ -4463,6 +4620,16 @@ Future<void> routeRequest(
           });
           return;
         }
+      } on MfaOperationRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+          if (error.retryAfter != null)
+            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
+          if (error.resetsAt != null)
+            'resets_at': error.resetsAt!.toUtc().toIso8601String(),
+        });
+        return;
       } on AuthOperationRejected catch (error) {
         _writeJson(response, error.statusCode, <String, Object?>{
           'error': error.code,
@@ -5291,6 +5458,27 @@ bool _requireFreshAuthenticationOrWrite({
   return false;
 }
 
+String _freshAuthProofId({
+  required OperatorContext scope,
+  required String path,
+  required DateTime requestedAt,
+}) {
+  final freshAt = scope.lastFreshAuthAt?.toUtc();
+  if (freshAt == null) return '';
+  final raw = utf8.encode(
+    [
+      'fresh-auth-v1',
+      scope.userId,
+      scope.operatorId,
+      scope.locationId,
+      path,
+      freshAt.toIso8601String(),
+      requestedAt.toUtc().toIso8601String(),
+    ].join('|'),
+  );
+  return 'fresh-auth:${sha256.convert(raw)}';
+}
+
 bool _isAdminAuthOperation(String path, String method) {
   if (method == 'GET' && path == adminAuthRolesPath) return true;
   if (method == 'POST' && path == adminAuthRolesPath) return true;
@@ -5325,9 +5513,9 @@ bool _isMfaOperation(String path, String method) {
   if (method != 'POST') return false;
   return path == authMfaTotpBeginPath ||
       path == authMfaTotpConfirmPath ||
-      path == authMfaRecoveryConsumePath ||
       path == authMfaFactorsListPath ||
-      path == authMfaFactorsRevokePath;
+      path == authMfaFactorsRevokePath ||
+      path == authMfaFactorsRemovalCancelPath;
 }
 
 Future<bool> _requireAdminPermissionOrWrite({
@@ -5436,6 +5624,8 @@ Map<String, Object?> _teamUserToJson(TeamUserListEntry user) {
     'location_id': user.locationId,
     'location_label': user.locationLabel,
     'mfa_enrolled': user.mfaEnrolled,
+    'mfa_removal_pending': user.mfaRemovalPending,
+    'mfa_removal_request_id': user.mfaRemovalRequestId,
     'user_role_id': user.userRoleId,
     'last_active_at': user.lastActiveAt?.toUtc().toIso8601String(),
   };

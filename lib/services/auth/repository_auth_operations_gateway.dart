@@ -65,6 +65,8 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
             locationId: row.locationId,
             locationLabel: row.locationLabel,
             mfaEnrolled: row.mfaEnrolled,
+            mfaRemovalPending: row.mfaRemovalPending,
+            mfaRemovalRequestId: row.mfaRemovalRequestId,
             userRoleId: row.userRoleId,
             lastActiveAt: row.lastActiveAt,
           ),
@@ -439,6 +441,27 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       eventType: 'auth.password_reset_requested',
     );
     return const TeamPasswordResetQueued();
+  }
+
+  @override
+  Future<TeamMfaResetQueued> requestMfaReset(TeamMfaResetCommand command) {
+    throw const AuthOperationRejected(
+      code: 'mfa_reset_gateway_not_bound',
+      message: 'MFA reset is handled by the MFA operations gateway.',
+      statusCode: 503,
+    );
+  }
+
+  @override
+  Future<TeamMfaRemovalCancelled> cancelMfaRemoval(
+    TeamMfaRemovalCancelCommand command,
+  ) {
+    throw const AuthOperationRejected(
+      code: 'mfa_removal_cancel_gateway_not_bound',
+      message:
+          'MFA removal cancellation is handled by the MFA operations gateway.',
+      statusCode: 503,
+    );
   }
 
   @override

@@ -118,8 +118,10 @@ namespaces (more added as consumers ship):
                                 proxy session-ledger writes (B6).
 - `auth.user.*`              — user lifecycle (invite-accept,
                                 soft-delete, force-logout, GDPR
-                                redaction). Producers: B20 user
-                                lifecycle bindings.
+                                redaction, MFA recovery requested,
+                                MFA factor removed). Producers: B20
+                                user lifecycle bindings and 9.UX.1a
+                                MFA hardening.
 - `usage.cap.*`              — usage-cap threshold breaches that
                                 need real-time UI alerts. Producers:
                                 the 9.0Σ.g two-slot key writers.
@@ -160,7 +162,7 @@ expected length is well under 60.
   storage, advisor conversation log, etc.) and put a reference in
   the event.
 - Payloads MUST NOT carry secrets. Token hashes, ID-token contents,
-  password hashes, recovery-code material, full audit-log bodies,
+  password hashes, MFA recovery material, full audit-log bodies,
   raw advisor question/recommendation text — none of these belong
   in `event_outbox`. The bridge publishes payloads to Pub/Sub, and
   Pub/Sub subscribers (including future operator-facing WebSocket

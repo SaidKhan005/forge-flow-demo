@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-29
+Updated: 2026-04-30
 Owner: You
 Execution model: We think, Claude codes
 
@@ -127,6 +127,14 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   issuance and B46 audit-privacy are local/code/test complete, but their
   additive live migrations (`202604290000`, `202604280014`) still need fresh
   staging + Production1 apply evidence before live phases depend on them.
+- **Auth/MFA pressure-test routing:** `9.UX.1a` is now the Phase 9 MFA
+  production-hardening slice: backend-scheduled 24h removals, fresh-auth +
+  opaque proof for self/admin reset, recovery queued vs not-queued messaging,
+  Firebase/local drift repair for self-removal, no recovery-code UX,
+  self/admin pending-removal cancel, and no phone/SMS MFA. Mandatory
+  admin-tier MFA enforcement is deferred until post-launch stability and
+  explicit approval. B48 password-reset parity maps to `9.UX.7`; broader MFA
+  support tooling and notification delivery map to Phase 11A/10a.
 - **Health producer status:** B44 graph tripwire/runbook, B45 rollup freshness
   reporter/runbook, and B47 vector health helper/benchmark artifact exist;
   producer wiring that fills the B42 reserved metric values remains follow-on
@@ -175,7 +183,8 @@ follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 
 1. `11A.0-6` - F&F Operations Console foundation. Scope:
    `phase_11A_operations_console_plan.md`.
-2. `9.UX.0-7` - Phase 9 operator-facing UX family. Parallel with
+2. `9.UX.0-7` plus `9.UX.1a` - Phase 9 operator-facing UX family and MFA
+   production-hardening sub-slice. Parallel with
    `11A.0-6` (different code surfaces). Scope:
    `phase_9_auth_plan.md` `Frontend Exposure` section. Within-family
    shared seams (e.g., `auth_operations_gateway.dart`,
@@ -199,6 +208,15 @@ active, not which slices are next per lane.
    (`202604290001` hierarchy access wiring).
 5. B44/B45/B47 metric producers - fill the B42 `/health` reserved values for
    the 11A.5 health surface.
+6. B48 password reset email-link parity - local code complete; deploy/smoke
+   the proxy + web action page before relying on email-link reset in live.
+7. B49/B50 MFA hardening + notification delivery - `9.UX.1a` local code
+   queues `event_outbox` rows only. True in-app/email notification delivery
+   is not a background pipeline yet; Phase 10a bridge remains only if
+   user-facing copy promises an email or in-app notification.
+8. Mandatory admin-tier MFA enforcement - explicitly deferred until
+   post-launch stability and explicit approval; do not treat as a launch
+   blocker.
 
 **Then continue:**
 
@@ -226,7 +244,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
-| `9.UX.0-7` | active in flight (`9.UX.0` ~50% done) | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
+| `9.UX.0-7` + `9.UX.1a` | active in flight (`9.UX.0` ~50% done; `9.UX.1a` added after auth/MFA pressure test) | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
 | `11A.0-6` | next | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |

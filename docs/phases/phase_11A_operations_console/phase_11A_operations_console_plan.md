@@ -292,6 +292,11 @@ Acceptance:
   node, inspect neighbors, inspect shortest approved path between
   two approved nodes, and see whether an edge was extracted,
   inferred-and-approved, edited, or rejected.
+  Auth/MFA support diagnostics extend this surface after Phase 9
+  `9.UX.1a`: view user MFA factor inventory, pending/cancelled removal
+  requests, notification/outbox status, and Firebase/local drift
+  flags. Full repair actions consume Phase 9 safe backend routes;
+  the admin client must not perform direct DB/Firebase writes.
 - `11A.6` **Observability dashboard.** System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
@@ -328,8 +333,9 @@ Acceptance:
   announcements. View force-update conditions when needed.
 - `11A.9` **Audit log review.** Who changed what when across
   `usage_caps`, `feature_flags`, `operators`, key rotations.
-  Powered by `created_by` / `updated_by` columns; the UX makes
-  the audit queryable.
+  MFA revocation initiated/pending/completed and recovery-requested
+  events are included. Powered by `created_by` / `updated_by` columns;
+  the UX makes the audit queryable.
 - `11A.10` **Status page management.** Create incidents, write
   post-mortems, sync to public `status.forgeflow.app` page.
 - `11A.11` (optional) **Replay tool.** Pick a past request,
@@ -444,6 +450,9 @@ Required before Phase 11A can ship real:
 - `Phase 11a` lights up the Azure DB Flexible Server + proxy +
   corpus that 11A manages
 - `Phase 9` issues admin auth tokens
+- `Phase 9` owns operator-facing MFA enrollment/removal. Phase 11A owns
+  support-only MFA diagnostics and repair surfaces once safe backend
+  routes exist.
 - `Phase 9.8` provides the legal/compliance surfaces (T&Cs editor
   may live in 11A.10 or a 9.8 sub-slice)
 - `Phase 11b` ships the operator-facing advisor; 11A's debug

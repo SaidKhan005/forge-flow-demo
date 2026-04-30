@@ -260,6 +260,76 @@ void main() {
       expect(call.body, isEmpty);
     });
 
+    test('requestMfaReset targets the admin user MFA reset route', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{
+            'ok': true,
+            'requested_count': 1,
+            'request_ids': <Object?>['removal-request-1'],
+            'execute_after': DateTime.utc(2026, 5, 1, 12).toIso8601String(),
+          },
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final queued = await gateway.requestMfaReset(
+        const TeamMfaResetCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetUserId: 'target-user',
+          stepUpProofId: 'fresh-token',
+        ),
+      );
+
+      final call = fake.posts.single;
+      expect(
+        call.url.path,
+        equals('${proxy.adminAuthUsersPrefix}target-user/reset-mfa'),
+      );
+      expect(call.body['step_up_proof_id'], equals('fresh-token'));
+      expect(queued.requestedCount, equals(1));
+      expect(queued.requestIds, equals(<String>['removal-request-1']));
+    });
+
+    test('cancelMfaRemoval targets the admin user MFA cancel route', () async {
+      final fake = _FakeAuthOpsHttpClient(
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'cancelled': true},
+        ),
+      );
+      final gateway = ProxyAuthOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final cancelled = await gateway.cancelMfaRemoval(
+        const TeamMfaRemovalCancelCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetUserId: 'target-user',
+          requestId: 'removal-request-1',
+        ),
+      );
+
+      final call = fake.posts.single;
+      expect(
+        call.url.path,
+        equals('${proxy.adminAuthUsersPrefix}target-user/cancel-mfa-removal'),
+      );
+      expect(call.body['request_id'], equals('removal-request-1'));
+      expect(cancelled.cancelled, isTrue);
+    });
+
     test(
       'createRoleGrant and revokeRoleGrant use the route contract',
       () async {

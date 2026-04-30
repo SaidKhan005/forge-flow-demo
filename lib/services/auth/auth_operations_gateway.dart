@@ -156,6 +156,8 @@ class TeamUserListEntry {
     this.locationId,
     this.locationLabel,
     this.mfaEnrolled = false,
+    this.mfaRemovalPending = false,
+    this.mfaRemovalRequestId,
     this.userRoleId,
     this.lastActiveAt,
   });
@@ -169,6 +171,8 @@ class TeamUserListEntry {
   final String? locationId;
   final String? locationLabel;
   final bool mfaEnrolled;
+  final bool mfaRemovalPending;
+  final String? mfaRemovalRequestId;
   final String? userRoleId;
   final DateTime? lastActiveAt;
 }
@@ -195,6 +199,56 @@ class TeamPasswordResetCommand {
 
 class TeamPasswordResetQueued {
   const TeamPasswordResetQueued();
+}
+
+class TeamMfaResetCommand {
+  const TeamMfaResetCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.targetUserId,
+    this.stepUpProofId = '',
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String targetUserId;
+  final String stepUpProofId;
+}
+
+class TeamMfaResetQueued {
+  const TeamMfaResetQueued({
+    required this.requestedCount,
+    this.requestIds = const <String>[],
+    this.executeAfter,
+  });
+
+  final int requestedCount;
+  final List<String> requestIds;
+  final DateTime? executeAfter;
+}
+
+class TeamMfaRemovalCancelCommand {
+  const TeamMfaRemovalCancelCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.targetUserId,
+    required this.requestId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String targetUserId;
+  final String requestId;
+}
+
+class TeamMfaRemovalCancelled {
+  const TeamMfaRemovalCancelled({required this.cancelled});
+
+  final bool cancelled;
 }
 
 class TeamRoleGrantCreateCommand {
@@ -515,6 +569,12 @@ abstract class AuthOperationsGateway {
     TeamPasswordResetCommand command,
   );
 
+  Future<TeamMfaResetQueued> requestMfaReset(TeamMfaResetCommand command);
+
+  Future<TeamMfaRemovalCancelled> cancelMfaRemoval(
+    TeamMfaRemovalCancelCommand command,
+  );
+
   Future<TeamRoleGrantCreated> createRoleGrant(
     TeamRoleGrantCreateCommand command,
   );
@@ -585,6 +645,18 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<TeamPasswordResetQueued> requestPasswordReset(
     TeamPasswordResetCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamMfaResetQueued> requestMfaReset(TeamMfaResetCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamMfaRemovalCancelled> cancelMfaRemoval(
+    TeamMfaRemovalCancelCommand command,
   ) {
     throw StateError(_message);
   }

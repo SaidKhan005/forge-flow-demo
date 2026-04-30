@@ -1,4 +1,4 @@
-// Phase 7.55p.4d — Passive in-app notifications screen.
+// Phase 7.55p.4d - Passive in-app notifications screen.
 //
 // Lightweight read-only list of persisted app-state notifications.
 // Opened from the notification icon in the AppShell top bar.
@@ -48,39 +48,51 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         backgroundColor: AppColors.backgroundDeep,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
-        title: Text('Notifications', style: AppTextStyles.display20()),
+        title: Row(
+          children: [
+            ClipOval(
+              child: Image.asset(
+                'assets/images/forge_flow_splash_icon.png',
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text('Notifications', style: AppTextStyles.display20()),
+          ],
+        ),
         leading: IconButton(
-          icon: const Icon(Icons.close, size: 22),
+          icon: const Icon(Icons.close, size: 28),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: _isLoading
-          ? Center(
-              child: SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.sunset,
-                ),
-              ),
-            )
-          : _notifications.isEmpty
-              ? const _NotificationsEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 16),
+      body: SafeArea(
+        top: false,
+        child: _isLoading
+            ? const _NotificationsLoading()
+            : _notifications.isEmpty
+            ? const _NotificationsEmpty()
+            : RefreshIndicator(
+                onRefresh: () async {
+                  setState(() => _isLoading = true);
+                  await _load();
+                },
+                color: AppColors.sunsetDark,
+                child: ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
                   itemCount: _notifications.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 10),
                   itemBuilder: (_, i) =>
                       _NotificationTile(notification: _notifications[i]),
                 ),
+              ),
+      ),
     );
   }
 }
 
-class _NotificationsEmptyState extends StatelessWidget {
-  const _NotificationsEmptyState();
+class _NotificationsLoading extends StatelessWidget {
+  const _NotificationsLoading();
 
   @override
   Widget build(BuildContext context) {
@@ -88,34 +100,68 @@ class _NotificationsEmptyState extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            width: 64,
-            height: 64,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: AppColors.sunset.withValues(alpha: 0.10),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.notifications_none_outlined,
-              size: 30,
-              color: AppColors.sunset,
+          const SizedBox(
+            width: 22,
+            height: 22,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.sunsetDark,
             ),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Text(
-            'All caught up',
-            style: AppTextStyles.mono14(
-              color: AppColors.textPrimary,
-              weight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'No new notifications right now.',
-            style: AppTextStyles.body13(color: AppColors.textMuted),
+            'Loading notifications…',
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NotificationsEmpty extends StatelessWidget {
+  const _NotificationsEmpty();
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: AppColors.sunset.withValues(alpha: 0.10),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.sunset.withValues(alpha: 0.4),
+                  width: 1,
+                ),
+              ),
+              child: Icon(
+                Icons.notifications_none_outlined,
+                size: 32,
+                color: AppColors.sunsetDark,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              "You're all caught up",
+              textAlign: TextAlign.center,
+              style: AppTextStyles.display20(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'New week snapshots, cycle rollovers, and security events will land here.',
+              textAlign: TextAlign.center,
+              style: AppTextStyles.body13(color: AppColors.textMuted),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -127,86 +173,90 @@ class _NotificationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final visual = _NotificationTypeVisual.forType(notification.type);
-    final timeLabel = _formatRelativeTime(notification.createdAt);
-
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        decoration: BoxDecoration(
-          color: AppColors.backgroundMid,
-          border: Border.all(color: AppColors.borderSubtle, width: 1),
-        ),
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(width: 3, color: visual.accent),
-              Expanded(
-                child: Padding(
-                  padding:
-                      const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 36,
-                        height: 36,
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: visual.accent.withValues(alpha: 0.14),
-                          border: Border.all(
-                              color: visual.accent.withValues(alpha: 0.5)),
-                          borderRadius: BorderRadius.circular(8),
+    final accent = _accentFor(notification.type);
+    final icon = _iconFor(notification.type);
+    final relative = _formatRelativeTime(notification.createdAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle),
+          ),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Container(width: 3, color: accent),
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 32,
+                          height: 32,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.12),
+                            border: Border.all(
+                              color: accent.withValues(alpha: 0.5),
+                              width: 1,
+                            ),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, size: 16, color: accent),
                         ),
-                        child: Icon(visual.icon,
-                            size: 18, color: visual.accent),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    notification.title,
-                                    style: AppTextStyles.mono14(
-                                      color: AppColors.textPrimary,
-                                      weight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                if (timeLabel != null) ...[
-                                  const SizedBox(width: 8),
-                                  Padding(
-                                    padding:
-                                        const EdgeInsets.only(top: 2),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
                                     child: Text(
-                                      timeLabel,
-                                      style: AppTextStyles.mono10(
-                                          color: AppColors.textMuted),
+                                      notification.title,
+                                      style: AppTextStyles.body14(
+                                        color: AppColors.textPrimary,
+                                      ).copyWith(fontWeight: FontWeight.w600),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
+                                  if (relative.isNotEmpty) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      relative,
+                                      style: AppTextStyles.mono10(
+                                        color: AppColors.textMuted,
+                                      ),
+                                    ),
+                                  ],
                                 ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              notification.body,
-                              style: AppTextStyles.body13(
-                                  color: AppColors.textSecondary),
-                            ),
-                          ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                notification.body,
+                                style: AppTextStyles.body13(
+                                  color: AppColors.textSecondary,
+                                ),
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -214,83 +264,46 @@ class _NotificationTile extends StatelessWidget {
   }
 }
 
-class _NotificationTypeVisual {
-  final IconData icon;
-  final Color accent;
-  const _NotificationTypeVisual({required this.icon, required this.accent});
-
-  static _NotificationTypeVisual forType(String type) {
-    switch (type) {
-      case 'new_week_snapshot':
-        return _NotificationTypeVisual(
-          icon: Icons.event_available_rounded,
-          accent: AppColors.sunset,
-        );
-      case 'cycle_rollover':
-        return _NotificationTypeVisual(
-          icon: Icons.refresh_rounded,
-          accent: AppColors.sunsetDark,
-        );
-      default:
-        return _NotificationTypeVisual(
-          icon: Icons.notifications_active_outlined,
-          accent: AppColors.textSecondary,
-        );
-    }
+Color _accentFor(String type) {
+  switch (type) {
+    case 'new_week_snapshot':
+      return AppColors.peacockDark;
+    case 'cycle_rollover':
+      return AppColors.sunsetDark;
+    case 'mfa_authenticator_removed':
+      return AppColors.warning;
+    default:
+      return AppColors.textSecondary;
   }
 }
 
-/// Renders a stored ISO-8601 UTC timestamp as a short, locale-friendly
-/// label in the device's local time zone.
-///
-/// Examples: `Just now`, `12m ago`, `2h ago`, `Yesterday 3:15 PM`,
-/// `Apr 27, 3:15 PM`, `Mar 12 2025`.
-String? _formatRelativeTime(String isoUtc) {
-  final parsed = DateTime.tryParse(isoUtc);
-  if (parsed == null) return null;
-  final local = parsed.toLocal();
+IconData _iconFor(String type) {
+  switch (type) {
+    case 'new_week_snapshot':
+      return Icons.event_available_rounded;
+    case 'cycle_rollover':
+      return Icons.cached_rounded;
+    case 'mfa_authenticator_removed':
+      return Icons.lock_reset_rounded;
+    default:
+      return Icons.notifications_outlined;
+  }
+}
+
+String _formatRelativeTime(String createdAt) {
+  final t = DateTime.tryParse(createdAt);
+  if (t == null) return '';
   final now = DateTime.now();
-  final diff = now.difference(local);
-
-  if (diff.inSeconds < 60 && diff.inSeconds >= -60) return 'Just now';
-  if (diff.inMinutes < 60 && diff.inMinutes >= 0) {
-    return '${diff.inMinutes}m ago';
+  final delta = now.difference(t);
+  if (delta.isNegative) return 'just now';
+  if (delta.inMinutes < 1) return 'just now';
+  if (delta.inHours < 1) return '${delta.inMinutes}m ago';
+  if (delta.inDays < 1) return '${delta.inHours}h ago';
+  if (delta.inDays == 1) return 'yesterday';
+  if (delta.inDays < 7) return '${delta.inDays}d ago';
+  if (delta.inDays < 30) {
+    final weeks = (delta.inDays / 7).floor();
+    return '${weeks}w ago';
   }
-  if (diff.inHours < 12 && diff.inHours >= 0) {
-    return '${diff.inHours}h ago';
-  }
-
-  final today = DateTime(now.year, now.month, now.day);
-  final stamp = DateTime(local.year, local.month, local.day);
-  final dayDiff = today.difference(stamp).inDays;
-
-  final time = _formatTimeOfDay(local);
-  if (dayDiff == 0) return time;
-  if (dayDiff == 1) return 'Yesterday $time';
-  if (dayDiff < 7) return '${_weekdayShort(local.weekday)} $time';
-  if (local.year == now.year) {
-    return '${_monthShort(local.month)} ${local.day}, $time';
-  }
-  return '${_monthShort(local.month)} ${local.day} ${local.year}';
-}
-
-String _formatTimeOfDay(DateTime dt) {
-  final hour24 = dt.hour;
-  final hour12 = hour24 == 0 ? 12 : (hour24 > 12 ? hour24 - 12 : hour24);
-  final minute = dt.minute.toString().padLeft(2, '0');
-  final suffix = hour24 >= 12 ? 'PM' : 'AM';
-  return '$hour12:$minute $suffix';
-}
-
-String _weekdayShort(int weekday) {
-  const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  return labels[weekday - 1];
-}
-
-String _monthShort(int month) {
-  const labels = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-  ];
-  return labels[month - 1];
+  return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
 }

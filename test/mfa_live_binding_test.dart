@@ -2,11 +2,8 @@
 //
 // Covers:
 //   * ScaffoldFailingFirebaseMfaClient fail-closed default.
-//   * SecureRandomRecoveryCodeSaltSource produces 16-byte salts.
-//   * FirebaseMfaEnrollmentService composes the adapter with the
-//     recovery-code generator + hasher: returns N codes + N hashes
-//     from confirmTotpEnrollment, surfaces failures verbatim, uses
-//     firebase_factor_uid from metadata when present.
+//   * FirebaseMfaEnrollmentService composes the adapter, surfaces failures
+//     verbatim, and uses firebase_factor_uid from metadata when present.
 //   * MfaFactorsRepository SQL contract (insertTotpFactor /
 //     insertRecoveryCodeFactor / markRecoveryCodeUsed /
 //     revokeTotpFactor / listActiveRecoveryCodeFactors) under a
@@ -20,7 +17,6 @@
 //     attempt (valid + invalid) burns one budget slot.
 
 import 'dart:convert';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +29,6 @@ import 'package:forge_and_flow/services/mfa/firebase_mfa_enrollment_service.dart
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_attempt_limiter.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_consumer.dart';
-import 'package:forge_and_flow/services/mfa/recovery_code_generator.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_hasher.dart';
 
 const String _validOpId = '11111111-1111-1111-1111-111111111111';
@@ -64,19 +59,9 @@ void main() {
     });
   });
 
-  group('SecureRandomRecoveryCodeSaltSource (B11)', () {
-    test('produces 16-byte salts', () {
-      final source = SecureRandomRecoveryCodeSaltSource();
-      final salt = source.nextSalt();
-      expect(salt, isA<Uint8List>());
-      expect(salt.length, equals(16));
-    });
-  });
-
   group('FirebaseMfaEnrollmentService (B11)', () {
     FirebaseMfaEnrollmentService buildService({
       FirebaseMfaConfirmOutcome? confirmOutcome,
-      int recoveryCodeCount = 10,
     }) {
       final client = _FakeFirebaseMfaClient(
         nextBegin: const FirebaseMfaTotpBeginPayload(
@@ -87,13 +72,7 @@ void main() {
         ),
         nextConfirm: confirmOutcome,
       );
-      return FirebaseMfaEnrollmentService(
-        client: client,
-        codeGenerator: RecoveryCodeGenerator(random: Random(17)),
-        codeHasher: const Sha256RecoveryCodeHasher(),
-        saltSource: _StaticSaltSource(saltByte: 0x42),
-        recoveryCodeCount: recoveryCodeCount,
-      );
+      return FirebaseMfaEnrollmentService(client: client);
     }
 
     test(
@@ -111,43 +90,26 @@ void main() {
       },
     );
 
-    test('confirmTotpEnrollment Succeeded -> N plaintext + N hashed codes '
-        'with the firebase_factor_uid carried through', () async {
-      final service = buildService(
-        confirmOutcome: const FirebaseMfaConfirmSucceeded(
-          factorMetadata: <String, Object?>{
-            'firebase_factor_uid': 'firebase-totp-uid-9',
-            'issuer': 'Forge & Flow',
-          },
-        ),
-        recoveryCodeCount: 10,
-      );
-      final result = await service.confirmTotpEnrollment(
-        factorId: 'fb-factor-1',
-        oneTimeCode: '123456',
-      );
-      expect(result, isA<MfaEnrollmentConfirmSuccess>());
-      final payload = (result as MfaEnrollmentConfirmSuccess).payload;
-      expect(payload.recoveryCodesPlaintext, hasLength(10));
-      expect(payload.hashedRecoveryCodes, hasLength(10));
-      expect(payload.factorId, equals('firebase-totp-uid-9'));
-      // Acceptance: every plaintext code matches the canonical
-      // XXXX-XXXX-XXXX shape so the display-once UI can render
-      // without further processing.
-      for (final code in payload.recoveryCodesPlaintext) {
-        expect(
-          RegExp(r'^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$').hasMatch(code),
-          isTrue,
-          reason: 'code "$code" did not match canonical shape',
+    test(
+      'confirmTotpEnrollment Succeeded carries firebase_factor_uid through',
+      () async {
+        final service = buildService(
+          confirmOutcome: const FirebaseMfaConfirmSucceeded(
+            factorMetadata: <String, Object?>{
+              'firebase_factor_uid': 'firebase-totp-uid-9',
+              'issuer': 'Forge & Flow',
+            },
+          ),
         );
-      }
-      // Acceptance: all hashes share the same salt (per-user salt
-      // contract from recovery_code_hasher.dart).
-      final sharedSalt = payload.hashedRecoveryCodes.first.saltBase64;
-      for (final h in payload.hashedRecoveryCodes) {
-        expect(h.saltBase64, equals(sharedSalt));
-      }
-    });
+        final result = await service.confirmTotpEnrollment(
+          factorId: 'fb-factor-1',
+          oneTimeCode: '123456',
+        );
+        expect(result, isA<MfaEnrollmentConfirmSuccess>());
+        final payload = (result as MfaEnrollmentConfirmSuccess).payload;
+        expect(payload.factorId, equals('firebase-totp-uid-9'));
+      },
+    );
 
     test('confirmTotpEnrollment falls back to session factorId when metadata '
         'is missing firebase_factor_uid', () async {
@@ -630,20 +592,6 @@ class _FakeFirebaseMfaClient implements FirebaseMfaClient {
     required String userId,
   }) async {
     return const <FirebaseMfaTotpFactor>[];
-  }
-}
-
-class _StaticSaltSource implements RecoveryCodeSaltSource {
-  _StaticSaltSource({required this.saltByte});
-  final int saltByte;
-
-  @override
-  Uint8List nextSalt() {
-    final out = Uint8List(16);
-    for (var i = 0; i < 16; i++) {
-      out[i] = saltByte;
-    }
-    return out;
   }
 }
 

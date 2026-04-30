@@ -428,8 +428,6 @@ void main() {
 
       expect(find.text('Jane Owner'), findsNothing);
       expect(find.text('Sam Manager'), findsOneWidget);
-      expect(find.text('VISIBLE'), findsOneWidget);
-      expect(find.text('1 / 2'), findsOneWidget);
     });
 
     testWidgets('team dropdown state does not poison nested text scrolling', (
@@ -452,13 +450,6 @@ void main() {
         ),
       );
 
-      await tester.tap(find.text('Members'));
-      await tester.pumpAndSettle();
-      expect(find.byKey(const Key('team_search_field')), findsNothing);
-      expect(tester.takeException(), isNull);
-
-      await tester.tap(find.text('Members'));
-      await tester.pumpAndSettle();
       expect(find.byKey(const Key('team_search_field')), findsOneWidget);
       expect(tester.takeException(), isNull);
 
@@ -493,6 +484,9 @@ void main() {
         ),
       );
 
+      await tester.ensureVisible(
+        find.byKey(const Key('team_invite_submit_button')),
+      );
       await tester.tap(find.byKey(const Key('team_invite_submit_button')));
       await tester.pump();
 
@@ -527,7 +521,6 @@ void main() {
         find.byKey(const Key('team_invite_submit_button')),
       );
       expect(button.onPressed, isNull);
-      expect(find.text('LOCKED'), findsOneWidget);
     });
 
     testWidgets('runs reset password from the user action menu', (
@@ -558,6 +551,125 @@ void main() {
       expect(request, isNotNull);
       expect(request!.action, TeamUserAction.resetPassword);
       expect(request!.user.userId, 'user-1');
+    });
+
+    testWidgets('runs remove 2FA from an enrolled user action menu', (
+      tester,
+    ) async {
+      TeamUserActionRequest? request;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              users: _teamUsers,
+              locationOptions: _teamLocations,
+              onUserAction: (next) async => request = next,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove/reset 2FA'));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('It will be removed in 24 hours'),
+        findsOneWidget,
+      );
+      await tester.tap(find.widgetWithText(FilledButton, 'Start removal').last);
+      await tester.pumpAndSettle();
+
+      expect(request, isNotNull);
+      expect(request!.action, TeamUserAction.resetMfa);
+      expect(request!.user.userId, 'user-1');
+      expect(
+        find.byTooltip('2FA removal pending (24h window)'),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-1')));
+      await tester.pumpAndSettle();
+      expect(find.text('Remove/reset 2FA'), findsNothing);
+    });
+
+    testWidgets('runs cancel 2FA removal from a pending user action menu', (
+      tester,
+    ) async {
+      TeamUserActionRequest? request;
+      const pendingUsers = <TeamUserListItem>[
+        TeamUserListItem(
+          userId: 'user-1',
+          email: 'jane@example.test',
+          displayName: 'Jane Owner',
+          roleId: 'operator_owner',
+          roleLabel: 'Owner',
+          status: 'active',
+          mfaEnrolled: true,
+          mfaRemovalPending: true,
+          mfaRemovalRequestId: 'removal-request-1',
+          userRoleId: 'grant-1',
+        ),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              users: pendingUsers,
+              locationOptions: _teamLocations,
+              onUserAction: (next) async => request = next,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Cancel 2FA removal'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Cancel removal').last,
+      );
+      await tester.pumpAndSettle();
+
+      expect(request, isNotNull);
+      expect(request!.action, TeamUserAction.cancelMfaRemoval);
+      expect(request!.user.mfaRemovalRequestId, equals('removal-request-1'));
+      expect(find.byTooltip('2FA removal pending (24h window)'), findsNothing);
+    });
+
+    testWidgets('shows remove/reset 2FA even when the row MFA flag is stale', (
+      tester,
+    ) async {
+      TeamUserActionRequest? request;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TeamSettingsSection(
+              actor: _fullTeamActor,
+              users: _teamUsers,
+              locationOptions: _teamLocations,
+              onUserAction: (next) async => request = next,
+            ),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byKey(const Key('team_user_actions_user-2')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Remove/reset 2FA'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Start removal').last);
+      await tester.pumpAndSettle();
+
+      expect(request, isNotNull);
+      expect(request!.action, TeamUserAction.resetMfa);
+      expect(request!.user.userId, 'user-2');
     });
 
     testWidgets('opens role change dialog from the user action menu', (
@@ -652,6 +764,7 @@ const TeamScopeActor _fullTeamActor = TeamScopeActor(
     'team.users.reactivate',
     'team.users.soft_delete',
     'team.users.reset_password',
+    'team.users.reset_mfa',
     'team.roles.assign',
     'team.roles.revoke',
   },

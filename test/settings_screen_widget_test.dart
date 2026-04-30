@@ -85,7 +85,9 @@ void main() {
       expect(find.byKey(const Key('settings_tab_data')), findsOneWidget);
       expect(find.byKey(const Key('settings_tab_authority')), findsOneWidget);
       expect(find.byKey(const Key('settings_tab_developer')), findsOneWidget);
-      expect(find.text('DATA STATUS'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('settings_tab_data')));
+      await tester.pumpAndSettle();
+      expect(find.text('Data status'), findsOneWidget);
       expect(find.text('CURRENT'), findsOneWidget);
     });
 
@@ -118,12 +120,16 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      expect(find.text('MOCK REPLAY', skipOffstage: false), findsOneWidget);
-      expect(find.text('DATA MANAGEMENT', skipOffstage: false), findsOneWidget);
-      await _scrollToText(tester, 'TIMING AUTHORITY');
+      await tester.tap(find.byKey(const Key('settings_tab_data')));
+      await _pumpForAsync(tester);
+      expect(find.text('Mock replay', skipOffstage: false), findsOneWidget);
+      expect(find.text('Data management', skipOffstage: false), findsOneWidget);
+      await tester.tap(find.byKey(const Key('settings_tab_authority')));
+      await _pumpForAsync(tester);
+      await _scrollToText(tester, 'Timing authority');
 
       expect(
-        find.text('TIMING AUTHORITY', skipOffstage: false),
+        find.text('Timing authority', skipOffstage: false),
         findsOneWidget,
       );
       expect(find.text('America/St_Johns'), findsOneWidget);
@@ -167,11 +173,14 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
 
-      expect(find.text('ACCOUNT', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Account', skipOffstage: false),
+        findsAtLeastNWidgets(1),
+      );
       expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
       expect(find.text('Sign Out', skipOffstage: false), findsOneWidget);
       expect(
-        find.text('Sign Out Everywhere', skipOffstage: false),
+        find.text('Sign out of all devices', skipOffstage: false),
         findsOneWidget,
       );
       expect(
@@ -245,11 +254,11 @@ void main() {
       expect(find.byKey(const Key('settings_tab_team')), findsNothing);
       expect(
         tabIcon(const Key('settings_tab_data'), Icons.storage_rounded),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         tabIcon(const Key('settings_tab_account'), Icons.person_outline),
-        findsNothing,
+        findsOneWidget,
       );
       expect(tester.takeException(), isNull);
 
@@ -258,11 +267,11 @@ void main() {
       expect(find.byKey(const Key('settings_tab_team')), findsOneWidget);
       expect(
         tabIcon(const Key('settings_tab_data'), Icons.storage_rounded),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         tabIcon(const Key('settings_tab_team'), Icons.group_outlined),
-        findsNothing,
+        findsOneWidget,
       );
       expect(tester.takeException(), isNull);
     });
@@ -472,7 +481,7 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Sign Out Everywhere', skipOffstage: false));
+      await tester.tap(find.text('Sign out of all devices', skipOffstage: false));
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
       await tester.pump();
@@ -512,6 +521,8 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_data')));
+      await tester.pumpAndSettle();
 
       expect(find.textContaining('Last import:'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -543,7 +554,7 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_team')));
       await tester.pumpAndSettle();
 
-      expect(find.text('TEAM', skipOffstage: false), findsOneWidget);
+      expect(find.text('Members', skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(const Key('team_settings_section'), skipOffstage: false),
         findsOneWidget,
@@ -609,13 +620,17 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
         await tester.tap(find.byKey(const Key('settings_tab_team')));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 500));
 
         expect(
-          find.text('Wifi sucks... Data loading :(', skipOffstage: false),
+          find.text(
+            'Staff late looking for Parking lol',
+            skipOffstage: false,
+          ),
           findsWidgets,
         );
         expect(
@@ -660,7 +675,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('DATA STATUS'), findsOneWidget);
+        expect(find.text('Data status'), findsOneWidget);
         expect(find.text('CURRENT'), findsOneWidget);
       });
 
@@ -754,7 +769,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('MOCK REPLAY'), findsOneWidget);
+        expect(find.text('Mock replay'), findsOneWidget);
       });
 
       testWidgets('shows DATA MANAGEMENT section label', (tester) async {
@@ -768,7 +783,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('DATA MANAGEMENT'), findsOneWidget);
+        expect(find.text('Data management'), findsOneWidget);
       });
     });
 
@@ -801,9 +816,9 @@ void main() {
           ),
         );
         await _pumpForAsync(tester);
-        await _scrollToText(tester, 'TIMING AUTHORITY');
+        await _scrollToText(tester, 'Timing authority');
 
-        expect(find.text('TIMING AUTHORITY'), findsOneWidget);
+        expect(find.text('Timing authority'), findsOneWidget);
         expect(find.text('America/St_Johns'), findsOneWidget);
         expect(find.text('Business Day Starts'), findsOneWidget);
         expect(find.text('Week Starts'), findsOneWidget);
@@ -1629,14 +1644,14 @@ Finder _settingsScrollable(String tabId) {
 
 String _settingsTabIdForText(String text) {
   const authorityTargets = {
-    'TIMING AUTHORITY',
-    'WAGE AUTHORITY',
+    'Timing authority',
+    'Wage authority',
     'Edit Wage Mix',
   };
   const developerTargets = {
     'Data Alignment Audit',
-    'ADVISOR MODELS',
-    'ADVISOR CORPUS',
+    'Advisor models',
+    'Advisor corpus',
   };
   if (authorityTargets.contains(text)) return 'authority';
   if (developerTargets.contains(text)) return 'developer';
@@ -1749,9 +1764,9 @@ void _advisorSectionTests() {
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
-      await _scrollToText(tester, 'ADVISOR MODELS');
+      await _scrollToText(tester, 'Advisor models');
 
-      expect(find.text('ADVISOR MODELS', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor models', skipOffstage: false), findsOneWidget);
       expect(
         find.textContaining('claude-haiku-4-5', skipOffstage: false),
         findsWidgets,
@@ -1787,7 +1802,7 @@ void _advisorSectionTests() {
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
-      await _scrollToText(tester, 'ADVISOR MODELS');
+      await _scrollToText(tester, 'Advisor models');
 
       expect(
         find.byKey(const Key('advisor_reset_button'), skipOffstage: false),
@@ -1918,10 +1933,10 @@ void _advisorSectionTests() {
         );
         await tester.pump();
         await tester.pumpAndSettle();
-        await _scrollToText(tester, 'ADVISOR MODELS');
+        await _scrollToText(tester, 'Advisor models');
 
         expect(
-          find.text('ADVISOR MODELS', skipOffstage: false),
+          find.text('Advisor models', skipOffstage: false),
           findsOneWidget,
         );
       },
@@ -1973,9 +1988,9 @@ void _advisorCorpusSectionTests() {
         tester,
         service: AdvisorCorpusAdminService(),
       );
-      await _scrollToText(tester, 'ADVISOR CORPUS');
+      await _scrollToText(tester, 'Advisor corpus');
 
-      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor corpus', skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(const Key('advisor_corpus_header'), skipOffstage: false),
         findsOneWidget,
@@ -2374,9 +2389,9 @@ void _advisorCorpusSectionTests() {
       );
       await tester.pump();
       await tester.pumpAndSettle();
-      await _scrollToText(tester, 'ADVISOR CORPUS');
+      await _scrollToText(tester, 'Advisor corpus');
 
-      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor corpus', skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(
           const Key('advisor_corpus_cloud_blocked'),
@@ -2402,7 +2417,7 @@ void _advisorCorpusSectionTests() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('ADVISOR CORPUS', skipOffstage: false), findsNothing);
+      expect(find.text('Advisor corpus', skipOffstage: false), findsNothing);
     });
   });
 }

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
@@ -210,6 +211,141 @@ void main() {
       });
     });
 
+    test('POST team user reset-mfa queues delayed removal', () async {
+      await _withRealHttp(() async {
+        final authGateway = _RecordingAuthOperationsGateway();
+        final mfaGateway = _RecordingMfaOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/reset-mfa',
+            const <String, Object?>{},
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(response.json['requested_count'], equals(1));
+          expect(
+            response.json['request_ids'],
+            equals(<Object?>['removal-request-1']),
+          );
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.users.reset_mfa']),
+          );
+          expect(
+            mfaGateway.resetUserFactors.single.targetUserId,
+            'target-user',
+          );
+          expect(
+            mfaGateway.resetUserFactors.single.stepUpProofId,
+            startsWith('fresh-auth:'),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST team user reset-mfa surfaces MFA gateway rejections', () async {
+      await _withRealHttp(() async {
+        final authGateway = _RecordingAuthOperationsGateway();
+        final mfaGateway = _RecordingMfaOperationsGateway(
+          resetError: const MfaOperationRejected(
+            code: 'mfa_freshness_required',
+            message: 'Sign in again before removing MFA.',
+            statusCode: 403,
+          ),
+        );
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/reset-mfa',
+            const <String, Object?>{},
+          );
+
+          expect(response.statusCode, equals(403));
+          expect(response.json['error'], equals('mfa_freshness_required'));
+          expect(
+            mfaGateway.resetUserFactors.single.targetUserId,
+            'target-user',
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST team user cancel-mfa-removal delegates cancellation', () async {
+      await _withRealHttp(() async {
+        final authGateway = _RecordingAuthOperationsGateway();
+        final mfaGateway = _RecordingMfaOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/cancel-mfa-removal',
+            const <String, Object?>{'request_id': 'removal-request-1'},
+          );
+
+          expect(response.statusCode, equals(200));
+          expect(response.json['cancelled'], isTrue);
+          expect(
+            guard.permissionKeys,
+            equals(<String>['team.users.reset_mfa']),
+          );
+          expect(mfaGateway.cancels.single.targetUserId, equals('target-user'));
+          expect(
+            mfaGateway.cancels.single.requestId,
+            equals('removal-request-1'),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST team user reset-mfa requires fresh admin sign-in', () async {
+      await _withRealHttp(() async {
+        final authGateway = _RecordingAuthOperationsGateway();
+        final mfaGateway = _RecordingMfaOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          verifier: _StaticVerifier(
+            lastFreshAuthAt: DateTime.utc(2026, 4, 28, 11, 40),
+          ),
+          authOperationsGateway: authGateway,
+          mfaOperationsGateway: mfaGateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.postJson(
+            '$adminAuthUsersPrefix${Uri.encodeComponent('target-user')}/reset-mfa',
+            const <String, Object?>{},
+          );
+
+          expect(response.statusCode, equals(403));
+          expect(response.json['error'], equals('mfa_freshness_required'));
+          expect(mfaGateway.resetUserFactors, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
     test('POST role create delegates custom role command', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -320,6 +456,34 @@ void main() {
       });
     });
 
+    test(
+      'POST password reset confirm delegates without bearer token',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetConfirmGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetConfirmGateway: gateway,
+          );
+          try {
+            final response = await harness
+                .postJson(authPasswordResetConfirmPath, const <String, Object?>{
+                  'oob_code': 'reset-code',
+                  'new_password': 'correct horse battery staple',
+                }, authorize: false);
+
+            expect(response.statusCode, equals(200));
+            expect(gateway.commands.single.oobCode, equals('reset-code'));
+            expect(
+              gateway.commands.single.newPassword,
+              equals('correct horse battery staple'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST MFA TOTP begin delegates and returns setup payload', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaOperationsGateway();
@@ -408,7 +572,10 @@ void main() {
             expect(response.json['revoked'], isFalse);
             expect(response.json['request_id'], equals('mfa-removal-1'));
             expect(gateway.revokes.single.factorId, equals('totp-db-factor'));
-            expect(gateway.revokes.single.stepUpProofId, equals('test-token'));
+            expect(
+              gateway.revokes.single.stepUpProofId,
+              startsWith('fresh-auth:'),
+            );
           } finally {
             await harness.close();
           }
@@ -416,36 +583,37 @@ void main() {
       },
     );
 
-    test('POST recovery-code consume maps rate limit details', () async {
-      await _withRealHttp(() async {
-        final gateway = _RecordingMfaOperationsGateway(
-          consumeError: MfaOperationRejected(
-            code: 'recovery_code_rate_limited',
-            message: 'Too many attempts.',
-            statusCode: 429,
-            retryAfter: DateTime.utc(2026, 4, 28, 12, 1),
-          ),
-        );
-        final harness = await _RouteHarness.start(
-          mfaOperationsGateway: gateway,
-        );
-        try {
-          final response = await harness.postJson(
-            authMfaRecoveryConsumePath,
-            const <String, Object?>{'recovery_code': 'ABCD-EFGH-JKMN'},
+    test(
+      'POST MFA factor removal cancel delegates and returns status',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingMfaOperationsGateway(
+            cancelResult: const MfaCancelFactorRemovalCompleted(
+              cancelled: true,
+            ),
           );
+          final harness = await _RouteHarness.start(
+            mfaOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authMfaFactorsRemovalCancelPath,
+              const <String, Object?>{'request_id': 'mfa-removal-1'},
+            );
 
-          expect(response.statusCode, equals(429));
-          expect(response.json['error'], equals('recovery_code_rate_limited'));
-          expect(
-            response.json['retry_after'],
-            equals(DateTime.utc(2026, 4, 28, 12, 1).toIso8601String()),
-          );
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+            expect(response.statusCode, equals(200));
+            expect(response.json['cancelled'], isTrue);
+            expect(gateway.cancels.single.requestId, equals('mfa-removal-1'));
+            expect(
+              gateway.cancels.single.authorizationIdToken,
+              equals('test-token'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
     test('POST MFA recovery request accepts contact-admin request', () async {
       await _withRealHttp(() async {
@@ -531,6 +699,7 @@ class _RouteHarness {
     AuthOperationsGateway? authOperationsGateway,
     ProxyAdminPermissionGuard? adminPermissionGuard,
     PasswordChangeGateway? passwordChangeGateway,
+    PasswordResetConfirmGateway? passwordResetConfirmGateway,
     MfaOperationsGateway? mfaOperationsGateway,
     MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
     ProxyJwtVerifier? verifier,
@@ -545,6 +714,7 @@ class _RouteHarness {
         authOperationsGateway: authOperationsGateway,
         adminPermissionGuard: adminPermissionGuard,
         passwordChangeGateway: passwordChangeGateway,
+        passwordResetConfirmGateway: passwordResetConfirmGateway,
         mfaOperationsGateway: mfaOperationsGateway,
         mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
         now: () => DateTime.utc(2026, 4, 28, 12),
@@ -693,19 +863,36 @@ class _RecordingPasswordChangeGateway implements PasswordChangeGateway {
   }
 }
 
+class _RecordingPasswordResetConfirmGateway
+    implements PasswordResetConfirmGateway {
+  final commands = <PasswordResetConfirmCommand>[];
+
+  @override
+  Future<PasswordResetConfirmCompleted> confirmPasswordReset(
+    PasswordResetConfirmCommand command,
+  ) async {
+    commands.add(command);
+    return const PasswordResetConfirmCompleted();
+  }
+}
+
 class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
   _RecordingMfaOperationsGateway({
-    this.consumeError,
+    this.resetError,
     this.factors = const <MfaFactorSummary>[],
     this.revokeResult = const MfaRevokeFactorCompleted(revoked: false),
+    this.cancelResult = const MfaCancelFactorRemovalCompleted(cancelled: true),
   });
 
-  final MfaOperationRejected? consumeError;
+  final MfaOperationRejected? resetError;
   final List<MfaFactorSummary> factors;
   final MfaRevokeFactorCompleted revokeResult;
+  final MfaCancelFactorRemovalCompleted cancelResult;
+  final resetUserFactors = <MfaRevokeUserFactorsCommand>[];
   final begins = <MfaTotpBeginCommand>[];
   final lists = <MfaListFactorsCommand>[];
   final revokes = <MfaRevokeFactorCommand>[];
+  final cancels = <MfaCancelFactorRemovalCommand>[];
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
@@ -736,22 +923,32 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
-  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
-    MfaTotpConfirmCommand command,
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
   ) async {
-    return const MfaTotpConfirmCompleted(
-      factorId: 'factor-db-1',
-      recoveryCodesPlaintext: <String>['ABCD-EFGH-JKMN'],
+    cancels.add(command);
+    return cancelResult;
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) async {
+    resetUserFactors.add(command);
+    final error = resetError;
+    if (error != null) throw error;
+    return MfaRevokeUserFactorsCompleted(
+      requestedCount: 1,
+      requestIds: const <String>['removal-request-1'],
+      executeAfter: DateTime.utc(2026, 5, 1, 12),
     );
   }
 
   @override
-  Future<RecoveryCodeConsumeCompleted> consumeRecoveryCode(
-    RecoveryCodeConsumeCommand command,
+  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
+    MfaTotpConfirmCommand command,
   ) async {
-    final error = consumeError;
-    if (error != null) throw error;
-    return const RecoveryCodeConsumeCompleted(factorId: 'factor-db-1');
+    return const MfaTotpConfirmCompleted(factorId: 'factor-db-1');
   }
 }
 
@@ -886,6 +1083,20 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     TeamPasswordResetCommand command,
   ) async {
     return const TeamPasswordResetQueued();
+  }
+
+  @override
+  Future<TeamMfaResetQueued> requestMfaReset(
+    TeamMfaResetCommand command,
+  ) async {
+    return const TeamMfaResetQueued(requestedCount: 1);
+  }
+
+  @override
+  Future<TeamMfaRemovalCancelled> cancelMfaRemoval(
+    TeamMfaRemovalCancelCommand command,
+  ) async {
+    return const TeamMfaRemovalCancelled(cancelled: true);
   }
 
   @override

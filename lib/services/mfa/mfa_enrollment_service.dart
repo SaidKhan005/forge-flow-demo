@@ -1,18 +1,11 @@
 // Phase 9.4 - MFA enrollment service seam.
 //
-// Drives TOTP enrollment + recovery-code generation. The Flutter
+// Drives TOTP enrollment. The Flutter
 // shell calls this service from the enrollment screen; production
 // binds the real `firebase_auth` MFA APIs (TOTP enrollment uses
 // `MultiFactor.beginEnrollment` + `TotpMultiFactorGenerator`). For
 // tests we use a fake; the scaffold default fails closed.
 //
-// Recovery codes are NOT a Firebase-native concept — they're a F&F
-// add-on stored in `mfa_factors` (Phase 9.0). The enrollment
-// service therefore composes Firebase TOTP setup with the F&F
-// recovery-code generator + hasher.
-
-import 'recovery_code_hasher.dart';
-
 /// QR-render data for a fresh TOTP secret. The raw secret is in
 /// [secretBase32] for the OTP-app scan; the [otpAuthUrl] embeds the
 /// secret + issuer + label in the standard `otpauth://` form so the
@@ -29,26 +22,15 @@ class TotpEnrollmentSetup {
   final String otpAuthUrl;
 }
 
-/// Bundle returned after successful TOTP confirmation. The
-/// [recoveryCodesPlaintext] are the only chance the user gets to
-/// see them — the UI must render the display-once view immediately
-/// and refuse to re-show them. The proxy persists the
-/// [hashedRecoveryCodes] in `mfa_factors`.
+/// Bundle returned after successful TOTP confirmation.
 class MfaEnrollmentCompleted {
-  const MfaEnrollmentCompleted({
-    required this.factorId,
-    required this.recoveryCodesPlaintext,
-    required this.hashedRecoveryCodes,
-  });
+  const MfaEnrollmentCompleted({required this.factorId});
 
   final String factorId;
-  final List<String> recoveryCodesPlaintext;
-  final List<HashedRecoveryCode> hashedRecoveryCodes;
 }
 
-/// Result of [MfaEnrollmentService.confirmTotpEnrollment]. Either
-/// success (with the recovery-code bundle) or failure (with a
-/// machine-readable code the UI maps to copy).
+/// Result of [MfaEnrollmentService.confirmTotpEnrollment]. Either success or
+/// failure with a machine-readable code the UI maps to copy.
 sealed class MfaEnrollmentConfirmResult {
   const MfaEnrollmentConfirmResult();
 }
@@ -79,11 +61,7 @@ abstract class MfaEnrollmentService {
     required String issuerName,
   });
 
-  /// Confirms the enrollment with [oneTimeCode]. On success the
-  /// service generates 10 recovery codes, hashes them via the
-  /// injected hasher, persists the hashes via
-  /// [mfa_factors] (server-side), and returns the plaintext +
-  /// hashes for the display-once UI.
+  /// Confirms the enrollment with [oneTimeCode].
   Future<MfaEnrollmentConfirmResult> confirmTotpEnrollment({
     String authorizationIdToken = '',
     required String factorId,

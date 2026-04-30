@@ -613,8 +613,9 @@ on 2026-04-26 under the "no shortcuts" launch model. Detail:
 lives in `phase_9/phase_9_decision_lock_2026-04-26.md`.
 
 **1. Identity layer: Firebase Identity Platform tier (not Firebase Auth
-standard).** Required for MFA enforcement and future blocking-function
-hooks. Free up to 50k MAU; ~$0.0055/MAU above. Live setup note
+standard).** Required for TOTP enrollment, future MFA enforcement, and
+future blocking-function hooks. Free up to 50k MAU; ~$0.0055/MAU above.
+Live setup note
 (2026-04-26): Identity Platform staging is enabled and TOTP MFA is
 enabled. Official Identity Platform docs list email/password, phone,
 federated/OIDC/SAML, and custom-auth integration paths, and the TOTP MFA
@@ -639,15 +640,19 @@ Enterprise-tier customer demand. Don't build SAML in-house; WorkOS at
 $125/mo/connection. The `users.external_id` column lands in 9.0 as a
 zero-cost forward-compat hook; no other Phase 9 work blocks on this.
 
-**4. MFA enforcement policy.** Required for all admin users
-(super_admin, ff_support, operator_owner, operator_manager) at every
-subscription tier. Required for all users (including operator_supervisor,
-operator_staff) at Premium tier and above. Pilot / Starter tiers may
-opt staff users out. Read from `operators.subscription_tier`. Cost:
-zero (Identity Platform free tier covers MFA enforcement). Security
-posture for launch: TOTP via Identity Platform, with SMS deprecated per
-NIST SP 800-63B-4. Passkeys remain desirable but are not a launch gate
-without an official Firebase / Identity Platform support surface.
+**4. MFA enrollment and future enforcement policy.** Reopened by the
+user on 2026-04-30: mandatory MFA enforcement for admin-tier accounts
+is deferred until post-launch stability. Launch posture is TOTP
+self-enrollment, no recovery-code login/reset UX, fresh-auth checks on
+sensitive actions, and 24-hour MFA removal safety. Later enforcement should roll out only
+after explicit approval, starting with highest admin / owner accounts
+before managers. Staff-level users do not have mandatory MFA by
+subscription tier; users may opt in. Read future enforcement state from
+`users.mfa_required` / operator policy state rather than hard-coding role
+names. Cost remains near zero on Identity Platform free tier. SMS remains
+deprecated per NIST SP 800-63B-4 and is not part of this launch track.
+Passkeys remain desirable but are not a launch gate without an official
+Firebase / Identity Platform support surface.
 
 **Auth email decision (2026-04-26).** Use Firebase action links with
 Forge & Flow branded web pages for invite, verification, password reset,
@@ -663,8 +668,8 @@ claims are allowed (`operator_id`, `is_super_admin`, `is_ff_support`,
 uses `auth-smoke@forgeflow.dev`. Live staging RLS flip is approved once
 integration tests are ready. `forge_admin` BYPASSRLS is allowed only for admin
 paths and every bypass is audited. Step-up auth freshness is 5 minutes. MFA
-recovery uses 10 single-use hashed codes and MFA removal requires step-up plus
-a 24-hour delay. Password policy follows NIST style, HIBP k-anonymity screening
+lost-authenticator recovery uses restaurant-admin delayed removal and MFA removal
+requires step-up plus a 24-hour delay. Password policy follows NIST style, HIBP k-anonymity screening
 is on, Cloud Armor + reCAPTCHA are on for brute-force protection, and paid
 VPN/Tor reputation vendors are deferred. Invites expire after 7 days. Only F&F
 `super_admin` can create users without invite. Auth/security audit retention is
@@ -691,7 +696,7 @@ hold release scenarios only. Documented runbook lands with 9.8.
 | `9.1` | Firebase Identity Platform setup + JWT verifier wiring |
 | `9.2` | Repository pattern + SET LOCAL + RLS enforcement live |
 | `9.3` | Login + persistent session + step-up auth + Flutter wiring |
-| `9.4` | MFA enrollment + enforcement (TOTP + recovery codes; passkeys future follow-up if officially supported) |
+| `9.4` | MFA enrollment + enforcement (TOTP + admin reset/delayed removal; passkeys future follow-up if officially supported) |
 | `9.5` | Password policy + HIBP + brute-force + Cloud Armor |
 | `9.6` | Role + permission system runtime |
 | `9.7` | Permission enforcement runtime + Forge & Flow + Barrio gates |

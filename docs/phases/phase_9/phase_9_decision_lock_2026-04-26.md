@@ -6,6 +6,13 @@ The user accepted the recommended Phase 9 decision set on 2026-04-26. Future
 Phase 9 prompts should treat this as the decision source unless the user
 explicitly reopens an item.
 
+Update 2026-04-30: the user explicitly reopened the MFA enforcement and
+recovery-code UX items. Mandatory MFA enforcement for admin-tier accounts is
+deferred until post-launch stability. Recovery-code display and challenge
+entry are removed from the app UX; Phase 9 ships TOTP enrollment, admin
+reset/support, step-up freshness for sensitive actions, and 24-hour MFA
+removal safety.
+
 | Area | Locked Decision |
 | --- | --- |
 | Passkeys | Phase 9 launches with email/password + TOTP. Passkeys are future follow-up only unless Firebase / Identity Platform exposes an official supported passkey path before cutover. |
@@ -18,9 +25,9 @@ explicitly reopens an item.
 | iOS verification | Windows-side proxy/web/Android work may proceed; Xcode/iOS verification defers to a macOS session and must be reported honestly. |
 | Live RLS flip | Approve live staging RLS flip once integration tests are ready. |
 | Admin bypass role | Use tightly scoped `forge_admin` BYPASSRLS role for admin paths; every bypass use must be audited. |
-| MFA enforcement | Admin roles require MFA at every tier. Staff-level users do not have mandatory MFA by subscription tier; they may opt in, and sensitive actions can still require fresh auth. |
+| MFA enforcement | Mandatory MFA enforcement for admin-tier accounts is deferred until post-launch stability. Phase 9 launches TOTP self-enrollment and admin reset/support; staff-level users do not have mandatory MFA by subscription tier; users may opt in, and sensitive actions can still require fresh auth. |
 | Step-up freshness | Sensitive actions require `auth_time` freshness under 5 minutes. |
-| Recovery codes | Generate 10 single-use recovery codes, display once, hash at rest. |
+| Recovery codes | Do not expose recovery-code display or challenge entry in the app UX. Lost-authenticator support routes through admin reset / delayed removal. |
 | MFA removal | MFA removal requires step-up auth plus a 24-hour delay. |
 | Password rules | NIST style: 8+ minimum, allow long Unicode, no composition rules, no forced rotation unless breach evidence. |
 | HIBP screening | Use Have I Been Pwned k-anonymity screening on signup and password change. |

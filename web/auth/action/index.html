@@ -217,8 +217,7 @@
       getAuth,
       checkActionCode,
       applyActionCode,
-      verifyPasswordResetCode,
-      confirmPasswordReset
+      verifyPasswordResetCode
     } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 
     const params = new URLSearchParams(window.location.search);
@@ -297,13 +296,23 @@
 
     async function boot() {
       if (!oobCode) {
-        intro.textContent = "This password reset link is invalid or expired.";
-        showMessage("Request a fresh link from the app.", "error");
+        intro.textContent = "This link has expired.";
+        showMessage(
+          "Reset links expire after a short time. Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+          "error"
+        );
+        showContinueLink();
         return;
       }
 
       try {
-        const app = initializeApp(await loadFirebaseConfig());
+        const firebaseConfig = await loadFirebaseConfig();
+        const proxyBaseUri = firebaseConfig.proxyBaseUri || window.FORGE_FLOW_PROXY_BASE_URI || "";
+        const resetConfirmUrl = proxyBaseUri
+          ? new URL("/v1/auth/password/reset/confirm", proxyBaseUri).toString()
+          : "/v1/auth/password/reset/confirm";
+        const { proxyBaseUri: _proxyBaseUri, ...firebaseOptions } = firebaseConfig;
+        const app = initializeApp(firebaseOptions);
         const auth = getAuth(app);
         if (mode === "verifyEmail") {
           await applyActionCode(auth, oobCode);
@@ -324,7 +333,11 @@
 
         if (mode !== "resetPassword") {
           intro.textContent = "This account action link is not supported.";
-          showMessage("Request a fresh link from the app.", "error");
+          showMessage(
+            "Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+            "error"
+          );
+          showContinueLink();
           return;
         }
 
@@ -344,7 +357,22 @@
           submitButton.disabled = true;
           submitButton.textContent = "Updating password";
           try {
-            await confirmPasswordReset(auth, oobCode, newPassword.value);
+            const response = await fetch(resetConfirmUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                oob_code: oobCode,
+                new_password: newPassword.value
+              })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (!response.ok) {
+              showMessage(
+                body.message || "Password could not be updated. Request a new reset link and try again.",
+                "error"
+              );
+              return;
+            }
             form.classList.add("hidden");
             intro.textContent = "Password updated.";
             showMessage("Your password has been updated. You can return to the app and sign in.", "success");
@@ -357,8 +385,12 @@
           }
         });
       } catch (_) {
-        intro.textContent = "This password reset link is invalid or expired.";
-        showMessage("Request a fresh link from the app.", "error");
+        intro.textContent = "This link has expired.";
+        showMessage(
+          "Reset links expire after a short time. Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+          "error"
+        );
+        showContinueLink();
       }
     }
 

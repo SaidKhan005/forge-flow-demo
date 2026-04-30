@@ -416,7 +416,10 @@ class AuthSessionNotifier extends ChangeNotifier {
   /// security primitive (clearing the session) always succeeds. The
   /// admin "force-logout-all" path is the audit-grade fallback when
   /// a user-driven logout cannot reach the ledger.
-  Future<void> signOutThisSession() async {
+  Future<void> signOutThisSession({
+    String? nextErrorCode,
+    String? nextErrorMessage,
+  }) async {
     final live = session;
     final activeId = _activeSessionId;
     if (live != null && activeId != null) {
@@ -448,7 +451,12 @@ class AuthSessionNotifier extends ChangeNotifier {
     } catch (_) {
       /* ignore */
     }
-    _setState(const AuthSessionUnauthenticated());
+    _setState(
+      AuthSessionUnauthenticated(
+        lastErrorCode: nextErrorCode,
+        lastErrorMessage: nextErrorMessage,
+      ),
+    );
   }
 
   /// Server-side revoke of every refresh token for the user; this

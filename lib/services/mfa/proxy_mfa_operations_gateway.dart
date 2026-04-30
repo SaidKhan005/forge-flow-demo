@@ -1,8 +1,7 @@
 // Phase 9 live-closeout - app-side proxy MFA operations gateway.
 //
-// Sends MFA enrollment and recovery-code commands to the proxy. The app never
-// talks to Postgres and never receives anything beyond display-once recovery
-// codes after a successful TOTP confirmation.
+// Sends MFA enrollment and factor-management commands to the proxy. The app
+// never talks to Postgres; launch UX does not display or accept recovery codes.
 
 import 'dart:io';
 
@@ -25,9 +24,10 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
 
   static const String totpBeginPath = '/v1/auth/mfa/totp/begin';
   static const String totpConfirmPath = '/v1/auth/mfa/totp/confirm';
-  static const String recoveryConsumePath = '/v1/auth/mfa/recovery/consume';
   static const String factorsListPath = '/v1/auth/mfa/factors/list';
   static const String factorsRevokePath = '/v1/auth/mfa/factors/revoke';
+  static const String factorsRemovalCancelPath =
+      '/v1/auth/mfa/factors/removal/cancel';
 
   @override
   Future<TotpEnrollmentSetup> beginTotpEnrollment(
@@ -67,9 +67,22 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
         message: 'MFA factors response was incomplete.',
       );
     }
+    final rawRemovalRequests = response.body['removal_requests'];
+    if (rawRemovalRequests != null && rawRemovalRequests is! List) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA removal request response was incomplete.',
+      );
+    }
+    final removalItems = rawRemovalRequests is List
+        ? rawRemovalRequests
+        : const <Object?>[];
     return MfaListFactorsCompleted(
       factors: List<MfaFactorSummary>.unmodifiable(
         rawFactors.map(_factorFromJson),
+      ),
+      removalRequests: List<MfaRemovalRequestSummary>.unmodifiable(
+        removalItems.map(_removalRequestFromJson),
       ),
     );
   }
@@ -99,6 +112,35 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
   }
 
   @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) async {
+    final response = await _post(factorsRemovalCancelPath, <String, Object?>{
+      'request_id': command.requestId,
+    });
+    _expectStatus(response, 200);
+    final cancelled = response.body['cancelled'];
+    if (cancelled is! bool) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA cancel response was incomplete.',
+      );
+    }
+    return MfaCancelFactorRemovalCompleted(cancelled: cancelled);
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) async {
+    throw const MfaOperationRejected(
+      code: 'unsupported_client_operation',
+      message: 'Team MFA reset uses AuthOperationsGateway.',
+      statusCode: 400,
+    );
+  }
+
+  @override
   Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
     MfaTotpConfirmCommand command,
   ) async {
@@ -109,37 +151,13 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
     });
     _expectStatus(response, 200);
     final factorId = _readString(response.body['factor_id']);
-    final recoveryCodes = response.body['recovery_codes'];
-    if (factorId == null || recoveryCodes is! List) {
+    if (factorId == null) {
       throw const MfaOperationRejected(
         code: 'malformed_response',
         message: 'MFA confirm response was incomplete.',
       );
     }
-    return MfaTotpConfirmCompleted(
-      factorId: factorId,
-      recoveryCodesPlaintext: recoveryCodes.whereType<String>().toList(
-        growable: false,
-      ),
-    );
-  }
-
-  @override
-  Future<RecoveryCodeConsumeCompleted> consumeRecoveryCode(
-    RecoveryCodeConsumeCommand command,
-  ) async {
-    final response = await _post(recoveryConsumePath, <String, Object?>{
-      'recovery_code': command.rawCode,
-    });
-    _expectStatus(response, 200);
-    final factorId = _readString(response.body['factor_id']);
-    if (factorId == null) {
-      throw const MfaOperationRejected(
-        code: 'malformed_response',
-        message: 'Recovery-code response was incomplete.',
-      );
-    }
-    return RecoveryCodeConsumeCompleted(factorId: factorId);
+    return MfaTotpConfirmCompleted(factorId: factorId);
   }
 
   Future<ProxyAuthOperationsResponse> _post(
@@ -213,6 +231,36 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
       lastUsedAt: _readDateTime(json['last_used_at']),
       issuerLabel: issuerLabel,
       canRevoke: json['can_revoke'] is bool ? json['can_revoke'] as bool : true,
+    );
+  }
+
+  static MfaRemovalRequestSummary _removalRequestFromJson(Object? value) {
+    if (value is! Map) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA removal request payload was incomplete.',
+      );
+    }
+    final json = Map<String, Object?>.from(value);
+    final requestId = _readString(json['request_id']);
+    final factorId = _readString(json['factor_id']);
+    final status = _readString(json['status']);
+    final executeAfter = _readDateTime(json['execute_after']);
+    if (requestId == null ||
+        factorId == null ||
+        status == null ||
+        executeAfter == null) {
+      throw const MfaOperationRejected(
+        code: 'malformed_response',
+        message: 'MFA removal request payload was incomplete.',
+      );
+    }
+    return MfaRemovalRequestSummary(
+      requestId: requestId,
+      factorId: factorId,
+      status: status,
+      executeAfter: executeAfter,
+      completedAt: _readDateTime(json['completed_at']),
     );
   }
 }

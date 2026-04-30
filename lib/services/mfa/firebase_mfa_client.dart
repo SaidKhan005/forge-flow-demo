@@ -20,8 +20,8 @@
 //     this layer — they leak the MFA factor itself.
 
 /// Begin-enrollment payload returned by Firebase. The application
-/// service composes this with the F&F recovery-code bundle into the
-/// higher-level [TotpEnrollmentSetup] the UI renders.
+/// service maps this into the higher-level [TotpEnrollmentSetup] the
+/// UI renders.
 class FirebaseMfaTotpBeginPayload {
   const FirebaseMfaTotpBeginPayload({
     required this.factorId,

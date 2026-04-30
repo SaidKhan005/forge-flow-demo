@@ -114,7 +114,7 @@ This pass checked the current code against Phase 9 auth docs and archived smoke 
 - Settings > Team tab appears only from the live permission snapshot.
 - Team role dropdown can hydrate from the proxy role catalog.
 - Team invite form can submit to the proxy invite endpoint when the gateway is configured.
-- MFA challenge screen is visible when Firebase sign-in returns MFA-required, including authenticator and recovery-code toggle.
+- MFA challenge screen is visible when Firebase sign-in returns MFA-required, with authenticator-code entry only. Recovery-code login/reset is not a launch UX or proxy route.
 - Permission-denied navigation mostly fails closed by hiding unavailable surfaces.
 
 ### Backend/Proxy Wired But Not Fully Exposed In UI
@@ -125,7 +125,7 @@ This pass checked the current code against Phase 9 auth docs and archived smoke 
 - Role catalog create/patch/delete exists in the app-side gateway and proxy, but no custom-role UI is surfaced.
 - The Team UI has filters and an injected user table model, but the live app does not yet load users into `SettingsScreen`; current production-like app settings can show an empty Team list even though backend user operations exist.
 - Backend docs mention invite list and user role-grant detail endpoints; current proxy code does not expose `GET /v1/admin/auth/invites`, `GET /v1/admin/auth/users`, or `GET /v1/admin/auth/users/{user_id}/role-grants`.
-- MFA enrollment and recovery-code generation endpoints exist through `/v1/auth/mfa/totp/begin`, `/confirm`, and `/recovery/consume`; the app only exposes the login challenge screen, not a Settings enrollment/recovery-code management surface.
+- MFA enrollment endpoints exist through `/v1/auth/mfa/totp/begin` and `/confirm`; recovery-code consume routes are removed from the live proxy surface for launch.
 - Permission-denied proxy responses include raw fields such as `permission_key`; normal UI hides gated actions, but any future visible failed-action surface must translate these to customer copy.
 - Firebase email actions are still browser/action-link flows. The app does not handle `mode`, `oobCode`, invite acceptance, reset completion, expired-link, or failed-action routing as native screens.
 
@@ -136,7 +136,7 @@ This pass checked the current code against Phase 9 auth docs and archived smoke 
 - Login/logout/session expiry: login/logout visible; persisted expired sessions are rejected on rehydrate. A visible in-session expiry/reauth message is not present.
 - Settings > Team invite, revoke, role change, and reset password: invite is exposed; revoke, role change, per-user reset password, suspend/reactivate, and soft-delete are not exposed.
 - Permission-denied states: nav/actions are mostly hidden; explicit friendly denied/needs-fresh-auth states are not broadly surfaced.
-- MFA/recovery copy: challenge/recovery copy is visible; enrollment and recovery-code save/regenerate copy is not.
+- MFA/recovery copy: authenticator challenge and admin-contact recovery copy are visible; recovery-code save/regenerate/entry copy is not a launch surface.
 - Mobile/narrow viewport: account password dialog, footer, data timestamp row, and settings action rows now have phone-width safeguards; Team rows and invite panel still need a real-device/narrow pass with long emails and location names.
 - Loading, empty, expired-link, failed-action messages: login/loading, Team empty, invite validation, and account errors exist. Expired-link/failed-email-action messages do not exist inside the app. Team live-user loading/error states are not implemented because live user list loading is not wired.
 
@@ -391,10 +391,10 @@ Expected:
 
 - MFA challenge screen appears only when needed.
 - Copy says `Two-factor verification`.
-- Authenticator and recovery-code toggle works.
+- Authenticator code entry works; no recovery-code toggle is exposed.
 - Invalid/expired code gives human copy.
 - Cancel signs out cleanly.
-- Recovery code example/copy fits on small screens.
+- Admin-contact recovery copy fits on small screens.
 
 ### Flow K: Mobile And Narrow Layout
 
