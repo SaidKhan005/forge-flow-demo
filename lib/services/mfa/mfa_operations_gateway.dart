@@ -646,11 +646,17 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
   }) async {
     final repository = _removalRequestsRepository;
     if (repository == null) return const <MfaRemovalRequestSummary>[];
-    final rows = await repository.listRecentForUser(
-      operatorId: operatorId,
-      locationId: locationId,
-      userId: userId,
-    );
+    final List<MfaFactorRemovalRequestRecord> rows;
+    try {
+      rows = await repository.listRecentForUser(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: userId,
+      );
+    } catch (error) {
+      if (!_isMissingMfaRemovalRequestsTable(error)) rethrow;
+      return const <MfaRemovalRequestSummary>[];
+    }
     return List<MfaRemovalRequestSummary>.unmodifiable(
       rows.map(_removalSummary),
     );
@@ -670,6 +676,14 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
       executeAfter: record.executeAfter,
       completedAt: record.completedAt,
     );
+  }
+
+  bool _isMissingMfaRemovalRequestsTable(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('mfa_factor_removal_requests') &&
+        (text.contains('does not exist') ||
+            text.contains('undefined_table') ||
+            text.contains('42p01'));
   }
 
   @override

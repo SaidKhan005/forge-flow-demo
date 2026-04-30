@@ -4182,7 +4182,14 @@ Future<void> routeRequest(
           'message': 'MFA operation is unavailable; please retry',
         });
         return;
-      } catch (_) {
+      } catch (error, stackTrace) {
+        _logProxyUnhandled(
+          surface: 'mfa',
+          method: request.method,
+          path: path,
+          error: error,
+          stackTrace: stackTrace,
+        );
         _writeJson(response, 503, <String, Object?>{
           'error': 'mfa_operations_unavailable',
           'message': 'MFA operation is unavailable; please retry',
@@ -4684,12 +4691,12 @@ Future<void> routeRequest(
             ),
           );
           _writeJson(response, 200, <String, Object?>{
-            'org_units': listed.orgUnits.map(_teamOrgUnitToJson).toList(
-              growable: false,
-            ),
-            'locations': listed.locations.map(_teamOrgLocationToJson).toList(
-              growable: false,
-            ),
+            'org_units': listed.orgUnits
+                .map(_teamOrgUnitToJson)
+                .toList(growable: false),
+            'locations': listed.locations
+                .map(_teamOrgLocationToJson)
+                .toList(growable: false),
           });
           return;
         }
@@ -4773,7 +4780,14 @@ Future<void> routeRequest(
           'message': error.message,
         });
         return;
-      } catch (_) {
+      } catch (error, stackTrace) {
+        _logProxyUnhandled(
+          surface: 'auth_operations',
+          method: request.method,
+          path: path,
+          error: error,
+          stackTrace: stackTrace,
+        );
         _writeJson(response, 503, <String, Object?>{
           'error': 'auth_operations_unavailable',
           'message': 'auth operation is unavailable; please retry',
@@ -6035,6 +6049,29 @@ class _MalformedJsonBodyError implements Exception {
   _MalformedJsonBodyError(this.message);
 
   final String message;
+}
+
+void _logProxyUnhandled({
+  required String surface,
+  required String method,
+  required String path,
+  required Object error,
+  required StackTrace stackTrace,
+}) {
+  final errorText = error.toString().replaceAll(RegExp(r'\s+'), ' ');
+  final clipped = errorText.length > 500
+      ? '${errorText.substring(0, 500)}...'
+      : errorText;
+  final stackText = stackTrace.toString();
+  final firstNewline = stackText.indexOf('\n');
+  final firstFrame = firstNewline == -1
+      ? stackText
+      : stackText.substring(0, firstNewline);
+  stderr.writeln(
+    'advisor proxy unhandled $surface error: '
+    'method=$method path=$path type=${error.runtimeType} '
+    'error=$clipped stack=$firstFrame',
+  );
 }
 
 void _writeJson(

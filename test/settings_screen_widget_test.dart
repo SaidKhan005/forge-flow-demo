@@ -21,6 +21,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
+import 'package:forge_and_flow/screens/settings/settings_org_hierarchy_section.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
@@ -240,18 +241,24 @@ void main() {
           findsAtLeastNWidgets(1),
         );
         expect(
-          find.byKey(const Key('active_sessions_row_session-current'),
-              skipOffstage: false),
+          find.byKey(
+            const Key('active_sessions_row_session-current'),
+            skipOffstage: false,
+          ),
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('active_sessions_row_session-tablet'),
-              skipOffstage: false),
+          find.byKey(
+            const Key('active_sessions_row_session-tablet'),
+            skipOffstage: false,
+          ),
           findsOneWidget,
         );
         expect(
-          find.byKey(const Key('active_sessions_current_badge'),
-              skipOffstage: false),
+          find.byKey(
+            const Key('active_sessions_current_badge'),
+            skipOffstage: false,
+          ),
           findsOneWidget,
         );
         expect(gateway.listCalls.single.actorUserId, equals('user-1'));
@@ -769,8 +776,12 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
 
+      await tester.ensureVisible(
+        find.byKey(const Key('account_sign_out_everywhere_action')),
+      );
+      await tester.pump();
       await tester.tap(
-        find.text('Sign out of all devices', skipOffstage: false),
+        find.byKey(const Key('account_sign_out_everywhere_action')),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
@@ -941,81 +952,68 @@ void main() {
         ];
         await tester.pump();
 
-        expect(
-          find.text('East Region', skipOffstage: false),
-          findsOneWidget,
-        );
+        expect(find.text('East Region', skipOffstage: false), findsOneWidget);
       },
     );
 
-    testWidgets(
-      'Org Hierarchy Add Child dialog enables submit after typing',
-      (tester) async {
-        const owner = TeamScopeActor(
-          actorRoles: <String>{'operator_owner'},
-          actorOperatorId: 'op-1',
-          actorAssignedLocationIds: <String>{},
-          actorPermissions: <String>{
-            'team.users.view',
-            'team.roles.assign',
-          },
-        );
-        const root = TeamOrgUnitEntry(
-          orgUnitId: 'unit-root',
-          parentOrgUnitId: null,
-          unitType: 'corp',
-          path: 'acme',
-          label: 'ACME',
-        );
+    testWidgets('Org Hierarchy Add Child dialog enables submit after typing', (
+      tester,
+    ) async {
+      const owner = TeamScopeActor(
+        actorRoles: <String>{'operator_owner'},
+        actorOperatorId: 'op-1',
+        actorAssignedLocationIds: <String>{},
+        actorPermissions: <String>{'team.users.view', 'team.roles.assign'},
+      );
+      const root = TeamOrgUnitEntry(
+        orgUnitId: 'unit-root',
+        parentOrgUnitId: null,
+        unitType: 'corp',
+        path: 'acme',
+        label: 'ACME',
+      );
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              initialStatus: AppDataStatus.current(),
-              initialMockDate: '2026-03-27',
-              teamActor: owner,
-              teamOrgUnits: const <TeamOrgUnitEntry>[root],
-              onTeamOrgUnitCreate: (_) async => null,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: owner,
+            teamOrgUnits: const <TeamOrgUnitEntry>[root],
+            onTeamOrgUnitCreate: (_) async => null,
           ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('settings_tab_team')));
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
 
-        final addButton = find.byKey(
-          const Key('org_unit_add_child_unit-root'),
-          skipOffstage: false,
-        );
-        await tester.ensureVisible(addButton);
-        await tester.pumpAndSettle();
-        await tester.tap(addButton);
-        await tester.pumpAndSettle();
+      final addButton = find.byKey(
+        const Key('org_unit_add_child_unit-root'),
+        skipOffstage: false,
+      );
+      await tester.ensureVisible(addButton);
+      await tester.pumpAndSettle();
+      await tester.tap(addButton);
+      await tester.pumpAndSettle();
 
-        final submit = find.byKey(const Key('org_unit_add_child_submit'));
-        expect(submit, findsOneWidget);
-        // Submit must start disabled (empty label/name).
-        expect(
-          tester.widget<FilledButton>(submit).onPressed,
-          isNull,
-        );
+      final submit = find.byKey(const Key('org_unit_add_child_submit'));
+      expect(submit, findsOneWidget);
+      // Submit must start disabled (empty label/name).
+      expect(tester.widget<FilledButton>(submit).onPressed, isNull);
 
-        await tester.enterText(
-          find.byKey(const Key('org_unit_add_child_label')),
-          'east',
-        );
-        await tester.enterText(
-          find.byKey(const Key('org_unit_add_child_name')),
-          'East Region',
-        );
-        await tester.pump();
+      await tester.enterText(
+        find.byKey(const Key('org_unit_add_child_label')),
+        'east',
+      );
+      await tester.enterText(
+        find.byKey(const Key('org_unit_add_child_name')),
+        'East Region',
+      );
+      await tester.pump();
 
-        expect(
-          tester.widget<FilledButton>(submit).onPressed,
-          isNotNull,
-        );
-      },
-    );
+      expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
+    });
 
     testWidgets(
       'Team tab Org Hierarchy renders mutation controls for assign actor',
@@ -1024,10 +1022,7 @@ void main() {
           actorRoles: <String>{'operator_owner'},
           actorOperatorId: 'op-1',
           actorAssignedLocationIds: <String>{},
-          actorPermissions: <String>{
-            'team.users.view',
-            'team.roles.assign',
-          },
+          actorPermissions: <String>{'team.users.view', 'team.roles.assign'},
         );
         const root = TeamOrgUnitEntry(
           orgUnitId: 'unit-root',
@@ -1067,6 +1062,101 @@ void main() {
         );
       },
     );
+
+    testWidgets('Org Hierarchy explains when a location has no move target', (
+      tester,
+    ) async {
+      const owner = TeamScopeActor(
+        actorRoles: <String>{'operator_owner'},
+        actorOperatorId: 'op-1',
+        actorAssignedLocationIds: <String>{},
+        actorPermissions: <String>{'team.users.view', 'team.roles.assign'},
+      );
+      const root = TeamOrgUnitEntry(
+        orgUnitId: 'unit-root',
+        parentOrgUnitId: null,
+        unitType: 'corp',
+        path: 'acme',
+        label: 'ACME',
+      );
+      const downtown = TeamOrgLocationEntry(
+        locationId: 'loc-downtown',
+        parentOrgUnitId: 'unit-root',
+        orgUnitPath: 'acme',
+        label: 'Downtown',
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: owner,
+            teamOrgUnits: const <TeamOrgUnitEntry>[root],
+            teamOrgLocations: const <TeamOrgLocationEntry>[downtown],
+            onTeamLocationMove: (_) async =>
+                const TeamLocationOrgUnitMoved(moved: true),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Add another unit before moving locations.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+
+      final moveButton = find.byKey(
+        const Key('org_unit_move_location_loc-downtown'),
+        skipOffstage: false,
+      );
+      await tester.ensureVisible(moveButton);
+      await tester.pumpAndSettle();
+      await tester.tap(moveButton);
+      await tester.pump();
+
+      expect(
+        find.text('Add another unit before moving this location.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('Org Hierarchy shows a concise load error', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsTeamOwnerActor,
+            teamOrgHierarchyLoadState: const TeamOrgHierarchyLoadState(
+              loaded: false,
+              errorMessage:
+                  'Hierarchy route not found. Rebuild with the staging proxy.',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('org_hierarchy_error'), skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Hierarchy route not found. Rebuild with the staging proxy.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('Team tab renders for an allowed actor', (tester) async {
       await tester.pumpWidget(
@@ -1167,8 +1257,12 @@ void main() {
         await tester.pump(const Duration(milliseconds: 500));
 
         expect(
-          find.text('Staff late looking for Parking lol', skipOffstage: false),
+          find.text('Loading team data...', skipOffstage: false),
           findsWidgets,
+        );
+        expect(
+          find.byKey(const Key('team_data_retry_button'), skipOffstage: false),
+          findsNothing,
         );
         expect(
           find.byKey(
@@ -1195,6 +1289,62 @@ void main() {
         expect(tester.takeException(), isNull);
       },
     );
+
+    testWidgets('Team tab failed load can be retried in place', (tester) async {
+      final dataLoadState = ValueNotifier<TeamSettingsDataLoadState>(
+        TeamSettingsDataLoadState.unavailable,
+      );
+      addTearDown(dataLoadState.dispose);
+      var retryCount = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsTeamOwnerActor,
+            teamDataLoadState: TeamSettingsDataLoadState.unavailable,
+            teamDataLoadStateListenable: dataLoadState,
+            onTeamDataRetry: () async {
+              retryCount++;
+              dataLoadState.value = TeamSettingsDataLoadState.waiting;
+              await Future<void>.delayed(Duration.zero);
+              dataLoadState.value = TeamSettingsDataLoadState.ready;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'Could not load team data. Check connection and retry.',
+          skipOffstage: false,
+        ),
+        findsWidgets,
+      );
+      final retry = find.byKey(
+        const Key('team_data_retry_button'),
+        skipOffstage: false,
+      );
+      expect(retry, findsOneWidget);
+
+      await tester.tap(retry);
+      await tester.pump();
+      expect(retryCount, equals(1));
+      expect(
+        find.text('Loading team data...', skipOffstage: false),
+        findsWidgets,
+      );
+
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('team_data_loading_notice'), skipOffstage: false),
+        findsNothing,
+      );
+    });
   });
 
   if (_includePrunedLabelGroups())

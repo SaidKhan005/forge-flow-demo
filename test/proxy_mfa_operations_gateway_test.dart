@@ -1,5 +1,6 @@
 // Phase 9 live-closeout - ProxyMfaOperationsGateway tests.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -262,6 +263,35 @@ void main() {
       expect((error! as MfaOperationRejected).code, equals('no_id_token'));
       expect(fake.posts, isEmpty);
     });
+
+    test('transport timeout maps to concise MFA rejected error', () async {
+      final fake = _FakeMfaHttpClient(
+        failure: TimeoutException('Future not completed'),
+      );
+      final gateway = ProxyMfaOperationsGateway(
+        proxyBaseUri: baseUri,
+        idTokenProvider: () async => 'id-token',
+        httpClient: fake,
+      );
+
+      final error = await _captureError(
+        gateway.listFactors(
+          const MfaListFactorsCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+          ),
+        ),
+      );
+
+      expect(error, isA<MfaOperationRejected>());
+      final rejected = error! as MfaOperationRejected;
+      expect(rejected.code, equals('mfa_proxy_timeout'));
+      expect(
+        rejected.message,
+        equals('Could not reach MFA settings. Check connection and retry.'),
+      );
+    });
   });
 
   group('ProxyMfaRecoveryRequestGateway', () {
@@ -341,9 +371,11 @@ class _FakeMfaHttpClient implements ProxyAuthOperationsHttpClient {
       statusCode: 200,
       body: <String, Object?>{'ok': true, 'factor_id': 'factor-db-1'},
     ),
+    this.failure,
   });
 
   final ProxyAuthOperationsResponse response;
+  final Object? failure;
   final posts = <_CapturedMfaCall>[];
 
   @override
@@ -361,6 +393,8 @@ class _FakeMfaHttpClient implements ProxyAuthOperationsHttpClient {
     required Map<String, Object?> body,
   }) async {
     posts.add(_CapturedMfaCall(url, headers, body));
+    final error = failure;
+    if (error != null) throw error;
     return response;
   }
 

@@ -53,12 +53,35 @@ class TeamLocationOrgUnitMoveDraft {
   final String parentOrgUnitId;
 }
 
+class TeamOrgHierarchyLoadState {
+  const TeamOrgHierarchyLoadState({
+    this.loading = false,
+    this.loaded = true,
+    this.errorMessage,
+  });
+
+  static const TeamOrgHierarchyLoadState ready = TeamOrgHierarchyLoadState();
+  static const TeamOrgHierarchyLoadState waiting = TeamOrgHierarchyLoadState(
+    loading: true,
+    loaded: false,
+  );
+  static const TeamOrgHierarchyLoadState unavailable =
+      TeamOrgHierarchyLoadState(loaded: false);
+
+  final bool loading;
+  final bool loaded;
+  final String? errorMessage;
+
+  bool get hasError => errorMessage != null && errorMessage!.trim().isNotEmpty;
+}
+
 class SettingsOrgHierarchySection extends StatefulWidget {
   const SettingsOrgHierarchySection({
     super.key,
     required this.actor,
     required this.orgUnits,
     required this.locations,
+    this.loadState = TeamOrgHierarchyLoadState.ready,
     this.onCreateOrgUnit,
     this.onMoveLocation,
   });
@@ -66,6 +89,7 @@ class SettingsOrgHierarchySection extends StatefulWidget {
   final TeamScopeActor actor;
   final List<TeamOrgUnitEntry> orgUnits;
   final List<TeamOrgLocationEntry> locations;
+  final TeamOrgHierarchyLoadState loadState;
   final TeamOrgUnitCreateRequester? onCreateOrgUnit;
   final TeamLocationOrgUnitMoveRequester? onMoveLocation;
 
@@ -84,26 +108,28 @@ class _SettingsOrgHierarchySectionState
   @override
   Widget build(BuildContext context) {
     if (widget.orgUnits.isEmpty) {
-      return Container(
-        key: const Key('org_hierarchy_empty'),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppColors.backgroundSurface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: AppColors.borderSubtle),
+      final message = widget.loadState.hasError
+          ? widget.loadState.errorMessage!
+          : widget.loadState.loading
+          ? 'Loading hierarchy...'
+          : 'No hierarchy yet. Setup needs a root unit first.';
+      return _HierarchyNotice(
+        key: Key(
+          widget.loadState.hasError
+              ? 'org_hierarchy_error'
+              : widget.loadState.loading
+              ? 'org_hierarchy_loading'
+              : 'org_hierarchy_empty',
         ),
-        child: Text(
-          'No org hierarchy yet.',
-          style: AppTextStyles.body13(color: AppColors.textMuted),
-        ),
+        message: message,
       );
     }
 
     final byParent = <String?, List<TeamOrgUnitEntry>>{};
     for (final unit in widget.orgUnits) {
-      byParent.putIfAbsent(unit.parentOrgUnitId, () => <TeamOrgUnitEntry>[]).add(
-        unit,
-      );
+      byParent
+          .putIfAbsent(unit.parentOrgUnitId, () => <TeamOrgUnitEntry>[])
+          .add(unit);
     }
     final locationsByParent = <String, List<TeamOrgLocationEntry>>{};
     for (final loc in widget.locations) {
@@ -113,17 +139,32 @@ class _SettingsOrgHierarchySectionState
     }
 
     final roots = byParent[null] ?? const <TeamOrgUnitEntry>[];
+    final showMoveHint =
+        _canMutate && widget.locations.isNotEmpty && widget.orgUnits.length < 2;
 
     return Column(
       key: const Key('org_hierarchy_section'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.loadState.hasError)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _HierarchyNotice(message: widget.loadState.errorMessage!),
+          ),
         if (!_canMutate)
           Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
               'Read-only view. Hierarchy edits and grants are locked '
               'for this account.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+        if (showMoveHint)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Add another unit before moving locations.',
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
           ),
@@ -174,13 +215,14 @@ class _SettingsOrgHierarchySectionState
     final allTargets = widget.orgUnits
         .where((unit) => unit.orgUnitId != location.parentOrgUnitId)
         .toList(growable: false);
-    if (allTargets.isEmpty) return;
+    if (allTargets.isEmpty) {
+      _showSnack('Add another unit before moving this location.');
+      return;
+    }
     final selected = await showDialog<TeamOrgUnitEntry>(
       context: context,
-      builder: (context) => _MoveLocationDialog(
-        location: location,
-        targets: allTargets,
-      ),
+      builder: (context) =>
+          _MoveLocationDialog(location: location, targets: allTargets),
     );
     if (selected == null || !mounted) return;
     setState(() => _busy = true);
@@ -203,6 +245,28 @@ class _SettingsOrgHierarchySectionState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _HierarchyNotice extends StatelessWidget {
+  const _HierarchyNotice({super.key, required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Text(
+        message,
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      ),
+    );
   }
 }
 
@@ -286,9 +350,7 @@ class _OrgUnitNode extends StatelessWidget {
                   Expanded(
                     child: Text(
                       loc.label,
-                      style: AppTextStyles.body12(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body12(color: AppColors.textPrimary),
                     ),
                   ),
                   if (canMutate)
@@ -514,8 +576,7 @@ class _MoveLocationDialogState extends State<_MoveLocationDialog> {
                     child: Text('${target.label} (${target.path})'),
                   ),
               ],
-              onChanged: (value) =>
-                  setState(() => _selectedOrgUnitId = value),
+              onChanged: (value) => setState(() => _selectedOrgUnitId = value),
             ),
           ],
         ),

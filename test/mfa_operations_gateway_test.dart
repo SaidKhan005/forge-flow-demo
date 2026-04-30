@@ -82,6 +82,42 @@ void main() {
     });
 
     test(
+      'listFactors degrades when MFA removal queue table is absent',
+      () async {
+        final enrolledAt = DateTime.utc(2026, 4, 30, 12);
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: _RecordingMfaFactorsRepository(
+            activeTotpFactors: <MfaFactorRecord>[
+              MfaFactorRecord(
+                factorId: 'totp-db-factor',
+                userId: _userId,
+                factorType: 'totp',
+                factorMetadata: const <String, Object?>{},
+                enrolledAt: enrolledAt,
+              ),
+            ],
+          ),
+          auditRepository: _RecordingAuditRepository(),
+          removalRequestsRepository: _RecordingRemovalRequestsRepository(
+            throwMissingTableOnList: true,
+          ),
+        );
+
+        final result = await gateway.listFactors(
+          const MfaListFactorsCommand(
+            actorUserId: _userId,
+            operatorId: _operatorId,
+            locationId: _locationId,
+          ),
+        );
+
+        expect(result.factors.single.factorId, equals('totp-db-factor'));
+        expect(result.removalRequests, isEmpty);
+      },
+    );
+
+    test(
       'begin rejects when an active authenticator app already exists',
       () async {
         final mfaRepo = _RecordingMfaFactorsRepository(
@@ -534,10 +570,12 @@ class _RecordingRemovalRequestsRepository
   _RecordingRemovalRequestsRepository({
     List<MfaFactorRemovalRequestRecord> records =
         const <MfaFactorRemovalRequestRecord>[],
+    this.throwMissingTableOnList = false,
   }) : records = <MfaFactorRemovalRequestRecord>[...records],
        super(TenantTransactionWrapper(_NoopPool()));
 
   final List<MfaFactorRemovalRequestRecord> records;
+  final bool throwMissingTableOnList;
 
   @override
   Future<MfaFactorRemovalRequestRecord> insertPending({
@@ -582,6 +620,9 @@ class _RecordingRemovalRequestsRepository
     required String userId,
     int limit = 20,
   }) async {
+    if (throwMissingTableOnList) {
+      throw StateError('relation "mfa_factor_removal_requests" does not exist');
+    }
     return records
         .where(
           (record) =>

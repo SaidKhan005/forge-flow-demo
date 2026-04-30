@@ -135,12 +135,45 @@ class UsersRepository extends OperatorScopedRepository {
     required String operatorId,
     required String locationId,
     required String actorUserId,
-  }) {
+  }) async {
     final ctx = TenantContext(
       operatorId: operatorId,
       locationId: locationId,
       userId: actorUserId,
     );
+    try {
+      return await _listTeamUsers(
+        ctx: ctx,
+        operatorId: operatorId,
+        includeMfaRemovalRequests: true,
+      );
+    } catch (error) {
+      if (!_isMissingMfaRemovalRequestsTable(error)) rethrow;
+      return _listTeamUsers(
+        ctx: ctx,
+        operatorId: operatorId,
+        includeMfaRemovalRequests: false,
+      );
+    }
+  }
+
+  Future<List<TeamUserRepositoryRow>> _listTeamUsers({
+    required TenantContext ctx,
+    required String operatorId,
+    required bool includeMfaRemovalRequests,
+  }) {
+    final mfaRemovalRequestProjection = includeMfaRemovalRequests
+        ? '('
+              '  select mfr.request_id::text '
+              '  from mfa_factor_removal_requests mfr '
+              '  where mfr.user_id = u.user_id '
+              '  and mfr.operator_id = @operator_id::uuid '
+              '  and mfr.completed_at is null '
+              '  and mfr.cancelled_at is null'
+              '  order by mfr.requested_at desc '
+              '  limit 1'
+              ') as mfa_removal_request_id, '
+        : 'null::text as mfa_removal_request_id, ';
     return withTenant<List<TeamUserRepositoryRow>>(ctx, (exec) async {
       final rows = await exec.query(
         "select u.user_id::text as user_id, "
@@ -162,16 +195,7 @@ class UsersRepository extends OperatorScopedRepository {
         "  and mf.factor_type = 'totp' "
         '  and mf.revoked_at is null'
         ') as mfa_enrolled, '
-        '('
-        '  select mfr.request_id::text '
-        '  from mfa_factor_removal_requests mfr '
-        '  where mfr.user_id = u.user_id '
-        '  and mfr.operator_id = @operator_id::uuid '
-        '  and mfr.completed_at is null '
-        '  and mfr.cancelled_at is null'
-        '  order by mfr.requested_at desc '
-        '  limit 1'
-        ') as mfa_removal_request_id, '
+        '$mfaRemovalRequestProjection'
         'u.last_active_at '
         'from users u '
         'left join lateral ('
@@ -747,6 +771,14 @@ class UsersRepository extends OperatorScopedRepository {
           : null,
       lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
     );
+  }
+
+  static bool _isMissingMfaRemovalRequestsTable(Object error) {
+    final text = error.toString().toLowerCase();
+    return text.contains('mfa_factor_removal_requests') &&
+        (text.contains('does not exist') ||
+            text.contains('undefined_table') ||
+            text.contains('42p01'));
   }
 
   static SelfProfileRepositoryRow _projectSelfProfileRow(

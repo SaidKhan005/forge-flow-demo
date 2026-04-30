@@ -385,7 +385,10 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
                       _signInAgain(context);
                     },
                   )
-                : null,
+                : _MfaRetryButton(
+                    loading: _loadingFactors,
+                    onPressed: () => _refreshFactors(),
+                  ),
           ),
         ],
         if (_infoMessage != null) ...[
@@ -559,6 +562,29 @@ class _MfaSignInAgainButton extends StatelessWidget {
             : const Icon(Icons.login_rounded, size: 18),
         label: Text(busy ? 'Opening sign-in...' : 'Sign in again'),
       ),
+    );
+  }
+}
+
+class _MfaRetryButton extends StatelessWidget {
+  const _MfaRetryButton({required this.loading, required this.onPressed});
+
+  final bool loading;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      key: const Key('mfa_retry_button'),
+      onPressed: loading ? null : onPressed,
+      icon: loading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.refresh_rounded, size: 18),
+      label: Text(loading ? 'Retrying...' : 'Retry'),
     );
   }
 }

@@ -225,23 +225,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   // `(user, operator, location)` key so the Settings → Team tab
   // can render the tree without a round-trip on every open.
   List<TeamOrgUnitEntry> _teamOrgUnits = const <TeamOrgUnitEntry>[];
-  List<TeamOrgLocationEntry> _teamOrgLocations =
-      const <TeamOrgLocationEntry>[];
+  List<TeamOrgLocationEntry> _teamOrgLocations = const <TeamOrgLocationEntry>[];
   // Listenables bridge the async load/create/move callbacks back to
   // the open Settings route — passing only `_teamOrgUnits` /
   // `_teamOrgLocations` snapshots leaves the hierarchy stale when the
   // gateway resolves after navigation.
-  late final ValueNotifier<List<TeamOrgUnitEntry>>
-  _teamOrgUnitsListenable = ValueNotifier<List<TeamOrgUnitEntry>>(
-    _teamOrgUnits,
-  );
+  late final ValueNotifier<List<TeamOrgUnitEntry>> _teamOrgUnitsListenable =
+      ValueNotifier<List<TeamOrgUnitEntry>>(_teamOrgUnits);
   late final ValueNotifier<List<TeamOrgLocationEntry>>
-  _teamOrgLocationsListenable =
-      ValueNotifier<List<TeamOrgLocationEntry>>(_teamOrgLocations);
+  _teamOrgLocationsListenable = ValueNotifier<List<TeamOrgLocationEntry>>(
+    _teamOrgLocations,
+  );
   late final ValueNotifier<List<TeamOrgUnitOption>>
   _teamOrgUnitOptionsListenable = ValueNotifier<List<TeamOrgUnitOption>>(
     const <TeamOrgUnitOption>[],
   );
+  TeamOrgHierarchyLoadState _teamOrgHierarchyLoadState =
+      TeamOrgHierarchyLoadState.unavailable;
+  late final ValueNotifier<TeamOrgHierarchyLoadState>
+  _teamOrgHierarchyLoadStateListenable =
+      ValueNotifier<TeamOrgHierarchyLoadState>(_teamOrgHierarchyLoadState);
   String? _teamOrgHierarchyLoadedFor;
   String? _teamOrgHierarchyLoadingFor;
 
@@ -296,6 +299,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _teamOrgUnitsListenable.dispose();
     _teamOrgLocationsListenable.dispose();
     _teamOrgUnitOptionsListenable.dispose();
+    _teamOrgHierarchyLoadStateListenable.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -368,51 +372,62 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       unawaited(_loadTeamDataIfNeeded(session));
       unawaited(_loadOrgHierarchyIfNeeded(session));
     }
-    navigator.push(
-      MaterialPageRoute(
-        builder: (_) => SettingsScreen(
-          advisorModelConfigService: advisorConfig,
-          advisorCorpusAdminService: corpusAdmin,
-          teamActor: teamActor,
-          teamRoleOptions: _teamRoleOptions,
-          teamRoleOptionsListenable: _teamRoleOptionsListenable,
-          teamLocationOptions: session == null
-              ? const <TeamLocationOption>[]
-              : <TeamLocationOption>[
-                  TeamLocationOption(
-                    locationId: session.locationId,
-                    label: restaurant?.displayName ?? 'Current location',
-                  ),
-                ],
-          teamOrgUnitOptions: _teamOrgUnitOptionsListenable.value,
-          teamOrgUnits: _teamOrgUnits,
-          teamOrgLocations: _teamOrgLocations,
-          teamOrgUnitsListenable: _teamOrgUnitsListenable,
-          teamOrgLocationsListenable: _teamOrgLocationsListenable,
-          teamOrgUnitOptionsListenable: _teamOrgUnitOptionsListenable,
-          onTeamOrgUnitCreate: _teamOrgUnitCreateRequester(session),
-          onTeamLocationMove: _teamLocationMoveRequester(session),
-          teamUsers: _teamUsers,
-          teamUsersListenable: _teamUsersListenable,
-          teamPendingInvites: _teamPendingInvites,
-          teamPendingInvitesListenable: _teamPendingInvitesListenable,
-          teamDataLoadState: _teamDataLoadState,
-          teamDataLoadStateListenable: _teamDataLoadStateListenable,
-          onTeamInviteSubmitted: _teamInviteSubmitter(session),
-          onTeamInviteRevoked: _teamInviteRevoker(session),
-          onTeamUserAction: _teamUserActionHandler(session),
-          passwordChangeGateway: widget.passwordChangeGateway,
-          accountInfoGateway: widget.accountInfoGateway,
-          mfaOperationsGateway: widget.mfaOperationsGateway,
-          // Phase 9.UX.5 — Active Sessions in Account tab. Demo /
-          // unauth shells fall back to the in-memory fixture so the
-          // walkthrough can show multiple devices without a backend.
-          authOperationsGateway: widget.authOperationsGateway,
-          allowDemoActiveSessionsFallback: widget.authOperationsGateway == null,
+    final routeState = _TeamSettingsRouteStateMirror.capture(this);
+    try {
+      await navigator.push(
+        MaterialPageRoute(
+          builder: (_) => SettingsScreen(
+            advisorModelConfigService: advisorConfig,
+            advisorCorpusAdminService: corpusAdmin,
+            teamActor: teamActor,
+            teamRoleOptions: routeState.teamRoleOptions.value,
+            teamRoleOptionsListenable: routeState.teamRoleOptions,
+            teamLocationOptions: session == null
+                ? const <TeamLocationOption>[]
+                : <TeamLocationOption>[
+                    TeamLocationOption(
+                      locationId: session.locationId,
+                      label: restaurant?.displayName ?? 'Current location',
+                    ),
+                  ],
+            teamOrgUnitOptions: routeState.teamOrgUnitOptions.value,
+            teamOrgUnits: routeState.teamOrgUnits.value,
+            teamOrgLocations: routeState.teamOrgLocations.value,
+            teamOrgUnitsListenable: routeState.teamOrgUnits,
+            teamOrgLocationsListenable: routeState.teamOrgLocations,
+            teamOrgUnitOptionsListenable: routeState.teamOrgUnitOptions,
+            teamOrgHierarchyLoadState:
+                routeState.teamOrgHierarchyLoadState.value,
+            teamOrgHierarchyLoadStateListenable:
+                routeState.teamOrgHierarchyLoadState,
+            onTeamOrgUnitCreate: _teamOrgUnitCreateRequester(session),
+            onTeamLocationMove: _teamLocationMoveRequester(session),
+            teamUsers: routeState.teamUsers.value,
+            teamUsersListenable: routeState.teamUsers,
+            teamPendingInvites: routeState.teamPendingInvites.value,
+            teamPendingInvitesListenable: routeState.teamPendingInvites,
+            teamDataLoadState: routeState.teamDataLoadState.value,
+            teamDataLoadStateListenable: routeState.teamDataLoadState,
+            onTeamInviteSubmitted: _teamInviteSubmitter(session),
+            onTeamInviteRevoked: _teamInviteRevoker(session),
+            onTeamUserAction: _teamUserActionHandler(session),
+            onTeamDataRetry: _teamDataRetryRequester(session),
+            passwordChangeGateway: widget.passwordChangeGateway,
+            accountInfoGateway: widget.accountInfoGateway,
+            mfaOperationsGateway: widget.mfaOperationsGateway,
+            // Phase 9.UX.5 - Active Sessions in Account tab. Demo /
+            // unauth shells fall back to the in-memory fixture so the
+            // walkthrough can show multiple devices without a backend.
+            authOperationsGateway: widget.authOperationsGateway,
+            allowDemoActiveSessionsFallback:
+                widget.authOperationsGateway == null,
+          ),
+          fullscreenDialog: true,
         ),
-        fullscreenDialog: true,
-      ),
-    );
+      );
+    } finally {
+      routeState.dispose();
+    }
   }
 
   Future<TeamScopeActor?> _teamActorForSettings(
@@ -481,11 +496,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _loadTeamRoleOptionsIfNeeded(AuthSession session) async {
+  Future<void> _loadTeamRoleOptionsIfNeeded(
+    AuthSession session, {
+    bool force = false,
+  }) async {
     final gateway = widget.authOperationsGateway;
     if (gateway == null) return;
     final key = '${session.userId}|${session.operatorId}|${session.locationId}';
-    if (_teamRolesLoadedFor == key) return;
+    if (!force && _teamRolesLoadedFor == key) return;
     if (_teamRolesLoadingFor == key) return;
     _teamRolesLoadingFor = key;
     try {
@@ -519,6 +537,18 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     } finally {
       if (_teamRolesLoadingFor == key) _teamRolesLoadingFor = null;
     }
+  }
+
+  TeamDataRetryRequester? _teamDataRetryRequester(AuthSession? session) {
+    if (session == null) return null;
+    return () async {
+      if (!mounted) return;
+      await Future.wait<void>(<Future<void>>[
+        _loadTeamRoleOptionsIfNeeded(session, force: true),
+        _loadTeamDataIfNeeded(session, force: true),
+        _loadOrgHierarchyIfNeeded(session, force: true),
+      ]);
+    };
   }
 
   Future<void> _loadTeamDataIfNeeded(
@@ -594,6 +624,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _publishTeamDataLoadState(TeamSettingsDataLoadState next) {
+    if (!mounted) return;
     if (_teamDataLoadState.loading == next.loading &&
         _teamDataLoadState.loaded == next.loaded) {
       return;
@@ -645,9 +676,26 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     bool force = false,
   }) async {
     final key = '${session.userId}|${session.operatorId}|${session.locationId}';
-    if (!force && _teamOrgHierarchyLoadedFor == key) return;
-    if (_teamOrgHierarchyLoadingFor == key) return;
+    if (!force && _teamOrgHierarchyLoadedFor == key) {
+      _publishOrgHierarchyLoadState(TeamOrgHierarchyLoadState.ready);
+      return;
+    }
+    if (_teamOrgHierarchyLoadingFor == key) {
+      _publishOrgHierarchyLoadState(
+        TeamOrgHierarchyLoadState(
+          loading: true,
+          loaded: _teamOrgHierarchyLoadedFor == key,
+        ),
+      );
+      return;
+    }
     _teamOrgHierarchyLoadingFor = key;
+    _publishOrgHierarchyLoadState(
+      TeamOrgHierarchyLoadState(
+        loading: true,
+        loaded: _teamOrgHierarchyLoadedFor == key,
+      ),
+    );
     final gateway = widget.authOperationsGateway;
     if (gateway == null) {
       // Demo / unauth path: seed an in-memory hierarchy keyed on the
@@ -661,6 +709,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           loadedKey: key,
         );
       }
+      _publishOrgHierarchyLoadState(TeamOrgHierarchyLoadState.ready);
       _teamOrgHierarchyLoadingFor = null;
       return;
     }
@@ -678,8 +727,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         locations: listed.locations,
         loadedKey: key,
       );
+      _publishOrgHierarchyLoadState(TeamOrgHierarchyLoadState.ready);
     } catch (error) {
       debugPrint('Org hierarchy load failed: $error');
+      _publishOrgHierarchyLoadState(
+        TeamOrgHierarchyLoadState(
+          loaded: _teamOrgHierarchyLoadedFor == key,
+          errorMessage: _orgHierarchyLoadMessage(error),
+        ),
+      );
     } finally {
       if (_teamOrgHierarchyLoadingFor == key) {
         _teamOrgHierarchyLoadingFor = null;
@@ -715,6 +771,32 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         .toList(growable: false);
   }
 
+  void _publishOrgHierarchyLoadState(TeamOrgHierarchyLoadState next) {
+    if (!mounted) return;
+    final current = _teamOrgHierarchyLoadState;
+    if (current.loading == next.loading &&
+        current.loaded == next.loaded &&
+        current.errorMessage == next.errorMessage) {
+      return;
+    }
+    _teamOrgHierarchyLoadState = next;
+    _teamOrgHierarchyLoadStateListenable.value = next;
+  }
+
+  String _orgHierarchyLoadMessage(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('status: 404') || text.contains('not found')) {
+      return 'Hierarchy route not found. Rebuild with the staging proxy.';
+    }
+    if (text.contains('status: 401') || text.contains('status: 403')) {
+      return 'You do not have access to this hierarchy.';
+    }
+    if (text.contains('transport_error') || text.contains('status: null')) {
+      return 'Could not reach the proxy. Check connection and retry.';
+    }
+    return 'Could not load hierarchy. Try again.';
+  }
+
   TeamOrgUnitCreateRequester? _teamOrgUnitCreateRequester(
     AuthSession? session,
   ) {
@@ -727,8 +809,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         // immediately.
         final parent = _teamOrgUnits.firstWhere(
           (unit) => unit.orgUnitId == draft.parentOrgUnitId,
-          orElse: () =>
-              _teamOrgUnits.isEmpty ? _demoRootFor(session) : _teamOrgUnits.first,
+          orElse: () => _teamOrgUnits.isEmpty
+              ? _demoRootFor(session)
+              : _teamOrgUnits.first,
         );
         final created = TeamOrgUnitEntry(
           orgUnitId: 'demo-org-unit-${DateTime.now().microsecondsSinceEpoch}',
@@ -1120,6 +1203,133 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onTap: _navigateTo,
       ),
     );
+  }
+}
+
+class _TeamSettingsRouteStateMirror {
+  _TeamSettingsRouteStateMirror._({
+    required this.teamRoleOptions,
+    required this.teamUsers,
+    required this.teamPendingInvites,
+    required this.teamDataLoadState,
+    required this.teamOrgUnits,
+    required this.teamOrgLocations,
+    required this.teamOrgUnitOptions,
+    required this.teamOrgHierarchyLoadState,
+    required List<VoidCallback> detachListeners,
+  }) : _detachListeners = detachListeners;
+
+  factory _TeamSettingsRouteStateMirror.capture(_AppShellState owner) {
+    final detachListeners = <VoidCallback>[];
+    final mirror = _TeamSettingsRouteStateMirror._(
+      teamRoleOptions: ValueNotifier<List<TeamRoleOption>>(
+        owner._teamRoleOptionsListenable.value,
+      ),
+      teamUsers: ValueNotifier<List<TeamUserListItem>>(
+        owner._teamUsersListenable.value,
+      ),
+      teamPendingInvites: ValueNotifier<List<TeamPendingInviteListItem>>(
+        owner._teamPendingInvitesListenable.value,
+      ),
+      teamDataLoadState: ValueNotifier<TeamSettingsDataLoadState>(
+        owner._teamDataLoadStateListenable.value,
+      ),
+      teamOrgUnits: ValueNotifier<List<TeamOrgUnitEntry>>(
+        owner._teamOrgUnitsListenable.value,
+      ),
+      teamOrgLocations: ValueNotifier<List<TeamOrgLocationEntry>>(
+        owner._teamOrgLocationsListenable.value,
+      ),
+      teamOrgUnitOptions: ValueNotifier<List<TeamOrgUnitOption>>(
+        owner._teamOrgUnitOptionsListenable.value,
+      ),
+      teamOrgHierarchyLoadState: ValueNotifier<TeamOrgHierarchyLoadState>(
+        owner._teamOrgHierarchyLoadStateListenable.value,
+      ),
+      detachListeners: detachListeners,
+    );
+
+    mirror._mirror(
+      owner._teamRoleOptionsListenable,
+      mirror.teamRoleOptions,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamUsersListenable,
+      mirror.teamUsers,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamPendingInvitesListenable,
+      mirror.teamPendingInvites,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamDataLoadStateListenable,
+      mirror.teamDataLoadState,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamOrgUnitsListenable,
+      mirror.teamOrgUnits,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamOrgLocationsListenable,
+      mirror.teamOrgLocations,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamOrgUnitOptionsListenable,
+      mirror.teamOrgUnitOptions,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamOrgHierarchyLoadStateListenable,
+      mirror.teamOrgHierarchyLoadState,
+      detachListeners,
+    );
+    return mirror;
+  }
+
+  final ValueNotifier<List<TeamRoleOption>> teamRoleOptions;
+  final ValueNotifier<List<TeamUserListItem>> teamUsers;
+  final ValueNotifier<List<TeamPendingInviteListItem>> teamPendingInvites;
+  final ValueNotifier<TeamSettingsDataLoadState> teamDataLoadState;
+  final ValueNotifier<List<TeamOrgUnitEntry>> teamOrgUnits;
+  final ValueNotifier<List<TeamOrgLocationEntry>> teamOrgLocations;
+  final ValueNotifier<List<TeamOrgUnitOption>> teamOrgUnitOptions;
+  final ValueNotifier<TeamOrgHierarchyLoadState> teamOrgHierarchyLoadState;
+  final List<VoidCallback> _detachListeners;
+  bool _disposed = false;
+
+  void _mirror<T>(
+    ValueListenable<T> source,
+    ValueNotifier<T> target,
+    List<VoidCallback> detachListeners,
+  ) {
+    void listener() {
+      if (!_disposed) target.value = source.value;
+    }
+
+    source.addListener(listener);
+    detachListeners.add(() => source.removeListener(listener));
+  }
+
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    for (final detach in _detachListeners.reversed) {
+      detach();
+    }
+    teamRoleOptions.dispose();
+    teamUsers.dispose();
+    teamPendingInvites.dispose();
+    teamDataLoadState.dispose();
+    teamOrgUnits.dispose();
+    teamOrgLocations.dispose();
+    teamOrgUnitOptions.dispose();
+    teamOrgHierarchyLoadState.dispose();
   }
 }
 

@@ -3,6 +3,7 @@
 // Sends MFA enrollment and factor-management commands to the proxy. The app
 // never talks to Postgres; launch UX does not display or accept recovery codes.
 
+import 'dart:async';
 import 'dart:io';
 
 import '../auth/proxy_auth_operations_gateway.dart';
@@ -172,13 +173,33 @@ class ProxyMfaOperationsGateway implements MfaOperationsGateway {
         statusCode: 401,
       );
     }
-    return _httpClient.postJson(
-      url: _proxyBaseUri.resolve(relativePath),
-      headers: <String, String>{
-        HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
-      },
-      body: body,
-    );
+    try {
+      return await _httpClient.postJson(
+        url: _proxyBaseUri.resolve(relativePath),
+        headers: <String, String>{
+          HttpHeaders.authorizationHeader: 'Bearer ${token.trim()}',
+        },
+        body: body,
+      );
+    } on TimeoutException {
+      throw const MfaOperationRejected(
+        code: 'mfa_proxy_timeout',
+        message: 'Could not reach MFA settings. Check connection and retry.',
+        statusCode: 503,
+      );
+    } on SocketException {
+      throw const MfaOperationRejected(
+        code: 'mfa_proxy_unreachable',
+        message: 'Could not reach MFA settings. Check connection and retry.',
+        statusCode: 503,
+      );
+    } on HttpException {
+      throw const MfaOperationRejected(
+        code: 'mfa_proxy_unavailable',
+        message: 'MFA settings are temporarily unavailable.',
+        statusCode: 503,
+      );
+    }
   }
 
   void _expectStatus(ProxyAuthOperationsResponse response, int expected) {

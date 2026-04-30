@@ -12,6 +12,8 @@ typedef TeamInviteSubmitter =
 
 typedef TeamInviteRevoker = Future<void> Function(String inviteId);
 
+typedef TeamDataRetryRequester = Future<void> Function();
+
 typedef TeamUserActionHandler =
     Future<void> Function(TeamUserActionRequest request);
 
@@ -168,6 +170,7 @@ class TeamSettingsSection extends StatefulWidget {
     this.onInviteSubmitted,
     this.onInviteRevoked,
     this.onUserAction,
+    this.onDataRetry,
     this.dataLoadState = TeamSettingsDataLoadState.ready,
   });
 
@@ -189,6 +192,7 @@ class TeamSettingsSection extends StatefulWidget {
   final TeamInviteSubmitter? onInviteSubmitted;
   final TeamInviteRevoker? onInviteRevoked;
   final TeamUserActionHandler? onUserAction;
+  final TeamDataRetryRequester? onDataRetry;
   final TeamSettingsDataLoadState dataLoadState;
 
   @override
@@ -209,6 +213,7 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   final List<TeamPendingInviteListItem> _locallyCreatedInvites =
       <TeamPendingInviteListItem>[];
   bool _submittingInvite = false;
+  bool _retryingData = false;
 
   @override
   void initState() {
@@ -452,6 +457,17 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
       if (mounted) _showSnack('Invite could not be revoked.');
     } finally {
       if (mounted) setState(() => _busyInviteIds.remove(invite.inviteId));
+    }
+  }
+
+  Future<void> _retryDataLoad() async {
+    final retry = widget.onDataRetry;
+    if (retry == null || widget.dataLoadState.loading || _retryingData) return;
+    setState(() => _retryingData = true);
+    try {
+      await retry();
+    } finally {
+      if (mounted) setState(() => _retryingData = false);
     }
   }
 
@@ -715,7 +731,10 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
           const SizedBox(height: 8),
           Padding(
             padding: inset,
-            child: _TeamDataLoadingNotice(loading: dataLoadState.loading),
+            child: _TeamDataLoadingNotice(
+              loading: dataLoadState.loading || _retryingData,
+              onRetry: widget.onDataRetry == null ? null : _retryDataLoad,
+            ),
           ),
         ],
         const SizedBox(height: 8),
@@ -751,10 +770,8 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
                       'team.users.reset_password',
                       user: user,
                     ),
-                    canResetMfa: (user) => _canUsePermission(
-                      'team.users.reset_mfa',
-                      user: user,
-                    ),
+                    canResetMfa: (user) =>
+                        _canUsePermission('team.users.reset_mfa', user: user),
                     canAssignRole: (user) =>
                         _canUsePermission('team.roles.assign', user: user),
                     canRevokeRole: (user) =>
@@ -932,9 +949,10 @@ class _TeamAccessNotice extends StatelessWidget {
 }
 
 class _TeamDataLoadingNotice extends StatelessWidget {
-  const _TeamDataLoadingNotice({required this.loading});
+  const _TeamDataLoadingNotice({required this.loading, this.onRetry});
 
   final bool loading;
+  final VoidCallback? onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -956,7 +974,9 @@ class _TeamDataLoadingNotice extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Staff late looking for Parking lol',
+              loading
+                  ? 'Loading team data...'
+                  : 'Could not load team data. Check connection and retry.',
               softWrap: true,
               style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
@@ -967,6 +987,13 @@ class _TeamDataLoadingNotice extends StatelessWidget {
               width: 18,
               height: 18,
               child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ] else if (onRetry != null) ...[
+            const SizedBox(width: 12),
+            TextButton(
+              key: const Key('team_data_retry_button'),
+              onPressed: onRetry,
+              child: const Text('Retry'),
             ),
           ],
         ],
@@ -2183,8 +2210,7 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
     final canSubmit =
         _roleId != null &&
         _roleId!.isNotEmpty &&
-        (!needsLocation ||
-            (_locationId != null && _locationId!.isNotEmpty)) &&
+        (!needsLocation || (_locationId != null && _locationId!.isNotEmpty)) &&
         (!needsOrgUnit || (_orgUnitId != null && _orgUnitId!.isNotEmpty));
     return AlertDialog(
       title: const Text('Change Role'),

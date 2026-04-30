@@ -78,6 +78,8 @@ class SettingsScreen extends StatefulWidget {
   final List<TeamOrgUnitOption> teamOrgUnitOptions;
   final List<TeamOrgUnitEntry> teamOrgUnits;
   final List<TeamOrgLocationEntry> teamOrgLocations;
+  final TeamOrgHierarchyLoadState teamOrgHierarchyLoadState;
+
   /// Phase 9.UX.4 — when the live gateway resolves after navigation
   /// or a create/move callback updates state, the open Settings route
   /// has no rebuild trigger from the plain list snapshots above. The
@@ -86,12 +88,15 @@ class SettingsScreen extends StatefulWidget {
   final ValueListenable<List<TeamOrgUnitEntry>>? teamOrgUnitsListenable;
   final ValueListenable<List<TeamOrgLocationEntry>>? teamOrgLocationsListenable;
   final ValueListenable<List<TeamOrgUnitOption>>? teamOrgUnitOptionsListenable;
+  final ValueListenable<TeamOrgHierarchyLoadState>?
+  teamOrgHierarchyLoadStateListenable;
   final TeamOrgUnitCreateRequester? onTeamOrgUnitCreate;
   final TeamLocationOrgUnitMoveRequester? onTeamLocationMove;
   final List<TeamPendingInviteListItem> teamPendingInvites;
   final TeamInviteSubmitter? onTeamInviteSubmitted;
   final TeamInviteRevoker? onTeamInviteRevoked;
   final TeamUserActionHandler? onTeamUserAction;
+  final TeamDataRetryRequester? onTeamDataRetry;
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final TeamSettingsDataLoadState teamDataLoadState;
@@ -132,15 +137,18 @@ class SettingsScreen extends StatefulWidget {
     this.teamOrgUnitOptions = const <TeamOrgUnitOption>[],
     this.teamOrgUnits = const <TeamOrgUnitEntry>[],
     this.teamOrgLocations = const <TeamOrgLocationEntry>[],
+    this.teamOrgHierarchyLoadState = TeamOrgHierarchyLoadState.ready,
     this.teamOrgUnitsListenable,
     this.teamOrgLocationsListenable,
     this.teamOrgUnitOptionsListenable,
+    this.teamOrgHierarchyLoadStateListenable,
     this.onTeamOrgUnitCreate,
     this.onTeamLocationMove,
     this.teamPendingInvites = const <TeamPendingInviteListItem>[],
     this.onTeamInviteSubmitted,
     this.onTeamInviteRevoked,
     this.onTeamUserAction,
+    this.onTeamDataRetry,
     this.accountInfoGateway,
     this.passwordChangeGateway,
     this.teamDataLoadState = TeamSettingsDataLoadState.ready,
@@ -313,7 +321,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'Active sessions',
                     child: SettingsActiveSessionsSection(
                       gateway: widget.authOperationsGateway,
-                      actor: widget.activeSessionsActor ??
+                      actor:
+                          widget.activeSessionsActor ??
                           _activeSessionsActorForSession(
                             session,
                             authNotifier?.activeSessionId,
@@ -344,28 +353,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       dataLoadStateListenable:
                           widget.teamDataLoadStateListenable,
                       builder:
-                          (roleOptions, users, pendingInvites, dataLoadState) =>
-                              _OrgUnitOptionsListenableScope(
-                                seed: widget.teamOrgUnitOptions,
-                                listenable: widget.teamOrgUnitOptionsListenable,
-                                builder: (orgUnitOptions) => TeamSettingsSection(
-                                  actor: effectiveTeamActor,
-                                  users: users,
-                                  roleOptions: roleOptions,
-                                  locationOptions: widget.teamLocationOptions,
-                                  orgUnitOptions: orgUnitOptions,
-                                  pendingInvites: pendingInvites,
-                                  dataLoadState: dataLoadState,
-                                  usersController:
-                                      widget.teamUsersListController,
-                                  inviteFormController:
-                                      widget.teamInviteFormController,
-                                  onInviteSubmitted:
-                                      widget.onTeamInviteSubmitted,
-                                  onInviteRevoked: widget.onTeamInviteRevoked,
-                                  onUserAction: widget.onTeamUserAction,
-                                ),
-                              ),
+                          (
+                            roleOptions,
+                            users,
+                            pendingInvites,
+                            dataLoadState,
+                          ) => _OrgUnitOptionsListenableScope(
+                            seed: widget.teamOrgUnitOptions,
+                            listenable: widget.teamOrgUnitOptionsListenable,
+                            builder: (orgUnitOptions) => TeamSettingsSection(
+                              actor: effectiveTeamActor,
+                              users: users,
+                              roleOptions: roleOptions,
+                              locationOptions: widget.teamLocationOptions,
+                              orgUnitOptions: orgUnitOptions,
+                              pendingInvites: pendingInvites,
+                              dataLoadState: dataLoadState,
+                              usersController: widget.teamUsersListController,
+                              inviteFormController:
+                                  widget.teamInviteFormController,
+                              onInviteSubmitted: widget.onTeamInviteSubmitted,
+                              onInviteRevoked: widget.onTeamInviteRevoked,
+                              onUserAction: widget.onTeamUserAction,
+                              onDataRetry: widget.onTeamDataRetry,
+                            ),
+                          ),
                     ),
                   ),
                   _settingsSection(
@@ -375,11 +387,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       seedLocations: widget.teamOrgLocations,
                       orgUnitsListenable: widget.teamOrgUnitsListenable,
                       orgLocationsListenable: widget.teamOrgLocationsListenable,
-                      builder: (orgUnits, locations) =>
+                      loadState: widget.teamOrgHierarchyLoadState,
+                      loadStateListenable:
+                          widget.teamOrgHierarchyLoadStateListenable,
+                      builder: (orgUnits, locations, loadState) =>
                           SettingsOrgHierarchySection(
                             actor: effectiveTeamActor,
                             orgUnits: orgUnits,
                             locations: locations,
+                            loadState: loadState,
                             onCreateOrgUnit: widget.onTeamOrgUnitCreate,
                             onMoveLocation: widget.onTeamLocationMove,
                           ),
@@ -708,6 +724,8 @@ class _OrgHierarchyListenableScope extends StatelessWidget {
     required this.seedLocations,
     required this.orgUnitsListenable,
     required this.orgLocationsListenable,
+    required this.loadState,
+    required this.loadStateListenable,
     required this.builder,
   });
 
@@ -715,20 +733,35 @@ class _OrgHierarchyListenableScope extends StatelessWidget {
   final List<TeamOrgLocationEntry> seedLocations;
   final ValueListenable<List<TeamOrgUnitEntry>>? orgUnitsListenable;
   final ValueListenable<List<TeamOrgLocationEntry>>? orgLocationsListenable;
+  final TeamOrgHierarchyLoadState loadState;
+  final ValueListenable<TeamOrgHierarchyLoadState>? loadStateListenable;
   final Widget Function(
     List<TeamOrgUnitEntry> orgUnits,
     List<TeamOrgLocationEntry> locations,
+    TeamOrgHierarchyLoadState loadState,
   )
   builder;
 
   @override
   Widget build(BuildContext context) {
+    Widget withLoadState(
+      List<TeamOrgUnitEntry> units,
+      List<TeamOrgLocationEntry> locations,
+    ) {
+      final l = loadStateListenable;
+      if (l == null) return builder(units, locations, loadState);
+      return ValueListenableBuilder<TeamOrgHierarchyLoadState>(
+        valueListenable: l,
+        builder: (context, value, _) => builder(units, locations, value),
+      );
+    }
+
     Widget withLocations(List<TeamOrgUnitEntry> units) {
       final l = orgLocationsListenable;
-      if (l == null) return builder(units, seedLocations);
+      if (l == null) return withLoadState(units, seedLocations);
       return ValueListenableBuilder<List<TeamOrgLocationEntry>>(
         valueListenable: l,
-        builder: (context, value, _) => builder(units, value),
+        builder: (context, value, _) => withLoadState(units, value),
       );
     }
 

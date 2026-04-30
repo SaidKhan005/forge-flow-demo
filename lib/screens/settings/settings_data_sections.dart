@@ -505,6 +505,7 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
         ),
         const SettingsRowDivider(),
         SettingsActionRow(
+          key: const Key('account_sign_out_everywhere_action'),
           icon: Icons.phonelink_lock_rounded,
           label: _signingOutEverywhere
               ? 'Signing out of all devices'

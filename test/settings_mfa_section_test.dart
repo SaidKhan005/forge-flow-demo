@@ -66,6 +66,35 @@ void main() {
     expect(find.byKey(const Key('mfa_enroll_totp_button')), findsOneWidget);
   });
 
+  testWidgets('failed MFA status load can be retried in place', (tester) async {
+    final gateway = _FlakyListGateway();
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SettingsMfaSection(
+              gateway: gateway,
+              actor: kDemoMfaActorContext,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Could not reach MFA settings'), findsOneWidget);
+    expect(find.byKey(const Key('mfa_retry_button')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('mfa_retry_button')));
+    await tester.pumpAndSettle();
+
+    expect(gateway.listCalls, equals(2));
+    expect(find.text('No authenticator app enrolled.'), findsOneWidget);
+    expect(find.byKey(const Key('mfa_enroll_totp_button')), findsOneWidget);
+  });
+
   testWidgets('demo enrollment shows QR, copy values, and factor', (
     tester,
   ) async {
@@ -321,6 +350,58 @@ class _SlowListGateway implements MfaOperationsGateway {
   @override
   Future<MfaListFactorsCompleted> listFactors(MfaListFactorsCommand command) {
     return _listCompleter.future;
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+}
+
+class _FlakyListGateway implements MfaOperationsGateway {
+  int listCalls = 0;
+
+  @override
+  Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
+    MfaTotpConfirmCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    listCalls += 1;
+    if (listCalls == 1) {
+      throw const MfaOperationRejected(
+        code: 'mfa_proxy_timeout',
+        message: 'Could not reach MFA settings. Check connection and retry.',
+        statusCode: 503,
+      );
+    }
+    return const MfaListFactorsCompleted(factors: <MfaFactorSummary>[]);
   }
 
   @override

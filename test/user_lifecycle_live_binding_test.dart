@@ -159,6 +159,56 @@ void main() {
     );
 
     test(
+      'listTeamUsers falls back when MFA removal queue table is absent',
+      () async {
+        final pool = _LifecyclePool(
+          throwMissingMfaRemovalTableOnTeamList: true,
+          teamUserRows: <PostgresRow>[
+            <String, Object?>{
+              'user_id': _validUserId,
+              'email': 'owner@example.test',
+              'display_name': 'Owner',
+              'role_id': 'operator_owner',
+              'role_label': 'Owner',
+              'status': 'active',
+              'user_role_id': null,
+              'location_id': _validLocId,
+              'location_label': 'Downtown',
+              'mfa_enrolled': false,
+              'mfa_removal_request_id': null,
+              'last_active_at': null,
+            },
+          ],
+        );
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        final users = await repo.listTeamUsers(
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          actorUserId: _validUserId,
+        );
+
+        expect(users.single.email, equals('owner@example.test'));
+        expect(users.single.mfaRemovalPending, isFalse);
+        expect(pool.transactions, hasLength(2));
+        expect(pool.transactions.first.rollbackCount, equals(1));
+        expect(pool.transactions.last.commitCount, equals(1));
+        expect(
+          pool.transactions.first.executedSql.last,
+          contains('from mfa_factor_removal_requests'),
+        );
+        expect(
+          pool.transactions.last.executedSql.last,
+          isNot(contains('from mfa_factor_removal_requests')),
+        );
+        expect(
+          pool.transactions.last.executedSql.last,
+          contains('null::text as mfa_removal_request_id'),
+        );
+      },
+    );
+
+    test(
       'MFA recovery admin lookup trusts explicit operator_admins assignment',
       () async {
         const adminUserId = '66666666-6666-6666-6666-666666666666';
@@ -455,15 +505,19 @@ class _LifecyclePool implements PostgresPool {
     this.returningInviteId,
     this.returningEventId,
     this.selfProfileRows = const <PostgresRow>[],
+    this.teamUserRows = const <PostgresRow>[],
     this.mfaRecoveryTargetRows = const <PostgresRow>[],
     this.mfaRecoveryAdminRows = const <PostgresRow>[],
+    this.throwMissingMfaRemovalTableOnTeamList = false,
   });
 
   final String? returningInviteId;
   final String? returningEventId;
   final List<PostgresRow> selfProfileRows;
+  final List<PostgresRow> teamUserRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
+  final bool throwMissingMfaRemovalTableOnTeamList;
 
   final List<_LifecycleTransaction> transactions = <_LifecycleTransaction>[];
 
@@ -473,8 +527,11 @@ class _LifecyclePool implements PostgresPool {
       returningInviteId: returningInviteId,
       returningEventId: returningEventId,
       selfProfileRows: selfProfileRows,
+      teamUserRows: teamUserRows,
       mfaRecoveryTargetRows: mfaRecoveryTargetRows,
       mfaRecoveryAdminRows: mfaRecoveryAdminRows,
+      throwMissingMfaRemovalTableOnTeamList:
+          throwMissingMfaRemovalTableOnTeamList,
     );
     transactions.add(tx);
     return tx;
@@ -486,15 +543,19 @@ class _LifecycleTransaction extends PostgresTransaction {
     required this.returningInviteId,
     required this.returningEventId,
     required this.selfProfileRows,
+    required this.teamUserRows,
     required this.mfaRecoveryTargetRows,
     required this.mfaRecoveryAdminRows,
+    required this.throwMissingMfaRemovalTableOnTeamList,
   });
 
   final String? returningInviteId;
   final String? returningEventId;
   final List<PostgresRow> selfProfileRows;
+  final List<PostgresRow> teamUserRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
+  final bool throwMissingMfaRemovalTableOnTeamList;
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
   bool _finalized = false;
@@ -528,6 +589,16 @@ class _LifecycleTransaction extends PostgresTransaction {
     if (sql.contains('from users u') &&
         sql.contains('where u.user_id = @user_id::uuid')) {
       return selfProfileRows;
+    }
+    if (sql.contains('from users u') &&
+        sql.contains('order by u.status, lower(u.email)')) {
+      if (throwMissingMfaRemovalTableOnTeamList &&
+          sql.contains('from mfa_factor_removal_requests')) {
+        throw StateError(
+          'relation "mfa_factor_removal_requests" does not exist',
+        );
+      }
+      return teamUserRows;
     }
     if (sql.contains('from users u') &&
         sql.contains('where lower(u.email) = lower(@email)')) {
