@@ -33,10 +33,10 @@ Primary active docs:
   - CONDITIONAL PASS verdict, 3 load profiles, hot-path inventory,
   Bottleneck Ranking, and the 14-row Prelaunch Performance Test Matrix
   that is the launch gate (now `cutover.0b`).
-- `docs/CODEX_PROMPT_GENERATION_STANDARD.md` - prompt shape and human
-  prerequisite / decision-block rules.
-- `docs/CODEX_LEAN_PROMPT_GENERATOR.md` - compact copy/paste generator for
-  next-slice prompts, stale-finding filtering, live gates, and doc hygiene.
+- `docs/CODEX_PROMPT_GENERATION_STANDARD.md` - prompt shape, generator,
+  parallel-lane rules, report format, in-session token hygiene.
+- `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md` - between-batch audit
+  + next-batch lane recommendation.
 - `docs/DATA_ALIGNMENT_TRACKER.md` only for alignment-heavy slices.
 - `docs/KNOWN_FAILING_TESTS.md` only for broad or known-red test runs.
 - `runbooks/phase_9_production1_migration_apply_runbook.md` only for future
