@@ -16,10 +16,14 @@
 
 import 'package:flutter/material.dart';
 
+import 'admin_auth_gate.dart';
 import 'models/operator_location_admin_models.dart';
+import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_home_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
+import 'screens/pricing_tier_admin_screen.dart';
 import 'services/operator_location_admin_gateway.dart';
+import 'services/pricing_tier_admin_gateway.dart';
 
 /// One entry in the admin route catalog.
 @immutable
@@ -71,6 +75,9 @@ const String kAdminHomeRouteId = 'home';
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
 
+/// Canonical Pricing route ID (11A.2).
+const String kAdminPricingRouteId = 'pricing';
+
 /// The admin route table. Order is the side-nav order. 11A.1 promotes
 /// `operators` from placeholder to live; the rest are deliberately
 /// marked `placeholder` so the surface area is visible to operators
@@ -93,13 +100,12 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildOperators,
   ),
   AdminRoute(
-    id: 'pricing',
+    id: kAdminPricingRouteId,
     title: 'Pricing',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    subtitle: 'Tiered usage cap admin lands in 11A.2.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle: 'Tier templates and per-(operator, location, usage_class) caps.',
+    builder: _buildPricing,
   ),
   AdminRoute(
     id: 'corpus',
@@ -146,6 +152,30 @@ Widget _buildOperators(BuildContext context) {
   return OperatorLocationAdminScreen(gateway: gateway);
 }
 
+Widget _buildPricing(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    // No source wired (typical widget-test path) — default to live
+    // edit affordances. Production wires `source` from main_admin so
+    // `ff_support` lands on the read-only branch below.
+    return PricingTierAdminScreen(gateway: gateway);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return PricingTierAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
@@ -161,10 +191,31 @@ class AdminConsoleServicesScope extends InheritedWidget {
   const AdminConsoleServicesScope({
     super.key,
     required super.child,
-    required this.operatorLocationGateway,
+    this.operatorLocationGateway,
+    this.pricingTierGateway,
+    this.adminAuthSource,
   });
 
-  final OperatorLocationAdminGateway operatorLocationGateway;
+  /// Production wires the HTTP-backed gateway here. Null falls back
+  /// to the seeded in-memory demo gateway in [operatorLocationGatewayOf].
+  /// Made nullable in 11A.2 so the demo / fallback path can still
+  /// wrap with the scope (e.g. to plumb [adminAuthSource]) without
+  /// fabricating a live gateway.
+  final OperatorLocationAdminGateway? operatorLocationGateway;
+
+  /// Phase 11A.2 — pricing tier admin gateway. Optional so existing
+  /// production wiring can light it up incrementally; the default
+  /// fallback is a seeded in-memory demo gateway shared with the
+  /// walkthrough.
+  final PricingTierAdminGateway? pricingTierGateway;
+
+  /// Phase 11A.2 — admin auth source. Optional for the same
+  /// incremental-wiring reason. The Pricing route reads this to
+  /// compute `editingEnabled` from the signed-in session's roles
+  /// (only `super_admin` may mutate caps; `ff_support` lands on the
+  /// read-only branch). When null, the route defaults to live edit
+  /// affordances (test path).
+  final AdminAuthSource? adminAuthSource;
 
   static OperatorLocationAdminGateway operatorLocationGatewayOf(
     BuildContext context,
@@ -174,9 +225,23 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.operatorLocationGateway ?? _defaultDemoGateway;
   }
 
+  static PricingTierAdminGateway pricingTierGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.pricingTierGateway ?? _defaultPricingDemoGateway;
+  }
+
+  static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.adminAuthSource;
+  }
+
   @override
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
-      operatorLocationGateway != oldWidget.operatorLocationGateway;
+      operatorLocationGateway != oldWidget.operatorLocationGateway ||
+      pricingTierGateway != oldWidget.pricingTierGateway ||
+      adminAuthSource != oldWidget.adminAuthSource;
 }
 
 /// Demo gateway shared by walkthrough + admin shell when no
@@ -243,6 +308,50 @@ final OperatorLocationAdminGateway _defaultDemoGateway =
               businessDayRolloverHour: 5,
               createdAt: DateTime.utc(2026, 3, 5, 11, 0),
               updatedAt: DateTime.utc(2026, 3, 5, 11, 0),
+            ),
+          ],
+        ),
+      ],
+    );
+
+/// 11A.2 fallback pricing gateway. Mirrors the two demo operators
+/// from `_defaultDemoGateway` so the walkthrough can hop between
+/// Operators and Pricing without a backing service. Pilot operator
+/// starts with the locked Pilot template caps; the launch operator
+/// has no caps yet so the walkthrough exercises "Apply template" too.
+final PricingTierAdminGateway _defaultPricingDemoGateway =
+    InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        PricingOperatorBundle(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          businessName: 'Demo Diner Co.',
+          subscriptionTier: 'launch',
+          preferredCurrency: 'CAD',
+          primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+          suspended: false,
+          caps: <UsageCapRow>[],
+        ),
+        PricingOperatorBundle(
+          operatorId: '00000000-0000-4000-8000-000000000002',
+          businessName: 'Sunset Cafe Group',
+          subscriptionTier: 'pilot',
+          preferredCurrency: 'USD',
+          primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+          suspended: false,
+          caps: <UsageCapRow>[
+            UsageCapRow(
+              capId: '00000000-0000-4000-8000-0000000000c1',
+              operatorId: '00000000-0000-4000-8000-000000000002',
+              locationId: '00000000-0000-4000-8000-0000000000b1',
+              usageClass: 'advisor_qa',
+              monthlyCapUsd: 50.0,
+              perInvocationCapUsd: 0.10,
+              staffId: null,
+              workflowId: null,
+              createdBy: 'demo-super-admin',
+              updatedBy: 'demo-super-admin',
+              createdAt: DateTime.utc(2026, 3, 5, 11, 0),
+              updatedAt: DateTime.utc(2026, 4, 18, 12, 0),
             ),
           ],
         ),

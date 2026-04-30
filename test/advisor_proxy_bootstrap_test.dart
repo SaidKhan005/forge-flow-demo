@@ -159,6 +159,13 @@ void main() {
         bindings.mfaRecoveryRequestGateway,
         isA<RepositoryMfaRecoveryRequestGateway>(),
       );
+      // Phase 11A.2 — pricing tier admin gateway is bound to the
+      // admin pool (cross-operator reads/writes). Construction must
+      // not open a database connection.
+      expect(
+        bindings.pricingTierAdminGateway,
+        isA<RepositoryPricingTierAdminProxyGateway>(),
+      );
       expect(
         capturedConnectionStrings,
         equals(<String>[

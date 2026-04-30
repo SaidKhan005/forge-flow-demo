@@ -5005,6 +5005,710 @@ void main() {
       },
     );
   });
+
+  group('11A.2 admin pricing tier routes', () {
+    Future<T> withRealHttp<T>(Future<T> Function() body) async {
+      final saved = HttpOverrides.current;
+      HttpOverrides.global = null;
+      try {
+        return await body();
+      } finally {
+        HttpOverrides.global = saved;
+      }
+    }
+
+    Future<
+      ({
+        HttpServer server,
+        HttpClient client,
+        Uri baseUri,
+        _SettableVerifier verifier,
+        _FakePricingAdminGateway gateway,
+      })
+    >
+    spinUp({
+      ProxyJwtClaims? initialClaims,
+      _FakePricingAdminGateway? customGateway,
+      bool gatewayConfigured = true,
+    }) async {
+      final verifier = _SettableVerifier();
+      verifier.claims = initialClaims;
+      final guard = ProxyRequestGuard(verifier: verifier);
+      final gateway = customGateway ?? _FakePricingAdminGateway();
+      final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
+      // ignore: unawaited_futures
+      server.listen((request) async {
+        try {
+          await routeRequest(
+            request,
+            guard,
+            pricingTierAdminGateway: gatewayConfigured ? gateway : null,
+            now: () => DateTime.utc(2026, 4, 30, 12),
+          );
+        } catch (_) {
+          try {
+            request.response.statusCode = 500;
+            await request.response.close();
+          } catch (_) {}
+        }
+      });
+      final client = HttpClient();
+      final baseUri =
+          Uri.parse('http://${server.address.host}:${server.port}');
+      return (
+        server: server,
+        client: client,
+        baseUri: baseUri,
+        verifier: verifier,
+        gateway: gateway,
+      );
+    }
+
+    test(
+      '11A.2 GET /v1/admin/pricing/operators returns 503 without a gateway',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(gatewayConfigured: false);
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(503));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(
+              body['error'],
+              equals('pricing_tier_admin_not_configured'),
+            );
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 GET /v1/admin/pricing/operators rejects operator_owner (403)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_x',
+              operatorId: 'op_x',
+              locationId: 'loc_x',
+              roles: <String>['operator_owner'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            // GET rejection lists the read set (super_admin +
+            // ff_support); the caller carries neither.
+            final required =
+                (body['required_roles']! as List).cast<String>();
+            expect(required, contains('super_admin'));
+            expect(required, contains('ff_support'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 GET /v1/admin/pricing/operators admits ff_support (read-only)',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway();
+          gateway.listResult = const <Map<String, Object?>>[];
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingOperatorsPath),
+              authorization: 'Bearer fake.token',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastActorUserId, equals('user_support'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 PUT /v1/admin/pricing/usage-caps rejects ff_support with 403',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PUT',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+                'monthly_cap_usd': 50.0,
+                'per_invocation_cap_usd': 0.10,
+              },
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(body['required_roles'], contains('super_admin'));
+            expect(body['required_roles'], isNot(contains('ff_support')));
+            expect(gateway.lastCapOperatorId, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 POST .../apply-template rejects ff_support with 403',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: null,
+              locationId: null,
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/apply-template',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'tier_key': 'premium'},
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(gateway.lastApplyTemplateOperatorId, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 PATCH .../operators/{id} rejects ff_support with 403',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_support',
+              operatorId: 'op_support',
+              locationId: 'loc_support',
+              roles: <String>['ff_support'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PATCH',
+              ctx.baseUri.resolve('${adminPricingOperatorsPrefix}op-1'),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'subscription_tier': 'premium',
+              },
+            );
+            expect(response.statusCode, equals(403));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('permission_denied'));
+            expect(body['required_roles'], contains('super_admin'));
+            expect(gateway.lastTierUpdateOperatorId, isNull);
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.2 GET /v1/admin/pricing/operators returns the gateway list',
+        () async {
+      await withRealHttp(() async {
+        final gateway = _FakePricingAdminGateway();
+        gateway.listResult = <Map<String, Object?>>[
+          <String, Object?>{
+            'operator': <String, Object?>{
+              'operator_id': 'op-1',
+              'business_name': 'Cafe One',
+              'subscription_tier': 'starter',
+              'preferred_currency': 'CAD',
+              'primary_location_id': 'loc-1',
+              'suspended': false,
+            },
+            'caps': <Map<String, Object?>>[],
+          },
+        ];
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpGet(
+            ctx.client,
+            ctx.baseUri.resolve(adminPricingOperatorsPath),
+            authorization: 'Bearer fake.token',
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final operators =
+              (body['operators']! as List).cast<Map<String, Object?>>();
+          expect(operators, hasLength(1));
+          expect(gateway.lastReason, contains('admin.pricing.GET'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('11A.2 PATCH .../operators/{id} validates subscription_tier value',
+        () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp(
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminPricingOperatorsPrefix}op-1'),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'subscription_tier': 'megapremium',
+            },
+          );
+          expect(response.statusCode, equals(400));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('invalid_subscription_tier'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('11A.2 PATCH .../operators/{id} forwards to gateway as super_admin',
+        () async {
+      await withRealHttp(() async {
+        final gateway = _FakePricingAdminGateway();
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PATCH',
+            ctx.baseUri.resolve('${adminPricingOperatorsPrefix}op-1'),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{'subscription_tier': 'premium'},
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.lastTierUpdateOperatorId, equals('op-1'));
+          expect(gateway.lastTierUpdateValue, equals('premium'));
+          expect(gateway.lastActorUserId, equals('user_admin'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('11A.2 PUT /v1/admin/pricing/usage-caps upserts a cap row',
+        () async {
+      await withRealHttp(() async {
+        final gateway = _FakePricingAdminGateway();
+        gateway.capUpsertResult = const <String, Object?>{
+          'operator_id': 'op-1',
+          'location_id': 'loc-1',
+          'usage_class': 'advisor_qa',
+          'monthly_cap_usd': 50.0,
+          'per_invocation_cap_usd': 0.10,
+        };
+        final ctx = await spinUp(
+          customGateway: gateway,
+          initialClaims: const ProxyJwtClaims(
+            userId: 'user_admin',
+            operatorId: 'op_admin',
+            locationId: 'loc_admin',
+            roles: <String>['super_admin'],
+          ),
+        );
+        try {
+          final response = await _httpJson(
+            ctx.client,
+            'PUT',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+            authorization: 'Bearer fake.token',
+            body: const <String, Object?>{
+              'operator_id': 'op-1',
+              'location_id': 'loc-1',
+              'usage_class': 'advisor_qa',
+              'monthly_cap_usd': 50.0,
+              'per_invocation_cap_usd': 0.10,
+            },
+          );
+          expect(response.statusCode, equals(200));
+          expect(gateway.lastCapOperatorId, equals('op-1'));
+          expect(gateway.lastCapUsageClass, equals('advisor_qa'));
+          expect(gateway.lastCapMonthly, equals(50.0));
+          expect(gateway.lastReason, contains('admin.pricing.PUT'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.2 PUT /v1/admin/pricing/usage-caps rejects negative monthly_cap_usd',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'PUT',
+              ctx.baseUri.resolve(adminPricingUsageCapsPath),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+                'monthly_cap_usd': -5.0,
+                'per_invocation_cap_usd': 0.10,
+              },
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('invalid_monthly_cap_usd'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 POST .../operators/{id}/apply-template forwards tier_key',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway();
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/apply-template',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'tier_key': 'pro'},
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.lastApplyTemplateOperatorId, equals('op-1'));
+            expect(gateway.lastApplyTemplateTierKey, equals('pro'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 POST .../apply-template rejects an unknown tier_key (400)',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp(
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/apply-template',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'tier_key': 'megapremium'},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('unknown_tier_template'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test(
+      '11A.2 POST .../apply-template surfaces no_primary_location as 400',
+      () async {
+        await withRealHttp(() async {
+          final gateway = _FakePricingAdminGateway()
+            ..raiseOnApplyTemplate =
+                const PricingTierAdminGatewayValidationError(
+              statusCode: 400,
+              code: 'no_primary_location',
+              message: 'set a primary location first',
+            );
+          final ctx = await spinUp(
+            customGateway: gateway,
+            initialClaims: const ProxyJwtClaims(
+              userId: 'user_admin',
+              operatorId: 'op_admin',
+              locationId: 'loc_admin',
+              roles: <String>['super_admin'],
+            ),
+          );
+          try {
+            final response = await _httpJson(
+              ctx.client,
+              'POST',
+              ctx.baseUri.resolve(
+                '${adminPricingOperatorsPrefix}op-1/apply-template',
+              ),
+              authorization: 'Bearer fake.token',
+              body: const <String, Object?>{'tier_key': 'premium'},
+            );
+            expect(response.statusCode, equals(400));
+            final body = jsonDecode(response.body) as Map<String, Object?>;
+            expect(body['error'], equals('no_primary_location'));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+
+    test('11A.2 OPTIONS preflight allows PUT for usage-caps', () async {
+      await withRealHttp(() async {
+        final ctx = await spinUp();
+        try {
+          final request = await ctx.client.openUrl(
+            'OPTIONS',
+            ctx.baseUri.resolve(adminPricingUsageCapsPath),
+          );
+          request.persistentConnection = false;
+          request.headers.set('Origin', 'https://admin.forgeflow.app');
+          request.headers.set('Access-Control-Request-Method', 'PUT');
+          request.headers.set(
+            'Access-Control-Request-Headers',
+            'authorization,content-type',
+          );
+          request.contentLength = 0;
+          final response = await request.close();
+          await response.drain<void>();
+          expect(response.statusCode, equals(HttpStatus.noContent));
+          final allowMethods =
+              response.headers.value('access-control-allow-methods') ?? '';
+          expect(allowMethods.toUpperCase(), contains('PUT'));
+          expect(allowMethods.toUpperCase(), contains('OPTIONS'));
+          expect(
+            response.headers.value('access-control-allow-origin'),
+            equals('*'),
+          );
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test(
+      '11A.2 GET /v1/admin/pricing/operators without Authorization is 401',
+      () async {
+        await withRealHttp(() async {
+          final ctx = await spinUp();
+          try {
+            final response = await _httpGet(
+              ctx.client,
+              ctx.baseUri.resolve(adminPricingOperatorsPath),
+            );
+            expect(response.statusCode, equals(401));
+          } finally {
+            ctx.client.close(force: true);
+            await ctx.server.close(force: true);
+          }
+        });
+      },
+    );
+  });
+}
+
+class _FakePricingAdminGateway implements PricingTierAdminProxyGateway {
+  List<Map<String, Object?>> listResult = const <Map<String, Object?>>[];
+  Map<String, Object?>? tierUpdateResult = <String, Object?>{
+    'operator': <String, Object?>{},
+    'caps': <Map<String, Object?>>[],
+  };
+  Map<String, Object?> capUpsertResult = <String, Object?>{};
+  Map<String, Object?>? applyTemplateResult = <String, Object?>{
+    'operator': <String, Object?>{},
+    'caps': <Map<String, Object?>>[],
+  };
+
+  String? lastReason;
+  String? lastActorUserId;
+  String? lastTierUpdateOperatorId;
+  String? lastTierUpdateValue;
+  String? lastCapOperatorId;
+  String? lastCapLocationId;
+  String? lastCapUsageClass;
+  double? lastCapMonthly;
+  String? lastApplyTemplateOperatorId;
+  String? lastApplyTemplateTierKey;
+  Object? raiseOnApplyTemplate;
+
+  @override
+  Future<List<Map<String, Object?>>> listOperatorsWithCaps({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    return listResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> updateOperatorTier({
+    required String actorUserId,
+    required String operatorId,
+    required String subscriptionTier,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastTierUpdateOperatorId = operatorId;
+    lastTierUpdateValue = subscriptionTier;
+    return tierUpdateResult;
+  }
+
+  @override
+  Future<Map<String, Object?>> upsertUsageCap({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String usageClass,
+    required double monthlyCapUsd,
+    required double perInvocationCapUsd,
+    String? staffId,
+    String? workflowId,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastCapOperatorId = operatorId;
+    lastCapLocationId = locationId;
+    lastCapUsageClass = usageClass;
+    lastCapMonthly = monthlyCapUsd;
+    return capUpsertResult;
+  }
+
+  @override
+  Future<Map<String, Object?>?> applyTierTemplate({
+    required String actorUserId,
+    required String operatorId,
+    required String tierKey,
+    required String adminReason,
+  }) async {
+    lastActorUserId = actorUserId;
+    lastReason = adminReason;
+    lastApplyTemplateOperatorId = operatorId;
+    lastApplyTemplateTierKey = tierKey;
+    final raise = raiseOnApplyTemplate;
+    if (raise != null) throw raise;
+    return applyTemplateResult;
+  }
 }
 
 class _FakeAdminGateway implements OperatorLocationAdminProxyGateway {
