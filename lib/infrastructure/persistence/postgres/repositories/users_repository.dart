@@ -289,7 +289,6 @@ class UsersRepository extends OperatorScopedRepository {
         'oa.is_super_admin '
         'from operator_admins oa '
         'join users admin on admin.user_id = oa.user_id '
-        'and admin.operator_id = oa.operator_id '
         'where oa.operator_id = @operator_id::uuid '
         'and admin.deleted_at is null '
         "and admin.status != 'deleted' "

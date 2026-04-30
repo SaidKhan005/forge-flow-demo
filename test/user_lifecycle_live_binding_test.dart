@@ -116,6 +116,49 @@ void main() {
       final sql = pool.transactions.single.executedSql.last;
       expect(sql, contains('roles_version = roles_version + 1'));
     });
+
+    test(
+      'MFA recovery admin lookup trusts explicit operator_admins assignment',
+      () async {
+        const adminUserId = '66666666-6666-6666-6666-666666666666';
+        final pool = _LifecyclePool(
+          mfaRecoveryTargetRows: <PostgresRow>[
+            <String, Object?>{
+              'user_id': _validUserId,
+              'operator_id': _validOpId,
+              'location_id': _validLocId,
+              'email': 'newoundlandlimited@gmail.com',
+            },
+          ],
+          mfaRecoveryAdminRows: <PostgresRow>[
+            <String, Object?>{
+              'user_id': adminUserId,
+              'email': 'saidumarkhan005@gmail.com',
+              'scope_type': 'super_admin',
+              'is_super_admin': true,
+            },
+          ],
+        );
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+        final target = await repo.findMfaRecoveryTargetByEmail(
+          email: 'newoundlandlimited@gmail.com',
+          adminReason: 'mfa_recovery_request_lookup',
+        );
+
+        expect(target, isNotNull);
+        expect(target!.admins, hasLength(1));
+        expect(target.admins.single.email, equals('saidumarkhan005@gmail.com'));
+        final adminLookupSql = pool.transactions.single.executedSql.last;
+        expect(
+          adminLookupSql,
+          contains('join users admin on admin.user_id = oa.user_id'),
+        );
+        expect(
+          adminLookupSql,
+          isNot(contains('admin.operator_id = oa.operator_id')),
+        );
+      },
+    );
   });
 
   group('AuthInvitesRepository (B20 — fake Postgres)', () {
@@ -367,10 +410,17 @@ void main() {
 // ─── Helpers ──────────────────────────────────────────────────────────────
 
 class _LifecyclePool implements PostgresPool {
-  _LifecyclePool({this.returningInviteId, this.returningEventId});
+  _LifecyclePool({
+    this.returningInviteId,
+    this.returningEventId,
+    this.mfaRecoveryTargetRows = const <PostgresRow>[],
+    this.mfaRecoveryAdminRows = const <PostgresRow>[],
+  });
 
   final String? returningInviteId;
   final String? returningEventId;
+  final List<PostgresRow> mfaRecoveryTargetRows;
+  final List<PostgresRow> mfaRecoveryAdminRows;
 
   final List<_LifecycleTransaction> transactions = <_LifecycleTransaction>[];
 
@@ -379,6 +429,8 @@ class _LifecyclePool implements PostgresPool {
     final tx = _LifecycleTransaction(
       returningInviteId: returningInviteId,
       returningEventId: returningEventId,
+      mfaRecoveryTargetRows: mfaRecoveryTargetRows,
+      mfaRecoveryAdminRows: mfaRecoveryAdminRows,
     );
     transactions.add(tx);
     return tx;
@@ -389,10 +441,14 @@ class _LifecycleTransaction extends PostgresTransaction {
   _LifecycleTransaction({
     required this.returningInviteId,
     required this.returningEventId,
+    required this.mfaRecoveryTargetRows,
+    required this.mfaRecoveryAdminRows,
   });
 
   final String? returningInviteId;
   final String? returningEventId;
+  final List<PostgresRow> mfaRecoveryTargetRows;
+  final List<PostgresRow> mfaRecoveryAdminRows;
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
   bool _finalized = false;
@@ -422,6 +478,13 @@ class _LifecycleTransaction extends PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{'event_id': id},
       ];
+    }
+    if (sql.contains('from users u') &&
+        sql.contains('where lower(u.email) = lower(@email)')) {
+      return mfaRecoveryTargetRows;
+    }
+    if (sql.contains('from operator_admins oa')) {
+      return mfaRecoveryAdminRows;
     }
     return <PostgresRow>[];
   }
