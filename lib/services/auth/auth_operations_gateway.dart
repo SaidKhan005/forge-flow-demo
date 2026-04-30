@@ -399,6 +399,80 @@ class TeamRoleDeleted {
   final bool deleted;
 }
 
+// Phase 9.UX.1 - self-service MFA factor contract declarations.
+//
+// The live Settings MFA surface is wired through MfaOperationsGateway. These
+// additive value types reserve the auth-operations contract shape for clients
+// that need to project a user's own factor inventory through the broader auth
+// operations seam without disturbing the Team/role/org methods below.
+class MfaSelfFactorSummary {
+  const MfaSelfFactorSummary({
+    required this.factorId,
+    required this.factorType,
+    required this.enrolledAt,
+    required this.issuerLabel,
+    this.lastUsedAt,
+    this.canRevoke = true,
+  });
+
+  final String factorId;
+  final String factorType;
+  final DateTime enrolledAt;
+  final DateTime? lastUsedAt;
+  final String issuerLabel;
+  final bool canRevoke;
+}
+
+class MfaSelfFactorListCommand {
+  const MfaSelfFactorListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.authorizationIdToken = '',
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String authorizationIdToken;
+}
+
+class MfaSelfFactorListed {
+  const MfaSelfFactorListed({required this.factors});
+
+  final List<MfaSelfFactorSummary> factors;
+}
+
+class MfaSelfFactorRevokeCommand {
+  const MfaSelfFactorRevokeCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.factorId,
+    this.stepUpProofId = '',
+    this.authorizationIdToken = '',
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String factorId;
+  final String stepUpProofId;
+  final String authorizationIdToken;
+}
+
+class MfaSelfFactorRevoked {
+  const MfaSelfFactorRevoked({
+    required this.revoked,
+    this.requestId,
+    this.executeAfter,
+  });
+
+  final bool revoked;
+  final String? requestId;
+  final DateTime? executeAfter;
+}
+
 class AuthOperationRejected implements Exception {
   const AuthOperationRejected({
     required this.code,
