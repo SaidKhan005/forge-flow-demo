@@ -60,12 +60,81 @@ if ($null -eq $psqlCommand) {
 }
 $psqlPath = if ($psqlCommand.Source) { $psqlCommand.Source } else { $psqlCommand.Path }
 
+function Add-ConnectionStringParameter {
+  param(
+    [string] $Value,
+    [string] $Name,
+    [string] $ParameterValue
+  )
+
+  $normalized = $ParameterValue -replace '\\', '/'
+  $escaped = [Uri]::EscapeDataString($normalized)
+  if ($Value -match '^\s*postgres(ql)?://') {
+    $separator = if ($Value.Contains('?')) { '&' } else { '?' }
+    return "$Value$separator$Name=$escaped"
+  }
+  return "$Value $Name=$escaped"
+}
+
+function New-SystemRootCertBundle {
+  $roots = @()
+  try {
+    $roots = @(
+      Get-ChildItem -Path Cert:\CurrentUser\Root,Cert:\LocalMachine\Root `
+        -ErrorAction Stop
+    )
+  } catch {
+    return $null
+  }
+  if ($roots.Count -eq 0) { return $null }
+
+  $path = Join-Path ([System.IO.Path]::GetTempPath()) (
+    "forge-flow-postgres-roots-{0}.pem" -f ([Guid]::NewGuid().ToString('N'))
+  )
+  $builder = [System.Text.StringBuilder]::new()
+  foreach ($root in $roots) {
+    try {
+      $raw = $root.Export(
+        [System.Security.Cryptography.X509Certificates.X509ContentType]::Cert
+      )
+      $body = [Convert]::ToBase64String(
+        $raw,
+        [Base64FormattingOptions]::InsertLineBreaks
+      )
+      [void] $builder.AppendLine('-----BEGIN CERTIFICATE-----')
+      [void] $builder.AppendLine($body)
+      [void] $builder.AppendLine('-----END CERTIFICATE-----')
+    } catch {
+      # Skip unreadable local roots; the bundle only needs one matching issuer.
+    }
+  }
+  if ($builder.Length -eq 0) { return $null }
+
+  $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+  [System.IO.File]::WriteAllText($path, $builder.ToString(), $utf8NoBom)
+  return $path
+}
+
 $tempSql = Join-Path ([System.IO.Path]::GetTempPath()) (
   "forge-flow-launch-account-roles-{0}.sql" -f ([Guid]::NewGuid().ToString('N'))
 )
 $claimsSql = Join-Path ([System.IO.Path]::GetTempPath()) (
   "forge-flow-launch-account-claims-{0}.sql" -f ([Guid]::NewGuid().ToString('N'))
 )
+$tempRootBundle = $null
+$effectiveConnectionString = $ConnectionString
+if (
+  $ConnectionString -match '(^|[?&\s])sslmode=verify-(full|ca)' -and
+  $ConnectionString -notmatch '(^|[?&\s])sslrootcert='
+) {
+  $tempRootBundle = New-SystemRootCertBundle
+  if (-not [string]::IsNullOrWhiteSpace($tempRootBundle)) {
+    $effectiveConnectionString = Add-ConnectionStringParameter `
+      -Value $ConnectionString `
+      -Name 'sslrootcert' `
+      -ParameterValue $tempRootBundle
+  }
+}
 
 $transactionEnd = if ($DryRun) { 'rollback;' } else { 'commit;' }
 
@@ -73,10 +142,13 @@ $roleSql = @'
 \set ON_ERROR_STOP on
 begin;
 
+select set_config('forge_flow.launch_admin_email', :'admin_email', true);
+select set_config('forge_flow.launch_regular_email', :'regular_email', true);
+
 do $$
 declare
-  admin_email constant text := lower(:'admin_email');
-  regular_email constant text := lower(:'regular_email');
+  admin_email constant text := lower(current_setting('forge_flow.launch_admin_email'));
+  regular_email constant text := lower(current_setting('forge_flow.launch_regular_email'));
 
   admin_user_id uuid;
   regular_user_id uuid;
@@ -398,7 +470,7 @@ try {
     -v "admin_email=$AdminEmail" `
     -v "regular_email=$RegularEmail" `
     -f $tempSql `
-    $ConnectionString
+    $effectiveConnectionString
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   if ($RefreshFirebaseClaims) {
@@ -417,7 +489,7 @@ try {
       -t `
       -A `
       -f $claimsSql `
-      $ConnectionString
+      $effectiveConnectionString
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     $claimsJson = $claimsRaw |
@@ -429,7 +501,13 @@ try {
     }
     $claims = $claimsJson | ConvertFrom-Json
 
-    $accessToken = & $gcloudPath auth print-access-token
+    $accessToken = $null
+    if (-not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('GOOGLE_APPLICATION_CREDENTIALS'))) {
+      $accessToken = & $gcloudPath auth application-default print-access-token
+    }
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($accessToken)) {
+      $accessToken = & $gcloudPath auth print-access-token
+    }
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($accessToken)) {
       Write-Host 'BLOCKED: could not obtain a gcloud access token'
       exit 1
@@ -477,5 +555,11 @@ try {
   }
   if (Test-Path -LiteralPath $claimsSql) {
     Remove-Item -LiteralPath $claimsSql -Force
+  }
+  if (
+    -not [string]::IsNullOrWhiteSpace($tempRootBundle) -and
+    (Test-Path -LiteralPath $tempRootBundle)
+  ) {
+    Remove-Item -LiteralPath $tempRootBundle -Force
   }
 }

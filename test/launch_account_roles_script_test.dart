@@ -16,6 +16,13 @@ void main() {
       expect(body, contains("r.role_key = 'operator_staff'"));
       expect(body, contains("scope_type = 'super_admin'"));
       expect(body, contains('operator_admins'));
+      expect(body, contains("set_config('forge_flow.launch_admin_email'"));
+      expect(
+        body,
+        contains("current_setting('forge_flow.launch_admin_email')"),
+      );
+      expect(body, contains('New-SystemRootCertBundle'));
+      expect(body, contains('sslrootcert'));
     });
 
     test('keeps secrets out of the repo script', () {
@@ -33,6 +40,7 @@ void main() {
         final body = script.readAsStringSync();
 
         expect(body, contains('RefreshFirebaseClaims'));
+        expect(body, contains('auth application-default print-access-token'));
         expect(body, contains(r'$customClaims.is_super_admin = $true'));
         expect(
           body,
