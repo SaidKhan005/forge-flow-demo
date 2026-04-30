@@ -174,6 +174,101 @@ void main() {
       });
     });
 
+    test('GET org-units lists hierarchy and gates on team.users.view', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final guard = _RecordingAdminGuard();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+          adminPermissionGuard: guard,
+        );
+        try {
+          final response = await harness.get(adminAuthOrgUnitsPath);
+
+          expect(response.statusCode, equals(200));
+          expect(guard.permissionKeys, equals(<String>['team.users.view']));
+          expect(gateway.orgHierarchyLists, hasLength(1));
+          final units = response.json['org_units'] as List<Object?>;
+          final firstUnit = Map<String, Object?>.from(units.single as Map);
+          expect(firstUnit['unit_type'], equals('corp'));
+          expect(firstUnit['path'], equals('acme'));
+          final locations = response.json['locations'] as List<Object?>;
+          final firstLoc = Map<String, Object?>.from(locations.single as Map);
+          expect(firstLoc['parent_org_unit_id'], firstUnit['org_unit_id']);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test(
+      'POST org-units creates a child unit and gates on team.roles.assign',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.postJson(
+              adminAuthOrgUnitsPath,
+              const <String, Object?>{
+                'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
+                'unit_type': 'region',
+                'label': 'east',
+                'name': 'East Region',
+              },
+            );
+
+            expect(response.statusCode, equals(201));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            expect(gateway.orgUnitCreates.single.label, equals('east'));
+            expect(
+              response.json['org_unit_id'],
+              equals('77777777-7777-4777-8777-777777777777'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'PATCH location org-unit moves the location and gates on team.roles.assign',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            const targetLocation = '33333333-3333-4333-8333-333333333333';
+            final response = await harness.patchJson(
+              '/v1/admin/auth/locations/$targetLocation/org-unit',
+              const <String, Object?>{
+                'parent_org_unit_id': '77777777-7777-4777-8777-777777777777',
+              },
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
+            expect(
+              gateway.locationOrgUnitMoves.single.targetLocationId,
+              equals(targetLocation),
+            );
+            expect(response.json['moved'], isTrue);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('admin guard denial stops auth operation before gateway', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingAuthOperationsGateway();
@@ -1187,6 +1282,54 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
     TeamRoleGrantRevokeCommand command,
   ) async {
     return const TeamRoleGrantRevoked(revoked: true);
+  }
+
+  final orgHierarchyLists = <TeamOrgHierarchyListCommand>[];
+  final orgUnitCreates = <TeamOrgUnitCreateCommand>[];
+  final locationOrgUnitMoves = <TeamLocationOrgUnitMoveCommand>[];
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) async {
+    orgHierarchyLists.add(command);
+    return const TeamOrgHierarchyListed(
+      orgUnits: <TeamOrgUnitEntry>[
+        TeamOrgUnitEntry(
+          orgUnitId: '66666666-6666-4666-8666-666666666666',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'acme',
+          label: 'ACME',
+        ),
+      ],
+      locations: <TeamOrgLocationEntry>[
+        TeamOrgLocationEntry(
+          locationId: '33333333-3333-4333-8333-333333333333',
+          parentOrgUnitId: '66666666-6666-4666-8666-666666666666',
+          orgUnitPath: 'acme',
+          label: 'Downtown',
+        ),
+      ],
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitCreated> createOrgUnit(
+    TeamOrgUnitCreateCommand command,
+  ) async {
+    orgUnitCreates.add(command);
+    return const TeamOrgUnitCreated(
+      orgUnitId: '77777777-7777-4777-8777-777777777777',
+    );
+  }
+
+  @override
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command,
+  ) async {
+    locationOrgUnitMoves.add(command);
+    return const TeamLocationOrgUnitMoved(moved: true);
   }
 }
 

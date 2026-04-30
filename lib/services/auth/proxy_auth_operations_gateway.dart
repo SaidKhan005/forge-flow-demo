@@ -227,6 +227,9 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   static const String usersPrefix = '/v1/admin/auth/users/';
   static const String rolesPath = '/v1/admin/auth/roles';
   static const String roleGrantsPath = '/v1/admin/auth/role-grants';
+  // Phase 9.UX.4 — org hierarchy admin client paths.
+  static const String orgUnitsPath = '/v1/admin/auth/org-units';
+  static const String locationsPrefix = '/v1/admin/auth/locations/';
 
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
@@ -489,6 +492,115 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       throw _malformed(response, 'role grant revoke response was incomplete');
     }
     return TeamRoleGrantRevoked(revoked: revoked);
+  }
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) async {
+    final response = await _get(orgUnitsPath);
+    _expectStatus(response, 200);
+    final rawOrgUnits = response.body['org_units'];
+    final rawLocations = response.body['locations'];
+    if (rawOrgUnits is! List || rawLocations is! List) {
+      throw _malformed(response, 'org hierarchy response was incomplete');
+    }
+    return TeamOrgHierarchyListed(
+      orgUnits: List<TeamOrgUnitEntry>.unmodifiable(
+        rawOrgUnits.map((raw) => _orgUnitFromJson(response, raw)),
+      ),
+      locations: List<TeamOrgLocationEntry>.unmodifiable(
+        rawLocations.map((raw) => _orgLocationFromJson(response, raw)),
+      ),
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitCreated> createOrgUnit(
+    TeamOrgUnitCreateCommand command,
+  ) async {
+    final response = await _post(orgUnitsPath, <String, Object?>{
+      'parent_org_unit_id': command.parentOrgUnitId,
+      'unit_type': command.unitType,
+      'label': command.label,
+      'name': command.name,
+    });
+    _expectStatus(response, 201);
+    final orgUnitId = _readNonBlankString(response.body['org_unit_id']);
+    if (orgUnitId == null) {
+      throw _malformed(response, 'org unit create response was incomplete');
+    }
+    return TeamOrgUnitCreated(orgUnitId: orgUnitId);
+  }
+
+  @override
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command,
+  ) async {
+    final response = await _patch(
+      '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}'
+          '/org-unit',
+      <String, Object?>{'parent_org_unit_id': command.parentOrgUnitId},
+    );
+    _expectStatus(response, 200);
+    final moved = response.body['moved'];
+    if (moved is! bool) {
+      throw _malformed(response, 'org unit move response was incomplete');
+    }
+    return TeamLocationOrgUnitMoved(moved: moved);
+  }
+
+  TeamOrgUnitEntry _orgUnitFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'org unit payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final orgUnitId = _readNonBlankString(json['org_unit_id']);
+    final unitType = _readNonBlankString(json['unit_type']);
+    final path = _readNonBlankString(json['path']);
+    final label = _readNonBlankString(json['label']);
+    if (orgUnitId == null ||
+        unitType == null ||
+        path == null ||
+        label == null) {
+      throw _malformed(response, 'org unit payload was incomplete');
+    }
+    return TeamOrgUnitEntry(
+      orgUnitId: orgUnitId,
+      parentOrgUnitId: _readNonBlankString(json['parent_org_unit_id']),
+      unitType: unitType,
+      path: path,
+      label: label,
+    );
+  }
+
+  TeamOrgLocationEntry _orgLocationFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'org location payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final locationId = _readNonBlankString(json['location_id']);
+    final parentOrgUnitId = _readNonBlankString(json['parent_org_unit_id']);
+    final orgUnitPath = _readNonBlankString(json['org_unit_path']);
+    final label = _readNonBlankString(json['label']);
+    if (locationId == null ||
+        parentOrgUnitId == null ||
+        orgUnitPath == null ||
+        label == null) {
+      throw _malformed(response, 'org location payload was incomplete');
+    }
+    return TeamOrgLocationEntry(
+      locationId: locationId,
+      parentOrgUnitId: parentOrgUnitId,
+      orgUnitPath: orgUnitPath,
+      label: label,
+    );
   }
 
   Future<TeamUserStatusUpdated> _updateUserStatus(

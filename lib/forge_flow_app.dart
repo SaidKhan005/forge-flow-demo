@@ -35,6 +35,7 @@ import 'screens/auth/auth_permission_context_bridge.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_builder.dart';
+import 'screens/settings/settings_org_hierarchy_section.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/team/team_settings_section.dart';
@@ -220,6 +221,29 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   String? _teamRolesLoadingFor;
   String? _teamDataLoadedFor;
   String? _teamDataLoadingFor;
+  // Phase 9.UX.4 — operator org hierarchy state. Cached per
+  // `(user, operator, location)` key so the Settings → Team tab
+  // can render the tree without a round-trip on every open.
+  List<TeamOrgUnitEntry> _teamOrgUnits = const <TeamOrgUnitEntry>[];
+  List<TeamOrgLocationEntry> _teamOrgLocations =
+      const <TeamOrgLocationEntry>[];
+  // Listenables bridge the async load/create/move callbacks back to
+  // the open Settings route — passing only `_teamOrgUnits` /
+  // `_teamOrgLocations` snapshots leaves the hierarchy stale when the
+  // gateway resolves after navigation.
+  late final ValueNotifier<List<TeamOrgUnitEntry>>
+  _teamOrgUnitsListenable = ValueNotifier<List<TeamOrgUnitEntry>>(
+    _teamOrgUnits,
+  );
+  late final ValueNotifier<List<TeamOrgLocationEntry>>
+  _teamOrgLocationsListenable =
+      ValueNotifier<List<TeamOrgLocationEntry>>(_teamOrgLocations);
+  late final ValueNotifier<List<TeamOrgUnitOption>>
+  _teamOrgUnitOptionsListenable = ValueNotifier<List<TeamOrgUnitOption>>(
+    const <TeamOrgUnitOption>[],
+  );
+  String? _teamOrgHierarchyLoadedFor;
+  String? _teamOrgHierarchyLoadingFor;
 
   /// Tracks whether the app has been backgrounded at least once.
   /// Prevents the cold-start `resumed` callback from triggering a
@@ -269,6 +293,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _teamUsersListenable.dispose();
     _teamPendingInvitesListenable.dispose();
     _teamDataLoadStateListenable.dispose();
+    _teamOrgUnitsListenable.dispose();
+    _teamOrgLocationsListenable.dispose();
+    _teamOrgUnitOptionsListenable.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -339,6 +366,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         TeamScopeVisibilityPolicy.canSeeTeamNav(teamActor)) {
       unawaited(_loadTeamRoleOptionsIfNeeded(session));
       unawaited(_loadTeamDataIfNeeded(session));
+      unawaited(_loadOrgHierarchyIfNeeded(session));
     }
     navigator.push(
       MaterialPageRoute(
@@ -356,6 +384,14 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
                     label: restaurant?.displayName ?? 'Current location',
                   ),
                 ],
+          teamOrgUnitOptions: _teamOrgUnitOptionsListenable.value,
+          teamOrgUnits: _teamOrgUnits,
+          teamOrgLocations: _teamOrgLocations,
+          teamOrgUnitsListenable: _teamOrgUnitsListenable,
+          teamOrgLocationsListenable: _teamOrgLocationsListenable,
+          teamOrgUnitOptionsListenable: _teamOrgUnitOptionsListenable,
+          onTeamOrgUnitCreate: _teamOrgUnitCreateRequester(session),
+          onTeamLocationMove: _teamLocationMoveRequester(session),
           teamUsers: _teamUsers,
           teamUsersListenable: _teamUsersListenable,
           teamPendingInvites: _teamPendingInvites,
@@ -588,8 +624,207 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       scopeType: entry.scopeType,
       locationId: entry.locationId,
       locationLabel: entry.locationLabel,
+      orgUnitId: entry.orgUnitId,
+      orgUnitLabel: entry.orgUnitLabel,
       expiresAt: entry.expiresAt,
     );
+  }
+
+  // Phase 9.UX.4 — load org hierarchy alongside Team data. The
+  // gateway's `listOrgHierarchy` is a tenant-scoped read; if the
+  // gateway is not wired we fall back to a deterministic
+  // demo-mode fixture so the kDemoMode walkthrough completes
+  // without a backend (per Block 3 requirement).
+  Future<void> _loadOrgHierarchyIfNeeded(
+    AuthSession session, {
+    bool force = false,
+  }) async {
+    final key = '${session.userId}|${session.operatorId}|${session.locationId}';
+    if (!force && _teamOrgHierarchyLoadedFor == key) return;
+    if (_teamOrgHierarchyLoadingFor == key) return;
+    _teamOrgHierarchyLoadingFor = key;
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null) {
+      // Demo / unauth path: seed an in-memory hierarchy keyed on the
+      // session's operator + location so the walkthrough click path
+      // can move the location and grant org-unit scope without a
+      // backend round-trip.
+      if (mounted) {
+        _publishOrgHierarchy(
+          orgUnits: _demoOrgUnitsFor(session),
+          locations: _demoOrgLocationsFor(session),
+          loadedKey: key,
+        );
+      }
+      _teamOrgHierarchyLoadingFor = null;
+      return;
+    }
+    try {
+      final listed = await gateway.listOrgHierarchy(
+        TeamOrgHierarchyListCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+        ),
+      );
+      if (!mounted) return;
+      _publishOrgHierarchy(
+        orgUnits: listed.orgUnits,
+        locations: listed.locations,
+        loadedKey: key,
+      );
+    } catch (error) {
+      debugPrint('Org hierarchy load failed: $error');
+    } finally {
+      if (_teamOrgHierarchyLoadingFor == key) {
+        _teamOrgHierarchyLoadingFor = null;
+      }
+    }
+  }
+
+  /// Single fan-out for org hierarchy state changes — keeps the
+  /// `_team*` snapshots, the listenables, and the derived
+  /// `TeamOrgUnitOption` projection in sync. The listenables drive
+  /// the open Settings route's rebuilds; the snapshot fields seed
+  /// fresh route opens before the listenable yields.
+  void _publishOrgHierarchy({
+    required List<TeamOrgUnitEntry> orgUnits,
+    required List<TeamOrgLocationEntry> locations,
+    String? loadedKey,
+  }) {
+    setState(() {
+      _teamOrgUnits = orgUnits;
+      _teamOrgLocations = locations;
+      if (loadedKey != null) _teamOrgHierarchyLoadedFor = loadedKey;
+    });
+    _teamOrgUnitsListenable.value = orgUnits;
+    _teamOrgLocationsListenable.value = locations;
+    _teamOrgUnitOptionsListenable.value = orgUnits
+        .map(
+          (unit) => TeamOrgUnitOption(
+            orgUnitId: unit.orgUnitId,
+            label: unit.label,
+            path: unit.path,
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  TeamOrgUnitCreateRequester? _teamOrgUnitCreateRequester(
+    AuthSession? session,
+  ) {
+    if (session == null) return null;
+    return (draft) async {
+      final gateway = widget.authOperationsGateway;
+      if (gateway == null) {
+        // Demo-mode write: append a new org unit + refresh the
+        // listenable so the walkthrough sees the new node land
+        // immediately.
+        final parent = _teamOrgUnits.firstWhere(
+          (unit) => unit.orgUnitId == draft.parentOrgUnitId,
+          orElse: () =>
+              _teamOrgUnits.isEmpty ? _demoRootFor(session) : _teamOrgUnits.first,
+        );
+        final created = TeamOrgUnitEntry(
+          orgUnitId: 'demo-org-unit-${DateTime.now().microsecondsSinceEpoch}',
+          parentOrgUnitId: parent.orgUnitId,
+          unitType: draft.unitType,
+          path: '${parent.path}.${draft.label}',
+          label: draft.name,
+        );
+        if (mounted) {
+          _publishOrgHierarchy(
+            orgUnits: <TeamOrgUnitEntry>[..._teamOrgUnits, created],
+            locations: _teamOrgLocations,
+          );
+        }
+        return TeamOrgUnitCreated(orgUnitId: created.orgUnitId);
+      }
+      final created = await gateway.createOrgUnit(
+        TeamOrgUnitCreateCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          parentOrgUnitId: draft.parentOrgUnitId,
+          unitType: draft.unitType,
+          label: draft.label,
+          name: draft.name,
+        ),
+      );
+      unawaited(_loadOrgHierarchyIfNeeded(session, force: true));
+      return created;
+    };
+  }
+
+  TeamLocationOrgUnitMoveRequester? _teamLocationMoveRequester(
+    AuthSession? session,
+  ) {
+    if (session == null) return null;
+    return (draft) async {
+      final gateway = widget.authOperationsGateway;
+      if (gateway == null) {
+        final parent = _teamOrgUnits.firstWhere(
+          (unit) => unit.orgUnitId == draft.parentOrgUnitId,
+          orElse: () => _demoRootFor(session),
+        );
+        if (mounted) {
+          final nextLocations = _teamOrgLocations
+              .map(
+                (loc) => loc.locationId == draft.locationId
+                    ? TeamOrgLocationEntry(
+                        locationId: loc.locationId,
+                        parentOrgUnitId: parent.orgUnitId,
+                        orgUnitPath: parent.path,
+                        label: loc.label,
+                      )
+                    : loc,
+              )
+              .toList(growable: false);
+          _publishOrgHierarchy(
+            orgUnits: _teamOrgUnits,
+            locations: nextLocations,
+          );
+        }
+        return const TeamLocationOrgUnitMoved(moved: true);
+      }
+      final moved = await gateway.moveLocationToOrgUnit(
+        TeamLocationOrgUnitMoveCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          targetLocationId: draft.locationId,
+          parentOrgUnitId: draft.parentOrgUnitId,
+        ),
+      );
+      unawaited(_loadOrgHierarchyIfNeeded(session, force: true));
+      return moved;
+    };
+  }
+
+  TeamOrgUnitEntry _demoRootFor(AuthSession session) {
+    return TeamOrgUnitEntry(
+      orgUnitId: 'demo-root-${session.operatorId}',
+      parentOrgUnitId: null,
+      unitType: 'corp',
+      path: 'forgeflow',
+      label: 'Forge & Flow',
+    );
+  }
+
+  List<TeamOrgUnitEntry> _demoOrgUnitsFor(AuthSession session) {
+    return <TeamOrgUnitEntry>[_demoRootFor(session)];
+  }
+
+  List<TeamOrgLocationEntry> _demoOrgLocationsFor(AuthSession session) {
+    final root = _demoRootFor(session);
+    return <TeamOrgLocationEntry>[
+      TeamOrgLocationEntry(
+        locationId: session.locationId,
+        parentOrgUnitId: root.orgUnitId,
+        orgUnitPath: root.path,
+        label: 'Current location',
+      ),
+    ];
   }
 
   TeamInviteSubmitter? _teamInviteSubmitter(AuthSession? session) {
@@ -719,6 +954,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
               roleId: roleId,
               scopeType: scopeType,
               targetLocationId: request.locationId,
+              targetOrgUnitId: request.orgUnitId,
               reason: request.reason,
             ),
           );

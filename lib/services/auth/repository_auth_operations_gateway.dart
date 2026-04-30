@@ -11,6 +11,7 @@ import 'package:crypto/crypto.dart';
 
 import '../../infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
+import '../../infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import '../../infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
@@ -27,6 +28,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required this.userRolesRepository,
     required this.authInvitesRepository,
     required this.auditRepository,
+    this.orgUnitsRepository,
     DateTime Function()? now,
     String Function()? idFactory,
     String Function()? tokenFactory,
@@ -41,6 +43,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   final UserRolesRepository userRolesRepository;
   final AuthInvitesRepository authInvitesRepository;
   final AuthEventsAuditRepository auditRepository;
+  final OrgUnitsRepository? orgUnitsRepository;
   final DateTime Function() _now;
   final String Function() _idFactory;
   final String Function() _tokenFactory;
@@ -265,6 +268,22 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       targetLocationId: command.targetLocationId,
       targetOrgUnitId: command.targetOrgUnitId,
     );
+    // Phase 9 manager contract: location-scoped actors with
+    // `team.users.invite` cannot broaden invite scope past their
+    // assigned location. Operator-wide / org-unit invites require
+    // an operator-wide grant whose role explicitly carries
+    // `team.users.invite`. The proxy permission gate alone is not
+    // enough — it would pass for a mixed-scope actor whose
+    // location-scoped role has the key.
+    if (scopeType == UserRoleScope.operatorWide ||
+        scopeType == UserRoleScope.orgUnit) {
+      await _requireOperatorWidePermission(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        requiredPermissionKey: 'team.users.invite',
+      );
+    }
     final roleId = await _resolveRoleId(command);
     final userId = _idFactory();
     final defaultLocationId = command.targetLocationId ?? command.locationId;
@@ -474,6 +493,19 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       targetLocationId: command.targetLocationId,
       targetOrgUnitId: command.targetOrgUnitId,
     );
+    // Phase 9 manager contract: location-scoped actors cannot grant
+    // operator-wide or org-unit scope (those reach beyond their own
+    // assigned location). Enforce server-side in addition to the
+    // existing `team.roles.assign` permission gate.
+    if (scopeType == UserRoleScope.operatorWide ||
+        scopeType == UserRoleScope.orgUnit) {
+      await _requireOperatorWidePermission(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        requiredPermissionKey: 'team.roles.assign',
+      );
+    }
     final roleId = await _resolveRoleGrantRoleId(command);
     final id = await userRolesRepository.insertGrant(
       operatorId: command.operatorId,
@@ -529,6 +561,272 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       );
     }
     return TeamRoleGrantRevoked(revoked: affected > 0);
+  }
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    // Determine actor scope before reading. Operator-wide actors
+    // whose role explicitly carries `team.users.view` see the whole
+    // tree; everyone else (including a mixed-scope user whose
+    // operator-wide grant is a low-privilege role and whose
+    // `team.users.view` permission comes from a location-scoped
+    // role) sees only the locations they hold (via
+    // `effective_location_ids`) plus the chain of org_units above
+    // those locations. RLS already filters cross-tenant rows; this
+    // filter trims the in-tenant view down to the actor's scope so
+    // the surface matches the Phase 9 manager contract and the
+    // listing path uses the same permission-aware check that the
+    // mutation gate uses.
+    final grants = await userRolesRepository.activeGrantsForUser(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      targetUserId: command.actorUserId,
+      actorUserId: command.actorUserId,
+    );
+    final operatorWideRoleIds = <String>{
+      for (final grant in grants)
+        if (grant.scopeType == 'operator_wide') grant.roleId,
+    };
+    var hasOperatorWideView = false;
+    for (final roleId in operatorWideRoleIds) {
+      final permissions = await rolePermissionsRepository.listForRole(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        roleId: roleId,
+        actorUserId: command.actorUserId,
+      );
+      if (permissions.any(
+        (rule) =>
+            rule.permissionKey == 'team.users.view' && rule.effect == 'allow',
+      )) {
+        hasOperatorWideView = true;
+        break;
+      }
+    }
+
+    final orgUnits = await repo.listForTenant(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+    );
+    final locations = await repo.listLocationsForTenant(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+    );
+
+    Iterable<OrgUnitRow> visibleOrgUnits = orgUnits;
+    Iterable<OrgLocationRow> visibleLocations = locations;
+    if (!hasOperatorWideView) {
+      final accessibleLocationIds = <String>{
+        for (final grant in grants) ...grant.effectiveLocationIds,
+      };
+      visibleLocations = locations.where(
+        (loc) => accessibleLocationIds.contains(loc.locationId),
+      );
+      // Build the set of ltree path prefixes that any visible
+      // location's `org_unit_path` traverses. Any org_units row
+      // whose own `path` is one of those prefixes is an ancestor of
+      // a visible location and stays in the tree; everything else
+      // (other branches the manager doesn't reach) drops out.
+      final ancestorPaths = <String>{};
+      for (final loc in visibleLocations) {
+        final parts = loc.orgUnitPath.split('.');
+        for (var i = 1; i <= parts.length; i++) {
+          ancestorPaths.add(parts.take(i).join('.'));
+        }
+      }
+      visibleOrgUnits = orgUnits.where(
+        (unit) => ancestorPaths.contains(unit.path),
+      );
+    }
+
+    return TeamOrgHierarchyListed(
+      orgUnits: List<TeamOrgUnitEntry>.unmodifiable(
+        visibleOrgUnits.map(
+          (row) => TeamOrgUnitEntry(
+            orgUnitId: row.id,
+            parentOrgUnitId: row.parentId,
+            unitType: row.unitType,
+            path: row.path,
+            label: row.name,
+          ),
+        ),
+      ),
+      locations: List<TeamOrgLocationEntry>.unmodifiable(
+        visibleLocations.map(
+          (row) => TeamOrgLocationEntry(
+            locationId: row.locationId,
+            parentOrgUnitId: row.parentOrgUnitId,
+            orgUnitPath: row.orgUnitPath,
+            label: row.name,
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Future<TeamOrgUnitCreated> createOrgUnit(
+    TeamOrgUnitCreateCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.roles.assign',
+    );
+    final unitType = _requiredTrimmed(command.unitType, 'unitType');
+    if (unitType == 'corp') {
+      // Roots are seeded by the migration; new children must be a
+      // non-corp unit type. Reject `corp` early so the proxy returns
+      // a narrow 400 instead of bouncing the DB CHECK.
+      throw const AuthOperationRejected(
+        code: 'invalid_unit_type',
+        message: "child unit_type cannot be 'corp'",
+        statusCode: 400,
+      );
+    }
+    final label = _orgUnitLabel(command.label);
+    final name = _requiredTrimmed(command.name, 'name');
+    final orgUnitId = await repo.createChild(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      parentId: command.parentOrgUnitId,
+      unitType: unitType,
+      childLabel: label,
+      name: name,
+      userId: command.actorUserId,
+    );
+    await _audit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      eventType: 'auth.org_unit_created',
+      payload: <String, Object?>{
+        'org_unit_id': orgUnitId,
+        'parent_org_unit_id': command.parentOrgUnitId,
+        'unit_type': unitType,
+      },
+    );
+    return TeamOrgUnitCreated(orgUnitId: orgUnitId);
+  }
+
+  @override
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command,
+  ) async {
+    final repo = _requireOrgUnitsRepository();
+    await _requireOperatorWidePermission(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      actorUserId: command.actorUserId,
+      requiredPermissionKey: 'team.roles.assign',
+    );
+    final affected = await repo.moveLocationToOrgUnit(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      targetLocationId: command.targetLocationId,
+      parentOrgUnitId: command.parentOrgUnitId,
+      userId: command.actorUserId,
+    );
+    if (affected > 0) {
+      await _audit(
+        operatorId: command.operatorId,
+        locationId: command.locationId,
+        actorUserId: command.actorUserId,
+        eventType: 'auth.location_org_unit_moved',
+        payload: <String, Object?>{
+          'target_location_id': command.targetLocationId,
+          'parent_org_unit_id': command.parentOrgUnitId,
+        },
+      );
+    }
+    return TeamLocationOrgUnitMoved(moved: affected > 0);
+  }
+
+  /// Phase 9.UX.4 server-side target-scope gate. Hierarchy mutations,
+  /// operator-wide / org-unit grants, and org-unit-scoped invites
+  /// reach beyond a single location, so the actor must hold an active
+  /// **operator-wide** grant whose role allows [requiredPermissionKey].
+  ///
+  /// A mixed-scope actor (e.g., `operator_staff` operator-wide PLUS
+  /// `operator_manager` location-scoped) can pass a per-permission
+  /// proxy gate by combining the two roles, but must not pass the
+  /// hierarchy gate: only the role attached to the operator-wide
+  /// grant counts. This helper looks up the role's
+  /// `role_permissions` rows and refuses unless one of them carries
+  /// the required key with `effect = 'allow'`.
+  ///
+  /// Inheritance / deny-wins from the broader permission resolver is
+  /// out of scope here — the question this gate answers is narrower:
+  /// "does the actor's operator-wide grant explicitly carry this
+  /// permission?". Operator-wide deny rules and inheritance against
+  /// the actor's other roles are intentionally not consulted, so a
+  /// location-scoped role cannot be promoted via the operator-wide
+  /// gate.
+  Future<void> _requireOperatorWidePermission({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String requiredPermissionKey,
+  }) async {
+    final grants = await userRolesRepository.activeGrantsForUser(
+      operatorId: operatorId,
+      locationId: locationId,
+      targetUserId: actorUserId,
+      actorUserId: actorUserId,
+    );
+    final operatorWideRoleIds = <String>{
+      for (final grant in grants)
+        if (grant.scopeType == 'operator_wide') grant.roleId,
+    };
+    if (operatorWideRoleIds.isEmpty) {
+      throw const AuthOperationRejected(
+        code: 'target_scope_required',
+        message:
+            'this action requires an operator-wide grant; '
+            'location-scoped actors cannot mutate operator hierarchy',
+        statusCode: 403,
+      );
+    }
+    for (final roleId in operatorWideRoleIds) {
+      final permissions = await rolePermissionsRepository.listForRole(
+        operatorId: operatorId,
+        locationId: locationId,
+        roleId: roleId,
+        actorUserId: actorUserId,
+      );
+      final allowed = permissions.any(
+        (rule) =>
+            rule.permissionKey == requiredPermissionKey &&
+            rule.effect == 'allow',
+      );
+      if (allowed) return;
+    }
+    throw AuthOperationRejected(
+      code: 'target_scope_required',
+      message:
+          'this action requires an operator-wide grant whose role '
+          "carries '$requiredPermissionKey'",
+      statusCode: 403,
+    );
+  }
+
+  OrgUnitsRepository _requireOrgUnitsRepository() {
+    final repo = orgUnitsRepository;
+    if (repo == null) {
+      throw const AuthOperationRejected(
+        code: 'org_units_gateway_not_bound',
+        message: 'org hierarchy gateway is not wired',
+        statusCode: 503,
+      );
+    }
+    return repo;
   }
 
   Future<TeamUserStatusUpdated> _updateUserStatus(
@@ -893,6 +1191,21 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
           statusCode: 400,
         );
     }
+  }
+
+  static String _orgUnitLabel(String value) {
+    final trimmed = _requiredTrimmed(value, 'label');
+    final valid = RegExp(r'^[a-z0-9_]{1,32}$').hasMatch(trimmed);
+    if (!valid) {
+      throw const AuthOperationRejected(
+        code: 'invalid_org_unit_label',
+        message:
+            'label must be lowercase letters, numbers, or underscores '
+            '(1-32 chars)',
+        statusCode: 400,
+      );
+    }
+    return trimmed;
   }
 
   static String _roleKey(String value) {

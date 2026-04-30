@@ -3124,6 +3124,11 @@ const String adminAuthRolesPath = '/v1/admin/auth/roles';
 const String adminAuthRolePrefix = '$adminAuthRolesPath/';
 const String adminAuthRoleGrantsPath = '/v1/admin/auth/role-grants';
 const String adminAuthRoleGrantPrefix = '$adminAuthRoleGrantsPath/';
+// Phase 9.UX.4 — org hierarchy admin routes. Reads gate on
+// `team.users.view`, mutations on `team.roles.assign` (per the
+// hierarchy-touches-grants posture from `phase_9_auth_plan.md`).
+const String adminAuthOrgUnitsPath = '/v1/admin/auth/org-units';
+const String adminAuthLocationsPrefix = '/v1/admin/auth/locations/';
 const String adminServicePrincipalsPath = '/v1/admin/service-principals';
 const String adminServicePrincipalsPrefix = '$adminServicePrincipalsPath/';
 
@@ -4662,6 +4667,90 @@ Future<void> routeRequest(
           });
           return;
         }
+
+        if (request.method == 'GET' && path == adminAuthOrgUnitsPath) {
+          if (!await requirePermission('team.users.view')) return;
+          final listed = await authOperationsGateway.listOrgHierarchy(
+            TeamOrgHierarchyListCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'org_units': listed.orgUnits.map(_teamOrgUnitToJson).toList(
+              growable: false,
+            ),
+            'locations': listed.locations.map(_teamOrgLocationToJson).toList(
+              growable: false,
+            ),
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == adminAuthOrgUnitsPath) {
+          if (!await requirePermission('team.roles.assign')) return;
+          final parentOrgUnitId = _nonBlankString(body['parent_org_unit_id']);
+          final unitType = _nonBlankString(body['unit_type']);
+          final label = _nonBlankString(body['label']);
+          final name = _nonBlankString(body['name']);
+          if (parentOrgUnitId == null ||
+              unitType == null ||
+              label == null ||
+              name == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_org_unit_fields',
+              'message':
+                  'parent_org_unit_id, unit_type, label, and name are required',
+            });
+            return;
+          }
+          final created = await authOperationsGateway.createOrgUnit(
+            TeamOrgUnitCreateCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              parentOrgUnitId: parentOrgUnitId,
+              unitType: unitType,
+              label: label,
+              name: name,
+            ),
+          );
+          _writeJson(response, 201, <String, Object?>{
+            'org_unit_id': created.orgUnitId,
+          });
+          return;
+        }
+
+        if (request.method == 'PATCH' &&
+            path.startsWith(adminAuthLocationsPrefix) &&
+            path.endsWith('/org-unit')) {
+          if (!await requirePermission('team.roles.assign')) return;
+          final targetLocationId = _orgUnitLocationIdFromPath(path);
+          final parentOrgUnitId = _nonBlankString(body['parent_org_unit_id']);
+          if (targetLocationId == null || parentOrgUnitId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_location_org_unit_fields',
+              'message':
+                  'location id in path and parent_org_unit_id body are required',
+            });
+            return;
+          }
+          final moved = await authOperationsGateway.moveLocationToOrgUnit(
+            TeamLocationOrgUnitMoveCommand(
+              actorUserId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              targetLocationId: targetLocationId,
+              parentOrgUnitId: parentOrgUnitId,
+            ),
+          );
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'moved': moved.moved,
+          });
+          return;
+        }
       } on MfaOperationRejected catch (error) {
         _writeJson(response, error.statusCode, <String, Object?>{
           'error': error.code,
@@ -5537,7 +5626,24 @@ bool _isAdminAuthOperation(String path, String method) {
   if (method == 'DELETE' && path.startsWith(adminAuthRoleGrantPrefix)) {
     return true;
   }
+  if (method == 'GET' && path == adminAuthOrgUnitsPath) return true;
+  if (method == 'POST' && path == adminAuthOrgUnitsPath) return true;
+  if (method == 'PATCH' &&
+      path.startsWith(adminAuthLocationsPrefix) &&
+      path.endsWith('/org-unit')) {
+    return true;
+  }
   return false;
+}
+
+String? _orgUnitLocationIdFromPath(String path) {
+  if (!path.startsWith(adminAuthLocationsPrefix)) return null;
+  final rest = path.substring(adminAuthLocationsPrefix.length);
+  final parts = rest.split('/');
+  if (parts.length != 2 || parts[0].isEmpty || parts[1] != 'org-unit') {
+    return null;
+  }
+  return Uri.decodeComponent(parts[0]);
 }
 
 String? _servicePrincipalJwtIssueId(String path, String method) {
@@ -5670,6 +5776,25 @@ Map<String, Object?> _teamUserToJson(TeamUserListEntry user) {
     'mfa_removal_request_id': user.mfaRemovalRequestId,
     'user_role_id': user.userRoleId,
     'last_active_at': user.lastActiveAt?.toUtc().toIso8601String(),
+  };
+}
+
+Map<String, Object?> _teamOrgUnitToJson(TeamOrgUnitEntry entry) {
+  return <String, Object?>{
+    'org_unit_id': entry.orgUnitId,
+    'parent_org_unit_id': entry.parentOrgUnitId,
+    'unit_type': entry.unitType,
+    'path': entry.path,
+    'label': entry.label,
+  };
+}
+
+Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
+  return <String, Object?>{
+    'location_id': entry.locationId,
+    'parent_org_unit_id': entry.parentOrgUnitId,
+    'org_unit_path': entry.orgUnitPath,
+    'label': entry.label,
   };
 }
 
