@@ -33,6 +33,7 @@ class TeamUserActionRequest {
     this.roleId,
     this.scopeType,
     this.locationId,
+    this.orgUnitId,
     this.replaceUserRoleId,
     this.reason,
   });
@@ -42,6 +43,7 @@ class TeamUserActionRequest {
   final String? roleId;
   final String? scopeType;
   final String? locationId;
+  final String? orgUnitId;
   final String? replaceUserRoleId;
   final String? reason;
 }
@@ -58,6 +60,23 @@ class TeamLocationOption {
 
   final String locationId;
   final String label;
+}
+
+/// Phase 9.UX.4 — selector option for an `org_units` row. Surfaces
+/// the same `path` the migration's `set_location_org_unit_path()`
+/// trigger denormalizes into `locations.org_unit_path` so the user
+/// sees the scope context (e.g., `acme.east`) alongside the unit's
+/// display name.
+class TeamOrgUnitOption {
+  const TeamOrgUnitOption({
+    required this.orgUnitId,
+    required this.label,
+    required this.path,
+  });
+
+  final String orgUnitId;
+  final String label;
+  final String path;
 }
 
 class TeamUserListItem {
@@ -102,6 +121,8 @@ class TeamPendingInviteListItem {
     required this.expiresAt,
     this.locationId,
     this.locationLabel,
+    this.orgUnitId,
+    this.orgUnitLabel,
   });
 
   final String inviteId;
@@ -111,6 +132,8 @@ class TeamPendingInviteListItem {
   final String scopeType;
   final String? locationId;
   final String? locationLabel;
+  final String? orgUnitId;
+  final String? orgUnitLabel;
   final DateTime expiresAt;
 }
 
@@ -138,6 +161,7 @@ class TeamSettingsSection extends StatefulWidget {
     this.users = const <TeamUserListItem>[],
     this.roleOptions = defaultRoleOptions,
     this.locationOptions = const <TeamLocationOption>[],
+    this.orgUnitOptions = const <TeamOrgUnitOption>[],
     this.pendingInvites = const <TeamPendingInviteListItem>[],
     this.usersController,
     this.inviteFormController,
@@ -158,6 +182,7 @@ class TeamSettingsSection extends StatefulWidget {
   final List<TeamUserListItem> users;
   final List<TeamRoleOption> roleOptions;
   final List<TeamLocationOption> locationOptions;
+  final List<TeamOrgUnitOption> orgUnitOptions;
   final List<TeamPendingInviteListItem> pendingInvites;
   final TeamUsersListController? usersController;
   final TeamInviteFormController? inviteFormController;
@@ -354,14 +379,18 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   }) {
     final roleId = payload['role_id'] as String? ?? '';
     final locationId = payload['location_id'] as String?;
+    final orgUnitId = payload['org_unit_id'] as String?;
+    final scopeType = payload['scope_type'] as String? ?? 'operator_wide';
     return TeamPendingInviteListItem(
       inviteId: created.inviteId,
       email: payload['email'] as String? ?? 'Pending invite',
       roleId: roleId,
       roleLabel: _roleLabel(roleId),
-      scopeType: payload['scope_type'] as String? ?? 'operator_wide',
+      scopeType: scopeType,
       locationId: locationId,
       locationLabel: locationId == null ? null : _locationLabel(locationId),
+      orgUnitId: orgUnitId,
+      orgUnitLabel: orgUnitId == null ? null : _orgUnitLabel(orgUnitId),
       expiresAt: created.expiresAt,
     );
   }
@@ -376,6 +405,13 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
   String? _locationLabel(String locationId) {
     for (final location in widget.locationOptions) {
       if (location.locationId == locationId) return location.label;
+    }
+    return null;
+  }
+
+  String? _orgUnitLabel(String orgUnitId) {
+    for (final unit in widget.orgUnitOptions) {
+      if (unit.orgUnitId == orgUnitId) return unit.label;
     }
     return null;
   }
@@ -550,6 +586,7 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
         user: user,
         roleOptions: widget.roleOptions,
         locationOptions: widget.locationOptions,
+        orgUnitOptions: widget.orgUnitOptions,
       ),
     );
     if (draft == null || !mounted) return;
@@ -562,6 +599,7 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
           roleId: draft.roleId,
           scopeType: draft.scopeType,
           locationId: draft.locationId,
+          orgUnitId: draft.orgUnitId,
           replaceUserRoleId: user.userRoleId,
           reason: 'settings_team_role_change',
         ),
@@ -751,6 +789,7 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
             emailController: _emailController,
             roleOptions: widget.roleOptions,
             locationOptions: widget.locationOptions,
+            orgUnitOptions: widget.orgUnitOptions,
             enabled: _canInvite,
             submitEnabled:
                 _canInvite &&
@@ -1994,6 +2033,10 @@ class _PendingInviteRow extends StatelessWidget {
         invite.scopeType == 'location' &&
         invite.locationLabel != null &&
         invite.locationLabel!.isNotEmpty;
+    final showOrgUnit =
+        invite.scopeType == 'org_unit' &&
+        invite.orgUnitLabel != null &&
+        invite.orgUnitLabel!.isNotEmpty;
     final synthName = _inviteEmailToName(invite.email);
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
@@ -2041,6 +2084,10 @@ class _PendingInviteRow extends StatelessWidget {
                                 _RoleChip(label: invite.roleLabel),
                                 if (showLocation)
                                   _ScopePill(label: invite.locationLabel!),
+                                if (showOrgUnit)
+                                  _ScopePill(
+                                    label: 'Org unit · ${invite.orgUnitLabel!}',
+                                  ),
                               ],
                             ),
                           ],
@@ -2094,11 +2141,13 @@ class _RoleGrantDraft {
     required this.roleId,
     required this.scopeType,
     this.locationId,
+    this.orgUnitId,
   });
 
   final String roleId;
   final String scopeType;
   final String? locationId;
+  final String? orgUnitId;
 }
 
 class _RoleGrantDialog extends StatefulWidget {
@@ -2106,11 +2155,13 @@ class _RoleGrantDialog extends StatefulWidget {
     required this.user,
     required this.roleOptions,
     required this.locationOptions,
+    this.orgUnitOptions = const <TeamOrgUnitOption>[],
   });
 
   final TeamUserListItem user;
   final List<TeamRoleOption> roleOptions;
   final List<TeamLocationOption> locationOptions;
+  final List<TeamOrgUnitOption> orgUnitOptions;
 
   @override
   State<_RoleGrantDialog> createState() => _RoleGrantDialogState();
@@ -2130,14 +2181,19 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
       )
       ? widget.user.locationId
       : null;
+  String? _orgUnitId;
 
   @override
   Widget build(BuildContext context) {
     final needsLocation = _scope == TeamInviteScope.location;
+    final needsOrgUnit = _scope == TeamInviteScope.orgUnit;
+    final hasOrgUnits = widget.orgUnitOptions.isNotEmpty;
     final canSubmit =
         _roleId != null &&
         _roleId!.isNotEmpty &&
-        (!needsLocation || (_locationId != null && _locationId!.isNotEmpty));
+        (!needsLocation ||
+            (_locationId != null && _locationId!.isNotEmpty)) &&
+        (!needsOrgUnit || (_orgUnitId != null && _orgUnitId!.isNotEmpty));
     return AlertDialog(
       title: const Text('Change Role'),
       content: SizedBox(
@@ -2169,13 +2225,19 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
             const SizedBox(height: 12),
             SegmentedButton<TeamInviteScope>(
               key: const Key('team_role_change_scope_segmented'),
-              segments: const [
-                ButtonSegment<TeamInviteScope>(
+              segments: <ButtonSegment<TeamInviteScope>>[
+                const ButtonSegment<TeamInviteScope>(
                   value: TeamInviteScope.operatorWide,
                   icon: Icon(Icons.apartment, size: 16),
                   label: Text('Operator'),
                 ),
-                ButtonSegment<TeamInviteScope>(
+                if (hasOrgUnits)
+                  const ButtonSegment<TeamInviteScope>(
+                    value: TeamInviteScope.orgUnit,
+                    icon: Icon(Icons.account_tree_outlined, size: 16),
+                    label: Text('Org unit'),
+                  ),
+                const ButtonSegment<TeamInviteScope>(
                   value: TeamInviteScope.location,
                   icon: Icon(Icons.place_outlined, size: 16),
                   label: Text('Location'),
@@ -2187,6 +2249,11 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
                 setState(() {
                   _scope = next;
                   if (next == TeamInviteScope.operatorWide) {
+                    _locationId = null;
+                    _orgUnitId = null;
+                  } else if (next == TeamInviteScope.location) {
+                    _orgUnitId = null;
+                  } else if (next == TeamInviteScope.orgUnit) {
                     _locationId = null;
                   }
                 });
@@ -2213,6 +2280,32 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
                 onChanged: (value) => setState(() => _locationId = value),
               ),
             ],
+            if (needsOrgUnit) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                key: const Key('team_role_change_org_unit_dropdown'),
+                initialValue: _orgUnitId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Org unit',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: [
+                  for (final unit in widget.orgUnitOptions)
+                    DropdownMenuItem<String>(
+                      value: unit.orgUnitId,
+                      child: Text('${unit.label} (${unit.path})'),
+                    ),
+                ],
+                onChanged: (value) => setState(() => _orgUnitId = value),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Child locations inherit org-unit grants.',
+                style: AppTextStyles.body12(color: AppColors.textMuted),
+              ),
+            ],
           ],
         ),
       ),
@@ -2228,11 +2321,16 @@ class _RoleGrantDialogState extends State<_RoleGrantDialog> {
                   Navigator.of(context).pop(
                     _RoleGrantDraft(
                       roleId: _roleId!,
-                      scopeType: _scope == TeamInviteScope.operatorWide
-                          ? 'operator_wide'
-                          : 'location',
+                      scopeType: switch (_scope) {
+                        TeamInviteScope.operatorWide => 'operator_wide',
+                        TeamInviteScope.orgUnit => 'org_unit',
+                        TeamInviteScope.location => 'location',
+                      },
                       locationId: _scope == TeamInviteScope.location
                           ? _locationId
+                          : null,
+                      orgUnitId: _scope == TeamInviteScope.orgUnit
+                          ? _orgUnitId
                           : null,
                     ),
                   );
@@ -2257,6 +2355,7 @@ class _TeamInvitePanel extends StatelessWidget {
     required this.emailController,
     required this.roleOptions,
     required this.locationOptions,
+    required this.orgUnitOptions,
     required this.enabled,
     required this.submitEnabled,
     required this.submitting,
@@ -2268,6 +2367,7 @@ class _TeamInvitePanel extends StatelessWidget {
   final TextEditingController emailController;
   final List<TeamRoleOption> roleOptions;
   final List<TeamLocationOption> locationOptions;
+  final List<TeamOrgUnitOption> orgUnitOptions;
   final bool enabled;
   final bool submitEnabled;
   final bool submitting;
@@ -2278,6 +2378,8 @@ class _TeamInvitePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final violations = controller.validate();
     final showLocation = controller.scope == TeamInviteScope.location;
+    final showOrgUnit = controller.scope == TeamInviteScope.orgUnit;
+    final hasOrgUnitOptions = orgUnitOptions.isNotEmpty;
     return Container(
       key: const Key('team_invite_panel'),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
@@ -2344,13 +2446,19 @@ class _TeamInvitePanel extends StatelessWidget {
                 constraints: BoxConstraints(maxWidth: maxWidth),
                 child: SegmentedButton<TeamInviteScope>(
                   key: const Key('team_invite_scope_segmented'),
-                  segments: const [
-                    ButtonSegment<TeamInviteScope>(
+                  segments: <ButtonSegment<TeamInviteScope>>[
+                    const ButtonSegment<TeamInviteScope>(
                       value: TeamInviteScope.operatorWide,
                       icon: Icon(Icons.apartment, size: 16),
                       label: Text('Operator'),
                     ),
-                    ButtonSegment<TeamInviteScope>(
+                    if (hasOrgUnitOptions)
+                      const ButtonSegment<TeamInviteScope>(
+                        value: TeamInviteScope.orgUnit,
+                        icon: Icon(Icons.account_tree_outlined, size: 16),
+                        label: Text('Org unit'),
+                      ),
+                    const ButtonSegment<TeamInviteScope>(
                       value: TeamInviteScope.location,
                       icon: Icon(Icons.place_outlined, size: 16),
                       label: Text('Location'),
@@ -2393,6 +2501,34 @@ class _TeamInvitePanel extends StatelessWidget {
                         ),
                     ],
                     onChanged: enabled ? controller.setLocationId : null,
+                  ),
+                ),
+              if (showOrgUnit)
+                SizedBox(
+                  width: fieldWidth(240),
+                  child: DropdownButtonFormField<String>(
+                    key: const Key('team_invite_org_unit_dropdown'),
+                    initialValue: controller.orgUnitId,
+                    isExpanded: true,
+                    decoration: InputDecoration(
+                      labelText: 'Org unit',
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                      errorText:
+                          violations.contains(
+                            TeamInviteViolation.orgUnitMissingForOrgUnitScope,
+                          )
+                          ? 'Required'
+                          : null,
+                    ),
+                    items: [
+                      for (final unit in orgUnitOptions)
+                        DropdownMenuItem<String>(
+                          value: unit.orgUnitId,
+                          child: Text('${unit.label} (${unit.path})'),
+                        ),
+                    ],
+                    onChanged: enabled ? controller.setOrgUnitId : null,
                   ),
                 ),
               FilledButton.icon(

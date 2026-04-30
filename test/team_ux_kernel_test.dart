@@ -364,6 +364,42 @@ void main() {
       final controller = TeamInviteFormController();
       expect(controller.toRequestPayload, throwsStateError);
     });
+
+    test('org-unit scope requires an org_unit_id', () {
+      final controller = TeamInviteFormController()
+        ..setEmail('a@b.c')
+        ..setRoleId('role-1')
+        ..setScope(TeamInviteScope.orgUnit);
+      final v = controller.validate();
+      expect(v, contains(TeamInviteViolation.orgUnitMissingForOrgUnitScope));
+    });
+
+    test(
+      'org-unit scope payload omits location_id when ready',
+      () {
+        final controller = TeamInviteFormController()
+          ..setEmail('jane@example.test')
+          ..setRoleId('role-1')
+          ..setScope(TeamInviteScope.orgUnit)
+          ..setOrgUnitId('unit-1');
+        expect(controller.isReadyToSubmit, isTrue);
+        final payload = controller.toRequestPayload();
+        expect(payload['scope_type'], equals('org_unit'));
+        expect(payload['org_unit_id'], equals('unit-1'));
+        expect(payload.containsKey('location_id'), isFalse);
+      },
+    );
+
+    test('switching from org-unit to operator-wide clears the org unit id', () {
+      final controller = TeamInviteFormController()
+        ..setEmail('jane@example.test')
+        ..setRoleId('role-1')
+        ..setScope(TeamInviteScope.orgUnit)
+        ..setOrgUnitId('unit-1')
+        ..setScope(TeamInviteScope.operatorWide);
+      expect(controller.orgUnitId, isNull);
+      expect(controller.validate(), isEmpty);
+    });
   });
 
   group('TeamSettingsEntrypoint widget', () {
@@ -702,6 +738,41 @@ void main() {
       expect(request!.user.userId, 'user-2');
       expect(request!.replaceUserRoleId, 'grant-2');
     });
+
+    testWidgets(
+      'pending org-unit invite renders an org-unit scope pill',
+      (tester) async {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: TeamSettingsSection(
+                actor: _fullTeamActor,
+                pendingInvites: <TeamPendingInviteListItem>[
+                  TeamPendingInviteListItem(
+                    inviteId: 'invite-org-1',
+                    email: 'regional@example.test',
+                    roleId: 'operator_manager',
+                    roleLabel: 'Manager',
+                    scopeType: 'org_unit',
+                    orgUnitId: 'unit-east',
+                    orgUnitLabel: 'East Region',
+                    expiresAt: DateTime.utc(2026, 5, 6),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        // The org-unit pill text identifies the scope context that
+        // location-only renderers used to silently drop.
+        expect(
+          find.text('Org unit · East Region', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('revokes pending invite from the invite lane', (tester) async {
       String? revokedInviteId;

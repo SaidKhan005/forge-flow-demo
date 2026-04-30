@@ -10,6 +10,7 @@ import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
 import '../services/auth/account_info_gateway.dart';
+import '../services/auth/auth_operations_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
@@ -25,6 +26,7 @@ import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_mfa_section.dart';
+import 'settings/settings_org_hierarchy_section.dart';
 import 'settings/settings_timing_authority_section.dart';
 import 'settings/settings_wage_authority_section.dart';
 import 'team/team_settings_section.dart';
@@ -72,6 +74,19 @@ class SettingsScreen extends StatefulWidget {
   final List<TeamUserListItem> teamUsers;
   final List<TeamRoleOption> teamRoleOptions;
   final List<TeamLocationOption> teamLocationOptions;
+  final List<TeamOrgUnitOption> teamOrgUnitOptions;
+  final List<TeamOrgUnitEntry> teamOrgUnits;
+  final List<TeamOrgLocationEntry> teamOrgLocations;
+  /// Phase 9.UX.4 — when the live gateway resolves after navigation
+  /// or a create/move callback updates state, the open Settings route
+  /// has no rebuild trigger from the plain list snapshots above. The
+  /// listenables bridge that gap. Plain lists stay as the seed value
+  /// so widget tests without a listenable can still render.
+  final ValueListenable<List<TeamOrgUnitEntry>>? teamOrgUnitsListenable;
+  final ValueListenable<List<TeamOrgLocationEntry>>? teamOrgLocationsListenable;
+  final ValueListenable<List<TeamOrgUnitOption>>? teamOrgUnitOptionsListenable;
+  final TeamOrgUnitCreateRequester? onTeamOrgUnitCreate;
+  final TeamLocationOrgUnitMoveRequester? onTeamLocationMove;
   final List<TeamPendingInviteListItem> teamPendingInvites;
   final TeamInviteSubmitter? onTeamInviteSubmitted;
   final TeamInviteRevoker? onTeamInviteRevoked;
@@ -105,6 +120,14 @@ class SettingsScreen extends StatefulWidget {
     this.teamUsers = const <TeamUserListItem>[],
     this.teamRoleOptions = TeamSettingsSection.defaultRoleOptions,
     this.teamLocationOptions = const <TeamLocationOption>[],
+    this.teamOrgUnitOptions = const <TeamOrgUnitOption>[],
+    this.teamOrgUnits = const <TeamOrgUnitEntry>[],
+    this.teamOrgLocations = const <TeamOrgLocationEntry>[],
+    this.teamOrgUnitsListenable,
+    this.teamOrgLocationsListenable,
+    this.teamOrgUnitOptionsListenable,
+    this.onTeamOrgUnitCreate,
+    this.onTeamLocationMove,
     this.teamPendingInvites = const <TeamPendingInviteListItem>[],
     this.onTeamInviteSubmitted,
     this.onTeamInviteRevoked,
@@ -294,20 +317,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           widget.teamDataLoadStateListenable,
                       builder:
                           (roleOptions, users, pendingInvites, dataLoadState) =>
-                              TeamSettingsSection(
-                                actor: effectiveTeamActor,
-                                users: users,
-                                roleOptions: roleOptions,
-                                locationOptions: widget.teamLocationOptions,
-                                pendingInvites: pendingInvites,
-                                dataLoadState: dataLoadState,
-                                usersController: widget.teamUsersListController,
-                                inviteFormController:
-                                    widget.teamInviteFormController,
-                                onInviteSubmitted: widget.onTeamInviteSubmitted,
-                                onInviteRevoked: widget.onTeamInviteRevoked,
-                                onUserAction: widget.onTeamUserAction,
+                              _OrgUnitOptionsListenableScope(
+                                seed: widget.teamOrgUnitOptions,
+                                listenable: widget.teamOrgUnitOptionsListenable,
+                                builder: (orgUnitOptions) => TeamSettingsSection(
+                                  actor: effectiveTeamActor,
+                                  users: users,
+                                  roleOptions: roleOptions,
+                                  locationOptions: widget.teamLocationOptions,
+                                  orgUnitOptions: orgUnitOptions,
+                                  pendingInvites: pendingInvites,
+                                  dataLoadState: dataLoadState,
+                                  usersController:
+                                      widget.teamUsersListController,
+                                  inviteFormController:
+                                      widget.teamInviteFormController,
+                                  onInviteSubmitted:
+                                      widget.onTeamInviteSubmitted,
+                                  onInviteRevoked: widget.onTeamInviteRevoked,
+                                  onUserAction: widget.onTeamUserAction,
+                                ),
                               ),
+                    ),
+                  ),
+                  _settingsSection(
+                    title: 'Org Hierarchy',
+                    child: _OrgHierarchyListenableScope(
+                      seedOrgUnits: widget.teamOrgUnits,
+                      seedLocations: widget.teamOrgLocations,
+                      orgUnitsListenable: widget.teamOrgUnitsListenable,
+                      orgLocationsListenable: widget.teamOrgLocationsListenable,
+                      builder: (orgUnits, locations) =>
+                          SettingsOrgHierarchySection(
+                            actor: effectiveTeamActor,
+                            orgUnits: orgUnits,
+                            locations: locations,
+                            onCreateOrgUnit: widget.onTeamOrgUnitCreate,
+                            onMoveLocation: widget.onTeamLocationMove,
+                          ),
                     ),
                   ),
                 ],
@@ -589,6 +636,67 @@ class _TeamSettingsLiveDataScope extends StatelessWidget {
       builder: (context, roleValue, _) {
         return withUsers(roleValue);
       },
+    );
+  }
+}
+
+class _OrgUnitOptionsListenableScope extends StatelessWidget {
+  const _OrgUnitOptionsListenableScope({
+    required this.seed,
+    required this.listenable,
+    required this.builder,
+  });
+
+  final List<TeamOrgUnitOption> seed;
+  final ValueListenable<List<TeamOrgUnitOption>>? listenable;
+  final Widget Function(List<TeamOrgUnitOption> orgUnitOptions) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = listenable;
+    if (l == null) return builder(seed);
+    return ValueListenableBuilder<List<TeamOrgUnitOption>>(
+      valueListenable: l,
+      builder: (context, value, _) => builder(value),
+    );
+  }
+}
+
+class _OrgHierarchyListenableScope extends StatelessWidget {
+  const _OrgHierarchyListenableScope({
+    required this.seedOrgUnits,
+    required this.seedLocations,
+    required this.orgUnitsListenable,
+    required this.orgLocationsListenable,
+    required this.builder,
+  });
+
+  final List<TeamOrgUnitEntry> seedOrgUnits;
+  final List<TeamOrgLocationEntry> seedLocations;
+  final ValueListenable<List<TeamOrgUnitEntry>>? orgUnitsListenable;
+  final ValueListenable<List<TeamOrgLocationEntry>>? orgLocationsListenable;
+  final Widget Function(
+    List<TeamOrgUnitEntry> orgUnits,
+    List<TeamOrgLocationEntry> locations,
+  )
+  builder;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget withLocations(List<TeamOrgUnitEntry> units) {
+      final l = orgLocationsListenable;
+      if (l == null) return builder(units, seedLocations);
+      return ValueListenableBuilder<List<TeamOrgLocationEntry>>(
+        valueListenable: l,
+        builder: (context, value, _) => builder(units, value),
+      );
+    }
+
+    final units = orgUnitsListenable;
+    if (units == null) return withLocations(seedOrgUnits);
+    return ValueListenableBuilder<List<TeamOrgUnitEntry>>(
+      valueListenable: units,
+      builder: (context, value, _) => withLocations(value),
     );
   }
 }

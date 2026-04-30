@@ -24,6 +24,7 @@ import 'package:forge_and_flow/models/app_data_status.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
+import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
@@ -749,6 +750,256 @@ void main() {
       expect(find.textContaining('Last import:'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+
+    testWidgets(
+      'Team tab Org Hierarchy honors team.roles.assign permission gating',
+      (tester) async {
+        const root = TeamOrgUnitEntry(
+          orgUnitId: 'unit-root',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'acme',
+          label: 'ACME',
+        );
+        const child = TeamOrgUnitEntry(
+          orgUnitId: 'unit-east',
+          parentOrgUnitId: 'unit-root',
+          unitType: 'region',
+          path: 'acme.east',
+          label: 'East Region',
+        );
+        const downtown = TeamOrgLocationEntry(
+          locationId: 'loc-downtown',
+          parentOrgUnitId: 'unit-root',
+          orgUnitPath: 'acme',
+          label: 'Downtown',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: _settingsTeamOwnerActor,
+              teamOrgUnits: const <TeamOrgUnitEntry>[root, child],
+              teamOrgLocations: const <TeamOrgLocationEntry>[downtown],
+              teamOrgUnitOptions: const <TeamOrgUnitOption>[
+                TeamOrgUnitOption(
+                  orgUnitId: 'unit-east',
+                  label: 'East Region',
+                  path: 'acme.east',
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_team')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(const Key('org_hierarchy_section'), skipOffstage: false),
+          findsOneWidget,
+        );
+        expect(find.text('ACME', skipOffstage: false), findsOneWidget);
+        expect(find.text('East Region', skipOffstage: false), findsOneWidget);
+        // Owner has team.users.invite (required by our actor) and the
+        // Section gates mutate controls on team.roles.assign which is
+        // NOT in the locked actor's permission set.
+        expect(
+          find.byKey(
+            const Key('org_unit_add_child_unit-root'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+        expect(
+          find.byKey(
+            const Key('org_unit_move_location_loc-downtown'),
+            skipOffstage: false,
+          ),
+          findsNothing,
+        );
+      },
+    );
+
+    testWidgets(
+      'Org Hierarchy tree refreshes when the listenable yields new data',
+      (tester) async {
+        const seedRoot = TeamOrgUnitEntry(
+          orgUnitId: 'unit-root',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'acme',
+          label: 'ACME',
+        );
+        final orgUnits = ValueNotifier<List<TeamOrgUnitEntry>>(
+          const <TeamOrgUnitEntry>[seedRoot],
+        );
+        final orgLocations = ValueNotifier<List<TeamOrgLocationEntry>>(
+          const <TeamOrgLocationEntry>[],
+        );
+        addTearDown(orgUnits.dispose);
+        addTearDown(orgLocations.dispose);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: _settingsTeamOwnerActor,
+              teamOrgUnits: orgUnits.value,
+              teamOrgLocations: orgLocations.value,
+              teamOrgUnitsListenable: orgUnits,
+              teamOrgLocationsListenable: orgLocations,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_team')));
+        await tester.pumpAndSettle();
+
+        // Initial state: seed root only, no East yet.
+        expect(find.text('East Region', skipOffstage: false), findsNothing);
+
+        orgUnits.value = const <TeamOrgUnitEntry>[
+          seedRoot,
+          TeamOrgUnitEntry(
+            orgUnitId: 'unit-east',
+            parentOrgUnitId: 'unit-root',
+            unitType: 'region',
+            path: 'acme.east',
+            label: 'East Region',
+          ),
+        ];
+        await tester.pump();
+
+        expect(
+          find.text('East Region', skipOffstage: false),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets(
+      'Org Hierarchy Add Child dialog enables submit after typing',
+      (tester) async {
+        const owner = TeamScopeActor(
+          actorRoles: <String>{'operator_owner'},
+          actorOperatorId: 'op-1',
+          actorAssignedLocationIds: <String>{},
+          actorPermissions: <String>{
+            'team.users.view',
+            'team.roles.assign',
+          },
+        );
+        const root = TeamOrgUnitEntry(
+          orgUnitId: 'unit-root',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'acme',
+          label: 'ACME',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: owner,
+              teamOrgUnits: const <TeamOrgUnitEntry>[root],
+              onTeamOrgUnitCreate: (_) async => null,
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_team')));
+        await tester.pumpAndSettle();
+
+        final addButton = find.byKey(
+          const Key('org_unit_add_child_unit-root'),
+          skipOffstage: false,
+        );
+        await tester.ensureVisible(addButton);
+        await tester.pumpAndSettle();
+        await tester.tap(addButton);
+        await tester.pumpAndSettle();
+
+        final submit = find.byKey(const Key('org_unit_add_child_submit'));
+        expect(submit, findsOneWidget);
+        // Submit must start disabled (empty label/name).
+        expect(
+          tester.widget<FilledButton>(submit).onPressed,
+          isNull,
+        );
+
+        await tester.enterText(
+          find.byKey(const Key('org_unit_add_child_label')),
+          'east',
+        );
+        await tester.enterText(
+          find.byKey(const Key('org_unit_add_child_name')),
+          'East Region',
+        );
+        await tester.pump();
+
+        expect(
+          tester.widget<FilledButton>(submit).onPressed,
+          isNotNull,
+        );
+      },
+    );
+
+    testWidgets(
+      'Team tab Org Hierarchy renders mutation controls for assign actor',
+      (tester) async {
+        const owner = TeamScopeActor(
+          actorRoles: <String>{'operator_owner'},
+          actorOperatorId: 'op-1',
+          actorAssignedLocationIds: <String>{},
+          actorPermissions: <String>{
+            'team.users.view',
+            'team.roles.assign',
+          },
+        );
+        const root = TeamOrgUnitEntry(
+          orgUnitId: 'unit-root',
+          parentOrgUnitId: null,
+          unitType: 'corp',
+          path: 'acme',
+          label: 'ACME',
+        );
+        const downtown = TeamOrgLocationEntry(
+          locationId: 'loc-downtown',
+          parentOrgUnitId: 'unit-root',
+          orgUnitPath: 'acme',
+          label: 'Downtown',
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              teamActor: owner,
+              teamOrgUnits: const <TeamOrgUnitEntry>[root],
+              teamOrgLocations: const <TeamOrgLocationEntry>[downtown],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_team')));
+        await tester.pumpAndSettle();
+
+        expect(
+          find.byKey(
+            const Key('org_unit_add_child_unit-root'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('Team tab renders for an allowed actor', (tester) async {
       await tester.pumpWidget(
