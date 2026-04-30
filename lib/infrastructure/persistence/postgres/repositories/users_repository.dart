@@ -54,6 +54,36 @@ class TeamUserRepositoryRow {
   final DateTime? lastActiveAt;
 }
 
+class MfaRecoveryAdminRecipientRow {
+  const MfaRecoveryAdminRecipientRow({
+    required this.userId,
+    required this.email,
+    required this.scopeType,
+    required this.isSuperAdmin,
+  });
+
+  final String userId;
+  final String email;
+  final String scopeType;
+  final bool isSuperAdmin;
+}
+
+class MfaRecoveryTargetRow {
+  const MfaRecoveryTargetRow({
+    required this.userId,
+    required this.operatorId,
+    required this.email,
+    required this.admins,
+    this.locationId,
+  });
+
+  final String userId;
+  final String operatorId;
+  final String? locationId;
+  final String email;
+  final List<MfaRecoveryAdminRecipientRow> admins;
+}
+
 class UsersRepository extends OperatorScopedRepository {
   UsersRepository(super.tenantWrapper);
 
@@ -214,6 +244,72 @@ class UsersRepository extends OperatorScopedRepository {
         parameters: <String, Object?>{'user_id': userId},
       );
     });
+  }
+
+  /// Resolve the locked-out user and restaurant-admin recipients for the
+  /// pre-auth MFA recovery request path. The caller returns only a generic
+  /// accepted response to the client; this lookup must not leak existence.
+  Future<MfaRecoveryTargetRow?> findMfaRecoveryTargetByEmail({
+    required String email,
+    required String adminReason,
+  }) {
+    return withSystem<MfaRecoveryTargetRow?>((exec) async {
+      final rows = await exec.query(
+        'select u.user_id::text as user_id, '
+        'u.operator_id::text as operator_id, '
+        'coalesce(u.primary_location_id::text, '
+        'o.primary_location_id::text) as location_id, '
+        'u.email '
+        'from users u '
+        'left join operators o on o.operator_id = u.operator_id '
+        'where lower(u.email) = lower(@email) '
+        'and u.deleted_at is null '
+        "and u.status != 'deleted' "
+        'limit 1',
+        parameters: <String, Object?>{'email': email},
+      );
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final userId = row['user_id'];
+      final operatorId = row['operator_id'];
+      final locationId = row['location_id'];
+      final userEmail = row['email'];
+      if (userId is! String ||
+          userId.isEmpty ||
+          operatorId is! String ||
+          operatorId.isEmpty ||
+          userEmail is! String ||
+          userEmail.isEmpty) {
+        throw StateError('mfa recovery target lookup returned malformed row');
+      }
+      final adminRows = await exec.query(
+        'select admin.user_id::text as user_id, '
+        'admin.email, '
+        "coalesce(oa.scope_type, 'operator_owner') as scope_type, "
+        'oa.is_super_admin '
+        'from operator_admins oa '
+        'join users admin on admin.user_id = oa.user_id '
+        'and admin.operator_id = oa.operator_id '
+        'where oa.operator_id = @operator_id::uuid '
+        'and admin.deleted_at is null '
+        "and admin.status != 'deleted' "
+        'order by oa.is_super_admin desc, oa.created_at asc',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      );
+      final admins = <MfaRecoveryAdminRecipientRow>[
+        for (final adminRow in adminRows)
+          _projectMfaRecoveryAdminRecipient(adminRow),
+      ];
+      return MfaRecoveryTargetRow(
+        userId: userId,
+        operatorId: operatorId,
+        locationId: locationId is String && locationId.isNotEmpty
+            ? locationId
+            : null,
+        email: userEmail,
+        admins: List<MfaRecoveryAdminRecipientRow>.unmodifiable(admins),
+      );
+    }, reason: adminReason);
   }
 
   /// SELECT the user's email inside the actor's tenant. Used by server-side
@@ -448,4 +544,28 @@ class UsersRepository extends OperatorScopedRepository {
       lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
     );
   }
+}
+
+MfaRecoveryAdminRecipientRow _projectMfaRecoveryAdminRecipient(
+  Map<String, Object?> row,
+) {
+  final userId = row['user_id'];
+  final email = row['email'];
+  final scopeType = row['scope_type'];
+  final isSuperAdmin = row['is_super_admin'];
+  if (userId is! String ||
+      userId.isEmpty ||
+      email is! String ||
+      email.isEmpty ||
+      scopeType is! String ||
+      scopeType.isEmpty ||
+      isSuperAdmin is! bool) {
+    throw StateError('mfa recovery admin lookup returned malformed row');
+  }
+  return MfaRecoveryAdminRecipientRow(
+    userId: userId,
+    email: email,
+    scopeType: scopeType,
+    isSuperAdmin: isSuperAdmin,
+  );
 }

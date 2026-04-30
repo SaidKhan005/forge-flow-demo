@@ -18,6 +18,8 @@ import 'package:flutter/widgets.dart';
 import '../auth_login_service.dart';
 import '../mfa/mfa_operations_gateway.dart';
 import '../mfa/proxy_mfa_operations_gateway.dart';
+import '../mfa/mfa_recovery_request_gateway.dart';
+import '../mfa/proxy_mfa_recovery_request_gateway.dart';
 import '../secure_session_storage.dart';
 import 'auth_operations_gateway.dart';
 import 'auth_session_ledger_writer.dart';
@@ -42,6 +44,7 @@ class FirebaseAuthRuntimeBindings {
     this.authOperationsGateway,
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
+    this.mfaRecoveryRequestGateway,
   });
 
   final AuthLoginService authLoginService;
@@ -57,6 +60,7 @@ class FirebaseAuthRuntimeBindings {
   final AuthOperationsGateway? authOperationsGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
+  final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
 }
 
 /// Initializes Firebase using the native Android/iOS config files and returns
@@ -100,6 +104,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   AuthOperationsGateway? authOperationsGateway;
   PasswordChangeGateway? passwordChangeGateway;
   MfaOperationsGateway? mfaOperationsGateway;
+  MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
   if (proxyBaseUri != null) {
     ledgerWriter = ProxyAuthSessionLedgerWriter(
       proxyBaseUri: proxyBaseUri,
@@ -130,6 +135,10 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
       idTokenProvider: authClient.currentIdToken,
       httpClient: DartIoProxyAuthOperationsHttpClient(),
     );
+    mfaRecoveryRequestGateway = ProxyMfaRecoveryRequestGateway(
+      proxyBaseUri: proxyBaseUri,
+      httpClient: DartIoProxyAuthOperationsHttpClient(),
+    );
   }
   return FirebaseAuthRuntimeBindings(
     authLoginService: FirebaseAuthLoginService(
@@ -144,5 +153,6 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     authOperationsGateway: authOperationsGateway,
     passwordChangeGateway: passwordChangeGateway,
     mfaOperationsGateway: mfaOperationsGateway,
+    mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
   );
 }

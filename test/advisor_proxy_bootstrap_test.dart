@@ -11,6 +11,7 @@ import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/repository_password_change_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
 import '../tool/advisor_proxy/proxy_bootstrap.dart';
@@ -153,6 +154,10 @@ void main() {
       expect(
         bindings.mfaOperationsGateway,
         isA<RepositoryMfaOperationsGateway>(),
+      );
+      expect(
+        bindings.mfaRecoveryRequestGateway,
+        isA<RepositoryMfaRecoveryRequestGateway>(),
       );
       expect(
         capturedConnectionStrings,

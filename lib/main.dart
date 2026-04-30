@@ -16,6 +16,7 @@ Future<void> main() async {
         authOperationsGateway: bindings.authOperationsGateway,
         passwordChangeGateway: bindings.passwordChangeGateway,
         mfaOperationsGateway: bindings.mfaOperationsGateway,
+        mfaRecoveryRequestGateway: bindings.mfaRecoveryRequestGateway,
       ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,

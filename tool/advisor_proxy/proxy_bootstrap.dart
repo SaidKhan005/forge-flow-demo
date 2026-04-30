@@ -8,6 +8,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
@@ -36,6 +37,7 @@ import 'package:forge_and_flow/services/auth/repository_password_history_check.d
 import 'package:forge_and_flow/services/mfa/firebase_mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_attempt_limiter.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_consumer.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_generator.dart';
@@ -56,6 +58,7 @@ class ProxyProductionBindings {
     required this.servicePrincipalJwtIssuanceGateway,
     required this.passwordChangeGateway,
     required this.mfaOperationsGateway,
+    required this.mfaRecoveryRequestGateway,
     required this.operatorLocationAdminGateway,
   });
 
@@ -68,6 +71,7 @@ class ProxyProductionBindings {
   final ServicePrincipalJwtIssuanceGateway servicePrincipalJwtIssuanceGateway;
   final PasswordChangeGateway passwordChangeGateway;
   final MfaOperationsGateway mfaOperationsGateway;
+  final MfaRecoveryRequestGateway mfaRecoveryRequestGateway;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
 }
 
@@ -168,6 +172,10 @@ ProxyProductionBindings buildProxyProductionBindings(
       ),
       auditRepository: tenantAudit,
       firebaseMfaClient: firebaseMfaClient,
+    ),
+    mfaRecoveryRequestGateway: RepositoryMfaRecoveryRequestGateway(
+      usersRepository: UsersRepository(adminWrapper),
+      eventOutboxRepository: EventOutboxRepository(tenantWrapper),
     ),
     // Phase 11A.1 — operator/location admin gateway. The repos run
     // through the admin pool (POSTGRES_ADMIN_URL) because the F&F

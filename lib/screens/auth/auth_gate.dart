@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../state/auth_session_notifier.dart';
+import '../../services/mfa/mfa_recovery_request_gateway.dart';
 import 'login_screen.dart';
 import 'mfa_challenge_screen.dart';
 
@@ -27,6 +28,7 @@ class AuthGate extends StatelessWidget {
     super.key,
     required this.authenticatedChild,
     this.loadingChild,
+    this.mfaRecoveryRequestGateway,
   });
 
   /// The app shell to render once the user is authenticated.
@@ -36,6 +38,7 @@ class AuthGate extends StatelessWidget {
   /// centered [CircularProgressIndicator] on a black background to
   /// match the existing splash visuals.
   final Widget? loadingChild;
+  final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
 
   @override
   Widget build(BuildContext context) {
@@ -43,7 +46,9 @@ class AuthGate extends StatelessWidget {
     return switch (state) {
       AuthSessionLoading() => loadingChild ?? const _DefaultLoading(),
       AuthSessionUnauthenticated() => const LoginScreen(),
-      AuthSessionMfaChallenge() => const MfaChallengeScreen(),
+      AuthSessionMfaChallenge() => MfaChallengeScreen(
+        recoveryRequestGateway: mfaRecoveryRequestGateway,
+      ),
       AuthSessionAuthenticated() => authenticatedChild,
     };
   }

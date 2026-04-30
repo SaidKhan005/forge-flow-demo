@@ -10,6 +10,7 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 
 import '../tool/advisor_proxy/advisor_proxy.dart';
 
@@ -445,6 +446,56 @@ void main() {
         }
       });
     });
+
+    test('POST MFA recovery request accepts contact-admin request', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingMfaRecoveryRequestGateway();
+        final harness = await _RouteHarness.start(
+          mfaRecoveryRequestGateway: gateway,
+        );
+        try {
+          final response = await harness.postJson(
+            authMfaRecoveryRequestPath,
+            const <String, Object?>{
+              'email': 'locked@example.test',
+              'reason': 'no_factor_access',
+            },
+            authorize: false,
+          );
+
+          expect(response.statusCode, equals(202));
+          expect(response.json['queued'], isTrue);
+          expect(gateway.commands.single.email, equals('locked@example.test'));
+          expect(gateway.commands.single.reason, equals('no_factor_access'));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('POST MFA factors revoke requires a fresh sign-in', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingMfaOperationsGateway();
+        final harness = await _RouteHarness.start(
+          verifier: _StaticVerifier(
+            lastFreshAuthAt: DateTime.utc(2026, 4, 28, 11, 40),
+          ),
+          mfaOperationsGateway: gateway,
+        );
+        try {
+          final response = await harness.postJson(
+            authMfaFactorsRevokePath,
+            const <String, Object?>{'factor_id': 'totp-db-factor'},
+          );
+
+          expect(response.statusCode, equals(403));
+          expect(response.json['error'], equals('mfa_freshness_required'));
+          expect(gateway.revokes, isEmpty);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
   });
 }
 
@@ -481,9 +532,11 @@ class _RouteHarness {
     ProxyAdminPermissionGuard? adminPermissionGuard,
     PasswordChangeGateway? passwordChangeGateway,
     MfaOperationsGateway? mfaOperationsGateway,
+    MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
+    ProxyJwtVerifier? verifier,
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
-    final guard = ProxyRequestGuard(verifier: const _StaticVerifier());
+    final guard = ProxyRequestGuard(verifier: verifier ?? _StaticVerifier());
     server.listen((request) async {
       await routeRequest(
         request,
@@ -493,6 +546,7 @@ class _RouteHarness {
         adminPermissionGuard: adminPermissionGuard,
         passwordChangeGateway: passwordChangeGateway,
         mfaOperationsGateway: mfaOperationsGateway,
+        mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
         now: () => DateTime.utc(2026, 4, 28, 12),
       );
     });
@@ -512,11 +566,14 @@ class _RouteHarness {
 
   Future<_HttpJsonResponse> postJson(
     String path,
-    Map<String, Object?> body,
-  ) async {
+    Map<String, Object?> body, {
+    bool authorize = true,
+  }) async {
     final request = await client.postUrl(baseUri.resolve(path));
     request.headers.contentType = ContentType.json;
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    if (authorize) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    }
     final encoded = utf8.encode(jsonEncode(body));
     request.contentLength = encoded.length;
     request.add(encoded);
@@ -576,7 +633,10 @@ class _HttpJsonResponse {
 }
 
 class _StaticVerifier implements ProxyJwtVerifier {
-  const _StaticVerifier();
+  _StaticVerifier({DateTime? lastFreshAuthAt})
+    : lastFreshAuthAt = lastFreshAuthAt ?? DateTime.utc(2026, 4, 28, 11, 59);
+
+  final DateTime lastFreshAuthAt;
 
   @override
   Future<ProxyJwtClaims> verify(String bearerToken) async {
@@ -587,7 +647,7 @@ class _StaticVerifier implements ProxyJwtVerifier {
       locationId: _locationId,
       roles: const <String>['roles_version:7'],
       rolesVersion: 7,
-      lastFreshAuthAt: DateTime.utc(2026, 4, 28, 11, 59),
+      lastFreshAuthAt: lastFreshAuthAt,
     );
   }
 }
@@ -692,6 +752,21 @@ class _RecordingMfaOperationsGateway implements MfaOperationsGateway {
     final error = consumeError;
     if (error != null) throw error;
     return const RecoveryCodeConsumeCompleted(factorId: 'factor-db-1');
+  }
+}
+
+class _RecordingMfaRecoveryRequestGateway implements MfaRecoveryRequestGateway {
+  final commands = <MfaRecoveryRequestCommand>[];
+
+  @override
+  Future<MfaRecoveryRequestAccepted> requestRecovery(
+    MfaRecoveryRequestCommand command,
+  ) async {
+    commands.add(command);
+    return const MfaRecoveryRequestAccepted(
+      queued: true,
+      requestId: 'recovery-request-1',
+    );
   }
 }
 

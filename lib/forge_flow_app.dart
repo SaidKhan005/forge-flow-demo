@@ -13,6 +13,7 @@ import 'services/auth/password_change_gateway.dart';
 import 'services/auth/proxy_permission_snapshot_loader.dart';
 import 'services/business_date_authority_service.dart';
 import 'services/mfa/mfa_operations_gateway.dart';
+import 'services/mfa/mfa_recovery_request_gateway.dart';
 import 'services/shift_data_source.dart';
 import 'services/team/team_scope_visibility_policy.dart';
 import 'state/active_target_profile_notifier.dart';
@@ -49,6 +50,7 @@ class ForgeFlowApp extends StatelessWidget {
     this.authOperationsGateway,
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
+    this.mfaRecoveryRequestGateway,
   });
 
   final bool requireAuth;
@@ -56,6 +58,7 @@ class ForgeFlowApp extends StatelessWidget {
   final AuthOperationsGateway? authOperationsGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
+  final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +75,7 @@ class ForgeFlowApp extends StatelessWidget {
         theme: AppTheme.themeData,
         home: requireAuth
             ? AuthGate(
+                mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
                 authenticatedChild: AuthPermissionContextBridge(
                   permissionContextLoader: permissionContextLoader,
                   child: shell,

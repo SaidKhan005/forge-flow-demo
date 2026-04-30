@@ -17,11 +17,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/mfa/mfa_recovery_request_gateway.dart';
 import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 
 class MfaChallengeScreen extends StatefulWidget {
-  const MfaChallengeScreen({super.key});
+  const MfaChallengeScreen({super.key, this.recoveryRequestGateway});
+
+  final MfaRecoveryRequestGateway? recoveryRequestGateway;
 
   @override
   State<MfaChallengeScreen> createState() => _MfaChallengeScreenState();
@@ -31,7 +34,9 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
   final _codeController = TextEditingController();
   bool _useRecoveryCode = false;
   bool _submitting = false;
+  bool _requestingRecoveryHelp = false;
   String? _localError;
+  String? _recoveryHelpMessage;
 
   @override
   void dispose() {
@@ -61,6 +66,48 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
     } finally {
       if (mounted) {
         setState(() => _submitting = false);
+      }
+    }
+  }
+
+  Future<void> _requestAdminHelp(AuthSessionMfaChallenge challenge) async {
+    if (_requestingRecoveryHelp) return;
+    final gateway = widget.recoveryRequestGateway;
+    if (gateway == null) {
+      setState(() {
+        _recoveryHelpMessage = 'Contact your restaurant admin directly.';
+      });
+      return;
+    }
+    setState(() {
+      _localError = null;
+      _recoveryHelpMessage = null;
+      _requestingRecoveryHelp = true;
+    });
+    try {
+      await gateway.requestRecovery(
+        MfaRecoveryRequestCommand(email: challenge.email),
+      );
+      if (!mounted) return;
+      setState(() {
+        _recoveryHelpMessage =
+            'Recovery request sent to your restaurant admin.';
+      });
+    } on MfaRecoveryRequestRejected {
+      if (!mounted) return;
+      setState(() {
+        _recoveryHelpMessage =
+            'Recovery request could not be sent. Contact your restaurant admin directly.';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _recoveryHelpMessage =
+            'Recovery request could not be sent. Contact your restaurant admin directly.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _requestingRecoveryHelp = false);
       }
     }
   }
@@ -146,10 +193,12 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
                   style: const TextStyle(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'No access to your authenticator app or recovery codes? Contact your restaurant admin.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+                _RestaurantAdminRecoveryHelp(
+                  requesting: _requestingRecoveryHelp,
+                  message: _recoveryHelpMessage,
+                  onPressed: _submitting
+                      ? null
+                      : () => _requestAdminHelp(challenge),
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -200,6 +249,57 @@ class _MfaChallengeScreenState extends State<MfaChallengeScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _RestaurantAdminRecoveryHelp extends StatelessWidget {
+  const _RestaurantAdminRecoveryHelp({
+    required this.requesting,
+    required this.message,
+    required this.onPressed,
+  });
+
+  final bool requesting;
+  final String? message;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      key: const Key('mfa_admin_recovery_help'),
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'No access to your authenticator app or recovery codes?',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppColors.textMuted, fontSize: 12),
+        ),
+        const SizedBox(height: 6),
+        OutlinedButton.icon(
+          key: const Key('mfa_contact_admin_button'),
+          onPressed: requesting ? null : onPressed,
+          icon: requesting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.support_agent_rounded, size: 18),
+          label: Text(
+            requesting ? 'Sending request...' : 'Contact restaurant admin',
+          ),
+        ),
+        if (message != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            message!,
+            key: const Key('mfa_admin_recovery_message'),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+          ),
+        ],
+      ],
     );
   }
 }

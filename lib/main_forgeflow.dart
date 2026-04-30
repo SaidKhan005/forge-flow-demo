@@ -11,9 +11,7 @@ Future<void> main() async {
     // default — sign-in then fails closed with a calm
     // `ledger_unavailable` message instead of silently dropping
     // `auth_sessions` rows.
-    const proxyUriRaw = String.fromEnvironment(
-      'FORGE_FLOW_PROXY_BASE_URI',
-    );
+    const proxyUriRaw = String.fromEnvironment('FORGE_FLOW_PROXY_BASE_URI');
     final proxyBaseUri = proxyUriRaw.isEmpty ? null : Uri.parse(proxyUriRaw);
     final bindings = await createFirebaseAuthRuntimeBindings(
       proxyBaseUri: proxyBaseUri,
@@ -25,6 +23,7 @@ Future<void> main() async {
         authOperationsGateway: bindings.authOperationsGateway,
         passwordChangeGateway: bindings.passwordChangeGateway,
         mfaOperationsGateway: bindings.mfaOperationsGateway,
+        mfaRecoveryRequestGateway: bindings.mfaRecoveryRequestGateway,
       ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,

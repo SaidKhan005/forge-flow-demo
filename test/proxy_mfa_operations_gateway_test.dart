@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/services/auth/proxy_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/proxy_mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/proxy_mfa_recovery_request_gateway.dart';
 
 void main() {
   final baseUri = Uri.parse('https://forge-flow-proxy.example.com');
@@ -229,6 +231,67 @@ void main() {
       expect(error, isA<MfaOperationRejected>());
       expect((error! as MfaOperationRejected).code, equals('no_id_token'));
       expect(fake.posts, isEmpty);
+    });
+  });
+
+  group('ProxyMfaRecoveryRequestGateway', () {
+    test('requestRecovery posts without a bearer token', () async {
+      final fake = _FakeMfaHttpClient(
+        response: const ProxyAuthOperationsResponse(
+          statusCode: 202,
+          body: <String, Object?>{
+            'ok': true,
+            'queued': true,
+            'request_id': 'recovery-request-1',
+          },
+        ),
+      );
+      final gateway = ProxyMfaRecoveryRequestGateway(
+        proxyBaseUri: baseUri,
+        httpClient: fake,
+      );
+
+      final result = await gateway.requestRecovery(
+        const MfaRecoveryRequestCommand(email: 'locked@example.test'),
+      );
+
+      expect(result.queued, isTrue);
+      expect(result.requestId, equals('recovery-request-1'));
+      final call = fake.posts.single;
+      expect(
+        call.url.path,
+        equals(ProxyMfaRecoveryRequestGateway.recoveryRequestPath),
+      );
+      expect(call.headers, isEmpty);
+      expect(call.body['email'], equals('locked@example.test'));
+    });
+
+    test('non-202 maps to MfaRecoveryRequestRejected', () async {
+      final fake = _FakeMfaHttpClient(
+        response: const ProxyAuthOperationsResponse(
+          statusCode: 503,
+          body: <String, Object?>{
+            'error': 'mfa_recovery_request_unavailable',
+            'message': 'Try later.',
+          },
+        ),
+      );
+      final gateway = ProxyMfaRecoveryRequestGateway(
+        proxyBaseUri: baseUri,
+        httpClient: fake,
+      );
+
+      final error = await _captureError(
+        gateway.requestRecovery(
+          const MfaRecoveryRequestCommand(email: 'locked@example.test'),
+        ),
+      );
+
+      expect(error, isA<MfaRecoveryRequestRejected>());
+      expect(
+        (error! as MfaRecoveryRequestRejected).code,
+        equals('mfa_recovery_request_unavailable'),
+      );
     });
   });
 }

@@ -6,10 +6,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../services/mfa/mfa_enrollment_service.dart';
 import '../../services/mfa/mfa_operations_gateway.dart';
+import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 import 'settings_shared_widgets.dart';
 
@@ -64,6 +66,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   bool _loadingFactors = true;
   bool _busyEnroll = false;
   bool _busyRevoke = false;
+  String? _errorCode;
   String? _errorMessage;
   String? _infoMessage;
   List<MfaFactorSummary> _factors = const <MfaFactorSummary>[];
@@ -95,6 +98,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     setState(() {
       _loadingFactors = true;
       if (clearMessages) {
+        _errorCode = null;
         _errorMessage = null;
         _infoMessage = null;
       }
@@ -118,6 +122,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (!mounted) return;
       setState(() {
         _loadingFactors = false;
+        _errorCode = rejected.code;
         _errorMessage = rejected.message;
       });
     }
@@ -126,6 +131,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   Future<void> _onBeginEnrollment() async {
     setState(() {
       _busyEnroll = true;
+      _errorCode = null;
       _errorMessage = null;
       _infoMessage = null;
     });
@@ -151,6 +157,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (!mounted) return;
       setState(() {
         _busyEnroll = false;
+        _errorCode = rejected.code;
         _errorMessage = rejected.message;
       });
     }
@@ -162,12 +169,14 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     final code = _codeController.text.trim();
     if (code.isEmpty) {
       setState(() {
+        _errorCode = 'missing_totp_code';
         _errorMessage = 'Enter the 6-digit code from your authenticator app.';
       });
       return;
     }
     setState(() {
       _busyEnroll = true;
+      _errorCode = null;
       _errorMessage = null;
       _infoMessage = null;
     });
@@ -203,6 +212,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (!mounted) return;
       setState(() {
         _busyEnroll = false;
+        _errorCode = rejected.code;
         _errorMessage = rejected.message;
       });
     }
@@ -223,6 +233,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       _pendingSetup = null;
       _displayOnceRecoveryCodes = const <String>[];
       _codeController.clear();
+      _errorCode = null;
       _errorMessage = null;
       _infoMessage = null;
     });
@@ -231,6 +242,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   Future<void> _onRevoke(MfaFactorSummary factor) async {
     setState(() {
       _busyRevoke = true;
+      _errorCode = null;
       _errorMessage = null;
       _infoMessage = null;
     });
@@ -257,6 +269,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (!mounted) return;
       setState(() {
         _busyRevoke = false;
+        _errorCode = rejected.code;
         _errorMessage = rejected.message;
       });
     }
@@ -303,6 +316,13 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
             label: 'MFA ERROR',
             message: _errorMessage!,
             color: AppColors.negative,
+            action: _errorCode == 'mfa_freshness_required'
+                ? TextButton(
+                    key: const Key('mfa_sign_in_again_button'),
+                    onPressed: () => _signInAgain(context),
+                    child: const Text('Sign in again'),
+                  )
+                : null,
           ),
         ],
         if (_infoMessage != null) ...[
@@ -326,6 +346,18 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (ids.add(factor.factorId)) merged.add(factor);
     }
     return List<MfaFactorSummary>.unmodifiable(merged);
+  }
+
+  void _signInAgain(BuildContext context) {
+    try {
+      context.read<AuthSessionNotifier>().signOutThisSession();
+    } catch (_) {
+      setState(() {
+        _errorCode = null;
+        _errorMessage = 'Sign out and sign in again before removing MFA.';
+        _infoMessage = null;
+      });
+    }
   }
 
   List<MfaFactorSummary> _mergeOptimisticFactor(MfaFactorSummary factor) {
@@ -711,19 +743,30 @@ class _MfaStatusRow extends StatelessWidget {
     required this.label,
     required this.message,
     required this.color,
+    this.action,
   });
 
   final String label;
   final String message;
   final Color color;
+  final Widget? action;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-      child: Text(
-        '$label: $message',
-        style: TextStyle(color: color, fontSize: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '$label: $message',
+            style: TextStyle(color: color, fontSize: 12),
+          ),
+          if (action != null) ...[
+            const SizedBox(height: 8),
+            Align(alignment: Alignment.centerLeft, child: action),
+          ],
+        ],
       ),
     );
   }

@@ -19,6 +19,7 @@ import 'package:forge_and_flow/screens/auth/mfa_challenge_screen.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_service.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_generator.dart';
 import 'package:forge_and_flow/services/mfa/recovery_code_hasher.dart';
 import 'package:forge_and_flow/services/secure_session_storage.dart';
@@ -27,10 +28,14 @@ import 'package:forge_and_flow/state/auth_session_notifier.dart';
 void main() {
   group('OperatorSubscriptionTier', () {
     test('fromKey is case-insensitive and returns null for unknowns', () {
-      expect(OperatorSubscriptionTier.fromKey('Premium'),
-          equals(OperatorSubscriptionTier.premium));
-      expect(OperatorSubscriptionTier.fromKey('  PRO '),
-          equals(OperatorSubscriptionTier.pro));
+      expect(
+        OperatorSubscriptionTier.fromKey('Premium'),
+        equals(OperatorSubscriptionTier.premium),
+      );
+      expect(
+        OperatorSubscriptionTier.fromKey('  PRO '),
+        equals(OperatorSubscriptionTier.pro),
+      );
       expect(OperatorSubscriptionTier.fromKey('mystery'), isNull);
       expect(OperatorSubscriptionTier.fromKey(null), isNull);
     });
@@ -148,8 +153,9 @@ void main() {
       expect(codes, hasLength(10));
       for (final code in codes) {
         expect(
-          RegExp(r'^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$')
-              .hasMatch(code),
+          RegExp(
+            r'^[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}-[A-HJKMNP-Z2-9]{4}$',
+          ).hasMatch(code),
           isTrue,
           reason: 'unexpected code shape: $code',
         );
@@ -174,10 +180,14 @@ void main() {
     });
 
     test('normalize strips dashes / whitespace and uppercases', () {
-      expect(RecoveryCodeGenerator.normalize('abcd-efgh-jkmn'),
-          equals('ABCDEFGHJKMN'));
-      expect(RecoveryCodeGenerator.normalize('  ABCD\tEFGH JKMN  '),
-          equals('ABCDEFGHJKMN'));
+      expect(
+        RecoveryCodeGenerator.normalize('abcd-efgh-jkmn'),
+        equals('ABCDEFGHJKMN'),
+      );
+      expect(
+        RecoveryCodeGenerator.normalize('  ABCD\tEFGH JKMN  '),
+        equals('ABCDEFGHJKMN'),
+      );
     });
 
     test('normalize returns null for out-of-alphabet characters', () {
@@ -226,17 +236,13 @@ void main() {
       expect(hashA.saltBase64, isNot(equals(hashB.saltBase64)));
     });
 
-    test('verify tolerates a bad-base64 stored payload by returning false',
-        () {
+    test('verify tolerates a bad-base64 stored payload by returning false', () {
       const hasher = Sha256RecoveryCodeHasher();
       const stored = HashedRecoveryCode(
         saltBase64: '!!!notbase64!!!',
         hashBase64: '!!!notbase64!!!',
       );
-      expect(
-        hasher.verify(normalizedCode: 'ABCD', stored: stored),
-        isFalse,
-      );
+      expect(hasher.verify(normalizedCode: 'ABCD', stored: stored), isFalse);
     });
 
     test('HashedRecoveryCode toJson + fromJson round-trip', () {
@@ -251,14 +257,10 @@ void main() {
   });
 
   group('ScaffoldFailingRecoveryCodeHasher', () {
-    test('throws StateError on hash + verify so production fails closed',
-        () {
+    test('throws StateError on hash + verify so production fails closed', () {
       const hasher = ScaffoldFailingRecoveryCodeHasher();
       expect(
-        () => hasher.hash(
-          normalizedCode: 'ABCD',
-          saltBytes: Uint8List(0),
-        ),
+        () => hasher.hash(normalizedCode: 'ABCD', saltBytes: Uint8List(0)),
         throwsStateError,
       );
       expect(
@@ -303,10 +305,7 @@ void main() {
         stepUpProofId: 'audit-1',
       );
       expect(req.requestedAt, equals(clock));
-      expect(
-        req.executeAfter,
-        equals(clock.add(const Duration(hours: 24))),
-      );
+      expect(req.executeAfter, equals(clock.add(const Duration(hours: 24))));
       expect(req.isPending, isTrue);
       expect(req.isCompleted, isFalse);
       expect(req.isCancelled, isFalse);
@@ -325,8 +324,7 @@ void main() {
       );
     });
 
-    test('executeRemoval returns NotYetExecutable inside the 24h window',
-        () {
+    test('executeRemoval returns NotYetExecutable inside the 24h window', () {
       var clock = DateTime.utc(2026, 4, 26, 12);
       final svc = MfaRemovalService(
         delay: const Duration(hours: 24),
@@ -403,11 +401,16 @@ void main() {
   });
 
   group('MfaChallengeScreen widget', () {
-    Widget wrap(AuthSessionNotifier notifier) {
+    Widget wrap(
+      AuthSessionNotifier notifier, {
+      MfaRecoveryRequestGateway? recoveryRequestGateway,
+    }) {
       return MaterialApp(
         home: ChangeNotifierProvider<AuthSessionNotifier>.value(
           value: notifier,
-          child: const MfaChallengeScreen(),
+          child: MfaChallengeScreen(
+            recoveryRequestGateway: recoveryRequestGateway,
+          ),
         ),
       );
     }
@@ -427,18 +430,21 @@ void main() {
       );
     }
 
-    testWidgets('renders email + "Two-factor verification" title',
-        (tester) async {
+    testWidgets('renders email + "Two-factor verification" title', (
+      tester,
+    ) async {
       final service = _FakeMfaService();
       final notifier = AuthSessionNotifier(
         loginService: service,
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
       expect(find.text('Two-factor verification'), findsOneWidget);
@@ -452,11 +458,13 @@ void main() {
         loginService: service,
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
 
@@ -466,8 +474,9 @@ void main() {
       expect(service.totpCalls, equals(0));
     });
 
-    testWidgets('happy submit with TOTP code transitions to authenticated',
-        (tester) async {
+    testWidgets('happy submit with TOTP code transitions to authenticated', (
+      tester,
+    ) async {
       final service = _FakeMfaService(
         totpResult: AuthLoginSuccess(buildSession()),
       );
@@ -475,11 +484,13 @@ void main() {
         loginService: service,
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
 
@@ -493,8 +504,9 @@ void main() {
       expect(notifier.state, isA<AuthSessionAuthenticated>());
     });
 
-    testWidgets('toggling recovery code path sets factorId = recovery_code',
-        (tester) async {
+    testWidgets('toggling recovery code path sets factorId = recovery_code', (
+      tester,
+    ) async {
       final service = _FakeMfaService(
         totpResult: AuthLoginSuccess(buildSession()),
       );
@@ -502,11 +514,13 @@ void main() {
         loginService: service,
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
 
@@ -523,23 +537,55 @@ void main() {
       expect(service.lastOneTimeCode, equals('ABCD-EFGH-JKMN'));
     });
 
-    testWidgets('cancel button calls signOutThisSession on the notifier',
-        (tester) async {
+    testWidgets('cancel button calls signOutThisSession on the notifier', (
+      tester,
+    ) async {
       final service = _FakeMfaService();
       final notifier = AuthSessionNotifier(
         loginService: service,
         storage: InMemorySecureSessionStorage(),
       );
-      notifier.debugSetState(const AuthSessionMfaChallenge(
-        email: 'mfa@example.test',
-        mfaSessionToken: 'tok',
-        factorIds: <String>['totp-1'],
-      ));
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
       await tester.pumpWidget(wrap(notifier));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('mfa_cancel_button')));
       await tester.pumpAndSettle();
       expect(service.signOutThisSessionCalls, equals(1));
+    });
+
+    testWidgets('contact admin requests MFA recovery help', (tester) async {
+      final service = _FakeMfaService();
+      final recoveryGateway = _FakeMfaRecoveryRequestGateway();
+      final notifier = AuthSessionNotifier(
+        loginService: service,
+        storage: InMemorySecureSessionStorage(),
+      );
+      notifier.debugSetState(
+        const AuthSessionMfaChallenge(
+          email: 'mfa@example.test',
+          mfaSessionToken: 'tok',
+          factorIds: <String>['totp-1'],
+        ),
+      );
+      await tester.pumpWidget(
+        wrap(notifier, recoveryRequestGateway: recoveryGateway),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('mfa_contact_admin_button')));
+      await tester.pumpAndSettle();
+
+      expect(recoveryGateway.commands.single.email, equals('mfa@example.test'));
+      expect(
+        find.text('Recovery request sent to your restaurant admin.'),
+        findsOneWidget,
+      );
     });
   });
 }
@@ -613,4 +659,19 @@ class _FakeMfaService implements AuthLoginService {
 
   @override
   Future<void> signOutAllSessions() async {}
+}
+
+class _FakeMfaRecoveryRequestGateway implements MfaRecoveryRequestGateway {
+  final commands = <MfaRecoveryRequestCommand>[];
+
+  @override
+  Future<MfaRecoveryRequestAccepted> requestRecovery(
+    MfaRecoveryRequestCommand command,
+  ) async {
+    commands.add(command);
+    return const MfaRecoveryRequestAccepted(
+      queued: true,
+      requestId: 'recovery-request-1',
+    );
+  }
 }

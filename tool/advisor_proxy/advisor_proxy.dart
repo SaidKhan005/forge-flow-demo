@@ -53,6 +53,7 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
+import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
 
@@ -3107,6 +3108,7 @@ const String authPasswordChangePath = '/v1/auth/password/change';
 const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
 const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
 const String authMfaRecoveryConsumePath = '/v1/auth/mfa/recovery/consume';
+const String authMfaRecoveryRequestPath = '/v1/auth/mfa/recovery/request';
 const String authMfaFactorsListPath = '/v1/auth/mfa/factors/list';
 const String authMfaFactorsRevokePath = '/v1/auth/mfa/factors/revoke';
 const String adminAuthInvitesPath = '/v1/admin/auth/invites';
@@ -3337,6 +3339,7 @@ Future<void> routeRequest(
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
   PasswordChangeGateway? passwordChangeGateway,
   MfaOperationsGateway? mfaOperationsGateway,
+  MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
@@ -3778,6 +3781,63 @@ Future<void> routeRequest(
       return;
     }
 
+    if (request.method == 'POST' && path == authMfaRecoveryRequestPath) {
+      if (mfaRecoveryRequestGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'mfa_recovery_request_not_configured',
+          'message':
+              'route requires an MfaRecoveryRequestGateway to be installed',
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final email = _nonBlankString(body['email']);
+      if (email == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_email',
+          'message': 'request body must include email',
+        });
+        return;
+      }
+      try {
+        final accepted = await mfaRecoveryRequestGateway.requestRecovery(
+          MfaRecoveryRequestCommand(
+            email: email,
+            reason:
+                _nonBlankString(body['reason']) ??
+                'mfa_challenge_no_factor_access',
+          ),
+        );
+        _writeJson(response, 202, <String, Object?>{
+          'ok': true,
+          'queued': accepted.queued,
+          if (accepted.requestId != null) 'request_id': accepted.requestId,
+        });
+      } on MfaRecoveryRequestRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'mfa_recovery_request_unavailable',
+          'message': 'MFA recovery request is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (_isMfaOperation(path, request.method)) {
       if (mfaOperationsGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -3802,6 +3862,15 @@ Future<void> routeRequest(
           'message': 'MFA routes require a Firebase ID token',
         });
         return;
+      }
+
+      if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
+        final freshEnough = _requireFreshAuthenticationOrWrite(
+          response: response,
+          scope: scope,
+          requestedAt: clock().toUtc(),
+        );
+        if (!freshEnough) return;
       }
 
       Map<String, Object?> body;
@@ -5197,6 +5266,29 @@ Future<OperatorContext?> _resolveOperatorContextOrWrite(
     });
     return null;
   }
+}
+
+bool _requireFreshAuthenticationOrWrite({
+  required HttpResponse response,
+  required OperatorContext scope,
+  required DateTime requestedAt,
+}) {
+  const freshnessWindow = Duration(minutes: 5);
+  final lastFreshAuthAt = scope.lastFreshAuthAt;
+  if (lastFreshAuthAt != null &&
+      requestedAt.difference(lastFreshAuthAt.toUtc()) <= freshnessWindow) {
+    return true;
+  }
+  _writeJson(response, 403, <String, Object?>{
+    'error': 'mfa_freshness_required',
+    'message': 'Sign in again before removing MFA.',
+    if (lastFreshAuthAt != null)
+      'refresh_after': lastFreshAuthAt
+          .toUtc()
+          .add(freshnessWindow)
+          .toIso8601String(),
+  });
+  return false;
 }
 
 bool _isAdminAuthOperation(String path, String method) {
