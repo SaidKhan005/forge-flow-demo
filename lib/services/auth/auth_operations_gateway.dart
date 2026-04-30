@@ -305,6 +305,116 @@ class TeamRoleGrantRevoked {
   final bool revoked;
 }
 
+// Phase 9.UX.4 — operator org hierarchy.
+//
+// `org_units` is the per-operator corp/region/district/location_group
+// hierarchy stored as a Postgres `ltree` (item 1 / Q2 from
+// `phase_9_scalability_decisions_2026-04-27.md`). The Settings → Team →
+// Org Hierarchy surface uses these commands to render the tree, add
+// child units, and move locations between units. Permission grants at
+// any node inherit to descendants; the `user_effective_locations`
+// materialized cache from the `202604290101_phase_9_hierarchy_access_wiring`
+// migration handles the lookup.
+class TeamOrgUnitEntry {
+  const TeamOrgUnitEntry({
+    required this.orgUnitId,
+    required this.parentOrgUnitId,
+    required this.unitType,
+    required this.path,
+    required this.label,
+  });
+
+  final String orgUnitId;
+  final String? parentOrgUnitId;
+  final String unitType;
+  final String path;
+  final String label;
+}
+
+class TeamOrgLocationEntry {
+  const TeamOrgLocationEntry({
+    required this.locationId,
+    required this.parentOrgUnitId,
+    required this.orgUnitPath,
+    required this.label,
+  });
+
+  final String locationId;
+  final String parentOrgUnitId;
+  final String orgUnitPath;
+  final String label;
+}
+
+class TeamOrgHierarchyListCommand {
+  const TeamOrgHierarchyListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+}
+
+class TeamOrgHierarchyListed {
+  const TeamOrgHierarchyListed({
+    required this.orgUnits,
+    required this.locations,
+  });
+
+  final List<TeamOrgUnitEntry> orgUnits;
+  final List<TeamOrgLocationEntry> locations;
+}
+
+class TeamOrgUnitCreateCommand {
+  const TeamOrgUnitCreateCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.parentOrgUnitId,
+    required this.unitType,
+    required this.label,
+    required this.name,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String parentOrgUnitId;
+  final String unitType;
+  final String label;
+  final String name;
+}
+
+class TeamOrgUnitCreated {
+  const TeamOrgUnitCreated({required this.orgUnitId});
+
+  final String orgUnitId;
+}
+
+class TeamLocationOrgUnitMoveCommand {
+  const TeamLocationOrgUnitMoveCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    required this.targetLocationId,
+    required this.parentOrgUnitId,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final String targetLocationId;
+  final String parentOrgUnitId;
+}
+
+class TeamLocationOrgUnitMoved {
+  const TeamLocationOrgUnitMoved({required this.moved});
+
+  final bool moved;
+}
+
 class TeamRolePermissionRule {
   const TeamRolePermissionRule({
     required this.permissionKey,
@@ -582,6 +692,16 @@ abstract class AuthOperationsGateway {
   Future<TeamRoleGrantRevoked> revokeRoleGrant(
     TeamRoleGrantRevokeCommand command,
   );
+
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  );
+
+  Future<TeamOrgUnitCreated> createOrgUnit(TeamOrgUnitCreateCommand command);
+
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command,
+  );
 }
 
 class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
@@ -671,6 +791,25 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<TeamRoleGrantRevoked> revokeRoleGrant(
     TeamRoleGrantRevokeCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamOrgHierarchyListed> listOrgHierarchy(
+    TeamOrgHierarchyListCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamOrgUnitCreated> createOrgUnit(TeamOrgUnitCreateCommand command) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<TeamLocationOrgUnitMoved> moveLocationToOrgUnit(
+    TeamLocationOrgUnitMoveCommand command,
   ) {
     throw StateError(_message);
   }

@@ -5,22 +5,26 @@
 //   * email — RFC-5322 lite validation (non-empty + contains '@'.
 //     Server re-validates).
 //   * roleId — the role being granted.
-//   * scopeType — 'operator_wide' or 'location' (per 9.0a's
-//     user_roles.scope_type column).
-//   * locationId — required when scopeType = 'location'.
+//   * scopeType — `operator_wide`, `org_unit`, or `location` (per
+//     9.0a's `user_roles.scope_type` column + 9.UX.4's hierarchy
+//     wiring migration).
+//   * locationId — required when scopeType = `location`.
+//   * orgUnitId — required when scopeType = `org_unit`.
 //
 // `validate()` returns the violation set. Empty = ready to submit.
 
 import 'package:flutter/foundation.dart';
 
-enum TeamInviteScope { operatorWide, location }
+enum TeamInviteScope { operatorWide, orgUnit, location }
 
 extension TeamInviteScopeKey on TeamInviteScope {
-  /// SQL value matching the 9.0a CHECK constraint.
+  /// SQL value matching the 9.0a + 9.UX.4 CHECK constraint.
   String get sqlKey {
     switch (this) {
       case TeamInviteScope.operatorWide:
         return 'operator_wide';
+      case TeamInviteScope.orgUnit:
+        return 'org_unit';
       case TeamInviteScope.location:
         return 'location';
     }
@@ -33,6 +37,7 @@ enum TeamInviteViolation {
   roleMissing,
   scopeMissing,
   locationMissingForLocationScope,
+  orgUnitMissingForOrgUnitScope,
   locationProvidedButOperatorWide,
 }
 
@@ -43,11 +48,13 @@ class TeamInviteFormController extends ChangeNotifier {
   String? _roleId;
   TeamInviteScope? _scope;
   String? _locationId;
+  String? _orgUnitId;
 
   String get email => _email;
   String? get roleId => _roleId;
   TeamInviteScope? get scope => _scope;
   String? get locationId => _locationId;
+  String? get orgUnitId => _orgUnitId;
 
   void setEmail(String value) {
     if (_email == value) return;
@@ -65,7 +72,13 @@ class TeamInviteFormController extends ChangeNotifier {
     if (_scope == value) return;
     _scope = value;
     if (value == TeamInviteScope.operatorWide) {
-      // Switching to operator-wide clears any selected location.
+      // Switching to operator-wide clears any selected location or
+      // org unit so the payload never carries a stale id.
+      _locationId = null;
+      _orgUnitId = null;
+    } else if (value == TeamInviteScope.location) {
+      _orgUnitId = null;
+    } else if (value == TeamInviteScope.orgUnit) {
       _locationId = null;
     }
     notifyListeners();
@@ -77,11 +90,18 @@ class TeamInviteFormController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setOrgUnitId(String? value) {
+    if (_orgUnitId == value) return;
+    _orgUnitId = value;
+    notifyListeners();
+  }
+
   void reset() {
     _email = '';
     _roleId = null;
     _scope = null;
     _locationId = null;
+    _orgUnitId = null;
     notifyListeners();
   }
 
@@ -101,8 +121,11 @@ class TeamInviteFormController extends ChangeNotifier {
     } else if (_scope == TeamInviteScope.location &&
         (_locationId == null || _locationId!.isEmpty)) {
       violations.add(TeamInviteViolation.locationMissingForLocationScope);
+    } else if (_scope == TeamInviteScope.orgUnit &&
+        (_orgUnitId == null || _orgUnitId!.isEmpty)) {
+      violations.add(TeamInviteViolation.orgUnitMissingForOrgUnitScope);
     } else if (_scope == TeamInviteScope.operatorWide &&
-        _locationId != null) {
+        (_locationId != null || _orgUnitId != null)) {
       violations.add(TeamInviteViolation.locationProvidedButOperatorWide);
     }
     return violations;
@@ -120,7 +143,10 @@ class TeamInviteFormController extends ChangeNotifier {
       'email': _email.trim(),
       'role_id': _roleId,
       'scope_type': _scope!.sqlKey,
-      if (_locationId != null) 'location_id': _locationId,
+      if (_scope == TeamInviteScope.location && _locationId != null)
+        'location_id': _locationId,
+      if (_scope == TeamInviteScope.orgUnit && _orgUnitId != null)
+        'org_unit_id': _orgUnitId,
     };
   }
 

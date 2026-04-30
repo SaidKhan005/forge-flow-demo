@@ -531,6 +531,101 @@ void main() {
       );
     });
 
+    test(
+      'org hierarchy CRUD targets the org-units routes',
+      () async {
+        final fake = _FakeAuthOpsHttpClient(
+          getResponse: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'org_units': <Object?>[
+                <String, Object?>{
+                  'org_unit_id': 'unit-1',
+                  'parent_org_unit_id': null,
+                  'unit_type': 'corp',
+                  'path': 'acme',
+                  'label': 'ACME',
+                },
+              ],
+              'locations': <Object?>[
+                <String, Object?>{
+                  'location_id': 'loc-1',
+                  'parent_org_unit_id': 'unit-1',
+                  'org_unit_path': 'acme',
+                  'label': 'Downtown',
+                },
+              ],
+            },
+          ),
+          postResponse: const ProxyAuthOperationsResponse(
+            statusCode: 201,
+            body: <String, Object?>{'org_unit_id': 'unit-2'},
+          ),
+          patchResponse: const ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{'ok': true, 'moved': true},
+          ),
+        );
+        final gateway = ProxyAuthOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final listed = await gateway.listOrgHierarchy(
+          const TeamOrgHierarchyListCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+          ),
+        );
+        final created = await gateway.createOrgUnit(
+          const TeamOrgUnitCreateCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            parentOrgUnitId: 'unit-1',
+            unitType: 'region',
+            label: 'east',
+            name: 'East Region',
+          ),
+        );
+        final moved = await gateway.moveLocationToOrgUnit(
+          const TeamLocationOrgUnitMoveCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            targetLocationId: 'loc-1',
+            parentOrgUnitId: 'unit-2',
+          ),
+        );
+
+        expect(listed.orgUnits.single.orgUnitId, equals('unit-1'));
+        expect(listed.locations.single.locationId, equals('loc-1'));
+        expect(created.orgUnitId, equals('unit-2'));
+        expect(moved.moved, isTrue);
+        expect(fake.gets.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
+        expect(fake.posts.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
+        expect(
+          fake.posts.single.body,
+          equals(<String, Object?>{
+            'parent_org_unit_id': 'unit-1',
+            'unit_type': 'region',
+            'label': 'east',
+            'name': 'East Region',
+          }),
+        );
+        expect(
+          fake.patches.single.url.path,
+          equals('/v1/admin/auth/locations/loc-1/org-unit'),
+        );
+        expect(
+          fake.patches.single.body,
+          equals(<String, Object?>{'parent_org_unit_id': 'unit-2'}),
+        );
+      },
+    );
+
     test('transport failures collapse to transport_error', () async {
       final fake = _FakeAuthOpsHttpClient.throws(StateError('secret://dsn'));
       final gateway = ProxyAuthOperationsGateway(

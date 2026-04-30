@@ -250,6 +250,83 @@ class OrgUnitsRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Phase 9.UX.4 — SELECT every `locations` row visible to the
+  /// tenant context together with the denormalized `org_unit_path`
+  /// the migration's `set_location_org_unit_path()` trigger keeps in
+  /// sync. Returned rows are ordered by `org_unit_path` so the
+  /// Settings → Team → Org Hierarchy surface can render the tree in
+  /// a stable, parent-before-child order.
+  Future<List<OrgLocationRow>> listLocationsForTenant({
+    required String operatorId,
+    required String locationId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<List<OrgLocationRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select location_id::text as location_id, '
+        'operator_id::text as operator_id, '
+        'parent_org_unit_id::text as parent_org_unit_id, '
+        'org_unit_path::text as org_unit_path, name '
+        'from locations '
+        'order by org_unit_path, name',
+      );
+      return rows.map(_locationRowFromMap).toList(growable: false);
+    });
+  }
+
+  /// Phase 9.UX.4 — UPDATE the `parent_org_unit_id` column on a
+  /// single `locations` row. The migration's
+  /// `set_location_org_unit_path()` trigger refreshes
+  /// `org_unit_path` from the new parent in the same write so the
+  /// denormalized path stays consistent without a second round-trip.
+  ///
+  /// Returns the affected-row count (0 when the location does not
+  /// exist or RLS blocked the update).
+  Future<int> moveLocationToOrgUnit({
+    required String operatorId,
+    required String locationId,
+    required String targetLocationId,
+    required String parentOrgUnitId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      // Same-operator parent enforcement: the parent must be visible
+      // to the tenant context. RLS already filters cross-operator
+      // rows; double-check here so the proxy never quietly fails the
+      // FK trigger after the read.
+      final parentRows = await exec.query(
+        'select 1 from org_units '
+        'where id = @parent_id::uuid',
+        parameters: <String, Object?>{'parent_id': parentOrgUnitId},
+      );
+      if (parentRows.isEmpty) {
+        throw StateError(
+          'org_units parent not found in tenant scope — cross-tenant '
+          'parent or RLS blocked the read',
+        );
+      }
+      return exec.execute(
+        'update locations '
+        'set parent_org_unit_id = @parent_id::uuid '
+        'where location_id = @location_id::uuid',
+        parameters: <String, Object?>{
+          'parent_id': parentOrgUnitId,
+          'location_id': targetLocationId,
+        },
+      );
+    });
+  }
+
   /// Admin/system path: SELECT every root `corp` row across operators.
   /// Used by the 11A admin console hierarchy panel + backfill
   /// verification. Runs through `withSystem` so `forge_admin`
@@ -295,4 +372,35 @@ class OrgUnitsRepository extends OperatorScopedRepository {
       updatedAt: row['updated_at']! as DateTime,
     );
   }
+
+  static OrgLocationRow _locationRowFromMap(Map<String, Object?> row) {
+    return OrgLocationRow(
+      locationId: row['location_id']! as String,
+      operatorId: row['operator_id']! as String,
+      parentOrgUnitId: row['parent_org_unit_id']! as String,
+      orgUnitPath: row['org_unit_path']! as String,
+      name: row['name']! as String,
+    );
+  }
+}
+
+/// Phase 9.UX.4 — narrow projection of a `locations` row joined with
+/// the denormalized `org_unit_path` column added by the
+/// `202604290101_phase_9_hierarchy_access_wiring` migration. Used by
+/// the Settings → Team → Org Hierarchy surface to render locations
+/// underneath their parent org unit.
+class OrgLocationRow {
+  const OrgLocationRow({
+    required this.locationId,
+    required this.operatorId,
+    required this.parentOrgUnitId,
+    required this.orgUnitPath,
+    required this.name,
+  });
+
+  final String locationId;
+  final String operatorId;
+  final String parentOrgUnitId;
+  final String orgUnitPath;
+  final String name;
 }

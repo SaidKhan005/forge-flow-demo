@@ -15,6 +15,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_recovery_request_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operator_admins_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
@@ -125,6 +126,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     userRolesRepository: UserRolesRepository(adminWrapper),
     authInvitesRepository: AuthInvitesRepository(adminWrapper),
     auditRepository: adminAudit,
+    // Phase 9.UX.4: tenant-scoped reads/writes — per-operator RLS
+    // policies on `org_units` + `locations` are the gate, so the
+    // repo runs through the tenant pool, not the admin pool.
+    orgUnitsRepository: OrgUnitsRepository(tenantWrapper),
   );
 
   final permissionSnapshotResolver = RepositoryProxyPermissionSnapshotResolver(
