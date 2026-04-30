@@ -24,6 +24,7 @@ import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_advisor_corpus_section.dart';
 import 'settings/settings_advisor_model_section.dart';
+import 'settings/settings_custom_roles_section.dart';
 import 'settings/settings_data_sections.dart';
 import 'settings/settings_mfa_section.dart';
 import 'settings/settings_org_hierarchy_section.dart';
@@ -102,6 +103,16 @@ class SettingsScreen extends StatefulWidget {
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaActorContext? mfaActor;
 
+  /// Phase 9.UX.2 — operator role catalog (seeded + custom). Seed
+  /// snapshot used for first paint; the listenable bridge updates the
+  /// open Settings route when the live gateway resolves or a save
+  /// callback mutates the catalog.
+  final List<TeamRoleCatalogEntry> teamRoleCatalog;
+  final ValueListenable<List<TeamRoleCatalogEntry>>? teamRoleCatalogListenable;
+  final SettingsRoleCreateRequester? onTeamRoleCreate;
+  final SettingsRolePatchRequester? onTeamRolePatch;
+  final SettingsRoleDeleteRequester? onTeamRoleDelete;
+
   /// Test-only override: when true, renders Team with an owner-shaped
   /// actor even when no runtime actor snapshot is installed.
   final bool forceShowTeamSection;
@@ -141,6 +152,11 @@ class SettingsScreen extends StatefulWidget {
     this.teamDataLoadStateListenable,
     this.mfaOperationsGateway,
     this.mfaActor,
+    this.teamRoleCatalog = const <TeamRoleCatalogEntry>[],
+    this.teamRoleCatalogListenable,
+    this.onTeamRoleCreate,
+    this.onTeamRolePatch,
+    this.onTeamRoleDelete,
     this.forceShowTeamSection = false,
   });
 
@@ -320,23 +336,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               _OrgUnitOptionsListenableScope(
                                 seed: widget.teamOrgUnitOptions,
                                 listenable: widget.teamOrgUnitOptionsListenable,
-                                builder: (orgUnitOptions) => TeamSettingsSection(
-                                  actor: effectiveTeamActor,
-                                  users: users,
-                                  roleOptions: roleOptions,
-                                  locationOptions: widget.teamLocationOptions,
-                                  orgUnitOptions: orgUnitOptions,
-                                  pendingInvites: pendingInvites,
-                                  dataLoadState: dataLoadState,
-                                  usersController:
-                                      widget.teamUsersListController,
-                                  inviteFormController:
-                                      widget.teamInviteFormController,
-                                  onInviteSubmitted:
-                                      widget.onTeamInviteSubmitted,
-                                  onInviteRevoked: widget.onTeamInviteRevoked,
-                                  onUserAction: widget.onTeamUserAction,
-                                ),
+                                builder: (orgUnitOptions) =>
+                                    _RoleCatalogToOptionsScope(
+                                      fallback: roleOptions,
+                                      catalogSeed: widget.teamRoleCatalog,
+                                      catalogListenable:
+                                          widget.teamRoleCatalogListenable,
+                                      builder: (effectiveRoleOptions) =>
+                                          TeamSettingsSection(
+                                            actor: effectiveTeamActor,
+                                            users: users,
+                                            roleOptions: effectiveRoleOptions,
+                                            locationOptions:
+                                                widget.teamLocationOptions,
+                                            orgUnitOptions: orgUnitOptions,
+                                            pendingInvites: pendingInvites,
+                                            dataLoadState: dataLoadState,
+                                            usersController:
+                                                widget.teamUsersListController,
+                                            inviteFormController:
+                                                widget.teamInviteFormController,
+                                            onInviteSubmitted:
+                                                widget.onTeamInviteSubmitted,
+                                            onInviteRevoked:
+                                                widget.onTeamInviteRevoked,
+                                            onUserAction:
+                                                widget.onTeamUserAction,
+                                          ),
+                                    ),
                               ),
                     ),
                   ),
@@ -355,6 +382,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             onCreateOrgUnit: widget.onTeamOrgUnitCreate,
                             onMoveLocation: widget.onTeamLocationMove,
                           ),
+                    ),
+                  ),
+                  _settingsSection(
+                    title: 'Roles',
+                    child: _RoleCatalogListenableScope(
+                      seed: widget.teamRoleCatalog,
+                      listenable: widget.teamRoleCatalogListenable,
+                      builder: (catalog) => SettingsCustomRolesSection(
+                        actor: effectiveTeamActor,
+                        roleCatalog: catalog,
+                        onCreateRole: widget.onTeamRoleCreate,
+                        onPatchRole: widget.onTeamRolePatch,
+                        onDeleteRole: widget.onTeamRoleDelete,
+                      ),
                     ),
                   ),
                 ],
@@ -540,6 +581,8 @@ const TeamScopeActor _debugTeamActor = TeamScopeActor(
     'team.users.soft_delete',
     'team.users.reset_password',
     'team.users.reset_mfa',
+    'team.roles.view',
+    'team.roles.create_custom',
     'team.roles.assign',
     'team.roles.revoke',
   },
@@ -658,6 +701,77 @@ class _OrgUnitOptionsListenableScope extends StatelessWidget {
     return ValueListenableBuilder<List<TeamOrgUnitOption>>(
       valueListenable: l,
       builder: (context, value, _) => builder(value),
+    );
+  }
+}
+
+class _RoleCatalogListenableScope extends StatelessWidget {
+  const _RoleCatalogListenableScope({
+    required this.seed,
+    required this.listenable,
+    required this.builder,
+  });
+
+  final List<TeamRoleCatalogEntry> seed;
+  final ValueListenable<List<TeamRoleCatalogEntry>>? listenable;
+  final Widget Function(List<TeamRoleCatalogEntry> catalog) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = listenable;
+    if (l == null) return builder(seed);
+    return ValueListenableBuilder<List<TeamRoleCatalogEntry>>(
+      valueListenable: l,
+      builder: (context, value, _) => builder(value),
+    );
+  }
+}
+
+/// Phase 9.UX.2 — bridges the role catalog into
+/// [TeamSettingsSection.roleOptions]. When the catalog has entries,
+/// it is the source of truth for invite + role-grant role pickers
+/// (a custom role created on the Roles surface must be grantable
+/// without reopening Settings, per slice acceptance). When empty, the
+/// adapter falls back to whatever [_TeamSettingsLiveDataScope] passed
+/// in — keeping the legacy `teamRoleOptions` /
+/// `teamRoleOptionsListenable` wiring intact for app shells that have
+/// not yet plumbed the catalog listenable.
+class _RoleCatalogToOptionsScope extends StatelessWidget {
+  const _RoleCatalogToOptionsScope({
+    required this.fallback,
+    required this.catalogSeed,
+    required this.catalogListenable,
+    required this.builder,
+  });
+
+  final List<TeamRoleOption> fallback;
+  final List<TeamRoleCatalogEntry> catalogSeed;
+  final ValueListenable<List<TeamRoleCatalogEntry>>? catalogListenable;
+  final Widget Function(List<TeamRoleOption> options) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget resolve(List<TeamRoleCatalogEntry> catalog) {
+      if (catalog.isEmpty) return builder(fallback);
+      return builder(_optionsFromCatalog(catalog));
+    }
+
+    final l = catalogListenable;
+    if (l == null) return resolve(catalogSeed);
+    return ValueListenableBuilder<List<TeamRoleCatalogEntry>>(
+      valueListenable: l,
+      builder: (context, value, _) => resolve(value),
+    );
+  }
+
+  static List<TeamRoleOption> _optionsFromCatalog(
+    List<TeamRoleCatalogEntry> catalog,
+  ) {
+    return List<TeamRoleOption>.unmodifiable(
+      catalog.map(
+        (entry) =>
+            TeamRoleOption(roleId: entry.roleId, label: entry.displayName),
+      ),
     );
   }
 }
