@@ -24,6 +24,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/auth/permission_resolution.dart';
+import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
@@ -34,6 +35,7 @@ import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/auth/rate_limited_hibp_range_fetcher.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_session_ledger_writer.dart';
+import 'package:forge_and_flow/services/auth/repository_account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/repository_password_history_check.dart';
 import 'package:forge_and_flow/services/mfa/firebase_mfa_enrollment_service.dart';
@@ -51,6 +53,7 @@ class ProxyProductionBindings {
     required this.accountingStore,
     required this.authSessionLedgerWriter,
     required this.firebaseAdminAuthClient,
+    required this.accountInfoGateway,
     required this.permissionSnapshotResolver,
     required this.adminPermissionGuard,
     required this.authOperationsGateway,
@@ -66,6 +69,7 @@ class ProxyProductionBindings {
   final ProxyAccountingStore accountingStore;
   final AuthSessionLedgerWriter authSessionLedgerWriter;
   final FirebaseAdminAuthClient firebaseAdminAuthClient;
+  final AccountInfoGateway accountInfoGateway;
   final ProxyPermissionSnapshotResolver permissionSnapshotResolver;
   final ProxyAdminPermissionGuard adminPermissionGuard;
   final AuthOperationsGateway authOperationsGateway;
@@ -132,6 +136,9 @@ ProxyProductionBindings buildProxyProductionBindings(
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
     firebaseAdminAuthClient: firebaseAdmin,
+    accountInfoGateway: RepositoryAccountInfoGateway(
+      usersRepository: tenantUsers,
+    ),
     authSessionLedgerWriter: RepositoryAuthSessionLedgerWriter(
       repository: AuthSessionsRepository(tenantWrapper),
     ),

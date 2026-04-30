@@ -21,6 +21,7 @@ Future<void> main() async {
         requireAuth: true,
         permissionContextLoader: bindings.permissionContextLoader,
         authOperationsGateway: bindings.authOperationsGateway,
+        accountInfoGateway: bindings.accountInfoGateway,
         passwordChangeGateway: bindings.passwordChangeGateway,
         mfaOperationsGateway: bindings.mfaOperationsGateway,
         mfaRecoveryRequestGateway: bindings.mfaRecoveryRequestGateway,

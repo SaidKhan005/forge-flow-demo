@@ -9,6 +9,7 @@ import '../models/app_data_status.dart';
 import '../services/advisor_corpus_admin_service.dart';
 import '../services/advisor_model_config_service.dart';
 import '../services/app_data_status_service.dart';
+import '../services/auth/account_info_gateway.dart';
 import '../services/auth/password_change_gateway.dart';
 import '../services/mfa/mfa_operations_gateway.dart';
 import '../services/shift_service.dart';
@@ -75,6 +76,7 @@ class SettingsScreen extends StatefulWidget {
   final TeamInviteSubmitter? onTeamInviteSubmitted;
   final TeamInviteRevoker? onTeamInviteRevoked;
   final TeamUserActionHandler? onTeamUserAction;
+  final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
   final TeamSettingsDataLoadState teamDataLoadState;
   final ValueListenable<List<TeamRoleOption>>? teamRoleOptionsListenable;
@@ -107,6 +109,7 @@ class SettingsScreen extends StatefulWidget {
     this.onTeamInviteSubmitted,
     this.onTeamInviteRevoked,
     this.onTeamUserAction,
+    this.accountInfoGateway,
     this.passwordChangeGateway,
     this.teamDataLoadState = TeamSettingsDataLoadState.ready,
     this.teamRoleOptionsListenable,
@@ -267,6 +270,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _settingsSection(
                     title: 'Account',
                     child: SettingsAccountSection(
+                      accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
                     ),
                   ),

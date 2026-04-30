@@ -135,6 +135,14 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   admin-tier MFA enforcement is deferred until post-launch stability and
   explicit approval. B48 password-reset parity maps to `9.UX.7`; broader MFA
   support tooling and notification delivery map to Phase 11A/10a.
+- **9.UX account-info closeout:** Settings -> Account now has read-only
+  My info with a self-scoped `GET /v1/auth/account` contract, optional
+  gateway wiring, safe immediate fallback copy while the backend profile
+  refreshes, and walkthrough evidence at
+  `docs/_walkthroughs/9.UX.account-info.md`. Remaining dependency is
+  operational: device builds only get full backend profile data after the
+  running proxy includes this branch's `account_info: postgres` binding and
+  `/v1/auth/account` route; older proxies show the safe fallback notice.
 - **Health producer status:** B44 graph tripwire/runbook, B45 rollup freshness
   reporter/runbook, and B47 vector health helper/benchmark artifact exist;
   producer wiring that fills the B42 reserved metric values remains follow-on
@@ -217,6 +225,9 @@ active, not which slices are next per lane.
 8. Mandatory admin-tier MFA enforcement - explicitly deferred until
    post-launch stability and explicit approval; do not treat as a launch
    blocker.
+9. 9.UX account-info proxy deploy/smoke - app code is local-green and safely
+   falls back, but staging/production proxy must be redeployed with
+   `account_info: postgres` before device QA expects backend profile fields.
 
 **Then continue:**
 
