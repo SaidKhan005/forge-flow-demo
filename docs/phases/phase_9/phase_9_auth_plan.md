@@ -1183,8 +1183,12 @@ as the MFA hardening sub-slice
   read-only My info tile in Account section; self-scoped
   `GET /v1/auth/account` contract; safe fallback while backend profile
   refreshes. Walkthrough: `docs/_walkthroughs/9.UX.account-info.md`.
-  Operational gate: live proxy must include `account_info: postgres`
-  binding before device QA expects backend profile data.
+  Operational gate **satisfied** (2026-05-01) — staging proxy
+  revision `forge-flow-staging-proxy-00032-lgs` reports
+  `account_info: postgres` in its boot banner; runbook in
+  `runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md`.
+  Production1 redeploy deferred until Production1 GCP project is
+  provisioned.
 - `9.UX.2` **accepted** (commit `245f14e`) — custom role editor +
   role catalog viewer in `settings_custom_roles_section.dart` +
   `settings_role_editor.dart`. Consumes B17
@@ -1221,9 +1225,13 @@ as the MFA hardening sub-slice
   `web/auth/action/index.html`. Idempotency cache wraps proxy
   request/confirm routes; 350ms latency floor + system-actor audit
   row only on matched users (no email-existence oracle).
-  Walkthrough: `docs/_walkthroughs/9.UX.7.md`. Operational gate:
-  proxy redeploy with reset-confirm route before live email-link
-  flow works end-to-end.
+  Walkthrough: `docs/_walkthroughs/9.UX.7.md`. Operational gate
+  **satisfied** (2026-05-01) — staging proxy revision
+  `forge-flow-staging-proxy-00032-lgs` reports
+  `password_reset_confirm: postgres` in its boot banner; runbook in
+  `runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md`.
+  Production1 redeploy deferred until Production1 GCP project is
+  provisioned.
 - `9.UX.inheritance-hint.0` **accepted (rendering only)** (commit
   `5f5c91c`) — role-change dialog renders per-grant inheritance hints
   ("Applies operator-wide" / "Inherited via {unit} (N locations)" /
