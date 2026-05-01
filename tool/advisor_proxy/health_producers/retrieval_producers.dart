@@ -3,6 +3,13 @@
 // Lock 7 (Anthropic + Voyage circuit breakers): trip on 3 consecutive
 // failures within 60s, error rate > 25%, p99 > 3× baseline, or cost > 2×
 // baseline. State exposed via circuit_breaker_*_state.
+//
+// Block 2 (v1) wires per-instance in-memory breakers via the optional
+// `ProxyHealthProducerContext.inMemoryBreakerStates` accessor. When
+// present the producer reports the live snapshot; when null it falls
+// back to the DB-backed `circuit_breaker_state` query (E.2b path).
+
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 
 import '../advisor_proxy.dart' show ProxyHealthMetric;
 import 'health_producer.dart';
@@ -26,6 +33,40 @@ Future<ProxyHealthMetric> _circuitBreakerStateProducer(
   String provider,
 ) {
   return runProducer(context, () => _circuitBreakerTemplate(provider), () async {
+    final inMemoryAccessor = context.inMemoryBreakerStates;
+    if (inMemoryAccessor != null) {
+      final snapshot = inMemoryAccessor();
+      final state = snapshot[provider];
+      if (state == null) {
+        return ProxyHealthMetric(
+          status: 'green',
+          value: 'closed',
+          unit: 'state',
+          description: _circuitBreakerTemplate(provider).description,
+          source: 'in_memory_breaker',
+          owner: 'B42',
+          observedAt: context.now,
+          metadata: <String, Object?>{
+            'tier': 1,
+            'provider': provider,
+            'note': 'no_breaker_registered',
+          },
+        );
+      }
+      final wire = circuitStateToWireString(state);
+      return ProxyHealthMetric(
+        status: state == CircuitState.closed
+            ? 'green'
+            : (state == CircuitState.halfOpen ? 'yellow' : 'red'),
+        value: wire,
+        unit: 'state',
+        description: _circuitBreakerTemplate(provider).description,
+        source: 'in_memory_breaker',
+        owner: 'B42',
+        observedAt: context.now,
+        metadata: <String, Object?>{'tier': 1, 'provider': provider},
+      );
+    }
     final rows = await context.runner.query(
       "select state::text as state, opened_at "
       "from circuit_breaker_state where provider = '$provider' limit 1",

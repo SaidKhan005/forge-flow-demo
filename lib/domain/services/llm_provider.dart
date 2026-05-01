@@ -10,6 +10,17 @@
 // `tier` parameter:
 //   - tier=quick   -> Haiku  (default)
 //   - tier=nuanced -> Sonnet
+//
+// Lock 7 (`docs/phases/phase_11a/phase_11a_decision_register.md:938-972`):
+// `LLMProviderException` carries a `FailureKind` so the circuit breaker
+// at the call site can distinguish 5xx / 429 / timeout / cost-breach.
+// `classifyLlmFailure` maps thrown exceptions to that taxonomy; unknown
+// kinds count toward the consecutive-failure trigger (false positives are
+// safer than false negatives for breakers).
+
+import 'dart:async';
+
+import 'circuit_breaker.dart';
 
 /// Tier selection for LLM completions.
 enum LLMTier {
@@ -69,4 +80,31 @@ abstract class LLMProvider {
     required String context,
     LLMTier tier = LLMTier.quick,
   });
+}
+
+/// Exception thrown by LLM providers (or proxy adapters) to signal a
+/// classified failure to the circuit breaker. Concrete adapters wrap
+/// network / HTTP errors in this type so the breaker can distinguish
+/// 5xx / 429 / timeout / cost-breach.
+class LLMProviderException implements Exception {
+  const LLMProviderException(this.kind, this.message, {this.statusCode});
+
+  final FailureKind kind;
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => 'LLMProviderException(${kind.name}): $message';
+}
+
+/// Map a thrown error to a [FailureKind] for breaker accounting.
+/// Unknown shapes count toward the consecutive-failure trigger.
+FailureKind classifyLlmFailure(Object error) {
+  if (error is TimeoutException) {
+    return FailureKind.timeout;
+  }
+  if (error is LLMProviderException) {
+    return error.kind;
+  }
+  return FailureKind.unknown;
 }

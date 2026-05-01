@@ -86,6 +86,7 @@ ProxyHealthRegistryProducer adaptFamilyProducer(
       runner: _FunctionalProxyHealthQueryRunner(registryContext.runnerFn),
       now: registryContext.now,
       budget: registryContext.budget,
+      inMemoryBreakerStates: registryContext.inMemoryBreakerStates,
     );
     return producer(familyContext);
   };
