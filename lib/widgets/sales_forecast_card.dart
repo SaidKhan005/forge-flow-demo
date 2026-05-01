@@ -26,7 +26,7 @@ class SalesForecastCard extends StatelessWidget {
     return Container(
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
+          gradient: const LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: [AppColors.backgroundMid, AppColors.cardGlow],

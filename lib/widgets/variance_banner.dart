@@ -41,7 +41,7 @@ class VarianceBanner extends StatelessWidget {
                   ],
                 ),
                 border: Border(
-                  left: BorderSide(color: AppColors.borderSubtle, width: 4),
+                  left: const BorderSide(color: AppColors.borderSubtle, width: 4),
                   top: BorderSide(
                       color: AppColors.borderSubtle.withValues(alpha: 0.6), width: 1),
                   bottom: BorderSide(
@@ -76,7 +76,7 @@ class VarianceBanner extends StatelessWidget {
                           style: AppTextStyles.mono7(
                               color: AppColors.textMuted)),
                       const SizedBox(width: 2),
-                      Icon(Icons.chevron_right,
+                      const Icon(Icons.chevron_right,
                           size: 14, color: AppColors.textMuted),
                     ],
                   ),
@@ -91,8 +91,8 @@ class VarianceBanner extends StatelessWidget {
                         style: AppTextStyles.mono14(
                             color: AppColors.textSecondary),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
                         child: Icon(Icons.arrow_forward,
                             size: 12, color: AppColors.sunsetDark),
                       ),

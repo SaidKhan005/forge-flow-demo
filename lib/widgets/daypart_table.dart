@@ -24,8 +24,8 @@ class DaypartTable extends StatelessWidget {
       child: Column(
         children: [
           // Header row
-          _TableRow(
-            cells: const ['DAYPART', 'AVG COVERS', 'CPLH', 'SPLH', 'PPA'],
+          const _TableRow(
+            cells: ['DAYPART', 'AVG COVERS', 'CPLH', 'SPLH', 'PPA'],
             isHeader: true,
           ),
           Container(height: 1, color: AppColors.rule),
