@@ -148,6 +148,16 @@ abstract class ProxyConfigNames {
   /// password-reset sender when present.
   static const String firebaseEmailActionContinueUrl =
       'FIREBASE_EMAIL_ACTION_CONTINUE_URL';
+
+  /// 11A.B43 — `cache_telemetry_v2` rollout flag. When `true`, the
+  /// `RepositoryCorpusAdminProxyGateway` writes one row into
+  /// `corpus_invalidation_events` per `commitVersion`/`rollbackToVersion`
+  /// call. Default `false` for staged rollout: the migration that
+  /// creates the table is unconditional, but writes only fire after the
+  /// table has been observed for one drift cycle in staging.
+  /// Accepted values (case-insensitive): `true`/`1`/`on` enable;
+  /// anything else (including unset) keeps the flag off.
+  static const String cacheTelemetryV2 = 'CACHE_TELEMETRY_V2';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -168,6 +178,7 @@ class ProxyConfig {
     required Map<String, String> secrets,
     required this.firebaseProjectId,
     required this.firebaseEmailActionContinueUrl,
+    required this.cacheTelemetryV2,
   }) : _secrets = Map<String, String>.unmodifiable(secrets);
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
@@ -183,6 +194,11 @@ class ProxyConfig {
 
   /// Optional action URL used by Identity Toolkit email actions.
   final String? firebaseEmailActionContinueUrl;
+
+  /// 11A.B43 — staged rollout flag for `corpus_invalidation_events`
+  /// telemetry writes. Wired from [ProxyConfigNames.cacheTelemetryV2].
+  /// `false` until the table is observed for one drift cycle in staging.
+  final bool cacheTelemetryV2;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -231,12 +247,27 @@ class ProxyConfig {
         (firebaseActionUrlRaw == null || firebaseActionUrlRaw.trim().isEmpty)
         ? null
         : firebaseActionUrlRaw.trim();
+    final cacheTelemetryV2 = _parseBoolFlag(
+      environment[ProxyConfigNames.cacheTelemetryV2],
+    );
     return ProxyConfig._(
       port: port,
       secrets: loaded,
       firebaseProjectId: firebaseProjectId,
       firebaseEmailActionContinueUrl: firebaseEmailActionContinueUrl,
+      cacheTelemetryV2: cacheTelemetryV2,
     );
+  }
+
+  // Permissive boolean parser for env-var rollout flags. `true`/`1`/`on`
+  // (case-insensitive) enable; anything else — including null, blank,
+  // or unrecognised — keeps the flag off. Mirrors the staged-rollout
+  // posture from scalability decisions: a flag must default off until a
+  // human flips it.
+  static bool _parseBoolFlag(String? raw) {
+    if (raw == null) return false;
+    final trimmed = raw.trim().toLowerCase();
+    return trimmed == 'true' || trimmed == '1' || trimmed == 'on';
   }
 
   static int _parsePort(String? raw) {
@@ -4113,16 +4144,41 @@ class ProxyPromptBlock {
     required this.id,
     required this.text,
     required this.cacheBreakpoint,
+    this.cacheTtl = '1h',
   });
 
   final String id;
   final String text;
   final bool cacheBreakpoint;
 
+  // Item 12 / Lever 1 — Anthropic prompt-cache TTL pin. Every breakpoint
+  // block emits "ttl":"1h" so vendor-default changes cannot silently break
+  // cost math. Non-breakpoint blocks carry the field but do not surface it
+  // through `proxyPromptBlockToCacheControl` (which returns null for them).
+  final String cacheTtl;
+
   Map<String, Object?> toJson() => <String, Object?>{
     'id': id,
     'text': text,
     'cache_breakpoint': cacheBreakpoint,
+    'cache_ttl': cacheTtl,
+  };
+}
+
+/// Anthropic Messages-API `cache_control` shape for one prompt block.
+///
+/// Returns `{"type":"ephemeral","ttl":"1h"}` for breakpoint blocks and
+/// `null` otherwise. The real Anthropic provider (lands in 11a.11d)
+/// attaches this map to each block whose `cacheBreakpoint == true`. The
+/// helper exists today so unit tests can assert the contract before the
+/// provider is wired (scalability-decisions item 12).
+Map<String, Object?>? proxyPromptBlockToCacheControl(ProxyPromptBlock block) {
+  if (!block.cacheBreakpoint) {
+    return null;
+  }
+  return <String, Object?>{
+    'type': 'ephemeral',
+    'ttl': block.cacheTtl,
   };
 }
 
@@ -4319,6 +4375,18 @@ class AdvisorPromptCacheBuilder {
 
   String cacheKeyForCorpusVersion(String corpusVersion) =>
       'advisor-corpus:$corpusVersion';
+}
+
+/// Feature flags governing prompt-cache + corpus-invalidation telemetry.
+///
+/// `cacheTelemetryV2` gates writes to `corpus_invalidation_events` from
+/// `OperatorScopedCorpusRepository.commitVersion`. Default `false`; flipped
+/// to `true` once the migration has run in staging and the table is
+/// observed for one drift cycle.
+class ProxyCacheFeatureFlags {
+  const ProxyCacheFeatureFlags({this.cacheTelemetryV2 = false});
+
+  final bool cacheTelemetryV2;
 }
 
 class ProxyRequestLogPolicy {

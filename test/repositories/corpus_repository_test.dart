@@ -124,28 +124,39 @@ void main() {
               !s.contains('app.bypass_rls_audit') &&
               !s.startsWith('set local role'))
           .toList();
+      // 0: SELECT prior version_id (captured BEFORE step 1 supersede so
+      //    cache_telemetry_v2 can record the bump's superseded_version_id)
       // 1: supersede prior corpus_versions
       // 2: insert new corpus_versions
       // 3: supersede prior chunks
       // 4: upsert chunk row
       // 5: insert membership row
-      expect(stages, hasLength(5));
+      expect(stages, hasLength(6));
       expect(
         stages[0],
+        contains('select version_id::text as version_id from corpus_versions'),
+        reason:
+            'commitVersion captures the prior version_id BEFORE the '
+            'supersede UPDATE so cache_telemetry_v2 can populate '
+            'corpus_invalidation_events.superseded_version_id',
+      );
+      expect(stages[0], contains('where superseded_at is null'));
+      expect(
+        stages[1],
         contains('update corpus_versions set superseded_at = now()'),
       );
-      expect(stages[1], contains('insert into corpus_versions'));
-      expect(stages[2], contains('update advisor_source_chunks'));
-      expect(stages[2], contains('superseded_at = now()'));
-      expect(stages[3], contains('insert into advisor_source_chunks'));
+      expect(stages[2], contains('insert into corpus_versions'));
+      expect(stages[3], contains('update advisor_source_chunks'));
+      expect(stages[3], contains('superseded_at = now()'));
+      expect(stages[4], contains('insert into advisor_source_chunks'));
       // The on-conflict clause MUST NOT rewrite `version_id` — the
       // chunk's first-introduced pointer stays stable so historical
       // snapshot reads remain accurate. Membership in the new
       // version flows through the join table instead.
-      expect(stages[3], contains('on conflict (chunk_id)'));
-      expect(stages[3], isNot(contains('version_id = excluded.version_id')));
+      expect(stages[4], contains('on conflict (chunk_id)'));
+      expect(stages[4], isNot(contains('version_id = excluded.version_id')));
       expect(
-        stages[4],
+        stages[5],
         contains('insert into corpus_version_chunks'),
         reason:
             'membership row links the new version to the chunk via '
