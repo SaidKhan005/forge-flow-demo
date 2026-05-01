@@ -10,8 +10,18 @@
 // 11a.11c.5 retarget: the Postgres host moved from Supabase to Azure
 // Database for PostgreSQL Flexible Server; secret names are now
 // `POSTGRES_URL` / `POSTGRES_ADMIN_URL`.
+//
+// Block 2 (Lock 7 v1): per-instance circuit breaker + fallback chain
+// constructed once at startup and passed to every routeRequest call.
+// `ScaffoldRejectingProxyLlmProvider` still throws on every call, so
+// in production today the breaker trips after 3 requests and serves
+// the graceful refusal payload (HTTP 200 with `degraded` envelope) on
+// the next request — instead of the legacy 503.
 
 import 'dart:io';
+
+import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 
 import 'advisor_proxy.dart';
 import 'proxy_bootstrap.dart';
@@ -69,6 +79,19 @@ Future<void> main(List<String> args) async {
   );
   const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
   const llmProvider = ScaffoldRejectingProxyLlmProvider();
+
+  // Lock 7 v1: per-instance breaker + always-miss cache stub. The
+  // pipeline wraps every advisor LLM call so failures (including the
+  // current ScaffoldRejecting provider's StateError) trip the breaker
+  // and fall through to the graceful refusal path. Replace the cache
+  // with a real impl in E.2b.
+  final anthropicBreaker = CircuitBreaker(providerId: 'anthropic');
+  const advisorResponseCache = AlwaysMissAdvisorResponseCache();
+  final advisorRequestPipeline = AdvisorRequestPipeline(
+    breaker: anthropicBreaker,
+    cache: advisorResponseCache,
+  );
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // Diagnostics line — names only, never values. Reports whether the
@@ -93,7 +116,8 @@ Future<void> main(List<String> args) async {
     'operator_location_admin: postgres, '
     'pricing_tier_admin: postgres, '
     'corpus_admin: postgres, '
-    'integration_admin: postgres_kms_stub)',
+    'integration_admin: postgres_kms_stub, '
+    'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache)',
   );
 
   await for (final request in server) {
@@ -107,6 +131,7 @@ Future<void> main(List<String> args) async {
         accountingStore: productionBindings.accountingStore,
         healthCheckStore: healthCheckStore,
         llmProvider: llmProvider,
+        advisorRequestPipeline: advisorRequestPipeline,
         authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
         firebaseAdminAuthClient: productionBindings.firebaseAdminAuthClient,
         accountInfoGateway: productionBindings.accountInfoGateway,

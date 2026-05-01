@@ -43,6 +43,10 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
+import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
+import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
+import 'package:forge_and_flow/domain/services/llm_provider.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
@@ -2215,9 +2219,28 @@ class ProxyAccountingRefused extends ProxyAccountingStartResult {
 }
 
 abstract class ProxyAccountingStore {
+  /// Pre-flight: replay lookup, cap-check, and idempotency reservation.
+  /// As of Block 2 (Lock 7 v1), `usage_logs` is NOT written here so that
+  /// the row's `(circuit_state, fallback_used)` reflects the post-chain
+  /// outcome via [commitUsageLog]. The `telemetry` argument's
+  /// `circuit_state` / `fallback_used` are ignored at this stage; pass
+  /// the snapshot you'd write if the chain happened to short-circuit.
   Future<ProxyAccountingStartResult> startRequest({
     required String idempotencyKey,
     required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  });
+
+  /// Post-chain: writes the `usage_logs` rollup row with the final
+  /// telemetry (including resolved `circuit_state` and `fallback_used`).
+  /// Called once per reserved request, after the LLM/cache/refusal chain
+  /// has decided what served the response. Called with `tokenCount` and
+  /// `costCents` updated to the actual usage.
+  Future<void> commitUsageLog({
     required OperatorContext operator,
     required String usageClass,
     required ProxyUsageTelemetry telemetry,
@@ -2286,8 +2309,30 @@ class PostgresProxyAccountingStore implements ProxyAccountingStore {
         );
       }
 
-      await exec.query(ProxyUsageLogSql.atomicUpsert, parameters: params);
       return ProxyAccountingReserved(capStatus: capStatus);
+    });
+  }
+
+  @override
+  Future<void> commitUsageLog({
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) {
+    final ctx = _tenantContextFor(operator);
+    final params = _usageParameters(
+      idempotencyKey: '',
+      requestType: '',
+      operator: operator,
+      usageClass: usageClass,
+      telemetry: telemetry,
+      estimate: estimate,
+      now: now,
+    );
+    return _wrapper.runInTenantContext(ctx, (exec) async {
+      await exec.query(ProxyUsageLogSql.atomicUpsert, parameters: params);
     });
   }
 
@@ -2422,6 +2467,19 @@ class ScaffoldFailingProxyAccountingStore implements ProxyAccountingStore {
   Future<ProxyAccountingStartResult> startRequest({
     required String idempotencyKey,
     required String requestType,
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    throw StateError(
+      '11a.11d scaffold: real Postgres accounting store is not wired.',
+    );
+  }
+
+  @override
+  Future<void> commitUsageLog({
     required OperatorContext operator,
     required String usageClass,
     required ProxyUsageTelemetry telemetry,
@@ -3672,11 +3730,18 @@ class ProxyHealthRegistryContext {
     required this.runnerFn,
     required this.now,
     this.budget = const Duration(milliseconds: 250),
+    this.inMemoryBreakerStates,
   });
 
   final ProxyHealthQueryRunnerFn runnerFn;
   final DateTime now;
   final Duration budget;
+
+  /// Block 2 (Lock 7 v1) — optional accessor into the per-instance
+  /// circuit breakers held by `routeRequest`. When non-null, breaker
+  /// producers use this snapshot instead of querying the
+  /// `circuit_breaker_state` DB table.
+  final Map<String, CircuitState> Function()? inMemoryBreakerStates;
 }
 
 typedef ProxyHealthRegistryProducer =
@@ -3725,6 +3790,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
     this.now,
     this.producerBudget = const Duration(milliseconds: 250),
     this.outerProducerBudget = const Duration(milliseconds: 750),
+    this.inMemoryBreakerStates,
   });
 
   final ProxyHealthQueryRunnerFn runnerFn;
@@ -3738,6 +3804,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
   final DateTime Function()? now;
   final Duration producerBudget;
   final Duration outerProducerBudget;
+  final Map<String, CircuitState> Function()? inMemoryBreakerStates;
 
   @override
   Future<ProxyHealthStatus> check() async {
@@ -3758,6 +3825,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
       runnerFn: runnerFn,
       now: asOf,
       budget: producerBudget,
+      inMemoryBreakerStates: inMemoryBreakerStates,
     );
 
     final futures = <Future<MapEntry<String, ProxyHealthMetric>>>[
@@ -4103,6 +4171,115 @@ class ScaffoldRejectingProxyLlmProvider implements ProxyLlmProvider {
   Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
     throw StateError('11a.11d scaffold: real Anthropic provider is not wired.');
   }
+}
+
+/// Block 2 (Lock 7 v1) — fallback chain executor.
+///
+/// Wraps the primary [ProxyLlmProvider] with a [CircuitBreaker] and an
+/// [AdvisorResponseCache] secondary, with a graceful refusal tertiary.
+/// The Gemini slot between primary and cache is reserved for E.2b — a
+/// `// TODO(E.2b)` comment marks the integration point and tests assert
+/// `fallback_used` is never `'gemini-reserved'` in v1.
+class AdvisorRequestPipeline {
+  AdvisorRequestPipeline({
+    required this.breaker,
+    required this.cache,
+  });
+
+  final CircuitBreaker breaker;
+  final AdvisorResponseCache cache;
+
+  Future<AdvisorPipelineResult> execute({
+    required ProxyLlmProvider llmProvider,
+    required ProxyLlmRequest llmRequest,
+    required String operatorId,
+    required String locationId,
+    required String queryClass,
+    required String questionHash,
+    required String corpusVersion,
+  }) async {
+    final decision = breaker.tryAcquire();
+    // Snapshot AFTER tryAcquire so the open→halfOpen promotion that
+    // accompanies a canary probe is reflected in the telemetry. The
+    // recordSuccess/recordFailure mutations below do not retroactively
+    // change this snapshot.
+    final circuitStateAtStart = breaker.state;
+
+    if (decision == AcquireDecision.allow ||
+        decision == AcquireDecision.allowProbe) {
+      try {
+        final completion = await llmProvider.complete(llmRequest);
+        breaker.recordSuccess();
+        return AdvisorPipelineResult(
+          completion: completion,
+          cachedAnswer: null,
+          refused: false,
+          circuitStateAtStart: circuitStateAtStart,
+          fallbackUsed: 'none',
+          decision: decision,
+        );
+      } catch (error) {
+        breaker.recordFailure(classifyLlmFailure(error));
+        // Fall through to cache → refusal.
+      }
+    }
+
+    // TODO(E.2b): Gemini Flash secondary lands here. v1 no-op; the
+    // `'gemini-reserved'` value in `usage_logs.fallback_used` is wired
+    // into the schema CHECK constraint but unreachable until E.2b.
+
+    final cachedAnswer = await cache.lookup(
+      operatorId: operatorId,
+      locationId: locationId,
+      queryClass: queryClass,
+      questionHash: questionHash,
+      corpusVersion: corpusVersion,
+    );
+    if (cachedAnswer != null) {
+      return AdvisorPipelineResult(
+        completion: null,
+        cachedAnswer: cachedAnswer,
+        refused: true,
+        circuitStateAtStart: circuitStateAtStart,
+        fallbackUsed: 'cache',
+        decision: decision,
+      );
+    }
+
+    return AdvisorPipelineResult(
+      completion: null,
+      cachedAnswer: null,
+      refused: true,
+      circuitStateAtStart: circuitStateAtStart,
+      fallbackUsed: 'refusal',
+      decision: decision,
+    );
+  }
+}
+
+class AdvisorPipelineResult {
+  const AdvisorPipelineResult({
+    required this.completion,
+    required this.cachedAnswer,
+    required this.refused,
+    required this.circuitStateAtStart,
+    required this.fallbackUsed,
+    required this.decision,
+  });
+
+  /// Non-null when the primary provider served the response.
+  final ProxyLlmCompletion? completion;
+
+  /// Non-null when the cache served a previously stored answer.
+  final String? cachedAnswer;
+
+  /// True when the breaker decision led to the cache or graceful refusal
+  /// branches (i.e. primary did not serve).
+  final bool refused;
+
+  final CircuitState circuitStateAtStart;
+  final String fallbackUsed;
+  final AcquireDecision decision;
 }
 
 class AdvisorPromptCacheBuilder {
@@ -4936,6 +5113,7 @@ Future<void> routeRequest(
   ProxyAccountingStore? accountingStore,
   ProxyHealthCheckStore? healthCheckStore,
   ProxyLlmProvider? llmProvider,
+  AdvisorRequestPipeline? advisorRequestPipeline,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
   FirebaseAdminAuthClient? firebaseAdminAuthClient,
   AccountInfoGateway? accountInfoGateway,
@@ -5237,53 +5415,146 @@ Future<void> routeRequest(
         operatorContext:
             'operator=${scope.operatorId};location=${scope.locationId}',
       );
-      ProxyLlmCompletion completion;
-      try {
-        completion = await llmProvider.complete(
-          ProxyLlmRequest(
+      final llmRequest = ProxyLlmRequest(
+        question: question,
+        promptBlocks: promptBlocks,
+        tier: llmTier,
+        modelId: modelId,
+        cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
+        maxOutputTokens: PolicyTier.launch.maxOutputTokens,
+      );
+      final questionHash =
+          sha256.convert(utf8.encode(question)).toString();
+
+      AdvisorPipelineResult pipelineResult;
+      if (advisorRequestPipeline != null) {
+        pipelineResult = await advisorRequestPipeline.execute(
+          llmProvider: llmProvider,
+          llmRequest: llmRequest,
+          operatorId: scope.operatorId,
+          locationId: scope.locationId,
+          queryClass: queryClass,
+          questionHash: questionHash,
+          corpusVersion: corpusVersion,
+        );
+      } else {
+        try {
+          final completion = await llmProvider.complete(llmRequest);
+          pipelineResult = AdvisorPipelineResult(
+            completion: completion,
+            cachedAnswer: null,
+            refused: false,
+            circuitStateAtStart: CircuitState.closed,
+            fallbackUsed: 'none',
+            decision: AcquireDecision.allow,
+          );
+        } catch (_) {
+          _writeJson(response, 503, <String, Object?>{
+            'error': 'llm_provider_unavailable',
+            'message': 'LLM provider unavailable',
+          });
+          return;
+        }
+      }
+
+      // Final telemetry written post-chain. `cache_hit` flips to true
+      // when the fallback cache served the response so the existing
+      // `usage_logs.cache_hit` contract stays consistent with
+      // `fallback_used='cache'`. `circuit_state` and `fallback_used` come
+      // from the pipeline; everything else carries from the pre-flight
+      // telemetry built at line 5362-5367.
+      final fallbackServedFromCache = pipelineResult.fallbackUsed == 'cache';
+      final finalTelemetry = ProxyUsageTelemetry(
+        queryClass: telemetry.queryClass,
+        cacheHit: telemetry.cacheHit || fallbackServedFromCache,
+        llmTier: telemetry.llmTier,
+        modelUsed: telemetry.modelUsed,
+        billingOwnerOrgUnitId: telemetry.billingOwnerOrgUnitId,
+        scopedOrgUnitId: telemetry.scopedOrgUnitId,
+        staffId: telemetry.staffId,
+        workflowId: telemetry.workflowId,
+        batchMode: telemetry.batchMode,
+        circuitState:
+            circuitStateToWireString(pipelineResult.circuitStateAtStart),
+        fallbackUsed: pipelineResult.fallbackUsed,
+      );
+
+      // Final estimate written to `usage_logs` reflects ACTUAL usage,
+      // not the pre-flight estimate used for the cap-check. Primary
+      // success rolls up input estimate + provider output; cache hits
+      // and graceful refusals consumed no provider tokens.
+      final ProxyUsageChargeEstimate finalEstimate;
+      if (pipelineResult.completion != null) {
+        final completion = pipelineResult.completion!;
+        finalEstimate = ProxyUsageChargeEstimate(
+          tokenCount: estimate.tokenCount + completion.outputTokens,
+          costCents: estimate.costCents + completion.costCents,
+        );
+      } else {
+        finalEstimate = const ProxyUsageChargeEstimate(
+          tokenCount: 0,
+          costCents: 0,
+        );
+      }
+
+      Map<String, Object?> responsePayload;
+      if (pipelineResult.completion != null) {
+        final completion = pipelineResult.completion!;
+        responsePayload = <String, Object?>{
+          'status': 'ok',
+          'operator_id': scope.operatorId,
+          'location_id': scope.locationId,
+          'usage_class': usageClass,
+          'query_class': queryClass,
+          'llm_tier': completion.tier.id,
+          'model_used': completion.modelId,
+          'cache_key': promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
+          'prompt_cache_breakpoints': <String>[
+            for (final block in promptBlocks)
+              if (block.cacheBreakpoint) block.id,
+          ],
+          'cap_status': reserved.capStatus.toJson(),
+          'answer': completion.text,
+          'idempotent_replay': false,
+          'request_log_preview': requestLogPolicy.buildEntry(
+            operator: scope,
+            usageClass: usageClass,
+            queryClass: queryClass,
+            tokenCount: estimate.tokenCount + completion.outputTokens,
+            costCents: estimate.costCents + completion.costCents,
+            statusCode: 200,
             question: question,
-            promptBlocks: promptBlocks,
-            tier: llmTier,
-            modelId: modelId,
-            cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
-            maxOutputTokens: PolicyTier.launch.maxOutputTokens,
+            answer: completion.text,
           ),
+        };
+      } else {
+        final refusal = GracefulRefusalResponse(
+          cachedAnswer: pipelineResult.cachedAnswer,
+          providerId: 'anthropic',
+          circuitState: finalTelemetry.circuitState,
+        );
+        responsePayload = <String, Object?>{
+          ...refusal.toJson(),
+          'cap_status': reserved.capStatus.toJson(),
+          'idempotent_replay': false,
+        };
+      }
+
+      try {
+        await accountingStore.commitUsageLog(
+          operator: scope,
+          usageClass: usageClass,
+          telemetry: finalTelemetry,
+          estimate: finalEstimate,
+          now: clock().toUtc(),
         );
       } catch (_) {
         _writeJson(response, 503, <String, Object?>{
-          'error': 'llm_provider_unavailable',
-          'message': 'LLM provider unavailable',
+          'error': 'accounting_store_unavailable',
+          'message': 'proxy accounting store unavailable',
         });
         return;
       }
-
-      final responsePayload = <String, Object?>{
-        'status': 'ok',
-        'operator_id': scope.operatorId,
-        'location_id': scope.locationId,
-        'usage_class': usageClass,
-        'query_class': queryClass,
-        'llm_tier': completion.tier.id,
-        'model_used': completion.modelId,
-        'cache_key': promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
-        'prompt_cache_breakpoints': <String>[
-          for (final block in promptBlocks)
-            if (block.cacheBreakpoint) block.id,
-        ],
-        'cap_status': reserved.capStatus.toJson(),
-        'answer': completion.text,
-        'idempotent_replay': false,
-        'request_log_preview': requestLogPolicy.buildEntry(
-          operator: scope,
-          usageClass: usageClass,
-          queryClass: queryClass,
-          tokenCount: estimate.tokenCount + completion.outputTokens,
-          costCents: estimate.costCents + completion.costCents,
-          statusCode: 200,
-          question: question,
-          answer: completion.text,
-        ),
-      };
 
       try {
         await accountingStore.completeRequest(

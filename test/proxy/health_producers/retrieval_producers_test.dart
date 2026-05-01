@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 
 import '../../../tool/advisor_proxy/health_producers/health_producer.dart';
 import '../../../tool/advisor_proxy/health_producers/retrieval_producers.dart';
@@ -45,6 +46,44 @@ void main() {
       );
       expect(metric.status, equals('red'));
       expect(metric.value, equals('open'));
+    });
+
+    test('in-memory accessor (Block 2 v1) short-circuits the DB query '
+        'and reports open → red without touching circuit_breaker_state', () async {
+      final runner = FakeProxyHealthQueryRunner();
+      final context = ProxyHealthProducerContext(
+        runner: runner,
+        now: DateTime.utc(2026, 5, 1, 12),
+        inMemoryBreakerStates: () => const <String, CircuitState>{
+          'anthropic': CircuitState.open,
+        },
+      );
+
+      final metric = await circuitBreakerAnthropicStateProducer(context);
+
+      expect(metric.status, equals('red'));
+      expect(metric.value, equals('open'));
+      expect(metric.source, equals('in_memory_breaker'));
+      // No DB query was issued — the runner has no patterns registered
+      // and would have thrown if consulted.
+      expect(runner.calls, isEmpty);
+    });
+
+    test('in-memory accessor without a registered breaker reports '
+        'closed → green with no_breaker_registered note', () async {
+      final runner = FakeProxyHealthQueryRunner();
+      final context = ProxyHealthProducerContext(
+        runner: runner,
+        now: DateTime.utc(2026, 5, 1, 12),
+        inMemoryBreakerStates: () => const <String, CircuitState>{},
+      );
+
+      final metric = await circuitBreakerAnthropicStateProducer(context);
+
+      expect(metric.status, equals('green'));
+      expect(metric.value, equals('closed'));
+      expect(metric.metadata['note'], equals('no_breaker_registered'));
+      expect(runner.calls, isEmpty);
     });
 
     test('circuit_breaker_open_count_total counts open + half_open', () async {

@@ -18,6 +18,8 @@
 
 import 'dart:async';
 
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
+
 import '../advisor_proxy.dart' show ProxyHealthMetric;
 
 /// Read-only execution surface for producers. The default production
@@ -33,16 +35,26 @@ abstract class ProxyHealthQueryRunner {
 }
 
 /// Constant inputs available to every producer call.
+///
+/// Block 2 (Lock 7 v1) added [inMemoryBreakerStates]: a side-channel into
+/// the per-instance circuit breakers maintained by `routeRequest`. When
+/// non-null, breaker producers prefer the in-memory snapshot over the
+/// `circuit_breaker_state` DB query (which v1 does not write to). The
+/// nullable default preserves every existing producer call site and keeps
+/// the DB-backed path live for the day E.2b adds Memorystore-backed
+/// cross-instance state.
 class ProxyHealthProducerContext {
   ProxyHealthProducerContext({
     required this.runner,
     required this.now,
     this.budget = const Duration(milliseconds: 250),
+    this.inMemoryBreakerStates,
   });
 
   final ProxyHealthQueryRunner runner;
   final DateTime now;
   final Duration budget;
+  final Map<String, CircuitState> Function()? inMemoryBreakerStates;
 }
 
 /// Function shape every producer implements.

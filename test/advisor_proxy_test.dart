@@ -19,6 +19,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
+import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
@@ -901,11 +903,39 @@ void main() {
 
       expect(start, isA<ProxyAccountingReserved>());
       expect(pool.transactions, hasLength(1));
-      final tx = pool.transactions.single;
-      expect(tx.committed, isTrue);
-      expect(tx.rolledBack, isFalse);
+
+      // Block 2 (Lock 7 v1): startRequest is the pre-flight (replay
+      // lookup + cap-check + idempotency reservation). The usage_logs
+      // upsert moved to commitUsageLog so the row reflects the
+      // post-chain (circuit_state, fallback_used).
+      await store.commitUsageLog(
+        operator: operator,
+        usageClass: 'advisor_qa',
+        telemetry: const ProxyUsageTelemetry(
+          queryClass: 'methodology_lookup',
+          cacheHit: false,
+          llmTier: 'haiku',
+          modelUsed: 'claude-haiku-4-5',
+          billingOwnerOrgUnitId: billingOwner,
+          workflowId: workflowId,
+          circuitState: 'closed',
+          fallbackUsed: 'none',
+        ),
+        estimate: const ProxyUsageChargeEstimate(
+          tokenCount: 123,
+          costCents: 25,
+        ),
+        now: DateTime.utc(2026, 4, 26, 12),
+      );
+
+      expect(pool.transactions, hasLength(2));
+      final preflightTx = pool.transactions.first;
+      final commitTx = pool.transactions[1];
+      expect(preflightTx.committed, isTrue);
+      expect(commitTx.committed, isTrue);
+      expect(commitTx.rolledBack, isFalse);
       expect(
-        tx.executedSql,
+        commitTx.executedSql,
         containsAll(<String>[
           "select set_config('app.operator_id', @value, true)",
           "select set_config('app.location_id', @value, true)",
@@ -913,7 +943,7 @@ void main() {
           "select set_config('app.bypass_rls_audit', 'tenant', true)",
         ]),
       );
-      final usageCall = tx.queryCalls.singleWhere(
+      final usageCall = commitTx.queryCalls.singleWhere(
         (call) => call.sql.contains('insert into public.usage_logs'),
       );
       expect(
@@ -929,6 +959,8 @@ void main() {
       expect(usageCall.parameters, containsPair('workflow_id', workflowId));
       expect(usageCall.parameters, containsPair('token_count', 123));
       expect(usageCall.parameters, containsPair('cost_usd', '0.2500'));
+      expect(usageCall.parameters, containsPair('circuit_state', 'closed'));
+      expect(usageCall.parameters, containsPair('fallback_used', 'none'));
     });
 
     test('Postgres accounting completion updates the idempotency row with '
@@ -2721,6 +2753,7 @@ void main() {
       ProxyAccountingStore? accountingStore,
       ProxyHealthCheckStore? healthCheckStore,
       ProxyLlmProvider? llmProvider,
+      AdvisorRequestPipeline? advisorRequestPipeline,
       AuthSessionLedgerWriter? authSessionLedgerWriter,
       FirebaseAdminAuthClient? firebaseAdminAuthClient,
       bool trustProxyAuditHeaders = false,
@@ -2740,6 +2773,7 @@ void main() {
             accountingStore: accountingStore,
             healthCheckStore: healthCheckStore,
             llmProvider: llmProvider,
+            advisorRequestPipeline: advisorRequestPipeline,
             authSessionLedgerWriter: authSessionLedgerWriter,
             firebaseAdminAuthClient: firebaseAdminAuthClient,
             trustProxyAuditHeaders: trustProxyAuditHeaders,
@@ -3540,6 +3574,143 @@ void main() {
             equals('operator opted into content logging'),
           );
           expect(log['answer'], equals('fake advisor answer'));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke pipeline path: primary success commits '
+        'final estimate (input + output) with circuit_state=closed', () async {
+      await withRealHttp(() async {
+        final store = _InMemoryAccountingStore.open();
+        final llm = _RecordingLlmProvider();
+        final breaker = CircuitBreaker(providerId: 'anthropic');
+        final pipeline = AdvisorRequestPipeline(
+          breaker: breaker,
+          cache: const AlwaysMissAdvisorResponseCache(),
+        );
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          advisorRequestPipeline: pipeline,
+        );
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath).replace(
+              queryParameters: const <String, String>{
+                'tokens': '50',
+                'cost_cents': '10',
+              },
+            ),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{'Idempotency-Key': 'idem-pipe-ok'},
+          );
+          expect(response.statusCode, equals(200));
+          expect(store.commitCalls, equals(1));
+          final committed = store.lastCommittedTelemetry!;
+          expect(committed.circuitState, equals('closed'));
+          expect(committed.fallbackUsed, equals('none'));
+          expect(committed.cacheHit, isFalse);
+          // _RecordingLlmProvider returns outputTokens=12, costCents=1.
+          expect(store.lastCommittedTokenCount, equals(50 + 12));
+          expect(store.lastCommittedCostCents, equals(10 + 1));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke pipeline path: breaker-open + cache miss '
+        'commits cacheHit=false, fallback_used=refusal, zero usage', () async {
+      await withRealHttp(() async {
+        final store = _InMemoryAccountingStore.open();
+        final llm = _RecordingLlmProvider();
+        final breaker = CircuitBreaker(providerId: 'anthropic')
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown);
+        expect(breaker.state, equals(CircuitState.open));
+        final pipeline = AdvisorRequestPipeline(
+          breaker: breaker,
+          cache: const AlwaysMissAdvisorResponseCache(),
+        );
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          advisorRequestPipeline: pipeline,
+        );
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-pipe-refusal',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          expect(body['error'], equals('service_degraded'));
+          final degraded = body['degraded'] as Map<String, Object?>;
+          expect(degraded['circuit_state'], equals('open'));
+          expect(degraded['cached_answer'], isNull);
+
+          final committed = store.lastCommittedTelemetry!;
+          expect(committed.circuitState, equals('open'));
+          expect(committed.fallbackUsed, equals('refusal'));
+          expect(committed.cacheHit, isFalse);
+          expect(store.lastCommittedTokenCount, equals(0));
+          expect(store.lastCommittedCostCents, equals(0));
+          expect(llm.completeCalls, equals(0));
+        } finally {
+          await shutDown();
+        }
+      });
+    });
+
+    test('GET /v1/advisor-smoke pipeline path: breaker-open + cache hit '
+        'commits cacheHit=true, fallback_used=cache, zero usage', () async {
+      await withRealHttp(() async {
+        final store = _InMemoryAccountingStore.open();
+        final llm = _RecordingLlmProvider();
+        final breaker = CircuitBreaker(providerId: 'anthropic')
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown)
+          ..recordFailure(FailureKind.unknown);
+        final pipeline = AdvisorRequestPipeline(
+          breaker: breaker,
+          cache: const _StaticHitAdvisorCache('previous cached answer'),
+        );
+        await spinUpServer(
+          accountingStore: store,
+          llmProvider: llm,
+          advisorRequestPipeline: pipeline,
+        );
+        try {
+          verifier.claims = _claims();
+          final response = await _httpGet(
+            client,
+            baseUri.resolve(advisorSmokePath),
+            authorization: 'Bearer fake.token',
+            headers: const <String, String>{
+              'Idempotency-Key': 'idem-pipe-cache',
+            },
+          );
+          expect(response.statusCode, equals(200));
+          final body = jsonDecode(response.body) as Map<String, Object?>;
+          final degraded = body['degraded'] as Map<String, Object?>;
+          expect(degraded['cached_answer'], equals('previous cached answer'));
+
+          final committed = store.lastCommittedTelemetry!;
+          expect(committed.circuitState, equals('open'));
+          expect(committed.fallbackUsed, equals('cache'));
+          expect(committed.cacheHit, isTrue);
+          expect(store.lastCommittedTokenCount, equals(0));
+          expect(store.lastCommittedCostCents, equals(0));
         } finally {
           await shutDown();
         }
@@ -6152,6 +6323,25 @@ class _InMemoryAccountingStore implements ProxyAccountingStore {
     return ProxyAccountingReserved(capStatus: status);
   }
 
+  int commitCalls = 0;
+  ProxyUsageTelemetry? lastCommittedTelemetry;
+  int? lastCommittedTokenCount;
+  int? lastCommittedCostCents;
+
+  @override
+  Future<void> commitUsageLog({
+    required OperatorContext operator,
+    required String usageClass,
+    required ProxyUsageTelemetry telemetry,
+    required ProxyUsageChargeEstimate estimate,
+    required DateTime now,
+  }) async {
+    commitCalls += 1;
+    lastCommittedTelemetry = telemetry;
+    lastCommittedTokenCount = estimate.tokenCount;
+    lastCommittedCostCents = estimate.costCents;
+  }
+
   @override
   Future<void> completeRequest({
     required OperatorContext operator,
@@ -6162,6 +6352,20 @@ class _InMemoryAccountingStore implements ProxyAccountingStore {
     completeCalls += 1;
     _responses[idempotencyKey] = Map<String, Object?>.from(responsePayload);
   }
+}
+
+class _StaticHitAdvisorCache implements AdvisorResponseCache {
+  const _StaticHitAdvisorCache(this.answer);
+  final String answer;
+
+  @override
+  Future<String?> lookup({
+    required String operatorId,
+    required String locationId,
+    required String queryClass,
+    required String questionHash,
+    required String corpusVersion,
+  }) async => answer;
 }
 
 OperatorContext _operatorContext() => const OperatorContext(
