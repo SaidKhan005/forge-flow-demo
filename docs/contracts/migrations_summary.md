@@ -7,7 +7,7 @@ Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
 
-Migration count: **34**
+Migration count: **35**
 
 ## `202604250000_advisor_roles.sql`
 
@@ -1687,3 +1687,38 @@ Migration count: **34**
   `operator_staff` role. If either account is absent in a non-production
   database, the role block emits a NOTICE and skips without failing the
   permission catalog seed.
+
+## `202605010000_phase_11A_4_provider_credentials.sql`
+
+- **Applied:** 2026-05-01 00:00 (local; live apply pending)
+- **Title:** phase 11A.4 provider credentials
+- **Description:**
+
+  Phase 11A.4 — masked-display ledger for the F&F Operations Console
+  Integrations surface.
+
+  Creates `public.provider_credentials` (NOT operator-scoped — provider
+  keys are platform-wide) with:
+
+    * `key_kind` (CHECK constraint admits `anthropic`, `voyage`,
+      `azure_db`),
+    * `masked_value` (display string the admin console renders, e.g.
+      `sk-a***Q9aB`; never the full key),
+    * `kms_secret_name` (opaque KMS pointer the proxy hands to the KMS
+      provider; pre-launch the stub returns `kms://stub/<uuid>`),
+    * `created_by` / `updated_by` actor user id stamps,
+    * `is_active` + `rotated_at` so the rotate path can append a new
+      row and flip the prior row's `is_active` to false in one
+      transaction.
+
+  Rotation contract: `provider_credentials_active_uq` is a partial
+  unique index on `(key_kind) where is_active`, so exactly one TRUE
+  row per kind exists at rest. The repository's rotate path runs
+  UPDATE-prior-then-INSERT-new inside the same transaction; if the
+  insert fails the transaction rolls back and the prior key stays
+  active. Plaintext is NEVER persisted in this table.
+
+  Grants `forge_admin` SELECT/INSERT/UPDATE plus sequence usage. Audit
+  rows for rotate-success and rotate-failure land on the existing
+  `auth_events_audit` chain via the system-event writer; this
+  migration adds no audit columns of its own.

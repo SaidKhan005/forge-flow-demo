@@ -3367,6 +3367,117 @@ abstract class CorpusAdminProxyGateway {
 /// and writes; `ff_support` stays out until support-scoped reads land.
 const Set<String> kFfOperatorLocationAdminRoles = <String>{'super_admin'};
 
+// Phase 11A.4 — Integration management admin routes. F&F internal
+// only with a method-scoped role split mirroring the 11A.2 pricing
+// posture: GET admits `super_admin` and `ff_support` so support
+// users can load the read-only Integrations view in live mode;
+// POST stays strictly `super_admin` because rotating a provider
+// key flips the production credential. Plaintext is NEVER persisted
+// — the proxy hands plaintext to the [KmsProvider], persists only
+// the masked-display + KMS pointer, and surfaces plaintext ONCE on
+// the rotation response.
+const String adminIntegrationsListPath = '/v1/admin/integrations';
+const String adminIntegrationsRotateAnthropicPath =
+    '/v1/admin/integrations/rotate-anthropic';
+const String adminIntegrationsRotateVoyagePath =
+    '/v1/admin/integrations/rotate-voyage';
+const String adminIntegrationsRotateAzureDbPath =
+    '/v1/admin/integrations/rotate-azure-db';
+const String adminIntegrationsStatusPath = '/v1/admin/integrations/status';
+
+/// Read-side role admit set for `/v1/admin/integrations*`. Mirrors
+/// the 11A.2 pricing read split so `ff_support` can render the
+/// read-only Integrations grid in live mode.
+const Set<String> kFfIntegrationAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+/// Write-side role admit set for `/v1/admin/integrations*`. Strictly
+/// `super_admin`: rotating a provider key affects production
+/// credentials, so support cannot bypass even for "verified"
+/// rotations.
+const Set<String> kFfIntegrationAdminWriteRoles = <String>{'super_admin'};
+
+/// Validation error raised by [IntegrationAdminProxyGateway]
+/// implementations when a request is rejected for business reasons
+/// (e.g. KMS write failure). The proxy route handler maps it back to
+/// a structured 4xx / 5xx response.
+class IntegrationAdminGatewayValidationError implements Exception {
+  const IntegrationAdminGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'IntegrationAdminGatewayValidationError($statusCode/$code): $message';
+}
+
+/// Locked `key_kind` set the proxy accepts on rotation routes.
+/// Mirrors the database CHECK constraint on `provider_credentials`.
+const Set<String> kProxyIntegrationKeyKinds = <String>{
+  'anthropic',
+  'voyage',
+  'azure_db',
+};
+
+/// Gateway the proxy delegates to for `/v1/admin/integrations/*`
+/// route handling. Returns JSON-ready maps so the proxy handler can
+/// wrap them in a 200/201 response without translating shapes a
+/// second time.
+///
+/// `actorUserId` is REQUIRED and must be a UUID-shaped Postgres
+/// `users.user_id`. The proxy resolves the verified Firebase UID into
+/// a Postgres user UUID via [IntegrationAdminActorResolver] before
+/// dispatch and rejects with 403 `actor_user_not_resolvable` when no
+/// active `users` row matches. This keeps the audit attribution
+/// contract intact (`auth_events_audit.actor_user_id` is never null
+/// when `actor_kind = 'user'`).
+abstract class IntegrationAdminProxyGateway {
+  /// Returns `{provider_keys: [...], vendor_connectors: [...],
+  /// fx_rate_source: {...}, email_provider: {...}}`. Plaintext is
+  /// NEVER present in this response shape.
+  Future<Map<String, Object?>> listBundle({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Rotate one provider key. The gateway hands the plaintext to its
+  /// configured KMS provider, persists only the masked-display +
+  /// KMS pointer, writes an audit row, and returns
+  /// `{row: {...}, plaintext_value: "<plaintext>"}`. Plaintext is
+  /// surfaced ONCE; subsequent calls to [listBundle] return only
+  /// the masked row.
+  Future<Map<String, Object?>> rotateProviderKey({
+    required String actorUserId,
+    required String keyKind,
+    required String plaintextValue,
+    required String adminReason,
+  });
+}
+
+/// Resolves a verified Firebase UID into the local Postgres `user_id`
+/// (UUID) used for audit attribution and `provider_credentials`
+/// `created_by` / `updated_by` writes.
+///
+/// Returns null when no active `users` row matches the Firebase UID
+/// (e.g. a Firebase admin who has not been onboarded into the
+/// Postgres `users` table). The integrations dispatcher rejects with
+/// 403 `actor_user_not_resolvable` in that case so an audit row is
+/// never written without an attributable actor.
+abstract class IntegrationAdminActorResolver {
+  Future<String?> resolveActorUserId({
+    required String firebaseUid,
+    required String adminReason,
+  });
+}
+
 /// Gateway the proxy delegates to for `/v1/admin/operators` and
 /// `/v1/admin/locations` route handling. The gateway returns
 /// JSON-ready maps so the proxy handler can wrap them in a 200/201
@@ -3589,6 +3700,8 @@ Future<void> routeRequest(
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
+  IntegrationAdminProxyGateway? integrationAdminGateway,
+  IntegrationAdminActorResolver? integrationAdminActorResolver,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -3619,6 +3732,15 @@ Future<void> routeRequest(
     final isAdminCorpusPath = _isAdminCorpusPath(path);
     if (isAdminCorpusPath) {
       _setAdminCorpusCorsHeaders(response);
+      if (request.method == 'OPTIONS') {
+        response.statusCode = HttpStatus.noContent;
+        response.contentLength = 0;
+        return;
+      }
+    }
+    final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
+    if (isAdminIntegrationsPath) {
+      _setAdminIntegrationsCorsHeaders(response);
       if (request.method == 'OPTIONS') {
         response.statusCode = HttpStatus.noContent;
         response.contentLength = 0;
@@ -5606,6 +5728,143 @@ Future<void> routeRequest(
       return;
     }
 
+    if (_isAdminIntegrationsOperation(path, request.method)) {
+      if (integrationAdminGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'integration_admin_not_configured',
+          'message':
+              'route requires an IntegrationAdminProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      final integrationsMethod = request.method;
+      final integrationsRoles = integrationsMethod == 'GET'
+          ? kFfIntegrationAdminReadRoles
+          : kFfIntegrationAdminWriteRoles;
+      if (!_callerHasAnyRole(actor, integrationsRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': integrationsRoles.toList(),
+        });
+        return;
+      }
+
+      // The auth permission catalog tags `integration.key_rotate` as
+      // MFA-required (Phase 9 fresh-auth list). The role gate above
+      // is necessary but not sufficient — a stale super_admin token
+      // must NOT be allowed to rotate a production credential. Gate
+      // every write method on `lastFreshAuthAt` falling inside the
+      // 5-minute freshness window. GET reads are catalog-marked
+      // non-MFA, so the gate is write-only.
+      if (integrationsMethod != 'GET') {
+        if (!_requireFreshClaimsOrWrite(
+          response: response,
+          claims: actor,
+          requestedAt: clock().toUtc(),
+          message:
+              'Sign in again before rotating provider keys.',
+        )) {
+          return;
+        }
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      // Audit attribution gate. `auth_events_audit.actor_user_id`
+      // must be set whenever `actor_kind = 'user'`; the Phase 9
+      // admin Firebase claim shape only guarantees role flags, so
+      // we must explicitly resolve the verified Firebase UID into a
+      // Postgres `users.user_id` (UUID) before any audit row is
+      // written. If no active `users` row matches the Firebase UID
+      // (Firebase admin without a Postgres onboard row), reject
+      // with 403 — no audit row, no provider_credentials write.
+      if (integrationAdminActorResolver == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'integration_admin_actor_resolver_not_configured',
+          'message':
+              'route requires an IntegrationAdminActorResolver to be installed',
+        });
+        return;
+      }
+      final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
+      String? resolvedActorUserId;
+      try {
+        resolvedActorUserId =
+            await integrationAdminActorResolver.resolveActorUserId(
+          firebaseUid: firebaseUidLookup,
+          adminReason: 'admin.integrations.${request.method}:'
+              '$firebaseUidLookup:resolve_actor',
+        );
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'integration_admin_actor_resolve_failed',
+          'message':
+              'actor resolution is unavailable; please retry',
+        });
+        return;
+      }
+      if (resolvedActorUserId == null) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'actor_user_not_resolvable',
+          'message':
+              'verified Firebase user has no matching Postgres users row '
+              '(audit attribution requires a UUID-shaped actor)',
+        });
+        return;
+      }
+
+      try {
+        await _routeIntegrationsAdmin(
+          request: request,
+          response: response,
+          path: path,
+          gateway: integrationAdminGateway,
+          actorUserId: resolvedActorUserId,
+          actorLogId: firebaseUidLookup,
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is IntegrationAdminGatewayValidationError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'integration_admin_unavailable',
+          'message':
+              'integration admin operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (_isAdminPricingOperation(path, request.method)) {
       if (pricingTierAdminGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -6115,6 +6374,94 @@ bool _isAdminPricingPath(String path) {
   return false;
 }
 
+bool _isAdminIntegrationsPath(String path) {
+  return path == adminIntegrationsListPath ||
+      path == adminIntegrationsRotateAnthropicPath ||
+      path == adminIntegrationsRotateVoyagePath ||
+      path == adminIntegrationsRotateAzureDbPath ||
+      path == adminIntegrationsStatusPath;
+}
+
+bool _isAdminIntegrationsOperation(String path, String method) {
+  if (method == 'GET' &&
+      (path == adminIntegrationsListPath ||
+          path == adminIntegrationsStatusPath)) {
+    return true;
+  }
+  if (method == 'POST' &&
+      (path == adminIntegrationsRotateAnthropicPath ||
+          path == adminIntegrationsRotateVoyagePath ||
+          path == adminIntegrationsRotateAzureDbPath)) {
+    return true;
+  }
+  return false;
+}
+
+Future<void> _routeIntegrationsAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required IntegrationAdminProxyGateway gateway,
+  required String actorUserId,
+  required String actorLogId,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  // [actorLogId] is the original verified Firebase UID (the value the
+  // resolver looked up). It is embedded in the admin reason string
+  // alongside the resolved Postgres user UUID so the audit trail
+  // captures both identifiers without relying on a join.
+  final reasonPrefix = 'admin.integrations.$method:$actorLogId';
+
+  if (method == 'GET' && path == adminIntegrationsListPath) {
+    final bundle = await gateway.listBundle(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, bundle);
+    return;
+  }
+
+  if (method == 'GET' && path == adminIntegrationsStatusPath) {
+    final bundle = await gateway.listBundle(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:status',
+    );
+    _writeJson(response, 200, <String, Object?>{
+      'vendor_connectors': bundle['vendor_connectors'],
+      'fx_rate_source': bundle['fx_rate_source'],
+      'email_provider': bundle['email_provider'],
+    });
+    return;
+  }
+
+  if (method == 'POST') {
+    final keyKind = _integrationKeyKindForRoute(path);
+    if (keyKind == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final plaintext = _requireBodyString(body, 'plaintext_value');
+    final result = await gateway.rotateProviderKey(
+      actorUserId: actorUserId,
+      keyKind: keyKind,
+      plaintextValue: plaintext,
+      adminReason: '$reasonPrefix:rotate:$keyKind',
+    );
+    _writeJson(response, 200, result);
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+String? _integrationKeyKindForRoute(String path) {
+  if (path == adminIntegrationsRotateAnthropicPath) return 'anthropic';
+  if (path == adminIntegrationsRotateVoyagePath) return 'voyage';
+  if (path == adminIntegrationsRotateAzureDbPath) return 'azure_db';
+  return null;
+}
+
 bool _isAdminPricingOperation(String path, String method) {
   if (method == 'GET' && path == adminPricingOperatorsPath) return true;
   if (method == 'PATCH' && path.startsWith(adminPricingOperatorsPrefix)) {
@@ -6579,6 +6926,37 @@ bool _requireFreshAuthenticationOrWrite({
   });
   return false;
 }
+
+/// Claims-shaped variant of [_requireFreshAuthenticationOrWrite] used
+/// by global admin surfaces (no operator context). Same contract:
+/// returns true iff the caller's `lastFreshAuthAt` falls inside the
+/// 5-minute freshness window; otherwise writes a 403 and returns
+/// false. The caller passes a [message] so the response can name the
+/// specific MFA-required action (e.g. rotating a provider key).
+bool _requireFreshClaimsOrWrite({
+  required HttpResponse response,
+  required ProxyJwtClaims claims,
+  required DateTime requestedAt,
+  required String message,
+}) {
+  const freshnessWindow = Duration(minutes: 5);
+  final lastFreshAuthAt = claims.lastFreshAuthAt;
+  if (lastFreshAuthAt != null &&
+      requestedAt.difference(lastFreshAuthAt.toUtc()) <= freshnessWindow) {
+    return true;
+  }
+  _writeJson(response, 403, <String, Object?>{
+    'error': 'mfa_freshness_required',
+    'message': message,
+    if (lastFreshAuthAt != null)
+      'refresh_after': lastFreshAuthAt
+          .toUtc()
+          .add(freshnessWindow)
+          .toIso8601String(),
+  });
+  return false;
+}
+
 
 String _freshAuthProofId({
   required OperatorContext scope,
@@ -7046,6 +7424,22 @@ void _setAdminOperatorLocationCorsHeaders(HttpResponse response) {
   response.headers.set(
     'Access-Control-Allow-Methods',
     'GET,POST,PATCH,DELETE,OPTIONS',
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Authorization,Content-Type,Accept',
+  );
+  response.headers.set('Access-Control-Max-Age', '3600');
+}
+
+// Phase 11A.4 — Integration management CORS. Mirrors the pricing
+// helper shape; rotation routes are POST-only so the allowed-methods
+// list excludes PUT.
+void _setAdminIntegrationsCorsHeaders(HttpResponse response) {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET,POST,OPTIONS',
   );
   response.headers.set(
     'Access-Control-Allow-Headers',

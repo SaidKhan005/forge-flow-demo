@@ -18,13 +18,16 @@ import 'package:flutter/material.dart';
 
 import 'admin_auth_gate.dart';
 import 'models/corpus_admin_models.dart';
+import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_home_screen.dart';
 import 'screens/corpus_admin_screen.dart';
+import 'screens/integration_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
+import 'services/integration_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 
@@ -84,6 +87,9 @@ const String kAdminPricingRouteId = 'pricing';
 /// Canonical Corpus route ID (11A.3a).
 const String kAdminCorpusRouteId = 'corpus';
 
+/// Canonical Integrations route ID (11A.4).
+const String kAdminIntegrationsRouteId = 'integrations';
+
 /// The admin route table. Order is the side-nav order. 11A.1 promotes
 /// `operators` from placeholder to live; the rest are deliberately
 /// marked `placeholder` so the surface area is visible to operators
@@ -122,13 +128,12 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildCorpus,
   ),
   AdminRoute(
-    id: 'integrations',
+    id: kAdminIntegrationsRouteId,
     title: 'Integrations',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    subtitle: 'Provider key rotation lands in 11A.4.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle: 'Provider key rotation + connector status.',
+    builder: _buildIntegrations,
   ),
   AdminRoute(
     id: 'debug',
@@ -203,6 +208,27 @@ Widget _buildCorpus(BuildContext context) {
   );
 }
 
+Widget _buildIntegrations(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.integrationGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return IntegrationAdminScreen(gateway: gateway);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return IntegrationAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
@@ -221,6 +247,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.operatorLocationGateway,
     this.pricingTierGateway,
     this.corpusAdminGateway,
+    this.integrationGateway,
     this.adminAuthSource,
   });
 
@@ -241,6 +268,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// incremental-wiring reason. Default fallback is the seeded
   /// in-memory corpus demo gateway shared with the 11A.3a walkthrough.
   final CorpusAdminGateway? corpusAdminGateway;
+
+  /// Phase 11A.4 — integration management admin gateway. Optional;
+  /// the default fallback is a seeded in-memory gateway sharing the
+  /// `kDemoMode` walkthrough fixtures.
+  final IntegrationAdminGateway? integrationGateway;
 
   /// Phase 11A.2 — admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -270,6 +302,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.corpusAdminGateway ?? _defaultCorpusDemoGateway;
   }
 
+  static IntegrationAdminGateway integrationGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.integrationGateway ?? _defaultIntegrationDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -281,6 +319,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       operatorLocationGateway != oldWidget.operatorLocationGateway ||
       pricingTierGateway != oldWidget.pricingTierGateway ||
       corpusAdminGateway != oldWidget.corpusAdminGateway ||
+      integrationGateway != oldWidget.integrationGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -503,4 +542,33 @@ final CorpusAdminGateway _defaultCorpusDemoGateway =
         ),
       ],
       actorUserId: 'demo-super-admin',
+    );
+
+/// 11A.4 fallback integration gateway. Seeds Anthropic + Voyage with
+/// pre-rotated masked rows; Azure DB starts empty so the walkthrough
+/// can exercise the "no row yet → first rotation" path. The KMS
+/// stub is the same provider production would bind in pre-launch.
+final IntegrationAdminGateway _defaultIntegrationDemoGateway =
+    InMemoryIntegrationAdminGateway(
+      actorUserId: 'demo-super-admin',
+      seed: <ProviderKeyRow>[
+        ProviderKeyRow(
+          credentialId: '00000000-0000-4000-8000-0000000000d1',
+          keyKind: ProviderKeyKind.anthropic,
+          maskedValue: 'sk-a***Q9aB',
+          kmsSecretName: 'kms://stub/seed-anthropic',
+          createdBy: 'demo-super-admin',
+          updatedBy: 'demo-super-admin',
+          rotatedAt: DateTime.utc(2026, 4, 1, 14, 0),
+        ),
+        ProviderKeyRow(
+          credentialId: '00000000-0000-4000-8000-0000000000d2',
+          keyKind: ProviderKeyKind.voyage,
+          maskedValue: 'pa-v***RtZx',
+          kmsSecretName: 'kms://stub/seed-voyage',
+          createdBy: 'demo-super-admin',
+          updatedBy: 'demo-super-admin',
+          rotatedAt: DateTime.utc(2026, 4, 5, 9, 30),
+        ),
+      ],
     );

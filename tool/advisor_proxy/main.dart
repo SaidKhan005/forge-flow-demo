@@ -92,7 +92,8 @@ Future<void> main(List<String> args) async {
     'mfa_recovery_request: postgres_event_outbox, '
     'operator_location_admin: postgres, '
     'pricing_tier_admin: postgres, '
-    'corpus_admin: postgres)',
+    'corpus_admin: postgres, '
+    'integration_admin: postgres_kms_stub)',
   );
 
   await for (final request in server) {
@@ -126,6 +127,9 @@ Future<void> main(List<String> args) async {
             productionBindings.operatorLocationAdminGateway,
         pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
         corpusAdminGateway: productionBindings.corpusAdminGateway,
+        integrationAdminGateway: productionBindings.integrationAdminGateway,
+        integrationAdminActorResolver:
+            productionBindings.integrationAdminActorResolver,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');

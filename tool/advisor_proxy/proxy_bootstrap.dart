@@ -18,6 +18,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/operators_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
+import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
@@ -71,6 +73,8 @@ class ProxyProductionBindings {
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.corpusAdminGateway,
+    required this.integrationAdminGateway,
+    required this.integrationAdminActorResolver,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -90,6 +94,8 @@ class ProxyProductionBindings {
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final CorpusAdminProxyGateway corpusAdminGateway;
+  final IntegrationAdminProxyGateway integrationAdminGateway;
+  final IntegrationAdminActorResolver integrationAdminActorResolver;
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -270,6 +276,27 @@ ProxyProductionBindings buildProxyProductionBindings(
       corpusRepository: CorpusRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
+    // Phase 11A.4 — Integration management gateway. Backed by the
+    // `provider_credentials` masked-display ledger and a KMS stub
+    // provider. Production swaps in a real KMS implementation
+    // (Cloud Run KMS / Azure Key Vault) post-launch; the gateway
+    // contract stays identical.
+    integrationAdminGateway: RepositoryIntegrationAdminProxyGateway(
+      providerCredentialsRepository: ProviderCredentialsRepository(
+        adminWrapper,
+      ),
+      kmsProvider: KmsStubProvider(),
+      auditRepository: adminAudit,
+    ),
+    // Phase 11A.4 — Resolves the verified Firebase UID into a
+    // Postgres `users.user_id` (UUID) for audit attribution before
+    // any integration write runs. Backed by the admin pool because
+    // the lookup is cross-tenant (F&F admins live outside any
+    // operator scope).
+    integrationAdminActorResolver:
+        RepositoryIntegrationAdminActorResolver(
+          usersRepository: UsersRepository(adminWrapper),
+        ),
   );
 }
 
@@ -1146,6 +1173,213 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
   }
 }
 
+
+/// Stable status placeholders the Integrations screen renders for
+/// non-rotatable rows (vendor connectors, FX-rate source, email
+/// provider). The proxy answers `GET /v1/admin/integrations` with
+/// these unchanged for the launch slice; later phases swap them out
+/// for live status as those surfaces ship.
+const List<Map<String, Object?>> _kIntegrationDefaultVendorConnectors =
+    <Map<String, Object?>>[
+  <String, Object?>{
+    'id': 'connector_compeat',
+    'display_name': 'Compeat connector',
+    'status_label': 'placeholder',
+    'detail_message': 'Vendor connector lights up in Phase 8.',
+  },
+  <String, Object?>{
+    'id': 'connector_mp',
+    'display_name': 'Marketman connector',
+    'status_label': 'placeholder',
+    'detail_message': 'Vendor connector lights up in Phase 8.',
+  },
+];
+
+const Map<String, Object?> _kIntegrationDefaultFxRateSource = <String, Object?>{
+  'id': 'fx_rate',
+  'display_name': 'FX-rate source',
+  'status_label': 'green',
+  'detail_message': 'ECB daily reference feed (fallback active).',
+};
+
+const Map<String, Object?> _kIntegrationDefaultEmailProvider =
+    <String, Object?>{
+  'id': 'email',
+  'display_name': 'Email provider',
+  'status_label': 'placeholder',
+  'detail_message': 'Email provider lands in Phase 9.8.',
+};
+
+/// Production [IntegrationAdminProxyGateway] backed by
+/// [ProviderCredentialsRepository] + [KmsProvider]. Translates the
+/// proxy's command shape into repo + KMS calls and projects the
+/// result into JSON-ready maps the route handler can return as-is.
+///
+/// Plaintext is held in memory only for the duration of a single
+/// rotation call; it is handed to the KMS provider, then returned
+/// once on the response. The repository receives only the masked
+/// display string and the KMS pointer.
+class RepositoryIntegrationAdminProxyGateway
+    implements IntegrationAdminProxyGateway {
+  RepositoryIntegrationAdminProxyGateway({
+    required ProviderCredentialsRepository providerCredentialsRepository,
+    required KmsProvider kmsProvider,
+    required AuthEventsAuditRepository auditRepository,
+  }) : _credentials = providerCredentialsRepository,
+       _kmsProvider = kmsProvider,
+       _auditRepository = auditRepository;
+
+  final ProviderCredentialsRepository _credentials;
+  final KmsProvider _kmsProvider;
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<Map<String, Object?>> listBundle({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final rows = await _credentials.listActive(adminReason: adminReason);
+    final keysJson = <Map<String, Object?>>[
+      for (final row in rows) row.toJson(),
+    ];
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.integrations.list',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'provider_key_count': rows.length,
+      },
+    );
+    return <String, Object?>{
+      'provider_keys': keysJson,
+      'vendor_connectors': _kIntegrationDefaultVendorConnectors,
+      'fx_rate_source': _kIntegrationDefaultFxRateSource,
+      'email_provider': _kIntegrationDefaultEmailProvider,
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> rotateProviderKey({
+    required String actorUserId,
+    required String keyKind,
+    required String plaintextValue,
+    required String adminReason,
+  }) async {
+    if (!kProviderCredentialKinds.contains(keyKind)) {
+      throw IntegrationAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'unknown_key_kind',
+        message: 'key_kind "$keyKind" is not a known provider lane',
+      );
+    }
+    KmsWriteResult writeResult;
+    try {
+      writeResult = await _kmsProvider.writeSecret(
+        logicalKeyKind: keyKind,
+        plaintext: plaintextValue,
+      );
+    } on KmsWriteFailure catch (error) {
+      // KMS write failed → no audit-success row, prior key stays
+      // active (the repository was never called), and we record the
+      // rotation_failed audit row before raising. The proxy maps the
+      // validation error onto a 503 response.
+      await _audit(
+        actorUserId: actorUserId,
+        eventType: 'admin.integrations.rotation_failed',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'key_kind': keyKind,
+          'failure_kind': 'kms_write_failed',
+          'message': error.message,
+        },
+      );
+      throw IntegrationAdminGatewayValidationError(
+        statusCode: 503,
+        code: 'kms_write_failed',
+        message: error.message,
+      );
+    }
+    final ProviderCredentialRow row;
+    try {
+      row = await _credentials.rotate(
+        keyKind: keyKind,
+        maskedValue: writeResult.maskedDisplay,
+        kmsSecretName: writeResult.secretName,
+        actorUserId: actorUserId,
+        adminReason: adminReason,
+      );
+    } catch (error) {
+      // Postgres write failed AFTER KMS succeeded — record the
+      // failure so an operator can investigate the orphaned KMS
+      // secret. Prior key stays active (the repository transaction
+      // rolled back, so no `is_active` flip happened).
+      await _audit(
+        actorUserId: actorUserId,
+        eventType: 'admin.integrations.rotation_failed',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'key_kind': keyKind,
+          'failure_kind': 'persistence_failed',
+          'kms_secret_name': writeResult.secretName,
+          'message': error.toString(),
+        },
+      );
+      rethrow;
+    }
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.integrations.rotation_success',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'key_kind': keyKind,
+        'credential_id': row.credentialId,
+        'kms_secret_name': row.kmsSecretName,
+      },
+    );
+    return <String, Object?>{
+      'row': row.toJson(),
+      'plaintext_value': plaintextValue,
+    };
+  }
+
+  Future<void> _audit({
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
+      eventType: eventType,
+      adminReason: adminReason,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+}
+
+/// Production [IntegrationAdminActorResolver] backed by
+/// [UsersRepository.findActiveUserIdByFirebaseUidSystem]. The lookup
+/// runs through the admin pool because F&F admin actors are not in
+/// any single operator's tenant scope.
+class RepositoryIntegrationAdminActorResolver
+    implements IntegrationAdminActorResolver {
+  RepositoryIntegrationAdminActorResolver({
+    required UsersRepository usersRepository,
+  }) : _users = usersRepository;
+
+  final UsersRepository _users;
+
+  @override
+  Future<String?> resolveActorUserId({
+    required String firebaseUid,
+    required String adminReason,
+  }) {
+    return _users.findActiveUserIdByFirebaseUidSystem(
+      firebaseUid: firebaseUid,
+      adminReason: adminReason,
+    );
+  }
+}
 
 /// Builds the production auth-session ledger writer for the proxy.
 ///
