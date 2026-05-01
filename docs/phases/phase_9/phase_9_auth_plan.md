@@ -1185,21 +1185,27 @@ as the MFA hardening sub-slice
   refreshes. Walkthrough: `docs/_walkthroughs/9.UX.account-info.md`.
   Operational gate: live proxy must include `account_info: postgres`
   binding before device QA expects backend profile data.
-- `9.UX.2` **owed** — custom role editor + role catalog viewer.
-  Consumes B17 `/v1/admin/auth/roles` (already deployed staging rev
-  `00018-ztq`).
+- `9.UX.2` **accepted** (commit `245f14e`) — custom role editor +
+  role catalog viewer in `settings_custom_roles_section.dart` +
+  `settings_role_editor.dart`. Consumes B17
+  `/v1/admin/auth/roles`. Read-only fallback for `team.roles.view`-only
+  actors. PATCH only sends changed permissions per contract test.
+  Walkthrough: `docs/_walkthroughs/9.UX.2.md`.
 - `9.UX.3` **owed** — permission explainer. Uses
   `permission_resolution.dart` runtime + 9.0a deny rules; renders
   inheritance chain when a user has unexpected access or is unexpectedly
-  blocked. Depends on `9.UX.2` role data + `9.UX.4` org-unit data
-  (`9.UX.4` already accepted).
+  blocked. Depends on `9.UX.2` role data ✓ + `9.UX.4` org-unit data ✓
+  (both merged).
 - `9.UX.4` **accepted** (commit `e61a2ee`) — org hierarchy +
   location-scoped grants via `settings_org_hierarchy_section.dart`.
   Reads `org_units` from 9.0Σ.c; operator browses the location tree
   and grants per-location roles. Migration `202604290101`. Walkthrough:
   `docs/_walkthroughs/9.UX.4.md`.
-- `9.UX.5` **owed** — active sessions viewer + sign-out-all-devices.
-  Reads `auth_sessions`; writes revocation through proxy.
+- `9.UX.5` **accepted** (commit `b5345d4`) — active sessions viewer +
+  sign-out-all-devices via `settings_active_sessions_section.dart`.
+  `listActiveSessions` reads `auth_sessions` through proxy; revoke
+  reuses existing B6 routes. Demo gateway with 3 fixture rows.
+  Walkthrough: `docs/_walkthroughs/9.UX.5.md`.
 - `9.UX.6` **owed** — personal audit log viewer. Reads
   `auth_events_audit` scoped to the actor (or to team members for
   managers).
@@ -1208,6 +1214,24 @@ as the MFA hardening sub-slice
   `password_reset_screen.dart`. B48 backend (proxy
   `POST /v1/auth/password/reset/confirm` + Firebase action page) is
   local complete; this slice is the operator UX layer plus live deploy.
+- `9.UX.inheritance-hint.0` **accepted (rendering only)** (commit
+  `5f5c91c`) — role-change dialog renders per-grant inheritance hints
+  ("Applies operator-wide" / "Inherited via {unit} (N locations)" /
+  "Direct at {label}") behind a `grants.isNotEmpty` opt-in gate. 8
+  widget tests cover all branches + plural agreement + lookup-miss
+  fallback. **Production loader leaves `grants = []`** because
+  `TeamUserListEntry.locationId = coalesce(ur.location_id,
+  u.primary_location_id)` is ambiguous between `location` scope and
+  `operator_wide` + primary_location. Walkthrough:
+  `docs/_walkthroughs/9.UX.inheritance-hint.0.md`.
+- `9.UX.grant-payload.0` **owed** — data-path complement to
+  `9.UX.inheritance-hint.0`. Extend `users_repository.dart`
+  `selectTeamUsersByOperator` (or add `listGrantsForUser` gateway
+  method) to project authoritative `(scope_type, org_unit_id,
+  location_id, effective_location_ids)` per grant onto
+  `TeamUserListItem.grants`. When this lands, the rendering branches
+  already shipped by `9.UX.inheritance-hint.0` engage automatically
+  with no UI work.
 
 T&Cs version history viewer + GDPR data-request UI fold into Phase 9.8
 (legal copy and processor list aren't ready until 9.8 enumerates them).

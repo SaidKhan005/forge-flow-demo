@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-30 (slice-acceptance + parallel-lanes refresh)
+Updated: 2026-04-30 (batch B/C/D acceptances + lean pass)
 Owner: You
 Execution model: We think, Claude codes
 
@@ -35,8 +35,9 @@ Primary active docs:
   that is the launch gate (now `cutover.0b`).
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md` - prompt shape, generator,
   parallel-lane rules, report format, in-session token hygiene.
-- `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md` - between-batch audit
-  + next-batch lane recommendation.
+- `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` - paste-ready between-batch
+  audit + lean tracker/phase-doc refresh + archive check + Codex
+  prompts for the next parallel batch, in one main-chat run.
 - `docs/DATA_ALIGNMENT_TRACKER.md` only for alignment-heavy slices.
 - `docs/KNOWN_FAILING_TESTS.md` only for broad or known-red test runs.
 - `runbooks/phase_9_production1_migration_apply_runbook.md` only for future
@@ -111,67 +112,34 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 
 ## Now
 
-- **Current phase:** `9` accepted for next-phase handoff on 2026-04-29.
-  Cloud Armor enforcement is monitored by the `cloud-armor-preview-review`
-  heartbeat; physical iOS device QA is deferred until the user returns with
-  an Apple device/signing lane.
-- **Done in this session:** B17 custom role catalog CRUD is implemented for
-  `GET/POST/PATCH/DELETE /v1/admin/auth/roles`, deployed to staging revision
-  `forge-flow-staging-proxy-00018-ztq`, and smoke-passed through
-  `https://staging-api.feflow.org`. Staging and Production1 applied and
-  verified `202604280000` through `202604280013`; Azure `ltree` allow-listing
-  and `pg_cron` maintenance-database scheduling are documented in the runbook.
-- **Phase 9 audit cleanup:** B42 proxy `/health` now returns the
-  `proxy_health.v1` envelope with compatibility aliases, dependency checks,
-  reserved metric keys, and reserved surface keys. B41 service-principal JWT
-  issuance and B46 audit-privacy are local/code/test complete, but their
-  additive live migrations (`202604290000`, `202604280014`) still need fresh
-  staging + Production1 apply evidence before live phases depend on them.
-- **Auth/MFA pressure-test routing:** `9.UX.1a` is now the Phase 9 MFA
-  production-hardening slice: backend-scheduled 24h removals, fresh-auth +
-  opaque proof for self/admin reset, recovery queued vs not-queued messaging,
-  Firebase/local drift repair for self-removal, no recovery-code UX,
-  self/admin pending-removal cancel, and no phone/SMS MFA. Mandatory
-  admin-tier MFA enforcement is deferred until post-launch stability and
-  explicit approval. B48 password-reset parity maps to `9.UX.7`; broader MFA
-  support tooling and notification delivery map to Phase 11A/10a.
-- **9.UX account-info closeout:** Settings -> Account now has read-only
-  My info with a self-scoped `GET /v1/auth/account` contract, optional
-  gateway wiring, safe immediate fallback copy while the backend profile
-  refreshes, and walkthrough evidence at
-  `docs/_walkthroughs/9.UX.account-info.md`. Remaining dependency is
-  operational: device builds only get full backend profile data after the
-  running proxy includes this branch's `account_info: postgres` binding and
-  `/v1/auth/account` route; older proxies show the safe fallback notice.
-- **Health producer status:** B44 graph tripwire/runbook, B45 rollup freshness
-  reporter/runbook, and B47 vector health helper/benchmark artifact exist;
-  producer wiring that fills the B42 reserved metric values remains follow-on
-  work for the 11A health surface.
-- **Cloud Armor status:** staging WAF remains preview-only. B17 role CRUD
-  found false positives in the original SQLi/XSS preview rule, so the policy
-  was tuned to sensitivity 2 with the B17 false-positive SQLi signatures
-  opted out. After tuning, normal role CRUD had zero preview hits and a
-  controlled SQLi probe still produced a preview signal. Enforcement waits for
-  at least 3 clean days of post-tuning preview logs plus explicit approval.
-- **Accepted follow-ups:** Cloud Armor enforcement decision after the required
-  clean preview-log window, and physical iOS device-matrix QA when the user
-  resumes that lane.
-- **Apple automated lane:** fresh GitHub Actions run `25087331405` passed on
-  `master`: macOS host tests, ForgeFlow iOS simulator build, and Barrio iOS
-  simulator build. Physical QA still needs the Apple device/signing lane.
-- **Maintenance baseline:** green after the staging deploy/smoke/tuning pass:
-  `flutter analyze --fatal-infos`, `dart run tool/rls_policy_lint.dart`,
-  focused B17 auth/proxy tests, `git diff --check`, and full
-  `flutter test --reporter compact` passed (`2544/2544`).
+- **Current phase:** `9` framework + `9.0Σ.b-k` accepted on 2026-04-29.
+  Phase 9 UX family + `11A.0-6` foundation actively shipping.
+- **Recent acceptances** (last batch — see phase doc Frontend Exposure +
+  walkthroughs for detail):
+  - `9.UX.2` Custom Role Editor (commit `245f14e`)
+  - `9.UX.5` Active Sessions viewer (commit `b5345d4`)
+  - `11A.2` Pricing Tier Admin (commit `934fc69`)
+  - `9.UX.inheritance-hint.0` rendering (commit `5f5c91c`) —
+    **rendering only**; data-path follow-up (`9.UX.grant-payload.0`)
+    needed before hints render in production.
+- **Operational gates pending live apply/deploy:** `202604280014` (B46),
+  `202604290000` (B41), `202604290001` (`9.UX.4` hierarchy wiring);
+  proxy redeploy with `account_info: postgres` binding (unblocks
+  `9.UX.account-info` device QA); proxy redeploy with B48 reset-confirm
+  route (unblocks `9.UX.7` live email-link reset); Cloud Run audit
+  anchor deploy (B43); B44/B45/B47 producer wiring (unblocks
+  `11A.5`/`11A.6`).
+- **Cloud Armor:** preview-only at sensitivity 2 with B17 false-positive
+  SQLi signatures opted out; awaits ≥3 clean post-tuning preview-log
+  days + explicit approval before enforcement.
+- **iOS physical device matrix:** deferred until Apple device/signing
+  lane is back. Automated GitHub Actions run `25087331405` is green on
+  `master` (macOS host + ForgeFlow + Barrio iOS sim builds).
+- **Maintenance baseline (last run):** `flutter analyze --fatal-infos`,
+  `dart run tool/rls_policy_lint.dart`, focused tests, `git diff --check`,
+  full `flutter test` clean.
 - **Notify the user before** any live Firebase mutation, key/account
   request, billing setup, provider call, or product decision.
-
-Phase 9 setup state, decisions, and full auth context:
-`phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_decision_lock_2026-04-26.md`.
-Architecture rationale, cost levers, pricing tiers, dormancy rules:
-`phase_11a/phase_11a_decision_register.md`. 35 scalability locks:
-`phase_9/phase_9_scalability_decisions_2026-04-27.md`. Load only
-when a prompt needs that depth.
 
 ## Current Slice Queue
 
@@ -190,49 +158,39 @@ serialization, walkthrough evidence per lane, and merge sequencing
 follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 
 1. `11A.0-6` - F&F Operations Console foundation.
-   Accepted: `11A.0`, `11A.1`. Owed: `11A.2-6`. Scope:
-   `phase_11A_operations_console_plan.md`. `11A.5` and `11A.6` blocked
-   on B44/B45/B47 producer wiring (see backlog).
-2. `9.UX.0-7` plus `9.UX.1a` and `9.UX.account-info` - Phase 9
-   operator-facing UX family. Accepted: `9.UX.0`, `9.UX.1` (incl.
-   `9.UX.1a` MFA production-hardening, folded), `9.UX.4`,
-   `9.UX.account-info`. Owed: `9.UX.2`, `9.UX.3`, `9.UX.5`, `9.UX.6`,
-   `9.UX.7`. Parallel with `11A.0-6` (different code surfaces). Scope:
-   `phase_9_auth_plan.md` `Frontend Exposure` section. Within-family
-   shared seams (e.g., `auth_operations_gateway.dart`,
+   Accepted: `11A.0`, `11A.1`, `11A.2`. Owed: `11A.3-6`
+   (`11A.5`/`11A.6` blocked on B44/B45/B47 producer wiring). Scope:
+   `phase_11A_operations_console_plan.md`.
+2. `9.UX.*` family - Phase 9 operator-facing UX. Accepted: `9.UX.0`,
+   `9.UX.1` (incl. `9.UX.1a` folded), `9.UX.2`, `9.UX.4`, `9.UX.5`,
+   `9.UX.account-info`, `9.UX.inheritance-hint.0` (rendering only).
+   Owed: `9.UX.3`, `9.UX.6`, `9.UX.7`, `9.UX.grant-payload.0`
+   (data-path complement to inheritance-hint). Scope:
+   `phase_9_auth_plan.md` `Frontend Exposure` section.
+   Within-family shared seams (`auth_operations_gateway.dart`,
    `settings_screen.dart`) require sequencing per phase doc;
    additive-safe carve-outs allowed when the prompt names them.
 
 Codex sets the per-lane queue; this tracker lists which phases are
 active, not which slices are next per lane.
 
-**Monitored/deferred Phase 9 follow-ups:**
+**Monitored/deferred follow-ups** (operational gates listed in `Now`;
+this section names slice-shaped follow-ups only):
 
-1. Cloud Armor enforcement - heartbeat updates this session until there are
-   at least 3 clean post-tuning preview-log days and explicit approval to
-   enforce.
-2. iOS physical device matrix - deferred; the user will come back to it later
-   with an Apple device/signing lane.
-3. `cutover.0b` - Tier-M 14-row perf-gate run; launch blocker.
-4. `202604280014` + `202604290000` + `202604290001` live apply/smoke -
-   required before live 11b audit-privacy reads (`202604280014`),
-   Phase 12 service-principal issuance dependence (`202604290000`), or
-   any consumer of `user_effective_locations` / org-unit scoped grants
-   (`202604290001` hierarchy access wiring).
-5. B44/B45/B47 metric producers - fill the B42 `/health` reserved values for
-   the 11A.5 health surface.
-6. B48 password reset email-link parity - local code complete; deploy/smoke
-   the proxy + web action page before relying on email-link reset in live.
-7. B49/B50 MFA hardening + notification delivery - `9.UX.1a` local code
-   queues `event_outbox` rows only. True in-app/email notification delivery
-   is not a background pipeline yet; Phase 10a bridge remains only if
-   user-facing copy promises an email or in-app notification.
-8. Mandatory admin-tier MFA enforcement - explicitly deferred until
-   post-launch stability and explicit approval; do not treat as a launch
+1. `9.UX.grant-payload.0` - data-path complement to
+   `9.UX.inheritance-hint.0`. Extend `users_repository.dart`
+   `selectTeamUsersByOperator` to project authoritative
+   `(scope_type, org_unit_id, location_id, effective_location_ids)`
+   per grant on `TeamUserListItem.grants`. Until this lands, the
+   inheritance-hint rendering branches stay dormant in production.
+2. `cutover.0b` - Tier-M 14-row perf-gate run (B38 partial); launch
    blocker.
-9. 9.UX account-info proxy deploy/smoke - app code is local-green and safely
-   falls back, but staging/production proxy must be redeployed with
-   `account_info: postgres` before device QA expects backend profile fields.
+3. B49/B50 MFA hardening + notification delivery - `9.UX.1a` queues
+   `event_outbox` rows only; true notification delivery rides Phase 10a
+   bridge. Only revisit if user-facing copy promises in-app/email
+   delivery.
+4. Mandatory admin-tier MFA enforcement - explicitly deferred until
+   post-launch stability + explicit approval. Not a launch blocker.
 
 **Then continue:**
 
@@ -260,8 +218,8 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
-| `9.UX.0-7` + `9.UX.1a` + `9.UX.account-info` | active; accepted: `9.UX.0`, `9.UX.1` (incl. `9.UX.1a`), `9.UX.4`, `9.UX.account-info`; owed: `9.UX.2`, `9.UX.3`, `9.UX.5`, `9.UX.6`, `9.UX.7` | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
-| `11A.0-6` | active; accepted: `11A.0`, `11A.1`; owed: `11A.2-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
+| `9.UX.*` family | active; accepted: `9.UX.0`/`1`(incl.`1a`)/`2`/`4`/`5`/`account-info`/`inheritance-hint.0`; owed: `9.UX.3`/`6`/`7`/`grant-payload.0` | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
+| `11A.0-6` | active; accepted: `11A.0`/`1`/`2`; owed: `11A.3-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
 | `9.5`, `9.75` | queued | their respective plans |
@@ -277,53 +235,20 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 
 ## Hard Gates
 
-- Every backend phase ships its operator-facing UX before phase close
-  (Hard Promise #10). Phase docs include a `Frontend Exposure` section;
-  UX-exposing slices add a demo-mode walkthrough to acceptance. Detail:
-  `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+The 10 Hard Promises in `CLAUDE.md` are the durable rule set. Tracker-
+specific gates only:
+
 - Tracker truth cannot move ahead of repo truth.
-- Postgres host = Azure DB Flexible Server, Canada Central, PG 16.
-- AGE infrastructure live before `11b` (Hard Promise #5).
-- Per-operator isolation: `(operator_id, location_id, staff_id NULL)`, RLS,
-  repository pattern; no retrofit. `staff_id` axis added in `11b.1`.
-- `TIMESTAMP WITHOUT TIME ZONE` banned in operator-scoped cloud tables.
-- AI cost metered by class (Hard Promise #9). Concrete pricing + caps in
-  decision register.
-- 5 cost-discipline levers wired before/alongside `11b`. Detail in decision
-  register.
-- Defer fixed-cost services until variable usage justifies them.
-- Operator dormancy: 30d skip precompute / 60d re-auth / 90d suspend; new
-  operators default workflows OFF.
-- Phase 9 RLS real before `11b` multi-operator.
-- All `7.58` sub-slices accept before `11b.0`; all `7.61` sub-slices accept
-  before Phase 8.
-- Vendor secrets stay server-side; Flutter release builds carry no real keys.
-- Advisor posture is recommendation-only.
-- Demo mode persists forever, behaviorally stable.
-- No commits unless explicitly asked.
-- **Scalability locks (35 items, 2026-04-27):** detail in
-  `phase_9/phase_9_scalability_decisions_2026-04-27.md`. Tier-M
-  14-row perf gate is `cutover.0b` (launch blocker).
+- All `7.58` sub-slices accept before `11b.0`; all `7.61` sub-slices
+  accept before Phase 8.
+- `cutover.0b` Tier-M 14-row perf gate (launch blocker).
+- Production migrations use online-migration patterns once real operator
+  data exists; transition point is `cutover.4` accepting.
+- 35 scalability locks (2026-04-27) are in
+  `phase_9/phase_9_scalability_decisions_2026-04-27.md`.
 
-Wording / rationale: `phase_11a_decision_register.md`
-and `phase_9/phase_9_scalability_decisions_2026-04-27.md`.
-
-## Active Guardrails
-
-- Build cadence runs N parallel implementation lanes (worktrees) under
-  one Codex master lane. Active phases and per-lane shared-seam rules
-  follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
-- Phase 8 is a pure transport swap. Fixture extraction, service moves,
-  freshness audits, or behavior decisions belong in `7.57`, `7.58`, or `7.61`.
-- No app logic changes before `7.58` except scoped additive infrastructure
-  work already in the active sequence.
-- Service-layer split: `lib/data/` legacy/frozen, `lib/services/` runtime
-  orchestration, `lib/domain/services/` pure domain logic, `lib/state/` state
-  holders.
-- Production migrations use online-migration patterns once real operator data
-  exists. The transition point is `cutover.4` accepting; before that, production
-  schema is freely deterministic. Detail in
-  `phase_production_cutover/phase_production_cutover_plan.md`.
+Architecture rationale: `phase_11a/phase_11a_decision_register.md`.
+Cadence + parallel-lane rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Decision Locations
 

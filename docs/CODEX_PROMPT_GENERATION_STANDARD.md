@@ -8,7 +8,7 @@ End of phase → post-commit hook refreshes graph → **Claude plans**
 the next phase's slices off the fresh graph → **Codex reviews** the
 slice plan, drafts per-slice execution prompts, advances trackers →
 parallel worktrees implement → ship via `ship-slice` prompt → audit
-+ next-batch recommendation (`docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md`)
++ next-batch recommendation (`docs/BETWEEN_SPRINT_AUDIT_PROMPT.md`)
 → loop.
 
 If the user pivots into architecture, workflow, or docs cleanup,
@@ -194,9 +194,11 @@ First lane ships immediately. Later lanes rebase onto first lane's
 merge, re-run analyze + scoped tests, then merge.
 
 **Audit + recommendation between batches.** After a batch settles,
-Claude on master runs `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md`
-to confirm clean merges and propose the next parallel batch by
-file-touch disjointness.
+Claude on master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` —
+paste-ready prompt that audits the just-merged batch (code vs
+walkthroughs + contracts), refreshes trackers / phase docs lean,
+archives what's eligible, and emits Codex prompts for the next
+file-disjoint parallel batch in one main-chat run.
 
 **Main-chat read-only.** When parallel worktrees are running, main
 Claude chat on master is read-only across all of them — inspects
@@ -506,7 +508,8 @@ When making prompts shorter, never cut:
 
 ## Companion Docs
 
-- `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md` — between-batch
-  audit + next-batch lane recommendation.
+- `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` — paste-ready between-batch
+  audit + lean tracker/phase-doc refresh + Codex prompts for the
+  next file-disjoint parallel batch.
 - `CLAUDE.md` — durable repo laws, hard promises, guardrails.
 - `PROJECT_TRACKER.md` — current phase, fetch map, hard gates.

@@ -85,9 +85,11 @@ Every slice respects these. Origin:
   merge-sequencing rules:
   `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 - **Audit + next-batch recommendation.** Between parallel batches,
-  Claude on master runs
-  `docs/PARALLEL_LANE_AUDIT_AND_RECOMMENDATION.md` to confirm clean
-  merges and propose the next file-disjoint batch.
+  Claude on master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` —
+  paste-ready prompt that audits the just-merged batch (code vs
+  walkthroughs + contracts), refreshes trackers / phase docs lean,
+  archives what's eligible, and emits Codex prompts for the next
+  parallel batch.
 - **Main-chat read-only across worktrees.** When worktrees are
   running, the main chat on master is read-only across all of them —
   it observes, diffs, reviews. Tracker / memory / coordination edits

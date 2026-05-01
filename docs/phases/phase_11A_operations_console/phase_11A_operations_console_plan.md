@@ -128,21 +128,18 @@ Specifically:
   custom claims + `users` + `user_roles` + invite + audit), then
   attaches `operator_admins` with `scope_type = 'operator_owner'`.
   Walkthrough: `docs/_walkthroughs/11A.1.md`.
-- `11A.2` **Pricing tier admin.** Table editor for `usage_caps` per
+- `11A.2` **accepted** (commit `934fc69`) — Pricing tier admin.
+  Table editor for `usage_caps` per
   `(operator_id, location_id, staff_id NULL, workflow_id NULL,
-  usage_class)` (Hard Promise #9 metering axes). Lists all operators,
-  their tier, their cap rows. Edit inline. **Tier templates** for
-  one-click onboarding match the locked tier model in
-  `phase_11a_decision_register.md` Pricing Tier Model section:
-  Pilot / Starter / Premium / Elite / Pro / Enterprise. Each
-  template seeds:
-  - Per-class monthly caps (advisor_qa, coach_qa, workflow_*)
-  - Per-staff overrides where applicable
-  - Per-workflow allowances + overage pricing for Pro tier
-  - Subscription tier on `operators.subscription_tier` (drives
-    per-tier model routing in proxy)
-  Captures `created_by` / `updated_by` audit columns. **Replaces
-  the earlier `11a.13` scope** (same UX, broader metering axes).
+  usage_class)` (Hard Promise #9 metering axes). All 6 templates
+  (Pilot/Starter/Premium/Elite/Pro/Enterprise) per
+  `phase_11a_decision_register.md` Pricing Tier Model. Split
+  read/write role gates: `kFfPricingAdminReadRoles` (super_admin +
+  ff_support) for `GET`; `kFfPricingAdminWriteRoles` (super_admin only)
+  for mutations. `applyTierTemplate` validates all preconditions before
+  any write. UPSERT honors `usage_caps_two_slot_uq` (UNIQUE NULLS NOT
+  DISTINCT) on the post-9.0Σ.g schema with billing-owner + scoped
+  org-unit axes. Walkthrough: `docs/_walkthroughs/11A.2.md`.
 - `11A.3` **Corpus admin.** Drag-and-drop markdown upload.
   Per-chunk preview before commit. Diff view (what's new, what's
   changing, what's being inactivated). Rollback to prior corpus
