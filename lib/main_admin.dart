@@ -33,6 +33,7 @@ import 'package:flutter/material.dart';
 import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
+import 'admin/services/corpus_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'theme/app_theme.dart';
@@ -73,16 +74,19 @@ Future<void> main() async {
     final gateway = _resolveOperatorLocationGateway();
     final pricingGateway =
         gateway == null ? null : _resolvePricingTierAdminGateway();
+    final corpusGateway =
+        gateway == null ? null : _resolveCorpusAdminGateway();
     final adminApp = AdminConsoleApp(authSource: source);
-    // Always wrap with `AdminConsoleServicesScope` so the Pricing
-    // route can read `adminAuthSource` and switch to the read-only
-    // branch for `ff_support`. Live gateways are still null in demo
-    // mode; the route accessors fall back to the seeded in-memory
-    // demo gateways in `admin_routes.dart`.
+    // Always wrap with `AdminConsoleServicesScope` so the Pricing /
+    // Corpus routes can read `adminAuthSource` and switch to the
+    // read-only branch for `ff_support`. Live gateways are still null
+    // in demo mode; the route accessors fall back to the seeded
+    // in-memory demo gateways in `admin_routes.dart`.
     runApp(
       AdminConsoleServicesScope(
         operatorLocationGateway: gateway,
         pricingTierGateway: pricingGateway,
+        corpusAdminGateway: corpusGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -139,6 +143,21 @@ PricingTierAdminGateway? _resolvePricingTierAdminGateway() {
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpPricingTierAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: _firebaseIdTokenProvider,
+  );
+}
+
+/// Phase 11A.3a — corpus admin gateway. Same admin proxy base URI as
+/// the pricing gateway. Demo mode returns null and the route falls
+/// back to the seeded in-memory corpus gateway in `admin_routes.dart`.
+CorpusAdminGateway? _resolveCorpusAdminGateway() {
+  if (_kAdminDemoAuth) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpCorpusAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: _firebaseIdTokenProvider,
   );

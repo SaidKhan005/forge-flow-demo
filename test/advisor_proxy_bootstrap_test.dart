@@ -231,6 +231,20 @@ void main() {
       );
       expect(source, contains('pricing_tier_admin: postgres'));
     });
+
+    test('passes corpus admin binding into routeRequest', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'corpusAdminGateway:\s*productionBindings\.corpusAdminGateway',
+          ),
+        ),
+      );
+      expect(source, contains('corpus_admin: postgres'));
+    });
   });
 }
 
