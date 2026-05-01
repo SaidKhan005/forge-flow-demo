@@ -300,6 +300,12 @@ ProxyProductionBindings buildProxyProductionBindings(
     corpusAdminGateway: RepositoryCorpusAdminProxyGateway(
       corpusRepository: CorpusRepository(adminWrapper),
       auditRepository: adminAudit,
+      // 11A.B43 — `cache_telemetry_v2` rollout flag. When true, every
+      // commit/rollback writes one row into `corpus_invalidation_events`
+      // so the F&F operations dashboard can correlate prompt-cache
+      // hit-rate drops with corpus material changes. Sourced from the
+      // CACHE_TELEMETRY_V2 env var; defaults off in [ProxyConfig].
+      emitInvalidationEvent: config.cacheTelemetryV2,
     ),
     // Phase 11A.4 — Integration management gateway. Backed by the
     // `provider_credentials` masked-display ledger and a KMS stub
@@ -1039,11 +1045,19 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
   RepositoryCorpusAdminProxyGateway({
     required CorpusRepository corpusRepository,
     required AuthEventsAuditRepository auditRepository,
+    bool emitInvalidationEvent = false,
   })  : _corpus = corpusRepository,
-        _auditRepository = auditRepository;
+        _auditRepository = auditRepository,
+        _emitInvalidationEvent = emitInvalidationEvent;
 
   final CorpusRepository _corpus;
   final AuthEventsAuditRepository _auditRepository;
+
+  // 11A.B43 — `cache_telemetry_v2` rollout flag. When true, every
+  // commit/rollback writes one row into `corpus_invalidation_events`
+  // inside the same withSystem transaction. Wired from the proxy's
+  // CACHE_TELEMETRY_V2 env var via [buildProxyProductionBindings].
+  final bool _emitInvalidationEvent;
 
   @override
   Future<List<Map<String, Object?>>> listVersions({
@@ -1164,6 +1178,7 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
           : summary,
       adminReason: adminReason,
       idempotencyKey: idempotencyKey,
+      emitInvalidationEvent: _emitInvalidationEvent,
     );
     // Skip the audit insert on a cache replay — the prior request
     // that filled the cache already wrote the audit row, and writing

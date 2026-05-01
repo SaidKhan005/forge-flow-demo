@@ -145,7 +145,11 @@ class CorpusRepository extends OperatorScopedRepository {
   ///      `version_id` on conflict — the column is the
   ///      first-introduced pointer),
   ///   5. inserts membership rows in `corpus_version_chunks` linking
-  ///      the new version to its full chunk set.
+  ///      the new version to its full chunk set,
+  ///   6. when [emitInvalidationEvent] is true (gated by the proxy's
+  ///      `cache_telemetry_v2` feature flag), inserts one row into
+  ///      `corpus_invalidation_events` recording the bump and the
+  ///      count of chunks attached to the superseded version.
   ///
   /// Returns the newly-inserted version row.
   Future<CorpusVersionRow> commitVersion({
@@ -154,8 +158,22 @@ class CorpusRepository extends OperatorScopedRepository {
     required List<NewCorpusChunk> chunks,
     String? rollbackOf,
     required String adminReason,
+    bool emitInvalidationEvent = false,
   }) {
     return withSystem<CorpusVersionRow>((exec) async {
+      // 0. Capture the prior current version id BEFORE step 1's UPDATE
+      //    clears `superseded_at IS NULL`. Used by step 6 to populate
+      //    `corpus_invalidation_events.superseded_version_id`. NULL on
+      //    the very first commit (no prior active version exists).
+      final priorRows = await exec.query(
+        'select version_id::text as version_id from corpus_versions '
+        'where superseded_at is null '
+        'limit 1',
+      );
+      final priorVersionId = priorRows.isEmpty
+          ? null
+          : priorRows.first['version_id'] as String?;
+
       // 1. Supersede the prior current version (if any). We do not
       //    rely on a UNIQUE constraint here because the rollback path
       //    already guarantees at most one row has superseded_at IS
@@ -259,6 +277,19 @@ class CorpusRepository extends OperatorScopedRepository {
           },
         );
       }
+
+      // 6. cache_telemetry_v2: record the corpus-version bump so the
+      //    F&F operations dashboard can correlate prompt-cache hit-rate
+      //    drops with corpus material changes. Inside the same tx so a
+      //    rollback never leaves a phantom event row.
+      if (emitInvalidationEvent) {
+        await _insertInvalidationEvent(
+          exec: exec,
+          newVersionId: newVersion.versionId,
+          superseededVersionId: priorVersionId,
+          summary: summary,
+        );
+      }
       return newVersion;
     }, reason: adminReason);
   }
@@ -292,6 +323,7 @@ class CorpusRepository extends OperatorScopedRepository {
     required String summary,
     required String adminReason,
     String? idempotencyKey,
+    bool emitInvalidationEvent = false,
   }) {
     return withSystem<RollbackResult>((exec) async {
       final hasKey = idempotencyKey != null && idempotencyKey.isNotEmpty;
@@ -361,6 +393,19 @@ class CorpusRepository extends OperatorScopedRepository {
         'where version_id = @version_id::uuid',
         parameters: <String, Object?>{'version_id': targetVersionId},
       );
+      // Capture the prior current version id BEFORE the supersede UPDATE
+      // so cache_telemetry_v2 can record (new, superseded, dependent_count).
+      // NULL only when no row currently has `superseded_at IS NULL`, which
+      // is unreachable on the rollback path (rollback presupposes a
+      // current version to roll away from) but defended-in-depth here.
+      final priorRows = await exec.query(
+        'select version_id::text as version_id from corpus_versions '
+        'where superseded_at is null '
+        'limit 1',
+      );
+      final priorVersionId = priorRows.isEmpty
+          ? null
+          : priorRows.first['version_id'] as String?;
       // Supersede the prior current version + flag superseded chunks.
       // Chunks that are still members of the rolled-back snapshot get
       // un-superseded in step 4.
@@ -416,6 +461,20 @@ class CorpusRepository extends OperatorScopedRepository {
           parameters: <String, Object?>{'chunk_id': chunkId},
         );
       }
+      // cache_telemetry_v2: a rollback is a corpus-version bump, so it
+      // invalidates the same prompt-cache entries a fresh commit would.
+      // Emit the event row alongside the new version write inside the
+      // same tx. The replay short-circuit above returns BEFORE this
+      // block, so retries with the same idempotency key never produce
+      // a duplicate event row.
+      if (emitInvalidationEvent) {
+        await _insertInvalidationEvent(
+          exec: exec,
+          newVersionId: newVersion.versionId,
+          superseededVersionId: priorVersionId,
+          summary: summary,
+        );
+      }
       // Idempotency cache write: persist the response so a retry
       // returns the same version row. The advisory lock guarantees
       // this is the only transaction holding `(route, key)`, so a
@@ -438,6 +497,43 @@ class CorpusRepository extends OperatorScopedRepository {
       }
       return RollbackResult(version: newVersion, replayed: false);
     }, reason: adminReason);
+  }
+
+  /// Insert one row into `corpus_invalidation_events` recording a
+  /// corpus-version bump. The migration that creates the table lives
+  /// in `db/migrations/202605020100_phase_11A_b43_cache_telemetry_v2.sql`.
+  /// Counts the chunks attached to the superseded version as a proxy
+  /// for "dependent prompt-cache entries invalidated by this commit".
+  Future<void> _insertInvalidationEvent({
+    required PostgresExecutor exec,
+    required String newVersionId,
+    required String? superseededVersionId,
+    required String summary,
+  }) async {
+    int dependentCount = 0;
+    if (superseededVersionId != null) {
+      final rows = await exec.query(
+        'select count(*)::int as cnt from corpus_version_chunks '
+        'where version_id = @version_id::uuid',
+        parameters: <String, Object?>{
+          'version_id': superseededVersionId,
+        },
+      );
+      dependentCount = (rows.first['cnt'] as num?)?.toInt() ?? 0;
+    }
+    await exec.execute(
+      'insert into corpus_invalidation_events ('
+      'new_version_id, superseded_version_id, dependent_count, summary'
+      ') values ('
+      '@new_version_id::uuid, @prior_version_id::uuid, @dependent_count, @summary'
+      ')',
+      parameters: <String, Object?>{
+        'new_version_id': newVersionId,
+        'prior_version_id': superseededVersionId,
+        'dependent_count': dependentCount,
+        'summary': summary,
+      },
+    );
   }
 
   /// `admin_idempotency_cache.route` value for the rollback path.
