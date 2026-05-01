@@ -6,6 +6,7 @@ import '../../services/team/team_scope_visibility_policy.dart';
 import '../../services/team/team_users_list_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/sticky_section_delegate.dart';
+import '../settings/settings_permission_explainer.dart';
 
 typedef TeamInviteSubmitter =
     Future<TeamInviteCreated?> Function(Map<String, Object?> payload);
@@ -193,6 +194,7 @@ class TeamSettingsSection extends StatefulWidget {
     required this.actor,
     this.users = const <TeamUserListItem>[],
     this.roleOptions = defaultRoleOptions,
+    this.roleCatalog = const <TeamRoleCatalogEntry>[],
     this.locationOptions = const <TeamLocationOption>[],
     this.orgUnitOptions = const <TeamOrgUnitOption>[],
     this.pendingInvites = const <TeamPendingInviteListItem>[],
@@ -215,6 +217,13 @@ class TeamSettingsSection extends StatefulWidget {
   final TeamScopeActor actor;
   final List<TeamUserListItem> users;
   final List<TeamRoleOption> roleOptions;
+
+  /// Phase 9.UX.3 — full role catalog passed through to the
+  /// "Explain permissions" surface so the resolution chain can show
+  /// each role's allow/deny rule for the selected key. Defaults to
+  /// empty so existing call sites stay compatible; the explainer
+  /// degrades to "role not in catalog" rows when this is empty.
+  final List<TeamRoleCatalogEntry> roleCatalog;
   final List<TeamLocationOption> locationOptions;
   final List<TeamOrgUnitOption> orgUnitOptions;
   final List<TeamPendingInviteListItem> pendingInvites;
@@ -359,6 +368,21 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
 
   bool get _canViewTeam =>
       widget.actor.actorPermissions.contains('team.users.view');
+
+  void _openPermissionExplainer(TeamUserListItem user) {
+    if (!_canViewTeam) return;
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsPermissionExplainer(
+          actor: widget.actor,
+          target: user,
+          roleCatalog: widget.roleCatalog,
+          orgUnitOptions: widget.orgUnitOptions,
+          locationOptions: widget.locationOptions,
+        ),
+      ),
+    );
+  }
 
   bool get _canManageUsers =>
       widget.onUserAction != null &&
@@ -811,6 +835,8 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
                     pendingMfaResetUserIds: _pendingMfaResetUserIds,
                     cancelledMfaResetUserIds: _cancelledMfaResetUserIds,
                     onAction: _handleUserAction,
+                    canExplainPermissions: _canViewTeam,
+                    onExplainPermissions: _openPermissionExplainer,
                   ),
                 )
               : _TeamMembersSearchPrompt(totalCount: widget.users.length),
@@ -1153,6 +1179,8 @@ class _TeamUsersTable extends StatelessWidget {
     required this.pendingMfaResetUserIds,
     required this.cancelledMfaResetUserIds,
     required this.onAction,
+    this.canExplainPermissions = false,
+    this.onExplainPermissions,
   });
 
   final List<TeamUserListItem> users;
@@ -1170,6 +1198,8 @@ class _TeamUsersTable extends StatelessWidget {
   final Set<String> cancelledMfaResetUserIds;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
+  final bool canExplainPermissions;
+  final void Function(TeamUserListItem user)? onExplainPermissions;
 
   @override
   Widget build(BuildContext context) {
@@ -1219,6 +1249,8 @@ class _TeamUsersTable extends StatelessWidget {
               busy: busyUserIds.contains(users[i].userId),
               mfaResetPending: _mfaResetPendingFor(users[i]),
               onAction: onAction,
+              canExplainPermissions: canExplainPermissions,
+              onExplainPermissions: onExplainPermissions,
             ),
           ],
         ],
@@ -1247,6 +1279,8 @@ class _TeamUsersTable extends StatelessWidget {
                 busy: busyUserIds.contains(users[i].userId),
                 mfaResetPending: _mfaResetPendingFor(users[i]),
                 onAction: onAction,
+                canExplainPermissions: canExplainPermissions,
+                onExplainPermissions: onExplainPermissions,
               ),
           ],
         ),
@@ -1305,6 +1339,8 @@ class _TeamUserRow extends StatelessWidget {
     required this.busy,
     required this.mfaResetPending,
     required this.onAction,
+    this.canExplainPermissions = false,
+    this.onExplainPermissions,
   });
 
   final TeamUserListItem user;
@@ -1319,6 +1355,8 @@ class _TeamUserRow extends StatelessWidget {
   final bool mfaResetPending;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
+  final bool canExplainPermissions;
+  final void Function(TeamUserListItem user)? onExplainPermissions;
 
   @override
   Widget build(BuildContext context) {
@@ -1394,6 +1432,8 @@ class _TeamUserRow extends StatelessWidget {
                     canAssignRole: canAssignRole,
                     canRevokeRole: canRevokeRole,
                     onAction: onAction,
+                    canExplainPermissions: canExplainPermissions,
+                    onExplainPermissions: onExplainPermissions,
                   ),
           ),
         ],
@@ -1416,6 +1456,8 @@ class _TeamUserCard extends StatelessWidget {
     required this.busy,
     required this.mfaResetPending,
     required this.onAction,
+    this.canExplainPermissions = false,
+    this.onExplainPermissions,
   });
 
   final TeamUserListItem user;
@@ -1430,6 +1472,8 @@ class _TeamUserCard extends StatelessWidget {
   final bool mfaResetPending;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
+  final bool canExplainPermissions;
+  final void Function(TeamUserListItem user)? onExplainPermissions;
 
   @override
   Widget build(BuildContext context) {
@@ -1544,6 +1588,8 @@ class _TeamUserCard extends StatelessWidget {
                               canAssignRole: canAssignRole,
                               canRevokeRole: canRevokeRole,
                               onAction: onAction,
+                              canExplainPermissions: canExplainPermissions,
+                              onExplainPermissions: onExplainPermissions,
                             ),
                           ],
                         ),
@@ -1571,6 +1617,8 @@ class _TeamUserActionMenu extends StatelessWidget {
     required this.canAssignRole,
     required this.canRevokeRole,
     required this.onAction,
+    this.canExplainPermissions = false,
+    this.onExplainPermissions,
   });
 
   final TeamUserListItem user;
@@ -1584,9 +1632,12 @@ class _TeamUserActionMenu extends StatelessWidget {
   final bool canRevokeRole;
   final Future<void> Function(TeamUserAction action, TeamUserListItem user)
   onAction;
+  final bool canExplainPermissions;
+  final void Function(TeamUserListItem user)? onExplainPermissions;
 
   @override
   Widget build(BuildContext context) {
+    final explainCallback = onExplainPermissions;
     final actions = <PopupMenuEntry<TeamUserAction>>[
       if (canAssignRole)
         const PopupMenuItem<TeamUserAction>(
@@ -1594,6 +1645,15 @@ class _TeamUserActionMenu extends StatelessWidget {
           child: _MenuItemLabel(
             icon: Icons.badge_outlined,
             label: 'Change role',
+          ),
+        ),
+      if (canExplainPermissions && explainCallback != null)
+        PopupMenuItem<TeamUserAction>(
+          key: Key('team_user_explain_permissions_${user.userId}'),
+          onTap: () => explainCallback(user),
+          child: const _MenuItemLabel(
+            icon: Icons.policy_outlined,
+            label: 'Explain permissions',
           ),
         ),
       if (canResetPassword)
