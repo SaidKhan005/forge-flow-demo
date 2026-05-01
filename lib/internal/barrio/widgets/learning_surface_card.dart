@@ -16,6 +16,8 @@ class LearningOption {
   });
 }
 
+final _whitespaceRegExp = RegExp(r'\s+');
+
 /// Premium dark glassmorphism learning card.
 ///
 /// Supports three modes based on [badgeLabel]:
@@ -64,8 +66,8 @@ class _LearningSurfaceCardState extends State<LearningSurfaceCard>
 
   /// Estimate reading time based on word count (200 wpm average).
   String get _readingTime {
-    final words = widget.body.split(RegExp(r'\s+')).length +
-        widget.options.fold<int>(0, (sum, o) => sum + o.label.split(RegExp(r'\s+')).length);
+    final words = widget.body.split(_whitespaceRegExp).length +
+        widget.options.fold<int>(0, (sum, o) => sum + o.label.split(_whitespaceRegExp).length);
     final minutes = (words / 200).ceil().clamp(1, 99);
     return '~$minutes min';
   }

@@ -107,6 +107,8 @@ class SettingsRoleEditorDialog extends StatefulWidget {
       _SettingsRoleEditorDialogState();
 }
 
+final _roleKeyRegExp = RegExp(r'^[a-z][a-z0-9_]{2,63}$');
+
 class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
   late final TextEditingController _roleKey;
   late final TextEditingController _displayName;
@@ -177,7 +179,7 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
       // role-key validation so the operator does not round-trip the
       // proxy to learn the rule. 3–64 chars, lowercase letter prefix,
       // a–z / 0–9 / underscore body.
-      if (!RegExp(r'^[a-z][a-z0-9_]{2,63}$').hasMatch(key)) return false;
+      if (!_roleKeyRegExp.hasMatch(key)) return false;
     }
     return true;
   }
