@@ -9,8 +9,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/auth/password_reset_gateway.dart';
 import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
+import 'password_reset_request_screen.dart';
 
 const bool _demoOperatorSignInEnabled =
     bool.fromEnvironment('kDemoMode') ||
@@ -24,11 +26,19 @@ class LoginScreen extends StatefulWidget {
     this.showDemoOperatorSignIn = _demoOperatorSignInEnabled,
     this.demoOperatorEmail = _defaultDemoOperatorEmail,
     this.demoOperatorPassword = _defaultDemoOperatorPassword,
+    this.passwordResetGateway,
   });
 
   final bool showDemoOperatorSignIn;
   final String demoOperatorEmail;
   final String demoOperatorPassword;
+
+  /// 9.UX.7 — gateway for the additive "Forgot password?" link.
+  /// When null the link opens the request screen wired with a
+  /// demo gateway in `kDemoMode`, otherwise a scaffold-failing
+  /// gateway so a misconfigured deploy surfaces the error
+  /// instead of silently succeeding.
+  final PasswordResetGateway? passwordResetGateway;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -74,6 +84,23 @@ class _LoginScreenState extends State<LoginScreen> {
     _emailController.text = widget.demoOperatorEmail;
     _passwordController.text = widget.demoOperatorPassword;
     await _submit();
+  }
+
+  void _openForgotPasswordFlow() {
+    final gateway =
+        widget.passwordResetGateway ??
+        (widget.showDemoOperatorSignIn
+            ? const DemoPasswordResetGateway()
+            : const ScaffoldFailingPasswordResetGateway());
+    final initialEmail = _emailController.text.trim();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PasswordResetRequestScreen(
+          gateway: gateway,
+          initialEmail: initialEmail.isEmpty ? null : initialEmail,
+        ),
+      ),
+    );
   }
 
   Future<void> _requestPasswordReset() async {
@@ -160,6 +187,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       onSubmit: _submit,
                       onDemoOperatorSignIn: _submitDemoOperator,
                       onRequestPasswordReset: _requestPasswordReset,
+                      onForgotPassword: _openForgotPasswordFlow,
                     ),
                   ],
                 ),
@@ -244,6 +272,7 @@ class _LoginCard extends StatelessWidget {
     required this.onSubmit,
     required this.onDemoOperatorSignIn,
     required this.onRequestPasswordReset,
+    required this.onForgotPassword,
   });
 
   final String? errorMessage;
@@ -257,6 +286,7 @@ class _LoginCard extends StatelessWidget {
   final Future<void> Function() onSubmit;
   final Future<void> Function() onDemoOperatorSignIn;
   final Future<void> Function() onRequestPasswordReset;
+  final VoidCallback onForgotPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -332,7 +362,27 @@ class _LoginCard extends StatelessWidget {
                 autofillHints: const <String>[AutofillHints.password],
                 onSubmitted: (_) => onSubmit(),
               ),
-              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  key: const Key('login_forgot_password_link'),
+                  onPressed: submitting ? null : onForgotPassword,
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppColors.sunsetDark,
+                    textStyle: AppTextStyles.mono12(
+                      color: AppColors.sunsetDark,
+                      weight: FontWeight.w600,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    minimumSize: const Size(0, 32),
+                  ),
+                  child: const Text('Forgot password?'),
+                ),
+              ),
+              const SizedBox(height: 12),
               _SignInButton(
                 submitting: submitting,
                 onPressed: submitting ? null : onSubmit,

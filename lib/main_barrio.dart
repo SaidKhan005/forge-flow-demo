@@ -20,6 +20,8 @@ Future<void> main() async {
       BarrioApp(
         requireAuth: true,
         permissionContextLoader: bindings.permissionContextLoader,
+        passwordResetGateway: bindings.passwordResetGateway,
+        passwordResetDeepLinkSource: bindings.passwordResetDeepLinkSource,
       ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,

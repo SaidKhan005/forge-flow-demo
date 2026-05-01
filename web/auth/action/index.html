@@ -260,6 +260,41 @@
       message.removeAttribute("data-tone");
     }
 
+    // Phase 9.UX.7 — stable Idempotency-Key for this confirm
+    // attempt. The proxy requires the header on /confirm; a retry
+    // of the same submit must reuse the same key so the cached
+    // 200 replays instead of burning the (single-use) oobCode and
+    // surfacing password_reset_expired. We hold the key on the
+    // page and only regenerate it when the operator changes
+    // either password input.
+    function generateIdempotencyKey() {
+      if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+      }
+      const bytes = new Uint8Array(16);
+      (window.crypto || window.msCrypto).getRandomValues(bytes);
+      let hex = "";
+      for (let i = 0; i < bytes.length; i += 1) {
+        hex += bytes[i].toString(16).padStart(2, "0");
+      }
+      return hex;
+    }
+    let pendingIdempotencyKey = null;
+    let lastIdempotencyInputs = "";
+
+    function idempotencyKeyForInputs(inputs) {
+      if (inputs !== lastIdempotencyInputs || !pendingIdempotencyKey) {
+        pendingIdempotencyKey = generateIdempotencyKey();
+        lastIdempotencyInputs = inputs;
+      }
+      return pendingIdempotencyKey;
+    }
+
+    function clearIdempotencyKey() {
+      pendingIdempotencyKey = null;
+      lastIdempotencyInputs = "";
+    }
+
     function validationMessage(candidate, confirmation) {
       if (!candidate || !confirmation) {
         return "All fields are required.";
@@ -341,6 +376,45 @@
           return;
         }
 
+        // Phase 9.UX.7 — hand mobile clients off to the in-app
+        // confirm screen via the `forgeflow://reset-password?...`
+        // deep link. The PasswordResetDeepLinkHandler in the app
+        // pushes PasswordResetConfirmScreen with the oobCode parsed
+        // from the URI. If the app is not installed (or the deep
+        // link does not resolve within ~1.2s) the page falls back
+        // to the web form so operators on devices without the app
+        // can still complete the reset in the browser.
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(
+          navigator.userAgent
+        );
+        const deepLinkAttempted = sessionStorage.getItem(
+          "forgeflow.resetPassword.deeplinkTried"
+        );
+        if (isMobile && !deepLinkAttempted) {
+          sessionStorage.setItem(
+            "forgeflow.resetPassword.deeplinkTried",
+            "1"
+          );
+          intro.textContent = "Opening Forge & Flow…";
+          showMessage(
+            "If the app does not open, you can finish the reset on this page below.",
+            "success"
+          );
+          const deepLink =
+            "forgeflow://reset-password?mode=resetPassword&oobCode=" +
+            encodeURIComponent(oobCode);
+          window.location.href = deepLink;
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+          if (document.hidden) {
+            // The OS handed control to the app; leave the web page
+            // idle so it does not race a successful in-app confirm.
+            return;
+          }
+          intro.textContent =
+            "Forge & Flow did not open. Finish your reset here instead.";
+          clearMessage();
+        }
+
         await verifyPasswordResetCode(auth, oobCode);
         intro.textContent = "Enter a new password that meets the same rules used in the app.";
         form.classList.remove("hidden");
@@ -356,10 +430,19 @@
 
           submitButton.disabled = true;
           submitButton.textContent = "Updating password";
+          // Stable Idempotency-Key per (oobCode, password) attempt.
+          // A network-retry of the same submit reuses the key and
+          // replays the cached 200 instead of re-burning the oobCode.
+          const idempotencyKey = idempotencyKeyForInputs(
+            oobCode + "|" + newPassword.value
+          );
           try {
             const response = await fetch(resetConfirmUrl, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                "Idempotency-Key": idempotencyKey
+              },
               body: JSON.stringify({
                 oob_code: oobCode,
                 new_password: newPassword.value
@@ -367,17 +450,27 @@
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok) {
+              // Policy / oobCode rejections are terminal — let the
+              // operator pick a new password (which will rotate the
+              // idempotency key on next submit because the password
+              // input changes).
+              if (response.status >= 400 && response.status < 500) {
+                clearIdempotencyKey();
+              }
               showMessage(
                 body.message || "Password could not be updated. Request a new reset link and try again.",
                 "error"
               );
               return;
             }
+            clearIdempotencyKey();
             form.classList.add("hidden");
             intro.textContent = "Password updated.";
             showMessage("Your password has been updated. You can return to the app and sign in.", "success");
             showContinueLink();
           } catch (_) {
+            // Network/transport failure — keep the key so a retry
+            // of the same submit replays the cached response.
             showMessage("Password could not be updated. Request a new reset link and try again.", "error");
           } finally {
             submitButton.disabled = false;

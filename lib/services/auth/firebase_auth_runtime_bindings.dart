@@ -29,11 +29,14 @@ import 'firebase_auth_client_sdk.dart';
 import 'firebase_auth_login_service.dart';
 import 'flutter_secure_storage_backend.dart';
 import 'password_change_gateway.dart';
+import 'password_reset_deep_link_source.dart';
+import 'password_reset_gateway.dart';
 import 'platform_secure_session_storage.dart';
 import 'proxy_account_info_gateway.dart';
 import 'proxy_auth_session_ledger_writer.dart';
 import 'proxy_auth_operations_gateway.dart';
 import 'proxy_password_change_gateway.dart';
+import 'proxy_password_reset_gateway.dart';
 import 'proxy_permission_snapshot_loader.dart';
 import 'proxy_refresh_token_revoker.dart';
 
@@ -48,6 +51,8 @@ class FirebaseAuthRuntimeBindings {
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.mfaRecoveryRequestGateway,
+    this.passwordResetGateway,
+    this.passwordResetDeepLinkSource,
   });
 
   final AuthLoginService authLoginService;
@@ -65,6 +70,14 @@ class FirebaseAuthRuntimeBindings {
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
+  final PasswordResetGateway? passwordResetGateway;
+
+  /// 9.UX.7 — incoming-URI source forwarded to the unauthenticated
+  /// shell so `forgeflow://reset-password?oobCode=...` reaches the
+  /// in-app confirm screen. The bootstrap must call
+  /// [WidgetsBindingPasswordResetDeepLinkSource.startListening]
+  /// before binding so the platform navigation channel is observed.
+  final PasswordResetDeepLinkSource? passwordResetDeepLinkSource;
 }
 
 /// Initializes Firebase using the native Android/iOS config files and returns
@@ -110,6 +123,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
   PasswordChangeGateway? passwordChangeGateway;
   MfaOperationsGateway? mfaOperationsGateway;
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
+  PasswordResetGateway? passwordResetGateway;
   if (proxyBaseUri != null) {
     ledgerWriter = ProxyAuthSessionLedgerWriter(
       proxyBaseUri: proxyBaseUri,
@@ -149,7 +163,22 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
       proxyBaseUri: proxyBaseUri,
       httpClient: DartIoProxyAuthOperationsHttpClient(),
     );
+    // Phase 9.UX.7: self-serve password-reset request + confirm.
+    // Both routes are unauthenticated (the operator is not signed in
+    // when they tap "Forgot password?" or open the action-link
+    // deep-link), so the gateway does not take an idTokenProvider.
+    passwordResetGateway = ProxyPasswordResetGateway(
+      proxyBaseUri: proxyBaseUri,
+      httpClient: DartIoProxyAuthOperationsHttpClient(),
+    );
   }
+  // Phase 9.UX.7: bind the deep-link source for both demo and live
+  // builds so `forgeflow://reset-password?oobCode=...` lands on the
+  // in-app confirm screen. The handler is inert (renders the login
+  // shell as today) when the gateway is null, so demo builds don't
+  // accidentally route into a scaffold-failing reset.
+  final deepLinkSource = WidgetsBindingPasswordResetDeepLinkSource()
+    ..startListening();
   return FirebaseAuthRuntimeBindings(
     authLoginService: FirebaseAuthLoginService(
       client: authClient,
@@ -165,5 +194,7 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
     passwordChangeGateway: passwordChangeGateway,
     mfaOperationsGateway: mfaOperationsGateway,
     mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
+    passwordResetGateway: passwordResetGateway,
+    passwordResetDeepLinkSource: deepLinkSource,
   );
 }
