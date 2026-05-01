@@ -37,17 +37,17 @@ class WeekHistoryTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
             begin: Alignment.centerLeft,
             end: Alignment.centerRight,
             colors: [AppColors.backgroundMid, AppColors.cardGlow],
           ),
           border: Border(
-            left: const BorderSide(color: AppColors.borderSubtle, width: 3),
-            top: const BorderSide(color: AppColors.borderSubtle, width: 1),
-            right: const BorderSide(color: AppColors.borderSubtle, width: 1),
-            bottom: const BorderSide(color: AppColors.borderSubtle, width: 1),
+            left: BorderSide(color: AppColors.borderSubtle, width: 3),
+            top: BorderSide(color: AppColors.borderSubtle, width: 1),
+            right: BorderSide(color: AppColors.borderSubtle, width: 1),
+            bottom: BorderSide(color: AppColors.borderSubtle, width: 1),
           ),
         ),
         child: Padding(
@@ -95,7 +95,7 @@ class WeekHistoryTile extends StatelessWidget {
               const SizedBox(width: 6),
 
               // ── Chevron ───────────────────────────────────────────────────
-              Icon(
+              const Icon(
                 Icons.chevron_right,
                 size: 20,
                 color: AppColors.textMuted,

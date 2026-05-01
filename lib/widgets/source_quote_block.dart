@@ -22,7 +22,7 @@ class SourceQuoteBlock extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(
           left: BorderSide(color: AppColors.accent, width: 3),
