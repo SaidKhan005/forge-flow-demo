@@ -399,11 +399,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                       catalogSeed: widget.teamRoleCatalog,
                                       catalogListenable:
                                           widget.teamRoleCatalogListenable,
-                                      builder: (effectiveRoleOptions) =>
-                                          TeamSettingsSection(
+                                      builder:
+                                          (
+                                            effectiveRoleOptions,
+                                            effectiveRoleCatalog,
+                                          ) => TeamSettingsSection(
                                             actor: effectiveTeamActor,
                                             users: users,
                                             roleOptions: effectiveRoleOptions,
+                                            roleCatalog: effectiveRoleCatalog
+                                                    .isEmpty
+                                                ? widget.teamRoleCatalog
+                                                : effectiveRoleCatalog,
                                             locationOptions:
                                                 widget.teamLocationOptions,
                                             orgUnitOptions: orgUnitOptions,
@@ -824,13 +831,17 @@ class _RoleCatalogToOptionsScope extends StatelessWidget {
   final List<TeamRoleOption> fallback;
   final List<TeamRoleCatalogEntry> catalogSeed;
   final ValueListenable<List<TeamRoleCatalogEntry>>? catalogListenable;
-  final Widget Function(List<TeamRoleOption> options) builder;
+  final Widget Function(
+    List<TeamRoleOption> options,
+    List<TeamRoleCatalogEntry> catalog,
+  )
+  builder;
 
   @override
   Widget build(BuildContext context) {
     Widget resolve(List<TeamRoleCatalogEntry> catalog) {
-      if (catalog.isEmpty) return builder(fallback);
-      return builder(_optionsFromCatalog(catalog));
+      if (catalog.isEmpty) return builder(fallback, catalog);
+      return builder(_optionsFromCatalog(catalog), catalog);
     }
 
     final l = catalogListenable;
