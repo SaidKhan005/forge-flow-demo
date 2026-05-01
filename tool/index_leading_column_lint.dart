@@ -7,22 +7,21 @@
 //   per-tenant RLS policy evaluation degrades from a single index probe
 //   into a per-row filter — two orders of magnitude slower at scale.
 //
-// This lint walks `db/migrations/*.sql`, parses CREATE TABLE
-// statements to find tables that carry an `operator_id` column, then
-// inspects every CREATE INDEX statement targeting one of those tables.
-// If an index does not lead with `operator_id`, the lint fails.
+// This lint walks `db/migrations/*.sql`, parses CREATE TABLE and
+// ALTER TABLE ADD COLUMN statements to find tables that carry an
+// `operator_id` column, then inspects every CREATE INDEX statement
+// targeting one of those tables. If an index does not lead with
+// `operator_id`, the lint fails. ALTER TABLE detection means a
+// table that gains operator_id in a later migration (e.g.,
+// `role_audit_log` in slice B.4) still flags non-leading indexes
+// anywhere in the tree, including the original CREATE TABLE
+// migration's own indexes.
 //
 // Cutoff: only files whose basenames sort lexicographically at or
 // after `_indexLintCutoff` are scanned. Pre-cutoff migrations are
 // out of scope (they captured the schema before the discipline was
 // locked); they neither contribute to the operator-scoped table
 // registry nor get scanned for index violations.
-//
-// `role_audit_log` is special-cased: it does not yet carry an
-// operator_id column (slice B.4 adds it). Until then, indexes on
-// role_audit_log emit a single consolidated WARNING per migration
-// file referencing the unimplemented slice. Warnings do not fail the
-// lint.
 //
 // Index-type scope: only B-tree indexes are linted. GIST/GIN/HASH/
 // BRIN/SPGIST indexes do not benefit from a tenant-leading column the
@@ -65,13 +64,6 @@ import 'dart:io';
 /// basenames sort lexicographically before this string are skipped.
 const String _indexLintCutoff = '202604250000';
 
-/// Tables special-cased to emit a WARNING instead of an ERROR. Until
-/// slice B.4 adds an `operator_id` column to `role_audit_log`, every
-/// B-tree index on that table will fail the leading-column rule by
-/// construction; the lint surfaces that as a single warning per file
-/// so reviewers see the deferred work without blocking the build.
-const Set<String> _warnOnlyTables = <String>{'role_audit_log'};
-
 /// Hardcoded exemptions. Each entry is `<filename>:<index_name>`.
 ///
 /// Adding to this list is an explicit code change. Justifications
@@ -87,6 +79,21 @@ const Set<String> _defaultExemptions = <String>{
   // path.
   '202604250005_advisor_cloud_foundation.sql:feature_flags_operator_scope_idx',
   '202604250005_advisor_cloud_foundation.sql:feature_flags_location_scope_idx',
+
+  // 202604250008 — three legacy `role_audit_log` indexes that pre-date
+  // the operator_id column. Slice B.4 (migration
+  // `202605010001_phase_9_b4_role_audit_log_operator_id.sql`) adds
+  // operator_id via ALTER TABLE, drops these indexes via DROP INDEX
+  // CONCURRENTLY, and creates operator-leading replacements. The
+  // legacy CREATE INDEX statements remain in the shipped foundation
+  // migration (we never edit shipped migrations); the indexes are
+  // gone at runtime. Without this exemption the lint would error on
+  // the foundation migration's text — ALTER-TABLE detection now
+  // recognizes role_audit_log as operator-scoped — even though no
+  // offending index exists in the live schema.
+  '202604250008_auth_schema_foundation.sql:role_audit_log_role_changed_idx',
+  '202604250008_auth_schema_foundation.sql:role_audit_log_user_role_changed_idx',
+  '202604250008_auth_schema_foundation.sql:role_audit_log_changed_at_idx',
 
   // 202604300000 — Phase 9.UX.1 MFA factor-removal worker queue.
   // The "due" and "processing" indexes back the cross-tenant worker
@@ -182,9 +189,7 @@ class IndexLeadingColumnLintRunner {
     required this.files,
     this.cutoff = _indexLintCutoff,
     Set<String>? exemptions,
-    Set<String>? warnOnlyTables,
-  })  : exemptions = exemptions ?? _defaultExemptions,
-        warnOnlyTables = warnOnlyTables ?? _warnOnlyTables;
+  }) : exemptions = exemptions ?? _defaultExemptions;
 
   /// Map of filename (basename) → SQL body. Production CLI populates
   /// this from `db/migrations/*.sql`; tests pass synthetic strings.
@@ -197,9 +202,6 @@ class IndexLeadingColumnLintRunner {
   /// `<filename>:<index_name>` pairs exempt from the lint. See file
   /// header for justification policy.
   final Set<String> exemptions;
-
-  /// Tables special-cased to emit WARNING instead of ERROR.
-  final Set<String> warnOnlyTables;
 
   IndexLintResult run() {
     var skipped = 0;
@@ -220,18 +222,15 @@ class IndexLeadingColumnLintRunner {
     for (final body in scanned.values) {
       operatorScopedTables.addAll(_extractOperatorScopedTables(body));
     }
-    operatorScopedTables.addAll(warnOnlyTables);
 
     // Phase 2 — scan CREATE INDEX statements.
     final violations = <IndexLintViolation>[];
-    final warnTablesSeen = <String, Set<String>>{};
     for (final entry in scanned.entries) {
       _scanIndexes(
         fileName: entry.key,
         sqlBody: entry.value,
         operatorScopedTables: operatorScopedTables,
         out: violations,
-        warnTablesSeen: warnTablesSeen,
       );
     }
 
@@ -243,11 +242,19 @@ class IndexLeadingColumnLintRunner {
     );
   }
 
-  // ─── CREATE TABLE extraction ────────────────────────────────────
+  // ─── CREATE TABLE / ALTER TABLE extraction ──────────────────────
 
-  /// Extracts table names that declare an `operator_id` column.
+  /// Extracts table names that declare an `operator_id` column,
+  /// either via CREATE TABLE in the file or via a later ALTER TABLE
+  /// ADD COLUMN. The lint runs across every in-scope migration, so
+  /// an operator_id added by a later slice (e.g.,
+  /// `202605010001_phase_9_b4_role_audit_log_operator_id.sql` for
+  /// `role_audit_log`) still flags non-leading indexes anywhere in
+  /// the tree.
   Iterable<String> _extractOperatorScopedTables(String body) sync* {
     final stripped = _stripCommentsAndStrings(body);
+
+    // CREATE TABLE … ( … operator_id … )
     for (final m in _createTablePattern.allMatches(stripped)) {
       final name = m.group(1)!.toLowerCase();
       // The pattern's last char is `(`; m.end is just past it.
@@ -256,6 +263,19 @@ class IndexLeadingColumnLintRunner {
       if (_operatorIdColumnPattern.hasMatch(inner)) {
         yield name;
       }
+    }
+
+    // ALTER TABLE [IF EXISTS] [schema.]name … ADD COLUMN [IF NOT
+    // EXISTS] operator_id <type> …
+    //
+    // The pattern is a single regex with a non-greedy run up to the
+    // statement terminator (`[^;]*?`). It handles multi-clause ALTER
+    // TABLE statements (e.g., several ADD COLUMNs in one statement)
+    // and ignores incidental `operator_id` references inside FOREIGN
+    // KEY / CHECK clauses by requiring `add column [if not exists]
+    // operator_id <type-identifier>`.
+    for (final m in _alterTableAddOperatorIdPattern.allMatches(stripped)) {
+      yield m.group(1)!.toLowerCase();
     }
   }
 
@@ -266,7 +286,6 @@ class IndexLeadingColumnLintRunner {
     required String sqlBody,
     required Set<String> operatorScopedTables,
     required List<IndexLintViolation> out,
-    required Map<String, Set<String>> warnTablesSeen,
   }) {
     final stripped = _stripCommentsAndStrings(sqlBody);
     for (final m in _createIndexPattern.allMatches(stripped)) {
@@ -305,41 +324,16 @@ class IndexLeadingColumnLintRunner {
       //     leading column is `operator_id`.
       if (leadingCol == 'operator_id') continue;
 
-      final isWarn = warnOnlyTables.contains(tableName);
-      final lineNumber = _lineNumberAt(sqlBody, m.start);
-
-      if (isWarn) {
-        // Consolidate role_audit_log warnings: emit one per
-        // (file, table) pair.
-        final seen = warnTablesSeen.putIfAbsent(
-          fileName,
-          () => <String>{},
-        );
-        if (seen.contains(tableName)) continue;
-        seen.add(tableName);
-        out.add(IndexLintViolation(
-          fileName: fileName,
-          lineNumber: lineNumber,
-          tableName: tableName,
-          indexName: indexName,
-          leadingColumn: leadingCol,
-          severity: IndexLintSeverity.warning,
-          note: 'see slice B.4 (role_audit_log gains operator_id; '
-              'remaining indexes on $tableName in this file flagged '
-              'collectively)',
-        ));
-      } else {
-        out.add(IndexLintViolation(
-          fileName: fileName,
-          lineNumber: lineNumber,
-          tableName: tableName,
-          indexName: indexName,
-          leadingColumn: leadingCol,
-          severity: IndexLintSeverity.error,
-          note: 'B-tree index on operator-scoped table must lead with '
-              'operator_id (RLS performance discipline)',
-        ));
-      }
+      out.add(IndexLintViolation(
+        fileName: fileName,
+        lineNumber: _lineNumberAt(sqlBody, m.start),
+        tableName: tableName,
+        indexName: indexName,
+        leadingColumn: leadingCol,
+        severity: IndexLintSeverity.error,
+        note: 'B-tree index on operator-scoped table must lead with '
+            'operator_id (RLS performance discipline)',
+      ));
     }
   }
 }
@@ -362,6 +356,18 @@ final RegExp _createTablePattern = RegExp(
 final RegExp _operatorIdColumnPattern = RegExp(
   r'''(^|[,(])\s*operator_id\s+[a-zA-Z_][\w]*''',
   multiLine: true,
+);
+
+/// `ALTER TABLE [IF EXISTS] [schema.]name … ADD COLUMN [IF NOT
+/// EXISTS] operator_id TYPE …` — captures the bare table name (g1).
+/// Non-greedy `[^;]*?` between the table reference and the ADD
+/// COLUMN clause keeps the match within a single statement (semi-
+/// colons aren't allowed inside the run). The trailing identifier
+/// shape after `operator_id` ensures we match a column declaration,
+/// not a FOREIGN KEY / CHECK reference.
+final RegExp _alterTableAddOperatorIdPattern = RegExp(
+  r'''alter\s+table\s+(?:if\s+exists\s+)?(?:[a-zA-Z_][\w$]*\.)?([a-zA-Z_][\w$]*)[^;]*?\badd\s+column\s+(?:if\s+not\s+exists\s+)?operator_id\s+[a-zA-Z_]''',
+  caseSensitive: false,
 );
 
 /// `CREATE [UNIQUE] INDEX [IF NOT EXISTS] name ON [schema.]table
