@@ -432,6 +432,47 @@ Required before Phase 11A can ship real:
 - Cloud Run service slot reserved for `admin.forgeflow.app`
 - Brand assets in `lib/theme/` (already exist)
 
+## Dev UX prerequisite — cross-cloud egress
+
+Any new Cloud Run service in `forge-flow-staging` (or its eventual
+production GCP project) that needs to reach Azure-hosted resources
+(Postgres, Blob Storage, Key Vault) MUST be deployed with a static
+egress IP that's allowlisted on the corresponding Azure firewall.
+The default Cloud Run egress is a rotating pool of Google IPs and
+will be silently rejected.
+
+**The plumbing already exists in `forge-flow-staging` — reuse it,
+do NOT re-create it:**
+
+- VPC connector: `ff-staging-proxy-egress` (`10.8.0.0/28` on `default` network)
+- NAT router: `ff-staging-nat-router` (region `northamerica-northeast2`)
+- Reserved egress IP: `34.130.85.86` (`ff-staging-proxy-egress-ip`)
+- Azure Postgres firewall rule: `AllowGcpCloudRunStaticEgress`
+  on `forge-flow-staging-pg` (covers exactly `34.130.85.86`)
+
+Deploy any new Cloud Run service or Job with these two flags:
+
+```
+--vpc-connector ff-staging-proxy-egress
+--vpc-egress all-traffic
+```
+
+Both `forge-flow-staging-proxy` (Phase 11a.10) and
+`forge-flow-audit-anchor` (Phase 9.0Σ.f) already use this connector;
+the throughput envelope (200–300) is fine for an admin Cloud Run
+service with bursty operator traffic.
+
+When Phase 11A's `admin.forgeflow.app` ships its deploy script,
+include these flags in the default invocation — *not* as an
+optional `-VpcConnector` parameter. They are not optional in
+practice; omitting them produces a 30-minute connectivity
+debugging detour that ends with the operator adding them anyway.
+
+This same prerequisite applies to a future production GCP project:
+that project will need its own VPC connector + NAT + reserved IP +
+matching Azure firewall rule before any Cloud Run service in it
+can talk to production Azure.
+
 ## Non-Negotiables
 
 - All admin actions go through the proxy backend's `/v1/admin/*`

@@ -24,12 +24,19 @@
 #   - POSTGRES_URL
 #   - AZURE_BLOB_AUDIT_CONTAINER
 #   - AZURE_BLOB_AUDIT_ENDPOINT
+#   - AZURE_AD_TENANT_ID  (added 9.0Σ.f live-deploy slice — selects the
+#                          live AzureBlobAuditAnchorBlobClient over the
+#                          fail-closed scaffold rejecter)
+#   - AZURE_AD_CLIENT_ID  (added 9.0Σ.f live-deploy slice — federated
+#                          credential's app-registration client id)
 #
 # Secret Manager mapping (name-only convention; values come from env):
 #   - POSTGRES_URL                 -> forge-flow-staging-postgres-url
 #                                     (reused from deploy_staging_proxy)
 #   - AZURE_BLOB_AUDIT_CONTAINER   -> forge-flow-staging-azure-blob-audit-container
 #   - AZURE_BLOB_AUDIT_ENDPOINT    -> forge-flow-staging-azure-blob-audit-endpoint
+#   - AZURE_AD_TENANT_ID           -> forge-flow-staging-azure-ad-tenant-id
+#   - AZURE_AD_CLIENT_ID           -> forge-flow-staging-azure-ad-client-id
 #
 # Schedule: `55 23 * * *` UTC (daily at 23:55 UTC). Timezone pinned to
 # `Etc/UTC` in Cloud Scheduler so DST cannot shift the firing window.
@@ -45,6 +52,19 @@ param(
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $Image = '',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
+  # Secret Manager name prefix. Convention: `forge-flow-<env>-`. Defaults
+  # to staging because the proxy already publishes
+  # `forge-flow-staging-postgres-url` and we want the job + proxy to
+  # share that secret. Override to `forge-flow-production-` (or similar)
+  # when targeting production. The trailing dash is required.
+  [string] $SecretPrefix = 'forge-flow-staging-',
+  # VPC connector name in $Project / $Region. The Job egresses through
+  # this connector + the project's NAT router, surfacing as a fixed IP
+  # that the Azure Postgres firewall already allowlists. Default reuses
+  # the staging proxy's connector — do not invent a new one without a
+  # matching firewall rule on the Postgres side.
+  [string] $VpcConnector = 'ff-staging-proxy-egress',
+  [string] $VpcEgress = 'all-traffic',
   [switch] $Preflight,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
@@ -65,21 +85,40 @@ $ScheduleCron = '55 23 * * *'
 $ScheduleTimeZone = 'Etc/UTC'
 
 # Required env NAMES (NEVER values). The runbook + audit_anchor.dart
-# `AuditAnchorEnvNames.required` are the source of truth for this list.
+# `AuditAnchorEnvNames.required` are the source of truth for the first
+# three entries; `AZURE_AD_*` are required at the *deploy* layer (the
+# tool itself treats them as optional so non-prod runs can default to
+# the scaffold rejecter, but a Cloud Run deploy without them would
+# silently never hit live Azure).
 $requiredEnv = @(
   'POSTGRES_URL',
   'AZURE_BLOB_AUDIT_CONTAINER',
-  'AZURE_BLOB_AUDIT_ENDPOINT'
+  'AZURE_BLOB_AUDIT_ENDPOINT',
+  'AZURE_AD_TENANT_ID',
+  'AZURE_AD_CLIENT_ID'
 )
+
+if (-not $SecretPrefix.EndsWith('-')) {
+  Write-Host "BLOCKED: -SecretPrefix '$SecretPrefix' must end with '-'."
+  exit 1
+}
 
 # Secret Manager mapping. Convention: forge-flow-<env>-<lowercase-env-name>
 # with `_` replaced by `-`. The proxy already publishes
 # `forge-flow-staging-postgres-url`, so this script reuses that secret
 # name to avoid a divergent connection string between job + proxy.
-$secretEnv = [ordered] @{
-  'POSTGRES_URL'                = 'forge-flow-staging-postgres-url'
-  'AZURE_BLOB_AUDIT_CONTAINER'  = 'forge-flow-staging-azure-blob-audit-container'
-  'AZURE_BLOB_AUDIT_ENDPOINT'   = 'forge-flow-staging-azure-blob-audit-endpoint'
+# Suffixes are stable; the prefix toggles per environment via
+# `-SecretPrefix`.
+$secretSuffix = [ordered] @{
+  'POSTGRES_URL'                = 'postgres-url'
+  'AZURE_BLOB_AUDIT_CONTAINER'  = 'azure-blob-audit-container'
+  'AZURE_BLOB_AUDIT_ENDPOINT'   = 'azure-blob-audit-endpoint'
+  'AZURE_AD_TENANT_ID'          = 'azure-ad-tenant-id'
+  'AZURE_AD_CLIENT_ID'          = 'azure-ad-client-id'
+}
+$secretEnv = [ordered] @{}
+foreach ($entry in $secretSuffix.GetEnumerator()) {
+  $secretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
 }
 
 function Assert-PresentEnv {
@@ -250,18 +289,30 @@ $jobVerb = if ($jobDescribeExit -eq 0) { 'update' } else { 'deploy' }
 
 Push-Location $repoRoot
 try {
-  # The daily firing uses `sweep`, not `anchor`. Sweep resolves the
-  # operator-id list from public.operators inside the tool and then
-  # dispatches the existing per-operator anchor logic; the deployed
-  # command shape therefore takes no `--operator-id` argument.
+  # The daily firing uses `sweep`, not `anchor`. The image's Dockerfile
+  # (`tool/audit_anchor/Dockerfile`) sets `ENTRYPOINT ["/app/audit_anchor"]`
+  # and `CMD ["sweep"]` so the deployed command shape takes no
+  # `--operator-id` argument and no Dart toolchain is needed at runtime.
+  # Do NOT set `--command` / `--args` — that would override the image's
+  # entrypoint with `dart run …`, which fails on the distroless runtime
+  # (no Dart binary present).
+  #
+  # `--vpc-connector` + `--vpc-egress all-traffic` route the Job's
+  # outbound traffic through the staging static-IP egress
+  # (`34.130.85.86`) so the Azure Postgres firewall rule
+  # `AllowGcpCloudRunStaticEgress` on `forge-flow-staging-pg` admits
+  # the connection. Same connector the staging proxy uses; reusing it
+  # keeps the firewall allowlist a single line. See
+  # `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
+  # 'Dev UX prerequisite — cross-cloud egress' for the full pattern.
   & $gcloud run jobs $jobVerb $JobName `
     --project $Project `
     --region $Region `
     --service-account $ServiceAccount `
     --image $Image `
-    --command 'dart' `
-    --args 'run,tool/audit_anchor/main.dart,sweep' `
     --set-secrets $secretAssignments `
+    --vpc-connector $VpcConnector `
+    --vpc-egress $VpcEgress `
     --max-retries 0 `
     --task-timeout 3600s `
     --quiet

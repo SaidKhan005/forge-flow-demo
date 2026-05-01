@@ -10,7 +10,8 @@
 #   * runbooks/audit_chain_verify_runbook.md — operational procedure.
 #   * tool/audit_anchor/main.dart + tool/audit_anchor/audit_anchor.dart
 #     — CLI / env contract (env *names* only: POSTGRES_URL,
-#     AZURE_BLOB_AUDIT_CONTAINER, AZURE_BLOB_AUDIT_ENDPOINT).
+#     AZURE_BLOB_AUDIT_CONTAINER, AZURE_BLOB_AUDIT_ENDPOINT,
+#     AZURE_AD_TENANT_ID, AZURE_AD_CLIENT_ID).
 #   * docs/phases/phase_9/phase_9_execution_backlog.md (B43 / B27).
 #
 # Posture (CLAUDE.md "no live Azure mutation in repo"):
@@ -95,6 +96,23 @@ spec:
                   valueFrom:
                     secretKeyRef:
                       name: __SECRET_AZURE_BLOB_AUDIT_ENDPOINT__
+                      key: latest
+                # ─── Live Azure Blob wiring (added 9.0Σ.f live deploy) ───
+                # When BOTH AZURE_AD_TENANT_ID and AZURE_AD_CLIENT_ID
+                # are present, `_defaultBlobClientFactory` in
+                # `tool/audit_anchor/main.dart` returns the live
+                # AzureBlobAuditAnchorBlobClient (Workload Identity
+                # Federation: GCP SA OIDC → Azure AD → Storage Bearer).
+                # Either-unset keeps the fail-closed scaffold rejecter.
+                - name: AZURE_AD_TENANT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: __SECRET_AZURE_AD_TENANT_ID__
+                      key: latest
+                - name: AZURE_AD_CLIENT_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: __SECRET_AZURE_AD_CLIENT_ID__
                       key: latest
               resources:
                 limits:

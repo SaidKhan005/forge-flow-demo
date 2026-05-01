@@ -48,6 +48,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
 import 'audit_anchor.dart';
+import 'azure_blob_client.dart';
 
 /// Returned by [parseArgs] so the CLI can dispatch on the mode without
 /// scattering arg parsing across the entry point.
@@ -155,6 +156,8 @@ class AuditAnchorRuntimeConfig {
     required this.endpoint,
     required this.postgresUrl,
     required this.loadedSecretNames,
+    this.azureAdTenantId,
+    this.azureAdClientId,
   });
 
   final String containerName;
@@ -165,6 +168,23 @@ class AuditAnchorRuntimeConfig {
   /// stdout/stderr.
   final String postgresUrl;
   final List<String> loadedSecretNames;
+
+  /// Azure AD tenant ID. When BOTH this and [azureAdClientId] are set,
+  /// the default blob-client factory builds a live
+  /// `AzureBlobAuditAnchorBlobClient` against
+  /// `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`.
+  /// Either-unset keeps the fail-closed scaffold rejecter.
+  final String? azureAdTenantId;
+
+  /// Azure AD app-registration client id for the federated identity.
+  final String? azureAdClientId;
+
+  /// True iff the live Azure Blob wiring is fully configured. The
+  /// default blob-client factory uses this to decide between
+  /// `AzureBlobAuditAnchorBlobClient` and the scaffold rejecter.
+  bool get hasLiveAzureBlobWiring =>
+      (azureAdTenantId?.isNotEmpty ?? false) &&
+      (azureAdClientId?.isNotEmpty ?? false);
 
   static AuditAnchorRuntimeConfig fromEnvironment(Map<String, String> env) {
     final loaded = <String>[];
@@ -177,14 +197,25 @@ class AuditAnchorRuntimeConfig {
       return value;
     }
 
+    String? optional(String name) {
+      final value = env[name];
+      if (value == null || value.isEmpty) return null;
+      loaded.add(name);
+      return value;
+    }
+
     final container = require(AuditAnchorEnvNames.azureBlobContainer);
     final endpoint = require(AuditAnchorEnvNames.azureBlobEndpoint);
     final postgresUrl = require(AuditAnchorEnvNames.postgresUrl);
+    final tenantId = optional(AuditAnchorEnvNames.azureAdTenantId);
+    final clientId = optional(AuditAnchorEnvNames.azureAdClientId);
     return AuditAnchorRuntimeConfig(
       containerName: container,
       endpoint: endpoint,
       postgresUrl: postgresUrl,
       loadedSecretNames: loaded,
+      azureAdTenantId: tenantId,
+      azureAdClientId: clientId,
     );
   }
 }
@@ -217,13 +248,28 @@ class AuditAnchorRuntime {
 PostgresPool _defaultPoolFactory(String connectionString) =>
     PackagePostgresPool.fromUrl(connectionString);
 
-/// Default Blob client — scaffold-rejecting until live Azure Blob
-/// wiring lands (operators deploying this job before the live client
-/// exists see a deterministic error pointing at the runbook).
+/// Default Blob client. When the runtime config carries both
+/// [AuditAnchorRuntimeConfig.azureAdTenantId] and [azureAdClientId]
+/// (i.e. `AZURE_AD_TENANT_ID` and `AZURE_AD_CLIENT_ID` are set), this
+/// returns the live [AzureBlobAuditAnchorBlobClient] backed by
+/// [WorkloadIdentityFederationTokenProvider]. Either-unset keeps the
+/// fail-closed [ScaffoldRejectingAuditAnchorBlobClient] so dev /
+/// local runs see a deterministic error rather than silently
+/// no-op'ing.
 AuditAnchorBlobClient _defaultBlobClientFactory(
   AuditAnchorRuntimeConfig config,
 ) {
-  return const ScaffoldRejectingAuditAnchorBlobClient();
+  if (!config.hasLiveAzureBlobWiring) {
+    return const ScaffoldRejectingAuditAnchorBlobClient();
+  }
+  final tokenProvider = WorkloadIdentityFederationTokenProvider(
+    tenantId: config.azureAdTenantId!,
+    clientId: config.azureAdClientId!,
+  );
+  return AzureBlobAuditAnchorBlobClient(
+    endpoint: config.endpoint,
+    tokenProvider: tokenProvider,
+  );
 }
 
 /// Production wiring. Builds the orchestrator + operator-id reader
