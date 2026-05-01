@@ -105,8 +105,15 @@ void main() {
       );
     });
 
-    final migration =
-        migrationFile.existsSync() ? migrationFile.readAsStringSync() : '';
+    // Normalize CRLF → LF on read so multi-line `contains(...)`
+    // assertions are platform-independent. Windows checkouts via the
+    // default `core.autocrlf=true` setting deliver CRLF line endings,
+    // which would otherwise break literal-string assertions that span
+    // multiple lines (matches the convention used by
+    // `phase_9_0sigma_b_rls_wrappers_test.dart`).
+    final migration = migrationFile.existsSync()
+        ? migrationFile.readAsStringSync().replaceAll('\r\n', '\n')
+        : '';
 
     test('adds operator_id column to role_audit_log', () {
       expect(
