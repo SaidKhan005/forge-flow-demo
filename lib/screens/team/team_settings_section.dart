@@ -1803,6 +1803,8 @@ class _MiniPill extends StatelessWidget {
   }
 }
 
+final _initialsWhitespaceRegExp = RegExp(r'\s+');
+
 class _InitialsAvatar extends StatelessWidget {
   const _InitialsAvatar({required this.displayName});
 
@@ -1811,7 +1813,7 @@ class _InitialsAvatar extends StatelessWidget {
   String get _initials {
     final parts = displayName
         .trim()
-        .split(RegExp(r'\s+'))
+        .split(_initialsWhitespaceRegExp)
         .where((p) => p.isNotEmpty)
         .toList();
     if (parts.isEmpty) return '?';
@@ -2240,10 +2242,12 @@ class _PendingInviteRow extends StatelessWidget {
   }
 }
 
+final _inviteNameSeparatorRegExp = RegExp(r'[._\-]');
+
 String _inviteEmailToName(String email) {
   final at = email.indexOf('@');
   final local = at >= 0 ? email.substring(0, at) : email;
-  return local.replaceAll(RegExp(r'[._\-]'), ' ').trim();
+  return local.replaceAll(_inviteNameSeparatorRegExp, ' ').trim();
 }
 
 class _RoleGrantDraft {

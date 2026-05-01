@@ -5,6 +5,8 @@ import 'barrio_celebration_overlay.dart';
 import 'barrio_destination_scaffold.dart';
 import '../content/company_handbook_content.dart';
 
+final _whitespaceRegExp = RegExp(r'\s+');
+
 /// Renders a single [HandbookUnit] as a premium dark glassmorphism card.
 ///
 /// Features: expand/collapse for interactive cards, reading time estimate,
@@ -52,9 +54,9 @@ class _HandbookLessonCardState extends State<HandbookLessonCard> {
   bool get _isInteractive => widget.unit.type != HandbookUnitType.explainer;
 
   String get _readingTime {
-    final words = widget.unit.body.split(RegExp(r'\s+')).length +
+    final words = widget.unit.body.split(_whitespaceRegExp).length +
         widget.unit.options.fold<int>(
-            0, (sum, o) => sum + o.label.split(RegExp(r'\s+')).length);
+            0, (sum, o) => sum + o.label.split(_whitespaceRegExp).length);
     final minutes = (words / 200).ceil().clamp(1, 99);
     return '~$minutes min';
   }
