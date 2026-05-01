@@ -92,18 +92,16 @@ void main() {
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
 
-    // Click into the pricing placeholder. Operators went live in
-    // 11A.1; pricing is the next still-placeholder route in the
-    // catalog.
-    await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
+    // Click into a route that is still deliberately placeholder-only.
+    await tester.tap(find.byKey(const Key('admin_nav_item_corpus')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_placeholder_pricing')),
+      find.byKey(const Key('admin_placeholder_corpus')),
       findsOneWidget,
     );
     expect(
-      find.text('Tiered usage cap admin lands in 11A.2.'),
+      find.text('Markdown corpus admin lands in 11A.3.'),
       findsOneWidget,
     );
     // Home card should no longer be in the tree.
@@ -153,13 +151,13 @@ void main() {
         AdminShell(
           session: superAdmin,
           authSource: source,
-          initialRouteId: 'pricing',
+          initialRouteId: 'corpus',
         ),
       ),
     );
 
     expect(
-      find.byKey(const Key('admin_placeholder_pricing')),
+      find.byKey(const Key('admin_placeholder_corpus')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('admin_home_card')), findsNothing);
