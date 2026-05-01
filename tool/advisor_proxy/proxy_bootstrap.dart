@@ -8,6 +8,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
@@ -69,6 +70,7 @@ class ProxyProductionBindings {
     required this.mfaRemovalWorker,
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
+    required this.corpusAdminGateway,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -87,6 +89,7 @@ class ProxyProductionBindings {
   final MfaRemovalWorker mfaRemovalWorker;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
+  final CorpusAdminProxyGateway corpusAdminGateway;
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -256,6 +259,15 @@ ProxyProductionBindings buildProxyProductionBindings(
       operatorsRepository: OperatorsRepository(adminWrapper),
       usageCapsRepository: UsageCapsRepository(adminWrapper),
       orgUnitsRepository: OrgUnitsRepository(adminWrapper),
+      auditRepository: adminAudit,
+    ),
+    // Phase 11A.3a — corpus admin gateway. Same admin pool rationale
+    // as pricing: the corpus is shared methodology across operators,
+    // not tenant-scoped data. The repository runs through `withSystem`
+    // (forge_admin BYPASSRLS) so the read/write covers every chunk +
+    // version row.
+    corpusAdminGateway: RepositoryCorpusAdminProxyGateway(
+      corpusRepository: CorpusRepository(adminWrapper),
       auditRepository: adminAudit,
     ),
   );
@@ -954,6 +966,179 @@ class RepositoryPricingTierAdminProxyGateway
       actorUserId: actorUserId,
       operatorId: operatorId,
       locationId: locationId,
+      eventType: eventType,
+      adminReason: adminReason,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+}
+
+/// Production [CorpusAdminProxyGateway] backed by [CorpusRepository].
+///
+/// Live chunking, embedding generation, and Voyage / Anthropic calls
+/// are out of scope for this slice — the production binding wires the
+/// admin path against the repository's existing transactional commit
+/// helper. The actual upload pipeline lights up in 11A.3b once the
+/// markdown chunker is split out of `tool/advisor_corpus/main.dart`
+/// into a server-side helper. The current binding rejects an upload
+/// until that helper is wired so the route never silently writes an
+/// empty version row in production.
+class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
+  RepositoryCorpusAdminProxyGateway({
+    required CorpusRepository corpusRepository,
+    required AuthEventsAuditRepository auditRepository,
+  })  : _corpus = corpusRepository,
+        _auditRepository = auditRepository;
+
+  final CorpusRepository _corpus;
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<List<Map<String, Object?>>> listVersions({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final versions = await _corpus.listVersions(adminReason: adminReason);
+    final payload = <Map<String, Object?>>[
+      for (final v in versions) v.toJson(),
+    ];
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.corpus.list',
+      adminReason: adminReason,
+      payload: <String, Object?>{'version_count': versions.length},
+    );
+    return payload;
+  }
+
+  @override
+  Future<Map<String, Object?>?> fetchVersion({
+    required String actorUserId,
+    required String versionId,
+    required String adminReason,
+  }) async {
+    final all = await _corpus.listVersions(adminReason: adminReason);
+    CorpusVersionRow? ref;
+    for (final v in all) {
+      if (v.versionId == versionId) {
+        ref = v;
+        break;
+      }
+    }
+    if (ref == null) return null;
+    final chunks = await _corpus.chunksForVersion(
+      versionId: versionId,
+      adminReason: '$adminReason:chunks:$versionId',
+    );
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.corpus.fetch',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'version_id': versionId,
+        'chunk_count': chunks.length,
+      },
+    );
+    return <String, Object?>{
+      'version': <String, Object?>{
+        ...ref.toJson(),
+        'chunk_count': chunks.length,
+      },
+      'chunks': <Map<String, Object?>>[
+        for (final c in chunks)
+          <String, Object?>{
+            ...c.toJson(),
+            'snippet': c.text.length > 280
+                ? '${c.text.substring(0, 280)}…'
+                : c.text,
+          },
+      ],
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> previewDiff({
+    required String actorUserId,
+    required String fileName,
+    required String contentType,
+    required List<int> bytes,
+    required String idempotencyKey,
+    required String adminReason,
+  }) {
+    // 11A.3b owns the live chunker. Surface a typed validation error
+    // so the screen renders the actionable banner instead of a 503.
+    throw const CorpusAdminGatewayValidationError(
+      statusCode: 503,
+      code: 'corpus_pipeline_not_configured',
+      message:
+          'corpus upload pipeline ships in 11A.3b; '
+          'demo mode runs the in-memory gateway end-to-end',
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>> commitVersion({
+    required String actorUserId,
+    required String previewToken,
+    required String summary,
+    required String idempotencyKey,
+    required String adminReason,
+  }) {
+    throw const CorpusAdminGatewayValidationError(
+      statusCode: 503,
+      code: 'corpus_pipeline_not_configured',
+      message: 'corpus commit pipeline ships in 11A.3b',
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> rollbackVersion({
+    required String actorUserId,
+    required String targetVersionId,
+    required String summary,
+    required String idempotencyKey,
+    required String adminReason,
+  }) async {
+    // Forward the idempotency key into the repository so a retry
+    // collapses to the same `corpus_versions` row. Without this, a
+    // dropped response followed by a client retry would write a
+    // second rollback ledger entry plus a second audit row, which
+    // contradicts the slice's "same key → same response" promise.
+    final result = await _corpus.rollbackToVersion(
+      targetVersionId: targetVersionId,
+      actorUserId: actorUserId,
+      summary: summary.isEmpty
+          ? 'Rolled back to $targetVersionId'
+          : summary,
+      adminReason: adminReason,
+      idempotencyKey: idempotencyKey,
+    );
+    // Skip the audit insert on a cache replay — the prior request
+    // that filled the cache already wrote the audit row, and writing
+    // again would leave two audit entries for one logical change.
+    if (!result.replayed) {
+      await _audit(
+        actorUserId: actorUserId,
+        eventType: 'admin.corpus.rollback',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'target_version_id': targetVersionId,
+          'new_version_id': result.version.versionId,
+          'idempotency_key': idempotencyKey,
+        },
+      );
+    }
+    return result.version.toJson();
+  }
+
+  Future<void> _audit({
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
       eventType: eventType,
       adminReason: adminReason,
       payload: <String, Object?>{'admin_reason': adminReason, ...payload},

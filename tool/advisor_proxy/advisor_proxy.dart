@@ -3273,6 +3273,94 @@ abstract class PricingTierAdminProxyGateway {
   });
 }
 
+// Phase 11A.3a — Corpus admin routes. F&F internal-only with the same
+// method-scoped split the pricing surface uses: GET admits
+// `super_admin` + `ff_support` so support users can browse the
+// corpus ledger; POST stays strictly `super_admin` because uploads,
+// commits, and rollbacks rewrite the advisor source corpus.
+const String adminCorpusVersionsPath = '/v1/admin/corpus/versions';
+const String adminCorpusVersionsPrefix = '$adminCorpusVersionsPath/';
+const String adminCorpusUploadPath = '/v1/admin/corpus/upload';
+const String adminCorpusPreviewDiffPath = '/v1/admin/corpus/preview-diff';
+const String adminCorpusCommitPath = '/v1/admin/corpus/commit';
+const String adminCorpusRollbackPath = '/v1/admin/corpus/rollback';
+
+const Set<String> kFfCorpusAdminWriteRoles = <String>{'super_admin'};
+const Set<String> kFfCorpusAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+/// Validation error raised by [CorpusAdminProxyGateway] implementations
+/// when a request is rejected for business reasons (e.g. binary
+/// upload, unknown preview token). The proxy route handler maps it
+/// back to a structured 4xx response.
+class CorpusAdminGatewayValidationError implements Exception {
+  const CorpusAdminGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'CorpusAdminGatewayValidationError($statusCode/$code): $message';
+}
+
+/// Gateway the proxy delegates to for `/v1/admin/corpus/*` route
+/// handling. Returns JSON-ready maps so the proxy handler can wrap
+/// them in a 200 response without translating shapes a second time.
+abstract class CorpusAdminProxyGateway {
+  /// Returns `{'versions': [{'version_id': ...}, ...]}` shape
+  /// payloads for the ledger listing surface.
+  Future<List<Map<String, Object?>>> listVersions({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Returns `{'version': {...}, 'chunks': [{...}]}` for one
+  /// corpus_versions row.
+  Future<Map<String, Object?>?> fetchVersion({
+    required String actorUserId,
+    required String versionId,
+    required String adminReason,
+  });
+
+  /// Stages an upload. Returns the diff payload + a preview token the
+  /// commit step quotes back to resolve the staged set.
+  Future<Map<String, Object?>> previewDiff({
+    required String actorUserId,
+    required String fileName,
+    required String contentType,
+    required List<int> bytes,
+    required String idempotencyKey,
+    required String adminReason,
+  });
+
+  /// Commits the staged upload. Returns the inserted version row.
+  Future<Map<String, Object?>> commitVersion({
+    required String actorUserId,
+    required String previewToken,
+    required String summary,
+    required String idempotencyKey,
+    required String adminReason,
+  });
+
+  /// Rolls back to a prior version. Returns the new version row whose
+  /// `rollback_of` carries the target id.
+  Future<Map<String, Object?>?> rollbackVersion({
+    required String actorUserId,
+    required String targetVersionId,
+    required String summary,
+    required String idempotencyKey,
+    required String adminReason,
+  });
+}
+
 /// Roles that admit a caller to `/v1/admin/operators` and
 /// `/v1/admin/locations`. This 11A.1 surface is intentionally
 /// super-admin-only because it exposes unscoped cross-operator reads
@@ -3500,6 +3588,7 @@ Future<void> routeRequest(
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
+  CorpusAdminProxyGateway? corpusAdminGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -3521,6 +3610,15 @@ Future<void> routeRequest(
     final isAdminPricingPath = _isAdminPricingPath(path);
     if (isAdminPricingPath) {
       _setAdminPricingCorsHeaders(response);
+      if (request.method == 'OPTIONS') {
+        response.statusCode = HttpStatus.noContent;
+        response.contentLength = 0;
+        return;
+      }
+    }
+    final isAdminCorpusPath = _isAdminCorpusPath(path);
+    if (isAdminCorpusPath) {
+      _setAdminCorpusCorsHeaders(response);
       if (request.method == 'OPTIONS') {
         response.statusCode = HttpStatus.noContent;
         response.contentLength = 0;
@@ -5587,6 +5685,97 @@ Future<void> routeRequest(
       return;
     }
 
+    if (_isAdminCorpusOperation(path, request.method)) {
+      if (corpusAdminGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'corpus_admin_not_configured',
+          'message':
+              'route requires a CorpusAdminProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      final corpusMethod = request.method;
+      final corpusRoles = corpusMethod == 'GET'
+          ? kFfCorpusAdminReadRoles
+          : kFfCorpusAdminWriteRoles;
+      if (!_callerHasAnyRole(actor, corpusRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': corpusRoles.toList(),
+        });
+        return;
+      }
+
+      // Mutating routes require an Idempotency-Key header so retries
+      // collapse to one ledger row instead of stamping a duplicate.
+      // GETs are pure reads; the header is optional there.
+      String? idempotencyKey;
+      if (corpusMethod != 'GET') {
+        idempotencyKey =
+            request.headers.value('Idempotency-Key')?.trim();
+        if (idempotencyKey == null || idempotencyKey.isEmpty) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'missing_idempotency_key',
+            'message': 'Idempotency-Key header is required',
+          });
+          return;
+        }
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        await _routeCorpusAdmin(
+          request: request,
+          response: response,
+          path: path,
+          gateway: corpusAdminGateway,
+          actorUserId: actor.userId,
+          idempotencyKey: idempotencyKey ?? '',
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is CorpusAdminGatewayValidationError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'corpus_admin_unavailable',
+          'message':
+              'corpus admin operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (_isAdminOperatorOrLocationOperation(path, request.method)) {
       if (operatorLocationAdminGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -6056,6 +6245,138 @@ Future<void> _routePricingAdmin({
           '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
     );
     _writeJson(response, 200, <String, Object?>{'cap': cap});
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+bool _isAdminCorpusPath(String path) {
+  if (path == adminCorpusVersionsPath ||
+      path.startsWith(adminCorpusVersionsPrefix)) {
+    return true;
+  }
+  if (path == adminCorpusUploadPath) return true;
+  if (path == adminCorpusPreviewDiffPath) return true;
+  if (path == adminCorpusCommitPath) return true;
+  if (path == adminCorpusRollbackPath) return true;
+  return false;
+}
+
+bool _isAdminCorpusOperation(String path, String method) {
+  if (method == 'GET' && path == adminCorpusVersionsPath) return true;
+  if (method == 'GET' && path.startsWith(adminCorpusVersionsPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && path == adminCorpusUploadPath) return true;
+  if (method == 'POST' && path == adminCorpusPreviewDiffPath) return true;
+  if (method == 'POST' && path == adminCorpusCommitPath) return true;
+  if (method == 'POST' && path == adminCorpusRollbackPath) return true;
+  return false;
+}
+
+Future<void> _routeCorpusAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required CorpusAdminProxyGateway gateway,
+  required String actorUserId,
+  required String idempotencyKey,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.corpus.$method:$actorUserId';
+
+  if (method == 'GET' && path == adminCorpusVersionsPath) {
+    final versions = await gateway.listVersions(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, <String, Object?>{'versions': versions});
+    return;
+  }
+
+  if (method == 'GET' && path.startsWith(adminCorpusVersionsPrefix)) {
+    final tail = _pathSuffix(path, adminCorpusVersionsPrefix);
+    if (tail == null || tail.contains('/')) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final bundle = await gateway.fetchVersion(
+      actorUserId: actorUserId,
+      versionId: tail,
+      adminReason: '$reasonPrefix:fetch:$tail',
+    );
+    if (bundle == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_version',
+        'message': 'corpus version not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, bundle);
+    return;
+  }
+
+  if (method == 'POST' &&
+      (path == adminCorpusPreviewDiffPath || path == adminCorpusUploadPath)) {
+    final fileName = _requireBodyString(body, 'file_name');
+    final contentType = _requireBodyString(body, 'content_type');
+    final base64 = _requireBodyString(body, 'content_base64');
+    List<int> bytes;
+    try {
+      bytes = const Base64Decoder().convert(base64);
+    } catch (_) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_content_base64',
+        message: 'content_base64 is not a valid base64 payload',
+      );
+    }
+    final result = await gateway.previewDiff(
+      actorUserId: actorUserId,
+      fileName: fileName,
+      contentType: contentType,
+      bytes: bytes,
+      idempotencyKey: idempotencyKey,
+      adminReason: '$reasonPrefix:preview_diff:$fileName',
+    );
+    _writeJson(response, 200, result);
+    return;
+  }
+
+  if (method == 'POST' && path == adminCorpusCommitPath) {
+    final previewToken = _requireBodyString(body, 'preview_token');
+    final summary = _optionalBodyString(body, 'summary') ?? '';
+    final result = await gateway.commitVersion(
+      actorUserId: actorUserId,
+      previewToken: previewToken,
+      summary: summary,
+      idempotencyKey: idempotencyKey,
+      adminReason: '$reasonPrefix:commit:$previewToken',
+    );
+    _writeJson(response, 200, <String, Object?>{'version': result});
+    return;
+  }
+
+  if (method == 'POST' && path == adminCorpusRollbackPath) {
+    final targetVersionId = _requireBodyString(body, 'target_version_id');
+    final summary = _optionalBodyString(body, 'summary') ?? '';
+    final result = await gateway.rollbackVersion(
+      actorUserId: actorUserId,
+      targetVersionId: targetVersionId,
+      summary: summary,
+      idempotencyKey: idempotencyKey,
+      adminReason: '$reasonPrefix:rollback:$targetVersionId',
+    );
+    if (result == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_version',
+        'message': 'rollback target version not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'version': result});
     return;
   }
 
@@ -6747,6 +7068,23 @@ void _setAdminPricingCorsHeaders(HttpResponse response) {
   response.headers.set(
     'Access-Control-Allow-Headers',
     'Authorization,Content-Type,Accept',
+  );
+  response.headers.set('Access-Control-Max-Age', '3600');
+}
+
+// Phase 11A.3a — corpus admin routes accept POST + GET only. The
+// commit / rollback / preview-diff routes also need the
+// `Idempotency-Key` request header in CORS preflight, otherwise the
+// browser strips it before the proxy ever sees it.
+void _setAdminCorpusCorsHeaders(HttpResponse response) {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET,POST,OPTIONS',
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Authorization,Content-Type,Accept,Idempotency-Key',
   );
   response.headers.set('Access-Control-Max-Age', '3600');
 }

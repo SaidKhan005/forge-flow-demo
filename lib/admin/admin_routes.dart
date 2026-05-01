@@ -17,11 +17,14 @@
 import 'package:flutter/material.dart';
 
 import 'admin_auth_gate.dart';
+import 'models/corpus_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_home_screen.dart';
+import 'screens/corpus_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
+import 'services/corpus_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 
@@ -78,6 +81,9 @@ const String kAdminOperatorsRouteId = 'operators';
 /// Canonical Pricing route ID (11A.2).
 const String kAdminPricingRouteId = 'pricing';
 
+/// Canonical Corpus route ID (11A.3a).
+const String kAdminCorpusRouteId = 'corpus';
+
 /// The admin route table. Order is the side-nav order. 11A.1 promotes
 /// `operators` from placeholder to live; the rest are deliberately
 /// marked `placeholder` so the surface area is visible to operators
@@ -108,13 +114,12 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildPricing,
   ),
   AdminRoute(
-    id: 'corpus',
+    id: kAdminCorpusRouteId,
     title: 'Corpus',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    subtitle: 'Markdown corpus admin lands in 11A.3.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle: 'Markdown corpus upload, preview, commit, rollback.',
+    builder: _buildCorpus,
   ),
   AdminRoute(
     id: 'integrations',
@@ -176,6 +181,28 @@ Widget _buildPricing(BuildContext context) {
   );
 }
 
+Widget _buildCorpus(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    // No source wired (test path) — default to live edit affordances.
+    return CorpusAdminScreen(gateway: gateway);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return CorpusAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
@@ -193,6 +220,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     required super.child,
     this.operatorLocationGateway,
     this.pricingTierGateway,
+    this.corpusAdminGateway,
     this.adminAuthSource,
   });
 
@@ -208,6 +236,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// fallback is a seeded in-memory demo gateway shared with the
   /// walkthrough.
   final PricingTierAdminGateway? pricingTierGateway;
+
+  /// Phase 11A.3a — corpus admin gateway. Optional for the same
+  /// incremental-wiring reason. Default fallback is the seeded
+  /// in-memory corpus demo gateway shared with the 11A.3a walkthrough.
+  final CorpusAdminGateway? corpusAdminGateway;
 
   /// Phase 11A.2 — admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -231,6 +264,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.pricingTierGateway ?? _defaultPricingDemoGateway;
   }
 
+  static CorpusAdminGateway corpusAdminGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.corpusAdminGateway ?? _defaultCorpusDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -241,6 +280,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
   bool updateShouldNotify(AdminConsoleServicesScope oldWidget) =>
       operatorLocationGateway != oldWidget.operatorLocationGateway ||
       pricingTierGateway != oldWidget.pricingTierGateway ||
+      corpusAdminGateway != oldWidget.corpusAdminGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -356,4 +396,111 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
           ],
         ),
       ],
+    );
+
+/// 11A.3a fallback corpus admin gateway. Seeded with two demo
+/// versions so the walkthrough has both a "current" and a "prior"
+/// row to render. Demo chunks live entirely in memory; the seed
+/// summary text doubles as the 11A.3a click-path script.
+final CorpusAdminGateway _defaultCorpusDemoGateway =
+    InMemoryCorpusAdminGateway(
+      seed: <CorpusBundle>[
+        CorpusBundle(
+          version: CorpusVersionRef(
+            versionId: '00000000-0000-4000-9000-000000000001',
+            createdBy: 'demo-super-admin',
+            createdAt: DateTime.utc(2026, 1, 14, 9, 0),
+            summary: 'Initial methodology seed',
+            rollbackOf: null,
+            supersededAt: DateTime.utc(2026, 3, 1, 10, 0),
+            chunkCount: 2,
+          ),
+          chunks: <ChunkPreview>[
+            ChunkPreview(
+              chunkId: 'methodology_seed.md#000',
+              docId: 'methodology_seed.md',
+              sourcePath: 'methodology_seed.md',
+              headingPath: <String>['Forge & Flow Methodology'],
+              snippet:
+                  'Forge & Flow advisor methodology. Source-truth, '
+                  'derived metrics, teaching summaries.',
+              estimatedTokens: 64,
+              riskLevel: 'standard',
+              contentSha256: 'a' * 64,
+              versionId: '00000000-0000-4000-9000-000000000001',
+              active: false,
+            ),
+            ChunkPreview(
+              chunkId: 'methodology_seed.md#001',
+              docId: 'methodology_seed.md',
+              sourcePath: 'methodology_seed.md',
+              headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+              snippet:
+                  'Sixty-day target cycles lock standards. Weekly plan '
+                  'snapshots compare actuals against the locked target.',
+              estimatedTokens: 80,
+              riskLevel: 'standard',
+              contentSha256: 'b' * 64,
+              versionId: '00000000-0000-4000-9000-000000000001',
+              active: false,
+            ),
+          ],
+        ),
+        CorpusBundle(
+          version: CorpusVersionRef(
+            versionId: '00000000-0000-4000-9000-000000000002',
+            createdBy: 'demo-super-admin',
+            createdAt: DateTime.utc(2026, 3, 1, 10, 0),
+            summary: 'Added daypart guidance',
+            rollbackOf: null,
+            supersededAt: null,
+            chunkCount: 3,
+          ),
+          chunks: <ChunkPreview>[
+            ChunkPreview(
+              chunkId: 'methodology_seed.md#000',
+              docId: 'methodology_seed.md',
+              sourcePath: 'methodology_seed.md',
+              headingPath: <String>['Forge & Flow Methodology'],
+              snippet:
+                  'Forge & Flow advisor methodology. Source-truth, '
+                  'derived metrics, teaching summaries.',
+              estimatedTokens: 64,
+              riskLevel: 'standard',
+              contentSha256: 'a' * 64,
+              versionId: '00000000-0000-4000-9000-000000000002',
+              active: true,
+            ),
+            ChunkPreview(
+              chunkId: 'methodology_seed.md#001',
+              docId: 'methodology_seed.md',
+              sourcePath: 'methodology_seed.md',
+              headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+              snippet:
+                  'Sixty-day target cycles lock standards. Weekly plan '
+                  'snapshots compare actuals against the locked target.',
+              estimatedTokens: 80,
+              riskLevel: 'standard',
+              contentSha256: 'b' * 64,
+              versionId: '00000000-0000-4000-9000-000000000002',
+              active: true,
+            ),
+            ChunkPreview(
+              chunkId: 'methodology_seed.md#002',
+              docId: 'methodology_seed.md',
+              sourcePath: 'methodology_seed.md',
+              headingPath: <String>['Forge & Flow Methodology', 'Daypart'],
+              snippet:
+                  'Daypart guidance lives alongside whole-day truth, '
+                  'never replacing it. 10.5 introduces the daypart split.',
+              estimatedTokens: 72,
+              riskLevel: 'standard',
+              contentSha256: 'c' * 64,
+              versionId: '00000000-0000-4000-9000-000000000002',
+              active: true,
+            ),
+          ],
+        ),
+      ],
+      actorUserId: 'demo-super-admin',
     );
