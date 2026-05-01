@@ -5,6 +5,7 @@
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
@@ -115,9 +116,23 @@ ProxyProductionBindings buildProxyProductionBindings(
   final tenantWrapper = TenantTransactionWrapper(tenantPool);
   final adminWrapper = TenantTransactionWrapper(adminPool);
 
+  // Phase 9.0Σ.f B.2 — live-wired audit_logs cutover flag. Both the
+  // tenant- and admin-pool `AuthEventsAuditRepository` instances and
+  // the B41 issuance gateway read this resolver per write so flipping
+  // the seeded `feature_flags.audit_logs_cutover_enabled` row to
+  // `false` immediately routes new traffic back to the legacy
+  // `auth_events_audit`-only path. The same const resolver is shared
+  // across constructions because the impl is stateless.
+  const auditLogsCutoverFlag = FeatureFlagsTableAuditLogsCutoverFlag();
+  const auditLogsRepository = AuditLogsRepository();
+
   final tenantUserRoles = UserRolesRepository(tenantWrapper);
   final tenantRolePermissions = RolePermissionsRepository(tenantWrapper);
-  final tenantAudit = AuthEventsAuditRepository(tenantWrapper);
+  final tenantAudit = AuthEventsAuditRepository(
+    tenantWrapper,
+    auditLogsRepository: auditLogsRepository,
+    cutoverFlag: auditLogsCutoverFlag,
+  );
   final tenantUsers = UsersRepository(tenantWrapper);
   final tenantMfaFactors = MfaFactorsRepository(tenantWrapper);
   final tenantMfaRemovalRequests = MfaFactorRemovalRequestsRepository(
@@ -132,7 +147,11 @@ ProxyProductionBindings buildProxyProductionBindings(
   final firebaseMfaClient = IdentityToolkitFirebaseMfaClient(
     apiKey: config.secretFor(ProxySecretNames.firebaseWebApiKey),
   );
-  final adminAudit = AuthEventsAuditRepository(adminWrapper);
+  final adminAudit = AuthEventsAuditRepository(
+    adminWrapper,
+    auditLogsRepository: auditLogsRepository,
+    cutoverFlag: auditLogsCutoverFlag,
+  );
   final authOperationsGateway = RepositoryAuthOperationsGateway(
     firebaseAdmin: firebaseAdmin,
     usersRepository: UsersRepository(adminWrapper),
@@ -148,7 +167,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     // policy gate the projection without disturbing the existing
     // writer.
     auditRepository: adminAudit,
-    auditReadRepository: AuthEventsAuditRepository(tenantWrapper),
+    auditReadRepository: AuthEventsAuditRepository(
+      tenantWrapper,
+      auditLogsRepository: auditLogsRepository,
+      cutoverFlag: auditLogsCutoverFlag,
+    ),
     // Phase 9.UX.4: tenant-scoped reads/writes — per-operator RLS
     // policies on `org_units` + `locations` are the gate, so the
     // repo runs through the tenant pool, not the admin pool.
@@ -190,6 +213,8 @@ ProxyProductionBindings buildProxyProductionBindings(
               ProxySecretNames.servicePrincipalJwtSecret,
             ),
           ),
+          auditLogsRepository: auditLogsRepository,
+          cutoverFlag: auditLogsCutoverFlag,
         ),
     passwordChangeGateway: RepositoryPasswordChangeGateway(
       firebaseAdmin: firebaseAdmin,

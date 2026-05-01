@@ -44,6 +44,7 @@ import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
@@ -1672,13 +1673,31 @@ class PostgresServicePrincipalJwtIssuanceGateway
     required ServicePrincipalJwtIssuer issuer,
     this.ttl = const Duration(minutes: 15),
     this.rateLimitPerHour = 100,
+    AuditLogsRepository auditLogsRepository = const AuditLogsRepository(),
+    AuditLogsCutoverFlag cutoverFlag = const FixedAuditLogsCutoverFlag(true),
   }) : _wrapper = wrapper,
-       _issuer = issuer;
+       _issuer = issuer,
+       _auditLogsRepository = auditLogsRepository,
+       _cutoverFlag = cutoverFlag;
 
   final TenantTransactionWrapper _wrapper;
   final ServicePrincipalJwtIssuer _issuer;
   final Duration ttl;
   final int rateLimitPerHour;
+
+  /// Phase 9.0Σ.f B.2 — fan-out target for the hash-chained
+  /// `public.audit_logs` table. The B41 issuance gateway writes its
+  /// audit row directly via raw SQL (NOT through
+  /// `AuthEventsAuditRepository`), so the fan-out lives here at the
+  /// gateway boundary too.
+  final AuditLogsRepository _auditLogsRepository;
+
+  /// Phase 9.0Σ.f B.2 — resolver for the `audit_logs_cutover_enabled`
+  /// feature flag. Production wires
+  /// `FeatureFlagsTableAuditLogsCutoverFlag` so flipping the seeded
+  /// row to `false` immediately routes new writes back to the legacy
+  /// `auth_events_audit`-only path.
+  final AuditLogsCutoverFlag _cutoverFlag;
 
   @override
   Future<ServicePrincipalJwtIssued> issue(
@@ -1948,6 +1967,13 @@ select count(*)::int as issuance_count
     required DateTime issuedAt,
     required DateTime expiresAt,
   }) async {
+    final payload = <String, Object?>{
+      'issued_by_user_id': command.operator.userId,
+      'service_principal_id': principal.id,
+      'scopes': principal.scopes,
+      'issued_at': issuedAt.toIso8601String(),
+      'expires_at': expiresAt.toIso8601String(),
+    };
     await exec.query(
       '''
 insert into public.auth_events_audit (
@@ -1976,15 +2002,25 @@ returning event_id::text as event_id
         'operator_id': command.operator.operatorId,
         'location_id': command.operator.locationId,
         'event_type': PermissionKeys.adminServicePrincipalIssueToken,
-        'payload': jsonEncode(<String, Object?>{
-          'issued_by_user_id': command.operator.userId,
-          'service_principal_id': principal.id,
-          'scopes': principal.scopes,
-          'issued_at': issuedAt.toIso8601String(),
-          'expires_at': expiresAt.toIso8601String(),
-        }),
+        'payload': jsonEncode(payload),
       },
     );
+    if (await _cutoverFlag.isEnabled(exec)) {
+      // CLAUDE.md "Service principals" + 9.0Σ.f migration column comment:
+      // audit_logs.actor_principal_id holds the canonical `sp:<uuid>`
+      // JWT subject, not the bare uuid; the audit_logs_actor_shape_check
+      // rejects rows that set both actor slots.
+      await _auditLogsRepository.writeRow(
+        exec,
+        operatorId: command.operator.operatorId,
+        locationId: command.operator.locationId,
+        occurredAt: issuedAt,
+        actorKind: 'service',
+        actorPrincipalId: 'sp:${principal.id}',
+        action: PermissionKeys.adminServicePrincipalIssueToken,
+        payload: payload,
+      );
+    }
   }
 
   Future<void> _completeIdempotency(

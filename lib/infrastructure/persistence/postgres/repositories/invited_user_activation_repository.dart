@@ -9,6 +9,7 @@
 import 'dart:convert';
 
 import '../operator_scoped_repository.dart';
+import 'audit_logs_repository.dart';
 
 class InvitedUserActivationResult {
   const InvitedUserActivationResult._({required this.activated, this.inviteId});
@@ -23,7 +24,23 @@ class InvitedUserActivationResult {
 }
 
 class InvitedUserActivationRepository extends OperatorScopedRepository {
-  InvitedUserActivationRepository(super.tenantWrapper);
+  InvitedUserActivationRepository(
+    super.tenantWrapper, {
+    AuditLogsRepository auditLogsRepository = const AuditLogsRepository(),
+    AuditLogsCutoverFlag cutoverFlag = const FixedAuditLogsCutoverFlag(true),
+  }) : _auditLogsRepository = auditLogsRepository,
+       _cutoverFlag = cutoverFlag;
+
+  /// Phase 9.0Σ.f B.2 — fan-out target for the hash-chained
+  /// `public.audit_logs` table. The invited-user activation runs raw
+  /// SQL through `withSystem`, so the fan-out lives at this gateway
+  /// boundary too.
+  final AuditLogsRepository _auditLogsRepository;
+
+  /// Phase 9.0Σ.f B.2 — live-wired flag resolver. Production reads
+  /// the seeded `feature_flags` row so flipping it to `false` routes
+  /// new writes back to the legacy `auth_events_audit`-only path.
+  final AuditLogsCutoverFlag _cutoverFlag;
 
   Future<InvitedUserActivationResult> acceptPendingInviteAfterLogin({
     required String operatorId,
@@ -96,6 +113,10 @@ class InvitedUserActivationRepository extends OperatorScopedRepository {
         throw StateError('invited user activation updated no rows');
       }
 
+      final eventPayload = <String, Object?>{
+        'invite_id': inviteId,
+        'first_password_completed': true,
+      };
       await exec.query(
         'insert into auth_events_audit ('
         'event_type, operator_id, location_id, actor_user_id, target_user_id, '
@@ -111,12 +132,22 @@ class InvitedUserActivationRepository extends OperatorScopedRepository {
           'location_id': locationId,
           'actor_user_id': userId,
           'target_user_id': userId,
-          'event_payload': jsonEncode(<String, Object?>{
-            'invite_id': inviteId,
-            'first_password_completed': true,
-          }),
+          'event_payload': jsonEncode(eventPayload),
         },
       );
+      if (await _cutoverFlag.isEnabled(exec)) {
+        await _auditLogsRepository.writeRow(
+          exec,
+          operatorId: operatorId,
+          locationId: locationId,
+          actorKind: 'user',
+          actorUserId: userId,
+          targetKind: 'user',
+          targetId: userId,
+          action: 'auth.invite_accepted',
+          payload: eventPayload,
+        );
+      }
 
       return InvitedUserActivationResult.accepted(inviteId: inviteId);
     }, reason: 'auth.invite_acceptance');
