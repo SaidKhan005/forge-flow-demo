@@ -1569,3 +1569,7 @@ After 9.9 closes:
 - WorkOS evaluation (9-future-1) requires legal review of WorkOS DPA
   alongside 9.8 compliance work; not part of Phase 9 scope but worth
   flagging for whoever picks it up.
+- Audit-writer cutover from `auth_events_audit` to `audit_logs` —
+  decision + field mapping + rollback in
+  `docs/phases/phase_9/phase_9_audit_logs_cutover_spec.md` (closes
+  the B.3 e2e suite when the writer slice B.2 ships).
