@@ -237,7 +237,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
-| `9.UX.*` family | operator surface complete; awaits B48 + `account_info` proxy redeploy before family retires | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
+| `9.UX.*` family | operator surface complete; staging proxy redeployed 2026-05-01 (rev `00032-lgs`) with `account_info: postgres` + B48 `password_reset_confirm: postgres` bindings live; Production1 redeploy queued behind Production1 GCP provisioning | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` + `runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md` |
 | `11A.0-6` | active; accepted: `11A.0`/`1`/`2`; owed: `11A.3-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |

@@ -1,10 +1,21 @@
-# Deploy the Forge Flow staging advisor proxy to Cloud Run.
+# Deploy the Forge Flow advisor proxy to Cloud Run.
 #
 # The script loads values from the unified non-repo secrets file, verifies
 # required env names by presence only, syncs required secret values into
 # Secret Manager, deploys the service with Secret Manager env references, then
-# stores the resulting proxy URI back into the non-repo secrets loader as
-# FORGE_FLOW_PROXY_BASE_URI.
+# stores the resulting proxy URI back into the non-repo secrets loader under
+# the env var named by -ProxyBaseUriEnvVarName (default FORGE_FLOW_PROXY_BASE_URI).
+#
+# Multi-environment posture (matches scripts/deploy_audit_anchor_job.ps1):
+#   * Defaults target staging. Override -Project / -Region / -Service /
+#     -ServiceAccount / -SecretPrefix / -ProxyBaseUriEnvVarName /
+#     -FirebaseGoogleServicesPath for production1 or any other environment.
+#   * -SecretPrefix MUST end with '-'. Convention: 'forge-flow-<env>-'.
+#   * Secret name suffixes are stable; the prefix toggles per environment.
+#   * Each non-staging environment requires its own pre-provisioned
+#     Secret Manager namespace and (if the proxy reads FIREBASE_WEB_API_KEY
+#     from a per-flavor google-services.json) its own
+#     -FirebaseGoogleServicesPath override.
 
 param(
   [string] $Project = 'forge-flow-staging',
@@ -12,10 +23,29 @@ param(
   [string] $Service = 'forge-flow-staging-proxy',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
+  # Secret Manager name prefix. Convention: 'forge-flow-<env>-'. Trailing
+  # '-' is required. Defaults to staging so existing call sites keep
+  # working; override to 'forge-flow-production-' for production1.
+  [string] $SecretPrefix = 'forge-flow-staging-',
+  # Env var name written back into the secrets file with the deployed
+  # proxy URL. Defaults to the staging variable; production deploys
+  # should use a distinct name (e.g. 'FORGE_FLOW_PROXY_BASE_URI_PROD1').
+  [string] $ProxyBaseUriEnvVarName = 'FORGE_FLOW_PROXY_BASE_URI',
+  # Path to the Firebase google-services.json this deploy should pull
+  # FIREBASE_WEB_API_KEY from when the env var isn't already set.
+  # Empty (default) resolves to the staging flutter flavor at
+  # 'android\app\src\forgeflow\google-services.json'. Production deploys
+  # should pass the matching per-flavor file (e.g. 'forgeflow_prod1').
+  [string] $FirebaseGoogleServicesPath = '',
   [int] $MinInstances = 1,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
 )
+
+if (-not $SecretPrefix.EndsWith('-')) {
+  Write-Host "BLOCKED: -SecretPrefix '$SecretPrefix' must end with '-'."
+  exit 1
+}
 
 $ErrorActionPreference = 'Stop'
 
@@ -51,7 +81,11 @@ function Resolve-FirebaseWebApiKey {
     return
   }
 
-  $googleServicesPath = Join-Path $repoRoot 'android\app\src\forgeflow\google-services.json'
+  if ([string]::IsNullOrWhiteSpace($FirebaseGoogleServicesPath)) {
+    $googleServicesPath = Join-Path $repoRoot 'android\app\src\forgeflow\google-services.json'
+  } else {
+    $googleServicesPath = $FirebaseGoogleServicesPath
+  }
   if (-not (Test-Path -LiteralPath $googleServicesPath)) {
     return
   }
@@ -99,13 +133,21 @@ if (-not $SkipSecretManagerSync) {
 }
 Assert-PresentEnv -Names $requiredEnv
 
-$secretEnv = [ordered] @{
-  'ANTHROPIC_API_KEY' = 'forge-flow-staging-anthropic-api-key'
-  'VOYAGE_API_KEY' = 'forge-flow-staging-voyage-api-key'
-  'POSTGRES_URL' = 'forge-flow-staging-postgres-url'
-  'POSTGRES_ADMIN_URL' = 'forge-flow-staging-postgres-admin-url'
-  'FIREBASE_WEB_API_KEY' = 'forge-flow-staging-firebase-web-api-key'
-  'SERVICE_PRINCIPAL_JWT_SECRET' = 'forge-flow-staging-service-principal-jwt-secret'
+# Secret name suffixes are stable across environments. The prefix
+# toggles per env via -SecretPrefix. Convention mirrors
+# scripts/deploy_audit_anchor_job.ps1 (lines 112-122) so a single
+# rotation can sync proxy + job secrets under the same env namespace.
+$secretSuffix = [ordered] @{
+  'ANTHROPIC_API_KEY'             = 'anthropic-api-key'
+  'VOYAGE_API_KEY'                = 'voyage-api-key'
+  'POSTGRES_URL'                  = 'postgres-url'
+  'POSTGRES_ADMIN_URL'            = 'postgres-admin-url'
+  'FIREBASE_WEB_API_KEY'          = 'firebase-web-api-key'
+  'SERVICE_PRINCIPAL_JWT_SECRET'  = 'service-principal-jwt-secret'
+}
+$secretEnv = [ordered] @{}
+foreach ($entry in $secretSuffix.GetEnumerator()) {
+  $secretEnv[$entry.Key] = "$SecretPrefix$($entry.Value)"
 }
 
 function Sync-SecretManagerSecret {
@@ -216,26 +258,26 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ([string]::IsNullOrWhiteSpace($proxyUri)) {
   Write-Host 'BLOCKED: missing required env names:'
-  Write-Host ' - deployed staging proxy URL'
+  Write-Host " - deployed proxy URL ($Service)"
   exit 1
 }
 
 $secretsText = [System.IO.File]::ReadAllText($SecretsFile)
-$assignmentPattern = '(?m)^\s*\$env:FORGE_FLOW_PROXY_BASE_URI\s*=.*$'
-$assignment = "`$env:FORGE_FLOW_PROXY_BASE_URI = '$($proxyUri.Replace("'", "''"))'"
+$assignmentPattern = "(?m)^\s*\`$env:$([regex]::Escape($ProxyBaseUriEnvVarName))\s*=.*`$"
+$assignment = "`$env:$ProxyBaseUriEnvVarName = '$($proxyUri.Replace("'", "''"))'"
 if ([regex]::IsMatch($secretsText, $assignmentPattern)) {
   $secretsText = [regex]::Replace($secretsText, $assignmentPattern, $assignment)
 } else {
   if (-not $secretsText.EndsWith("`n")) {
     $secretsText += "`r`n"
   }
-  $secretsText += "`r`n# Cloud Run staging proxy base URI for Firebase-auth app smoke.`r`n$assignment`r`n"
+  $secretsText += "`r`n# Cloud Run proxy base URI ($Project / $Service) for Firebase-auth app smoke.`r`n$assignment`r`n"
 }
 [System.IO.File]::WriteAllText($SecretsFile, $secretsText)
 
 Write-Host 'Deployment complete. Name-only prerequisites available:'
-Write-Host ' - deployed staging proxy URL'
-Write-Host ' - FORGE_FLOW_PROXY_BASE_URI'
+Write-Host " - deployed proxy URL ($Service)"
+Write-Host " - $ProxyBaseUriEnvVarName"
 Write-Host ' - FIREBASE_PROJECT_ID'
 Write-Host ' - FIREBASE_WEB_API_KEY'
 Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
