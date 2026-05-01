@@ -1,17 +1,16 @@
-// Tests for `tool/index_leading_column_lint.dart`. Four behaviours
-// from the slice spec:
+// Tests for `tool/index_leading_column_lint.dart`. Behaviours covered:
 //
-//   1. Real on-disk migrations — current repo passes (no errors;
-//      exactly one WARNING for role_audit_log indexes).
+//   1. Real on-disk migrations — current repo passes (zero errors,
+//      zero warnings post-slice-B.4 cleanup).
 //   2. Fixture with a non-operator-leading B-tree index on an
 //      operator-scoped table → ERROR.
-//   3. Fixture with a role_audit_log index → WARNING (one per file),
-//      lint exits 0.
-//   4. Fixture with an operator-leading composite → PASS.
-//   5. Pre-cutoff migration → not scanned (errors inside it ignored).
-//   6. GIST/GIN/HASH indexes are out of scope (not flagged).
-//   7. Partial index `WHERE operator_id IS NULL` is exempt.
-//   8. Hardcoded exemptions are honoured.
+//   3. Fixture with an operator-leading composite → PASS.
+//   4. Pre-cutoff migration → not scanned (errors inside it ignored).
+//   5. GIST/GIN/HASH indexes are out of scope (not flagged).
+//   6. Partial index `WHERE operator_id IS NULL` is exempt.
+//   7. Hardcoded exemptions are honoured.
+//   8. role_audit_log with operator_id added → indexes that don't
+//      lead with operator_id ERROR (no warn-only carve-out).
 
 import 'dart:io';
 
@@ -22,7 +21,7 @@ import '../../tool/index_leading_column_lint.dart';
 void main() {
   group('index_leading_column_lint', () {
     test('clean against the real on-disk migrations '
-        '(no errors; exactly one role_audit_log warning)', () {
+        '(no errors, no warnings post-slice-B.4)', () {
       final files = _readMigrationsDir();
       expect(
         files.isNotEmpty,
@@ -36,12 +35,14 @@ void main() {
         reason: 'real tree should not produce errors. '
             'errors: ${result.errors.toList()}',
       );
-      // Exactly one consolidated WARNING for role_audit_log per the
-      // slice spec acceptance.
-      final warnings = result.warnings.toList();
-      expect(warnings, hasLength(1));
-      expect(warnings.single.tableName, 'role_audit_log');
-      expect(warnings.single.severity, IndexLintSeverity.warning);
+      // Slice B.4 added operator_id to role_audit_log and dropped the
+      // legacy non-leading indexes. No warning carve-out remains.
+      expect(
+        result.warnings,
+        isEmpty,
+        reason: 'real tree should not produce warnings. '
+            'warnings: ${result.warnings.toList()}',
+      );
     });
 
     test('flags a non-operator-leading B-tree index on an '
@@ -69,30 +70,70 @@ create index if not exists fact_thing_business_date_idx
       expect(errs.single.leadingColumn, 'business_date');
     });
 
-    test('emits one consolidated WARNING for role_audit_log indexes; '
-        'lint reports no errors', () {
+    test('detects operator_id added by ALTER TABLE in a later '
+        'migration and flags non-leading indexes anywhere', () {
+      // Two-file fixture: the original migration defines `fact_thing`
+      // without operator_id (no flagging at that time); a later
+      // migration adds operator_id via ALTER TABLE; a third migration
+      // creates a non-leading B-tree index. The lint must scan all
+      // three and ERROR on the index — even the index in the original
+      // file (had it existed) would now be in scope.
+      const tableSql = '''
+create table if not exists public.fact_thing (
+  id uuid primary key,
+  business_date date not null
+);
+
+create index if not exists fact_thing_legacy_business_date_idx
+  on public.fact_thing (business_date, id);
+''';
+      const alterSql = '''
+alter table public.fact_thing
+  add column if not exists operator_id uuid null;
+''';
+      const newIndexSql = '''
+create index if not exists fact_thing_new_business_date_idx
+  on public.fact_thing (business_date desc);
+''';
+      final result = IndexLeadingColumnLintRunner(
+        files: <String, String>{
+          '202604290020_table.sql': tableSql,
+          '202604290021_add_operator_id.sql': alterSql,
+          '202604290022_new_index.sql': newIndexSql,
+        },
+      ).run();
+      expect(result.hasErrors, isTrue);
+      final flagged =
+          result.errors.map((e) => e.indexName).toSet();
+      expect(flagged, contains('fact_thing_legacy_business_date_idx'));
+      expect(flagged, contains('fact_thing_new_business_date_idx'));
+      expect(result.operatorScopedTableCount, 1);
+    });
+
+    test('post-B.4 role_audit_log has operator_id; non-leading indexes '
+        'on it ERROR (no warn-only carve-out)', () {
       const sql = '''
 create table if not exists public.role_audit_log (
   entry_id uuid primary key,
   role_id uuid null,
+  user_role_id uuid null,
+  operator_id uuid null,
   changed_at timestamptz not null
 );
 
 create index if not exists role_audit_log_role_idx
   on public.role_audit_log (role_id, changed_at desc);
-
-create index if not exists role_audit_log_changed_idx
-  on public.role_audit_log (changed_at desc);
 ''';
       final result = IndexLeadingColumnLintRunner(
         files: <String, String>{
-          '202604290001_role_audit.sql': sql,
+          '202605010001_role_audit.sql': sql,
         },
       ).run();
-      expect(result.hasErrors, isFalse);
-      expect(result.warnings, hasLength(1));
-      expect(result.warnings.single.tableName, 'role_audit_log');
-      expect(result.warnings.single.note, contains('B.4'));
+      expect(result.warnings, isEmpty);
+      expect(result.hasErrors, isTrue);
+      expect(result.errors.single.tableName, 'role_audit_log');
+      expect(result.errors.single.indexName, 'role_audit_log_role_idx');
+      expect(result.errors.single.leadingColumn, 'role_id');
     });
 
     test('passes an index that leads with operator_id', () {
@@ -321,7 +362,7 @@ create index if not exists config_value_idx
         },
       ).run();
       expect(result.isClean, isTrue);
-      expect(result.operatorScopedTableCount, 1); // role_audit_log
+      expect(result.operatorScopedTableCount, 0);
     });
   });
 }
