@@ -1191,11 +1191,12 @@ as the MFA hardening sub-slice
   `/v1/admin/auth/roles`. Read-only fallback for `team.roles.view`-only
   actors. PATCH only sends changed permissions per contract test.
   Walkthrough: `docs/_walkthroughs/9.UX.2.md`.
-- `9.UX.3` **owed** — permission explainer. Uses
-  `permission_resolution.dart` runtime + 9.0a deny rules; renders
-  inheritance chain when a user has unexpected access or is unexpectedly
-  blocked. Depends on `9.UX.2` role data ✓ + `9.UX.4` org-unit data ✓
-  (both merged).
+- `9.UX.3` **accepted** (commit `1eea31d`) — permission explainer
+  in `settings_permission_explainer.dart`. Consumes real grant
+  payload from `9.UX.grant-payload.0`; falls back to inferred
+  `operator_wide` synthesis only when `target.grants` is empty.
+  Calls `PermissionResolver.resolve()` for the authoritative final
+  pill. Walkthrough: `docs/_walkthroughs/9.UX.3.md`.
 - `9.UX.4` **accepted** (commit `e61a2ee`) — org hierarchy +
   location-scoped grants via `settings_org_hierarchy_section.dart`.
   Reads `org_units` from 9.0Σ.c; operator browses the location tree
@@ -1206,14 +1207,23 @@ as the MFA hardening sub-slice
   `listActiveSessions` reads `auth_sessions` through proxy; revoke
   reuses existing B6 routes. Demo gateway with 3 fixture rows.
   Walkthrough: `docs/_walkthroughs/9.UX.5.md`.
-- `9.UX.6` **owed** — personal audit log viewer. Reads
-  `auth_events_audit` scoped to the actor (or to team members for
-  managers).
-- `9.UX.7` **owed** — self-serve password reset / recovery flow.
-  Extends `login_screen.dart` with "Forgot password?" link + new
-  `password_reset_screen.dart`. B48 backend (proxy
-  `POST /v1/auth/password/reset/confirm` + Firebase action page) is
-  local complete; this slice is the operator UX layer plus live deploy.
+- `9.UX.6` **accepted** (commit `a56fdac`) — self-service Audit Log
+  viewer in `settings_audit_log_section.dart`. Reads
+  `auth_events_audit` actor-scoped via `listAuthEventsForActor` on
+  the auth-operations gateway; demo fallback seeds 6 fixture rows.
+  Repository pins `(operator_id, actor_user_id|target_user_id)`
+  with `SET LOCAL app.user_id` for RLS defense. Walkthrough:
+  `docs/_walkthroughs/9.UX.6.md`.
+- `9.UX.7` **accepted** (commit `3b3b17d`) — self-service password
+  reset across `password_reset_request_screen.dart`,
+  `password_reset_confirm_screen.dart`,
+  `password_reset_deep_link_handler.dart`, and
+  `web/auth/action/index.html`. Idempotency cache wraps proxy
+  request/confirm routes; 350ms latency floor + system-actor audit
+  row only on matched users (no email-existence oracle).
+  Walkthrough: `docs/_walkthroughs/9.UX.7.md`. Operational gate:
+  proxy redeploy with reset-confirm route before live email-link
+  flow works end-to-end.
 - `9.UX.inheritance-hint.0` **accepted (rendering only)** (commit
   `5f5c91c`) — role-change dialog renders per-grant inheritance hints
   ("Applies operator-wide" / "Inherited via {unit} (N locations)" /
@@ -1224,14 +1234,13 @@ as the MFA hardening sub-slice
   u.primary_location_id)` is ambiguous between `location` scope and
   `operator_wide` + primary_location. Walkthrough:
   `docs/_walkthroughs/9.UX.inheritance-hint.0.md`.
-- `9.UX.grant-payload.0` **owed** — data-path complement to
-  `9.UX.inheritance-hint.0`. Extend `users_repository.dart`
-  `selectTeamUsersByOperator` (or add `listGrantsForUser` gateway
-  method) to project authoritative `(scope_type, org_unit_id,
-  location_id, effective_location_ids)` per grant onto
-  `TeamUserListItem.grants`. When this lands, the rendering branches
-  already shipped by `9.UX.inheritance-hint.0` engage automatically
-  with no UI work.
+- `9.UX.grant-payload.0` **accepted** (commit `7bc4f4e`) — extends
+  the team-users gateway path to project per-grant
+  `(scope_type, org_unit_id, location_id, effective_location_ids)`
+  + role label onto `TeamUserListItem.grants`. With this in place,
+  `9.UX.inheritance-hint.0` rendering branches engage in production
+  and `9.UX.3` permission explainer reads real grants instead of
+  synthesizing.
 
 T&Cs version history viewer + GDPR data-request UI fold into Phase 9.8
 (legal copy and processor list aren't ready until 9.8 enumerates them).

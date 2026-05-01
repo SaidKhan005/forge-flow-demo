@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-04-30 (batch B/C/D acceptances + lean pass)
+Updated: 2026-05-01 (9.UX family closed; 11A.3/11A.4/7.58 batch queued)
 Owner: You
 Execution model: We think, Claude codes
 
@@ -113,15 +113,14 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 ## Now
 
 - **Current phase:** `9` framework + `9.0Σ.b-k` accepted on 2026-04-29.
-  Phase 9 UX family + `11A.0-6` foundation actively shipping.
+  `9.UX.*` family fully shipped on operator surface; `11A.0-6` foundation
+  active; `7.58` queued first per Hard Promise #3.
 - **Recent acceptances** (last batch — see phase doc Frontend Exposure +
   walkthroughs for detail):
-  - `9.UX.2` Custom Role Editor (commit `245f14e`)
-  - `9.UX.5` Active Sessions viewer (commit `b5345d4`)
-  - `11A.2` Pricing Tier Admin (commit `934fc69`)
-  - `9.UX.inheritance-hint.0` rendering (commit `5f5c91c`) —
-    **rendering only**; data-path follow-up (`9.UX.grant-payload.0`)
-    needed before hints render in production.
+  - `9.UX.grant-payload.0` per-grant scope payload (commit `7bc4f4e`)
+  - `9.UX.3` Settings Team explain-permissions surface (commit `1eea31d`)
+  - `9.UX.6` self-service Audit Log viewer (commit `a56fdac`)
+  - `9.UX.7` self-service password reset (commit `3b3b17d`)
 - **Operational gates pending live apply/deploy:** `202604280014` (B46),
   `202604290000` (B41), `202604290001` (`9.UX.4` hierarchy wiring);
   proxy redeploy with `account_info: postgres` binding (unblocks
@@ -161,15 +160,15 @@ follow `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
    Accepted: `11A.0`, `11A.1`, `11A.2`. Owed: `11A.3-6`
    (`11A.5`/`11A.6` blocked on B44/B45/B47 producer wiring). Scope:
    `phase_11A_operations_console_plan.md`.
-2. `9.UX.*` family - Phase 9 operator-facing UX. Accepted: `9.UX.0`,
-   `9.UX.1` (incl. `9.UX.1a` folded), `9.UX.2`, `9.UX.4`, `9.UX.5`,
-   `9.UX.account-info`, `9.UX.inheritance-hint.0` (rendering only).
-   Owed: `9.UX.3`, `9.UX.6`, `9.UX.7`, `9.UX.grant-payload.0`
-   (data-path complement to inheritance-hint). Scope:
-   `phase_9_auth_plan.md` `Frontend Exposure` section.
-   Within-family shared seams (`auth_operations_gateway.dart`,
-   `settings_screen.dart`) require sequencing per phase doc;
-   additive-safe carve-outs allowed when the prompt names them.
+2. `9.UX.*` family - Phase 9 operator-facing UX. **Accepted (family
+   closed on operator surface):** `9.UX.0`, `9.UX.1`(incl. `1a` folded),
+   `9.UX.2`, `9.UX.3`, `9.UX.4`, `9.UX.5`, `9.UX.6`, `9.UX.7`,
+   `9.UX.account-info`, `9.UX.inheritance-hint.0`,
+   `9.UX.grant-payload.0`. Scope: `phase_9_auth_plan.md` `Frontend
+   Exposure` section. Family does not retire from the tracker until
+   the operational gates above (B48 reset-confirm proxy deploy +
+   `account_info` binding) clear; phase 9 itself stays open until
+   `9.8` lands.
 
 Codex sets the per-lane queue; this tracker lists which phases are
 active, not which slices are next per lane.
@@ -177,35 +176,32 @@ active, not which slices are next per lane.
 **Monitored/deferred follow-ups** (operational gates listed in `Now`;
 this section names slice-shaped follow-ups only):
 
-1. `9.UX.grant-payload.0` - data-path complement to
-   `9.UX.inheritance-hint.0`. Extend `users_repository.dart`
-   `selectTeamUsersByOperator` to project authoritative
-   `(scope_type, org_unit_id, location_id, effective_location_ids)`
-   per grant on `TeamUserListItem.grants`. Until this lands, the
-   inheritance-hint rendering branches stay dormant in production.
-2. `cutover.0b` - Tier-M 14-row perf-gate run (B38 partial); launch
+1. `cutover.0b` - Tier-M 14-row perf-gate run (B38 partial); launch
    blocker.
-3. B49/B50 MFA hardening + notification delivery - `9.UX.1a` queues
+2. B49/B50 MFA hardening + notification delivery - `9.UX.1a` queues
    `event_outbox` rows only; true notification delivery rides Phase 10a
    bridge. Only revisit if user-facing copy promises in-app/email
    delivery.
-4. Mandatory admin-tier MFA enforcement - explicitly deferred until
+3. Mandatory admin-tier MFA enforcement - explicitly deferred until
    post-launch stability + explicit approval. Not a launch blocker.
 
 **Then continue:**
 
-1. `7.58` - Primary Driver audit.
-2. `10a` - Shared state v1 (`event_outbox` -> Pub/Sub/WebSocket bridge;
+1. `7.58` - Primary Driver audit (first logic-deciding slice per HP #3;
+   queued as next-batch lane).
+2. `11A.3`, `11A.4` - corpus admin + integration management (queued
+   as next-batch lanes alongside `7.58`).
+3. `10a` - Shared state v1 (`event_outbox` -> Pub/Sub/WebSocket bridge;
    `NOTIFY` is wake-up only and never the source of truth).
-3. `10.5` - Live daypart shift.
-4. `9.5` - El Podio learning identity.
-5. `9.75` - Staff daily companion.
-6. `7.61` - Freshness audit.
-7. `8` and `8R` - POS/labor/finance and reservation transport.
-8. `8.5` - narrowed outbound finance integrations.
-9. `11b`, `11b.1`, `11b.2` - Advisor UX, schema sweep, causal queries.
-10. `12.0-12.5` - Workflow platform foundation and flagship workflows.
-11. `11A.7-10`, `10b`, `9.8`, `cutover.0a`, `cutover.0-5`.
+4. `10.5` - Live daypart shift.
+5. `9.5` - El Podio learning identity.
+6. `9.75` - Staff daily companion.
+7. `7.61` - Freshness audit.
+8. `8` and `8R` - POS/labor/finance and reservation transport.
+9. `8.5` - narrowed outbound finance integrations.
+10. `11b`, `11b.1`, `11b.2` - Advisor UX, schema sweep, causal queries.
+11. `12.0-12.5` - Workflow platform foundation and flagship workflows.
+12. `11A.5-10`, `10b`, `9.8`, `cutover.0a`, `cutover.0-5`.
 
 Slice scopes live in their phase plans. Architecture rationale lives in
 `phase_11a_decision_register.md` and the Phase 9 scalability decisions doc.
@@ -218,7 +214,7 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `11a` | accepted | `phase_11a_advisor_infrastructure_plan.md` |
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
-| `9.UX.*` family | active; accepted: `9.UX.0`/`1`(incl.`1a`)/`2`/`4`/`5`/`account-info`/`inheritance-hint.0`; owed: `9.UX.3`/`6`/`7`/`grant-payload.0` | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
+| `9.UX.*` family | operator surface complete; awaits B48 + `account_info` proxy redeploy before family retires | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` |
 | `11A.0-6` | active; accepted: `11A.0`/`1`/`2`; owed: `11A.3-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
 | `7.58`, `7.61` | queued | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
@@ -252,15 +248,9 @@ Cadence + parallel-lane rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ## Decision Locations
 
-- Architecture / cost / pricing / dormancy / fallback rationale:
-  `phase_11a/phase_11a_decision_register.md`.
-- 35 locked scalability decisions (Q1-Q22 + Q3.1-Q3.10):
-  `phase_9/phase_9_scalability_decisions_2026-04-27.md`.
-- Performance audit + 14-row perf gate:
-  `phase_9/phase_9_scalability_performance_audit_2026-04-27.md`.
-- Active 11a tasks: `phase_11a/phase_11a_advisor_infrastructure_plan.md`.
-- Other phase plans: routed via `Phase Board` above.
-- Pre-lean history: `docs/archive/trackers/PROJECT_TRACKER_2026-04-26_PRE_LEAN_AZURE_PIVOT.md`.
+Architecture, cost, scalability, perf-audit, and active-11a docs are
+listed under `Active Authority` above. Pre-lean history archived at
+`docs/archive/trackers/PROJECT_TRACKER_2026-04-26_PRE_LEAN_AZURE_PIVOT.md`.
 
 ## Notes
 
