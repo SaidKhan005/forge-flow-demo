@@ -14,6 +14,108 @@ needs live staging + Production1 apply evidence. The CMK key ID is stored on
 each row; provisioning must be live before the table receives encrypted
 content.
 
+## 2026-05-01 - `cutover.0a` Scope Expansion + Live Execution
+
+### Scope Expansion
+
+The original `cutover.0a` brief assumed a production storage account already
+existed for Blob CMK rotation. Live preflight on 2026-05-01 against
+`Azure subscription 1` confirmed it does not — only
+`forge-flow-production1-pg` and `forge-flow-staging-pg` exist; no storage
+accounts in any resource group. Per operator approval on 2026-05-01
+(Option 1, "just do it"), `cutover.0a` was expanded to include creation
+of:
+
+- A production storage account (`forgeflowprod1`, GRS StorageV2,
+  HTTPS-only, TLS 1.2, public-blob disabled, `CanNotDelete` lock).
+- A staging storage account (`forgeflowstaging1`, LRS StorageV2,
+  HTTPS-only, TLS 1.2, public-blob disabled, no lock,
+  Microsoft-managed encryption — staging does not get CMK).
+
+Slice authority for the expansion: operator (lane prompt, 2026-05-01);
+flag for Codex review at next between-batch audit.
+
+### Live Execution Outcome
+
+Executed live by Claude with operator-interactive harness approval on
+2026-05-01. Two outcomes:
+
+**Blob CMK path: COMPLETE.** `forgeflowprod1` is rotated to `blob-cmk`
+(HSM-backed RSA-3072 in `forgeflow-prod-kv`); rotation timestamp
+recorded; storage version-autorotate enabled; off-subscription backup
+of the key still pending operator move (currently on operator machine
+at `~/forgeflow-cmk-backups-20260501/`).
+
+**Postgres TDE path: COMPLETE 2026-05-01 via `cutover.0a.pg` server
+replacement.** Existing `forge-flow-production1-pg` was provisioned
+without CMK. Azure Database for PostgreSQL Flexible Server does not
+support enabling data encryption post-create:
+
+> *Data encryption cannot be enabled post server creation, this will
+> only update the key/identity.* — `az postgres flexible-server
+> update --help`
+
+**`cutover.0a.pg` execution:**
+1. Final preflight confirmed audit findings (only seed data; no
+   operator data).
+2. Old server `forge-flow-production1-pg` deleted.
+3. Azure name reservation cooldown forced a permanent rename to
+   `forge-flow-production1-pg-cmk` (the `-cmk` suffix doubles as a
+   CMK-enabled signal).
+4. New server created with `--key <pg-tde-cmk KID>` + `--identity
+   forgeflow-prod-pg-uami` at create time.
+5. `--public-access None` at create, then switched to `Enabled` and
+   added firewall rule for operator IP.
+6. `azure.extensions` allowlist set to match pre-recreate.
+7. `shared_preload_libraries` set to `pg_cron,pg_stat_statements`;
+   server restarted.
+8. Admin password rotated post-create (Azure CLI's create-time
+   password leak in stdout overwritten); new DSN captured at
+   `~/.forge_flow/postgres_prod_new_password_2026-05-01.txt`.
+9. Audit confirmed: scope was the **32-migration baseline**
+   (`202604250000`–`202604280013`), not the 18-migration runbook list
+   as originally believed — the runbook was missing 14 prerequisite
+   advisor + auth + phase-9.0a migrations. Full 32 re-applied in
+   canonical order, all clean.
+10. From `postgres` maintenance DB: 3 cron jobs scheduled via
+    `cron.schedule_in_database` matching pre-recreate exactly
+    (`forge_rollup_hot_path` `* * * * *`, `forge_rollup_cold_path`
+    `*/5 * * * *`, `forgeflow_partman_maintenance_usage_logs`
+    `0 * * * *`).
+11. Final state verified: `dataEncryption.type = AzureKeyVault`,
+    `keyName = pg-tde-cmk`, 8 extensions installed, 5 non-system
+    roles, 45 RLS-enabled tables. Parity with pre-recreate audit
+    (modulo expected partman partition drift since the partitions
+    are time-relative).
+
+**`cutover.0a.alerts` execution:**
+- Action Group `forgeflow-cmk-alerts` (email recipient
+  `saidumarkhan005@gmail.com`).
+- Log Analytics workspace `forgeflow-prod-laws` (PerGB2018, 90d
+  retention).
+- Vault diagnostic settings `forgeflow-prod-kv-diag` routing
+  `AuditEvent` logs to the workspace.
+- Log alert rule `forgeflow-cmk-key-near-expiry` (severity 2,
+  hourly, querying `KeyNearExpiry` + `KeyExpired`) routing to the
+  Action Group. Created via REST API direct call (CLI
+  `scheduled-query create` shell-quoting issues).
+
+### Other Deferred Items
+
+- **Alert wiring (Step 6).** Microsoft.EventGrid and Microsoft.Insights
+  provider registration was harness-blocked during this run. Auto-
+  rotation policies on both keys are active (1y rotate / 30d notify) —
+  rotation will happen without operator intervention; the *email*
+  notification at 30d pre-expiry needs the providers registered and
+  an Action Group + Event Grid subscription wired. Track in
+  `cutover.0a.alerts` follow-up.
+- **`az role assignment create` CLI bug.** All attempts during this
+  run failed with `MissingSubscription`; all role grants for this
+  slice were performed via Azure Portal manually. Likely a personal-
+  account-on-Default-Directory limitation. Future cutover slices
+  should expect the same and plan for portal-side grants until the
+  account is migrated to a proper directory.
+
 `cutover.0b` perf-gate matrix row 8 (rollup recomputation) depends on
 B38 (queued) — Tier-M load test extending `9.0Σ.k` rollups foundation.
 Without B38 results, row 8 cannot clear.

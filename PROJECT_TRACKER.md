@@ -128,6 +128,29 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   route (unblocks `9.UX.7` live email-link reset); Cloud Run audit
   anchor deploy (B43); B44/B45/B47 producer wiring (unblocks
   `11A.5`/`11A.6`).
+- **`cutover.0a` + `cutover.0a.pg` complete 2026-05-01** per
+  `runbooks/cmk_provisioning_runbook.md`. End state: vault
+  `forgeflow-prod-kv` (Premium, RBAC, 90d soft-delete + purge
+  protection, CanNotDelete lock); HSM RSA-3072 keys `pg-tde-cmk` +
+  `blob-cmk` (1y rotate / 30d notify); production storage
+  `forgeflowprod1` (GRS, locked, rotated to `blob-cmk`); staging
+  storage `forgeflowstaging1` (LRS, Microsoft-managed by design);
+  Postgres recreated as **`forge-flow-production1-pg-cmk`** with
+  `dataEncryption.type = AzureKeyVault` (Azure FS does not support
+  post-create CMK enable, forced rename); 32 baseline migrations
+  re-applied (`202604250000`–`202604280013`); 3 cron jobs scheduled;
+  admin password rotated; alerts wired (Action Group
+  `forgeflow-cmk-alerts` → email, Log Analytics workspace
+  `forgeflow-prod-laws`, vault diag settings, KeyNearExpiry log
+  alert rule severity 2). All 2026-05-01 follow-ups closed: secrets file updated with new
+  `POSTGRES_PRODUCTION_ADMIN_URL` (capture file deleted); key backup
+  files uploaded to
+  `gs://forgeflow-disaster-recovery/azure-keyvault-backups/2026-05-01/`
+  in GCP project `forge-flow-staging` (local copies deleted);
+  redundant operator role assignment removed; alert rule recreated
+  with lowercase action group ID. Migrations `202604280014` (B46) +
+  `202604290000`–`202605010000` (8 newer) remain pending separate
+  apply event. Inventory MD: `~/.forge_flow/secrets_inventory.md`.
 - **Cloud Armor:** preview-only at sensitivity 2 with B17 false-positive
   SQLi signatures opted out; awaits ≥3 clean post-tuning preview-log
   days + explicit approval before enforcement.
