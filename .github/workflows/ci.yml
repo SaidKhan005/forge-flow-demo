@@ -26,3 +26,20 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  repo-lints:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: postgres-import / index-leading-column / permission-key lints
+        run: |
+          dart run tool/postgres_import_lint.dart && \
+          dart run tool/index_leading_column_lint.dart && \
+          dart run tool/permission_key_lint.dart
