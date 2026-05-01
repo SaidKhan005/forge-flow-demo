@@ -4,6 +4,8 @@
 // assembled without opening a live database connection. The fake
 // Postgres pool records SQL only; no network or provider calls occur.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
@@ -212,6 +214,22 @@ void main() {
         contains(ProxyConfigNames.firebaseProjectId),
       );
       expect(poolFactoryCalls, equals(0));
+    });
+  });
+
+  group('Cloud Run entrypoint wiring', () {
+    test('passes pricing tier admin binding into routeRequest', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'pricingTierAdminGateway:\s*productionBindings\.pricingTierAdminGateway',
+          ),
+        ),
+      );
+      expect(source, contains('pricing_tier_admin: postgres'));
     });
   });
 }

@@ -90,7 +90,8 @@ Future<void> main(List<String> args) async {
     'password_reset_confirm: postgres, '
     'mfa_operations: postgres_identitytoolkit_firebase_mfa, '
     'mfa_recovery_request: postgres_event_outbox, '
-    'operator_location_admin: postgres)',
+    'operator_location_admin: postgres, '
+    'pricing_tier_admin: postgres)',
   );
 
   await for (final request in server) {
@@ -120,6 +121,7 @@ Future<void> main(List<String> args) async {
         mfaRecoveryRequestGateway: productionBindings.mfaRecoveryRequestGateway,
         operatorLocationAdminGateway:
             productionBindings.operatorLocationAdminGateway,
+        pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');
