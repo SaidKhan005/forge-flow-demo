@@ -45,7 +45,9 @@
 import 'dart:convert';
 
 import '../operator_scoped_repository.dart';
+import '../postgres_executor.dart';
 import '../tenant_context.dart';
+import 'audit_logs_repository.dart';
 
 /// Read projection of an `auth_events_audit` row used by the Phase
 /// 9.UX.6 self-service Audit Log surface. Carries metadata an
@@ -76,7 +78,29 @@ class AuthEventListRow {
 }
 
 class AuthEventsAuditRepository extends OperatorScopedRepository {
-  AuthEventsAuditRepository(super.tenantWrapper);
+  AuthEventsAuditRepository(
+    super.tenantWrapper, {
+    AuditLogsRepository auditLogsRepository = const AuditLogsRepository(),
+    AuditLogsCutoverFlag cutoverFlag = const FixedAuditLogsCutoverFlag(true),
+  }) : _auditLogsRepository = auditLogsRepository,
+       _cutoverFlag = cutoverFlag;
+
+  /// Phase 9.0Σ.f B.2 — fan-out target for the hash-chained
+  /// `public.audit_logs` table. Every write that lands in
+  /// `auth_events_audit` is mirrored here in the same transaction
+  /// when the `audit_logs_cutover_enabled` feature flag resolves to
+  /// `true`. The chain (`prev_row_hash`, `row_hash`) is computed by
+  /// the BEFORE INSERT trigger server-side.
+  final AuditLogsRepository _auditLogsRepository;
+
+  /// Phase 9.0Σ.f B.2 — resolver for the `audit_logs_cutover_enabled`
+  /// feature flag. Production wires
+  /// `FeatureFlagsTableAuditLogsCutoverFlag` so flipping the seeded
+  /// row to `false` immediately routes new writes back to the legacy
+  /// `auth_events_audit`-only path. Default
+  /// `FixedAuditLogsCutoverFlag(true)` keeps tests + scaffolds
+  /// deterministic without DB I/O.
+  final AuditLogsCutoverFlag _cutoverFlag;
 
   /// INSERT a single audit row. Returns the freshly generated
   /// `event_id`. Caller passes whichever combination of actor /
@@ -141,8 +165,78 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
           'auth_events_audit insert returned a malformed event_id',
         );
       }
+      await _fanOutToAuditLogs(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: eventType,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        actorServicePrincipalId: actorServicePrincipalId,
+        targetUserId: targetUserId,
+        payload: payload,
+      );
       return id;
     });
+  }
+
+  /// Phase 9.0Σ.f B.2 — fan-out into `public.audit_logs` (hash-chained
+  /// SOC 2 / forensic audit log). No-op in any of these cases:
+  ///
+  ///   * cutover flag is off (rollback path);
+  ///   * `operator_id` is null — `audit_logs` requires
+  ///     `operator_id NOT NULL` because the chain is scoped per
+  ///     `(operator_id, chain_date)`;
+  ///   * `actor_kind` is not in (`'user'`, `'service'`) — the
+  ///     `audit_logs` CHECK enumerates exactly those two values, so
+  ///     legacy `actorKind: 'system'` callers (worker / reset
+  ///     boundaries that have no human / SP attribution) cannot be
+  ///     attributed in the chain. Skipping preserves the gateway's
+  ///     control flow (the `auth_events_audit` write still happens —
+  ///     `auth_events_audit` schema permits any text `actor_kind`).
+  ///   * the actor identifier slot for the kind is empty —
+  ///     `audit_logs_actor_shape_check` requires user→`actor_user_id`,
+  ///     service→`actor_principal_id`, and the constraint is
+  ///     non-negotiable. A missing identifier means the legacy row was
+  ///     a system / no-actor probe; we keep the legacy posture and
+  ///     skip the chain row instead of failing the gateway.
+  Future<void> _fanOutToAuditLogs(
+    PostgresExecutor exec, {
+    required String? operatorId,
+    required String? locationId,
+    required String eventType,
+    required String? actorUserId,
+    required String actorKind,
+    required String? actorServicePrincipalId,
+    required String? targetUserId,
+    required Map<String, Object?> payload,
+  }) async {
+    if (operatorId == null) return;
+    if (actorKind != 'user' && actorKind != 'service') return;
+    final mappedActorUserId = actorKind == 'user' ? actorUserId : null;
+    final mappedActorPrincipalId = actorKind == 'service' &&
+            actorServicePrincipalId != null &&
+            actorServicePrincipalId.isNotEmpty
+        ? 'sp:$actorServicePrincipalId'
+        : null;
+    if (actorKind == 'user' &&
+        (mappedActorUserId == null || mappedActorUserId.isEmpty)) {
+      return;
+    }
+    if (actorKind == 'service' && mappedActorPrincipalId == null) return;
+    if (!await _cutoverFlag.isEnabled(exec)) return;
+    await _auditLogsRepository.writeRow(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      actorKind: actorKind,
+      actorUserId: mappedActorUserId,
+      actorPrincipalId: mappedActorPrincipalId,
+      targetKind: targetUserId != null ? 'user' : null,
+      targetId: targetUserId,
+      action: eventType,
+      payload: payload,
+    );
   }
 
   /// INSERT a single system-scope audit row.
@@ -204,6 +298,17 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
           'auth_events_audit system insert returned a malformed event_id',
         );
       }
+      await _fanOutToAuditLogs(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: eventType,
+        actorUserId: actorUserId,
+        actorKind: actorKind,
+        actorServicePrincipalId: actorServicePrincipalId,
+        targetUserId: targetUserId,
+        payload: payload,
+      );
       return id;
     }, reason: adminReason);
   }
