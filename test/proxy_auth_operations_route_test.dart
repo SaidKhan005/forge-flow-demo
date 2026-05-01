@@ -1213,6 +1213,34 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
           status: 'active',
           mfaEnrolled: true,
           userRoleId: 'grant-1',
+          // Phase 9.UX.grant-payload — surface a representative
+          // multi-scope grant set so the route serializer's `grants`
+          // field is exercised end-to-end.
+          grants: <TeamGrantSnapshot>[
+            TeamGrantSnapshot(
+              userRoleId: 'grant-1',
+              roleId: _roleId,
+              scopeType: 'operator_wide',
+            ),
+            TeamGrantSnapshot(
+              userRoleId: 'grant-2',
+              roleId: _roleId,
+              scopeType: 'org_unit',
+              orgUnitId: 'unit-east',
+              sourceOrgUnitId: 'unit-east',
+              effectiveLocationIds: <String>[
+                'loc-vancouver',
+                'loc-burnaby',
+              ],
+            ),
+            TeamGrantSnapshot(
+              userRoleId: 'grant-3',
+              roleId: _roleId,
+              scopeType: 'location',
+              locationId: 'loc-vancouver',
+              effectiveLocationIds: <String>['loc-vancouver'],
+            ),
+          ],
         ),
       ],
     );

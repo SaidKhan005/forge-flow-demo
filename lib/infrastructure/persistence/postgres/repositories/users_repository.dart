@@ -23,6 +23,8 @@
 // the lifecycle action so audit trails can attribute the bypass
 // correctly.
 
+import 'dart:convert' show jsonDecode;
+
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
@@ -41,6 +43,7 @@ class TeamUserRepositoryRow {
     this.locationId,
     this.locationLabel,
     this.lastActiveAt,
+    this.grants = const <TeamUserGrantRepositoryRow>[],
   });
 
   final String userId;
@@ -56,6 +59,49 @@ class TeamUserRepositoryRow {
   final String? locationId;
   final String? locationLabel;
   final DateTime? lastActiveAt;
+  final List<TeamUserGrantRepositoryRow> grants;
+}
+
+/// Phase 9.UX.grant-payload — per-user grant snapshot bundled with the
+/// team-users projection. Mirrors the `user_roles` row shape consumed by
+/// the role-change dialog's inheritance hint, plus the materialized
+/// `user_effective_locations` set so an `org_unit` grant carries its
+/// reachable locations without a follow-up read.
+class TeamUserGrantRepositoryRow {
+  const TeamUserGrantRepositoryRow({
+    required this.userRoleId,
+    required this.roleId,
+    required this.roleLabel,
+    required this.scopeType,
+    this.orgUnitId,
+    this.locationId,
+    this.sourceOrgUnitId,
+    this.effectiveLocationIds = const <String>[],
+    this.validFrom,
+    this.validUntil,
+    this.revokedAt,
+  });
+
+  final String userRoleId;
+  final String roleId;
+
+  /// `roles.display_name` for the granted role, joined inside the
+  /// projection so the dialog never needs to wait on the role-catalog
+  /// load to resolve a label. Falls back to the raw `role_id::text`
+  /// when no `roles` row exists (defense-in-depth — should not happen
+  /// under the FK).
+  final String roleLabel;
+
+  /// One of `'operator_wide'`, `'org_unit'`, or `'location'`. Matches the
+  /// `user_roles.scope_type` CHECK constraint.
+  final String scopeType;
+  final String? orgUnitId;
+  final String? locationId;
+  final String? sourceOrgUnitId;
+  final List<String> effectiveLocationIds;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+  final DateTime? revokedAt;
 }
 
 class SelfProfileRepositoryRow {
@@ -196,7 +242,39 @@ class UsersRepository extends OperatorScopedRepository {
         '  and mf.revoked_at is null'
         ') as mfa_enrolled, '
         '$mfaRemovalRequestProjection'
-        'u.last_active_at '
+        'u.last_active_at, '
+        '('
+        '  select coalesce(jsonb_agg('
+        '    jsonb_build_object('
+        "      'user_role_id', urg.user_role_id::text, "
+        "      'role_id', urg.role_id::text, "
+        "      'role_label', coalesce(rg.display_name, urg.role_id::text), "
+        "      'scope_type', urg.scope_type, "
+        "      'org_unit_id', urg.org_unit_id::text, "
+        "      'location_id', urg.location_id::text, "
+        "      'source_org_unit_id', urg.org_unit_id::text, "
+        "      'effective_location_ids', ("
+        '        select coalesce(array_agg(uel.location_id::text order by '
+        '          uel.location_id::text), array[]::text[]) '
+        '        from user_effective_locations uel '
+        '        where uel.operator_id = urg.operator_id '
+        '        and uel.user_id = urg.user_id '
+        '        and uel.source_user_role_id = urg.user_role_id'
+        '      ),'
+        "      'valid_from', urg.valid_from, "
+        "      'valid_until', urg.valid_until, "
+        "      'revoked_at', urg.revoked_at"
+        '    )'
+        "    order by urg.valid_from"
+        "  ), '[]'::jsonb)::text "
+        '  from user_roles urg '
+        '  left join roles rg on rg.role_id = urg.role_id '
+        '  where urg.user_id = u.user_id '
+        '  and urg.operator_id = @operator_id::uuid '
+        '  and urg.revoked_at is null '
+        '  and urg.valid_from <= now() '
+        '  and (urg.valid_until is null or urg.valid_until > now())'
+        ') as grants '
         'from users u '
         'left join lateral ('
         '  select user_role_id, role_id, location_id '
@@ -770,7 +848,88 @@ class UsersRepository extends OperatorScopedRepository {
           ? locationLabel
           : null,
       lastActiveAt: lastActiveAt is DateTime ? lastActiveAt : null,
+      grants: _projectTeamUserGrants(row['grants']),
     );
+  }
+
+  static List<TeamUserGrantRepositoryRow> _projectTeamUserGrants(Object? raw) {
+    final decoded = _decodeGrantsJson(raw);
+    if (decoded.isEmpty) return const <TeamUserGrantRepositoryRow>[];
+    final grants = <TeamUserGrantRepositoryRow>[];
+    for (final entry in decoded) {
+      if (entry is! Map) continue;
+      final map = Map<String, Object?>.from(entry);
+      final userRoleId = map['user_role_id'];
+      final roleId = map['role_id'];
+      final scopeType = map['scope_type'];
+      if (userRoleId is! String ||
+          userRoleId.isEmpty ||
+          roleId is! String ||
+          roleId.isEmpty ||
+          scopeType is! String ||
+          scopeType.isEmpty) {
+        continue;
+      }
+      final rawLabel = _readOptionalString(map['role_label']);
+      grants.add(
+        TeamUserGrantRepositoryRow(
+          userRoleId: userRoleId,
+          roleId: roleId,
+          roleLabel: rawLabel ?? roleId,
+          scopeType: scopeType,
+          orgUnitId: _readOptionalString(map['org_unit_id']),
+          locationId: _readOptionalString(map['location_id']),
+          sourceOrgUnitId: _readOptionalString(map['source_org_unit_id']),
+          effectiveLocationIds: _readStringList(map['effective_location_ids']),
+          validFrom: _readOptionalDateTime(map['valid_from']),
+          validUntil: _readOptionalDateTime(map['valid_until']),
+          revokedAt: _readOptionalDateTime(map['revoked_at']),
+        ),
+      );
+    }
+    return List<TeamUserGrantRepositoryRow>.unmodifiable(grants);
+  }
+
+  static List<Object?> _decodeGrantsJson(Object? raw) {
+    if (raw == null) return const <Object?>[];
+    if (raw is List) return raw;
+    if (raw is String) {
+      if (raw.isEmpty) return const <Object?>[];
+      final decoded = _safeJsonDecode(raw);
+      if (decoded is List) return decoded;
+    }
+    return const <Object?>[];
+  }
+
+  static Object? _safeJsonDecode(String raw) {
+    try {
+      return jsonDecode(raw);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String? _readOptionalString(Object? value) {
+    if (value is! String) return null;
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : trimmed;
+  }
+
+  static DateTime? _readOptionalDateTime(Object? value) {
+    if (value is DateTime) return value.toUtc();
+    if (value is String && value.isNotEmpty) {
+      return DateTime.tryParse(value)?.toUtc();
+    }
+    return null;
+  }
+
+  static List<String> _readStringList(Object? value) {
+    if (value is List) {
+      return List<String>.unmodifiable(
+        value.whereType<String>().where((entry) => entry.isNotEmpty),
+      );
+    }
+    return const <String>[];
   }
 
   static bool _isMissingMfaRemovalRequestsTable(Object error) {
