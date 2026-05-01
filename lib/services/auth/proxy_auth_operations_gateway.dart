@@ -53,7 +53,7 @@ class DartIoProxyAuthOperationsHttpClient
     implements ProxyAuthOperationsHttpClient {
   DartIoProxyAuthOperationsHttpClient({
     HttpClient? httpClient,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 30),
   }) : _httpClient = httpClient ?? HttpClient(),
        _timeout = timeout;
 
@@ -203,7 +203,8 @@ class ProxyAuthOperationsError implements Exception {
 
   @override
   String toString() =>
-      'ProxyAuthOperationsError(code: $code, status: $statusCode)';
+      'ProxyAuthOperationsError(code: $code, status: $statusCode, '
+      'message: $message)';
 }
 
 class ProxyAuthOperationsGateway implements AuthOperationsGateway {
@@ -547,7 +548,7 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   ) async {
     final response = await _patch(
       '$locationsPrefix${Uri.encodeComponent(command.targetLocationId)}'
-          '/org-unit',
+      '/org-unit',
       <String, Object?>{'parent_org_unit_id': command.parentOrgUnitId},
     );
     _expectStatus(response, 200);
@@ -590,8 +591,8 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final result = revoked is bool
         ? revoked
         : ok is bool
-              ? ok
-              : false;
+        ? ok
+        : false;
     return AuthSessionRevoked(revoked: result);
   }
 

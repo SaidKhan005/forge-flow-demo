@@ -531,125 +531,37 @@ void main() {
       );
     });
 
-    test(
-      'org hierarchy CRUD targets the org-units routes',
-      () async {
-        final fake = _FakeAuthOpsHttpClient(
-          getResponse: ProxyAuthOperationsResponse(
-            statusCode: 200,
-            body: <String, Object?>{
-              'org_units': <Object?>[
-                <String, Object?>{
-                  'org_unit_id': 'unit-1',
-                  'parent_org_unit_id': null,
-                  'unit_type': 'corp',
-                  'path': 'acme',
-                  'label': 'ACME',
-                },
-              ],
-              'locations': <Object?>[
-                <String, Object?>{
-                  'location_id': 'loc-1',
-                  'parent_org_unit_id': 'unit-1',
-                  'org_unit_path': 'acme',
-                  'label': 'Downtown',
-                },
-              ],
-            },
-          ),
-          postResponse: const ProxyAuthOperationsResponse(
-            statusCode: 201,
-            body: <String, Object?>{'org_unit_id': 'unit-2'},
-          ),
-          patchResponse: const ProxyAuthOperationsResponse(
-            statusCode: 200,
-            body: <String, Object?>{'ok': true, 'moved': true},
-          ),
-        );
-        final gateway = ProxyAuthOperationsGateway(
-          proxyBaseUri: baseUri,
-          idTokenProvider: () async => 'id-token',
-          httpClient: fake,
-        );
-
-        final listed = await gateway.listOrgHierarchy(
-          const TeamOrgHierarchyListCommand(
-            actorUserId: 'actor',
-            operatorId: 'op',
-            locationId: 'loc',
-          ),
-        );
-        final created = await gateway.createOrgUnit(
-          const TeamOrgUnitCreateCommand(
-            actorUserId: 'actor',
-            operatorId: 'op',
-            locationId: 'loc',
-            parentOrgUnitId: 'unit-1',
-            unitType: 'region',
-            label: 'east',
-            name: 'East Region',
-          ),
-        );
-        final moved = await gateway.moveLocationToOrgUnit(
-          const TeamLocationOrgUnitMoveCommand(
-            actorUserId: 'actor',
-            operatorId: 'op',
-            locationId: 'loc',
-            targetLocationId: 'loc-1',
-            parentOrgUnitId: 'unit-2',
-          ),
-        );
-
-        expect(listed.orgUnits.single.orgUnitId, equals('unit-1'));
-        expect(listed.locations.single.locationId, equals('loc-1'));
-        expect(created.orgUnitId, equals('unit-2'));
-        expect(moved.moved, isTrue);
-        expect(fake.gets.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
-        expect(fake.posts.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
-        expect(
-          fake.posts.single.body,
-          equals(<String, Object?>{
-            'parent_org_unit_id': 'unit-1',
-            'unit_type': 'region',
-            'label': 'east',
-            'name': 'East Region',
-          }),
-        );
-        expect(
-          fake.patches.single.url.path,
-          equals('/v1/admin/auth/locations/loc-1/org-unit'),
-        );
-        expect(
-          fake.patches.single.body,
-          equals(<String, Object?>{'parent_org_unit_id': 'unit-2'}),
-        );
-      },
-    );
-
-    test('listActiveSessions GETs /v1/auth/sessions and parses payload', () async {
+    test('org hierarchy CRUD targets the org-units routes', () async {
       final fake = _FakeAuthOpsHttpClient(
         getResponse: ProxyAuthOperationsResponse(
           statusCode: 200,
           body: <String, Object?>{
-            'sessions': <Object?>[
+            'org_units': <Object?>[
               <String, Object?>{
-                'session_id': 'session-1',
-                'device_label': 'Forge & Flow app · iOS',
-                'user_agent': 'Forge&Flow/1.0',
-                'ip': '203.0.113.10',
-                'geo_country': 'CA',
-                'created_at': DateTime.utc(2026, 4, 28).toIso8601String(),
-                'last_seen_at': DateTime.utc(2026, 4, 30).toIso8601String(),
+                'org_unit_id': 'unit-1',
+                'parent_org_unit_id': null,
+                'unit_type': 'corp',
+                'path': 'acme',
+                'label': 'ACME',
               },
+            ],
+            'locations': <Object?>[
               <String, Object?>{
-                'session_id': 'session-2',
-                'device_label': 'Safari · iPad',
-                'user_agent': 'Mozilla/5.0',
-                'created_at': DateTime.utc(2026, 4, 27).toIso8601String(),
-                'last_seen_at': DateTime.utc(2026, 4, 29).toIso8601String(),
+                'location_id': 'loc-1',
+                'parent_org_unit_id': 'unit-1',
+                'org_unit_path': 'acme',
+                'label': 'Downtown',
               },
             ],
           },
+        ),
+        postResponse: const ProxyAuthOperationsResponse(
+          statusCode: 201,
+          body: <String, Object?>{'org_unit_id': 'unit-2'},
+        ),
+        patchResponse: const ProxyAuthOperationsResponse(
+          statusCode: 200,
+          body: <String, Object?>{'ok': true, 'moved': true},
         ),
       );
       final gateway = ProxyAuthOperationsGateway(
@@ -658,22 +570,110 @@ void main() {
         httpClient: fake,
       );
 
-      final listed = await gateway.listActiveSessions(
-        const AuthActiveSessionsListCommand(
+      final listed = await gateway.listOrgHierarchy(
+        const TeamOrgHierarchyListCommand(
           actorUserId: 'actor',
           operatorId: 'op',
           locationId: 'loc',
         ),
       );
-
-      expect(listed.sessions, hasLength(2));
-      expect(listed.sessions.first.sessionId, equals('session-1'));
-      expect(
-        listed.sessions.first.deviceLabel,
-        equals('Forge & Flow app · iOS'),
+      final created = await gateway.createOrgUnit(
+        const TeamOrgUnitCreateCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          parentOrgUnitId: 'unit-1',
+          unitType: 'region',
+          label: 'east',
+          name: 'East Region',
+        ),
       );
-      expect(fake.gets.single.url.path, equals('/v1/auth/sessions'));
+      final moved = await gateway.moveLocationToOrgUnit(
+        const TeamLocationOrgUnitMoveCommand(
+          actorUserId: 'actor',
+          operatorId: 'op',
+          locationId: 'loc',
+          targetLocationId: 'loc-1',
+          parentOrgUnitId: 'unit-2',
+        ),
+      );
+
+      expect(listed.orgUnits.single.orgUnitId, equals('unit-1'));
+      expect(listed.locations.single.locationId, equals('loc-1'));
+      expect(created.orgUnitId, equals('unit-2'));
+      expect(moved.moved, isTrue);
+      expect(fake.gets.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
+      expect(fake.posts.single.url.path, equals(proxy.adminAuthOrgUnitsPath));
+      expect(
+        fake.posts.single.body,
+        equals(<String, Object?>{
+          'parent_org_unit_id': 'unit-1',
+          'unit_type': 'region',
+          'label': 'east',
+          'name': 'East Region',
+        }),
+      );
+      expect(
+        fake.patches.single.url.path,
+        equals('/v1/admin/auth/locations/loc-1/org-unit'),
+      );
+      expect(
+        fake.patches.single.body,
+        equals(<String, Object?>{'parent_org_unit_id': 'unit-2'}),
+      );
     });
+
+    test(
+      'listActiveSessions GETs /v1/auth/sessions and parses payload',
+      () async {
+        final fake = _FakeAuthOpsHttpClient(
+          getResponse: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'sessions': <Object?>[
+                <String, Object?>{
+                  'session_id': 'session-1',
+                  'device_label': 'Forge & Flow app · iOS',
+                  'user_agent': 'Forge&Flow/1.0',
+                  'ip': '203.0.113.10',
+                  'geo_country': 'CA',
+                  'created_at': DateTime.utc(2026, 4, 28).toIso8601String(),
+                  'last_seen_at': DateTime.utc(2026, 4, 30).toIso8601String(),
+                },
+                <String, Object?>{
+                  'session_id': 'session-2',
+                  'device_label': 'Safari · iPad',
+                  'user_agent': 'Mozilla/5.0',
+                  'created_at': DateTime.utc(2026, 4, 27).toIso8601String(),
+                  'last_seen_at': DateTime.utc(2026, 4, 29).toIso8601String(),
+                },
+              ],
+            },
+          ),
+        );
+        final gateway = ProxyAuthOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final listed = await gateway.listActiveSessions(
+          const AuthActiveSessionsListCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+          ),
+        );
+
+        expect(listed.sessions, hasLength(2));
+        expect(listed.sessions.first.sessionId, equals('session-1'));
+        expect(
+          listed.sessions.first.deviceLabel,
+          equals('Forge & Flow app · iOS'),
+        );
+        expect(fake.gets.single.url.path, equals('/v1/auth/sessions'));
+      },
+    );
 
     test('revokeSession POSTs the existing session/revoke route', () async {
       final fake = _FakeAuthOpsHttpClient(
@@ -699,10 +699,7 @@ void main() {
       );
 
       expect(result.revoked, isTrue);
-      expect(
-        fake.posts.single.url.path,
-        equals('/v1/auth/session/revoke'),
-      );
+      expect(fake.posts.single.url.path, equals('/v1/auth/session/revoke'));
       expect(
         fake.posts.single.body,
         equals(<String, Object?>{
@@ -734,10 +731,7 @@ void main() {
       );
 
       expect(result.revokedCount, equals(3));
-      expect(
-        fake.posts.single.url.path,
-        equals('/v1/auth/session/revoke-all'),
-      );
+      expect(fake.posts.single.url.path, equals('/v1/auth/session/revoke-all'));
     });
 
     test('transport failures collapse to transport_error', () async {
@@ -763,6 +757,8 @@ void main() {
       final error = thrown! as ProxyAuthOperationsError;
       expect(error.code, equals('transport_error'));
       expect(error.message.contains('secret://dsn'), isFalse);
+      expect(error.toString(), contains('transport'));
+      expect(error.toString().contains('secret://dsn'), isFalse);
     });
   });
 }

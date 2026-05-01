@@ -56,7 +56,7 @@ class DartIoProxyPermissionSnapshotHttpClient
     implements ProxyPermissionSnapshotHttpClient {
   DartIoProxyPermissionSnapshotHttpClient({
     HttpClient? httpClient,
-    Duration timeout = const Duration(seconds: 10),
+    Duration timeout = const Duration(seconds: 30),
   }) : _httpClient = httpClient ?? HttpClient(),
        _timeout = timeout;
 

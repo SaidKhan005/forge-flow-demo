@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:forge_and_flow/screens/settings/settings_active_sessions_section.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
+import 'package:forge_and_flow/services/auth/proxy_auth_operations_gateway.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -18,60 +19,64 @@ void main() {
   );
 
   group('SettingsActiveSessionsSection', () {
-    testWidgets('renders sessions, tags the current device, hides revoke for it', (
-      tester,
-    ) async {
-      final gateway = _RecordingAuthOperationsGateway(
-        sessions: <AuthSessionSummary>[
-          _summary(
-            id: _currentSessionId,
-            label: 'Forge & Flow app · iOS',
-            lastSeen: DateTime.now().toUtc().subtract(const Duration(minutes: 1)),
-          ),
-          _summary(
-            id: 'session-tablet',
-            label: 'Safari · iPad',
-            lastSeen:
-                DateTime.now().toUtc().subtract(const Duration(hours: 5)),
-          ),
-        ],
-      );
+    testWidgets(
+      'renders sessions, tags the current device, hides revoke for it',
+      (tester) async {
+        final gateway = _RecordingAuthOperationsGateway(
+          sessions: <AuthSessionSummary>[
+            _summary(
+              id: _currentSessionId,
+              label: 'Forge & Flow app · iOS',
+              lastSeen: DateTime.now().toUtc().subtract(
+                const Duration(minutes: 1),
+              ),
+            ),
+            _summary(
+              id: 'session-tablet',
+              label: 'Safari · iPad',
+              lastSeen: DateTime.now().toUtc().subtract(
+                const Duration(hours: 5),
+              ),
+            ),
+          ],
+        );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: SettingsActiveSessionsSection(
-              gateway: gateway,
-              actor: actor,
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: SettingsActiveSessionsSection(
+                gateway: gateway,
+                actor: actor,
+              ),
             ),
           ),
-        ),
-      );
-      await tester.pumpAndSettle();
+        );
+        await tester.pumpAndSettle();
 
-      expect(gateway.listCalls.single.actorUserId, equals('user-1'));
-      expect(
-        find.byKey(Key('active_sessions_row_$_currentSessionId')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('active_sessions_row_session-tablet')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('active_sessions_current_badge')),
-        findsOneWidget,
-      );
-      // Current session has no Revoke button — only the tablet does.
-      expect(
-        find.byKey(Key('active_sessions_revoke_$_currentSessionId')),
-        findsNothing,
-      );
-      expect(
-        find.byKey(const Key('active_sessions_revoke_session-tablet')),
-        findsOneWidget,
-      );
-    });
+        expect(gateway.listCalls.single.actorUserId, equals('user-1'));
+        expect(
+          find.byKey(Key('active_sessions_row_$_currentSessionId')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('active_sessions_row_session-tablet')),
+          findsOneWidget,
+        );
+        expect(
+          find.byKey(const Key('active_sessions_current_badge')),
+          findsOneWidget,
+        );
+        // Current session has no Revoke button — only the tablet does.
+        expect(
+          find.byKey(Key('active_sessions_revoke_$_currentSessionId')),
+          findsNothing,
+        );
+        expect(
+          find.byKey(const Key('active_sessions_revoke_session-tablet')),
+          findsOneWidget,
+        );
+      },
+    );
 
     testWidgets('revoke removes the row and forwards the gateway call', (
       tester,
@@ -86,8 +91,7 @@ void main() {
           _summary(
             id: 'session-tablet',
             label: 'Safari · iPad',
-            lastSeen:
-                DateTime.now().toUtc().subtract(const Duration(hours: 5)),
+            lastSeen: DateTime.now().toUtc().subtract(const Duration(hours: 5)),
           ),
         ],
       );
@@ -95,10 +99,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: SettingsActiveSessionsSection(
-              gateway: gateway,
-              actor: actor,
-            ),
+            body: SettingsActiveSessionsSection(gateway: gateway, actor: actor),
           ),
         ),
       );
@@ -228,10 +229,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: SettingsActiveSessionsSection(
-              gateway: gateway,
-              actor: actor,
-            ),
+            body: SettingsActiveSessionsSection(gateway: gateway, actor: actor),
           ),
         ),
       );
@@ -239,6 +237,65 @@ void main() {
 
       expect(find.byKey(const Key('active_sessions_error')), findsOneWidget);
       expect(find.byKey(const Key('active_sessions_retry')), findsOneWidget);
+    });
+
+    testWidgets('transport errors show proxy reachability copy', (
+      tester,
+    ) async {
+      final gateway = _RecordingAuthOperationsGateway(
+        sessions: const <AuthSessionSummary>[],
+        listError: const ProxyAuthOperationsError(
+          code: 'transport_error',
+          message: 'proxy auth operation failed before reaching the proxy',
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SettingsActiveSessionsSection(gateway: gateway, actor: actor),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('Could not reach the proxy. Check connection and retry.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('refreshGeneration reloads the active sessions list', (
+      tester,
+    ) async {
+      final gateway = _RecordingAuthOperationsGateway(
+        sessions: <AuthSessionSummary>[
+          _summary(
+            id: _currentSessionId,
+            label: 'Forge & Flow app',
+            lastSeen: DateTime.now().toUtc(),
+          ),
+        ],
+      );
+
+      Widget build(int generation) {
+        return MaterialApp(
+          home: Scaffold(
+            body: SettingsActiveSessionsSection(
+              gateway: gateway,
+              actor: actor,
+              refreshGeneration: generation,
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build(0));
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(1));
+
+      await tester.pumpWidget(build(1));
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(2));
     });
   });
 }
@@ -273,7 +330,8 @@ class _RecordingAuthOperationsGateway
 
   final List<AuthActiveSessionsListCommand> listCalls =
       <AuthActiveSessionsListCommand>[];
-  final List<AuthSessionRevokeCommand> revokeCalls = <AuthSessionRevokeCommand>[];
+  final List<AuthSessionRevokeCommand> revokeCalls =
+      <AuthSessionRevokeCommand>[];
   final List<AuthAllSessionsRevokeCommand> signOutAllCalls =
       <AuthAllSessionsRevokeCommand>[];
 

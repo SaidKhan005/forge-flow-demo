@@ -187,6 +187,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   AppDataStatus? _status;
   String? _mockReplayDate;
+  int _manualRefreshGeneration = 0;
+  bool _manualRefreshing = false;
 
   @override
   void initState() {
@@ -224,6 +226,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     await _loadStatus();
     await _loadMockDate();
+  }
+
+  Future<void> _handlePullToRefresh() async {
+    if (_manualRefreshing) return;
+    setState(() {
+      _manualRefreshing = true;
+      _manualRefreshGeneration += 1;
+    });
+    try {
+      await _refreshAppState();
+      await widget.onTeamDataRetry?.call();
+    } finally {
+      if (mounted) setState(() => _manualRefreshing = false);
+    }
   }
 
   /// Refresh after writes that fire the runtime invalidation bus.
@@ -313,6 +329,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (showAccount)
               _SettingsTabScrollView(
                 tabId: 'account',
+                onRefresh: _handlePullToRefresh,
                 slivers: [
                   _settingsSection(
                     title: 'Two-factor security',
@@ -331,6 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     child: SettingsAccountSection(
                       accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
+                      refreshGeneration: _manualRefreshGeneration,
                     ),
                   ),
                   _settingsSection(
@@ -345,6 +363,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                       allowDemoGatewayFallback:
                           widget.allowDemoActiveSessionsFallback,
+                      refreshGeneration: _manualRefreshGeneration,
                       onSignOutAllDevices: () async {
                         await authNotifier?.signOutAllSessions();
                       },
@@ -355,6 +374,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (showTeam)
               _SettingsTabScrollView(
                 tabId: 'team',
+                onRefresh: _handlePullToRefresh,
                 slivers: [
                   SliverToBoxAdapter(
                     child: _TeamSettingsLiveDataScope(
@@ -369,43 +389,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       dataLoadStateListenable:
                           widget.teamDataLoadStateListenable,
                       builder:
-                          (
-                            roleOptions,
-                            users,
-                            pendingInvites,
-                            dataLoadState,
-                          ) => _OrgUnitOptionsListenableScope(
-                            seed: widget.teamOrgUnitOptions,
-                            listenable: widget.teamOrgUnitOptionsListenable,
-                            builder: (orgUnitOptions) =>
-                                _RoleCatalogToOptionsScope(
-                                  fallback: roleOptions,
-                                  catalogSeed: widget.teamRoleCatalog,
-                                  catalogListenable:
-                                      widget.teamRoleCatalogListenable,
-                                  builder: (effectiveRoleOptions) =>
-                                      TeamSettingsSection(
-                                        actor: effectiveTeamActor,
-                                        users: users,
-                                        roleOptions: effectiveRoleOptions,
-                                        locationOptions:
-                                            widget.teamLocationOptions,
-                                        orgUnitOptions: orgUnitOptions,
-                                        pendingInvites: pendingInvites,
-                                        dataLoadState: dataLoadState,
-                                        usersController:
-                                            widget.teamUsersListController,
-                                        inviteFormController:
-                                            widget.teamInviteFormController,
-                                        onInviteSubmitted:
-                                            widget.onTeamInviteSubmitted,
-                                        onInviteRevoked:
-                                            widget.onTeamInviteRevoked,
-                                        onUserAction: widget.onTeamUserAction,
-                                        onDataRetry: widget.onTeamDataRetry,
-                                      ),
-                                ),
-                          ),
+                          (roleOptions, users, pendingInvites, dataLoadState) =>
+                              _OrgUnitOptionsListenableScope(
+                                seed: widget.teamOrgUnitOptions,
+                                listenable: widget.teamOrgUnitOptionsListenable,
+                                builder: (orgUnitOptions) =>
+                                    _RoleCatalogToOptionsScope(
+                                      fallback: roleOptions,
+                                      catalogSeed: widget.teamRoleCatalog,
+                                      catalogListenable:
+                                          widget.teamRoleCatalogListenable,
+                                      builder: (effectiveRoleOptions) =>
+                                          TeamSettingsSection(
+                                            actor: effectiveTeamActor,
+                                            users: users,
+                                            roleOptions: effectiveRoleOptions,
+                                            locationOptions:
+                                                widget.teamLocationOptions,
+                                            orgUnitOptions: orgUnitOptions,
+                                            pendingInvites: pendingInvites,
+                                            dataLoadState: dataLoadState,
+                                            usersController:
+                                                widget.teamUsersListController,
+                                            inviteFormController:
+                                                widget.teamInviteFormController,
+                                            onInviteSubmitted:
+                                                widget.onTeamInviteSubmitted,
+                                            onInviteRevoked:
+                                                widget.onTeamInviteRevoked,
+                                            onUserAction:
+                                                widget.onTeamUserAction,
+                                            onDataRetry: widget.onTeamDataRetry,
+                                          ),
+                                    ),
+                              ),
                     ),
                   ),
                   _settingsSection(
@@ -448,6 +465,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (showAdminTabs)
               _SettingsTabScrollView(
                 tabId: 'authority',
+                onRefresh: _handlePullToRefresh,
                 slivers: [
                   if (restaurant == null)
                     SliverToBoxAdapter(
@@ -480,6 +498,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (showAdminTabs)
               _SettingsTabScrollView(
                 tabId: 'data',
+                onRefresh: _handlePullToRefresh,
                 slivers: [
                   _settingsSection(
                     title: 'Data status',
@@ -504,6 +523,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             if (showAdminTabs)
               _SettingsTabScrollView(
                 tabId: 'developer',
+                onRefresh: _handlePullToRefresh,
                 slivers: [
                   _settingsSection(
                     title: 'Audit',
@@ -944,15 +964,24 @@ class _SettingsBottomNav extends StatelessWidget {
 class _SettingsTabScrollView extends StatelessWidget {
   final String tabId;
   final List<Widget> slivers;
+  final Future<void> Function()? onRefresh;
 
-  const _SettingsTabScrollView({required this.tabId, required this.slivers});
+  const _SettingsTabScrollView({
+    required this.tabId,
+    required this.slivers,
+    this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      key: PageStorageKey<String>('settings_${tabId}_scroll'),
-      cacheExtent: 9999,
-      slivers: slivers,
+    return RefreshIndicator.adaptive(
+      onRefresh: onRefresh ?? () async {},
+      child: CustomScrollView(
+        key: PageStorageKey<String>('settings_${tabId}_scroll'),
+        cacheExtent: 9999,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: slivers,
+      ),
     );
   }
 }

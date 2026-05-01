@@ -19,6 +19,8 @@ param(
 
   [switch] $UseFirebaseAuth,
 
+  [string] $ProxyBaseUri,
+
   [switch] $PrintCommandOnly,
 
   [Parameter(ValueFromRemainingArguments = $true)]
@@ -41,6 +43,10 @@ if (-not (Test-Path -LiteralPath $secretsFile)) {
 }
 
 . $secretsFile
+
+if ([string]::IsNullOrWhiteSpace($ProxyBaseUri)) {
+  $ProxyBaseUri = $env:FORGE_FLOW_PROXY_BASE_URI
+}
 
 $target = if ($App -eq 'barrio') {
   'lib/main_barrio.dart'
@@ -66,15 +72,15 @@ if (-not $NoProviderKeys) {
 }
 
 if ($UseFirebaseAuth) {
-  if ([string]::IsNullOrWhiteSpace($env:FORGE_FLOW_PROXY_BASE_URI)) {
+  if ([string]::IsNullOrWhiteSpace($ProxyBaseUri)) {
     Write-Warning 'FORGE_FLOW_PROXY_BASE_URI is missing from the unified local secrets file.'
     Write-Host "Expected it in: $secretsFile"
-    Write-Host 'Run scripts/deploy_staging_proxy.ps1 or add the deployed proxy URI outside the repo.'
+    Write-Host 'Run scripts/deploy_staging_proxy.ps1, pass -ProxyBaseUri, or add the deployed proxy URI outside the repo.'
     exit 1
   }
 
   $argsList += '--dart-define=FORGE_FLOW_USE_FIREBASE_AUTH=true'
-  $argsList += "--dart-define=FORGE_FLOW_PROXY_BASE_URI=$env:FORGE_FLOW_PROXY_BASE_URI"
+  $argsList += "--dart-define=FORGE_FLOW_PROXY_BASE_URI=$ProxyBaseUri"
 }
 
 if ($FlutterArgs.Count -gt 0) {

@@ -80,16 +80,20 @@ class _FakeWeekRepo implements WeekRecordRepository {
 class _FakeShiftRepo implements ShiftRecordRepository {
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) async =>
-      [];
+    String restaurantId,
+    String weekId,
+  ) async => [];
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) async =>
-      [];
+    String restaurantId,
+    List<String> weekIds,
+  ) async => [];
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-          String restaurantId, String startDate, String endDate) async =>
-      [];
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async => [];
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async =>
       null;
@@ -110,8 +114,7 @@ class _TrackingWeekDataNotifier extends WeekDataNotifier {
 
 class _TrackingShiftDashboardNotifier extends ShiftDashboardNotifier {
   final calls = <String>[];
-  _TrackingShiftDashboardNotifier()
-      : super.emptyForTest(AppDataStatus.noData);
+  _TrackingShiftDashboardNotifier() : super.emptyForTest(AppDataStatus.noData);
   @override
   Future<void> refresh() async {
     calls.add('refresh');
@@ -183,14 +186,20 @@ Widget _buildAppShellWithBoundaryMonitor() {
       ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(value: target),
       ChangeNotifierProvider<WeekDataNotifier>.value(value: _weekData),
       ChangeNotifierProvider<ShiftDashboardNotifier>.value(
-          value: _shiftDashboard),
+        value: _shiftDashboard,
+      ),
       ChangeNotifierProvider<DemandForecastContextNotifier>(
-          create: (_) => demand),
+        create: (_) => demand,
+      ),
       ChangeNotifierProvider<ScheduleDistributionWeightsNotifier>(
-          create: (_) => weights),
+        create: (_) => weights,
+      ),
       ChangeNotifierProvider<AppRuntimeInvalidationBus>.value(value: bus),
-      ProxyProvider2<ActiveTargetProfileNotifier, AppRuntimeInvalidationBus,
-          AppRefreshCoordinator>(
+      ProxyProvider2<
+        ActiveTargetProfileNotifier,
+        AppRuntimeInvalidationBus,
+        AppRefreshCoordinator
+      >(
         create: (ctx) => AppRefreshCoordinator(
           restaurantScope: ctx.read<RestaurantScopeNotifier>(),
           activeTarget: ctx.read<ActiveTargetProfileNotifier>(),
@@ -200,15 +209,16 @@ Widget _buildAppShellWithBoundaryMonitor() {
           scheduleWeights: ctx.read<ScheduleDistributionWeightsNotifier>(),
         ),
         update: (ctx, targetNotifier, bus, previous) {
-          previous!.refreshCurrentStateSurfaces();
-          return previous;
+          final coordinator = previous!;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            coordinator.refreshCurrentStateSurfaces();
+          });
+          return coordinator;
         },
       ),
     ],
     child: MaterialApp(
-      home: AppShell(
-        testBusinessDateResolver: (_) async => _testBusinessDate,
-      ),
+      home: AppShell(testBusinessDateResolver: (_) async => _testBusinessDate),
     ),
   );
 }
@@ -239,8 +249,9 @@ void main() {
       expect(_shiftDashboard.calls, ['refresh']);
     });
 
-    testWidgets('repeated checks at same boundary do not repeat refresh',
-        (tester) async {
+    testWidgets('repeated checks at same boundary do not repeat refresh', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
       await tester.pump();
       await tester.pump();
@@ -259,8 +270,11 @@ void main() {
       // Next check — same date — no additional refresh.
       await tester.pump(const Duration(minutes: 1));
       await tester.pump();
-      expect(_weekData.calls, isEmpty,
-          reason: 'same boundary should not re-trigger refresh');
+      expect(
+        _weekData.calls,
+        isEmpty,
+        reason: 'same boundary should not re-trigger refresh',
+      );
       expect(_shiftDashboard.calls, isEmpty);
     });
   });
@@ -282,30 +296,35 @@ void main() {
   // ── C: lifecycle integration ────────────────────────────────────────
 
   group('C — lifecycle integration', () {
-    testWidgets('monitor stops on paused — no boundary check while backgrounded',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
-      await tester.pump();
-      await tester.pump();
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+    testWidgets(
+      'monitor stops on paused — no boundary check while backgrounded',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
+        await tester.pump();
+        await tester.pump();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // Background the app.
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
+        // Background the app.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
 
-      // Change date while backgrounded.
-      _testBusinessDate = '2026-04-14';
+        // Change date while backgrounded.
+        _testBusinessDate = '2026-04-14';
 
-      // Advance time — timer should be stopped, so no check fires.
-      await tester.pump(const Duration(minutes: 1));
-      await tester.pump();
+        // Advance time — timer should be stopped, so no check fires.
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump();
 
-      // No refresh from boundary monitor — it was stopped.
-      expect(_weekData.calls, isEmpty,
-          reason: 'monitor should be stopped while backgrounded');
-      expect(_shiftDashboard.calls, isEmpty);
-    });
+        // No refresh from boundary monitor — it was stopped.
+        expect(
+          _weekData.calls,
+          isEmpty,
+          reason: 'monitor should be stopped while backgrounded',
+        );
+        expect(_shiftDashboard.calls, isEmpty);
+      },
+    );
 
     testWidgets('monitor restarts on resumed after paused', (tester) async {
       await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
@@ -341,70 +360,77 @@ void main() {
 
   group('D — resume dedup with boundary monitor', () {
     testWidgets(
-        'resumed after paused re-seeds monitor, preventing duplicate refresh',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
-      await tester.pump();
-      await tester.pump();
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+      'resumed after paused re-seeds monitor, preventing duplicate refresh',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
+        await tester.pump();
+        await tester.pump();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // Background at date '2026-04-13'.
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
+        // Background at date '2026-04-13'.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
 
-      // Date changes while backgrounded.
-      _testBusinessDate = '2026-04-14';
+        // Date changes while backgrounded.
+        _testBusinessDate = '2026-04-14';
 
-      // Resume — 7.55n.9 fires one refresh, monitor re-seeds to new date.
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
-      await tester.pump(); // flush re-seed
+        // Resume — 7.55n.9 fires one refresh, monitor re-seeds to new date.
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        await tester.pump(); // flush re-seed
 
-      // Only ONE refresh (from resume), not two.
-      expect(_weekData.calls, ['refresh']);
-      expect(_shiftDashboard.calls, ['refresh']);
+        // Only ONE refresh (from resume), not two.
+        expect(_weekData.calls, ['refresh']);
+        expect(_shiftDashboard.calls, ['refresh']);
 
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // Next periodic check — date hasn't changed since re-seed.
-      await tester.pump(const Duration(minutes: 1));
-      await tester.pump();
+        // Next periodic check — date hasn't changed since re-seed.
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump();
 
-      expect(_weekData.calls, isEmpty,
-          reason:
-              'monitor re-seeded to new date — no boundary change detected');
-      expect(_shiftDashboard.calls, isEmpty);
-    });
+        expect(
+          _weekData.calls,
+          isEmpty,
+          reason: 'monitor re-seeded to new date — no boundary change detected',
+        );
+        expect(_shiftDashboard.calls, isEmpty);
+      },
+    );
   });
 
   // ── E: second boundary while foregrounded ───────────────────────────
 
   group('E — multiple boundary changes', () {
-    testWidgets('second boundary change while foregrounded triggers refresh again',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
-      await tester.pump();
-      await tester.pump();
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+    testWidgets(
+      'second boundary change while foregrounded triggers refresh again',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithBoundaryMonitor());
+        await tester.pump();
+        await tester.pump();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // First boundary change.
-      _testBusinessDate = '2026-04-14';
-      await tester.pump(const Duration(minutes: 1));
-      await tester.pump();
-      expect(_weekData.calls, ['refresh']);
+        // First boundary change.
+        _testBusinessDate = '2026-04-14';
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump();
+        expect(_weekData.calls, ['refresh']);
 
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // Second boundary change.
-      _testBusinessDate = '2026-04-15';
-      await tester.pump(const Duration(minutes: 1));
-      await tester.pump();
-      expect(_weekData.calls, ['refresh']);
-      expect(_shiftDashboard.calls, ['refresh']);
-    });
+        // Second boundary change.
+        _testBusinessDate = '2026-04-15';
+        await tester.pump(const Duration(minutes: 1));
+        await tester.pump();
+        expect(_weekData.calls, ['refresh']);
+        expect(_shiftDashboard.calls, ['refresh']);
+      },
+    );
   });
 }

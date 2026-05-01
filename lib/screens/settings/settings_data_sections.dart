@@ -260,10 +260,12 @@ class SettingsAccountSection extends StatefulWidget {
     super.key,
     this.accountInfoGateway,
     this.passwordChangeGateway,
+    this.refreshGeneration = 0,
   });
 
   final AccountInfoGateway? accountInfoGateway;
   final PasswordChangeGateway? passwordChangeGateway;
+  final int refreshGeneration;
 
   @override
   State<SettingsAccountSection> createState() => _SettingsAccountSectionState();
@@ -291,6 +293,8 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
       _accountInfo = null;
       _accountInfoError = null;
       _usingAccountInfoFallback = false;
+      _loadAccountInfoIfAvailable();
+    } else if (oldWidget.refreshGeneration != widget.refreshGeneration) {
       _loadAccountInfoIfAvailable();
     }
   }
@@ -684,6 +688,9 @@ class _AccountInfoSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final lastLoginAt = info.lastLoginAt;
+    final lastActiveAt = info.lastActiveAt;
+    final passwordUpdatedAt = info.passwordUpdatedAt;
     final rows = <_AccountInfoDetail>[
       _AccountInfoDetail('Display name', _valueOrFallback(info.displayName)),
       _AccountInfoDetail('Email', _valueOrFallback(info.email)),
@@ -699,12 +706,15 @@ class _AccountInfoSummaryCard extends StatelessWidget {
             : info.roleLabels.join(', '),
       ),
       _AccountInfoDetail('MFA', info.mfaEnabled ? 'Enabled' : 'Not enabled'),
-      _AccountInfoDetail('Last login', _formatAccountDate(info.lastLoginAt)),
-      _AccountInfoDetail('Last active', _formatAccountDate(info.lastActiveAt)),
-      _AccountInfoDetail(
-        'Password updated',
-        _formatAccountDate(info.passwordUpdatedAt),
-      ),
+      if (lastLoginAt != null)
+        _AccountInfoDetail('Last login', _formatAccountDate(lastLoginAt)),
+      if (lastActiveAt != null)
+        _AccountInfoDetail('Last active', _formatAccountDate(lastActiveAt)),
+      if (passwordUpdatedAt != null)
+        _AccountInfoDetail(
+          'Password updated',
+          _formatAccountDate(passwordUpdatedAt),
+        ),
     ];
 
     return SettingsCard(

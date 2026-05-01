@@ -287,6 +287,73 @@ void main() {
       },
     );
 
+    testWidgets('signed-in Settings pull-to-refresh reloads account surfaces', (
+      tester,
+    ) async {
+      final notifier = AuthSessionNotifier(
+        loginService: const ScaffoldFailingAuthLoginService(),
+        storage: InMemorySecureSessionStorage(),
+      )..debugSetSession(_settingsAuthSession());
+      notifier.debugSetActiveSessionId('session-current');
+      final accountGateway = _FixedAccountInfoGateway(
+        info: AccountInfo(
+          displayName: 'Jane Operator',
+          email: 'jane@example.test',
+          statusLabel: 'Active',
+          locationLabel: 'Downtown',
+          roleLabels: const <String>['Kitchen Lead'],
+          mfaEnabled: true,
+        ),
+      );
+      final sessionsGateway = _ActiveSessionsRecordingGateway(
+        sessions: <AuthSessionSummary>[
+          AuthSessionSummary(
+            sessionId: 'session-current',
+            deviceLabel: 'Forge & Flow app',
+            userAgent: 'Forge&Flow/1.0',
+            createdAt: DateTime.utc(2026, 4, 29, 8),
+            lastSeenAt: DateTime.utc(2026, 4, 29, 12),
+          ),
+        ],
+      );
+
+      await tester.pumpWidget(
+        ChangeNotifierProvider<AuthSessionNotifier>.value(
+          value: notifier,
+          child: MaterialApp(
+            home: SettingsScreen(
+              initialStatus: AppDataStatus.current(),
+              initialMockDate: '2026-03-27',
+              accountInfoGateway: accountGateway,
+              authOperationsGateway: sessionsGateway,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RefreshIndicator), findsWidgets);
+      expect(accountGateway.requests, hasLength(1));
+      expect(sessionsGateway.listCalls, hasLength(1));
+
+      await tester.drag(
+        find.byType(CustomScrollView).first,
+        const Offset(0, 360),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      for (var i = 0; i < 10 && accountGateway.requests.length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      for (var i = 0; i < 10 && sessionsGateway.listCalls.length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(accountGateway.requests, hasLength(2));
+      expect(sessionsGateway.listCalls, hasLength(2));
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('signed-in Settings renders My info above account actions', (
       tester,
     ) async {
@@ -499,6 +566,20 @@ void main() {
         find.descendant(
           of: fallbackCard,
           matching: find.textContaining('Firebase', skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: fallbackCard,
+          matching: find.text('Last login', skipOffstage: false),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: fallbackCard,
+          matching: find.text('Last active', skipOffstage: false),
         ),
         findsNothing,
       );
@@ -1373,100 +1454,99 @@ void main() {
     // `test/settings_custom_roles_section_test.dart`; these only assert
     // that the screen passes the catalog through and reflects
     // permission gates.
-    testWidgets(
-      'Roles section renders catalog and create button for owner',
-      (tester) async {
-        const catalog = <TeamRoleCatalogEntry>[
-          TeamRoleCatalogEntry(
-            roleId: 'role-seed-owner',
-            roleKey: 'operator_owner',
-            displayName: 'Operator Owner',
-            description: 'Full operator-scope admin.',
-            isSeeded: true,
-            isEditable: false,
-            permissions: <TeamRolePermissionRule>[],
-          ),
-          TeamRoleCatalogEntry(
-            roleId: 'role-custom-1',
-            roleKey: 'kitchen_lead',
-            displayName: 'Kitchen Lead',
-            description: '',
-            isSeeded: false,
-            isEditable: true,
-            operatorId: 'op-1',
-            permissions: <TeamRolePermissionRule>[
-              TeamRolePermissionRule(
-                permissionKey: 'forgeflow.shift.view',
-                effect: 'allow',
-              ),
-            ],
-          ),
-        ];
-
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              initialStatus: AppDataStatus.current(),
-              initialMockDate: '2026-03-27',
-              teamActor: _settingsRolesOwnerActor,
-              teamRoleCatalog: catalog,
-              onTeamRoleCreate: (_) async => null,
-              onTeamRolePatch: (_) async => null,
-              onTeamRoleDelete: (_) async => true,
+    testWidgets('Roles section renders catalog and create button for owner', (
+      tester,
+    ) async {
+      const catalog = <TeamRoleCatalogEntry>[
+        TeamRoleCatalogEntry(
+          roleId: 'role-seed-owner',
+          roleKey: 'operator_owner',
+          displayName: 'Operator Owner',
+          description: 'Full operator-scope admin.',
+          isSeeded: true,
+          isEditable: false,
+          permissions: <TeamRolePermissionRule>[],
+        ),
+        TeamRoleCatalogEntry(
+          roleId: 'role-custom-1',
+          roleKey: 'kitchen_lead',
+          displayName: 'Kitchen Lead',
+          description: '',
+          isSeeded: false,
+          isEditable: true,
+          operatorId: 'op-1',
+          permissions: <TeamRolePermissionRule>[
+            TeamRolePermissionRule(
+              permissionKey: 'forgeflow.shift.view',
+              effect: 'allow',
             ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('settings_tab_team')));
-        await tester.pumpAndSettle();
+          ],
+        ),
+      ];
 
-        expect(
-          find.byKey(
-            const Key('settings_custom_roles_section'),
-            skipOffstage: false,
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsRolesOwnerActor,
+            teamRoleCatalog: catalog,
+            onTeamRoleCreate: (_) async => null,
+            onTeamRolePatch: (_) async => null,
+            onTeamRoleDelete: (_) async => true,
           ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('settings_custom_roles_create_button'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Custom roles (1)', skipOffstage: false),
-          findsOneWidget,
-        );
-        expect(
-          find.text('Seeded roles (1)', skipOffstage: false),
-          findsOneWidget,
-        );
-        // Custom Kitchen Lead is editable + deletable; seeded
-        // operator_owner is read-only with View affordance.
-        expect(
-          find.byKey(
-            const Key('settings_custom_role_edit_role-custom-1'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('settings_custom_role_delete_role-custom-1'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(
-            const Key('settings_custom_role_view_role-seed-owner'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('settings_custom_roles_section'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('settings_custom_roles_create_button'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Custom roles (1)', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Seeded roles (1)', skipOffstage: false),
+        findsOneWidget,
+      );
+      // Custom Kitchen Lead is editable + deletable; seeded
+      // operator_owner is read-only with View affordance.
+      expect(
+        find.byKey(
+          const Key('settings_custom_role_edit_role-custom-1'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('settings_custom_role_delete_role-custom-1'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('settings_custom_role_view_role-seed-owner'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets(
       'Roles section hides create + mutators for read-only managers',
@@ -1539,127 +1619,125 @@ void main() {
       },
     );
 
-    testWidgets(
-      'Roles catalog feeds TeamSettingsSection.roleOptions',
-      (tester) async {
-        // P3: when teamRoleCatalogListenable yields entries, the role
-        // pickers used by invite + role-grant flows must consume the
-        // catalog so a newly created custom role is grantable without
-        // a Settings reopen.
-        final catalog = ValueNotifier<List<TeamRoleCatalogEntry>>(
-          const <TeamRoleCatalogEntry>[],
-        );
-        addTearDown(catalog.dispose);
+    testWidgets('Roles catalog feeds TeamSettingsSection.roleOptions', (
+      tester,
+    ) async {
+      // P3: when teamRoleCatalogListenable yields entries, the role
+      // pickers used by invite + role-grant flows must consume the
+      // catalog so a newly created custom role is grantable without
+      // a Settings reopen.
+      final catalog = ValueNotifier<List<TeamRoleCatalogEntry>>(
+        const <TeamRoleCatalogEntry>[],
+      );
+      addTearDown(catalog.dispose);
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              initialStatus: AppDataStatus.current(),
-              initialMockDate: '2026-03-27',
-              teamActor: _settingsRolesOwnerActor,
-              teamRoleCatalog: catalog.value,
-              teamRoleCatalogListenable: catalog,
-              onTeamRoleCreate: (_) async => null,
-            ),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsRolesOwnerActor,
+            teamRoleCatalog: catalog.value,
+            teamRoleCatalogListenable: catalog,
+            onTeamRoleCreate: (_) async => null,
           ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      TeamSettingsSection section() {
+        return tester.widget<TeamSettingsSection>(
+          find.byType(TeamSettingsSection, skipOffstage: false),
         );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('settings_tab_team')));
-        await tester.pumpAndSettle();
+      }
 
-        TeamSettingsSection section() {
-          return tester.widget<TeamSettingsSection>(
-            find.byType(TeamSettingsSection, skipOffstage: false),
-          );
-        }
+      // Empty catalog → falls back to the default seeded options
+      // bundled with TeamSettingsSection so existing flows do not
+      // collapse before the live gateway resolves.
+      expect(section().roleOptions.first.label, equals('Owner'));
 
-        // Empty catalog → falls back to the default seeded options
-        // bundled with TeamSettingsSection so existing flows do not
-        // collapse before the live gateway resolves.
-        expect(section().roleOptions.first.label, equals('Owner'));
+      // Catalog yields a custom role → role pickers immediately
+      // consume the catalog projection. The fallback (Owner /
+      // Manager / Supervisor / Staff) is dropped in favor of
+      // whatever the operator's catalog actually contains.
+      catalog.value = const <TeamRoleCatalogEntry>[
+        TeamRoleCatalogEntry(
+          roleId: 'role-new-1',
+          roleKey: 'kitchen_lead',
+          displayName: 'Kitchen Lead',
+          description: '',
+          isSeeded: false,
+          isEditable: true,
+          operatorId: 'op-1',
+          permissions: <TeamRolePermissionRule>[],
+        ),
+      ];
+      await tester.pump();
 
-        // Catalog yields a custom role → role pickers immediately
-        // consume the catalog projection. The fallback (Owner /
-        // Manager / Supervisor / Staff) is dropped in favor of
-        // whatever the operator's catalog actually contains.
-        catalog.value = const <TeamRoleCatalogEntry>[
-          TeamRoleCatalogEntry(
-            roleId: 'role-new-1',
-            roleKey: 'kitchen_lead',
-            displayName: 'Kitchen Lead',
-            description: '',
-            isSeeded: false,
-            isEditable: true,
-            operatorId: 'op-1',
-            permissions: <TeamRolePermissionRule>[],
+      final options = section().roleOptions;
+      expect(options, hasLength(1));
+      expect(options.single.roleId, equals('role-new-1'));
+      expect(options.single.label, equals('Kitchen Lead'));
+    });
+
+    testWidgets('Roles catalog listenable rehydrates after a save', (
+      tester,
+    ) async {
+      final catalog = ValueNotifier<List<TeamRoleCatalogEntry>>(
+        const <TeamRoleCatalogEntry>[],
+      );
+      addTearDown(catalog.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsRolesOwnerActor,
+            teamRoleCatalog: catalog.value,
+            teamRoleCatalogListenable: catalog,
+            onTeamRoleCreate: (_) async => null,
           ),
-        ];
-        await tester.pump();
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
 
-        final options = section().roleOptions;
-        expect(options, hasLength(1));
-        expect(options.single.roleId, equals('role-new-1'));
-        expect(options.single.label, equals('Kitchen Lead'));
-      },
-    );
+      // Empty-state hint until the listenable yields.
+      expect(
+        find.byKey(
+          const Key('settings_custom_roles_empty_custom'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
 
-    testWidgets(
-      'Roles catalog listenable rehydrates after a save',
-      (tester) async {
-        final catalog = ValueNotifier<List<TeamRoleCatalogEntry>>(
-          const <TeamRoleCatalogEntry>[],
-        );
-        addTearDown(catalog.dispose);
+      catalog.value = const <TeamRoleCatalogEntry>[
+        TeamRoleCatalogEntry(
+          roleId: 'role-new-1',
+          roleKey: 'kitchen_lead',
+          displayName: 'Kitchen Lead',
+          description: '',
+          isSeeded: false,
+          isEditable: true,
+          operatorId: 'op-1',
+          permissions: <TeamRolePermissionRule>[],
+        ),
+      ];
+      await tester.pump();
 
-        await tester.pumpWidget(
-          MaterialApp(
-            home: SettingsScreen(
-              initialStatus: AppDataStatus.current(),
-              initialMockDate: '2026-03-27',
-              teamActor: _settingsRolesOwnerActor,
-              teamRoleCatalog: catalog.value,
-              teamRoleCatalogListenable: catalog,
-              onTeamRoleCreate: (_) async => null,
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const Key('settings_tab_team')));
-        await tester.pumpAndSettle();
-
-        // Empty-state hint until the listenable yields.
-        expect(
-          find.byKey(
-            const Key('settings_custom_roles_empty_custom'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-
-        catalog.value = const <TeamRoleCatalogEntry>[
-          TeamRoleCatalogEntry(
-            roleId: 'role-new-1',
-            roleKey: 'kitchen_lead',
-            displayName: 'Kitchen Lead',
-            description: '',
-            isSeeded: false,
-            isEditable: true,
-            operatorId: 'op-1',
-            permissions: <TeamRolePermissionRule>[],
-          ),
-        ];
-        await tester.pump();
-
-        // Catalog section now renders the new tile.
-        expect(
-          find.byKey(
-            const Key('settings_custom_role_tile_role-new-1'),
-            skipOffstage: false,
-          ),
-          findsOneWidget,
-        );
-      },
-    );
+      // Catalog section now renders the new tile.
+      expect(
+        find.byKey(
+          const Key('settings_custom_role_tile_role-new-1'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+    });
   });
 
   if (_includePrunedLabelGroups())

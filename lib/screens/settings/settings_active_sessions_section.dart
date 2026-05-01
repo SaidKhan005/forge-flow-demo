@@ -126,6 +126,7 @@ class SettingsActiveSessionsSection extends StatefulWidget {
     this.gateway,
     this.actor,
     this.allowDemoGatewayFallback = false,
+    this.refreshGeneration = 0,
     this.onSignOutAllDevices,
   });
 
@@ -135,6 +136,7 @@ class SettingsActiveSessionsSection extends StatefulWidget {
   /// In demo / preview shells where no proxy is wired, opting in to
   /// the demo fixture lets the walkthrough click path complete.
   final bool allowDemoGatewayFallback;
+  final int refreshGeneration;
 
   /// Callback the Account-tab shell wires to
   /// `AuthSessionNotifier.signOutAllSessions()` so the notifier state
@@ -173,6 +175,8 @@ class _SettingsActiveSessionsSectionState
     if (oldWidget.gateway != widget.gateway ||
         oldWidget.actor != widget.actor) {
       _bindActorAndGateway();
+      _refresh();
+    } else if (oldWidget.refreshGeneration != widget.refreshGeneration) {
       _refresh();
     }
   }
@@ -235,8 +239,7 @@ class _SettingsActiveSessionsSectionState
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _errorMessage =
-            "We couldn't load your active sessions. Please try again.";
+        _errorMessage = _activeSessionsLoadMessage(error);
       });
     }
   }
@@ -396,7 +399,8 @@ class _SettingsActiveSessionsSectionState
             for (var i = 0; i < _sessions.length; i++) ...[
               _ActiveSessionRow(
                 summary: _sessions[i],
-                isCurrent: actor.currentSessionId != null &&
+                isCurrent:
+                    actor.currentSessionId != null &&
                     _sessions[i].sessionId == actor.currentSessionId,
                 isRevoking: _revokingSessionIds.contains(
                   _sessions[i].sessionId,
@@ -704,6 +708,20 @@ class _ActiveSessionRow extends StatelessWidget {
   }
 }
 
+String _activeSessionsLoadMessage(Object error) {
+  final text = error.toString().toLowerCase();
+  if (text.contains('status: 401') || text.contains('status: 403')) {
+    return 'You do not have access to view active sessions.';
+  }
+  if (text.contains('status: 404') || text.contains('not found')) {
+    return 'Active sessions route not found. Rebuild with the staging proxy.';
+  }
+  if (text.contains('transport_error') || text.contains('status: null')) {
+    return 'Could not reach the proxy. Check connection and retry.';
+  }
+  return "We couldn't load your active sessions. Please try again.";
+}
+
 class _ActiveSessionsLoadingCard extends StatelessWidget {
   const _ActiveSessionsLoadingCard();
 
@@ -735,7 +753,10 @@ class _ActiveSessionsLoadingCard extends StatelessWidget {
 }
 
 class _ActiveSessionsErrorCard extends StatelessWidget {
-  const _ActiveSessionsErrorCard({required this.message, required this.onRetry});
+  const _ActiveSessionsErrorCard({
+    required this.message,
+    required this.onRetry,
+  });
 
   final String message;
   final VoidCallback onRetry;

@@ -35,6 +35,7 @@ import 'screens/auth/auth_permission_context_bridge.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/notifications_screen.dart';
 import 'screens/schedule_builder.dart';
+import 'screens/settings/settings_custom_roles_section.dart';
 import 'screens/settings/settings_org_hierarchy_section.dart';
 import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
@@ -157,8 +158,11 @@ class ForgeFlowScope extends StatelessWidget {
             scheduleWeights: ctx.read<ScheduleDistributionWeightsNotifier>(),
           ),
           update: (ctx, targetNotifier, bus, previous) {
-            previous!.refreshCurrentStateSurfaces();
-            return previous;
+            final coordinator = previous!;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              coordinator.refreshCurrentStateSurfaces();
+            });
+            return coordinator;
           },
         ),
       ],
@@ -202,6 +206,11 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       TeamSettingsSection.defaultRoleOptions;
   late final ValueNotifier<List<TeamRoleOption>> _teamRoleOptionsListenable =
       ValueNotifier<List<TeamRoleOption>>(_teamRoleOptions);
+  List<TeamRoleCatalogEntry> _teamRoleCatalog = const <TeamRoleCatalogEntry>[];
+  late final ValueNotifier<List<TeamRoleCatalogEntry>>
+  _teamRoleCatalogListenable = ValueNotifier<List<TeamRoleCatalogEntry>>(
+    _teamRoleCatalog,
+  );
   List<TeamUserListItem> _teamUsers = const <TeamUserListItem>[];
   late final ValueNotifier<List<TeamUserListItem>> _teamUsersListenable =
       ValueNotifier<List<TeamUserListItem>>(_teamUsers);
@@ -293,6 +302,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   void dispose() {
     _boundaryMonitor?.stop();
     _teamRoleOptionsListenable.dispose();
+    _teamRoleCatalogListenable.dispose();
     _teamUsersListenable.dispose();
     _teamPendingInvitesListenable.dispose();
     _teamDataLoadStateListenable.dispose();
@@ -382,6 +392,8 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             teamActor: teamActor,
             teamRoleOptions: routeState.teamRoleOptions.value,
             teamRoleOptionsListenable: routeState.teamRoleOptions,
+            teamRoleCatalog: routeState.teamRoleCatalog.value,
+            teamRoleCatalogListenable: routeState.teamRoleCatalog,
             teamLocationOptions: session == null
                 ? const <TeamLocationOption>[]
                 : <TeamLocationOption>[
@@ -412,6 +424,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             onTeamInviteRevoked: _teamInviteRevoker(session),
             onTeamUserAction: _teamUserActionHandler(session),
             onTeamDataRetry: _teamDataRetryRequester(session),
+            onTeamRoleCreate: _teamRoleCreateRequester(session),
+            onTeamRolePatch: _teamRolePatchRequester(session),
+            onTeamRoleDelete: _teamRoleDeleteRequester(session),
             passwordChangeGateway: widget.passwordChangeGateway,
             accountInfoGateway: widget.accountInfoGateway,
             mfaOperationsGateway: widget.mfaOperationsGateway,
@@ -516,22 +531,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       );
       if (!mounted) return;
       final roles = listed.roles;
-      if (roles.isEmpty) return;
-      final nextOptions = roles
-          .map(
-            (role) =>
-                TeamRoleOption(roleId: role.roleId, label: role.displayName),
-          )
-          .toList(growable: false);
-      final nextRoleIdsByKey = <String, String>{
-        for (final role in roles) role.roleKey: role.roleId,
-      };
-      setState(() {
-        _teamRolesLoadedFor = key;
-        _teamRoleOptions = nextOptions;
-        _teamRoleIdsByKey = nextRoleIdsByKey;
-      });
-      _teamRoleOptionsListenable.value = nextOptions;
+      _publishTeamRoleCatalog(roles, loadedKey: key);
     } catch (error) {
       debugPrint('Team role catalog load failed: $error');
     } finally {
@@ -1082,6 +1082,123 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     };
   }
 
+  SettingsRoleCreateRequester? _teamRoleCreateRequester(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (result) async {
+      final created = await gateway.createRole(
+        TeamRoleCreateCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          roleKey: result.roleKey,
+          displayName: result.displayName,
+          description: result.description,
+          permissions: result.permissionUpdates,
+          reason: 'settings_custom_role_create',
+        ),
+      );
+      _upsertTeamRole(created.role);
+      unawaited(_loadTeamRoleOptionsIfNeeded(session, force: true));
+      return created.role;
+    };
+  }
+
+  SettingsRolePatchRequester? _teamRolePatchRequester(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (result) async {
+      if (result.roleId.trim().isEmpty) {
+        throw StateError('Role patch was missing a role id.');
+      }
+      final patched = await gateway.patchRole(
+        TeamRolePatchCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          roleId: result.roleId,
+          displayName: result.displayName,
+          description: result.description,
+          permissions: result.permissionUpdates,
+          reason: 'settings_custom_role_update',
+        ),
+      );
+      _upsertTeamRole(patched.role);
+      unawaited(_loadTeamRoleOptionsIfNeeded(session, force: true));
+      return patched.role;
+    };
+  }
+
+  SettingsRoleDeleteRequester? _teamRoleDeleteRequester(AuthSession? session) {
+    final gateway = widget.authOperationsGateway;
+    if (gateway == null || session == null) return null;
+    return (role) async {
+      final deleted = await gateway.deleteRole(
+        TeamRoleDeleteCommand(
+          actorUserId: session.userId,
+          operatorId: session.operatorId,
+          locationId: session.locationId,
+          roleId: role.roleId,
+          reason: 'settings_custom_role_delete',
+        ),
+      );
+      if (deleted.deleted) {
+        _removeTeamRole(role.roleId);
+        unawaited(_loadTeamRoleOptionsIfNeeded(session, force: true));
+      }
+      return deleted.deleted;
+    };
+  }
+
+  void _upsertTeamRole(TeamRoleCatalogEntry role) {
+    final next = <TeamRoleCatalogEntry>[];
+    var replaced = false;
+    for (final existing in _teamRoleCatalog) {
+      if (existing.roleId == role.roleId) {
+        next.add(role);
+        replaced = true;
+      } else {
+        next.add(existing);
+      }
+    }
+    if (!replaced) next.add(role);
+    _publishTeamRoleCatalog(next);
+  }
+
+  void _removeTeamRole(String roleId) {
+    final next = _teamRoleCatalog
+        .where((role) => role.roleId != roleId)
+        .toList(growable: false);
+    _publishTeamRoleCatalog(next);
+  }
+
+  void _publishTeamRoleCatalog(
+    List<TeamRoleCatalogEntry> roles, {
+    String? loadedKey,
+  }) {
+    if (!mounted) return;
+    final nextCatalog = List<TeamRoleCatalogEntry>.unmodifiable(roles);
+    final nextOptions = nextCatalog
+        .map(
+          (role) =>
+              TeamRoleOption(roleId: role.roleId, label: role.displayName),
+        )
+        .toList(growable: false);
+    final nextRoleIdsByKey = <String, String>{
+      for (final role in nextCatalog) role.roleKey: role.roleId,
+    };
+    setState(() {
+      if (loadedKey != null) _teamRolesLoadedFor = loadedKey;
+      _teamRoleCatalog = nextCatalog;
+      _teamRoleIdsByKey = nextRoleIdsByKey;
+      if (nextOptions.isNotEmpty) _teamRoleOptions = nextOptions;
+    });
+    _teamRoleCatalogListenable.value = nextCatalog;
+    if (nextOptions.isNotEmpty) {
+      _teamRoleOptionsListenable.value = nextOptions;
+    }
+  }
+
   TeamUserStatusCommand _teamUserStatusCommand(
     AuthSession session,
     TeamUserActionRequest request,
@@ -1224,6 +1341,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 class _TeamSettingsRouteStateMirror {
   _TeamSettingsRouteStateMirror._({
     required this.teamRoleOptions,
+    required this.teamRoleCatalog,
     required this.teamUsers,
     required this.teamPendingInvites,
     required this.teamDataLoadState,
@@ -1239,6 +1357,9 @@ class _TeamSettingsRouteStateMirror {
     final mirror = _TeamSettingsRouteStateMirror._(
       teamRoleOptions: ValueNotifier<List<TeamRoleOption>>(
         owner._teamRoleOptionsListenable.value,
+      ),
+      teamRoleCatalog: ValueNotifier<List<TeamRoleCatalogEntry>>(
+        owner._teamRoleCatalogListenable.value,
       ),
       teamUsers: ValueNotifier<List<TeamUserListItem>>(
         owner._teamUsersListenable.value,
@@ -1267,6 +1388,11 @@ class _TeamSettingsRouteStateMirror {
     mirror._mirror(
       owner._teamRoleOptionsListenable,
       mirror.teamRoleOptions,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamRoleCatalogListenable,
+      mirror.teamRoleCatalog,
       detachListeners,
     );
     mirror._mirror(
@@ -1308,6 +1434,7 @@ class _TeamSettingsRouteStateMirror {
   }
 
   final ValueNotifier<List<TeamRoleOption>> teamRoleOptions;
+  final ValueNotifier<List<TeamRoleCatalogEntry>> teamRoleCatalog;
   final ValueNotifier<List<TeamUserListItem>> teamUsers;
   final ValueNotifier<List<TeamPendingInviteListItem>> teamPendingInvites;
   final ValueNotifier<TeamSettingsDataLoadState> teamDataLoadState;
@@ -1338,6 +1465,7 @@ class _TeamSettingsRouteStateMirror {
       detach();
     }
     teamRoleOptions.dispose();
+    teamRoleCatalog.dispose();
     teamUsers.dispose();
     teamPendingInvites.dispose();
     teamDataLoadState.dispose();

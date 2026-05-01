@@ -80,16 +80,20 @@ class _FakeWeekRepo implements WeekRecordRepository {
 class _FakeShiftRepo implements ShiftRecordRepository {
   @override
   Future<List<ShiftRecord>> getShiftsForWeek(
-          String restaurantId, String weekId) async =>
-      [];
+    String restaurantId,
+    String weekId,
+  ) async => [];
   @override
   Future<List<ShiftRecord>> getClosedShiftsForWeeks(
-          String restaurantId, List<String> weekIds) async =>
-      [];
+    String restaurantId,
+    List<String> weekIds,
+  ) async => [];
   @override
   Future<List<ShiftRecord>> getClosedShiftsInDateRange(
-          String restaurantId, String startDate, String endDate) async =>
-      [];
+    String restaurantId,
+    String startDate,
+    String endDate,
+  ) async => [];
   @override
   Future<String?> getLatestClosedBusinessDate(String restaurantId) async =>
       null;
@@ -110,8 +114,7 @@ class _TrackingWeekDataNotifier extends WeekDataNotifier {
 
 class _TrackingShiftDashboardNotifier extends ShiftDashboardNotifier {
   final calls = <String>[];
-  _TrackingShiftDashboardNotifier()
-      : super.emptyForTest(AppDataStatus.noData);
+  _TrackingShiftDashboardNotifier() : super.emptyForTest(AppDataStatus.noData);
   @override
   Future<void> refresh() async {
     calls.add('refresh');
@@ -181,15 +184,21 @@ Widget _buildAppShellWithProxyWiring() {
       ChangeNotifierProvider<ActiveTargetProfileNotifier>.value(value: target),
       ChangeNotifierProvider<WeekDataNotifier>.value(value: _weekData),
       ChangeNotifierProvider<ShiftDashboardNotifier>.value(
-          value: _shiftDashboard),
+        value: _shiftDashboard,
+      ),
       ChangeNotifierProvider<DemandForecastContextNotifier>(
-          create: (_) => demand),
+        create: (_) => demand,
+      ),
       ChangeNotifierProvider<ScheduleDistributionWeightsNotifier>(
-          create: (_) => weights),
+        create: (_) => weights,
+      ),
       // Production-style bus + ProxyProvider2 wiring — matches ForgeFlowScope.
       ChangeNotifierProvider<AppRuntimeInvalidationBus>.value(value: bus),
-      ProxyProvider2<ActiveTargetProfileNotifier, AppRuntimeInvalidationBus,
-          AppRefreshCoordinator>(
+      ProxyProvider2<
+        ActiveTargetProfileNotifier,
+        AppRuntimeInvalidationBus,
+        AppRefreshCoordinator
+      >(
         create: (ctx) => AppRefreshCoordinator(
           restaurantScope: ctx.read<RestaurantScopeNotifier>(),
           activeTarget: ctx.read<ActiveTargetProfileNotifier>(),
@@ -199,8 +208,11 @@ Widget _buildAppShellWithProxyWiring() {
           scheduleWeights: ctx.read<ScheduleDistributionWeightsNotifier>(),
         ),
         update: (ctx, targetNotifier, bus, previous) {
-          previous!.refreshCurrentStateSurfaces();
-          return previous;
+          final coordinator = previous!;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            coordinator.refreshCurrentStateSurfaces();
+          });
+          return coordinator;
         },
       ),
     ],
@@ -255,26 +267,34 @@ void main() {
 
   group('B -- cold-start guard', () {
     testWidgets(
-        'initial build does NOT trigger extra current-state refresh via proxy',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithProxyWiring());
-      await tester.pump();
-      await tester.pump();
+      'initial build does NOT trigger extra current-state refresh via proxy',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithProxyWiring());
+        await tester.pump();
+        await tester.pump();
 
-      // The ProxyProvider2 fires update() once on initial build.
-      // With the cold-start guard, this should NOT call refresh on
-      // week/shift notifiers. Their only calls should be from their
-      // own constructor _load(), not from the coordinator.
-      expect(_weekData.calls, isEmpty,
+        // The ProxyProvider2 fires update() once on initial build.
+        // With the cold-start guard, this should NOT call refresh on
+        // week/shift notifiers. Their only calls should be from their
+        // own constructor _load(), not from the coordinator.
+        expect(
+          _weekData.calls,
+          isEmpty,
           reason:
-              'ProxyProvider2 initial update should be skipped by cold-start guard');
-      expect(_shiftDashboard.calls, isEmpty,
+              'ProxyProvider2 initial update should be skipped by cold-start guard',
+        );
+        expect(
+          _shiftDashboard.calls,
+          isEmpty,
           reason:
-              'ProxyProvider2 initial update should be skipped by cold-start guard');
-    });
+              'ProxyProvider2 initial update should be skipped by cold-start guard',
+        );
+      },
+    );
 
-    testWidgets('resumed without prior paused does NOT trigger refresh',
-        (tester) async {
+    testWidgets('resumed without prior paused does NOT trigger refresh', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildAppShellWithProxyWiring());
       await tester.pump();
       _weekData.calls.clear();
@@ -291,62 +311,76 @@ void main() {
   // ── C: sticky-flag guard ──────────────────────────────────────────────
 
   group('C -- sticky-flag guard', () {
-    testWidgets('inactive alone does NOT trigger refresh on resume',
-        (tester) async {
+    testWidgets('inactive alone does NOT trigger refresh on resume', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildAppShellWithProxyWiring());
       await tester.pump();
       _weekData.calls.clear();
       _shiftDashboard.calls.clear();
 
-      tester.binding
-          .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       await tester.pump();
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
 
-      expect(_weekData.calls, isEmpty,
-          reason: 'inactive -> resumed should not trigger refresh');
+      expect(
+        _weekData.calls,
+        isEmpty,
+        reason: 'inactive -> resumed should not trigger refresh',
+      );
       expect(_shiftDashboard.calls, isEmpty);
     });
 
     testWidgets(
-        'inactive -> resumed after a prior paused -> resumed cycle does NOT fire again',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithProxyWiring());
-      await tester.pump();
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+      'inactive -> resumed after a prior paused -> resumed cycle does NOT fire again',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithProxyWiring());
+        await tester.pump();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // First: real background cycle
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
-      expect(_weekData.calls, ['refresh'],
-          reason: 'paused -> resumed should fire');
+        // First: real background cycle
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        expect(_weekData.calls, [
+          'refresh',
+        ], reason: 'paused -> resumed should fire');
 
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // Then: transient interruption (phone call overlay)
-      tester.binding
-          .handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
+        // Then: transient interruption (phone call overlay)
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
 
-      expect(_weekData.calls, isEmpty,
+        expect(
+          _weekData.calls,
+          isEmpty,
           reason:
-              'inactive -> resumed after prior cycle should NOT fire (flag was reset)');
-      expect(_shiftDashboard.calls, isEmpty);
-    });
+              'inactive -> resumed after prior cycle should NOT fire (flag was reset)',
+        );
+        expect(_shiftDashboard.calls, isEmpty);
+      },
+    );
   });
 
   // ── D: routes through shared coordinator ──────────────────────────────
 
   group('D -- uses shared coordinator seam', () {
-    testWidgets('resume refresh goes through coordinator, not widget-local',
-        (tester) async {
+    testWidgets('resume refresh goes through coordinator, not widget-local', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildAppShellWithProxyWiring());
       await tester.pump();
       _weekData.calls.clear();
@@ -367,24 +401,27 @@ void main() {
 
   group('E -- proxy update after cold start', () {
     testWidgets(
-        'cold-start skip does not block subsequent real proxy updates',
-        (tester) async {
-      await tester.pumpWidget(_buildAppShellWithProxyWiring());
-      await tester.pump();
-      _weekData.calls.clear();
-      _shiftDashboard.calls.clear();
+      'cold-start skip does not block subsequent real proxy updates',
+      (tester) async {
+        await tester.pumpWidget(_buildAppShellWithProxyWiring());
+        await tester.pump();
+        _weekData.calls.clear();
+        _shiftDashboard.calls.clear();
 
-      // The cold-start guard consumed the first proxy update.
-      // A real paused -> resumed cycle triggers refreshCurrentStateSurfaces()
-      // through the lifecycle observer, proving the coordinator is no
-      // longer guarded.
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pump();
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-      await tester.pump();
+        // The cold-start guard consumed the first proxy update.
+        // A real paused -> resumed cycle triggers refreshCurrentStateSurfaces()
+        // through the lifecycle observer, proving the coordinator is no
+        // longer guarded.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
 
-      expect(_weekData.calls, ['refresh']);
-      expect(_shiftDashboard.calls, ['refresh']);
-    });
+        expect(_weekData.calls, ['refresh']);
+        expect(_shiftDashboard.calls, ['refresh']);
+      },
+    );
   });
 }

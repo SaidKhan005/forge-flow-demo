@@ -133,6 +133,8 @@ void main() {
       final error = thrown! as ProxyAccountInfoError;
       expect(error.code, equals('transport_error'));
       expect(error.message.contains('postgres://secret-dsn'), isFalse);
+      expect(error.toString(), contains('transport'));
+      expect(error.toString().contains('postgres://secret-dsn'), isFalse);
     });
   });
 }

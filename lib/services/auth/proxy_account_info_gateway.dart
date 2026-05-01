@@ -17,7 +17,8 @@ class ProxyAccountInfoError implements Exception {
 
   @override
   String toString() =>
-      'ProxyAccountInfoError(code: $code, status: $statusCode)';
+      'ProxyAccountInfoError(code: $code, status: $statusCode, '
+      'message: $message)';
 }
 
 class ProxyAccountInfoGateway implements AccountInfoGateway {
