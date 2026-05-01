@@ -734,6 +734,98 @@ void main() {
       expect(fake.posts.single.url.path, equals('/v1/auth/session/revoke-all'));
     });
 
+    test(
+      'listAuthEventsForActor GETs /v1/auth/audit-log and parses entries',
+      () async {
+        final fake = _FakeAuthOpsHttpClient(
+          getResponse: ProxyAuthOperationsResponse(
+            statusCode: 200,
+            body: <String, Object?>{
+              'entries': <Object?>[
+                <String, Object?>{
+                  'event_id': 'audit-1',
+                  'event_kind': 'sign_in',
+                  'event_type': 'auth.user.signed_in',
+                  'friendly_label': 'Sign-in',
+                  'occurred_at': DateTime.utc(2026, 4, 30).toIso8601String(),
+                  'ip': '203.0.113.10',
+                  'user_agent': 'Forge&Flow/1.0',
+                  'geo_country': 'CA',
+                  'payload': <String, Object?>{'reason': 'normal'},
+                },
+                <String, Object?>{
+                  'event_id': 'audit-2',
+                  'event_type': 'auth.password_changed',
+                  'occurred_at': DateTime.utc(2026, 4, 29).toIso8601String(),
+                  'payload': <String, Object?>{},
+                },
+              ],
+              'has_more': true,
+            },
+          ),
+        );
+        final gateway = ProxyAuthOperationsGateway(
+          proxyBaseUri: baseUri,
+          idTokenProvider: () async => 'id-token',
+          httpClient: fake,
+        );
+
+        final from = DateTime.utc(2026, 4, 1);
+        final to = DateTime.utc(2026, 4, 30, 23, 59, 59);
+        final listed = await gateway.listAuthEventsForActor(
+          AuthEventListCommand(
+            actorUserId: 'actor',
+            operatorId: 'op',
+            locationId: 'loc',
+            limit: 50,
+            offset: 0,
+            eventKind: AuthEventKind.signIn,
+            from: from,
+            to: to,
+          ),
+        );
+
+        expect(listed.entries, hasLength(2));
+        expect(listed.hasMore, isTrue);
+        expect(listed.entries.first.eventId, equals('audit-1'));
+        expect(listed.entries.first.friendlyLabel, equals('Sign-in'));
+        expect(
+          listed.entries.first.eventKind,
+          equals(AuthEventKind.signIn),
+        );
+        // Falls back to derived label/kind when the wire payload omits them.
+        expect(
+          listed.entries[1].eventKind,
+          equals(AuthEventKind.password),
+        );
+        expect(
+          listed.entries[1].friendlyLabel,
+          equals('Password changed'),
+        );
+        expect(fake.gets.single.url.path, equals('/v1/auth/audit-log'));
+        expect(
+          fake.gets.single.url.queryParameters['event_kind'],
+          equals('sign_in'),
+        );
+        expect(
+          fake.gets.single.url.queryParameters['limit'],
+          equals('50'),
+        );
+        expect(
+          fake.gets.single.url.queryParameters['offset'],
+          equals('0'),
+        );
+        expect(
+          fake.gets.single.url.queryParameters['from'],
+          equals(from.toIso8601String()),
+        );
+        expect(
+          fake.gets.single.url.queryParameters['to'],
+          equals(to.toIso8601String()),
+        );
+      },
+    );
+
     test('transport failures collapse to transport_error', () async {
       final fake = _FakeAuthOpsHttpClient.throws(StateError('secret://dsn'));
       final gateway = ProxyAuthOperationsGateway(

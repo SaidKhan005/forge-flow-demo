@@ -47,6 +47,34 @@ import 'dart:convert';
 import '../operator_scoped_repository.dart';
 import '../tenant_context.dart';
 
+/// Read projection of an `auth_events_audit` row used by the Phase
+/// 9.UX.6 self-service Audit Log surface. Carries metadata an
+/// operator can recognise (event_type / occurred_at / IP / user
+/// agent) plus the JSONB payload so the UI can surface scope hints
+/// (operator-wide grants, target user labels) without requiring a
+/// second round trip.
+class AuthEventListRow {
+  const AuthEventListRow({
+    required this.eventId,
+    required this.eventType,
+    required this.occurredAt,
+    required this.payload,
+    this.ip,
+    this.userAgent,
+    this.geoCountry,
+    this.requestId,
+  });
+
+  final String eventId;
+  final String eventType;
+  final DateTime occurredAt;
+  final Map<String, Object?> payload;
+  final String? ip;
+  final String? userAgent;
+  final String? geoCountry;
+  final String? requestId;
+}
+
 class AuthEventsAuditRepository extends OperatorScopedRepository {
   AuthEventsAuditRepository(super.tenantWrapper);
 
@@ -178,6 +206,135 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
       }
       return id;
     }, reason: adminReason);
+  }
+
+  /// Phase 9.UX.6 — self-service Audit Log read projection.
+  ///
+  /// Returns the actor's own audit events (rows where they are either
+  /// the `actor_user_id` or the `target_user_id`), newest first.
+  /// The query shape is the *primary* defense: it pins both
+  /// `operator_id` and `user_id`, so a future admin-pool binding or a
+  /// miswired tenant wrapper cannot accidentally widen same-user
+  /// reads across operators. The live `auth_events_audit` RLS policy
+  /// is tenant-only (not per-user), so the `user_id` clause carries
+  /// the per-user defense alone.
+  ///
+  /// Pagination is server-side via `LIMIT` + `OFFSET`; callers fetch
+  /// one extra row to detect `has_more` without a separate count.
+  ///
+  /// [eventTypePatterns] are case-sensitive `LIKE` patterns OR'd
+  /// together (e.g. `['%password%']`); pass an empty list to skip
+  /// kind-filtering. The proxy projects [AuthEventKind] into the
+  /// matching pattern set via [AuthEventLabels.sqlPatternsFor].
+  ///
+  /// [from] and [to] bound the `occurred_at` window. Both are
+  /// optional so callers can pass an open range; the proxy clamps
+  /// per-request bounds before delegating.
+  Future<List<AuthEventListRow>> listForUser({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required int limit,
+    required int offset,
+    List<String> eventTypePatterns = const <String>[],
+    DateTime? from,
+    DateTime? to,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    final params = <String, Object?>{
+      'operator_id': operatorId,
+      'user_id': userId,
+      'limit': limit,
+      'offset': offset,
+    };
+    final patternClauses = <String>[];
+    for (var i = 0; i < eventTypePatterns.length; i++) {
+      final key = 'pattern_$i';
+      patternClauses.add('event_type like @$key');
+      params[key] = eventTypePatterns[i];
+    }
+    final patternFilter = patternClauses.isEmpty
+        ? ''
+        : 'and (${patternClauses.join(' or ')}) ';
+    String dateFilter = '';
+    if (from != null) {
+      dateFilter += 'and occurred_at >= @from ';
+      params['from'] = from.toUtc();
+    }
+    if (to != null) {
+      dateFilter += 'and occurred_at <= @to ';
+      params['to'] = to.toUtc();
+    }
+    return withTenant<List<AuthEventListRow>>(ctx, (exec) async {
+      final rows = await exec.query(
+        'select event_id::text as event_id, '
+        'event_type, event_payload, occurred_at, '
+        'host(ip) as ip, user_agent, geo_country, '
+        'request_id::text as request_id '
+        'from auth_events_audit '
+        'where operator_id = @operator_id::uuid '
+        'and (actor_user_id = @user_id::uuid '
+        'or target_user_id = @user_id::uuid) '
+        '$patternFilter'
+        '$dateFilter'
+        'order by occurred_at desc '
+        'limit @limit offset @offset',
+        parameters: params,
+      );
+      return rows.map(_projectAuditRow).toList(growable: false);
+    });
+  }
+
+  static AuthEventListRow _projectAuditRow(Map<String, Object?> row) {
+    DateTime asDateTime(Object? value) {
+      if (value is DateTime) return value.toUtc();
+      if (value is String) return DateTime.parse(value).toUtc();
+      throw StateError('auth_events_audit row missing occurred_at');
+    }
+
+    String? asOptionalString(Object? value) {
+      if (value is! String) return null;
+      final trimmed = value.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
+    final eventId = row['event_id'];
+    final eventType = row['event_type'];
+    if (eventId is! String || eventId.isEmpty) {
+      throw StateError('auth_events_audit row missing event_id');
+    }
+    if (eventType is! String || eventType.isEmpty) {
+      throw StateError('auth_events_audit row missing event_type');
+    }
+    final payloadRaw = row['event_payload'];
+    Map<String, Object?> payload = const <String, Object?>{};
+    if (payloadRaw is Map) {
+      payload = Map<String, Object?>.from(payloadRaw);
+    } else if (payloadRaw is String && payloadRaw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(payloadRaw);
+        if (decoded is Map) {
+          payload = Map<String, Object?>.from(decoded);
+        }
+      } on FormatException {
+        // Treat malformed payloads as empty so a corrupt row never
+        // crashes the listing.
+      }
+    }
+    return AuthEventListRow(
+      eventId: eventId,
+      eventType: eventType,
+      occurredAt: asDateTime(row['occurred_at']),
+      payload: Map<String, Object?>.unmodifiable(payload),
+      ip: asOptionalString(row['ip']),
+      userAgent: asOptionalString(row['user_agent']),
+      geoCountry: asOptionalString(row['geo_country']),
+      requestId: asOptionalString(row['request_id']),
+    );
   }
 
   /// GDPR redaction of `auth_events_audit` rows targeting [userId].

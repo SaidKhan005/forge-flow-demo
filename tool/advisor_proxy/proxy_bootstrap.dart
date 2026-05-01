@@ -128,7 +128,15 @@ ProxyProductionBindings buildProxyProductionBindings(
     rolePermissionsRepository: RolePermissionsRepository(adminWrapper),
     userRolesRepository: UserRolesRepository(adminWrapper),
     authInvitesRepository: AuthInvitesRepository(adminWrapper),
+    // Writer-side audit rows still flow through the admin wrapper —
+    // append-only inserts must succeed even when an admin path runs
+    // outside a tenant scope. The 9.UX.6 self-service read uses a
+    // separate tenant-scoped repository binding (see
+    // `auditReadRepository`) so the per-user WHERE + per-tenant RLS
+    // policy gate the projection without disturbing the existing
+    // writer.
     auditRepository: adminAudit,
+    auditReadRepository: AuthEventsAuditRepository(tenantWrapper),
     // Phase 9.UX.4: tenant-scoped reads/writes — per-operator RLS
     // policies on `org_units` + `locations` are the gate, so the
     // repo runs through the tenant pool, not the admin pool.

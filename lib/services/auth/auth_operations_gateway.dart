@@ -783,6 +783,280 @@ class AuthAllSessionsRevoked {
   final int revokedCount;
 }
 
+// Phase 9.UX.6 — self-service Audit Log surface.
+//
+// Operators inspect their own auth_events_audit history from
+// Settings → Account → Audit Log. Per-user RLS pins reads to the
+// signed-in actor server-side; the proxy resolves user_id from the
+// verified Firebase bearer token and ignores any client-supplied
+// user_id. The DTOs intentionally stay thin — no row-level secrets,
+// just enough metadata to recognise an event and a friendly label
+// derived from the raw `event_type` so the UI does not surface
+// engineering shorthand.
+
+/// Coarse grouping the Audit Log filter chips use. Keeps the UX
+/// stable even as new low-level event_type strings land — anything
+/// not in the recognised set falls into [AuthEventKind.other].
+enum AuthEventKind {
+  signIn,
+  password,
+  mfa,
+  role,
+  session,
+  invite,
+  user,
+  other,
+}
+
+class AuthEventListEntry {
+  const AuthEventListEntry({
+    required this.eventId,
+    required this.eventKind,
+    required this.eventType,
+    required this.friendlyLabel,
+    required this.occurredAt,
+    this.subType,
+    this.ip,
+    this.userAgent,
+    this.geoCountry,
+    this.scope,
+    this.payload = const <String, Object?>{},
+  });
+
+  final String eventId;
+  final AuthEventKind eventKind;
+
+  /// Raw underlying `event_type` so UI filters / power-user toggles
+  /// can match without reverse-engineering the friendly label.
+  final String eventType;
+
+  /// Human-readable label projected from [eventType] (e.g.
+  /// `"Password changed"`). Stable enough for the operator to
+  /// recognise the action without exposing internal naming.
+  final String friendlyLabel;
+  final DateTime occurredAt;
+
+  /// Optional finer descriptor under a kind (e.g. for MFA: `"TOTP enrolled"`).
+  final String? subType;
+  final String? ip;
+  final String? userAgent;
+  final String? geoCountry;
+
+  /// Optional human-readable scope hint (e.g. `"operator-wide"`).
+  final String? scope;
+  final Map<String, Object?> payload;
+}
+
+class AuthEventListCommand {
+  const AuthEventListCommand({
+    required this.actorUserId,
+    required this.operatorId,
+    required this.locationId,
+    this.limit = 50,
+    this.offset = 0,
+    this.eventKind,
+    this.from,
+    this.to,
+  });
+
+  final String actorUserId;
+  final String operatorId;
+  final String locationId;
+  final int limit;
+  final int offset;
+
+  /// Optional filter — only events whose mapped [AuthEventKind]
+  /// matches survive. The proxy maps this to a server-side WHERE
+  /// against a coarse SQL pattern set so RLS-leading-index lookups
+  /// stay fast. A null value lists every kind.
+  final AuthEventKind? eventKind;
+
+  /// Optional `occurred_at >= from` floor. UTC.
+  final DateTime? from;
+
+  /// Optional `occurred_at <= to` ceiling. UTC.
+  final DateTime? to;
+}
+
+class AuthEventsListed {
+  const AuthEventsListed({
+    required this.entries,
+    required this.hasMore,
+  });
+
+  final List<AuthEventListEntry> entries;
+  final bool hasMore;
+}
+
+/// Projects raw `event_type` strings into a coarse [AuthEventKind] +
+/// human-readable label pair. Kept here (rather than the widget
+/// layer) so the proxy projection, repository tests, and the Flutter
+/// widget agree on the same mapping. Unrecognised event_type values
+/// fall through to [AuthEventKind.other] with the raw string as the
+/// friendly label so a new server-side event is still readable.
+class AuthEventLabels {
+  const AuthEventLabels._();
+
+  static AuthEventKind kindFor(String eventType) {
+    final t = eventType.toLowerCase();
+    if (t.contains('signed_in') ||
+        t.contains('sign_in') ||
+        t.contains('login') ||
+        t.contains('signin')) {
+      return AuthEventKind.signIn;
+    }
+    if (t.contains('password')) return AuthEventKind.password;
+    if (t.contains('mfa') || t.contains('totp')) return AuthEventKind.mfa;
+    if (t.contains('role') || t.contains('grant')) return AuthEventKind.role;
+    if (t.contains('session')) return AuthEventKind.session;
+    if (t.contains('invite')) return AuthEventKind.invite;
+    if (t.contains('user_') || t.contains('.user.')) return AuthEventKind.user;
+    return AuthEventKind.other;
+  }
+
+  static String labelFor(String eventType) {
+    switch (eventType) {
+      case 'auth.user.signed_in':
+      case 'auth.signed_in':
+        return 'Sign-in';
+      case 'auth.user.password_changed':
+      case 'auth.password_changed':
+        return 'Password changed';
+      case 'auth.password_reset_requested':
+        return 'Password reset requested';
+      case 'auth.password_reset_confirmed':
+        return 'Password reset completed';
+      case 'auth.mfa_totp_enrolled':
+        return 'MFA enrolled (authenticator)';
+      case 'auth.mfa_totp_enroll_failed':
+        return 'MFA enrollment failed';
+      case 'auth.user.mfa_factor_removed':
+      case 'auth.mfa_factor_removed':
+        return 'MFA factor removed';
+      case 'auth.user.mfa_recovery_requested':
+      case 'auth.mfa_recovery_requested':
+        return 'MFA recovery requested';
+      case 'auth.role_grant_created':
+        return 'Role grant added';
+      case 'auth.role_grant_revoked':
+        return 'Role grant revoked';
+      case 'auth.custom_role_created':
+        return 'Custom role created';
+      case 'auth.custom_role_updated':
+        return 'Custom role updated';
+      case 'auth.custom_role_deleted':
+        return 'Custom role deleted';
+      case 'auth.session_revoked':
+        return 'Session revoked';
+      case 'auth.all_sessions_revoked':
+        return 'Signed out of all devices';
+      case 'auth.invite_created':
+        return 'Invite created';
+      case 'auth.invite_revoked':
+        return 'Invite revoked';
+      case 'auth.invite_accepted':
+        return 'Invite accepted';
+      case 'auth.user_suspended':
+        return 'User suspended';
+      case 'auth.user_reactivated':
+        return 'User reactivated';
+      case 'auth.user_soft_deleted':
+        return 'User soft-deleted';
+    }
+    // Fall back to a humanised version of the raw event_type so a
+    // brand-new server-side event still reads naturally.
+    final tail = eventType.contains('.')
+        ? eventType.substring(eventType.lastIndexOf('.') + 1)
+        : eventType;
+    if (tail.isEmpty) return eventType;
+    final words = tail.split('_');
+    if (words.isEmpty) return tail;
+    final first = words.first;
+    final rest = words.skip(1).join(' ');
+    final head = first.isEmpty
+        ? ''
+        : first.substring(0, 1).toUpperCase() + first.substring(1);
+    return rest.isEmpty ? head : '$head $rest';
+  }
+
+  /// Coarse SQL `event_type LIKE` patterns the proxy uses to scope
+  /// per-kind queries. Mirrors [kindFor] without rerouting through
+  /// Dart-side filtering. Returns an empty list for [AuthEventKind.other]
+  /// (which means "everything not specifically grouped") — the proxy
+  /// then ANDs `not (matches any kind pattern)`.
+  static List<String> sqlPatternsFor(AuthEventKind kind) {
+    switch (kind) {
+      case AuthEventKind.signIn:
+        return const <String>[
+          '%signed_in%',
+          '%sign_in%',
+          '%login%',
+          '%signin%',
+        ];
+      case AuthEventKind.password:
+        return const <String>['%password%'];
+      case AuthEventKind.mfa:
+        return const <String>['%mfa%', '%totp%'];
+      case AuthEventKind.role:
+        return const <String>['%role%', '%grant%'];
+      case AuthEventKind.session:
+        return const <String>['%session%'];
+      case AuthEventKind.invite:
+        return const <String>['%invite%'];
+      case AuthEventKind.user:
+        return const <String>['%user_%', '%.user.%'];
+      case AuthEventKind.other:
+        return const <String>[];
+    }
+  }
+
+  /// Wire-format key used in `?event_kind=` query strings between
+  /// Flutter and the proxy. Kept stable across versions.
+  static String wireKey(AuthEventKind kind) {
+    switch (kind) {
+      case AuthEventKind.signIn:
+        return 'sign_in';
+      case AuthEventKind.password:
+        return 'password';
+      case AuthEventKind.mfa:
+        return 'mfa';
+      case AuthEventKind.role:
+        return 'role';
+      case AuthEventKind.session:
+        return 'session';
+      case AuthEventKind.invite:
+        return 'invite';
+      case AuthEventKind.user:
+        return 'user';
+      case AuthEventKind.other:
+        return 'other';
+    }
+  }
+
+  static AuthEventKind? fromWireKey(String? key) {
+    if (key == null || key.isEmpty) return null;
+    switch (key) {
+      case 'sign_in':
+        return AuthEventKind.signIn;
+      case 'password':
+        return AuthEventKind.password;
+      case 'mfa':
+        return AuthEventKind.mfa;
+      case 'role':
+        return AuthEventKind.role;
+      case 'session':
+        return AuthEventKind.session;
+      case 'invite':
+        return AuthEventKind.invite;
+      case 'user':
+        return AuthEventKind.user;
+      case 'other':
+        return AuthEventKind.other;
+    }
+    return null;
+  }
+}
+
 class AuthOperationRejected implements Exception {
   const AuthOperationRejected({
     required this.code,
@@ -858,6 +1132,11 @@ abstract class AuthOperationsGateway {
 
   Future<AuthAllSessionsRevoked> signOutAll(
     AuthAllSessionsRevokeCommand command,
+  );
+
+  // Phase 9.UX.6 — self-service Audit Log surface.
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
   );
 }
 
@@ -986,6 +1265,13 @@ class ScaffoldFailingAuthOperationsGateway implements AuthOperationsGateway {
   @override
   Future<AuthAllSessionsRevoked> signOutAll(
     AuthAllSessionsRevokeCommand command,
+  ) {
+    throw StateError(_message);
+  }
+
+  @override
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
   ) {
     throw StateError(_message);
   }

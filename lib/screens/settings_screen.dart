@@ -24,6 +24,7 @@ import '../theme/app_theme.dart';
 import '../widgets/sticky_section_delegate.dart';
 import 'settings/settings_active_sessions_section.dart';
 import 'settings/settings_advisor_corpus_section.dart';
+import 'settings/settings_audit_log_section.dart';
 import 'settings/settings_advisor_model_section.dart';
 import 'settings/settings_custom_roles_section.dart';
 import 'settings/settings_data_sections.dart';
@@ -117,6 +118,12 @@ class SettingsScreen extends StatefulWidget {
   final ActiveSessionsActor? activeSessionsActor;
   final bool allowDemoActiveSessionsFallback;
 
+  /// Phase 9.UX.6 — self-service Audit Log surface in the Account
+  /// tab. Reuses [authOperationsGateway] when null. The actor falls
+  /// back to the auth session notifier in scope.
+  final AuditLogActor? auditLogActor;
+  final bool allowDemoAuditLogFallback;
+
   /// Phase 9.UX.2 — operator role catalog (seeded + custom). Seed
   /// snapshot used for first paint; the listenable bridge updates the
   /// open Settings route when the live gateway resolves or a save
@@ -172,6 +179,8 @@ class SettingsScreen extends StatefulWidget {
     this.authOperationsGateway,
     this.activeSessionsActor,
     this.allowDemoActiveSessionsFallback = false,
+    this.auditLogActor,
+    this.allowDemoAuditLogFallback = false,
     this.teamRoleCatalog = const <TeamRoleCatalogEntry>[],
     this.teamRoleCatalogListenable,
     this.onTeamRoleCreate,
@@ -367,6 +376,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       onSignOutAllDevices: () async {
                         await authNotifier?.signOutAllSessions();
                       },
+                    ),
+                  ),
+                  _settingsSection(
+                    title: 'Audit log',
+                    child: SettingsAuditLogSection(
+                      gateway: widget.authOperationsGateway,
+                      actor:
+                          widget.auditLogActor ??
+                          _auditLogActorForSession(session),
+                      allowDemoGatewayFallback:
+                          widget.allowDemoAuditLogFallback,
+                      refreshGeneration: _manualRefreshGeneration,
                     ),
                   ),
                 ],
@@ -586,6 +607,14 @@ ActiveSessionsActor _activeSessionsActorForSession(
     operatorId: session.operatorId,
     locationId: session.locationId,
     currentSessionId: activeSessionId,
+  );
+}
+
+AuditLogActor _auditLogActorForSession(AuthSession session) {
+  return AuditLogActor(
+    actorUserId: session.userId,
+    operatorId: session.operatorId,
+    locationId: session.locationId,
   );
 }
 

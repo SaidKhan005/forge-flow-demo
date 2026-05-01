@@ -436,6 +436,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             authOperationsGateway: widget.authOperationsGateway,
             allowDemoActiveSessionsFallback:
                 widget.authOperationsGateway == null,
+            // Phase 9.UX.6 - Audit Log in Account tab. Same fallback
+            // rule as Active Sessions: when no live gateway is wired,
+            // use the in-memory fixture so the walkthrough can render
+            // demo events without a backend.
+            allowDemoAuditLogFallback:
+                widget.authOperationsGateway == null,
           ),
           fullscreenDialog: true,
         ),
