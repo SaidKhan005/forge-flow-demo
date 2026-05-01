@@ -19,7 +19,7 @@
 #     PowerShell session; `return` exits this script's scope only.
 #
 # Wiring path (operator implements once, locally):
-#   1. Keep local secrets in `$HOME\.forge_flow\forge_flow.secrets.ps1`.
+#   1. Keep local secrets in `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1`.
 #      That file lives outside the repo and is the ONLY plain-text env
 #      loader for provider, Postgres, and Firebase local secrets.
 #   2. Optionally point `FORGE_FLOW_STAGING_ENV_FILE` at a different
@@ -32,7 +32,7 @@ $ErrorActionPreference = 'Stop'
 
 $envFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_STAGING_ENV_FILE')
 if ([string]::IsNullOrWhiteSpace($envFile)) {
-  $envFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+  $envFile = Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'
 }
 
 if ([string]::IsNullOrWhiteSpace($envFile)) {

@@ -79,7 +79,7 @@ scripts/run_flutter_dev.ps1 -App forgeflow
 scripts/run_flutter_dev.ps1 -App barrio
 ```
 
-That launcher reads `$HOME\.forge_flow\forge_flow.secrets.ps1` and passes the
+That launcher reads `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1` and passes the
 local dev-only `ANTHROPIC_API_KEY` as a Flutter `--dart-define`. Production
 provider keys remain server-side only.
 

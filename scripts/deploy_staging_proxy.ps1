@@ -11,7 +11,7 @@ param(
   [string] $Region = 'northamerica-northeast2',
   [string] $Service = 'forge-flow-staging-proxy',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
-  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
+  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [int] $MinInstances = 1,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync

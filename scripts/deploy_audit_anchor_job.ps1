@@ -7,7 +7,7 @@
 #   * tool/audit_anchor/main.dart — CLI entry point.
 #
 # Posture (matches scripts/deploy_staging_proxy.ps1):
-#   * Loads $HOME/.forge_flow/forge_flow.secrets.ps1; never prints secret
+#   * Loads $HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1; never prints secret
 #     VALUES, only secret env NAMES.
 #   * CLAUDE.md "no live Azure mutation in repo" applies — Azure Blob
 #     container creation, retention policy locking, and `audit_anchor_role`
@@ -51,7 +51,7 @@ param(
   [string] $SchedulerName = 'forge-flow-audit-anchor-daily',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $Image = '',
-  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
+  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   # Secret Manager name prefix. Convention: `forge-flow-<env>-`. Defaults
   # to staging because the proxy already publishes
   # `forge-flow-staging-postgres-url` and we want the job + proxy to

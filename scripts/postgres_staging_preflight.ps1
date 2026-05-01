@@ -30,7 +30,7 @@ foreach ($name in $required) {
 if ($needsLoad) {
   $envFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_STAGING_ENV_FILE')
   if ([string]::IsNullOrWhiteSpace($envFile)) {
-    $envFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+    $envFile = Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'
   }
   if (Test-Path -LiteralPath $envFile) {
     . $envFile
@@ -51,7 +51,7 @@ foreach ($name in $required) {
 Write-Host '---'
 if ($missing.Count -gt 0) {
   Write-Host "BLOCKED - $($missing.Count) required env name(s) missing: $($missing -join ', ')"
-  Write-Host 'Run scripts/use_forge_flow_secrets.ps1 first, or check $HOME\.forge_flow\forge_flow.secrets.ps1.'
+  Write-Host 'Run scripts/use_forge_flow_secrets.ps1 first, or check $HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1.'
   exit 1
 }
 

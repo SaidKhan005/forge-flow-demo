@@ -39,7 +39,7 @@ param(
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $ArtifactRepository = 'forge-flow-cloud-run',
   [string] $AdminProxyBaseUri = $env:FORGE_FLOW_ADMIN_PROXY_BASE_URI,
-  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
+  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
   [switch] $DemoMode,
   [switch] $SkipApiEnable,
   [switch] $PrintCommandOnly

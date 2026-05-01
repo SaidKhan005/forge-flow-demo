@@ -535,8 +535,8 @@ this slice's prompt, Codex/Claude must:
 - **Files NOT to commit:** Firebase Admin SDK private key JSON
   (lives in Cloud Run env / KMS); service-account JSON for local
   dev (lives outside repo at
-  `$HOME/.forge_flow/firebase-staging-adminsdk.json`, with local env
-  loaded from `$HOME/.forge_flow/forge_flow.secrets.ps1`)
+  `$HOME/.forge_flow/secrets/credentials/firebase-staging-adminsdk.json`, with local env
+  loaded from `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`)
 
 **Code:**
 

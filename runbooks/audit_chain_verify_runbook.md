@@ -175,7 +175,7 @@ The deploy surface is repo-owned in two files:
   `POSTGRES_URL`, `AZURE_BLOB_AUDIT_CONTAINER`, and
   `AZURE_BLOB_AUDIT_ENDPOINT`. Names only; never values.
 - `scripts/deploy_audit_anchor_job.ps1` — name-only deploy script.
-  Loads `$HOME/.forge_flow/forge_flow.secrets.ps1`, asserts the
+  Loads `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`, asserts the
   required env names are present (values never echoed), syncs each
   to Secret Manager, then deploys the Cloud Run Job and creates /
   updates the Cloud Scheduler trigger.
@@ -471,7 +471,7 @@ without redeploying. Procedure:
    password, regenerate the Azure Blob endpoint with a fresh SAS
    identity, change the container name during a tenant move).
 2. Update the corresponding entry in
-   `$HOME/.forge_flow/forge_flow.secrets.ps1` (NEVER commit this
+   `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` (NEVER commit this
    file).
 3. After human approval for the live Cloud Run / Scheduler refresh,
    re-run the deploy script with the unchanged image:
@@ -581,7 +581,7 @@ operator-id misrouting), the procedure is:
   `infrastructure/cloud_run/audit_anchor_job.yaml`. Placeholders
   only; values are resolved via Secret Manager at deploy time.
 - **Deploy script:** `scripts/deploy_audit_anchor_job.ps1`. Loads
-  `$HOME/.forge_flow/forge_flow.secrets.ps1`, asserts required env
+  `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`, asserts required env
   *names*, syncs Secret Manager, deploys Cloud Run Job + Cloud
   Scheduler. Supports `-Preflight` for a no-mutation dry run.
 - **Decision lock:** `phase_9_scalability_decisions_2026-04-27.md`

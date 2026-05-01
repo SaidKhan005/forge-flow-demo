@@ -1634,7 +1634,10 @@ void main() {
 
       // Loads the unified secrets file by HOME path; the secrets
       // file itself is NOT in the repo.
-      expect(body, contains(r'.forge_flow\forge_flow.secrets.ps1'));
+      expect(
+        body,
+        contains(r'.forge_flow\secrets\runtime\forge_flow.secrets.ps1'),
+      );
 
       // Forbidden: no inline secret values, no Account keys, no
       // SAS-token query strings.

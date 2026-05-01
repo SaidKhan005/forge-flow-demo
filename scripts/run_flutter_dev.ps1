@@ -30,7 +30,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$defaultSecretsFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+$defaultSecretsFile = Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'
 $secretsFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_SECRETS_FILE')
 if ([string]::IsNullOrWhiteSpace($secretsFile)) {
   $secretsFile = $defaultSecretsFile

@@ -243,7 +243,7 @@ Goal: validate the Phase 9 auth/team experience as a user-facing staging flow, n
 
 1. Use staging only.
 2. Confirm the app points at the staging proxy, preferably `https://staging-api.feflow.org`.
-3. Use non-repo secrets from `$HOME/.forge_flow/forge_flow.secrets.ps1`; do not paste passwords, tokens, database URLs, or Firebase UIDs into notes.
+3. Use non-repo secrets from `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`; do not paste passwords, tokens, database URLs, or Firebase UIDs into notes.
 4. Have at least two staging test users:
    - An admin/owner user who can reach Settings > Team.
    - A disposable invite recipient email account.

@@ -535,7 +535,7 @@ RAG.
 
 - No vendor/provider secrets in Flutter.
 - Local secrets are consolidated outside the repo in
-  `$HOME/.forge_flow/forge_flow.secrets.ps1`; `.env.local` remains ignored
+  `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`; `.env.local` remains ignored
   if recreated, but is not the source of truth.
 - Advisor posture is recommendation-only. F&F provides advisory information;
   operators decide whether to act.

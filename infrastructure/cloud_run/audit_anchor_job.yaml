@@ -17,7 +17,7 @@
 # Posture (CLAUDE.md "no live Azure mutation in repo"):
 #   * Placeholders only. Values shown as `__PLACEHOLDER__` are the
 #     deploy-time substitution targets; the deploy script supplies
-#     them from `$HOME/.forge_flow/forge_flow.secrets.ps1`.
+#     them from `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`.
 #   * No real project ids, account ids, secret values, SAS tokens,
 #     account keys, or container endpoints appear here.
 #   * Secret Manager backs every value via `secretKeyRef` — env

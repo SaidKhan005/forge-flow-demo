@@ -150,7 +150,7 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
   redundant operator role assignment removed; alert rule recreated
   with lowercase action group ID. Migrations `202604280014` (B46) +
   `202604290000`–`202605010000` (8 newer) remain pending separate
-  apply event. Inventory MD: `~/.forge_flow/secrets_inventory.md`.
+  apply event. Inventory MD: `~/.forge_flow/secrets/inventory/secrets_inventory.md`.
 - **Cloud Armor:** preview-only at sensitivity 2 with B17 false-positive
   SQLi signatures opted out; awaits ≥3 clean post-tuning preview-log
   days + explicit approval before enforcement.
@@ -277,7 +277,7 @@ listed under `Active Authority` above. Pre-lean history archived at
 
 ## Notes
 
-- `$HOME/.forge_flow/forge_flow.secrets.ps1` is the canonical private local
+- `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the canonical private local
   env loader. It is outside the repo and must not be committed or pasted.
   `.env.local` remains ignored if recreated, but is no longer the source of
   truth for local keys.

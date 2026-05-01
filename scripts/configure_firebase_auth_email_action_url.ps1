@@ -9,7 +9,7 @@
 param(
   [string] $Project = 'forge-flow-staging',
   [string] $ActionUrl = "https://$Project.firebaseapp.com/auth/action",
-  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1')
+  [string] $SecretsFile = (Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1')
 )
 
 $ErrorActionPreference = 'Stop'

@@ -3,14 +3,14 @@
 # Dot-source this script from the repo root:
 #   . scripts/use_forge_flow_secrets.ps1
 #
-# It loads `$HOME\.forge_flow\forge_flow.secrets.ps1` by default, or the
+# It loads `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1` by default, or the
 # path in `FORGE_FLOW_SECRETS_FILE` when set. It never prints secret values.
 
 $ErrorActionPreference = 'Stop'
 
 $envFile = [Environment]::GetEnvironmentVariable('FORGE_FLOW_SECRETS_FILE')
 if ([string]::IsNullOrWhiteSpace($envFile)) {
-  $envFile = Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'
+  $envFile = Join-Path $HOME '.forge_flow\secrets\runtime\forge_flow.secrets.ps1'
 }
 
 if (-not (Test-Path -LiteralPath $envFile)) {

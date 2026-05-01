@@ -106,7 +106,7 @@ No operator-facing chat UI ships from 11a. Phase 11b owns that UX.
 - `11a.11c.2-3`: Supabase staging preflight/apply verification, now historical
   because AGE is unavailable there.
 - `security.env.1`: local secrets consolidated outside the repo under
-  `$HOME\.forge_flow\forge_flow.secrets.ps1`; `.env.local` remains ignored
+  `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1`; `.env.local` remains ignored
   if recreated, and examples are sanitized.
 - `11a.12a-c`: local-only corpus admin Settings preview scaffold, superseded
   for real admin UX by Phase 11A.
@@ -118,7 +118,7 @@ No operator-facing chat UI ships from 11a. Phase 11b owns that UX.
   local AGE/pgvector dev scaffold are in place.
 - `11a.11c.6` staging provision/apply partial accepted: Azure staging server
   `forge-flow-staging-pg` in Canada Central is live on PG 16, connection
-  secrets live outside the repo at `$HOME\.forge_flow\forge_flow.secrets.ps1`, AGE /
+  secrets live outside the repo at `$HOME\.forge_flow\secrets\runtime\forge_flow.secrets.ps1`, AGE /
   pgvector / pg_diskann / pg_partman / pg_stat_statements / pgcrypto are
   installed in `forgeflow`, pg_cron is installed in `postgres`, all six
   `db/migrations` applied, RLS tables verified, pgvector smoke passed, and AGE
