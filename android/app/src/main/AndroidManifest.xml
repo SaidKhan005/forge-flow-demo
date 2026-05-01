@@ -30,6 +30,17 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="forgeflow" android:host="sign-in"/>
             </intent-filter>
+            <!-- Phase 9.UX.7: in-app password-reset deep link.
+                 The Firebase action page redirects mobile devices to
+                 forgeflow://reset-password?oobCode=... so the confirm
+                 screen opens in-app instead of completing the reset
+                 in the browser. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="forgeflow" android:host="reset-password"/>
+            </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

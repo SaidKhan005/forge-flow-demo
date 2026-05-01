@@ -9,6 +9,7 @@ import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
@@ -606,6 +607,252 @@ void main() {
     });
 
     test(
+      'POST password reset request delegates without bearer token',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetRequestGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-1',
+            );
+
+            expect(response.statusCode, equals(200));
+            expect(response.json['ok'], isTrue);
+            expect(
+              gateway.commands.single.email,
+              equals('demo.operator@forgeflow.test'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset request returns 200 even when email is unknown '
+      '(privacy-preserving)',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetRequestGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{'email': 'unknown@example.test'},
+              authorize: false,
+              idempotencyKey: 'idem-req-unknown',
+            );
+
+            // Same body shape regardless of presence/absence so the
+            // proxy never leaks whether the email matches an account.
+            expect(response.statusCode, equals(200));
+            expect(response.json['ok'], isTrue);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test('POST password reset request maps throttle to 429', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingPasswordResetRequestGateway(
+          throwOnRequest: () => const PasswordResetRequestThrottled(),
+        );
+        final harness = await _RouteHarness.start(
+          passwordResetRequestGateway: gateway,
+        );
+        try {
+          final response = await harness.postJson(
+            authPasswordResetRequestPath,
+            const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
+            authorize: false,
+            idempotencyKey: 'idem-req-throttled',
+          );
+
+          expect(response.statusCode, equals(429));
+          expect(response.json['error'], equals('rate_limited'));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test(
+      'POST password reset request returns 503 when gateway is not configured',
+      () async {
+        await _withRealHttp(() async {
+          final harness = await _RouteHarness.start();
+          try {
+            final response = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-unconfigured',
+            );
+
+            expect(response.statusCode, equals(503));
+            expect(
+              response.json['error'],
+              equals('password_reset_request_not_configured'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset request rejects missing email with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetRequestGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{},
+              authorize: false,
+              idempotencyKey: 'idem-req-missing-email',
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_email'));
+            expect(gateway.commands, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset request rejects missing Idempotency-Key with 400',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetRequestGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final response = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+            );
+
+            expect(response.statusCode, equals(400));
+            expect(response.json['error'], equals('missing_idempotency_key'));
+            expect(gateway.commands, isEmpty);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset request replays cached response on retry with same key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetRequestGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final first = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-replay',
+            );
+            final second = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-replay',
+            );
+
+            expect(first.statusCode, equals(200));
+            expect(second.statusCode, equals(200));
+            // Gateway only invoked once even though the client sent
+            // the request twice — the second call replayed the cached
+            // {200, ok:true} body without re-firing Firebase.
+            expect(gateway.commands, hasLength(1));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset request does NOT cache 5xx — a transient lookup '
+      'blip can recover on the operator retry with the same key',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecoveringPasswordResetRequestGateway(
+            failuresBeforeSuccess: 1,
+            failure: () => Exception('postgres lookup blip'),
+          );
+          final harness = await _RouteHarness.start(
+            passwordResetRequestGateway: gateway,
+          );
+          try {
+            final first = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-recoverable',
+            );
+            expect(first.statusCode, equals(503));
+
+            // Operator retries with the same key. If 5xx were cached,
+            // they would replay the 503 forever. With 5xx-not-cached
+            // semantics, the gateway is invoked again and (in this
+            // test) succeeds.
+            final second = await harness.postJson(
+              authPasswordResetRequestPath,
+              const <String, Object?>{
+                'email': 'demo.operator@forgeflow.test',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-req-recoverable',
+            );
+            expect(second.statusCode, equals(200));
+            expect(gateway.commands, hasLength(2));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
       'POST password reset confirm delegates without bearer token',
       () async {
         await _withRealHttp(() async {
@@ -614,11 +861,15 @@ void main() {
             passwordResetConfirmGateway: gateway,
           );
           try {
-            final response = await harness
-                .postJson(authPasswordResetConfirmPath, const <String, Object?>{
-                  'oob_code': 'reset-code',
-                  'new_password': 'correct horse battery staple',
-                }, authorize: false);
+            final response = await harness.postJson(
+              authPasswordResetConfirmPath,
+              const <String, Object?>{
+                'oob_code': 'reset-code',
+                'new_password': 'correct horse battery staple',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-confirm-1',
+            );
 
             expect(response.statusCode, equals(200));
             expect(gateway.commands.single.oobCode, equals('reset-code'));
@@ -626,6 +877,46 @@ void main() {
               gateway.commands.single.newPassword,
               equals('correct horse battery staple'),
             );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'POST password reset confirm replays prior success on retry with same '
+      'Idempotency-Key (oobCode is single-use, so retry without dedupe '
+      'would surface password_reset_expired)',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingPasswordResetConfirmGateway();
+          final harness = await _RouteHarness.start(
+            passwordResetConfirmGateway: gateway,
+          );
+          try {
+            final first = await harness.postJson(
+              authPasswordResetConfirmPath,
+              const <String, Object?>{
+                'oob_code': 'reset-code',
+                'new_password': 'correct horse battery staple',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-confirm-replay',
+            );
+            final second = await harness.postJson(
+              authPasswordResetConfirmPath,
+              const <String, Object?>{
+                'oob_code': 'reset-code',
+                'new_password': 'correct horse battery staple',
+              },
+              authorize: false,
+              idempotencyKey: 'idem-confirm-replay',
+            );
+
+            expect(first.statusCode, equals(200));
+            expect(second.statusCode, equals(200));
+            expect(gateway.commands, hasLength(1));
           } finally {
             await harness.close();
           }
@@ -1010,12 +1301,17 @@ class _RouteHarness {
     ProxyAdminPermissionGuard? adminPermissionGuard,
     PasswordChangeGateway? passwordChangeGateway,
     PasswordResetConfirmGateway? passwordResetConfirmGateway,
+    PasswordResetRequestGateway? passwordResetRequestGateway,
     MfaOperationsGateway? mfaOperationsGateway,
     MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
     ProxyJwtVerifier? verifier,
+    ProxyAuthIdempotencyCache? authIdempotencyCache,
   }) async {
     final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     final guard = ProxyRequestGuard(verifier: verifier ?? _StaticVerifier());
+    // Per-test cache so the global default doesn't carry replays
+    // across test cases.
+    final perTestCache = authIdempotencyCache ?? ProxyAuthIdempotencyCache();
     server.listen((request) async {
       await routeRequest(
         request,
@@ -1026,8 +1322,10 @@ class _RouteHarness {
         adminPermissionGuard: adminPermissionGuard,
         passwordChangeGateway: passwordChangeGateway,
         passwordResetConfirmGateway: passwordResetConfirmGateway,
+        passwordResetRequestGateway: passwordResetRequestGateway,
         mfaOperationsGateway: mfaOperationsGateway,
         mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
+        authIdempotencyCache: perTestCache,
         now: () => DateTime.utc(2026, 4, 28, 12),
       );
     });
@@ -1049,11 +1347,15 @@ class _RouteHarness {
     String path,
     Map<String, Object?> body, {
     bool authorize = true,
+    String? idempotencyKey,
   }) async {
     final request = await client.postUrl(baseUri.resolve(path));
     request.headers.contentType = ContentType.json;
     if (authorize) {
       request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    }
+    if (idempotencyKey != null) {
+      request.headers.set('Idempotency-Key', idempotencyKey);
     }
     final encoded = utf8.encode(jsonEncode(body));
     request.contentLength = encoded.length;
@@ -1204,6 +1506,53 @@ class _RecordingPasswordResetConfirmGateway
   ) async {
     commands.add(command);
     return const PasswordResetConfirmCompleted();
+  }
+}
+
+class _RecordingPasswordResetRequestGateway
+    implements PasswordResetRequestGateway {
+  _RecordingPasswordResetRequestGateway({this.throwOnRequest});
+
+  final Object Function()? throwOnRequest;
+  final commands = <PasswordResetRequestCommand>[];
+
+  @override
+  Future<PasswordResetRequestAccepted> requestReset(
+    PasswordResetRequestCommand command,
+  ) async {
+    commands.add(command);
+    if (throwOnRequest != null) {
+      throw throwOnRequest!();
+    }
+    return const PasswordResetRequestAccepted();
+  }
+}
+
+/// Recording gateway that throws [failure] for the first
+/// [failuresBeforeSuccess] calls and then succeeds. Used to assert
+/// the proxy idempotency cache lets a same-key retry hit a fresh
+/// gateway invocation after a 5xx (so transient infrastructure
+/// blips can recover without a key rotation).
+class _RecoveringPasswordResetRequestGateway
+    implements PasswordResetRequestGateway {
+  _RecoveringPasswordResetRequestGateway({
+    required this.failuresBeforeSuccess,
+    required this.failure,
+  });
+
+  final int failuresBeforeSuccess;
+  final Object Function() failure;
+  final commands = <PasswordResetRequestCommand>[];
+
+  @override
+  Future<PasswordResetRequestAccepted> requestReset(
+    PasswordResetRequestCommand command,
+  ) async {
+    commands.add(command);
+    if (commands.length <= failuresBeforeSuccess) {
+      throw failure();
+    }
+    return const PasswordResetRequestAccepted();
   }
 }
 

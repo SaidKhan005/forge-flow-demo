@@ -18,11 +18,14 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../services/auth/password_reset_deep_link_source.dart';
+import '../../services/auth/password_reset_gateway.dart';
 import '../../services/mfa/mfa_recovery_request_gateway.dart';
 import '../../state/auth_session_notifier.dart';
 import '../../theme/app_theme.dart';
 import 'login_screen.dart';
 import 'mfa_challenge_screen.dart';
+import 'password_reset_deep_link_handler.dart';
 
 class AuthGate extends StatelessWidget {
   const AuthGate({
@@ -30,6 +33,8 @@ class AuthGate extends StatelessWidget {
     required this.authenticatedChild,
     this.loadingChild,
     this.mfaRecoveryRequestGateway,
+    this.passwordResetGateway,
+    this.passwordResetDeepLinkSource,
   });
 
   /// The app shell to render once the user is authenticated.
@@ -40,17 +45,50 @@ class AuthGate extends StatelessWidget {
   final Widget? loadingChild;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
 
+  /// 9.UX.7 — gateway forwarded to the unauthenticated [LoginScreen]
+  /// and the [PasswordResetDeepLinkHandler] so both the additive
+  /// "Forgot password?" link and the deep-link confirm path reach
+  /// the live proxy reset routes. The bootstrap path forwards
+  /// [ProxyPasswordResetGateway]; demo / test paths leave this null
+  /// and the login screen falls back to a demo / scaffold-failing
+  /// gateway.
+  final PasswordResetGateway? passwordResetGateway;
+
+  /// 9.UX.7 — incoming-URI source consumed by the deep-link handler.
+  /// When null the handler is inert and the unauthenticated shell
+  /// renders the login screen as today. Production wires
+  /// [WidgetsBindingPasswordResetDeepLinkSource] so
+  /// `forgeflow://reset-password?oobCode=...` opens the in-app
+  /// confirm screen.
+  final PasswordResetDeepLinkSource? passwordResetDeepLinkSource;
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AuthSessionNotifier>().state;
+    final unauthenticatedShell = LoginScreen(
+      passwordResetGateway: passwordResetGateway,
+    );
     return switch (state) {
       AuthSessionLoading() => loadingChild ?? const _DefaultLoading(),
-      AuthSessionUnauthenticated() => const LoginScreen(),
+      AuthSessionUnauthenticated() => _wrapWithDeepLinkHandler(
+        unauthenticatedShell,
+      ),
       AuthSessionMfaChallenge() => MfaChallengeScreen(
         recoveryRequestGateway: mfaRecoveryRequestGateway,
       ),
       AuthSessionAuthenticated() => authenticatedChild,
     };
+  }
+
+  Widget _wrapWithDeepLinkHandler(Widget child) {
+    final source = passwordResetDeepLinkSource;
+    final gateway = passwordResetGateway;
+    if (source == null || gateway == null) return child;
+    return PasswordResetDeepLinkHandler(
+      source: source,
+      gateway: gateway,
+      child: child,
+    );
   }
 }
 

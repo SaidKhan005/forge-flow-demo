@@ -52,12 +52,23 @@ import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
 import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client.dart';
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:pointycastle/pointycastle.dart' as pc;
+
+import 'proxy_idempotency_cache.dart';
+export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
+
+/// Default in-memory idempotency cache shared by the password
+/// change / reset request / reset confirm routes when the route
+/// caller does not inject one. Production bootstrap can override
+/// via the `authIdempotencyCache` parameter.
+final ProxyAuthIdempotencyCache _defaultAuthIdempotencyCache =
+    ProxyAuthIdempotencyCache();
 
 // ─── Secret name registry ────────────────────────────────────────────────────
 //
@@ -3108,6 +3119,7 @@ const String advisorSmokePath = '/v1/advisor-smoke';
 const String authAccountInfoPath = '/v1/auth/account';
 const String authPermissionsSnapshotPath = '/v1/auth/permissions/snapshot';
 const String authPasswordChangePath = '/v1/auth/password/change';
+const String authPasswordResetRequestPath = '/v1/auth/password/reset/request';
 const String authPasswordResetConfirmPath = '/v1/auth/password/reset/confirm';
 const String authMfaTotpBeginPath = '/v1/auth/mfa/totp/begin';
 const String authMfaTotpConfirmPath = '/v1/auth/mfa/totp/confirm';
@@ -3482,6 +3494,8 @@ Future<void> routeRequest(
   ServicePrincipalJwtIssuanceGateway? servicePrincipalJwtIssuanceGateway,
   PasswordChangeGateway? passwordChangeGateway,
   PasswordResetConfirmGateway? passwordResetConfirmGateway,
+  PasswordResetRequestGateway? passwordResetRequestGateway,
+  ProxyAuthIdempotencyCache? authIdempotencyCache,
   MfaOperationsGateway? mfaOperationsGateway,
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
@@ -3974,6 +3988,87 @@ Future<void> routeRequest(
       return;
     }
 
+    if (request.method == 'POST' && path == authPasswordResetRequestPath) {
+      if (passwordResetRequestGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'password_reset_request_not_configured',
+          'message':
+              'route requires a PasswordResetRequestGateway to be installed',
+        });
+        return;
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+      final email = _nonBlankString(body['email']);
+      if (email == null) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_email',
+          'message': 'request body must include email',
+        });
+        return;
+      }
+      // Idempotency-Key dedupe: a second tap on "Send reset link"
+      // (or a network-retry that double-fires the request) must not
+      // issue a second Firebase email. The cache replays the prior
+      // {200, ok:true} body for the same key inside [ttl].
+      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_idempotency_key',
+          'message': 'Idempotency-Key header is required',
+        });
+        return;
+      }
+      final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+      final cached = await cache.runOrReplay(
+        route: authPasswordResetRequestPath,
+        key: idempotencyKey,
+        compute: () async {
+          try {
+            await passwordResetRequestGateway.requestReset(
+              PasswordResetRequestCommand(email: email),
+            );
+            // Privacy-preserving: always return 200 with the same body so
+            // the client can show a uniform "if an account exists..."
+            // confirmation regardless of whether the email matched a
+            // real user.
+            return CachedProxyResponse(
+              statusCode: 200,
+              body: const <String, Object?>{'ok': true},
+            );
+          } on PasswordResetRequestThrottled {
+            return CachedProxyResponse(
+              statusCode: 429,
+              body: const <String, Object?>{
+                'error': 'rate_limited',
+                'message':
+                    'too many password-reset requests; please wait before retrying',
+              },
+            );
+          } catch (_) {
+            return CachedProxyResponse(
+              statusCode: 503,
+              body: const <String, Object?>{
+                'error': 'password_reset_request_unavailable',
+                'message': 'password reset is unavailable; please retry',
+              },
+            );
+          }
+        },
+      );
+      _writeJson(response, cached.statusCode, cached.body);
+      return;
+    }
+
     if (request.method == 'POST' && path == authPasswordResetConfirmPath) {
       if (passwordResetConfirmGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -4003,30 +4098,59 @@ Future<void> routeRequest(
         });
         return;
       }
-      try {
-        final completed = await passwordResetConfirmGateway
-            .confirmPasswordReset(
-              PasswordResetConfirmCommand(
-                oobCode: oobCode,
-                newPassword: newPassword,
-              ),
-            );
-        _writeJson(response, 200, <String, Object?>{
-          'ok': true,
-          'hibp_unavailable': completed.hibpUnavailable,
+      // Idempotency-Key dedupe: a confirm retry after a successful
+      // but lost response replays the original {200, ok:true} body
+      // instead of trying the now-burned oobCode against Firebase
+      // again (which would surface as `password_reset_expired`).
+      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_idempotency_key',
+          'message': 'Idempotency-Key header is required',
         });
-      } on PasswordChangeRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-          'rejections': error.rejections,
-        });
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'password_reset_confirm_unavailable',
-          'message': 'password reset is unavailable; please retry',
-        });
+        return;
       }
+      final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+      final cached = await cache.runOrReplay(
+        route: authPasswordResetConfirmPath,
+        key: idempotencyKey,
+        compute: () async {
+          try {
+            final completed = await passwordResetConfirmGateway
+                .confirmPasswordReset(
+                  PasswordResetConfirmCommand(
+                    oobCode: oobCode,
+                    newPassword: newPassword,
+                  ),
+                );
+            return CachedProxyResponse(
+              statusCode: 200,
+              body: <String, Object?>{
+                'ok': true,
+                'hibp_unavailable': completed.hibpUnavailable,
+              },
+            );
+          } on PasswordChangeRejected catch (error) {
+            return CachedProxyResponse(
+              statusCode: error.statusCode,
+              body: <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+                'rejections': error.rejections,
+              },
+            );
+          } catch (_) {
+            return CachedProxyResponse(
+              statusCode: 503,
+              body: const <String, Object?>{
+                'error': 'password_reset_confirm_unavailable',
+                'message': 'password reset is unavailable; please retry',
+              },
+            );
+          }
+        },
+      );
+      _writeJson(response, cached.statusCode, cached.body);
       return;
     }
 

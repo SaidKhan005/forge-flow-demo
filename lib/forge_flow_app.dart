@@ -10,6 +10,8 @@ import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
 import 'services/auth/password_change_gateway.dart';
+import 'services/auth/password_reset_deep_link_source.dart';
+import 'services/auth/password_reset_gateway.dart';
 import 'services/auth/proxy_permission_snapshot_loader.dart';
 import 'services/business_date_authority_service.dart';
 import 'services/mfa/mfa_operations_gateway.dart';
@@ -55,6 +57,8 @@ class ForgeFlowApp extends StatelessWidget {
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.mfaRecoveryRequestGateway,
+    this.passwordResetGateway,
+    this.passwordResetDeepLinkSource,
   });
 
   final bool requireAuth;
@@ -64,6 +68,8 @@ class ForgeFlowApp extends StatelessWidget {
   final PasswordChangeGateway? passwordChangeGateway;
   final MfaOperationsGateway? mfaOperationsGateway;
   final MfaRecoveryRequestGateway? mfaRecoveryRequestGateway;
+  final PasswordResetGateway? passwordResetGateway;
+  final PasswordResetDeepLinkSource? passwordResetDeepLinkSource;
 
   @override
   Widget build(BuildContext context) {
@@ -82,6 +88,8 @@ class ForgeFlowApp extends StatelessWidget {
         home: requireAuth
             ? AuthGate(
                 mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
+                passwordResetGateway: passwordResetGateway,
+                passwordResetDeepLinkSource: passwordResetDeepLinkSource,
                 authenticatedChild: AuthPermissionContextBridge(
                   permissionContextLoader: permissionContextLoader,
                   child: shell,

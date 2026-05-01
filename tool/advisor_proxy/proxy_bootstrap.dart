@@ -33,6 +33,7 @@ import 'package:forge_and_flow/services/auth/firebase_admin_auth_client.dart';
 import 'package:forge_and_flow/services/auth/hibp_pwned_password_screener.dart';
 import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/auth/password_reset_confirm_gateway.dart';
+import 'package:forge_and_flow/services/auth/password_reset_request_gateway.dart';
 import 'package:forge_and_flow/services/auth/proxy_admin_permission_guard.dart';
 import 'package:forge_and_flow/services/auth/rate_limited_hibp_range_fetcher.dart';
 import 'package:forge_and_flow/services/auth/repository_auth_operations_gateway.dart';
@@ -62,6 +63,7 @@ class ProxyProductionBindings {
     required this.servicePrincipalJwtIssuanceGateway,
     required this.passwordChangeGateway,
     required this.passwordResetConfirmGateway,
+    required this.passwordResetRequestGateway,
     required this.mfaOperationsGateway,
     required this.mfaRecoveryRequestGateway,
     required this.mfaRemovalWorker,
@@ -79,6 +81,7 @@ class ProxyProductionBindings {
   final ServicePrincipalJwtIssuanceGateway servicePrincipalJwtIssuanceGateway;
   final PasswordChangeGateway passwordChangeGateway;
   final PasswordResetConfirmGateway passwordResetConfirmGateway;
+  final PasswordResetRequestGateway passwordResetRequestGateway;
   final MfaOperationsGateway mfaOperationsGateway;
   final MfaRecoveryRequestGateway mfaRecoveryRequestGateway;
   final MfaRemovalWorker mfaRemovalWorker;
@@ -198,6 +201,16 @@ ProxyProductionBindings buildProxyProductionBindings(
         fetcher: RateLimitedHibpRangeFetcher(inner: HttpHibpRangeFetcher()),
       ),
       passwordHistoryHasher: const Sha256PasswordHistoryHasher(),
+    ),
+    // Phase 9.UX.7: self-serve password-reset request. The lookup
+    // runs through the admin pool (we must find the user by email
+    // even though the Flutter caller is unauthenticated), Firebase
+    // Identity Platform issues the action link, and the audit row
+    // lands on the resolved user's tenant scope.
+    passwordResetRequestGateway: RepositoryPasswordResetRequestGateway(
+      firebaseAdmin: firebaseAdmin,
+      usersRepository: UsersRepository(adminWrapper),
+      auditRepository: adminAudit,
     ),
     mfaOperationsGateway: RepositoryMfaOperationsGateway(
       enrollmentService: FirebaseMfaEnrollmentService(

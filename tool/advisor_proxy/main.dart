@@ -117,6 +117,8 @@ Future<void> main(List<String> args) async {
         passwordChangeGateway: productionBindings.passwordChangeGateway,
         passwordResetConfirmGateway:
             productionBindings.passwordResetConfirmGateway,
+        passwordResetRequestGateway:
+            productionBindings.passwordResetRequestGateway,
         mfaOperationsGateway: productionBindings.mfaOperationsGateway,
         mfaRecoveryRequestGateway: productionBindings.mfaRecoveryRequestGateway,
         operatorLocationAdminGateway:
