@@ -29,12 +29,14 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     required this.userRolesRepository,
     required this.authInvitesRepository,
     required this.auditRepository,
+    AuthEventsAuditRepository? auditReadRepository,
     this.orgUnitsRepository,
     this.authSessionsRepository,
     DateTime Function()? now,
     String Function()? idFactory,
     String Function()? tokenFactory,
-  }) : _now = now ?? DateTime.now,
+  }) : _auditReadRepository = auditReadRepository ?? auditRepository,
+       _now = now ?? DateTime.now,
        _idFactory = idFactory ?? _uuidV4,
        _tokenFactory = tokenFactory ?? _randomToken;
 
@@ -45,6 +47,15 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   final UserRolesRepository userRolesRepository;
   final AuthInvitesRepository authInvitesRepository;
   final AuthEventsAuditRepository auditRepository;
+
+  /// Phase 9.UX.6 — separate repository binding for read-only audit
+  /// projections. Production wires this to the tenant pool so the
+  /// per-tenant RLS policy is engaged; the writer-side
+  /// [auditRepository] keeps its existing admin-pool binding so
+  /// append-only inserts from cross-tenant admin paths still land.
+  /// Tests and callers that don't care can omit it; it falls back to
+  /// [auditRepository].
+  final AuthEventsAuditRepository _auditReadRepository;
   final OrgUnitsRepository? orgUnitsRepository;
   final AuthSessionsRepository? authSessionsRepository;
   final DateTime Function() _now;
@@ -774,6 +785,73 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       );
     }
     return TeamLocationOrgUnitMoved(moved: affected > 0);
+  }
+
+  // Phase 9.UX.6 — self-service Audit Log surface. The audit
+  // repository here is the same tenant-scoped binding the writer-side
+  // services already use; only the new `listForUser` read path is
+  // exercised. Reads stay pinned to the actor's own user_id, and the
+  // per-tenant RLS policy filters cross-operator rows as a backup
+  // defense.
+  @override
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
+  ) async {
+    final patterns = command.eventKind == null
+        ? const <String>[]
+        : AuthEventLabels.sqlPatternsFor(command.eventKind!);
+    // Fetch one extra row beyond `limit` so we can answer `has_more`
+    // without a separate COUNT — cheap and consistent with the
+    // newest-first ordering.
+    final rows = await _auditReadRepository.listForUser(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.actorUserId,
+      limit: command.limit + 1,
+      offset: command.offset,
+      eventTypePatterns: patterns,
+      from: command.from,
+      to: command.to,
+    );
+    final hasMore = rows.length > command.limit;
+    final visible = hasMore ? rows.take(command.limit).toList() : rows;
+    final entries = <AuthEventListEntry>[
+      for (final row in visible) _entryFromRow(row),
+    ];
+    return AuthEventsListed(
+      entries: List<AuthEventListEntry>.unmodifiable(entries),
+      hasMore: hasMore,
+    );
+  }
+
+  AuthEventListEntry _entryFromRow(AuthEventListRow row) {
+    final payload = row.payload;
+    String? scope;
+    final scopeType = payload['scope_type'];
+    if (scopeType is String && scopeType.isNotEmpty) {
+      scope = switch (scopeType) {
+        'operator_wide' => 'operator-wide',
+        'org_unit' => 'org unit',
+        'location' => 'location',
+        _ => scopeType,
+      };
+    }
+    String? subType;
+    final reason = payload['reason'];
+    if (reason is String && reason.isNotEmpty) subType = reason;
+    return AuthEventListEntry(
+      eventId: row.eventId,
+      eventKind: AuthEventLabels.kindFor(row.eventType),
+      eventType: row.eventType,
+      friendlyLabel: AuthEventLabels.labelFor(row.eventType),
+      occurredAt: row.occurredAt,
+      subType: subType,
+      ip: row.ip,
+      userAgent: row.userAgent,
+      geoCountry: row.geoCountry,
+      scope: scope,
+      payload: row.payload,
+    );
   }
 
   // Phase 9.UX.5 — self-service Active Sessions surface. Reads stay

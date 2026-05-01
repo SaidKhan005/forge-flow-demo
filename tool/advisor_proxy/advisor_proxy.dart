@@ -3382,6 +3382,13 @@ const String authRefreshTokensRevokeAllPath =
 // surface adds a list endpoint plus reuses those routes for revokes.
 const String authSessionsListPath = '/v1/auth/sessions';
 
+// Phase 9.UX.6 — self-service Audit Log read projection. Auth-gated;
+// the proxy resolves user_id from the verified Firebase bearer token
+// and ignores any client-supplied user_id. The WHERE clause pins
+// user_id (actor or target) so RLS plus the WHERE form a defense in
+// depth.
+const String authAuditLogPath = '/v1/auth/audit-log';
+
 class ProxyPermissionSnapshot {
   const ProxyPermissionSnapshot({
     required this.userId,
@@ -5020,6 +5027,87 @@ Future<void> routeRequest(
       return;
     }
 
+    if (request.method == 'GET' && path == authAuditLogPath) {
+      if (authOperationsGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_operations_not_configured',
+          'message': 'route requires an AuthOperationsGateway to be installed',
+        });
+        return;
+      }
+
+      OperatorContext scope;
+      try {
+        scope = await authGuard.requireOperatorContext(
+          authorizationHeader: request.headers.value(
+            HttpHeaders.authorizationHeader,
+          ),
+        );
+      } on ProxyAuthError catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.message,
+        });
+        return;
+      }
+
+      // Pagination: clamp to a per-request ceiling so a chatty client
+      // can't ask for the whole ledger in one shot. Default 50 rows.
+      final params = request.uri.queryParameters;
+      final rawLimit = int.tryParse(params['limit'] ?? '');
+      final limit = rawLimit == null
+          ? 50
+          : (rawLimit < 1
+                ? 1
+                : (rawLimit > 100 ? 100 : rawLimit));
+      final rawOffset = int.tryParse(params['offset'] ?? '');
+      final offset = rawOffset == null || rawOffset < 0 ? 0 : rawOffset;
+      final eventKind = AuthEventLabels.fromWireKey(params['event_kind']);
+      DateTime? parseUtc(String? raw) {
+        if (raw == null || raw.isEmpty) return null;
+        return DateTime.tryParse(raw)?.toUtc();
+      }
+
+      final from = parseUtc(params['from']);
+      final to = parseUtc(params['to']);
+
+      try {
+        final listed = await authOperationsGateway.listAuthEventsForActor(
+          AuthEventListCommand(
+            // RLS-authoritative gate: pin user_id to the verified
+            // bearer-token scope. Any client-supplied user_id query
+            // param is ignored.
+            actorUserId: scope.userId,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            limit: limit,
+            offset: offset,
+            eventKind: eventKind,
+            from: from,
+            to: to,
+          ),
+        );
+        _writeJson(response, 200, <String, Object?>{
+          'entries': listed.entries
+              .map(_authEventEntryToJson)
+              .toList(growable: false),
+          'has_more': listed.hasMore,
+          'limit': limit,
+          'offset': offset,
+        });
+      } on AuthOperationRejected catch (error) {
+        _writeJson(response, error.statusCode, <String, Object?>{
+          'error': error.code,
+          'message': error.message,
+        });
+      } catch (_) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'auth_audit_log_unavailable',
+          'message': 'audit log is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (request.method == 'POST' && path == authSessionLoginPath) {
       if (authSessionLedgerWriter == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -6273,6 +6361,22 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
     'parent_org_unit_id': entry.parentOrgUnitId,
     'org_unit_path': entry.orgUnitPath,
     'label': entry.label,
+  };
+}
+
+Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
+  return <String, Object?>{
+    'event_id': entry.eventId,
+    'event_kind': AuthEventLabels.wireKey(entry.eventKind),
+    'event_type': entry.eventType,
+    'friendly_label': entry.friendlyLabel,
+    'occurred_at': entry.occurredAt.toUtc().toIso8601String(),
+    if (entry.subType != null) 'sub_type': entry.subType,
+    if (entry.ip != null) 'ip': entry.ip,
+    if (entry.userAgent != null) 'user_agent': entry.userAgent,
+    if (entry.geoCountry != null) 'geo_country': entry.geoCountry,
+    if (entry.scope != null) 'scope': entry.scope,
+    'payload': entry.payload,
   };
 }
 

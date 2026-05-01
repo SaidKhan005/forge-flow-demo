@@ -215,6 +215,62 @@ void main() {
     });
 
     testWidgets(
+      'signed-in Account tab renders the Audit Log section under Account '
+      'using AuthOperationsGateway.listAuthEventsForActor',
+      (tester) async {
+        final notifier = AuthSessionNotifier(
+          loginService: const ScaffoldFailingAuthLoginService(),
+          storage: InMemorySecureSessionStorage(),
+        )..debugSetSession(_settingsAuthSession());
+        final gateway = _AuditLogRecordingGateway(
+          entries: <AuthEventListEntry>[
+            AuthEventListEntry(
+              eventId: 'audit-screen-1',
+              eventKind: AuthEventKind.signIn,
+              eventType: 'auth.user.signed_in',
+              friendlyLabel: 'Sign-in',
+              occurredAt: DateTime.now().toUtc().subtract(
+                const Duration(minutes: 5),
+              ),
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          ChangeNotifierProvider<AuthSessionNotifier>.value(
+            value: notifier,
+            child: MaterialApp(
+              home: SettingsScreen(
+                initialStatus: AppDataStatus.current(),
+                initialMockDate: '2026-03-27',
+                authOperationsGateway: gateway,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('settings_tab_account')));
+        await tester.pumpAndSettle();
+
+        // Section heading appears under the Account tab.
+        expect(
+          find.text('Audit log', skipOffstage: false),
+          findsAtLeastNWidgets(1),
+        );
+        expect(
+          find.byKey(
+            const Key('audit_log_row_audit-screen-1'),
+            skipOffstage: false,
+          ),
+          findsOneWidget,
+        );
+        // The proxy gate is exercised with the verified bearer-token
+        // user_id; the widget never sends a fabricated user.
+        expect(gateway.listCalls.single.actorUserId, equals('user-1'));
+      },
+    );
+
+    testWidgets(
       'signed-in Account tab renders the Active Sessions section with the '
       'current device tagged via AuthOperationsGateway.listActiveSessions',
       (tester) async {
@@ -3553,6 +3609,25 @@ class _PendingAccountInfoGateway implements AccountInfoGateway {
   Future<AccountInfo> load(AccountInfoRequest request) {
     requests.add(request);
     return _completer.future;
+  }
+}
+
+class _AuditLogRecordingGateway extends ScaffoldFailingAuthOperationsGateway {
+  _AuditLogRecordingGateway({required List<AuthEventListEntry> entries})
+    : _entries = List<AuthEventListEntry>.of(entries);
+
+  final List<AuthEventListEntry> _entries;
+  final List<AuthEventListCommand> listCalls = <AuthEventListCommand>[];
+
+  @override
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
+  ) async {
+    listCalls.add(command);
+    return AuthEventsListed(
+      entries: List<AuthEventListEntry>.unmodifiable(_entries),
+      hasMore: false,
+    );
   }
 }
 

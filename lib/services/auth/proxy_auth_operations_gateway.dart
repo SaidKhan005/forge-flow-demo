@@ -240,6 +240,11 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
   static const String authSessionRevokePath = '/v1/auth/session/revoke';
   static const String authSessionRevokeAllPath = '/v1/auth/session/revoke-all';
 
+  // Phase 9.UX.6 — self-service Audit Log read projection. The proxy
+  // pins user_id to the verified bearer token; client-supplied user
+  // ids are ignored. Filtering and pagination travel as query params.
+  static const String authAuditLogPath = '/v1/auth/audit-log';
+
   @override
   Future<TeamUsersListed> listUsers(TeamUserListCommand command) async {
     final response = await _get(usersPath);
@@ -608,6 +613,88 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
     final raw = response.body['revoked_count'];
     final count = raw is int ? raw : 0;
     return AuthAllSessionsRevoked(revokedCount: count);
+  }
+
+  @override
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
+  ) async {
+    final query = <String, String>{
+      'limit': command.limit.toString(),
+      'offset': command.offset.toString(),
+      if (command.eventKind != null)
+        'event_kind': AuthEventLabels.wireKey(command.eventKind!),
+      if (command.from != null)
+        'from': command.from!.toUtc().toIso8601String(),
+      if (command.to != null)
+        'to': command.to!.toUtc().toIso8601String(),
+    };
+    final response = await _get(_appendQuery(authAuditLogPath, query));
+    _expectStatus(response, 200);
+    final rawEntries = response.body['entries'];
+    if (rawEntries is! List) {
+      throw _malformed(response, 'audit log response was incomplete');
+    }
+    final hasMore = response.body['has_more'];
+    return AuthEventsListed(
+      entries: List<AuthEventListEntry>.unmodifiable(
+        rawEntries.map((raw) => _authEventFromJson(response, raw)),
+      ),
+      hasMore: hasMore is bool ? hasMore : false,
+    );
+  }
+
+  AuthEventListEntry _authEventFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'audit log entry payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final eventId = _readNonBlankString(json['event_id']);
+    final eventType = _readNonBlankString(json['event_type']);
+    final occurredAt = _readDateTime(json['occurred_at']);
+    if (eventId == null || eventType == null || occurredAt == null) {
+      throw _malformed(response, 'audit log entry payload was incomplete');
+    }
+    final friendlyLabel =
+        _readNonBlankString(json['friendly_label']) ??
+        AuthEventLabels.labelFor(eventType);
+    final kindWire = _readNonBlankString(json['event_kind']);
+    final kind =
+        AuthEventLabels.fromWireKey(kindWire) ??
+        AuthEventLabels.kindFor(eventType);
+    final payload = json['payload'];
+    return AuthEventListEntry(
+      eventId: eventId,
+      eventKind: kind,
+      eventType: eventType,
+      friendlyLabel: friendlyLabel,
+      occurredAt: occurredAt,
+      subType: _readNonBlankString(json['sub_type']),
+      ip: _readNonBlankString(json['ip']),
+      userAgent: _readNonBlankString(json['user_agent']),
+      geoCountry: _readNonBlankString(json['geo_country']),
+      scope: _readNonBlankString(json['scope']),
+      payload: payload is Map
+          ? Map<String, Object?>.unmodifiable(
+              Map<String, Object?>.from(payload),
+            )
+          : const <String, Object?>{},
+    );
+  }
+
+  static String _appendQuery(String path, Map<String, String> params) {
+    if (params.isEmpty) return path;
+    final encoded = params.entries
+        .map(
+          (e) =>
+              '${Uri.encodeQueryComponent(e.key)}='
+              '${Uri.encodeQueryComponent(e.value)}',
+        )
+        .join('&');
+    return path.contains('?') ? '$path&$encoded' : '$path?$encoded';
   }
 
   AuthSessionSummary _authSessionFromJson(

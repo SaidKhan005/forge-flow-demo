@@ -842,6 +842,114 @@ void main() {
       },
     );
 
+    test(
+      'GET audit log delegates with verified scope and returns the projected '
+      'payload',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          gateway.auditLogHasMore = true;
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.get(
+              '$authAuditLogPath?event_kind=sign_in&limit=25&offset=0',
+            );
+
+            expect(response.statusCode, equals(200));
+            final entries = response.json['entries'] as List<Object?>;
+            expect(entries, hasLength(1));
+            final entry = entries.single as Map<Object?, Object?>;
+            expect(entry['event_type'], equals('auth.user.signed_in'));
+            expect(entry['event_kind'], equals('sign_in'));
+            expect(entry['friendly_label'], equals('Sign-in'));
+            expect(response.json['has_more'], isTrue);
+            expect(response.json['limit'], equals(25));
+            expect(response.json['offset'], equals(0));
+            expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
+            expect(gateway.auditLogLists.single.operatorId, equals(_operatorId));
+            expect(
+              gateway.auditLogLists.single.eventKind,
+              equals(AuthEventKind.signIn),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'GET audit log returns 503 when the gateway is not configured',
+      () async {
+        await _withRealHttp(() async {
+          final harness = await _RouteHarness.start();
+          try {
+            final response = await harness.get(authAuditLogPath);
+            expect(response.statusCode, equals(503));
+            expect(
+              response.json['error'],
+              equals('auth_operations_not_configured'),
+            );
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'GET audit log forwards from/to ISO date params into the gateway '
+      'command',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+          );
+          try {
+            final from = DateTime.utc(2026, 4, 1);
+            final to = DateTime.utc(2026, 4, 30, 23, 59, 59);
+            final response = await harness.get(
+              '$authAuditLogPath'
+              '?from=${Uri.encodeQueryComponent(from.toIso8601String())}'
+              '&to=${Uri.encodeQueryComponent(to.toIso8601String())}',
+            );
+            expect(response.statusCode, equals(200));
+            expect(gateway.auditLogLists.single.from, equals(from));
+            expect(gateway.auditLogLists.single.to, equals(to));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
+    test(
+      'GET audit log ignores client-supplied user_id and pins scope to the '
+      'verified bearer token',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+          );
+          try {
+            final response = await harness.get(
+              '$authAuditLogPath?user_id=spoofed-user&limit=10',
+            );
+            expect(response.statusCode, equals(200));
+            // Even though the client sent ?user_id=..., the proxy
+            // forwarded the verified bearer-token scope.
+            expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
+
     test('POST MFA factors revoke requires a fresh sign-in', () async {
       await _withRealHttp(() async {
         final gateway = _RecordingMfaOperationsGateway();
@@ -1452,6 +1560,32 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
   ) async {
     allSessionsRevokes.add(command);
     return const AuthAllSessionsRevoked(revokedCount: 2);
+  }
+
+  final auditLogLists = <AuthEventListCommand>[];
+
+  List<AuthEventListEntry> auditLogEntries = <AuthEventListEntry>[
+    AuthEventListEntry(
+      eventId: '99999999-9999-4999-8999-999999999999',
+      eventKind: AuthEventKind.signIn,
+      eventType: 'auth.user.signed_in',
+      friendlyLabel: 'Sign-in',
+      occurredAt: DateTime.utc(2026, 4, 28, 12),
+      ip: '203.0.113.10',
+      geoCountry: 'CA',
+    ),
+  ];
+  bool auditLogHasMore = false;
+
+  @override
+  Future<AuthEventsListed> listAuthEventsForActor(
+    AuthEventListCommand command,
+  ) async {
+    auditLogLists.add(command);
+    return AuthEventsListed(
+      entries: List<AuthEventListEntry>.unmodifiable(auditLogEntries),
+      hasMore: auditLogHasMore,
+    );
   }
 }
 
