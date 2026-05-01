@@ -25,7 +25,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/forge_flow_app.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
+import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/team/team_scope_visibility_policy.dart';
 
 const TeamScopeActor _fullTeamActor = TeamScopeActor(
@@ -330,6 +332,88 @@ void main() {
 
         expect(find.text('location (unknown)'), findsOneWidget);
         expect(tester.takeException(), isNull);
+      },
+    );
+
+    // Phase 9.UX.grant-payload — production-path integration.
+    //
+    // Drives the same role-change dialog through the full
+    // gateway -> _teamUserFromEntry (now `teamUserListItemFromEntry`) ->
+    // dialog pipeline that the live app uses, with no demo override.
+    // Asserts that a multi-scope `TeamUserListEntry` with authoritative
+    // `grants` flows through the production mapper and the dialog
+    // renders the inheritance hints. This is the end-to-end pin for
+    // "no demo override" — the only difference between this and the
+    // pre-existing widget tests is that the input is the gateway-side
+    // shape, not a hand-constructed `TeamUserListItem`.
+    testWidgets(
+      'production path: TeamUserListEntry.grants flow through '
+      '`teamUserListItemFromEntry` and render inheritance hints',
+      (tester) async {
+        const entry = TeamUserListEntry(
+          userId: 'user-prod',
+          email: 'prod@example.test',
+          displayName: 'Production Path',
+          roleId: 'role-owner',
+          roleLabel: 'Owner',
+          status: 'active',
+          locationId: 'loc-vancouver',
+          locationLabel: 'Vancouver Robson',
+          mfaEnrolled: true,
+          userRoleId: 'grant-prod-op-wide',
+          grants: <TeamGrantSnapshot>[
+            TeamGrantSnapshot(
+              userRoleId: 'grant-prod-op-wide',
+              roleId: 'role-owner',
+              scopeType: 'operator_wide',
+            ),
+            TeamGrantSnapshot(
+              userRoleId: 'grant-prod-org-east',
+              roleId: 'role-manager',
+              scopeType: 'org_unit',
+              orgUnitId: 'unit-east',
+              sourceOrgUnitId: 'unit-east',
+              effectiveLocationIds: <String>[
+                'loc-vancouver',
+                'loc-burnaby',
+                'loc-richmond',
+              ],
+            ),
+            TeamGrantSnapshot(
+              userRoleId: 'grant-prod-loc-1',
+              roleId: 'role-supervisor',
+              scopeType: 'location',
+              locationId: 'loc-vancouver',
+              effectiveLocationIds: <String>['loc-vancouver'],
+            ),
+          ],
+        );
+
+        // The production mapper — the same call `_teamUserFromEntry`
+        // makes inside `_AppShellState`. Run with the role catalog the
+        // section already loads so each grant's roleLabel is the live
+        // catalog label, not a demo placeholder.
+        final user = teamUserListItemFromEntry(
+          entry,
+          roleOptions: const <TeamRoleOption>[
+            TeamRoleOption(roleId: 'role-owner', label: 'Owner'),
+            TeamRoleOption(roleId: 'role-manager', label: 'Manager'),
+            TeamRoleOption(roleId: 'role-supervisor', label: 'Supervisor'),
+          ],
+        );
+
+        await _openRoleChangeDialog(tester, user);
+
+        // All three rendering branches engage with the same copy the
+        // standalone widget tests pin — confirming the production
+        // pipeline produces dialog content that renders identically to
+        // hand-seeded TeamUserListItem fixtures.
+        expect(find.text('Applies operator-wide'), findsOneWidget);
+        expect(
+          find.text('Inherited via East Region (3 locations)'),
+          findsOneWidget,
+        );
+        expect(find.text('Direct at Vancouver Robson'), findsOneWidget);
       },
     );
 

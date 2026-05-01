@@ -857,6 +857,57 @@ class ProxyAuthOperationsGateway implements AuthOperationsGateway {
       mfaRemovalRequestId: mfaRemovalRequestId,
       userRoleId: _readNonBlankString(json['user_role_id']),
       lastActiveAt: _readDateTime(json['last_active_at']),
+      grants: _teamGrantsFromJson(response, json['grants']),
+    );
+  }
+
+  List<TeamGrantSnapshot> _teamGrantsFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw == null) return const <TeamGrantSnapshot>[];
+    if (raw is! List) {
+      throw _malformed(response, 'team user grants payload was malformed');
+    }
+    return List<TeamGrantSnapshot>.unmodifiable(
+      raw.map((entry) => _teamGrantFromJson(response, entry)),
+    );
+  }
+
+  TeamGrantSnapshot _teamGrantFromJson(
+    ProxyAuthOperationsResponse response,
+    Object? raw,
+  ) {
+    if (raw is! Map) {
+      throw _malformed(response, 'team user grant payload was malformed');
+    }
+    final json = Map<String, Object?>.from(raw);
+    final userRoleId = _readNonBlankString(json['user_role_id']);
+    final roleId = _readNonBlankString(json['role_id']);
+    final scopeType = _readNonBlankString(json['scope_type']);
+    if (userRoleId == null || roleId == null || scopeType == null) {
+      throw _malformed(response, 'team user grant payload was incomplete');
+    }
+    final rawEffective = json['effective_location_ids'];
+    final effectiveLocationIds = rawEffective is List
+        ? List<String>.unmodifiable(
+            rawEffective
+                .whereType<String>()
+                .where((entry) => entry.isNotEmpty),
+          )
+        : const <String>[];
+    return TeamGrantSnapshot(
+      userRoleId: userRoleId,
+      roleId: roleId,
+      roleLabel: _readNonBlankString(json['role_label']),
+      scopeType: scopeType,
+      orgUnitId: _readNonBlankString(json['org_unit_id']),
+      locationId: _readNonBlankString(json['location_id']),
+      sourceOrgUnitId: _readNonBlankString(json['source_org_unit_id']),
+      effectiveLocationIds: effectiveLocationIds,
+      validFrom: _readDateTime(json['valid_from']),
+      validUntil: _readDateTime(json['valid_until']),
+      revokedAt: _readDateTime(json['revoked_at']),
     );
   }
 

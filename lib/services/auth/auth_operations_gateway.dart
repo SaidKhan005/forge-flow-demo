@@ -145,6 +145,51 @@ class TeamUserListCommand {
   final String locationId;
 }
 
+// Phase 9.UX.grant-payload — per-grant snapshot bundled with the team-users
+// projection. Mirrors the `user_roles` row shape consumed by the role-change
+// dialog's inheritance hint, plus the materialized
+// `user_effective_locations` set so an `org_unit` grant carries its
+// reachable locations without a follow-up read. Optional / nullable fields
+// stay nullable so a `location`-scoped grant (no `org_unit_id`) and an
+// `operator_wide` grant (neither location nor org-unit) round-trip cleanly.
+class TeamGrantSnapshot {
+  const TeamGrantSnapshot({
+    required this.userRoleId,
+    required this.roleId,
+    required this.scopeType,
+    this.roleLabel,
+    this.orgUnitId,
+    this.locationId,
+    this.sourceOrgUnitId,
+    this.effectiveLocationIds = const <String>[],
+    this.validFrom,
+    this.validUntil,
+    this.revokedAt,
+  });
+
+  final String userRoleId;
+  final String roleId;
+
+  /// `roles.display_name` for the granted role, joined into the
+  /// gateway projection so the role-change dialog never needs the
+  /// section's role catalog to resolve a label. Optional for
+  /// backward compat with older proxies that might omit the field;
+  /// when null the section falls through to its catalog/raw-id
+  /// resolver.
+  final String? roleLabel;
+
+  /// One of `'operator_wide'`, `'org_unit'`, or `'location'` — matches
+  /// the `user_roles.scope_type` CHECK constraint.
+  final String scopeType;
+  final String? orgUnitId;
+  final String? locationId;
+  final String? sourceOrgUnitId;
+  final List<String> effectiveLocationIds;
+  final DateTime? validFrom;
+  final DateTime? validUntil;
+  final DateTime? revokedAt;
+}
+
 class TeamUserListEntry {
   const TeamUserListEntry({
     required this.userId,
@@ -160,6 +205,7 @@ class TeamUserListEntry {
     this.mfaRemovalRequestId,
     this.userRoleId,
     this.lastActiveAt,
+    this.grants = const <TeamGrantSnapshot>[],
   });
 
   final String userId;
@@ -175,6 +221,7 @@ class TeamUserListEntry {
   final String? mfaRemovalRequestId;
   final String? userRoleId;
   final DateTime? lastActiveAt;
+  final List<TeamGrantSnapshot> grants;
 }
 
 class TeamUsersListed {

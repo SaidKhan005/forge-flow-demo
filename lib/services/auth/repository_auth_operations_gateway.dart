@@ -75,7 +75,31 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
             mfaRemovalRequestId: row.mfaRemovalRequestId,
             userRoleId: row.userRoleId,
             lastActiveAt: row.lastActiveAt,
+            grants: _teamGrantSnapshotsFromRepositoryRows(row.grants),
           ),
+        ),
+      ),
+    );
+  }
+
+  static List<TeamGrantSnapshot> _teamGrantSnapshotsFromRepositoryRows(
+    List<TeamUserGrantRepositoryRow> rows,
+  ) {
+    if (rows.isEmpty) return const <TeamGrantSnapshot>[];
+    return List<TeamGrantSnapshot>.unmodifiable(
+      rows.map(
+        (row) => TeamGrantSnapshot(
+          userRoleId: row.userRoleId,
+          roleId: row.roleId,
+          roleLabel: row.roleLabel,
+          scopeType: row.scopeType,
+          orgUnitId: row.orgUnitId,
+          locationId: row.locationId,
+          sourceOrgUnitId: row.sourceOrgUnitId,
+          effectiveLocationIds: row.effectiveLocationIds,
+          validFrom: row.validFrom,
+          validUntil: row.validUntil,
+          revokedAt: row.revokedAt,
         ),
       ),
     );

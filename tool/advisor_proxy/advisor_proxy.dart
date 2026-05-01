@@ -6234,6 +6234,26 @@ Map<String, Object?> _teamUserToJson(TeamUserListEntry user) {
     'mfa_removal_request_id': user.mfaRemovalRequestId,
     'user_role_id': user.userRoleId,
     'last_active_at': user.lastActiveAt?.toUtc().toIso8601String(),
+    'grants': user.grants.map(_teamGrantSnapshotToJson).toList(),
+  };
+}
+
+Map<String, Object?> _teamGrantSnapshotToJson(TeamGrantSnapshot grant) {
+  return <String, Object?>{
+    'user_role_id': grant.userRoleId,
+    'role_id': grant.roleId,
+    if (grant.roleLabel != null) 'role_label': grant.roleLabel,
+    'scope_type': grant.scopeType,
+    'org_unit_id': grant.orgUnitId,
+    'location_id': grant.locationId,
+    'source_org_unit_id': grant.sourceOrgUnitId,
+    'effective_location_ids': grant.effectiveLocationIds,
+    if (grant.validFrom != null)
+      'valid_from': grant.validFrom!.toUtc().toIso8601String(),
+    if (grant.validUntil != null)
+      'valid_until': grant.validUntil!.toUtc().toIso8601String(),
+    if (grant.revokedAt != null)
+      'revoked_at': grant.revokedAt!.toUtc().toIso8601String(),
   };
 }
 

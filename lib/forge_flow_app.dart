@@ -634,36 +634,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   TeamUserListItem _teamUserFromEntry(TeamUserListEntry entry) {
-    // Phase 9.UX inheritance-hint slice — `grants` is intentionally
-    // left at its `const []` default. The current `TeamUserListEntry`
-    // shape projects `coalesce(ur.location_id, u.primary_location_id)`
-    // into `entry.locationId` (see
-    // `users_repository.dart` `selectTeamUsersByOperator`), so a
-    // non-null `entry.locationId` is ambiguous: it can be either a
-    // `location`-scoped grant's `ur.location_id` OR a primary-display
-    // location attached to an `operator_wide` grant. There is no
-    // field on the entry that disambiguates `scope_type`, so any
-    // best-effort derivation here would mislabel real rows
-    // (e.g., "Direct at Vancouver" for an operator-wide grant whose
-    // owner has a primary location). The Active grants block stays
-    // hidden on the production path until the gateway slice that
-    // Block 2 forbids in this lane lands and `TeamUserListEntry`
-    // carries the full grant set with authoritative `scope_type`.
-    return TeamUserListItem(
-      userId: entry.userId,
-      email: entry.email,
-      displayName: entry.displayName,
-      roleId: entry.roleId,
-      roleLabel: entry.roleLabel,
-      status: entry.status,
-      locationId: entry.locationId,
-      locationLabel: entry.locationLabel,
-      mfaEnrolled: entry.mfaEnrolled,
-      mfaRemovalPending: entry.mfaRemovalPending,
-      mfaRemovalRequestId: entry.mfaRemovalRequestId,
-      userRoleId: entry.userRoleId,
-      lastActiveAt: entry.lastActiveAt,
-    );
+    return teamUserListItemFromEntry(entry, roleOptions: _teamRoleOptions);
   }
 
   TeamPendingInviteListItem _teamInviteFromEntry(TeamInviteListEntry entry) {
@@ -1336,6 +1307,69 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
     );
   }
+}
+
+/// Phase 9.UX.grant-payload — pure mapping from the gateway-side
+/// [TeamUserListEntry] to the section-side [TeamUserListItem]. Lives at
+/// top-level so `_teamUserFromEntry` stays a thin wrapper and the grant
+/// translation is testable without booting the AppShell widget tree.
+///
+/// Each `TeamGrantSnapshot` carries an authoritative `roleLabel` joined
+/// inside the gateway projection, so the dialog never depends on the
+/// section's role-catalog load completing before the user list. The
+/// `roleOptions` argument is only consulted when the gateway emits a
+/// snapshot with `roleLabel == null` (e.g., a stale proxy that has not
+/// rolled out the additive field yet) — the entry's primary roleLabel
+/// and the in-section catalog are used as fallbacks before the raw
+/// roleId.
+TeamUserListItem teamUserListItemFromEntry(
+  TeamUserListEntry entry, {
+  List<TeamRoleOption> roleOptions = const <TeamRoleOption>[],
+}) {
+  return TeamUserListItem(
+    userId: entry.userId,
+    email: entry.email,
+    displayName: entry.displayName,
+    roleId: entry.roleId,
+    roleLabel: entry.roleLabel,
+    status: entry.status,
+    locationId: entry.locationId,
+    locationLabel: entry.locationLabel,
+    mfaEnrolled: entry.mfaEnrolled,
+    mfaRemovalPending: entry.mfaRemovalPending,
+    mfaRemovalRequestId: entry.mfaRemovalRequestId,
+    userRoleId: entry.userRoleId,
+    lastActiveAt: entry.lastActiveAt,
+    grants: entry.grants
+        .map(
+          (grant) => TeamUserRoleGrant(
+            userRoleId: grant.userRoleId,
+            roleId: grant.roleId,
+            roleLabel: _grantRoleLabelFor(entry, roleOptions, grant),
+            scopeType: grant.scopeType,
+            locationId: grant.locationId,
+            orgUnitId: grant.orgUnitId,
+            effectiveLocationIds: grant.effectiveLocationIds,
+          ),
+        )
+        .toList(growable: false),
+  );
+}
+
+String _grantRoleLabelFor(
+  TeamUserListEntry entry,
+  List<TeamRoleOption> roleOptions,
+  TeamGrantSnapshot grant,
+) {
+  final supplied = grant.roleLabel;
+  if (supplied != null && supplied.isNotEmpty) return supplied;
+  if (entry.roleId == grant.roleId && entry.roleLabel.isNotEmpty) {
+    return entry.roleLabel;
+  }
+  for (final option in roleOptions) {
+    if (option.roleId == grant.roleId) return option.label;
+  }
+  return grant.roleId;
 }
 
 class _TeamSettingsRouteStateMirror {
