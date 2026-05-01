@@ -1,0 +1,65 @@
+# Phase 9.0Σ.f — Cloud Build pipeline for the audit_anchor Cloud Run
+# Job container image.
+#
+# Invocation (from repo root):
+#
+#   gcloud builds submit . \
+#     --config=tool/audit_anchor/cloudbuild.yaml \
+#     --substitutions=_REGION=northamerica-northeast1,_REPO=forge-flow
+#
+# Build context MUST be the repo root (the Dockerfile copies pubspec.*
+# and lib/ from the workspace). Do NOT submit from `tool/audit_anchor/`.
+#
+# Outputs two tags so deploys can pin a specific commit and the
+# scheduler can always fall back to `:latest` for ad-hoc executions:
+#   - {repo}/audit-anchor:{SHORT_SHA}
+#   - {repo}/audit-anchor:latest
+
+substitutions:
+  # Artifact Registry region. Override at submit time per environment.
+  _REGION: northamerica-northeast1
+  # Artifact Registry repository name (already provisioned).
+  _REPO: forge-flow
+  # Image base name; rarely overridden.
+  _IMAGE_NAME: audit-anchor
+
+# 30-minute ceiling. Flutter pub get + dart compile exe completes
+# well under this; the budget covers cold layer cache fetches.
+timeout: 1800s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Larger machine speeds the dart-compile step; the Flutter build
+  # image (~3 GB) and the AOT compile both benefit. Drop to default
+  # if cost matters more than build latency.
+  machineType: E2_HIGHCPU_8
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=tool/audit_anchor/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest
+      - .
+
+  - id: push-sha
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+    waitFor: [build]
+
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest
+    waitFor: [build]
+
+# Records both tags in the Cloud Build artifacts list so the deploy
+# script can pin to the SHA-tagged image without re-querying the registry.
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest

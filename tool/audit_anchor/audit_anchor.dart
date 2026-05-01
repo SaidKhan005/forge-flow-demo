@@ -415,6 +415,20 @@ class AuditAnchorEnvNames {
   static const String azureBlobContainer = 'AZURE_BLOB_AUDIT_CONTAINER';
   static const String azureBlobEndpoint = 'AZURE_BLOB_AUDIT_ENDPOINT';
 
+  /// Azure AD tenant ID hosting the federated app registration. Optional
+  /// at the env layer: when both [azureAdTenantId] and [azureAdClientId]
+  /// are set, the production blob-client factory builds a live
+  /// `AzureBlobAuditAnchorBlobClient`; when either is unset, the factory
+  /// keeps the fail-closed [ScaffoldRejectingAuditAnchorBlobClient] so
+  /// local/dev runs do not silently no-op.
+  static const String azureAdTenantId = 'AZURE_AD_TENANT_ID';
+
+  /// Azure AD app-registration client id for the federated identity
+  /// trust relationship. The matching federated credential's `subject`
+  /// must equal the GCP Cloud Run service account's numeric unique id;
+  /// `issuer=https://accounts.google.com`; `audience=api://AzureADTokenExchange`.
+  static const String azureAdClientId = 'AZURE_AD_CLIENT_ID';
+
   /// Fixed order so startup diagnostics print a stable list.
   static const List<String> required = <String>[
     postgresUrl,
@@ -422,7 +436,11 @@ class AuditAnchorEnvNames {
     azureBlobEndpoint,
   ];
 
-  static const List<String> optional = <String>[postgresAdminUrl];
+  static const List<String> optional = <String>[
+    postgresAdminUrl,
+    azureAdTenantId,
+    azureAdClientId,
+  ];
 }
 
 /// Thrown by the production wiring when a required env var is missing.
@@ -476,6 +494,33 @@ class AuditAnchorBlobUnavailable implements Exception {
   final String reason;
   @override
   String toString() => 'AuditAnchorBlobUnavailable: $reason';
+}
+
+/// Thrown by [AuditAnchorBlobClient.writeImmutable] when the destination
+/// blob already exists (HTTP 409 `BlobAlreadyExists`) or the container
+/// immutability policy refused a rewrite (HTTP 403 `ImmutableBlob`).
+///
+/// Carries the live blob's URI, ETag, and evidence body so the
+/// orchestrator's `_anchorOne` recovery path can revalidate the
+/// existing evidence against the current in-DB chain and insert the
+/// missing `audit_chain_anchors` row using the *original* anchored_at
+/// recorded in the immutable evidence body. This makes the daily
+/// `sweep` idempotent across crashed-and-restarted runs without ever
+/// rewriting an immutable blob.
+class AuditAnchorBlobAlreadyAnchored implements Exception {
+  const AuditAnchorBlobAlreadyAnchored({
+    required this.uri,
+    required this.etag,
+    required this.evidenceBytes,
+  });
+
+  final String uri;
+  final String etag;
+  final List<int> evidenceBytes;
+
+  @override
+  String toString() =>
+      'AuditAnchorBlobAlreadyAnchored: $uri (existing ETag $etag)';
 }
 
 /// Deterministic blob name for one anchored chain. Layout:
@@ -916,28 +961,121 @@ class AuditAnchorOrchestrator {
       operatorId: summary.operatorId,
       chainDate: summary.chainDate,
     );
-    final write = await _blobClient.writeImmutable(
-      containerName: _containerName,
-      blobName: blobName,
-      evidenceBytes: bytes,
-    );
-    final anchor = AuditChainAnchor(
-      operatorId: summary.operatorId,
-      chainDate: summary.chainDate,
-      terminalRowHash: terminal.rowHash,
-      terminalRowId: terminal.id,
-      rowCount: BigInt.from(rows.length),
-      blobUri: write.uri,
-      blobEtag: write.etag,
-      anchoredAt: nowUtc,
-    );
-    await _anchorWriter.insertAnchor(anchor);
-    return AnchorRunResult(
-      operatorId: summary.operatorId,
-      chainDate: summary.chainDate,
-      outcome: AnchorOutcome.anchored,
-      anchor: anchor,
-    );
+    try {
+      final write = await _blobClient.writeImmutable(
+        containerName: _containerName,
+        blobName: blobName,
+        evidenceBytes: bytes,
+      );
+      final anchor = AuditChainAnchor(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        terminalRowHash: terminal.rowHash,
+        terminalRowId: terminal.id,
+        rowCount: BigInt.from(rows.length),
+        blobUri: write.uri,
+        blobEtag: write.etag,
+        anchoredAt: nowUtc,
+      );
+      await _anchorWriter.insertAnchor(anchor);
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.anchored,
+        anchor: anchor,
+      );
+    } on AuditAnchorBlobAlreadyAnchored catch (existing) {
+      // The immutable blob already exists for this chain — almost
+      // certainly a previous run wrote the blob and crashed before the
+      // audit_chain_anchors INSERT committed. Validate the live
+      // evidence against the current in-DB chain terminal; if it
+      // matches, complete the anchor by inserting the missing row
+      // with the blob's *original* anchored_at. If it does not match,
+      // surface a chain-hash-mismatch result for runbook escalation
+      // (the immutable blob disagrees with the current chain — this
+      // is forensic-grade tampering or a real chain hash drift, never
+      // routine recovery).
+      final existingEvidence = _codec.decode(existing.evidenceBytes);
+      final mismatch = _checkRecoveryEvidence(
+        evidence: existingEvidence,
+        terminal: terminal,
+        rowCount: BigInt.from(rows.length),
+        chainDate: summary.chainDate,
+        operatorId: summary.operatorId,
+      );
+      if (mismatch != null) {
+        return AnchorRunResult(
+          operatorId: summary.operatorId,
+          chainDate: summary.chainDate,
+          outcome: AnchorOutcome.chainHashMismatch,
+          message:
+              'existing immutable blob disagrees with current in-DB '
+              'chain — refusing to insert anchor row; $mismatch; '
+              'see runbooks/audit_chain_verify_runbook.md',
+        );
+      }
+      final anchor = AuditChainAnchor(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        terminalRowHash: terminal.rowHash,
+        terminalRowId: terminal.id,
+        rowCount: BigInt.from(rows.length),
+        blobUri: existing.uri,
+        blobEtag: existing.etag,
+        anchoredAt: existingEvidence.anchoredAt,
+      );
+      await _anchorWriter.insertAnchor(anchor);
+      return AnchorRunResult(
+        operatorId: summary.operatorId,
+        chainDate: summary.chainDate,
+        outcome: AnchorOutcome.alreadyAnchored,
+        anchor: anchor,
+        message:
+            'recovered: existing immutable blob anchored '
+            '${existingEvidence.anchoredAt.toIso8601String()}',
+      );
+    }
+  }
+
+  /// Compares an existing-blob evidence envelope against the current
+  /// in-DB chain terminal. Returns a single-line mismatch description
+  /// for the first axis that disagrees, or `null` when every checked
+  /// field matches. Used only on the recovery path
+  /// ([AuditAnchorBlobAlreadyAnchored]) to decide between idempotent
+  /// completion and forensic escalation.
+  String? _checkRecoveryEvidence({
+    required AnchorEvidence evidence,
+    required AuditLogRow terminal,
+    required BigInt rowCount,
+    required DateTime chainDate,
+    required String operatorId,
+  }) {
+    if (evidence.schemaVersion != 1) {
+      return 'evidence schema_version=${evidence.schemaVersion} '
+          '(expected 1)';
+    }
+    if (evidence.operatorId.toLowerCase() != operatorId.toLowerCase()) {
+      return 'evidence operator_id=${evidence.operatorId} '
+          '(expected $operatorId)';
+    }
+    if (!_dateEquals(evidence.chainDate, chainDate)) {
+      return 'evidence chain_date='
+          '${_formatChainDate(evidence.chainDate)} '
+          '(expected ${_formatChainDate(chainDate)})';
+    }
+    if (evidence.terminalRowId != terminal.id) {
+      return 'evidence terminal_row_id=${evidence.terminalRowId} '
+          '(expected ${terminal.id})';
+    }
+    if (evidence.terminalRowHashHex != _hex(terminal.rowHash)) {
+      return 'evidence terminal_row_hash_hex disagrees with current '
+          'in-DB terminal row_hash';
+    }
+    if (evidence.rowCount != rowCount) {
+      return 'evidence row_count=${evidence.rowCount} '
+          '(expected $rowCount)';
+    }
+    return null;
   }
 
   /// Verifies one `(operator_id, chain_date)` chain against the DB
