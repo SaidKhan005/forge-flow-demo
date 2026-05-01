@@ -93,15 +93,15 @@ void main() {
     );
 
     // Click into a route that is still deliberately placeholder-only.
-    await tester.tap(find.byKey(const Key('admin_nav_item_corpus')));
+    await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_placeholder_corpus')),
+      find.byKey(const Key('admin_placeholder_debug')),
       findsOneWidget,
     );
     expect(
-      find.text('Markdown corpus admin lands in 11A.3.'),
+      find.text('Per-operator debug console lands in 11A.5.'),
       findsOneWidget,
     );
     // Home card should no longer be in the tree.
@@ -151,13 +151,13 @@ void main() {
         AdminShell(
           session: superAdmin,
           authSource: source,
-          initialRouteId: 'corpus',
+          initialRouteId: 'debug',
         ),
       ),
     );
 
     expect(
-      find.byKey(const Key('admin_placeholder_corpus')),
+      find.byKey(const Key('admin_placeholder_debug')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('admin_home_card')), findsNothing);
