@@ -650,6 +650,54 @@ class UsersRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// System-pool lookup of the local Postgres `user_id` (UUID) for a
+  /// Firebase user. Returns the row's `user_id` ONLY when the user's
+  /// status is `'active'`. Returns null when:
+  ///
+  ///   * no row matches the supplied Firebase UID,
+  ///   * a row matches but `status != 'active'` (invited / suspended /
+  ///     dormant_* / deleted), or
+  ///   * the row has `deleted_at` set, or
+  ///   * [firebaseUid] is not UUID-shaped (the `users.firebase_uid`
+  ///     column is a uuid type in F&F's design, so non-UUID input
+  ///     cannot match anyway — we short-circuit before the cast to
+  ///     keep the route handler 4xx-pure).
+  ///
+  /// Used by the integration management proxy path to resolve the
+  /// caller's Firebase UID into a UUID-shaped actor before any
+  /// `auth_events_audit` row is written. The Phase 9 auth contract
+  /// requires admin Firebase UID resolution to reject non-active
+  /// statuses; an invited / suspended / dormant user with a still-
+  /// valid Firebase claim must NOT be allowed to act on shared
+  /// integration credentials.
+  Future<String?> findActiveUserIdByFirebaseUidSystem({
+    required String firebaseUid,
+    required String adminReason,
+  }) {
+    if (!_uuidPattern.hasMatch(firebaseUid)) {
+      return Future<String?>.value(null);
+    }
+    return withSystem<String?>((exec) async {
+      final rows = await exec.query(
+        'select user_id::text as user_id '
+        'from users '
+        'where firebase_uid = @firebase_uid::uuid '
+        'and deleted_at is null '
+        "and status = 'active' "
+        'limit 1',
+        parameters: <String, Object?>{'firebase_uid': firebaseUid},
+      );
+      if (rows.isEmpty) return null;
+      final value = rows.single['user_id'];
+      if (value is String && value.isNotEmpty) return value;
+      return null;
+    }, reason: adminReason);
+  }
+
+  static final RegExp _uuidPattern = RegExp(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  );
+
   /// SELECT `roles_version` so Firebase custom claims can be refreshed after
   /// grant/revoke operations.
   Future<int> rolesVersionForUser({

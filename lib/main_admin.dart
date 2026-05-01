@@ -34,6 +34,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/corpus_admin_gateway.dart';
+import 'admin/services/integration_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'theme/app_theme.dart';
@@ -76,17 +77,20 @@ Future<void> main() async {
         gateway == null ? null : _resolvePricingTierAdminGateway();
     final corpusGateway =
         gateway == null ? null : _resolveCorpusAdminGateway();
+    final integrationGateway =
+        gateway == null ? null : _resolveIntegrationAdminGateway();
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
-    // Corpus routes can read `adminAuthSource` and switch to the
-    // read-only branch for `ff_support`. Live gateways are still null
-    // in demo mode; the route accessors fall back to the seeded
-    // in-memory demo gateways in `admin_routes.dart`.
+    // Corpus / Integrations routes can read `adminAuthSource` and
+    // switch to the read-only branch for `ff_support`. Live gateways
+    // are still null in demo mode; the route accessors fall back to
+    // the seeded in-memory demo gateways in `admin_routes.dart`.
     runApp(
       AdminConsoleServicesScope(
         operatorLocationGateway: gateway,
         pricingTierGateway: pricingGateway,
         corpusAdminGateway: corpusGateway,
+        integrationGateway: integrationGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -158,6 +162,21 @@ CorpusAdminGateway? _resolveCorpusAdminGateway() {
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpCorpusAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: _firebaseIdTokenProvider,
+  );
+}
+
+/// Phase 11A.4 — integration management admin gateway. Lives on the
+/// same admin proxy base URI; demo mode falls back to the seeded
+/// in-memory gateway in `admin_routes.dart`.
+IntegrationAdminGateway? _resolveIntegrationAdminGateway() {
+  if (_kAdminDemoAuth) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpIntegrationAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: _firebaseIdTokenProvider,
   );
