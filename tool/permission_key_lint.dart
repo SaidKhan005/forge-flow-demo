@@ -1,0 +1,466 @@
+// Phase 9 repo-lints — permission key catalog drift / orphan / missing.
+//
+// The frozen permission key catalog is mirrored across three sources
+// (CLAUDE.md "Service-Layer Split" + `lib/auth/permission_keys.dart`
+// header):
+//
+//   1. db/migrations/202604250008_auth_schema_foundation.sql (and
+//      additive 9.0a / 9.0Σ.h2 / MFA-hardening follow-ups)
+//   2. lib/auth/permission_keys.dart
+//   3. docs/contracts/auth_permission_key_catalog.md
+//
+// Drift between any two copies is a launch-blocking integrity bug —
+// runtime permission resolution and the audit log become incoherent
+// if the catalog at the seed layer disagrees with the constants the
+// runtime checks against. This lint covers the Dart-side ↔ catalog-doc
+// pair; the Dart-side ↔ migration-seed pair is already covered by
+// `Phase 9 auth schema foundation migration (9.0)` in
+// `test/advisor_proxy_test.dart`.
+//
+// Two declaration shapes are parsed:
+//
+//   * Class-namespaced (active today):
+//       static const String forgeflowShiftView = 'forgeflow.shift.view';
+//     Members of `class PermissionKeys`. Runtime exposure travels
+//     through `PermissionKeys.all` (a `Set<String>` listing every key
+//     the resolver supports). Direct callers reference these as
+//     `PermissionKeys.<name>`.
+//
+//   * Top-level `kFf…` / `kPerm…` (reserved for the future refactor
+//     that lifts constants out of the class wrapper):
+//       const String kFfShiftView = 'forgeflow.shift.view';
+//     Direct callers reference the bare name.
+//
+// Both shapes contribute to ORPHAN / CATALOG_DRIFT / CATALOG_MISSING:
+//
+//   - `ORPHAN`         constant declared, but neither in
+//                      `PermissionKeys.all` nor referenced by any
+//                      `*.dart` under lib/ outside permission_keys.dart.
+//                      Top-level constants are orphaned solely on the
+//                      direct-reference axis (no `all` set involved).
+//   - `CATALOG_DRIFT`  catalog row exists, no constant declares the
+//                      dotted key.
+//   - `CATALOG_MISSING` constant declared, catalog row absent.
+//
+// Exempt list (`_exemptKeys`) is the documented escape hatch for
+// ORPHAN findings only. Default empty. Adding an entry is an explicit
+// code change with a required inline reason. Class-namespaced exempts
+// use the bare member name (`forgeflowShiftView`); top-level exempts
+// use the constant name (`kFfShiftView`).
+//
+// Exposed surface:
+//   * `PermissionKeyLintRunner` — testable façade. Construct with a
+//     `permission_keys.dart` body, a map of additional Dart files
+//     (relative-path → body) for ORPHAN scan, the catalog markdown
+//     body, and an optional exempt set. Call `run()`.
+//   * `main(List<String>)` — CLI entrypoint that reads the on-disk
+//     tree and exits 1 on any non-exempt finding.
+//
+// Run locally:
+//
+//   dart run tool/permission_key_lint.dart
+
+import 'dart:io';
+
+// ─── Exempt list ──────────────────────────────────────────────────
+//
+// Adding a key here suppresses ORPHAN findings for that key. Class-
+// namespaced exempts use the bare member name (e.g. `forgeflowShiftView`);
+// top-level exempts use the constant name (e.g. `kFfShiftView`).
+// Default empty; each entry MUST carry an inline `// reason` comment.
+
+const Set<String> _exemptKeys = <String>{
+  // Example (commented out so the default is empty):
+  // 'forgeflowReservedPlaceholder', // Phase 9.UX.Z planned, not wired yet.
+  // 'kFfReservedPlaceholder',       // Future top-level shape.
+};
+
+/// Code for a finding emitted by the lint.
+enum PermissionKeyFindingCode { orphan, catalogDrift, catalogMissing }
+
+/// Declaration shape for a parsed constant.
+enum PermissionKeyShape { classMember, topLevel }
+
+/// One finding from the lint.
+class PermissionKeyFinding {
+  const PermissionKeyFinding({
+    required this.code,
+    required this.constName,
+    required this.dottedKey,
+    required this.detail,
+  });
+
+  final PermissionKeyFindingCode code;
+
+  /// Constant name (e.g. `forgeflowShiftView` or `kFfShiftView`). Empty
+  /// when the finding is a `CATALOG_DRIFT` (catalog has the key but no
+  /// constant declares it).
+  final String constName;
+
+  /// Dotted key (e.g. `forgeflow.shift.view`). Empty when the finding
+  /// is an `ORPHAN` whose const has no string value.
+  final String dottedKey;
+
+  /// Free-form remediation hint.
+  final String detail;
+
+  String get codeString {
+    switch (code) {
+      case PermissionKeyFindingCode.orphan:
+        return 'ORPHAN';
+      case PermissionKeyFindingCode.catalogDrift:
+        return 'CATALOG_DRIFT';
+      case PermissionKeyFindingCode.catalogMissing:
+        return 'CATALOG_MISSING';
+    }
+  }
+
+  @override
+  String toString() {
+    final parts = <String>[
+      codeString,
+      if (constName.isNotEmpty) 'const=$constName',
+      if (dottedKey.isNotEmpty) 'key=$dottedKey',
+      if (detail.isNotEmpty) detail,
+    ];
+    return parts.join(' ');
+  }
+}
+
+/// Aggregate result of a lint run.
+class PermissionKeyLintResult {
+  const PermissionKeyLintResult({
+    required this.findings,
+    required this.parsedConstantCount,
+    required this.classMemberCount,
+    required this.topLevelCount,
+    required this.allSetMemberCount,
+    required this.catalogKeyCount,
+    required this.exemptCount,
+  });
+
+  final List<PermissionKeyFinding> findings;
+  final int parsedConstantCount;
+  final int classMemberCount;
+  final int topLevelCount;
+  final int allSetMemberCount;
+  final int catalogKeyCount;
+  final int exemptCount;
+
+  Iterable<PermissionKeyFinding> get orphans =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.orphan);
+
+  Iterable<PermissionKeyFinding> get drifts =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.catalogDrift);
+
+  Iterable<PermissionKeyFinding> get missing =>
+      findings.where((f) => f.code == PermissionKeyFindingCode.catalogMissing);
+
+  bool get isClean => findings.isEmpty;
+}
+
+/// In-memory façade so tests can drive the lint without touching the
+/// filesystem.
+class PermissionKeyLintRunner {
+  PermissionKeyLintRunner({
+    required this.permissionKeysSource,
+    required this.referenceFiles,
+    required this.catalogMarkdown,
+    Set<String>? exemptKeys,
+  }) : exemptKeys = exemptKeys ?? _exemptKeys;
+
+  /// Source body of `lib/auth/permission_keys.dart`.
+  final String permissionKeysSource;
+
+  /// Map of `relative-path → file body` for every `*.dart` file in the
+  /// ORPHAN-scan scope (lib/, EXCLUDING `lib/auth/permission_keys.dart`).
+  final Map<String, String> referenceFiles;
+
+  /// Raw markdown of `docs/contracts/auth_permission_key_catalog.md`.
+  final String catalogMarkdown;
+
+  /// Constant names exempt from ORPHAN findings.
+  final Set<String> exemptKeys;
+
+  PermissionKeyLintResult run() {
+    final findings = <PermissionKeyFinding>[];
+    final constants = _parseConstants(permissionKeysSource);
+    final allSetMembers = _parseAllSetMembers(permissionKeysSource);
+    final catalogKeys = _parseCatalogKeys(catalogMarkdown);
+
+    final classMemberCount =
+        constants.where((c) => c.shape == PermissionKeyShape.classMember).length;
+    final topLevelCount =
+        constants.where((c) => c.shape == PermissionKeyShape.topLevel).length;
+
+    final codeKeysByValue = <String, String>{};
+    for (final c in constants) {
+      codeKeysByValue[c.value] = c.name;
+    }
+
+    // ORPHAN — declared but unreachable.
+    for (final c in constants) {
+      if (exemptKeys.contains(c.name)) continue;
+
+      // Class members are "exposed" if they appear in the
+      // `PermissionKeys.all` set; the runtime resolver iterates that
+      // set so set membership is a real runtime use of the constant.
+      // Top-level constants have no equivalent set — they must be
+      // referenced by name somewhere.
+      if (c.shape == PermissionKeyShape.classMember &&
+          allSetMembers.contains(c.name)) {
+        continue;
+      }
+
+      // Direct-reference scan. Class members are typically referenced
+      // as `PermissionKeys.<name>`; we also accept the bare name
+      // because some callsites destructure into a local. Top-level
+      // constants are referenced bare.
+      final searchNeedle = c.name;
+      final used = referenceFiles.values.any((body) {
+        return RegExp(r'\b' + RegExp.escape(searchNeedle) + r'\b')
+            .hasMatch(body);
+      });
+      if (!used) {
+        findings.add(PermissionKeyFinding(
+          code: PermissionKeyFindingCode.orphan,
+          constName: c.name,
+          dottedKey: c.value,
+          detail: c.shape == PermissionKeyShape.classMember
+              ? 'declared as PermissionKeys.${c.name} but not added to '
+                  'PermissionKeys.all and not referenced under lib/. '
+                  'Either add it to PermissionKeys.all or remove the '
+                  'declaration.'
+              : 'declared in lib/auth/permission_keys.dart but no '
+                  'references found under lib/. Either wire it up or '
+                  'add the constant name to _exemptKeys with a reason.',
+        ));
+      }
+    }
+
+    // CATALOG_MISSING — code defines a key, catalog doesn't.
+    for (final c in constants) {
+      if (!catalogKeys.contains(c.value)) {
+        findings.add(PermissionKeyFinding(
+          code: PermissionKeyFindingCode.catalogMissing,
+          constName: c.name,
+          dottedKey: c.value,
+          detail: 'add a row for `${c.value}` to '
+              'docs/contracts/auth_permission_key_catalog.md.',
+        ));
+      }
+    }
+
+    // CATALOG_DRIFT — catalog row exists, no constant declares the key.
+    for (final ck in catalogKeys) {
+      if (!codeKeysByValue.containsKey(ck)) {
+        findings.add(PermissionKeyFinding(
+          code: PermissionKeyFindingCode.catalogDrift,
+          constName: '',
+          dottedKey: ck,
+          detail: 'remove the row from the catalog OR add a '
+              'matching constant in lib/auth/permission_keys.dart.',
+        ));
+      }
+    }
+
+    return PermissionKeyLintResult(
+      findings: findings,
+      parsedConstantCount: constants.length,
+      classMemberCount: classMemberCount,
+      topLevelCount: topLevelCount,
+      allSetMemberCount: allSetMembers.length,
+      catalogKeyCount: catalogKeys.length,
+      exemptCount: exemptKeys.length,
+    );
+  }
+}
+
+/// One parsed permission-key constant.
+class _ParsedConstant {
+  const _ParsedConstant({
+    required this.name,
+    required this.value,
+    required this.shape,
+  });
+  final String name;
+  final String value;
+  final PermissionKeyShape shape;
+}
+
+// ─── Parsing helpers ──────────────────────────────────────────────
+
+/// Class-namespaced declarations — `static const String <name> = '<value>';`
+/// inside `class PermissionKeys`. Whitespace tolerant so multi-line
+/// declarations (e.g. `static const String fooLong =\n    'bar';`)
+/// parse correctly. Captured groups: 1=name, 2=value.
+final RegExp _classMemberPattern = RegExp(
+  r'''static\s+const\s+String\s+(\w+)\s*=\s*['"]([^'"]+)['"]\s*;''',
+);
+
+/// Top-level `const String kFf…` / `kPerm…` declarations. Anchored on
+/// a line start so a `static const` member that happens to begin with
+/// `kFf` or `kPerm` is not double-counted.
+final RegExp _topLevelConstPattern = RegExp(
+  r'''^const\s+String\s+(k(?:Ff|Perm)\w*)\s*=\s*['"]([^'"]+)['"]\s*;''',
+  multiLine: true,
+);
+
+/// Any `static const Set<String> <name> = <String>{ … };` declaration.
+/// Captures both the set name (g1) and the inner member list (g2).
+/// `PermissionKeys.all` is the headline runtime set, but the file also
+/// declares `requiresMfa` and `baselineRoleKeys`; a constant present
+/// in any of these sets is reachable at runtime, which the orphan
+/// rule must respect.
+final RegExp _allSetPattern = RegExp(
+  r'''static\s+const\s+Set<String>\s+(\w+)\s*=\s*<String>\s*\{([\s\S]*?)\};''',
+);
+
+/// A permission-key value is a lowercase identifier with at least
+/// one `.` separator (e.g. `forgeflow.shift.view`,
+/// `integration.7shifts.connect`). Bare identifiers (`super_admin`,
+/// `ff_support` — these are role keys, declared in
+/// `PermissionKeys.baselineRoleKeys`) are intentionally NOT permission
+/// keys and are filtered out so the lint does not chase them through
+/// the catalog cross-reference.
+final RegExp _permissionKeyValueShape = RegExp(
+  r'^[a-z][a-z0-9_]*(?:\.[a-zA-Z0-9_]+)+$',
+);
+
+List<_ParsedConstant> _parseConstants(String source) {
+  final out = <_ParsedConstant>[];
+  // Class members first. Both `_classMemberPattern` and
+  // `_topLevelConstPattern` could in principle overlap on a name like
+  // `kFfFoo`; class members have the `static` keyword, top-level
+  // declarations don't, so the patterns are disjoint by construction.
+  for (final m in _classMemberPattern.allMatches(source)) {
+    final value = m.group(2)!;
+    if (!_permissionKeyValueShape.hasMatch(value)) continue;
+    out.add(_ParsedConstant(
+      name: m.group(1)!,
+      value: value,
+      shape: PermissionKeyShape.classMember,
+    ));
+  }
+  for (final m in _topLevelConstPattern.allMatches(source)) {
+    final value = m.group(2)!;
+    if (!_permissionKeyValueShape.hasMatch(value)) continue;
+    out.add(_ParsedConstant(
+      name: m.group(1)!,
+      value: value,
+      shape: PermissionKeyShape.topLevel,
+    ));
+  }
+  return out;
+}
+
+/// Returns the union of bare member names listed across every
+/// `static const Set<String>` member of `PermissionKeys`. The Set
+/// initializer bodies are parsed for `\w+`-shaped tokens; non-
+/// identifier tokens (commas, whitespace, comments, the surrounding
+/// `<String>{}`) are discarded.
+Set<String> _parseAllSetMembers(String source) {
+  final out = <String>{};
+  for (final m in _allSetPattern.allMatches(source)) {
+    final inner = m.group(2)!;
+    // Strip line and block comments inside the set body so an inline
+    // comment like `// MFA` does not contribute spurious tokens.
+    final stripped = inner
+        .replaceAll(RegExp(r'//[^\n]*'), '')
+        .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+    for (final tok in RegExp(r'\b([a-zA-Z_]\w*)\b').allMatches(stripped)) {
+      out.add(tok.group(1)!);
+    }
+  }
+  return out;
+}
+
+/// Catalog markdown contains the dotted permission keys in the first
+/// cell of each per-category table row. The pattern anchors on the
+/// row's leading `|` so backtick-wrapped identifiers in prose (e.g.
+/// `\`PermissionKeys.all\``, `\`public.roles\``) do not bleed into
+/// the catalog set. The first segment is restricted to lowercase
+/// (`[a-z][a-z0-9_]*`) so the table marker `| Key | Description |`
+/// header alongside Dart-identifier mentions stays out. Subdomains
+/// after the first `.` may start with a digit
+/// (`integration.7shifts.connect`).
+final RegExp _catalogKeyPattern = RegExp(
+  r'^\|\s*`([a-z][a-z0-9_]*(?:\.[a-zA-Z0-9_]+)+)`\s*\|',
+  multiLine: true,
+);
+
+Set<String> _parseCatalogKeys(String markdown) {
+  final out = <String>{};
+  for (final m in _catalogKeyPattern.allMatches(markdown)) {
+    out.add(m.group(1)!);
+  }
+  return out;
+}
+
+// ─── CLI ──────────────────────────────────────────────────────────
+
+/// Production CLI entrypoint.
+Future<void> main(List<String> args) async {
+  final permissionKeysFile = File('lib/auth/permission_keys.dart');
+  final catalogFile =
+      File('docs/contracts/auth_permission_key_catalog.md');
+
+  if (!permissionKeysFile.existsSync()) {
+    stderr.writeln('permission_key_lint: '
+        'lib/auth/permission_keys.dart not found '
+        '(run from repository root).');
+    exitCode = 2;
+    return;
+  }
+  if (!catalogFile.existsSync()) {
+    stderr.writeln('permission_key_lint: '
+        'docs/contracts/auth_permission_key_catalog.md not found '
+        '(run from repository root).');
+    exitCode = 2;
+    return;
+  }
+
+  final referenceFiles = <String, String>{};
+  final libDir = Directory('lib');
+  if (libDir.existsSync()) {
+    for (final entity in libDir.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is! File) continue;
+      if (!entity.path.toLowerCase().endsWith('.dart')) continue;
+      final rel = entity.path.replaceAll(r'\', '/');
+      if (rel == 'lib/auth/permission_keys.dart') continue;
+      referenceFiles[rel] = entity.readAsStringSync();
+    }
+  }
+
+  final runner = PermissionKeyLintRunner(
+    permissionKeysSource: permissionKeysFile.readAsStringSync(),
+    referenceFiles: referenceFiles,
+    catalogMarkdown: catalogFile.readAsStringSync(),
+  );
+  final result = runner.run();
+
+  stdout.writeln(
+    'permission_key_lint: parsed ${result.parsedConstantCount} '
+    'constant(s) (${result.classMemberCount} class members, '
+    '${result.topLevelCount} top-level k(Ff|Perm)*); '
+    '${result.allSetMemberCount} entries in PermissionKeys.all; '
+    'catalog declares ${result.catalogKeyCount} dotted key(s); '
+    '${result.exemptCount} exempt entries configured.',
+  );
+
+  if (result.isClean) {
+    stdout.writeln('permission_key_lint: clean — no orphans / drift / '
+        'missing entries.');
+    return;
+  }
+
+  stderr.writeln('permission_key_lint: '
+      '${result.findings.length} finding(s):');
+  for (final f in result.findings) {
+    stderr.writeln('  - $f');
+  }
+  exitCode = 1;
+}
