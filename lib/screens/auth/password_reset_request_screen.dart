@@ -6,6 +6,7 @@
 // whether the email actually exists. This screen never reveals
 // presence/absence of the account.
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -115,19 +116,20 @@ class _PasswordResetRequestScreenState
       // For other rejections, keep the key so a tap-again retry
       // replays the cached response instead of double-sending the
       // email. The key rotates when the operator edits the email.
-      if (rejection.code == 'rate_limited' ||
-          rejection.statusCode == 429) {
+      if (rejection.code == 'rate_limited' || rejection.statusCode == 429) {
         _retireIdempotencyKey();
       }
       setState(() {
         _submitting = false;
-        if (rejection.code == 'rate_limited') {
-          _errorMessage =
-              'Too many reset requests. Please wait a moment and try again.';
-        } else {
-          _errorMessage =
-              'Password reset is temporarily unavailable. Please try again.';
-        }
+        _errorMessage = _copyForRejection(rejection);
+        _confirmationShown = false;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _errorMessage =
+            'Password reset timed out before the proxy responded. Try again.';
         _confirmationShown = false;
       });
     } catch (_) {
@@ -165,6 +167,20 @@ class _PasswordResetRequestScreenState
     return true;
   }
 
+  String _copyForRejection(PasswordResetRejected rejection) {
+    if (rejection.code == 'rate_limited' || rejection.statusCode == 429) {
+      return 'Too many reset requests. Please wait a moment and try again.';
+    }
+    if (rejection.statusCode == 404 || rejection.code == 'not found') {
+      return 'Password reset route is not deployed. Rebuild with the staging proxy.';
+    }
+    if (rejection.code == 'password_reset_request_not_configured' ||
+        rejection.code == 'password_reset_not_configured') {
+      return 'Password reset is not configured in this build.';
+    }
+    return 'Password reset is temporarily unavailable. Please try again.';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -190,16 +206,17 @@ class _PasswordResetRequestScreenState
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 32,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const _PasswordResetLogo(
+                      key: Key('password_reset_request_logo'),
+                    ),
+                    const SizedBox(height: 18),
                     Text(
                       'Reset your password',
                       style: AppTextStyles.display28(
@@ -227,6 +244,37 @@ class _PasswordResetRequestScreenState
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PasswordResetLogo extends StatelessWidget {
+  const _PasswordResetLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 82,
+        height: 82,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.sunset.withValues(alpha: 0.18),
+              blurRadius: 22,
+              spreadRadius: 1,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: Image.asset(
+            'assets/images/forge_flow_splash_icon.png',
+            fit: BoxFit.cover,
           ),
         ),
       ),
@@ -403,11 +451,7 @@ class _BrandedField extends StatelessWidget {
 }
 
 class _ResetBanner extends StatelessWidget {
-  const _ResetBanner({
-    super.key,
-    required this.message,
-    required this.isError,
-  });
+  const _ResetBanner({super.key, required this.message, required this.isError});
 
   final String message;
   final bool isError;

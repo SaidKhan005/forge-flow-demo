@@ -34,11 +34,39 @@ typedef SettingsRolePatchRequester =
 typedef SettingsRoleDeleteRequester =
     Future<bool> Function(TeamRoleCatalogEntry role);
 
+typedef SettingsRoleCatalogRetryRequester = Future<void> Function();
+
+class TeamRoleCatalogLoadState {
+  const TeamRoleCatalogLoadState({
+    this.loading = false,
+    this.loaded = true,
+    this.errorMessage,
+  });
+
+  static const TeamRoleCatalogLoadState ready = TeamRoleCatalogLoadState();
+  static const TeamRoleCatalogLoadState waiting = TeamRoleCatalogLoadState(
+    loading: true,
+    loaded: false,
+  );
+  static const TeamRoleCatalogLoadState unavailable = TeamRoleCatalogLoadState(
+    loaded: false,
+  );
+
+  final bool loading;
+  final bool loaded;
+  final String? errorMessage;
+
+  bool get hasError => errorMessage != null && errorMessage!.trim().isNotEmpty;
+  bool get shouldShowNotice => loading || !loaded || hasError;
+}
+
 class SettingsCustomRolesSection extends StatefulWidget {
   const SettingsCustomRolesSection({
     super.key,
     required this.actor,
     required this.roleCatalog,
+    this.loadState = TeamRoleCatalogLoadState.ready,
+    this.onRetry,
     this.onCreateRole,
     this.onPatchRole,
     this.onDeleteRole,
@@ -47,6 +75,8 @@ class SettingsCustomRolesSection extends StatefulWidget {
 
   final TeamScopeActor actor;
   final List<TeamRoleCatalogEntry> roleCatalog;
+  final TeamRoleCatalogLoadState loadState;
+  final SettingsRoleCatalogRetryRequester? onRetry;
   final SettingsRoleCreateRequester? onCreateRole;
   final SettingsRolePatchRequester? onPatchRole;
   final SettingsRoleDeleteRequester? onDeleteRole;
@@ -64,8 +94,10 @@ class _SettingsCustomRolesSectionState
     extends State<SettingsCustomRolesSection> {
   final Set<String> _busyRoleIds = <String>{};
   bool _busyCreate = false;
+  bool _retryingCatalog = false;
 
-  bool get _canView => widget.actor.actorPermissions.contains('team.roles.view');
+  bool get _canView =>
+      widget.actor.actorPermissions.contains('team.roles.view');
 
   bool get _canCreate =>
       widget.onCreateRole != null &&
@@ -137,6 +169,14 @@ class _SettingsCustomRolesSectionState
               ),
           ],
         ),
+        if (widget.loadState.shouldShowNotice) ...[
+          const SizedBox(height: 12),
+          _RoleCatalogLoadNotice(
+            loadState: widget.loadState,
+            retrying: _retryingCatalog,
+            onRetry: widget.onRetry == null ? null : _retryCatalog,
+          ),
+        ],
         const SizedBox(height: 12),
         if (custom.isNotEmpty) ...[
           _GroupHeader(label: 'Custom roles (${custom.length})'),
@@ -184,6 +224,17 @@ class _SettingsCustomRolesSectionState
         ],
       ],
     );
+  }
+
+  Future<void> _retryCatalog() async {
+    final retry = widget.onRetry;
+    if (retry == null || widget.loadState.loading || _retryingCatalog) return;
+    setState(() => _retryingCatalog = true);
+    try {
+      await retry();
+    } finally {
+      if (mounted) setState(() => _retryingCatalog = false);
+    }
   }
 
   Future<void> _openCreateDialog() async {
@@ -278,6 +329,78 @@ class _SettingsCustomRolesSectionState
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class _RoleCatalogLoadNotice extends StatelessWidget {
+  const _RoleCatalogLoadNotice({
+    required this.loadState,
+    required this.retrying,
+    this.onRetry,
+  });
+
+  final TeamRoleCatalogLoadState loadState;
+  final bool retrying;
+  final VoidCallback? onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = loadState.loading || retrying;
+    final message = _message(loading);
+    return Container(
+      key: const Key('settings_custom_roles_load_notice'),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundMid,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.borderSubtle),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            loading ? Icons.cloud_sync_outlined : Icons.wifi_off_outlined,
+            size: 18,
+            color: AppColors.textMuted,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              softWrap: true,
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
+          ),
+          if (loading) ...[
+            const SizedBox(width: 12),
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ] else if (onRetry != null) ...[
+            const SizedBox(width: 12),
+            TextButton(
+              key: const Key('settings_custom_roles_retry_button'),
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _message(bool loading) {
+    if (loading) {
+      return loadState.loaded
+          ? 'Refreshing role catalog...'
+          : 'Loading role catalog...';
+    }
+    final error = loadState.errorMessage?.trim();
+    if (error != null && error.isNotEmpty) {
+      return loadState.loaded ? '$error Showing last loaded catalog.' : error;
+    }
+    return 'Role catalog is not loaded yet. Retry to load live roles.';
   }
 }
 
@@ -475,11 +598,7 @@ class _RoleBadge extends StatelessWidget {
 }
 
 class _CountChip extends StatelessWidget {
-  const _CountChip({
-    super.key,
-    required this.label,
-    required this.color,
-  });
+  const _CountChip({super.key, required this.label, required this.color});
 
   final String label;
   final Color color;

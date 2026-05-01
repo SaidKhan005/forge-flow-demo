@@ -7,6 +7,7 @@
 // On policy / HIBP / history rejection, surfaces operator-friendly
 // copy without redirecting.
 
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -79,8 +80,7 @@ class _PasswordResetConfirmScreenState
   }
 
   String _idempotencyKeyFor(String password) {
-    if (_pendingIdempotencyKey == null ||
-        password != _keyedPasswordSnapshot) {
+    if (_pendingIdempotencyKey == null || password != _keyedPasswordSnapshot) {
       _pendingIdempotencyKey = _idempotencyKeyFactory();
       _keyedPasswordSnapshot = password;
     }
@@ -147,6 +147,14 @@ class _PasswordResetConfirmScreenState
         _submitting = false;
         _errorMessage = _operatorCopyFor(rejection);
       });
+    } on TimeoutException {
+      if (!mounted) return;
+      // Network/transport timeout: keep the key for a stable retry.
+      setState(() {
+        _submitting = false;
+        _errorMessage =
+            'Password reset timed out before the proxy responded. Try again.';
+      });
     } catch (_) {
       if (!mounted) return;
       // Network/transport: keep the key for a stable retry.
@@ -187,6 +195,13 @@ class _PasswordResetConfirmScreenState
   }
 
   String _operatorCopyFor(PasswordResetRejected rejection) {
+    if (rejection.statusCode == 404 || rejection.code == 'not found') {
+      return 'Password reset route is not deployed. Request a fresh link after staging is updated.';
+    }
+    if (rejection.code == 'password_reset_confirm_not_configured' ||
+        rejection.code == 'password_reset_not_configured') {
+      return 'Password reset is not configured in this build.';
+    }
     final rejections = rejection.rejections;
     if (rejections.contains('pwned_in_breach')) {
       return 'That password appears in a known data breach. '
@@ -237,16 +252,17 @@ class _PasswordResetConfirmScreenState
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 32,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    const _PasswordResetLogo(
+                      key: Key('password_reset_confirm_logo'),
+                    ),
+                    const SizedBox(height: 18),
                     Text(
                       'Choose a new password',
                       style: AppTextStyles.display28(
@@ -274,6 +290,37 @@ class _PasswordResetConfirmScreenState
                 ),
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PasswordResetLogo extends StatelessWidget {
+  const _PasswordResetLogo({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        width: 82,
+        height: 82,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.sunset.withValues(alpha: 0.18),
+              blurRadius: 22,
+              spreadRadius: 1,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: ClipOval(
+          child: Image.asset(
+            'assets/images/forge_flow_splash_icon.png',
+            fit: BoxFit.cover,
           ),
         ),
       ),

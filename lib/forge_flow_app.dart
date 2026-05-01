@@ -219,6 +219,12 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   _teamRoleCatalogListenable = ValueNotifier<List<TeamRoleCatalogEntry>>(
     _teamRoleCatalog,
   );
+  TeamRoleCatalogLoadState _teamRoleCatalogLoadState =
+      TeamRoleCatalogLoadState.unavailable;
+  late final ValueNotifier<TeamRoleCatalogLoadState>
+  _teamRoleCatalogLoadStateListenable = ValueNotifier<TeamRoleCatalogLoadState>(
+    _teamRoleCatalogLoadState,
+  );
   List<TeamUserListItem> _teamUsers = const <TeamUserListItem>[];
   late final ValueNotifier<List<TeamUserListItem>> _teamUsersListenable =
       ValueNotifier<List<TeamUserListItem>>(_teamUsers);
@@ -311,6 +317,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     _boundaryMonitor?.stop();
     _teamRoleOptionsListenable.dispose();
     _teamRoleCatalogListenable.dispose();
+    _teamRoleCatalogLoadStateListenable.dispose();
     _teamUsersListenable.dispose();
     _teamPendingInvitesListenable.dispose();
     _teamDataLoadStateListenable.dispose();
@@ -402,6 +409,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             teamRoleOptionsListenable: routeState.teamRoleOptions,
             teamRoleCatalog: routeState.teamRoleCatalog.value,
             teamRoleCatalogListenable: routeState.teamRoleCatalog,
+            teamRoleCatalogLoadState: routeState.teamRoleCatalogLoadState.value,
+            teamRoleCatalogLoadStateListenable:
+                routeState.teamRoleCatalogLoadState,
             teamLocationOptions: session == null
                 ? const <TeamLocationOption>[]
                 : <TeamLocationOption>[
@@ -448,8 +458,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             // rule as Active Sessions: when no live gateway is wired,
             // use the in-memory fixture so the walkthrough can render
             // demo events without a backend.
-            allowDemoAuditLogFallback:
-                widget.authOperationsGateway == null,
+            allowDemoAuditLogFallback: widget.authOperationsGateway == null,
           ),
           fullscreenDialog: true,
         ),
@@ -530,11 +539,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     bool force = false,
   }) async {
     final gateway = widget.authOperationsGateway;
-    if (gateway == null) return;
+    if (gateway == null) {
+      _publishTeamRoleCatalogLoadState(TeamRoleCatalogLoadState.ready);
+      return;
+    }
     final key = '${session.userId}|${session.operatorId}|${session.locationId}';
-    if (!force && _teamRolesLoadedFor == key) return;
-    if (_teamRolesLoadingFor == key) return;
+    if (!force && _teamRolesLoadedFor == key) {
+      _publishTeamRoleCatalogLoadState(TeamRoleCatalogLoadState.ready);
+      return;
+    }
+    if (_teamRolesLoadingFor == key) {
+      _publishTeamRoleCatalogLoadState(
+        TeamRoleCatalogLoadState(
+          loading: true,
+          loaded: _teamRolesLoadedFor == key,
+        ),
+      );
+      return;
+    }
     _teamRolesLoadingFor = key;
+    _publishTeamRoleCatalogLoadState(
+      TeamRoleCatalogLoadState(
+        loading: true,
+        loaded: _teamRolesLoadedFor == key,
+      ),
+    );
     try {
       final listed = await gateway.listRoles(
         TeamRoleCatalogListCommand(
@@ -546,11 +575,50 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       if (!mounted) return;
       final roles = listed.roles;
       _publishTeamRoleCatalog(roles, loadedKey: key);
+      _publishTeamRoleCatalogLoadState(TeamRoleCatalogLoadState.ready);
     } catch (error) {
       debugPrint('Team role catalog load failed: $error');
+      _publishTeamRoleCatalogLoadState(
+        TeamRoleCatalogLoadState(
+          loaded: _teamRolesLoadedFor == key,
+          errorMessage: _teamRoleCatalogLoadMessage(error),
+        ),
+      );
     } finally {
       if (_teamRolesLoadingFor == key) _teamRolesLoadingFor = null;
     }
+  }
+
+  void _publishTeamRoleCatalogLoadState(TeamRoleCatalogLoadState next) {
+    if (!mounted) return;
+    final current = _teamRoleCatalogLoadState;
+    if (current.loading == next.loading &&
+        current.loaded == next.loaded &&
+        current.errorMessage == next.errorMessage) {
+      return;
+    }
+    _teamRoleCatalogLoadState = next;
+    _teamRoleCatalogLoadStateListenable.value = next;
+  }
+
+  String _teamRoleCatalogLoadMessage(Object error) {
+    final text = error.toString().toLowerCase();
+    if (text.contains('status: 404') || text.contains('not found')) {
+      return 'Role route not found. Rebuild with the staging proxy.';
+    }
+    if (text.contains('status: 401')) {
+      return 'Sign in again before loading roles.';
+    }
+    if (text.contains('status: 403')) {
+      return 'You do not have access to role management.';
+    }
+    if (text.contains('timeout')) {
+      return 'Role catalog timed out before the proxy responded. Retry.';
+    }
+    if (text.contains('transport_error') || text.contains('status: null')) {
+      return 'Could not reach the proxy. Check connection and retry.';
+    }
+    return 'Could not load role catalog. Try again.';
   }
 
   TeamDataRetryRequester? _teamDataRetryRequester(AuthSession? session) {
@@ -1390,6 +1458,7 @@ class _TeamSettingsRouteStateMirror {
   _TeamSettingsRouteStateMirror._({
     required this.teamRoleOptions,
     required this.teamRoleCatalog,
+    required this.teamRoleCatalogLoadState,
     required this.teamUsers,
     required this.teamPendingInvites,
     required this.teamDataLoadState,
@@ -1408,6 +1477,9 @@ class _TeamSettingsRouteStateMirror {
       ),
       teamRoleCatalog: ValueNotifier<List<TeamRoleCatalogEntry>>(
         owner._teamRoleCatalogListenable.value,
+      ),
+      teamRoleCatalogLoadState: ValueNotifier<TeamRoleCatalogLoadState>(
+        owner._teamRoleCatalogLoadStateListenable.value,
       ),
       teamUsers: ValueNotifier<List<TeamUserListItem>>(
         owner._teamUsersListenable.value,
@@ -1441,6 +1513,11 @@ class _TeamSettingsRouteStateMirror {
     mirror._mirror(
       owner._teamRoleCatalogListenable,
       mirror.teamRoleCatalog,
+      detachListeners,
+    );
+    mirror._mirror(
+      owner._teamRoleCatalogLoadStateListenable,
+      mirror.teamRoleCatalogLoadState,
       detachListeners,
     );
     mirror._mirror(
@@ -1483,6 +1560,7 @@ class _TeamSettingsRouteStateMirror {
 
   final ValueNotifier<List<TeamRoleOption>> teamRoleOptions;
   final ValueNotifier<List<TeamRoleCatalogEntry>> teamRoleCatalog;
+  final ValueNotifier<TeamRoleCatalogLoadState> teamRoleCatalogLoadState;
   final ValueNotifier<List<TeamUserListItem>> teamUsers;
   final ValueNotifier<List<TeamPendingInviteListItem>> teamPendingInvites;
   final ValueNotifier<TeamSettingsDataLoadState> teamDataLoadState;
@@ -1514,6 +1592,7 @@ class _TeamSettingsRouteStateMirror {
     }
     teamRoleOptions.dispose();
     teamRoleCatalog.dispose();
+    teamRoleCatalogLoadState.dispose();
     teamUsers.dispose();
     teamPendingInvites.dispose();
     teamDataLoadState.dispose();

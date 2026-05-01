@@ -50,10 +50,7 @@ TeamRoleCatalogEntry _seededOwner() {
     isSeeded: true,
     isEditable: false,
     permissions: <TeamRolePermissionRule>[
-      TeamRolePermissionRule(
-        permissionKey: 'team.users.view',
-        effect: 'allow',
-      ),
+      TeamRolePermissionRule(permissionKey: 'team.users.view', effect: 'allow'),
       TeamRolePermissionRule(
         permissionKey: 'team.roles.assign',
         effect: 'allow',
@@ -71,10 +68,7 @@ TeamRoleCatalogEntry _seededManager() {
     isSeeded: true,
     isEditable: true,
     permissions: <TeamRolePermissionRule>[
-      TeamRolePermissionRule(
-        permissionKey: 'team.users.view',
-        effect: 'allow',
-      ),
+      TeamRolePermissionRule(permissionKey: 'team.users.view', effect: 'allow'),
     ],
   );
 }
@@ -245,6 +239,68 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets('shows loading notice while the live catalog is pending', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          SettingsCustomRolesSection(
+            actor: _ownerActor,
+            roleCatalog: const <TeamRoleCatalogEntry>[],
+            loadState: TeamRoleCatalogLoadState.waiting,
+            onCreateRole: (_) async => null,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('settings_custom_roles_load_notice')),
+        findsOneWidget,
+      );
+      expect(find.text('Loading role catalog...'), findsOneWidget);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
+    testWidgets('shows role catalog error and retries the live path', (
+      tester,
+    ) async {
+      var retryCalls = 0;
+      await tester.pumpWidget(
+        _wrap(
+          SettingsCustomRolesSection(
+            actor: _ownerActor,
+            roleCatalog: const <TeamRoleCatalogEntry>[],
+            loadState: const TeamRoleCatalogLoadState(
+              loaded: false,
+              errorMessage: 'Role route not found. Rebuild with the proxy.',
+            ),
+            onRetry: () async {
+              retryCalls += 1;
+            },
+            onCreateRole: (_) async => null,
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        find.byKey(const Key('settings_custom_roles_load_notice')),
+        findsOneWidget,
+      );
+      expect(
+        find.text('Role route not found. Rebuild with the proxy.'),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('settings_custom_roles_retry_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(retryCalls, equals(1));
+    });
   });
 
   group('SettingsCustomRolesSection — create flow', () {
@@ -300,16 +356,11 @@ void main() {
       expect(captured.single.isCreate, isTrue);
       expect(captured.single.roleKey, equals('kitchen_lead'));
       expect(captured.single.displayName, equals('Kitchen Lead'));
-      expect(
-        find.text('Role "Kitchen Lead" created'),
-        findsOneWidget,
-      );
+      expect(find.text('Role "Kitchen Lead" created'), findsOneWidget);
     });
 
     testWidgets('save failure surfaces an inline error', (tester) async {
-      Future<TeamRoleCatalogEntry?> onCreate(
-        SettingsRoleEditorResult _,
-      ) async {
+      Future<TeamRoleCatalogEntry?> onCreate(SettingsRoleEditorResult _) async {
         return null;
       }
 
@@ -350,64 +401,63 @@ void main() {
       );
     });
 
-    testWidgets(
-      'save button stays disabled when role key violates the rule',
-      (tester) async {
-        await tester.pumpWidget(
-          _wrap(
-            SettingsCustomRolesSection(
-              actor: _ownerActor,
-              roleCatalog: const <TeamRoleCatalogEntry>[],
-              onCreateRole: (_) async => _customKitchenLead(),
-            ),
+    testWidgets('save button stays disabled when role key violates the rule', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _wrap(
+          SettingsCustomRolesSection(
+            actor: _ownerActor,
+            roleCatalog: const <TeamRoleCatalogEntry>[],
+            onCreateRole: (_) async => _customKitchenLead(),
           ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const Key('settings_custom_roles_create_button')),
+      );
+      await tester.pumpAndSettle();
+
+      Future<void> enter(String roleKey) async {
+        await tester.enterText(
+          find.byKey(const Key('settings_role_editor_role_key')),
+          roleKey,
         );
-        await tester.pumpAndSettle();
-
-        await tester.tap(
-          find.byKey(const Key('settings_custom_roles_create_button')),
+        await tester.enterText(
+          find.byKey(const Key('settings_role_editor_display_name')),
+          'Test Role',
         );
-        await tester.pumpAndSettle();
+        await tester.pump();
+      }
 
-        Future<void> enter(String roleKey) async {
-          await tester.enterText(
-            find.byKey(const Key('settings_role_editor_role_key')),
-            roleKey,
-          );
-          await tester.enterText(
-            find.byKey(const Key('settings_role_editor_display_name')),
-            'Test Role',
-          );
-          await tester.pump();
-        }
+      FilledButton saveButton() => tester.widget<FilledButton>(
+        find.byKey(const Key('settings_role_editor_save')),
+      );
 
-        FilledButton saveButton() => tester.widget<FilledButton>(
-          find.byKey(const Key('settings_role_editor_save')),
-        );
+      // Uppercase + space + ! — must reject.
+      await enter('Bad Key!');
+      expect(saveButton().onPressed, isNull);
 
-        // Uppercase + space + ! — must reject.
-        await enter('Bad Key!');
-        expect(saveButton().onPressed, isNull);
+      // Backend rule is `^[a-z][a-z0-9_]{2,63}$` (length 3..64).
+      // 2-char keys must reject.
+      await enter('kl');
+      expect(saveButton().onPressed, isNull);
 
-        // Backend rule is `^[a-z][a-z0-9_]{2,63}$` (length 3..64).
-        // 2-char keys must reject.
-        await enter('kl');
-        expect(saveButton().onPressed, isNull);
+      // Exactly 3 chars must accept.
+      await enter('kl1');
+      expect(saveButton().onPressed, isNotNull);
 
-        // Exactly 3 chars must accept.
-        await enter('kl1');
-        expect(saveButton().onPressed, isNotNull);
+      // 64 chars must accept; 65 must reject.
+      final sixtyFour = 'a${'b' * 63}';
+      expect(sixtyFour.length, equals(64));
+      await enter(sixtyFour);
+      expect(saveButton().onPressed, isNotNull);
 
-        // 64 chars must accept; 65 must reject.
-        final sixtyFour = 'a${'b' * 63}';
-        expect(sixtyFour.length, equals(64));
-        await enter(sixtyFour);
-        expect(saveButton().onPressed, isNotNull);
-
-        await enter('a${'b' * 64}');
-        expect(saveButton().onPressed, isNull);
-      },
-    );
+      await enter('a${'b' * 64}');
+      expect(saveButton().onPressed, isNull);
+    });
   });
 
   group('SettingsCustomRolesSection — edit / view flow', () {
@@ -433,10 +483,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Save button must NOT exist — read-only mode.
-      expect(
-        find.byKey(const Key('settings_role_editor_save')),
-        findsNothing,
-      );
+      expect(find.byKey(const Key('settings_role_editor_save')), findsNothing);
       expect(find.text('View role'), findsOneWidget);
       // Only Close action is present (cancel button labeled Close).
       expect(
@@ -445,88 +492,78 @@ void main() {
       );
     });
 
-    testWidgets(
-      'View on seeded isEditable=true role opens read-only dialog',
-      (tester) async {
-        var patchCalls = 0;
-        await tester.pumpWidget(
-          _wrap(
-            SettingsCustomRolesSection(
-              actor: _ownerActor,
-              // Seeded `operator_manager` ships isEditable=true in the
-              // payload but the operator UI must still treat it as
-              // View-only — only `admin.roles.edit_seeded` mutates
-              // seeded rows and that path lives elsewhere.
-              roleCatalog: <TeamRoleCatalogEntry>[_seededManager()],
-              onPatchRole: (_) async {
-                patchCalls += 1;
-                return _seededManager();
-              },
-            ),
+    testWidgets('View on seeded isEditable=true role opens read-only dialog', (
+      tester,
+    ) async {
+      var patchCalls = 0;
+      await tester.pumpWidget(
+        _wrap(
+          SettingsCustomRolesSection(
+            actor: _ownerActor,
+            // Seeded `operator_manager` ships isEditable=true in the
+            // payload but the operator UI must still treat it as
+            // View-only — only `admin.roles.edit_seeded` mutates
+            // seeded rows and that path lives elsewhere.
+            roleCatalog: <TeamRoleCatalogEntry>[_seededManager()],
+            onPatchRole: (_) async {
+              patchCalls += 1;
+              return _seededManager();
+            },
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byKey(const Key('settings_custom_role_view_role-seed-manager')),
-        );
-        await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('settings_custom_role_view_role-seed-manager')),
+      );
+      await tester.pumpAndSettle();
 
-        // Save button must NOT exist in read-only mode regardless of
-        // the actor's create_custom permission.
-        expect(
-          find.byKey(const Key('settings_role_editor_save')),
-          findsNothing,
-        );
-        expect(find.text('View role'), findsOneWidget);
-        // onPatchRole must not have been called even once for a View
-        // open.
-        expect(patchCalls, equals(0));
-      },
-    );
+      // Save button must NOT exist in read-only mode regardless of
+      // the actor's create_custom permission.
+      expect(find.byKey(const Key('settings_role_editor_save')), findsNothing);
+      expect(find.text('View role'), findsOneWidget);
+      // onPatchRole must not have been called even once for a View
+      // open.
+      expect(patchCalls, equals(0));
+    });
 
-    testWidgets(
-      'read-only actor View on a custom role cannot mutate it',
-      (tester) async {
-        var patchCalls = 0;
-        await tester.pumpWidget(
-          _wrap(
-            SettingsCustomRolesSection(
-              actor: _readOnlyActor,
-              roleCatalog: <TeamRoleCatalogEntry>[_customKitchenLead()],
-              // Live wiring may pass the same callbacks regardless of
-              // actor; the section must still gate by permission, not
-              // by the presence of the callback.
-              onPatchRole: (_) async {
-                patchCalls += 1;
-                return _customKitchenLead();
-              },
-              onCreateRole: (_) async => null,
-              onDeleteRole: (_) async => true,
-            ),
+    testWidgets('read-only actor View on a custom role cannot mutate it', (
+      tester,
+    ) async {
+      var patchCalls = 0;
+      await tester.pumpWidget(
+        _wrap(
+          SettingsCustomRolesSection(
+            actor: _readOnlyActor,
+            roleCatalog: <TeamRoleCatalogEntry>[_customKitchenLead()],
+            // Live wiring may pass the same callbacks regardless of
+            // actor; the section must still gate by permission, not
+            // by the presence of the callback.
+            onPatchRole: (_) async {
+              patchCalls += 1;
+              return _customKitchenLead();
+            },
+            onCreateRole: (_) async => null,
+            onDeleteRole: (_) async => true,
           ),
-        );
-        await tester.pumpAndSettle();
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        await tester.tap(
-          find.byKey(const Key('settings_custom_role_view_role-custom-1')),
-        );
-        await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('settings_custom_role_view_role-custom-1')),
+      );
+      await tester.pumpAndSettle();
 
-        expect(
-          find.byKey(const Key('settings_role_editor_save')),
-          findsNothing,
-        );
-        expect(find.text('View role'), findsOneWidget);
+      expect(find.byKey(const Key('settings_role_editor_save')), findsNothing);
+      expect(find.text('View role'), findsOneWidget);
 
-        await tester.tap(
-          find.byKey(const Key('settings_role_editor_cancel')),
-        );
-        await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_role_editor_cancel')));
+      await tester.pumpAndSettle();
 
-        expect(patchCalls, equals(0));
-      },
-    );
+      expect(patchCalls, equals(0));
+    });
 
     testWidgets('editing a custom role only sends changed permissions', (
       tester,
@@ -575,9 +612,7 @@ void main() {
   });
 
   group('SettingsCustomRolesSection — delete flow', () {
-    testWidgets('confirmation modal is required before delete', (
-      tester,
-    ) async {
+    testWidgets('confirmation modal is required before delete', (tester) async {
       var deleteCalls = 0;
       Future<bool> onDelete(TeamRoleCatalogEntry _) async {
         deleteCalls += 1;

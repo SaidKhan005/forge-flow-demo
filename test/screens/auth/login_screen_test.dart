@@ -43,10 +43,16 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Forgot password?'), findsOneWidget);
+      expect(
+        find.byKey(const Key('login_forgot_password_button')),
+        findsNothing,
+      );
+      expect(find.byKey(const Key('login_reset_link_hint')), findsNothing);
     });
 
-    testWidgets('tapping the link navigates to PasswordResetRequestScreen',
-        (tester) async {
+    testWidgets('tapping the link navigates to PasswordResetRequestScreen', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         wrap(
           screen: const LoginScreen(
@@ -62,8 +68,9 @@ void main() {
       expect(find.byType(PasswordResetRequestScreen), findsOneWidget);
     });
 
-    testWidgets('forwards typed email to the request screen as initial value',
-        (tester) async {
+    testWidgets('forwards typed email to the request screen as initial value', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         wrap(
           screen: const LoginScreen(
@@ -80,8 +87,9 @@ void main() {
       await tester.tap(find.byKey(const Key('login_forgot_password_link')));
       await tester.pumpAndSettle();
 
-      final requestScreen = tester
-          .widget<PasswordResetRequestScreen>(find.byType(PasswordResetRequestScreen));
+      final requestScreen = tester.widget<PasswordResetRequestScreen>(
+        find.byType(PasswordResetRequestScreen),
+      );
       expect(requestScreen.initialEmail, equals('demo@forgeflow.test'));
     });
 

@@ -29,6 +29,17 @@ class AuditLogActor {
   final String actorUserId;
   final String operatorId;
   final String locationId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is AuditLogActor &&
+        other.actorUserId == actorUserId &&
+        other.operatorId == operatorId &&
+        other.locationId == locationId;
+  }
+
+  @override
+  int get hashCode => Object.hash(actorUserId, operatorId, locationId);
 }
 
 /// Stable demo fixtures (kDemoMode) so the walkthrough can show
@@ -393,7 +404,10 @@ class _SettingsAuditLogSectionState extends State<SettingsAuditLogSection> {
     // section actions into the pinned-header overlap zone.
     final hasActiveFilter = _activeFilter != null || _activeDateRange != null;
     final showFilters =
-        _loading || _entries.isNotEmpty || _errorMessage != null || hasActiveFilter;
+        _loading ||
+        _entries.isNotEmpty ||
+        _errorMessage != null ||
+        hasActiveFilter;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -411,13 +425,8 @@ class _SettingsAuditLogSectionState extends State<SettingsAuditLogSection> {
           const SizedBox(height: 8),
         ],
         if (_loading) const _AuditLogLoadingCard(),
-        if (!_loading &&
-            _errorMessage != null &&
-            _entries.isEmpty)
-          _AuditLogErrorCard(
-            message: _errorMessage!,
-            onRetry: _refresh,
-          ),
+        if (!_loading && _errorMessage != null && _entries.isEmpty)
+          _AuditLogErrorCard(message: _errorMessage!, onRetry: _refresh),
         if (!_loading && _entries.isEmpty && _errorMessage == null)
           _emptyCard(message: 'No audit events yet.'),
         if (!_loading && _entries.isNotEmpty)
@@ -686,9 +695,7 @@ class _FilterChip extends StatelessWidget {
           spec.label,
           style: AppTextStyles.mono11(
             color: isActive ? AppColors.sunsetDark : AppColors.textSecondary,
-          ).copyWith(
-            fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-          ),
+          ).copyWith(fontWeight: isActive ? FontWeight.w700 : FontWeight.w500),
         ),
       ),
     );
@@ -803,9 +810,7 @@ class _AuditLogRow extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         _relative(entry.occurredAt),
-                        style: AppTextStyles.body12(
-                          color: AppColors.textMuted,
-                        ),
+                        style: AppTextStyles.body12(color: AppColors.textMuted),
                       ),
                     ],
                   ),

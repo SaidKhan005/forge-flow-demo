@@ -277,8 +277,14 @@ void main() {
       );
       await tester.pumpAndSettle();
       // The demo seed has at least 5 rows (per slice acceptance).
-      expect(find.byKey(const Key('audit_log_row_demo-audit-1')), findsOneWidget);
-      expect(find.byKey(const Key('audit_log_row_demo-audit-5')), findsOneWidget);
+      expect(
+        find.byKey(const Key('audit_log_row_demo-audit-1')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('audit_log_row_demo-audit-5')),
+        findsOneWidget,
+      );
     });
 
     testWidgets(
@@ -335,48 +341,51 @@ void main() {
       },
     );
 
-    test('DemoAuditLogGateway honors from/to bounds before paginating', () async {
-      final gateway = DemoAuditLogGateway(
-        seed: <AuthEventListEntry>[
-          AuthEventListEntry(
-            eventId: 'recent',
-            eventKind: AuthEventKind.signIn,
-            eventType: 'auth.user.signed_in',
-            friendlyLabel: 'Sign-in',
-            occurredAt: DateTime.utc(2026, 4, 30, 12),
+    test(
+      'DemoAuditLogGateway honors from/to bounds before paginating',
+      () async {
+        final gateway = DemoAuditLogGateway(
+          seed: <AuthEventListEntry>[
+            AuthEventListEntry(
+              eventId: 'recent',
+              eventKind: AuthEventKind.signIn,
+              eventType: 'auth.user.signed_in',
+              friendlyLabel: 'Sign-in',
+              occurredAt: DateTime.utc(2026, 4, 30, 12),
+            ),
+            AuthEventListEntry(
+              eventId: 'middle',
+              eventKind: AuthEventKind.password,
+              eventType: 'auth.password_changed',
+              friendlyLabel: 'Password changed',
+              occurredAt: DateTime.utc(2026, 4, 25, 12),
+            ),
+            AuthEventListEntry(
+              eventId: 'old',
+              eventKind: AuthEventKind.role,
+              eventType: 'auth.role_grant_created',
+              friendlyLabel: 'Role grant added',
+              occurredAt: DateTime.utc(2026, 4, 1, 12),
+            ),
+          ],
+        );
+        // Window covers Apr 20–Apr 30; the "old" Apr 1 row must drop.
+        final listed = await gateway.listAuthEventsForActor(
+          AuthEventListCommand(
+            actorUserId: 'demo-actor',
+            operatorId: 'demo-op',
+            locationId: 'demo-loc',
+            limit: 50,
+            offset: 0,
+            from: DateTime.utc(2026, 4, 20),
+            to: DateTime.utc(2026, 4, 30, 23, 59, 59, 999),
           ),
-          AuthEventListEntry(
-            eventId: 'middle',
-            eventKind: AuthEventKind.password,
-            eventType: 'auth.password_changed',
-            friendlyLabel: 'Password changed',
-            occurredAt: DateTime.utc(2026, 4, 25, 12),
-          ),
-          AuthEventListEntry(
-            eventId: 'old',
-            eventKind: AuthEventKind.role,
-            eventType: 'auth.role_grant_created',
-            friendlyLabel: 'Role grant added',
-            occurredAt: DateTime.utc(2026, 4, 1, 12),
-          ),
-        ],
-      );
-      // Window covers Apr 20–Apr 30; the "old" Apr 1 row must drop.
-      final listed = await gateway.listAuthEventsForActor(
-        AuthEventListCommand(
-          actorUserId: 'demo-actor',
-          operatorId: 'demo-op',
-          locationId: 'demo-loc',
-          limit: 50,
-          offset: 0,
-          from: DateTime.utc(2026, 4, 20),
-          to: DateTime.utc(2026, 4, 30, 23, 59, 59, 999),
-        ),
-      );
-      final ids = listed.entries.map((e) => e.eventId).toList();
-      expect(ids, equals(<String>['recent', 'middle']));
-      expect(ids.contains('old'), isFalse);
-    });
+        );
+        final ids = listed.entries.map((e) => e.eventId).toList();
+        expect(ids, equals(<String>['recent', 'middle']));
+        expect(ids.contains('old'), isFalse);
+      },
+    );
 
     test(
       'DemoAuditLogFixtures still surface six rows when no bounds are set',
@@ -394,7 +403,6 @@ void main() {
         expect(listed.entries.length, greaterThanOrEqualTo(6));
       },
     );
-
 
     testWidgets('refreshGeneration reloads the audit log list', (tester) async {
       final now = DateTime.now().toUtc();
@@ -432,6 +440,47 @@ void main() {
       await tester.pumpWidget(build(1));
       await tester.pumpAndSettle();
       expect(gateway.listCalls, hasLength(2));
+    });
+
+    testWidgets('equal actor rebuild does not reload the list', (tester) async {
+      final now = DateTime.now().toUtc();
+      final gateway = _RecordingAuthOperationsGateway(
+        pages: <List<AuthEventListEntry>>[
+          <AuthEventListEntry>[
+            AuthEventListEntry(
+              eventId: 'audit-1',
+              eventKind: AuthEventKind.signIn,
+              eventType: 'auth.user.signed_in',
+              friendlyLabel: 'Sign-in',
+              occurredAt: now,
+            ),
+          ],
+        ],
+        repeatLastPage: true,
+      );
+
+      Widget build() {
+        return MaterialApp(
+          home: Scaffold(
+            body: SettingsAuditLogSection(
+              gateway: gateway,
+              actor: const AuditLogActor(
+                actorUserId: 'user-1',
+                operatorId: 'op-1',
+                locationId: 'loc-1',
+              ),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build());
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(1));
+
+      await tester.pumpWidget(build());
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(1));
     });
   });
 }
@@ -476,8 +525,8 @@ class _RecordingAuthOperationsGateway
     final hasMore = hasSequence == null
         ? false
         : (listCalls.length <= hasSequence.length
-            ? hasSequence[listCalls.length - 1]
-            : false);
+              ? hasSequence[listCalls.length - 1]
+              : false);
     return AuthEventsListed(
       entries: List<AuthEventListEntry>.unmodifiable(entries),
       hasMore: hasMore,

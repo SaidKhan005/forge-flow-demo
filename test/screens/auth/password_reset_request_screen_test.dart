@@ -1,5 +1,7 @@
 // Phase 9.UX.7 - PasswordResetRequestScreen widget tests.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/screens/auth/password_reset_request_screen.dart';
@@ -11,17 +13,36 @@ void main() {
       return MaterialApp(home: screen);
     }
 
-    testWidgets('blocks submit on invalid email with client-side validation',
-        (tester) async {
+    testWidgets('shows the Forge & Flow logo above the request form', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          PasswordResetRequestScreen(gateway: _RecordingPasswordResetGateway()),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('password_reset_request_logo')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('blocks submit on invalid email with client-side validation', (
+      tester,
+    ) async {
       final gateway = _RecordingPasswordResetGateway();
 
-      await tester.pumpWidget(wrap(PasswordResetRequestScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
       await tester.enterText(
         find.byKey(const Key('password_reset_request_email_field')),
         'not-an-email',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_request_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(gateway.requestCalls, equals(0));
@@ -38,13 +59,16 @@ void main() {
     testWidgets('shows privacy-preserving copy on success', (tester) async {
       final gateway = _RecordingPasswordResetGateway();
 
-      await tester.pumpWidget(wrap(PasswordResetRequestScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
       await tester.enterText(
         find.byKey(const Key('password_reset_request_email_field')),
         'demo@forgeflow.test',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_request_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(gateway.requestCalls, equals(1));
@@ -61,21 +85,24 @@ void main() {
       );
     });
 
-    testWidgets('shows same privacy-preserving copy for unknown email',
-        (tester) async {
+    testWidgets('shows same privacy-preserving copy for unknown email', (
+      tester,
+    ) async {
       // The proxy contract says request always succeeds from the client's
       // perspective regardless of whether the email exists. Confirm the UI
       // does not branch on the email parameter — same banner copy fires.
-      final gateway =
-          _RecordingPasswordResetGateway(accept: (_) => true);
+      final gateway = _RecordingPasswordResetGateway(accept: (_) => true);
 
-      await tester.pumpWidget(wrap(PasswordResetRequestScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
       await tester.enterText(
         find.byKey(const Key('password_reset_request_email_field')),
         'unknown@forgeflow.test',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_request_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -95,23 +122,23 @@ void main() {
         ),
       );
 
-      await tester.pumpWidget(wrap(PasswordResetRequestScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
       await tester.enterText(
         find.byKey(const Key('password_reset_request_email_field')),
         'demo@forgeflow.test',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_request_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(
         find.byKey(const Key('password_reset_request_error_banner')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('Too many reset requests'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('Too many reset requests'), findsOneWidget);
       expect(
         find.byKey(const Key('password_reset_request_confirmation_banner')),
         findsNothing,
@@ -123,23 +150,69 @@ void main() {
         throwGeneric: () => StateError('boom'),
       );
 
-      await tester.pumpWidget(wrap(PasswordResetRequestScreen(gateway: gateway)));
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
       await tester.enterText(
         find.byKey(const Key('password_reset_request_email_field')),
         'demo@forgeflow.test',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_request_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(
         find.byKey(const Key('password_reset_request_error_banner')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('temporarily unavailable'),
-        findsOneWidget,
+      expect(find.textContaining('temporarily unavailable'), findsOneWidget);
+    });
+
+    testWidgets('route-missing rejection has deploy-specific copy', (
+      tester,
+    ) async {
+      final gateway = _RecordingPasswordResetGateway(
+        rejection: const PasswordResetRejected(
+          code: 'not found',
+          message: 'not found',
+          statusCode: 404,
+        ),
       );
+
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
+      await tester.enterText(
+        find.byKey(const Key('password_reset_request_email_field')),
+        'demo@forgeflow.test',
+      );
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('route is not deployed'), findsOneWidget);
+    });
+
+    testWidgets('timeout has distinct proxy-slow copy', (tester) async {
+      final gateway = _RecordingPasswordResetGateway(
+        throwGeneric: () => TimeoutException('slow proxy'),
+      );
+
+      await tester.pumpWidget(
+        wrap(PasswordResetRequestScreen(gateway: gateway)),
+      );
+      await tester.enterText(
+        find.byKey(const Key('password_reset_request_email_field')),
+        'demo@forgeflow.test',
+      );
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('timed out'), findsOneWidget);
     });
 
     testWidgets(
@@ -155,8 +228,7 @@ void main() {
           wrap(
             PasswordResetRequestScreen(
               gateway: gateway,
-              idempotencyKeyFactory: () =>
-                  'idem-${++keyCounter}',
+              idempotencyKeyFactory: () => 'idem-${++keyCounter}',
             ),
           ),
         );
@@ -166,8 +238,9 @@ void main() {
           find.byKey(const Key('password_reset_request_email_field')),
           'demo@forgeflow.test',
         );
-        await tester
-            .tap(find.byKey(const Key('password_reset_request_submit_button')));
+        await tester.tap(
+          find.byKey(const Key('password_reset_request_submit_button')),
+        );
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('password_reset_request_error_banner')),
@@ -175,8 +248,9 @@ void main() {
         );
 
         // Operator taps submit again with the same email — same key.
-        await tester
-            .tap(find.byKey(const Key('password_reset_request_submit_button')));
+        await tester.tap(
+          find.byKey(const Key('password_reset_request_submit_button')),
+        );
         await tester.pumpAndSettle();
         expect(
           find.byKey(const Key('password_reset_request_confirmation_banner')),
@@ -195,58 +269,55 @@ void main() {
           find.byKey(const Key('password_reset_request_email_field')),
           'someone.else@forgeflow.test',
         );
-        await tester
-            .tap(find.byKey(const Key('password_reset_request_submit_button')));
+        await tester.tap(
+          find.byKey(const Key('password_reset_request_submit_button')),
+        );
         await tester.pumpAndSettle();
         expect(gateway.recordedKeys, hasLength(3));
         expect(gateway.recordedKeys[2], equals('idem-2'));
       },
     );
 
-    testWidgets(
-      'rotates the Idempotency-Key on 429 so the next retry is not '
-      'pinned to the cached rate-limit response',
-      (tester) async {
-        // First call returns 429 (rate-limited). The screen MUST
-        // retire the key so when the operator waits and taps submit
-        // again, we send a fresh key — otherwise the proxy cache
-        // would replay 429 forever.
-        final gateway = _RateLimitedThenSuccessGateway();
-        var keyCounter = 0;
-        await tester.pumpWidget(
-          wrap(
-            PasswordResetRequestScreen(
-              gateway: gateway,
-              idempotencyKeyFactory: () => 'idem-${++keyCounter}',
-            ),
+    testWidgets('rotates the Idempotency-Key on 429 so the next retry is not '
+        'pinned to the cached rate-limit response', (tester) async {
+      // First call returns 429 (rate-limited). The screen MUST
+      // retire the key so when the operator waits and taps submit
+      // again, we send a fresh key — otherwise the proxy cache
+      // would replay 429 forever.
+      final gateway = _RateLimitedThenSuccessGateway();
+      var keyCounter = 0;
+      await tester.pumpWidget(
+        wrap(
+          PasswordResetRequestScreen(
+            gateway: gateway,
+            idempotencyKeyFactory: () => 'idem-${++keyCounter}',
           ),
-        );
+        ),
+      );
 
-        await tester.enterText(
-          find.byKey(const Key('password_reset_request_email_field')),
-          'demo@forgeflow.test',
-        );
-        await tester
-            .tap(find.byKey(const Key('password_reset_request_submit_button')));
-        await tester.pumpAndSettle();
-        expect(
-          find.textContaining('Too many reset requests'),
-          findsOneWidget,
-        );
-        expect(gateway.recordedKeys, equals(<String>['idem-1']));
+      await tester.enterText(
+        find.byKey(const Key('password_reset_request_email_field')),
+        'demo@forgeflow.test',
+      );
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Too many reset requests'), findsOneWidget);
+      expect(gateway.recordedKeys, equals(<String>['idem-1']));
 
-        // Operator retries SAME email after waiting — key must
-        // rotate because rate_limited is conceptually transient.
-        await tester
-            .tap(find.byKey(const Key('password_reset_request_submit_button')));
-        await tester.pumpAndSettle();
-        expect(
-          find.byKey(const Key('password_reset_request_confirmation_banner')),
-          findsOneWidget,
-        );
-        expect(gateway.recordedKeys, equals(<String>['idem-1', 'idem-2']));
-      },
-    );
+      // Operator retries SAME email after waiting — key must
+      // rotate because rate_limited is conceptually transient.
+      await tester.tap(
+        find.byKey(const Key('password_reset_request_submit_button')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const Key('password_reset_request_confirmation_banner')),
+        findsOneWidget,
+      );
+      expect(gateway.recordedKeys, equals(<String>['idem-1', 'idem-2']));
+    });
   });
 }
 
@@ -335,10 +406,7 @@ class _RecordingPasswordResetGateway implements PasswordResetGateway {
       throw rejection!;
     }
     if (_accept != null && !_accept(command.email)) {
-      throw const PasswordResetRejected(
-        code: 'invalid',
-        message: 'no',
-      );
+      throw const PasswordResetRejected(code: 'invalid', message: 'no');
     }
     return const PasswordResetRequested();
   }

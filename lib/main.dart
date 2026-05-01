@@ -18,9 +18,12 @@ Future<void> main() async {
         passwordChangeGateway: bindings.passwordChangeGateway,
         mfaOperationsGateway: bindings.mfaOperationsGateway,
         mfaRecoveryRequestGateway: bindings.mfaRecoveryRequestGateway,
+        passwordResetGateway: bindings.passwordResetGateway,
+        passwordResetDeepLinkSource: bindings.passwordResetDeepLinkSource,
       ),
       authLoginService: bindings.authLoginService,
       secureSessionStorage: bindings.secureSessionStorage,
+      authSessionLedgerWriter: bindings.authSessionLedgerWriter,
     );
     return;
   }

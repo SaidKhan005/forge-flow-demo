@@ -297,6 +297,42 @@ void main() {
       await tester.pumpAndSettle();
       expect(gateway.listCalls, hasLength(2));
     });
+
+    testWidgets('equal actor rebuild does not reload the list', (tester) async {
+      final gateway = _RecordingAuthOperationsGateway(
+        sessions: <AuthSessionSummary>[
+          _summary(
+            id: _currentSessionId,
+            label: 'Forge & Flow app',
+            lastSeen: DateTime.now().toUtc(),
+          ),
+        ],
+      );
+
+      Widget build() {
+        return MaterialApp(
+          home: Scaffold(
+            body: SettingsActiveSessionsSection(
+              gateway: gateway,
+              actor: const ActiveSessionsActor(
+                actorUserId: 'user-1',
+                operatorId: 'op-1',
+                locationId: 'loc-1',
+                currentSessionId: _currentSessionId,
+              ),
+            ),
+          ),
+        );
+      }
+
+      await tester.pumpWidget(build());
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(1));
+
+      await tester.pumpWidget(build());
+      await tester.pumpAndSettle();
+      expect(gateway.listCalls, hasLength(1));
+    });
   });
 }
 

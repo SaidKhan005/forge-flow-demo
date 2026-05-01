@@ -48,9 +48,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _submitting = false;
-  bool _requestingReset = false;
-  String? _localMessage;
-  bool _localMessageIsError = false;
 
   @override
   void dispose() {
@@ -67,7 +64,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       _submitting = true;
-      _localMessage = null;
     });
     try {
       await context.read<AuthSessionNotifier>().signInWithEmailPassword(
@@ -101,43 +97,6 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _requestPasswordReset() async {
-    if (_submitting || _requestingReset) return;
-    final email = _emailController.text.trim();
-    if (email.isEmpty) {
-      setState(() {
-        _localMessage = 'Enter your email to reset your password.';
-        _localMessageIsError = true;
-      });
-      return;
-    }
-
-    setState(() {
-      _requestingReset = true;
-      _localMessage = null;
-    });
-    try {
-      await context.read<AuthSessionNotifier>().requestPasswordReset(
-        email: email,
-      );
-      if (!mounted) return;
-      setState(() {
-        _localMessage =
-            'If that email is registered, a password reset link is on the way.';
-        _localMessageIsError = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _localMessage =
-            'Password reset could not be started. Please try again.';
-        _localMessageIsError = true;
-      });
-    } finally {
-      if (mounted) setState(() => _requestingReset = false);
-    }
   }
 
   @override
@@ -177,16 +136,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 32),
                     _LoginCard(
                       errorMessage: errorMessage,
-                      localMessage: _localMessage,
-                      localMessageIsError: _localMessageIsError,
                       emailController: _emailController,
                       passwordController: _passwordController,
                       submitting: _submitting,
-                      requestingReset: _requestingReset,
                       showDemoOperatorSignIn: widget.showDemoOperatorSignIn,
                       onSubmit: _submit,
                       onDemoOperatorSignIn: _submitDemoOperator,
-                      onRequestPasswordReset: _requestPasswordReset,
                       onForgotPassword: _openForgotPasswordFlow,
                     ),
                   ],
@@ -262,30 +217,22 @@ class _BrandMark extends StatelessWidget {
 class _LoginCard extends StatelessWidget {
   const _LoginCard({
     required this.errorMessage,
-    required this.localMessage,
-    required this.localMessageIsError,
     required this.emailController,
     required this.passwordController,
     required this.submitting,
-    required this.requestingReset,
     required this.showDemoOperatorSignIn,
     required this.onSubmit,
     required this.onDemoOperatorSignIn,
-    required this.onRequestPasswordReset,
     required this.onForgotPassword,
   });
 
   final String? errorMessage;
-  final String? localMessage;
-  final bool localMessageIsError;
   final TextEditingController emailController;
   final TextEditingController passwordController;
   final bool submitting;
-  final bool requestingReset;
   final bool showDemoOperatorSignIn;
   final Future<void> Function() onSubmit;
   final Future<void> Function() onDemoOperatorSignIn;
-  final Future<void> Function() onRequestPasswordReset;
   final VoidCallback onForgotPassword;
 
   @override
@@ -334,13 +281,6 @@ class _LoginCard extends StatelessWidget {
               const SizedBox(height: 18),
               if (errorMessage != null) ...[
                 _ErrorBanner(message: errorMessage!),
-                const SizedBox(height: 14),
-              ],
-              if (localMessage != null) ...[
-                _LoginMessageBanner(
-                  message: localMessage!,
-                  isError: localMessageIsError,
-                ),
                 const SizedBox(height: 14),
               ],
               _BrandedField(
@@ -393,37 +333,6 @@ class _LoginCard extends StatelessWidget {
                   onPressed: submitting ? null : onDemoOperatorSignIn,
                 ),
               ],
-              const SizedBox(height: 8),
-              Padding(
-                key: const Key('login_reset_link_hint'),
-                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
-                child: Text(
-                  "New here, forgot your password, or last link expired? "
-                  "We'll email a fresh one.",
-                  textAlign: TextAlign.center,
-                  style: AppTextStyles.body11(color: AppColors.textMuted),
-                ),
-              ),
-              TextButton(
-                key: const Key('login_forgot_password_button'),
-                onPressed: submitting || requestingReset
-                    ? null
-                    : onRequestPasswordReset,
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.sunsetDark,
-                  textStyle: AppTextStyles.mono12(
-                    color: AppColors.sunsetDark,
-                    weight: FontWeight.w600,
-                  ),
-                ),
-                child: requestingReset
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Email me a reset link'),
-              ),
             ],
           ),
         ),
@@ -561,41 +470,6 @@ class _SignInButton extends StatelessWidget {
                 ),
               )
             : const Text('Sign in'),
-      ),
-    );
-  }
-}
-
-class _LoginMessageBanner extends StatelessWidget {
-  const _LoginMessageBanner({required this.message, required this.isError});
-
-  final String message;
-  final bool isError;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = isError ? AppColors.negative : AppColors.positive;
-    return Container(
-      key: const Key('login_local_message_banner'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.08),
-        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            isError ? Icons.error_outline : Icons.check_circle_outline,
-            size: 16,
-            color: color,
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(message, style: AppTextStyles.body13(color: color)),
-          ),
-        ],
       ),
     );
   }

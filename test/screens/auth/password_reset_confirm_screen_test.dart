@@ -1,5 +1,7 @@
 // Phase 9.UX.7 - PasswordResetConfirmScreen widget tests.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/auth/password_policy.dart';
@@ -20,8 +22,27 @@ void main() {
       return MaterialApp(home: screen);
     }
 
-    testWidgets('blocks submit when password shorter than minimum length',
-        (tester) async {
+    testWidgets('shows the Forge & Flow logo above the confirm form', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        wrap(
+          PasswordResetConfirmScreen(
+            gateway: _RecordingConfirmGateway(),
+            oobCode: 'demo-oob',
+          ),
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('password_reset_confirm_logo')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('blocks submit when password shorter than minimum length', (
+      tester,
+    ) async {
       final gateway = _RecordingConfirmGateway();
       await tester.pumpWidget(
         wrap(
@@ -41,8 +62,9 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'short',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(gateway.confirmCalls, equals(0));
@@ -72,19 +94,18 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'fresh-secret-2027',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(gateway.confirmCalls, equals(0));
-      expect(
-        find.text('Passwords do not match.'),
-        findsOneWidget,
-      );
+      expect(find.text('Passwords do not match.'), findsOneWidget);
     });
 
-    testWidgets('on success invokes redirect callback (no auto-sign-in)',
-        (tester) async {
+    testWidgets('on success invokes redirect callback (no auto-sign-in)', (
+      tester,
+    ) async {
       final gateway = _RecordingConfirmGateway();
       var redirected = false;
       await tester.pumpWidget(
@@ -106,8 +127,9 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'fresh-secret-2026',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(gateway.confirmCalls, equals(1));
@@ -116,8 +138,9 @@ void main() {
       expect(redirected, isTrue);
     });
 
-    testWidgets('renders HIBP rejection copy without redirecting',
-        (tester) async {
+    testWidgets('renders HIBP rejection copy without redirecting', (
+      tester,
+    ) async {
       final gateway = _RecordingConfirmGateway(
         rejection: const PasswordResetRejected(
           code: 'password_pwned',
@@ -146,8 +169,9 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'leaked-password-2026',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(redirected, isFalse);
@@ -155,10 +179,7 @@ void main() {
         find.byKey(const Key('password_reset_confirm_error_banner')),
         findsOneWidget,
       );
-      expect(
-        find.textContaining('known data breach'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('known data breach'), findsOneWidget);
     });
 
     testWidgets('renders history-reuse rejection copy', (tester) async {
@@ -189,8 +210,9 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'fresh-secret-2026',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -339,8 +361,9 @@ void main() {
         find.byKey(const Key('password_reset_confirm_password_repeat_field')),
         'fresh-secret-2026',
       );
-      await tester
-          .tap(find.byKey(const Key('password_reset_confirm_submit_button')));
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
       await tester.pumpAndSettle();
 
       expect(
@@ -348,13 +371,86 @@ void main() {
         findsOneWidget,
       );
     });
+
+    testWidgets('renders deploy-specific copy for route-missing 404', (
+      tester,
+    ) async {
+      final gateway = _RecordingConfirmGateway(
+        rejection: const PasswordResetRejected(
+          code: 'not found',
+          message: 'not found',
+          statusCode: 404,
+        ),
+      );
+
+      await tester.pumpWidget(
+        wrap(
+          PasswordResetConfirmScreen(
+            gateway: gateway,
+            oobCode: 'demo-oob',
+            minPasswordLength: 8,
+            onResetCompleted: (_) {},
+          ),
+        ),
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('password_reset_confirm_password_field')),
+        'fresh-secret',
+      );
+      await tester.enterText(
+        find.byKey(const Key('password_reset_confirm_password_repeat_field')),
+        'fresh-secret',
+      );
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('route is not deployed'), findsOneWidget);
+    });
+
+    testWidgets('renders timeout copy without redirecting', (tester) async {
+      final gateway = _RecordingConfirmGateway(
+        throwGeneric: () => TimeoutException('slow proxy'),
+      );
+      var redirected = false;
+
+      await tester.pumpWidget(
+        wrap(
+          PasswordResetConfirmScreen(
+            gateway: gateway,
+            oobCode: 'demo-oob',
+            minPasswordLength: 8,
+            onResetCompleted: (_) => redirected = true,
+          ),
+        ),
+      );
+
+      await tester.enterText(
+        find.byKey(const Key('password_reset_confirm_password_field')),
+        'fresh-secret',
+      );
+      await tester.enterText(
+        find.byKey(const Key('password_reset_confirm_password_repeat_field')),
+        'fresh-secret',
+      );
+      await tester.tap(
+        find.byKey(const Key('password_reset_confirm_submit_button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(redirected, isFalse);
+      expect(find.textContaining('timed out'), findsOneWidget);
+    });
   });
 }
 
 class _RecordingConfirmGateway implements PasswordResetGateway {
-  _RecordingConfirmGateway({this.rejection});
+  _RecordingConfirmGateway({this.rejection, this.throwGeneric});
 
   final PasswordResetRejected? rejection;
+  final Object Function()? throwGeneric;
 
   int confirmCalls = 0;
   String? lastOobCode;
@@ -374,6 +470,9 @@ class _RecordingConfirmGateway implements PasswordResetGateway {
     confirmCalls += 1;
     lastOobCode = request.oobCode;
     lastNewPassword = request.newPassword;
+    if (throwGeneric != null) {
+      throw throwGeneric!();
+    }
     if (rejection != null) {
       throw rejection!;
     }

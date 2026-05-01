@@ -21,6 +21,7 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
+import 'package:forge_and_flow/screens/settings/settings_custom_roles_section.dart';
 import 'package:forge_and_flow/screens/settings/settings_org_hierarchy_section.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
 import 'package:forge_and_flow/screens/team/team_settings_section.dart';
@@ -30,6 +31,8 @@ import 'package:forge_and_flow/services/auth/password_change_gateway.dart';
 import 'package:forge_and_flow/services/advisor_corpus_admin_service.dart';
 import 'package:forge_and_flow/services/advisor_model_config_service.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
+import 'package:forge_and_flow/services/mfa/mfa_enrollment_service.dart';
+import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/secure_session_storage.dart';
 import 'package:forge_and_flow/services/team/team_scope_visibility_policy.dart';
 import 'package:forge_and_flow/state/auth_session_notifier.dart';
@@ -372,6 +375,7 @@ void main() {
           ),
         ],
       );
+      final mfaGateway = _MfaRecordingGateway();
 
       await tester.pumpWidget(
         ChangeNotifierProvider<AuthSessionNotifier>.value(
@@ -382,6 +386,7 @@ void main() {
               initialMockDate: '2026-03-27',
               accountInfoGateway: accountGateway,
               authOperationsGateway: sessionsGateway,
+              mfaOperationsGateway: mfaGateway,
             ),
           ),
         ),
@@ -391,6 +396,7 @@ void main() {
       expect(find.byType(RefreshIndicator), findsWidgets);
       expect(accountGateway.requests, hasLength(1));
       expect(sessionsGateway.listCalls, hasLength(1));
+      expect(mfaGateway.listCalls, hasLength(1));
 
       await tester.drag(
         find.byType(CustomScrollView).first,
@@ -404,9 +410,13 @@ void main() {
       for (var i = 0; i < 10 && sessionsGateway.listCalls.length < 2; i++) {
         await tester.pump(const Duration(milliseconds: 100));
       }
+      for (var i = 0; i < 10 && mfaGateway.listCalls.length < 2; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
 
       expect(accountGateway.requests, hasLength(2));
       expect(sessionsGateway.listCalls, hasLength(2));
+      expect(mfaGateway.listCalls, hasLength(2));
       expect(tester.takeException(), isNull);
     });
 
@@ -1602,6 +1612,63 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('Roles section surfaces catalog load errors with retry', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(800, 1200);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      var retryCalls = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(
+            initialStatus: AppDataStatus.current(),
+            initialMockDate: '2026-03-27',
+            teamActor: _settingsRolesOwnerActor,
+            teamRoleCatalogLoadState: const TeamRoleCatalogLoadState(
+              loaded: false,
+              errorMessage:
+                  'Role catalog timed out before the proxy responded.',
+            ),
+            onTeamDataRetry: () async {
+              retryCalls += 1;
+            },
+            onTeamRoleCreate: (_) async => null,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('settings_tab_team')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('settings_custom_roles_load_notice'),
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          'Role catalog timed out before the proxy responded.',
+          skipOffstage: false,
+        ),
+        findsOneWidget,
+      );
+
+      final retryButton = find.byKey(
+        const Key('settings_custom_roles_retry_button'),
+        skipOffstage: false,
+      );
+      await tester.ensureVisible(retryButton);
+      await tester.tap(retryButton);
+      await tester.pumpAndSettle();
+
+      expect(retryCalls, equals(1));
     });
 
     testWidgets(
@@ -3648,6 +3715,51 @@ class _ActiveSessionsRecordingGateway
     return AuthActiveSessionsListed(
       sessions: List<AuthSessionSummary>.unmodifiable(_sessions),
     );
+  }
+}
+
+class _MfaRecordingGateway implements MfaOperationsGateway {
+  final List<MfaListFactorsCommand> listCalls = <MfaListFactorsCommand>[];
+
+  @override
+  Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
+    MfaTotpConfirmCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    listCalls.add(command);
+    return const MfaListFactorsCompleted(factors: <MfaFactorSummary>[]);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) {
+    throw UnimplementedError();
   }
 }
 

@@ -34,6 +34,29 @@ class MfaActorContext {
   final String issuerName;
   final String authorizationIdToken;
   final String? notificationRestaurantId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is MfaActorContext &&
+        other.actorUserId == actorUserId &&
+        other.operatorId == operatorId &&
+        other.locationId == locationId &&
+        other.userEmail == userEmail &&
+        other.issuerName == issuerName &&
+        other.authorizationIdToken == authorizationIdToken &&
+        other.notificationRestaurantId == notificationRestaurantId;
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    actorUserId,
+    operatorId,
+    locationId,
+    userEmail,
+    issuerName,
+    authorizationIdToken,
+    notificationRestaurantId,
+  );
 }
 
 const MfaActorContext kDemoMfaActorContext = MfaActorContext(
@@ -49,11 +72,13 @@ class SettingsMfaSection extends StatefulWidget {
     this.gateway,
     this.actor,
     this.allowDemoGatewayFallback = false,
+    this.refreshGeneration = 0,
   });
 
   final MfaOperationsGateway? gateway;
   final MfaActorContext? actor;
   final bool allowDemoGatewayFallback;
+  final int refreshGeneration;
 
   @override
   State<SettingsMfaSection> createState() => _SettingsMfaSectionState();
@@ -62,8 +87,8 @@ class SettingsMfaSection extends StatefulWidget {
 enum _EnrollmentStage { idle, scanning }
 
 class _SettingsMfaSectionState extends State<SettingsMfaSection> {
-  late final MfaOperationsGateway _gateway;
-  late final MfaActorContext _actor;
+  late MfaOperationsGateway _gateway;
+  late MfaActorContext _actor;
   late final TextEditingController _codeController;
 
   bool _loadingFactors = true;
@@ -85,14 +110,30 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   @override
   void initState() {
     super.initState();
+    _bindActorAndGateway();
+    _codeController = TextEditingController();
+    _refreshFactors();
+  }
+
+  @override
+  void didUpdateWidget(SettingsMfaSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.gateway != widget.gateway ||
+        oldWidget.actor != widget.actor) {
+      _bindActorAndGateway();
+      _refreshFactors();
+    } else if (oldWidget.refreshGeneration != widget.refreshGeneration) {
+      _refreshFactors();
+    }
+  }
+
+  void _bindActorAndGateway() {
     _gateway =
         widget.gateway ??
         (widget.allowDemoGatewayFallback
             ? DemoMfaOperationsGateway()
             : const _UnavailableMfaOperationsGateway());
     _actor = widget.actor ?? kDemoMfaActorContext;
-    _codeController = TextEditingController();
-    _refreshFactors();
   }
 
   @override

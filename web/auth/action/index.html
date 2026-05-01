@@ -318,6 +318,22 @@
       return messages.join(" ");
     }
 
+    function resetFailureMessage(body) {
+      const rejections = Array.isArray(body && body.rejections)
+        ? body.rejections
+        : [];
+      if (rejections.includes("pwned_in_breach")) {
+        return "This password has appeared in known breaches; please choose another.";
+      }
+      if (rejections.includes("reused_from_history")) {
+        return "You can't reuse a recent password.";
+      }
+      if (rejections.includes("violates_policy")) {
+        return body.message || "Choose a password that meets the password policy.";
+      }
+      return body.message || "Password could not be updated. Request a new reset link and try again.";
+    }
+
     async function loadFirebaseConfig() {
       const response = await fetch("/firebase-config.js", {
         cache: "no-store",
@@ -333,7 +349,7 @@
       if (!oobCode) {
         intro.textContent = "This link has expired.";
         showMessage(
-          "Reset links expire after a short time. Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+          "Reset links expire after a short time. Open Forge & Flow and tap Forgot password? to get a fresh one.",
           "error"
         );
         showContinueLink();
@@ -343,9 +359,19 @@
       try {
         const firebaseConfig = await loadFirebaseConfig();
         const proxyBaseUri = firebaseConfig.proxyBaseUri || window.FORGE_FLOW_PROXY_BASE_URI || "";
-        const resetConfirmUrl = proxyBaseUri
-          ? new URL("/v1/auth/password/reset/confirm", proxyBaseUri).toString()
-          : "/v1/auth/password/reset/confirm";
+        if (!proxyBaseUri) {
+          intro.textContent = "Password reset is not configured.";
+          showMessage(
+            "This action page is missing its proxy configuration. Request a fresh link after staging is updated.",
+            "error"
+          );
+          showContinueLink();
+          return;
+        }
+        const resetConfirmUrl = new URL(
+          "/v1/auth/password/reset/confirm",
+          proxyBaseUri
+        ).toString();
         const { proxyBaseUri: _proxyBaseUri, ...firebaseOptions } = firebaseConfig;
         const app = initializeApp(firebaseOptions);
         const auth = getAuth(app);
@@ -369,7 +395,7 @@
         if (mode !== "resetPassword") {
           intro.textContent = "This account action link is not supported.";
           showMessage(
-            "Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+            "Open Forge & Flow and tap Forgot password? to get a fresh one.",
             "error"
           );
           showContinueLink();
@@ -457,16 +483,13 @@
               if (response.status >= 400 && response.status < 500) {
                 clearIdempotencyKey();
               }
-              showMessage(
-                body.message || "Password could not be updated. Request a new reset link and try again.",
-                "error"
-              );
+              showMessage(resetFailureMessage(body), "error");
               return;
             }
             clearIdempotencyKey();
             form.classList.add("hidden");
             intro.textContent = "Password updated.";
-            showMessage("Your password has been updated. You can return to the app and sign in.", "success");
+            showMessage("Password updated. Please sign in.", "success");
             showContinueLink();
           } catch (_) {
             // Network/transport failure — keep the key so a retry
@@ -480,7 +503,7 @@
       } catch (_) {
         intro.textContent = "This link has expired.";
         showMessage(
-          "Reset links expire after a short time. Open Forge & Flow and tap “Email me a reset link” to get a fresh one.",
+          "Reset links expire after a short time. Open Forge & Flow and tap Forgot password? to get a fresh one.",
           "error"
         );
         showContinueLink();

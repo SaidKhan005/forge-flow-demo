@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/forge_flow_app.dart';
+import 'package:forge_and_flow/screens/auth/password_reset_request_screen.dart';
 import 'package:forge_and_flow/services/auth_login_service.dart';
 import 'package:forge_and_flow/services/secure_session_storage.dart';
 import 'package:forge_and_flow/state/auth_session_notifier.dart';
@@ -28,18 +29,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('login_email_field')), findsOneWidget);
-    expect(
-      find.byKey(const Key('login_forgot_password_button')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('login_forgot_password_link')), findsOneWidget);
+    expect(find.byKey(const Key('login_forgot_password_button')), findsNothing);
     expect(find.byType(AppShell), findsNothing);
 
-    await tester.tap(find.byKey(const Key('login_forgot_password_button')));
-    await tester.pump();
+    await tester.tap(find.byKey(const Key('login_forgot_password_link')));
+    await tester.pumpAndSettle();
 
-    expect(
-      find.text('Enter your email to reset your password.'),
-      findsOneWidget,
-    );
+    expect(find.byType(PasswordResetRequestScreen), findsOneWidget);
   });
 }

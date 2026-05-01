@@ -59,9 +59,14 @@ class RepositoryPasswordResetConfirmGateway
   Future<PasswordResetConfirmCompleted> confirmPasswordReset(
     PasswordResetConfirmCommand command,
   ) async {
-    final codeInfo = await firebaseAdmin.verifyPasswordResetCode(
-      oobCode: command.oobCode,
-    );
+    final FirebasePasswordResetCodeInfo codeInfo;
+    try {
+      codeInfo = await firebaseAdmin.verifyPasswordResetCode(
+        oobCode: command.oobCode,
+      );
+    } on FirebaseAdminAuthError catch (error) {
+      _throwResetCodeRejection(error);
+    }
     final user = await usersRepository.findActiveAuthUserByEmail(
       email: codeInfo.email,
       adminReason: 'auth.password_reset_confirm_lookup',
@@ -106,26 +111,41 @@ class RepositoryPasswordResetConfirmGateway
       );
     }
     if (outcome.hibpResult == PwnedPasswordResult.screenerUnavailable) {
-      await _audit(
+      await _auditBestEffort(
         user,
         eventType: 'auth.hibp_unavailable',
         payload: const <String, Object?>{'path': 'password_reset'},
       );
     }
-    await firebaseAdmin.confirmPasswordReset(
-      oobCode: command.oobCode,
-      newPassword: command.newPassword,
-    );
-    await historyCheck.recordAndPrune(
-      userId: user.userId,
-      candidate: command.newPassword,
-    );
-    await usersRepository.markPasswordChanged(
-      operatorId: user.operatorId,
-      locationId: user.locationId,
-      userId: user.userId,
-    );
-    await _audit(user, eventType: 'auth.password_reset_confirmed');
+    try {
+      await firebaseAdmin.confirmPasswordReset(
+        oobCode: command.oobCode,
+        newPassword: command.newPassword,
+      );
+    } on FirebaseAdminAuthError catch (error) {
+      _throwResetCodeRejection(error);
+    }
+    try {
+      await historyCheck.recordAndPrune(
+        userId: user.userId,
+        candidate: command.newPassword,
+      );
+    } catch (_) {
+      // Firebase has already accepted and consumed the reset code. Returning
+      // "retry" here would be false: the operator's password is changed, and
+      // retrying would likely hit an expired-code error.
+    }
+    try {
+      await usersRepository.markPasswordChanged(
+        operatorId: user.operatorId,
+        locationId: user.locationId,
+        userId: user.userId,
+      );
+    } catch (_) {
+      // Best-effort metadata only; do not turn a successful credential update
+      // into a user-facing failure.
+    }
+    await _auditBestEffort(user, eventType: 'auth.password_reset_confirmed');
     return PasswordResetConfirmCompleted(
       hibpUnavailable:
           outcome.hibpResult == PwnedPasswordResult.screenerUnavailable,
@@ -146,6 +166,20 @@ class RepositoryPasswordResetConfirmGateway
       payload: payload,
       adminReason: 'auth.password_reset_confirm',
     );
+  }
+
+  Future<void> _auditBestEffort(
+    UserAuthLookupRow user, {
+    required String eventType,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) async {
+    try {
+      await _audit(user, eventType: eventType, payload: payload);
+    } catch (_) {
+      // Password reset must not become unusable because the append-only audit
+      // write is temporarily unavailable. The proxy route still returns a
+      // truthful result for the credential operation.
+    }
   }
 
   static String _codeFor(Set<PasswordChangeRejection> rejections) {
@@ -203,5 +237,21 @@ class RepositoryPasswordResetConfirmGateway
           }
         })
         .toList(growable: false);
+  }
+
+  static Never _throwResetCodeRejection(FirebaseAdminAuthError error) {
+    final code = error.code.toLowerCase();
+    if (code.contains('expired_oob') ||
+        code.contains('invalid_oob') ||
+        code == 'expired_action_code' ||
+        code == 'invalid_action_code') {
+      throw const PasswordChangeRejected(
+        code: 'password_reset_expired',
+        message:
+            'Reset links expire after a short time. Request a new reset link and try again.',
+        statusCode: 400,
+      );
+    }
+    throw error;
   }
 }

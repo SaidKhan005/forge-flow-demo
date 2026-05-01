@@ -12,6 +12,7 @@ param(
   [string] $Service = 'forge-flow-staging-proxy',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
   [string] $SecretsFile = (Join-Path $HOME '.forge_flow\forge_flow.secrets.ps1'),
+  [int] $MinInstances = 1,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
 )
@@ -75,18 +76,27 @@ if (-not (Test-Path -LiteralPath $SecretsFile)) {
 }
 
 . $SecretsFile
-Resolve-FirebaseWebApiKey
+if ([string]::IsNullOrWhiteSpace($env:FIREBASE_PROJECT_ID)) {
+  [Environment]::SetEnvironmentVariable('FIREBASE_PROJECT_ID', $Project, 'Process')
+}
+if (-not $SkipSecretManagerSync) {
+  Resolve-FirebaseWebApiKey
+}
 
 $requiredEnv = @(
-  'ANTHROPIC_API_KEY',
-  'VOYAGE_API_KEY',
-  'POSTGRES_URL',
-  'POSTGRES_ADMIN_URL',
-  'FIREBASE_PROJECT_ID',
-  'FIREBASE_WEB_API_KEY',
-  'SERVICE_PRINCIPAL_JWT_SECRET',
-  'FIREBASE_AUTH_SMOKE_PASSWORD'
+  'FIREBASE_PROJECT_ID'
 )
+if (-not $SkipSecretManagerSync) {
+  $requiredEnv += @(
+    'ANTHROPIC_API_KEY',
+    'VOYAGE_API_KEY',
+    'POSTGRES_URL',
+    'POSTGRES_ADMIN_URL',
+    'FIREBASE_WEB_API_KEY',
+    'SERVICE_PRINCIPAL_JWT_SECRET',
+    'FIREBASE_AUTH_SMOKE_PASSWORD'
+  )
+}
 Assert-PresentEnv -Names $requiredEnv
 
 $secretEnv = [ordered] @{
@@ -190,7 +200,7 @@ try {
     --no-invoker-iam-check `
     --set-env-vars $envAssignments `
     --set-secrets $secretAssignments `
-    --min-instances 0 `
+    --min-instances $MinInstances `
     --max-instances 2 `
     --quiet
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

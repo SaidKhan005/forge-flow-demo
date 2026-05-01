@@ -166,7 +166,15 @@ class RepositoryPasswordResetRequestGateway
       // pad the unknown branch with a comparable wait below so the
       // audit-insert latency on the known branch does not leak.
       if (user != null) {
-        await _auditWriter(user);
+        try {
+          await _auditWriter(user);
+        } catch (_) {
+          // The email has already been accepted by Firebase. At this point
+          // surfacing a failure would tell the operator "try again" even
+          // though a valid reset link is already in flight, causing duplicate
+          // emails. Lookup failures still fail before any email is sent; this
+          // catch only covers the post-send audit write.
+        }
       }
       return const PasswordResetRequestAccepted();
     } finally {

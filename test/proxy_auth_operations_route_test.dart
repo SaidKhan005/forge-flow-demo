@@ -175,32 +175,35 @@ void main() {
       });
     });
 
-    test('GET org-units lists hierarchy and gates on team.users.view', () async {
-      await _withRealHttp(() async {
-        final gateway = _RecordingAuthOperationsGateway();
-        final guard = _RecordingAdminGuard();
-        final harness = await _RouteHarness.start(
-          authOperationsGateway: gateway,
-          adminPermissionGuard: guard,
-        );
-        try {
-          final response = await harness.get(adminAuthOrgUnitsPath);
+    test(
+      'GET org-units lists hierarchy and gates on team.users.view',
+      () async {
+        await _withRealHttp(() async {
+          final gateway = _RecordingAuthOperationsGateway();
+          final guard = _RecordingAdminGuard();
+          final harness = await _RouteHarness.start(
+            authOperationsGateway: gateway,
+            adminPermissionGuard: guard,
+          );
+          try {
+            final response = await harness.get(adminAuthOrgUnitsPath);
 
-          expect(response.statusCode, equals(200));
-          expect(guard.permissionKeys, equals(<String>['team.users.view']));
-          expect(gateway.orgHierarchyLists, hasLength(1));
-          final units = response.json['org_units'] as List<Object?>;
-          final firstUnit = Map<String, Object?>.from(units.single as Map);
-          expect(firstUnit['unit_type'], equals('corp'));
-          expect(firstUnit['path'], equals('acme'));
-          final locations = response.json['locations'] as List<Object?>;
-          final firstLoc = Map<String, Object?>.from(locations.single as Map);
-          expect(firstLoc['parent_org_unit_id'], firstUnit['org_unit_id']);
-        } finally {
-          await harness.close();
-        }
-      });
-    });
+            expect(response.statusCode, equals(200));
+            expect(guard.permissionKeys, equals(<String>['team.users.view']));
+            expect(gateway.orgHierarchyLists, hasLength(1));
+            final units = response.json['org_units'] as List<Object?>;
+            final firstUnit = Map<String, Object?>.from(units.single as Map);
+            expect(firstUnit['unit_type'], equals('corp'));
+            expect(firstUnit['path'], equals('acme'));
+            final locations = response.json['locations'] as List<Object?>;
+            final firstLoc = Map<String, Object?>.from(locations.single as Map);
+            expect(firstLoc['parent_org_unit_id'], firstUnit['org_unit_id']);
+          } finally {
+            await harness.close();
+          }
+        });
+      },
+    );
 
     test(
       'POST org-units creates a child unit and gates on team.roles.assign',
@@ -213,15 +216,13 @@ void main() {
             adminPermissionGuard: guard,
           );
           try {
-            final response = await harness.postJson(
-              adminAuthOrgUnitsPath,
-              const <String, Object?>{
-                'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
-                'unit_type': 'region',
-                'label': 'east',
-                'name': 'East Region',
-              },
-            );
+            final response = await harness
+                .postJson(adminAuthOrgUnitsPath, const <String, Object?>{
+                  'parent_org_unit_id': '66666666-6666-4666-8666-666666666666',
+                  'unit_type': 'region',
+                  'label': 'east',
+                  'name': 'East Region',
+                });
 
             expect(response.statusCode, equals(201));
             expect(guard.permissionKeys, equals(<String>['team.roles.assign']));
@@ -617,9 +618,7 @@ void main() {
           try {
             final response = await harness.postJson(
               authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
+              const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
               authorize: false,
               idempotencyKey: 'idem-req-1',
             );
@@ -637,33 +636,30 @@ void main() {
       },
     );
 
-    test(
-      'POST password reset request returns 200 even when email is unknown '
-      '(privacy-preserving)',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingPasswordResetRequestGateway();
-          final harness = await _RouteHarness.start(
-            passwordResetRequestGateway: gateway,
+    test('POST password reset request returns 200 even when email is unknown '
+        '(privacy-preserving)', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingPasswordResetRequestGateway();
+        final harness = await _RouteHarness.start(
+          passwordResetRequestGateway: gateway,
+        );
+        try {
+          final response = await harness.postJson(
+            authPasswordResetRequestPath,
+            const <String, Object?>{'email': 'unknown@example.test'},
+            authorize: false,
+            idempotencyKey: 'idem-req-unknown',
           );
-          try {
-            final response = await harness.postJson(
-              authPasswordResetRequestPath,
-              const <String, Object?>{'email': 'unknown@example.test'},
-              authorize: false,
-              idempotencyKey: 'idem-req-unknown',
-            );
 
-            // Same body shape regardless of presence/absence so the
-            // proxy never leaks whether the email matches an account.
-            expect(response.statusCode, equals(200));
-            expect(response.json['ok'], isTrue);
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          // Same body shape regardless of presence/absence so the
+          // proxy never leaks whether the email matches an account.
+          expect(response.statusCode, equals(200));
+          expect(response.json['ok'], isTrue);
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('POST password reset request maps throttle to 429', () async {
       await _withRealHttp(() async {
@@ -697,9 +693,7 @@ void main() {
           try {
             final response = await harness.postJson(
               authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
+              const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
               authorize: false,
               idempotencyKey: 'idem-req-unconfigured',
             );
@@ -753,9 +747,7 @@ void main() {
           try {
             final response = await harness.postJson(
               authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
+              const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
               authorize: false,
             );
 
@@ -780,17 +772,13 @@ void main() {
           try {
             final first = await harness.postJson(
               authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
+              const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
               authorize: false,
               idempotencyKey: 'idem-req-replay',
             );
             final second = await harness.postJson(
               authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
+              const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
               authorize: false,
               idempotencyKey: 'idem-req-replay',
             );
@@ -808,49 +796,42 @@ void main() {
       },
     );
 
-    test(
-      'POST password reset request does NOT cache 5xx — a transient lookup '
-      'blip can recover on the operator retry with the same key',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecoveringPasswordResetRequestGateway(
-            failuresBeforeSuccess: 1,
-            failure: () => Exception('postgres lookup blip'),
+    test('POST password reset request does NOT cache 5xx — a transient lookup '
+        'blip can recover on the operator retry with the same key', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecoveringPasswordResetRequestGateway(
+          failuresBeforeSuccess: 1,
+          failure: () => Exception('postgres lookup blip'),
+        );
+        final harness = await _RouteHarness.start(
+          passwordResetRequestGateway: gateway,
+        );
+        try {
+          final first = await harness.postJson(
+            authPasswordResetRequestPath,
+            const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
+            authorize: false,
+            idempotencyKey: 'idem-req-recoverable',
           );
-          final harness = await _RouteHarness.start(
-            passwordResetRequestGateway: gateway,
-          );
-          try {
-            final first = await harness.postJson(
-              authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
-              authorize: false,
-              idempotencyKey: 'idem-req-recoverable',
-            );
-            expect(first.statusCode, equals(503));
+          expect(first.statusCode, equals(503));
 
-            // Operator retries with the same key. If 5xx were cached,
-            // they would replay the 503 forever. With 5xx-not-cached
-            // semantics, the gateway is invoked again and (in this
-            // test) succeeds.
-            final second = await harness.postJson(
-              authPasswordResetRequestPath,
-              const <String, Object?>{
-                'email': 'demo.operator@forgeflow.test',
-              },
-              authorize: false,
-              idempotencyKey: 'idem-req-recoverable',
-            );
-            expect(second.statusCode, equals(200));
-            expect(gateway.commands, hasLength(2));
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          // Operator retries with the same key. If 5xx were cached,
+          // they would replay the 503 forever. With 5xx-not-cached
+          // semantics, the gateway is invoked again and (in this
+          // test) succeeds.
+          final second = await harness.postJson(
+            authPasswordResetRequestPath,
+            const <String, Object?>{'email': 'demo.operator@forgeflow.test'},
+            authorize: false,
+            idempotencyKey: 'idem-req-recoverable',
+          );
+          expect(second.statusCode, equals(200));
+          expect(gateway.commands, hasLength(2));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test(
       'POST password reset confirm delegates without bearer token',
@@ -884,45 +865,42 @@ void main() {
       },
     );
 
-    test(
-      'POST password reset confirm replays prior success on retry with same '
-      'Idempotency-Key (oobCode is single-use, so retry without dedupe '
-      'would surface password_reset_expired)',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingPasswordResetConfirmGateway();
-          final harness = await _RouteHarness.start(
-            passwordResetConfirmGateway: gateway,
+    test('POST password reset confirm replays prior success on retry with same '
+        'Idempotency-Key (oobCode is single-use, so retry without dedupe '
+        'would surface password_reset_expired)', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingPasswordResetConfirmGateway();
+        final harness = await _RouteHarness.start(
+          passwordResetConfirmGateway: gateway,
+        );
+        try {
+          final first = await harness.postJson(
+            authPasswordResetConfirmPath,
+            const <String, Object?>{
+              'oob_code': 'reset-code',
+              'new_password': 'correct horse battery staple',
+            },
+            authorize: false,
+            idempotencyKey: 'idem-confirm-replay',
           );
-          try {
-            final first = await harness.postJson(
-              authPasswordResetConfirmPath,
-              const <String, Object?>{
-                'oob_code': 'reset-code',
-                'new_password': 'correct horse battery staple',
-              },
-              authorize: false,
-              idempotencyKey: 'idem-confirm-replay',
-            );
-            final second = await harness.postJson(
-              authPasswordResetConfirmPath,
-              const <String, Object?>{
-                'oob_code': 'reset-code',
-                'new_password': 'correct horse battery staple',
-              },
-              authorize: false,
-              idempotencyKey: 'idem-confirm-replay',
-            );
+          final second = await harness.postJson(
+            authPasswordResetConfirmPath,
+            const <String, Object?>{
+              'oob_code': 'reset-code',
+              'new_password': 'correct horse battery staple',
+            },
+            authorize: false,
+            idempotencyKey: 'idem-confirm-replay',
+          );
 
-            expect(first.statusCode, equals(200));
-            expect(second.statusCode, equals(200));
-            expect(gateway.commands, hasLength(1));
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          expect(first.statusCode, equals(200));
+          expect(second.statusCode, equals(200));
+          expect(gateway.commands, hasLength(1));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('POST MFA TOTP begin delegates and returns setup payload', () async {
       await _withRealHttp(() async {
@@ -1081,37 +1059,38 @@ void main() {
       });
     });
 
-    test(
-      'GET active sessions delegates to AuthOperationsGateway with the '
-      'verified scope and returns the projected payload',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
-          );
-          try {
-            final response = await harness.get(authSessionsListPath);
+    test('GET active sessions delegates to AuthOperationsGateway with the '
+        'verified scope and returns the projected payload', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+        );
+        try {
+          final response = await harness.get(authSessionsListPath);
 
-            expect(response.statusCode, equals(200));
-            final sessions = response.json['sessions'] as List<Object?>;
-            expect(sessions, hasLength(1));
-            final entry = sessions.single as Map<Object?, Object?>;
-            expect(
-              entry['session_id'],
-              equals('88888888-8888-4888-8888-888888888888'),
-            );
-            expect(entry['device_label'], equals('Forge & Flow app · iOS'));
-            expect(gateway.activeSessionsLists.single.actorUserId,
-                equals(_userId));
-            expect(gateway.activeSessionsLists.single.operatorId,
-                equals(_operatorId));
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(200));
+          final sessions = response.json['sessions'] as List<Object?>;
+          expect(sessions, hasLength(1));
+          final entry = sessions.single as Map<Object?, Object?>;
+          expect(
+            entry['session_id'],
+            equals('88888888-8888-4888-8888-888888888888'),
+          );
+          expect(entry['device_label'], equals('Forge & Flow app · iOS'));
+          expect(
+            gateway.activeSessionsLists.single.actorUserId,
+            equals(_userId),
+          );
+          expect(
+            gateway.activeSessionsLists.single.operatorId,
+            equals(_operatorId),
+          );
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test(
       'GET active sessions returns 503 when the gateway is not configured',
@@ -1159,7 +1138,10 @@ void main() {
             expect(response.json['limit'], equals(25));
             expect(response.json['offset'], equals(0));
             expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
-            expect(gateway.auditLogLists.single.operatorId, equals(_operatorId));
+            expect(
+              gateway.auditLogLists.single.operatorId,
+              equals(_operatorId),
+            );
             expect(
               gateway.auditLogLists.single.eventKind,
               equals(AuthEventKind.signIn),
@@ -1190,56 +1172,67 @@ void main() {
       },
     );
 
-    test(
-      'GET audit log forwards from/to ISO date params into the gateway '
-      'command',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
+    test('GET audit log without a bearer token returns 401, not 404', () async {
+      await _withRealHttp(() async {
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: _RecordingAuthOperationsGateway(),
+        );
+        try {
+          final response = await harness.get(
+            authAuditLogPath,
+            authorize: false,
           );
-          try {
-            final from = DateTime.utc(2026, 4, 1);
-            final to = DateTime.utc(2026, 4, 30, 23, 59, 59);
-            final response = await harness.get(
-              '$authAuditLogPath'
-              '?from=${Uri.encodeQueryComponent(from.toIso8601String())}'
-              '&to=${Uri.encodeQueryComponent(to.toIso8601String())}',
-            );
-            expect(response.statusCode, equals(200));
-            expect(gateway.auditLogLists.single.from, equals(from));
-            expect(gateway.auditLogLists.single.to, equals(to));
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(401));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
-    test(
-      'GET audit log ignores client-supplied user_id and pins scope to the '
-      'verified bearer token',
-      () async {
-        await _withRealHttp(() async {
-          final gateway = _RecordingAuthOperationsGateway();
-          final harness = await _RouteHarness.start(
-            authOperationsGateway: gateway,
+    test('GET audit log forwards from/to ISO date params into the gateway '
+        'command', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+        );
+        try {
+          final from = DateTime.utc(2026, 4, 1);
+          final to = DateTime.utc(2026, 4, 30, 23, 59, 59);
+          final response = await harness.get(
+            '$authAuditLogPath'
+            '?from=${Uri.encodeQueryComponent(from.toIso8601String())}'
+            '&to=${Uri.encodeQueryComponent(to.toIso8601String())}',
           );
-          try {
-            final response = await harness.get(
-              '$authAuditLogPath?user_id=spoofed-user&limit=10',
-            );
-            expect(response.statusCode, equals(200));
-            // Even though the client sent ?user_id=..., the proxy
-            // forwarded the verified bearer-token scope.
-            expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
-          } finally {
-            await harness.close();
-          }
-        });
-      },
-    );
+          expect(response.statusCode, equals(200));
+          expect(gateway.auditLogLists.single.from, equals(from));
+          expect(gateway.auditLogLists.single.to, equals(to));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
+
+    test('GET audit log ignores client-supplied user_id and pins scope to the '
+        'verified bearer token', () async {
+      await _withRealHttp(() async {
+        final gateway = _RecordingAuthOperationsGateway();
+        final harness = await _RouteHarness.start(
+          authOperationsGateway: gateway,
+        );
+        try {
+          final response = await harness.get(
+            '$authAuditLogPath?user_id=spoofed-user&limit=10',
+          );
+          expect(response.statusCode, equals(200));
+          // Even though the client sent ?user_id=..., the proxy
+          // forwarded the verified bearer-token scope.
+          expect(gateway.auditLogLists.single.actorUserId, equals(_userId));
+        } finally {
+          await harness.close();
+        }
+      });
+    });
 
     test('POST MFA factors revoke requires a fresh sign-in', () async {
       await _withRealHttp(() async {
@@ -1336,9 +1329,11 @@ class _RouteHarness {
     );
   }
 
-  Future<_HttpJsonResponse> get(String path) async {
+  Future<_HttpJsonResponse> get(String path, {bool authorize = true}) async {
     final request = await client.getUrl(baseUri.resolve(path));
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    if (authorize) {
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer test-token');
+    }
     final response = await request.close();
     return _HttpJsonResponse.from(response);
   }
@@ -1685,10 +1680,7 @@ class _RecordingAuthOperationsGateway implements AuthOperationsGateway {
               scopeType: 'org_unit',
               orgUnitId: 'unit-east',
               sourceOrgUnitId: 'unit-east',
-              effectiveLocationIds: <String>[
-                'loc-vancouver',
-                'loc-burnaby',
-              ],
+              effectiveLocationIds: <String>['loc-vancouver', 'loc-burnaby'],
             ),
             TeamGrantSnapshot(
               userRoleId: 'grant-3',

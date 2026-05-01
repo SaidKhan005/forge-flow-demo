@@ -54,13 +54,38 @@ void main() {
     });
 
     test(
+      'does not surface a post-send audit failure as an operator error',
+      () async {
+        final firebase = _RecordingFirebaseAdminAuthClient();
+        final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
+          firebaseAdmin: firebase,
+          lookup: (_) async => const UserAuthLookupRow(
+            userId: 'u-1',
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            email: 'known@forgeflow.test',
+          ),
+          auditWriter: (_) async => throw Exception('audit write failed'),
+          sleep: (_) async {},
+          stopwatchFactory: () => Stopwatch(),
+        );
+
+        await expectLater(
+          gateway.requestReset(
+            const PasswordResetRequestCommand(email: 'known@forgeflow.test'),
+          ),
+          completes,
+        );
+        expect(firebase.sentEmails, equals(<String>['known@forgeflow.test']));
+      },
+    );
+
+    test(
       'swallows EMAIL_NOT_FOUND from Firebase so the response stays uniform',
       () async {
         final firebase = _RecordingFirebaseAdminAuthClient(
-          throwOnSend: () => const FirebaseAdminAuthError(
-            'EMAIL_NOT_FOUND',
-            statusCode: 404,
-          ),
+          throwOnSend: () =>
+              const FirebaseAdminAuthError('EMAIL_NOT_FOUND', statusCode: 404),
         );
         final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
           firebaseAdmin: firebase,
@@ -87,79 +112,75 @@ void main() {
       },
     );
 
-    test('maps Firebase rate-limit error to PasswordResetRequestThrottled',
-        () async {
-      final firebase = _RecordingFirebaseAdminAuthClient(
-        throwOnSend: () => const FirebaseAdminAuthError(
-          'TOO_MANY_ATTEMPTS_TRY_LATER',
-        ),
-      );
-      final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
-        firebaseAdmin: firebase,
-        lookup: (_) async => null,
-        auditWriter: (_) async {},
-        sleep: (_) async {},
-        stopwatchFactory: () => Stopwatch(),
-      );
-
-      await expectLater(
-        gateway.requestReset(
-          const PasswordResetRequestCommand(email: 'rate@forgeflow.test'),
-        ),
-        throwsA(isA<PasswordResetRequestThrottled>()),
-      );
-    });
-
     test(
-      'propagates lookup errors so the route returns 503 rather than '
-      'sending unaudited Firebase emails',
+      'maps Firebase rate-limit error to PasswordResetRequestThrottled',
       () async {
-        final firebase = _RecordingFirebaseAdminAuthClient();
+        final firebase = _RecordingFirebaseAdminAuthClient(
+          throwOnSend: () =>
+              const FirebaseAdminAuthError('TOO_MANY_ATTEMPTS_TRY_LATER'),
+        );
         final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
           firebaseAdmin: firebase,
-          lookup: (_) async => throw Exception('postgres blip'),
-          auditWriter: (_) async =>
-              fail('audit must not run when lookup blew'),
+          lookup: (_) async => null,
+          auditWriter: (_) async {},
           sleep: (_) async {},
           stopwatchFactory: () => Stopwatch(),
         );
 
         await expectLater(
           gateway.requestReset(
-            const PasswordResetRequestCommand(email: 'blip@forgeflow.test'),
+            const PasswordResetRequestCommand(email: 'rate@forgeflow.test'),
           ),
-          throwsA(isA<Exception>()),
+          throwsA(isA<PasswordResetRequestThrottled>()),
         );
-        // Crucially: Firebase did NOT run. A transient Postgres
-        // outage cannot send a reset email to a real account
-        // without the corresponding audit row.
-        expect(firebase.sentEmails, isEmpty);
       },
     );
 
-    test(
-      'pads short-running paths to the latency floor so wall-clock latency '
-      'does not leak presence',
-      () async {
-        final firebase = _RecordingFirebaseAdminAuthClient();
-        final sleeps = <Duration>[];
-        final stopwatch = _FakeStopwatch(elapsed: const Duration(milliseconds: 50));
-        final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
-          firebaseAdmin: firebase,
-          lookup: (_) async => null,
-          auditWriter: (_) async {},
-          latencyFloor: const Duration(milliseconds: 350),
-          sleep: (d) async => sleeps.add(d),
-          stopwatchFactory: () => stopwatch,
-        );
+    test('propagates lookup errors so the route returns 503 rather than '
+        'sending unaudited Firebase emails', () async {
+      final firebase = _RecordingFirebaseAdminAuthClient();
+      final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
+        firebaseAdmin: firebase,
+        lookup: (_) async => throw Exception('postgres blip'),
+        auditWriter: (_) async => fail('audit must not run when lookup blew'),
+        sleep: (_) async {},
+        stopwatchFactory: () => Stopwatch(),
+      );
 
-        await gateway.requestReset(
-          const PasswordResetRequestCommand(email: 'fast@forgeflow.test'),
-        );
+      await expectLater(
+        gateway.requestReset(
+          const PasswordResetRequestCommand(email: 'blip@forgeflow.test'),
+        ),
+        throwsA(isA<Exception>()),
+      );
+      // Crucially: Firebase did NOT run. A transient Postgres
+      // outage cannot send a reset email to a real account
+      // without the corresponding audit row.
+      expect(firebase.sentEmails, isEmpty);
+    });
 
-        expect(sleeps, equals(<Duration>[const Duration(milliseconds: 300)]));
-      },
-    );
+    test('pads short-running paths to the latency floor so wall-clock latency '
+        'does not leak presence', () async {
+      final firebase = _RecordingFirebaseAdminAuthClient();
+      final sleeps = <Duration>[];
+      final stopwatch = _FakeStopwatch(
+        elapsed: const Duration(milliseconds: 50),
+      );
+      final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
+        firebaseAdmin: firebase,
+        lookup: (_) async => null,
+        auditWriter: (_) async {},
+        latencyFloor: const Duration(milliseconds: 350),
+        sleep: (d) async => sleeps.add(d),
+        stopwatchFactory: () => stopwatch,
+      );
+
+      await gateway.requestReset(
+        const PasswordResetRequestCommand(email: 'fast@forgeflow.test'),
+      );
+
+      expect(sleeps, equals(<Duration>[const Duration(milliseconds: 300)]));
+    });
 
     test('does not extend latency past the floor on slow paths', () async {
       final firebase = _RecordingFirebaseAdminAuthClient();
@@ -189,12 +210,13 @@ void main() {
 
     test('still pads when the throttle path rethrows', () async {
       final firebase = _RecordingFirebaseAdminAuthClient(
-        throwOnSend: () => const FirebaseAdminAuthError(
-          'TOO_MANY_ATTEMPTS_TRY_LATER',
-        ),
+        throwOnSend: () =>
+            const FirebaseAdminAuthError('TOO_MANY_ATTEMPTS_TRY_LATER'),
       );
       final sleeps = <Duration>[];
-      final stopwatch = _FakeStopwatch(elapsed: const Duration(milliseconds: 50));
+      final stopwatch = _FakeStopwatch(
+        elapsed: const Duration(milliseconds: 50),
+      );
       final gateway = RepositoryPasswordResetRequestGateway.fromDependencies(
         firebaseAdmin: firebase,
         lookup: (_) async => null,
@@ -246,8 +268,10 @@ class _RecordingFirebaseAdminAuthClient implements FirebaseAdminAuthClient {
   }) async => throw UnimplementedError();
 
   @override
-  Future<void> setDisabled({required String uid, required bool disabled}) async =>
-      throw UnimplementedError();
+  Future<void> setDisabled({
+    required String uid,
+    required bool disabled,
+  }) async => throw UnimplementedError();
 
   @override
   Future<FirebasePasswordResetCodeInfo> verifyPasswordResetCode({

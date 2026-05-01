@@ -130,6 +130,9 @@ class SettingsScreen extends StatefulWidget {
   /// callback mutates the catalog.
   final List<TeamRoleCatalogEntry> teamRoleCatalog;
   final ValueListenable<List<TeamRoleCatalogEntry>>? teamRoleCatalogListenable;
+  final TeamRoleCatalogLoadState teamRoleCatalogLoadState;
+  final ValueListenable<TeamRoleCatalogLoadState>?
+  teamRoleCatalogLoadStateListenable;
   final SettingsRoleCreateRequester? onTeamRoleCreate;
   final SettingsRolePatchRequester? onTeamRolePatch;
   final SettingsRoleDeleteRequester? onTeamRoleDelete;
@@ -183,6 +186,8 @@ class SettingsScreen extends StatefulWidget {
     this.allowDemoAuditLogFallback = false,
     this.teamRoleCatalog = const <TeamRoleCatalogEntry>[],
     this.teamRoleCatalogListenable,
+    this.teamRoleCatalogLoadState = TeamRoleCatalogLoadState.ready,
+    this.teamRoleCatalogLoadStateListenable,
     this.onTeamRoleCreate,
     this.onTeamRolePatch,
     this.onTeamRoleDelete,
@@ -350,6 +355,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             session,
                             restaurant?.restaurantId,
                           ),
+                      refreshGeneration: _manualRefreshGeneration,
                     ),
                   ),
                   _settingsSection(
@@ -428,8 +434,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                             actor: effectiveTeamActor,
                                             users: users,
                                             roleOptions: effectiveRoleOptions,
-                                            roleCatalog: effectiveRoleCatalog
-                                                    .isEmpty
+                                            roleCatalog:
+                                                effectiveRoleCatalog.isEmpty
                                                 ? widget.teamRoleCatalog
                                                 : effectiveRoleCatalog,
                                             locationOptions:
@@ -476,15 +482,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _settingsSection(
                     title: 'Roles',
-                    child: _RoleCatalogListenableScope(
-                      seed: widget.teamRoleCatalog,
-                      listenable: widget.teamRoleCatalogListenable,
-                      builder: (catalog) => SettingsCustomRolesSection(
-                        actor: effectiveTeamActor,
-                        roleCatalog: catalog,
-                        onCreateRole: widget.onTeamRoleCreate,
-                        onPatchRole: widget.onTeamRolePatch,
-                        onDeleteRole: widget.onTeamRoleDelete,
+                    child: _RoleCatalogLoadStateScope(
+                      seed: widget.teamRoleCatalogLoadState,
+                      listenable: widget.teamRoleCatalogLoadStateListenable,
+                      builder: (loadState) => _RoleCatalogListenableScope(
+                        seed: widget.teamRoleCatalog,
+                        listenable: widget.teamRoleCatalogListenable,
+                        builder: (catalog) => SettingsCustomRolesSection(
+                          actor: effectiveTeamActor,
+                          roleCatalog: catalog,
+                          loadState: loadState,
+                          onRetry: widget.onTeamDataRetry,
+                          onCreateRole: widget.onTeamRoleCreate,
+                          onPatchRole: widget.onTeamRolePatch,
+                          onDeleteRole: widget.onTeamRoleDelete,
+                        ),
                       ),
                     ),
                   ),
@@ -834,6 +846,28 @@ class _RoleCatalogListenableScope extends StatelessWidget {
     final l = listenable;
     if (l == null) return builder(seed);
     return ValueListenableBuilder<List<TeamRoleCatalogEntry>>(
+      valueListenable: l,
+      builder: (context, value, _) => builder(value),
+    );
+  }
+}
+
+class _RoleCatalogLoadStateScope extends StatelessWidget {
+  const _RoleCatalogLoadStateScope({
+    required this.seed,
+    required this.listenable,
+    required this.builder,
+  });
+
+  final TeamRoleCatalogLoadState seed;
+  final ValueListenable<TeamRoleCatalogLoadState>? listenable;
+  final Widget Function(TeamRoleCatalogLoadState loadState) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    final l = listenable;
+    if (l == null) return builder(seed);
+    return ValueListenableBuilder<TeamRoleCatalogLoadState>(
       valueListenable: l,
       builder: (context, value, _) => builder(value),
     );

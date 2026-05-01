@@ -95,6 +95,66 @@ void main() {
     expect(find.byKey(const Key('mfa_enroll_totp_button')), findsOneWidget);
   });
 
+  testWidgets('refreshGeneration reloads factor status', (tester) async {
+    final gateway = _RecordingMfaGateway();
+
+    Widget build(int generation) {
+      return MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SettingsMfaSection(
+              gateway: gateway,
+              actor: kDemoMfaActorContext,
+              refreshGeneration: generation,
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build(0));
+    await tester.pumpAndSettle();
+    expect(gateway.listCalls, hasLength(1));
+
+    await tester.pumpWidget(build(1));
+    await tester.pumpAndSettle();
+    expect(gateway.listCalls, hasLength(2));
+  });
+
+  testWidgets('equal actor rebuild does not reload factor status', (
+    tester,
+  ) async {
+    final gateway = _RecordingMfaGateway();
+
+    Widget build() {
+      return MaterialApp(
+        theme: _testTheme,
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: SettingsMfaSection(
+              gateway: gateway,
+              actor: const MfaActorContext(
+                actorUserId: 'demo-actor-user-id',
+                operatorId: 'demo-operator-id',
+                locationId: 'demo-location-id',
+                userEmail: 'demo.operator@forgeflow.test',
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build());
+    await tester.pumpAndSettle();
+    expect(gateway.listCalls, hasLength(1));
+
+    await tester.pumpWidget(build());
+    await tester.pumpAndSettle();
+    expect(gateway.listCalls, hasLength(1));
+  });
+
   testWidgets('demo enrollment shows QR, copy values, and factor', (
     tester,
   ) async {
@@ -401,6 +461,51 @@ class _FlakyListGateway implements MfaOperationsGateway {
         statusCode: 503,
       );
     }
+    return const MfaListFactorsCompleted(factors: <MfaFactorSummary>[]);
+  }
+
+  @override
+  Future<MfaRevokeFactorCompleted> revokeFactor(
+    MfaRevokeFactorCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaCancelFactorRemovalCompleted> cancelFactorRemoval(
+    MfaCancelFactorRemovalCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaRevokeUserFactorsCompleted> revokeUserFactors(
+    MfaRevokeUserFactorsCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+}
+
+class _RecordingMfaGateway implements MfaOperationsGateway {
+  final List<MfaListFactorsCommand> listCalls = <MfaListFactorsCommand>[];
+
+  @override
+  Future<TotpEnrollmentSetup> beginTotpEnrollment(MfaTotpBeginCommand command) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaTotpConfirmCompleted> confirmTotpEnrollment(
+    MfaTotpConfirmCommand command,
+  ) {
+    throw UnimplementedError();
+  }
+
+  @override
+  Future<MfaListFactorsCompleted> listFactors(
+    MfaListFactorsCommand command,
+  ) async {
+    listCalls.add(command);
     return const MfaListFactorsCompleted(factors: <MfaFactorSummary>[]);
   }
 

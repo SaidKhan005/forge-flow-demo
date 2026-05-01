@@ -35,6 +35,19 @@ class ActiveSessionsActor {
   /// so the UI can tag it and disable the revoke action against it.
   /// Null in tests / cold-start before the ledger write resolves.
   final String? currentSessionId;
+
+  @override
+  bool operator ==(Object other) {
+    return other is ActiveSessionsActor &&
+        other.actorUserId == actorUserId &&
+        other.operatorId == operatorId &&
+        other.locationId == locationId &&
+        other.currentSessionId == currentSessionId;
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(actorUserId, operatorId, locationId, currentSessionId);
 }
 
 /// Stable demo fixtures (kDemoMode) so the walkthrough can show
