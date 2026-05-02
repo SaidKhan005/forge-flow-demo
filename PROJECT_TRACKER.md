@@ -111,7 +111,8 @@ Live board lists active + queued only.
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
 | `10.5` | active; `10.5.0` daypart toggle scaffold accepted; bucketing engine + per-period read service + driver teaching queued | `phase_10_5/*` |
-| `7.61`, `10a`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
+| `7.61` | active; `7.61.0` audit pinned (contract + 21-active + 1-skipped-F-2-holdout test, zero catalog DRIFT); `.1`/`.2`/`.3` queued per findings F-1/F-2/F-3; `.4` deferred to `cutover.0b` (F-A); F-B (`shifts.primary_lever` lowercase migration) deferred post-`cutover.5` | `phase_7_61/*` |
+| `10a`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on `11A.5`/`11A.6` + B43 prod anchor) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
 | `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |
@@ -121,6 +122,11 @@ Live board lists active + queued only.
 ## Hard Gates
 
 - All `7.58.*` accept before `11b.0`; all `7.61.*` accept before Phase 8.
+  `7.61.0` audit emitted no risky findings — F-1/F-2/F-3 are silent
+  overclaim in the History/Learn analyzer + dev fixture (renderer-side,
+  not key-shape); F-A is a deferred Postgres CHECK constraint; F-B is
+  the deferred `shifts.primary_lever` lowercase migration (post-cutover.5,
+  no slice owner).
 - `cutover.0b` Tier-M perf gate is the launch blocker.
 - Production migrations use online-migration patterns once real operator data
   exists; transition point is `cutover.4` accepting.
