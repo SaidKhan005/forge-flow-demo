@@ -70,7 +70,6 @@ import 'package:pointycastle/pointycastle.dart' as pc;
 
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
-import '../advisor_corpus/advisor_corpus.dart' show CorpusManifest, defaultManifestPath;
 import '../advisor_corpus/advisor_corpus.dart'
     show CorpusManifest, defaultManifestPath;
 import 'health_operation_budget.dart';
@@ -6720,36 +6719,6 @@ Future<void> routeRequest(
           }
         }
 
-    // Phase 10a.0 — realtime push WebSocket. Authenticates via the
-    // standard `requireOperatorContext` path (operator_id from JWT,
-    // never from URL). Returns 503 when the publisher is not
-    // installed so unauth probes (`/health`, `/healthz`, `/readyz`)
-    // do not regress on environments that ship without the bridge.
-    if (path == realtimeSubscribePath) {
-      if (realtimePublisher == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'realtime_publisher_not_configured',
-          'message':
-              'route requires an InProcessRealtimePublisher to be installed',
-        });
-        return;
-      }
-      await handleRealtimeUpgrade(
-        request: request,
-        authGuard: authGuard,
-        publisher: realtimePublisher,
-      );
-      return;
-    }
-
-    if (request.method == 'GET' && path == usageSmokePath) {
-      if (usageGuard == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'usage_guard_not_configured',
-          'message': 'route requires a ProxyUsageGuard to be installed',
-        });
-        return;
-      }
         if (request.method == 'GET' &&
             (path == healthPath || path == readinessPath)) {
           _writeJson(response, 200, <String, Object?>{'status': 'ok'});
@@ -6819,6 +6788,28 @@ Future<void> routeRequest(
                 '11a.10a scaffold smoke. No provider call performed. '
                 'Budgets and rate limits land in 11a.10b.',
           });
+          return;
+        }
+
+        // Phase 10a.0 — realtime push WebSocket. Authenticates via the
+        // standard `requireOperatorContext` path (operator_id from JWT,
+        // never from URL). Returns 503 when the publisher is not
+        // installed so unauth probes (`/health`, `/healthz`, `/readyz`)
+        // do not regress on environments that ship without the bridge.
+        if (path == realtimeSubscribePath) {
+          if (realtimePublisher == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'realtime_publisher_not_configured',
+              'message':
+                  'route requires an InProcessRealtimePublisher to be installed',
+            });
+            return;
+          }
+          await handleRealtimeUpgrade(
+            request: request,
+            authGuard: authGuard,
+            publisher: realtimePublisher,
+          );
           return;
         }
 
