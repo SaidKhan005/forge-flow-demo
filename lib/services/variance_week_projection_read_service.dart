@@ -56,9 +56,6 @@ class VarianceWeekProjectionReadService {
     final defs = servicePeriodDefinitions ??
         ServicePeriodDefinitionResolver.demoDefinitions;
 
-    // Build a daypart → most-recent closed lever index for carry-forward.
-    // Key: daypart string. Value: last closed lever label seen so far.
-    final lastClosedLever = <String, String>{};
     final dayRows = <ProjectionDayRow>[];
 
     for (final day in WeekDayOrder.dayLabels) {
@@ -69,18 +66,7 @@ class VarianceWeekProjectionReadService {
 
       if (dayShifts.isEmpty) continue;
 
-      // Update carry-forward map from closed shifts in this day, then
-      // build rows with the map available for open/projected resolution.
-      for (final s in dayShifts) {
-        if (s.isClosed) {
-          lastClosedLever[s.daypart] =
-              s.primaryLever.replaceAll('_', ' ');
-        }
-      }
-
-      final children = dayShifts
-          .map((s) => _buildDaypartRow(s, lastClosedLever))
-          .toList();
+      final children = dayShifts.map(_buildDaypartRow).toList();
       dayRows.add(_buildDayRow(day, children,
           currentTargetProfile: currentTargetProfile));
     }
@@ -90,8 +76,7 @@ class VarianceWeekProjectionReadService {
 
   // ── Private helpers ─────────────────────────────────────────────────────
 
-  ProjectionDaypartRow _buildDaypartRow(
-      ShiftRecord s, Map<String, String> lastClosedLever) {
+  ProjectionDaypartRow _buildDaypartRow(ShiftRecord s) {
     final status = _statusFromShift(s);
     return ProjectionDaypartRow(
       dayLabel: s.dayLabel,
@@ -99,7 +84,7 @@ class VarianceWeekProjectionReadService {
       daypartLabel: s.daypartLabel,
       status: status,
       shift: s,
-      driverLabel: _driverLabel(s, status, lastClosedLever),
+      driverLabel: _driverLabel(s, status),
     );
   }
 
@@ -144,14 +129,14 @@ class VarianceWeekProjectionReadService {
     return RowStatus.projected;
   }
 
-  static String _driverLabel(
-      ShiftRecord s, RowStatus status, Map<String, String> lastClosedLever) {
+  // 7.58.5: open / projected rows return 'Not yet available' — they no
+  // longer inherit a closed daypart's lever via carry-forward. See
+  // docs/contracts/phase_7_58_primary_driver_contract.md "Row-Status
+  // Honesty Rules".
+  static String _driverLabel(ShiftRecord s, RowStatus status) {
     if (status == RowStatus.closed) {
       return s.primaryLever.replaceAll('_', ' ');
     }
-    // Carry forward the most recent closed lever from the same daypart.
-    final carried = lastClosedLever[s.daypart];
-    if (carried != null) return carried;
     return 'Not yet available';
   }
 

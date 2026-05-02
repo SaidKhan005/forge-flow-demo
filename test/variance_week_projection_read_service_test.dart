@@ -393,30 +393,36 @@ void main() {
     });
   });
 
-  // ── I: Driver carry-forward for open/projected rows ────────────────────
+  // ── I: Driver row purity — no carry-forward (7.58.5) ───────────────────
+  //
+  // 7.58.5 inverts the previous "carry-forward" tests. Per
+  // docs/contracts/phase_7_58_primary_driver_contract.md "Row-Status
+  // Honesty Rules", an open / projected row never inherits a previous
+  // closed row's driver via daypart carry-forward. It returns its own
+  // row-scoped driver (when computable) or 'Not yet available'.
 
-  group('I — driver carry-forward', () {
-    test('projected row carries forward closed lever from same daypart', () {
+  group('I — driver row purity (no carry-forward)', () {
+    test('projected row does NOT inherit closed lever from same daypart', () {
       final shifts = [
         _closedShift(dayLabel: 'Mon', daypart: 'dinner', primaryLever: 'CPLH_DOWN'),
         _projectedShift(dayLabel: 'Tue', daypart: 'dinner'),
       ];
       final projection = service.build(shifts);
       final tue = projection.dayRows.firstWhere((d) => d.dayLabel == 'Tue');
-      expect(tue.children.first.driverLabel, 'CPLH DOWN');
+      expect(tue.children.first.driverLabel, 'Not yet available');
     });
 
-    test('open row carries forward closed lever from same daypart', () {
+    test('open row does NOT inherit closed lever from same daypart', () {
       final shifts = [
         _closedShift(dayLabel: 'Mon', daypart: 'dinner', primaryLever: 'SPLH_DOWN'),
         _openShift(dayLabel: 'Fri', daypart: 'dinner'),
       ];
       final projection = service.build(shifts);
       final fri = projection.dayRows.firstWhere((d) => d.dayLabel == 'Fri');
-      expect(fri.children.first.driverLabel, 'SPLH DOWN');
+      expect(fri.children.first.driverLabel, 'Not yet available');
     });
 
-    test('no carry-forward across different dayparts', () {
+    test('no inheritance across different dayparts', () {
       final shifts = [
         _closedShift(dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'PPA_DOWN'),
         _projectedShift(dayLabel: 'Tue', daypart: 'dinner'),
@@ -426,7 +432,8 @@ void main() {
       expect(tue.children.first.driverLabel, 'Not yet available');
     });
 
-    test('most recent closed lever wins carry-forward', () {
+    test('open / projected rows never inherit even when multiple closed '
+        'rows precede them in the same daypart', () {
       final shifts = [
         _closedShift(dayLabel: 'Mon', daypart: 'dinner', primaryLever: 'CPLH_DOWN'),
         _closedShift(dayLabel: 'Tue', daypart: 'dinner', primaryLever: 'PPA_DOWN'),
@@ -434,7 +441,7 @@ void main() {
       ];
       final projection = service.build(shifts);
       final wed = projection.dayRows.firstWhere((d) => d.dayLabel == 'Wed');
-      expect(wed.children.first.driverLabel, 'PPA DOWN');
+      expect(wed.children.first.driverLabel, 'Not yet available');
     });
 
     test('no prior closed shift means Not yet available', () {
@@ -444,6 +451,30 @@ void main() {
       final projection = service.build(shifts);
       expect(projection.dayRows.first.children.first.driverLabel,
           'Not yet available');
+    });
+
+    test('7.58.5 acceptance: open row does not inherit primaryLever from '
+        'earlier closed row in same daypart', () {
+      // Three shifts on the same daypart=lunch:
+      //   - Mon lunch: closed, primaryLever='COVERS_DOWN'
+      //   - Tue lunch: open
+      //   - Wed lunch: projected
+      final shifts = [
+        _closedShift(
+            dayLabel: 'Mon', daypart: 'lunch', primaryLever: 'COVERS_DOWN'),
+        _openShift(dayLabel: 'Tue', daypart: 'lunch'),
+        _projectedShift(dayLabel: 'Wed', daypart: 'lunch'),
+      ];
+      final projection = service.build(shifts);
+      final mon = projection.dayRows.firstWhere((d) => d.dayLabel == 'Mon');
+      final tue = projection.dayRows.firstWhere((d) => d.dayLabel == 'Tue');
+      final wed = projection.dayRows.firstWhere((d) => d.dayLabel == 'Wed');
+
+      // Closed row renders its own detected lever (regression check).
+      expect(mon.children.first.driverLabel, 'COVERS DOWN');
+      // Open and projected rows must not inherit Mon's COVERS DOWN.
+      expect(tue.children.first.driverLabel, 'Not yet available');
+      expect(wed.children.first.driverLabel, 'Not yet available');
     });
   });
 
