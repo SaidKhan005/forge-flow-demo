@@ -78,6 +78,7 @@ android/app/upload-keystore.jks
 # Firebase / Google Cloud private service-account material.
 # Public client configs (`google-services.json`, `GoogleService-Info.plist`,
 # `web/firebase-config.js`) may be committed; Admin SDK key JSON must not.
+.firebase/
 .forge_flow/
 *firebase*service-account*.json
 *firebase*adminsdk*.json
