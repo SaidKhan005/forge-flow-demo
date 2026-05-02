@@ -3428,8 +3428,8 @@ void main() {
       });
     });
 
-    test('GET /v1/usage-smoke happy path returns operator/location, tier, '
-        'timeout, max tokens, and remaining budget', () async {
+    test('GET /v1/usage-smoke happy path returns the contracted '
+        '{tier, minute_remaining, month_remaining} envelope', () async {
       await withRealHttp(() async {
         await spinUpServer(
           usageGuard: ProxyUsageGuard(
@@ -3464,9 +3464,22 @@ void main() {
 
           expect(response.statusCode, equals(200));
           final body = jsonDecode(response.body) as Map<String, Object?>;
-          expect(body['operator_id'], equals('op_777'));
-          expect(body['location_id'], equals('loc_999'));
-          expect(body['policy_tier'], equals('launch'));
+          // HARD-A: contracted envelope is `{tier, minute_remaining,
+          // month_remaining}`. Tenant identifiers MUST NOT appear in
+          // the response.
+          expect(body['tier'], equals('launch'));
+          expect(
+            body['minute_remaining'],
+            equals(PolicyTier.launch.maxRequestsPerMinute - 5),
+          );
+          expect(
+            body['month_remaining'],
+            equals(PolicyTier.launch.maxMonthlyCostCents - 250),
+          );
+          expect(body.containsKey('user_id'), isFalse);
+          expect(body.containsKey('operator_id'), isFalse);
+          expect(body.containsKey('location_id'), isFalse);
+          // Tier policy metadata is still echoed for caller convenience.
           expect(
             body['request_timeout_seconds'],
             equals(PolicyTier.launch.requestTimeoutSeconds),
@@ -3475,17 +3488,7 @@ void main() {
             body['max_output_tokens'],
             equals(PolicyTier.launch.maxOutputTokens),
           );
-          expect(
-            body['remaining_requests_this_minute'],
-            equals(PolicyTier.launch.maxRequestsPerMinute - 5),
-          );
-          expect(
-            body['remaining_cost_cents_this_month'],
-            equals(PolicyTier.launch.maxMonthlyCostCents - 250),
-          );
           expect(body['estimate_request_tokens'], equals(256));
-          expect(body['note'], contains('11a.10b'));
-          expect(body['note'], contains('No provider call performed'));
         } finally {
           await shutDown();
         }

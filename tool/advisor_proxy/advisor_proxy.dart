@@ -1739,6 +1739,37 @@ class ProxyUsageGuard {
           tier.maxMonthlyCostCents - snapshot.costCentsThisMonth,
     );
   }
+
+  /// HARD-A: Records that an allowed request landed by upserting the
+  /// minute bucket in `public.advisor_proxy_usage_counters` (request
+  /// count +1, cost_cents += [costCentsToAdd]). Without this call the
+  /// counters never advance and per-minute / monthly caps are
+  /// unenforceable. Routes must call this after `requireAllowed`
+  /// succeeds — once for usage-smoke (cost 0), once per advisor
+  /// pipeline run with the actual cost.
+  ///
+  /// Failures are intentionally non-fatal: a transient store outage on
+  /// the post-allow write would otherwise make a successfully-served
+  /// response return 503. The guard's read path already projects store
+  /// failures into `usage_store_unavailable`, so a write-side failure
+  /// only loses one minute of bucket fidelity.
+  Future<void> recordAllowed({
+    required OperatorContext operator,
+    required UsageDecisionAllowed decision,
+    required int costCentsToAdd,
+  }) async {
+    try {
+      await _store.incrementOnAllow(
+        operatorId: operator.operatorId,
+        locationId: operator.locationId,
+        tierId: decision.tier.id,
+        now: _now(),
+        costCentsToAdd: costCentsToAdd,
+      );
+    } catch (_) {
+      // Swallow — see method docs. The next minute bucket recovers.
+    }
+  }
 }
 
 // ─── HTTP scaffold ───────────────────────────────────────────────────────────
@@ -4085,6 +4116,66 @@ Future<ProxyHealthDependencyProbe> defaultProxyHealthDependencyProbe(
   );
 }
 
+/// HARD-A — production-grade dependency probe.
+///
+/// `defaultProxyHealthDependencyProbe` (above) only verifies extension
+/// presence. The hardening contract requires the AGE check to actually
+/// invoke cypher `MATCH (n) RETURN 1 LIMIT 1` and the pgvector check
+/// to compute a real distance, so a regression in either path surfaces
+/// as `red` instead of green.
+///
+/// Each check passes when the SQL call returns without throwing. Row
+/// count is not the success criterion — `MATCH (n)` against an empty
+/// graph correctly returns zero rows, and an empty graph must not
+/// flip the dependency to `red` (that would tie HTTP 503 to data
+/// presence rather than dependency liveness).
+///
+/// Errors and timeouts project to `false` so a flaky extension never
+/// crashes the deep-health route.
+Future<ProxyHealthDependencyProbe> strictProxyHealthDependencyProbe(
+  ProxyHealthQueryRunnerFn runnerFn,
+  DateTime now, {
+  Duration budget = const Duration(milliseconds: 250),
+  String ageGraphName = 'forgeflow',
+}) async {
+  Future<bool> probe(String sql) async {
+    try {
+      await runnerFn(sql).timeout(budget);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // AGE cypher must be a SINGLE statement so it survives the proxy's
+  // prepared-query runner (`package:postgres` `Sql.named(...)` rejects
+  // multi-command strings). Fully qualify both the function
+  // (`ag_catalog.cypher`) and the result type (`ag_catalog.agtype`)
+  // instead of prefixing a `SET search_path` — same effect, one
+  // statement. AGE returns zero rows on an empty graph, which still
+  // succeeds because the probe's success criterion is "no throw".
+  const String ageCypherProbeSql =
+      "select * from ag_catalog.cypher('forgeflow', "
+      "\$\$ MATCH (n) RETURN 1 LIMIT 1 \$\$) as (v ag_catalog.agtype)";
+
+  final results = await Future.wait(<Future<bool>>[
+    // Postgres: `select 1` round-trips through the driver.
+    probe('select 1 as ok'),
+    // AGE: real cypher MATCH against the canonical graph. Empty graph
+    // returns zero rows but does not raise — still green.
+    probe(ageCypherProbeSql),
+    // pgvector: actual distance operator (`<->`) so a regressed
+    // operator surfaces, not just extension presence.
+    probe("select '[1,0,0]'::vector <-> '[0,1,0]'::vector as distance"),
+  ]);
+
+  return ProxyHealthDependencyProbe(
+    postgresOk: results[0],
+    ageOk: results[1],
+    pgvectorOk: results[2],
+  );
+}
+
 /// Cross-DB pg_cron via FDW bootstrap.
 ///
 /// Azure Database for PostgreSQL Flexible Server installs `pg_cron` into a
@@ -5812,22 +5903,30 @@ Future<void> routeRequest(
         return;
       }
 
+      // HARD-A: advance the per-minute bucket so caps actually
+      // enforce on subsequent requests. Smoke calls carry cost 0 —
+      // the request count is what matters here.
+      await usageGuard.recordAllowed(
+        operator: scope,
+        decision: decision,
+        costCentsToAdd: 0,
+      );
+
+      // HARD-A wire shape per `hardening_production_wiring_contract.md`:
+      // `{minute_remaining, month_remaining, tier}` with no tenant
+      // identifiers. Tier limits / timeout / max-output are still
+      // returned alongside so the smoke caller can confirm the active
+      // tier policy without a separate call.
       _writeJson(response, 200, <String, Object?>{
-        'user_id': scope.userId,
-        'operator_id': scope.operatorId,
-        'location_id': scope.locationId,
-        'policy_tier': decision.tier.id,
+        'tier': decision.tier.id,
+        'minute_remaining': decision.remainingRequestsThisMinute,
+        'month_remaining': decision.remainingCostCentsThisMonth,
         'request_timeout_seconds': decision.tier.requestTimeoutSeconds,
         'max_output_tokens': decision.tier.maxOutputTokens,
         'cap_request_tokens': decision.tier.maxRequestTokens,
         'cap_requests_per_minute': decision.tier.maxRequestsPerMinute,
         'cap_monthly_cost_cents': decision.tier.maxMonthlyCostCents,
-        'remaining_requests_this_minute': decision.remainingRequestsThisMinute,
-        'remaining_cost_cents_this_month': decision.remainingCostCentsThisMonth,
         'estimate_request_tokens': estimate.requestTokens,
-        'note':
-            '11a.10b smoke. No provider call performed. Counter store '
-            'increment runs in a later slice once a real backend is wired.',
       });
       return;
     }
@@ -5880,6 +5979,26 @@ Future<void> routeRequest(
         tokenCount: int.tryParse(params['tokens'] ?? '') ?? 100,
         costCents: int.tryParse(params['cost_cents'] ?? '') ?? 1,
       );
+
+      // HARD-A: per-minute / monthly cap pre-check via the proxy
+      // usage guard. The accounting store's tier-cap check (below)
+      // gates per-tier monthly spend; this guard gates per-minute
+      // request rate + monthly cost in `advisor_proxy_usage_counters`.
+      // Both must pass before the pipeline runs. The guard is
+      // optional — only checked when wired (production main.dart wires
+      // it; some tests pass null).
+      UsageDecisionAllowed? usageDecision;
+      if (usageGuard != null) {
+        try {
+          usageDecision = await usageGuard.requireAllowed(
+            operator: scope,
+            estimate: UsageEstimate(requestTokens: estimate.tokenCount),
+          );
+        } on UsageRefusal catch (refusal) {
+          _writeJson(response, refusal.statusCode, refusal.toJson());
+          return;
+        }
+      }
 
       const tierRouter = SubscriptionLlmTierRouter();
       const modelRouting = ProxyLlmModelRouting();
@@ -6079,6 +6198,18 @@ Future<void> routeRequest(
           'message': 'proxy accounting store unavailable',
         });
         return;
+      }
+
+      // HARD-A: advance `advisor_proxy_usage_counters` so per-minute
+      // and monthly caps actually enforce on the next request. Cost
+      // carries the final post-pipeline value, not the pre-call
+      // estimate.
+      if (usageGuard != null && usageDecision != null) {
+        await usageGuard.recordAllowed(
+          operator: scope,
+          decision: usageDecision,
+          costCentsToAdd: finalEstimate.costCents,
+        );
       }
 
       try {

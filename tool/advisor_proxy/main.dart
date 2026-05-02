@@ -1,22 +1,29 @@
 // Forge & Flow advisor proxy — Cloud Run entrypoint.
 //
-// 11a.10a scaffold. Reads server-side config (secrets by name only),
-// installs the request guard backed by the hard-fail-closed scaffold
-// JWT verifier, and listens on `PORT`. The actual route logic lives
-// in `advisor_proxy.dart::routeRequest` so tests drive the same
-// handler the production entrypoint installs.
+// Reads server-side config (secrets by name only), installs the request
+// guard backed by the Firebase ID-token verifier (with the service-
+// principal JWT verifier composited alongside), and listens on `PORT`.
+// The actual route logic lives in `advisor_proxy.dart::routeRequest` so
+// tests drive the same handler the production entrypoint installs.
 //
-// 11a.10a did not call Anthropic, Voyage, Postgres, or Firebase.
-// 11a.11c.5 retarget: the Postgres host moved from Supabase to Azure
-// Database for PostgreSQL Flexible Server; secret names are now
-// `POSTGRES_URL` / `POSTGRES_ADMIN_URL`.
+// 11a.11c.5 retarget: Postgres host is Azure Database for PostgreSQL
+// Flexible Server; secret names are `POSTGRES_URL` / `POSTGRES_ADMIN_URL`.
 //
-// Block 2 (Lock 7 v1): per-instance circuit breaker + fallback chain
-// constructed once at startup and passed to every routeRequest call.
-// `ScaffoldRejectingProxyLlmProvider` still throws on every call, so
-// in production today the breaker trips after 3 requests and serves
-// the graceful refusal payload (HTTP 200 with `degraded` envelope) on
-// the next request — instead of the legacy 503.
+// HARD-A: the entrypoint wires the Postgres-backed
+// `AdvisorProxyUsageCounterStore` and the registry-backed
+// `RegistryProxyHealthCheckStore` from `buildProxyProductionBindings`
+// so usage caps actually enforce and `/health` returns the contracted
+// envelope. `PROXY_ENVIRONMENT=prod` with `FIREBASE_PROJECT_ID` unset
+// exits 78 (EX_CONFIG) — production never falls back to the scaffold
+// JWT verifier.
+//
+// Lock 7: per-instance circuit breaker over real Anthropic primary
+// plus optional real Gemini secondary; on breaker open the pipeline
+// serves graceful refusal. Anthropic is wired via the real Messages-
+// API HTTP adapter (`productionBindings.llmProvider`); Gemini is wired
+// via the real SDK adapter when `GEMINI_API_KEY` is loaded, otherwise
+// the secondary slot is null and the pipeline reduces to anthropic →
+// cache → graceful refusal.
 
 import 'dart:io';
 
@@ -37,12 +44,30 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  // HARD-A: prod requires FIREBASE_PROJECT_ID. The decision lives in
+  // [evaluateProxyStartup] so it can be unit-tested without binding a
+  // socket or invoking `dart run` in a subprocess.
+  final firebaseProjectId = config.firebaseProjectId;
+  final isProductionEnvironment =
+      (Platform.environment['PROXY_ENVIRONMENT'] ?? '')
+              .trim()
+              .toLowerCase() ==
+          'prod';
+  final startupFailure = evaluateProxyStartup(
+    config: config,
+    environment: Platform.environment,
+  );
+  if (startupFailure != null) {
+    stderr.writeln(startupFailure.message);
+    exitCode = startupFailure.exitCode;
+    return;
+  }
+
   // 9.1 live-closeout: FIREBASE_PROJECT_ID selects the local Firebase
   // ID-token verifier with a pointycastle-backed RS256 validator.
   // Phase 9 production route bindings below also require it; missing
   // config exits before the proxy binds a port.
   final ProxyJwtVerifier verifier;
-  final firebaseProjectId = config.firebaseProjectId;
   if (firebaseProjectId != null) {
     verifier = CompositeProxyJwtVerifier(<ProxyJwtVerifier>[
       FirebaseProxyJwtVerifier(
@@ -62,26 +87,37 @@ Future<void> main(List<String> args) async {
   final authGuard = ProxyRequestGuard(verifier: verifier);
   ProxyProductionBindings productionBindings;
   try {
-    productionBindings = buildProxyProductionBindings(config);
+    productionBindings = buildProxyProductionBindings(
+      config,
+      // HARD-A: only `prod` requires the live Firebase admin client.
+      // Dev/staging without FIREBASE_PROJECT_ID falls back to the
+      // scaffold-failing client so the proxy still binds and unauth
+      // probes (`/health`, `/healthz`, `/readyz`) keep working.
+      requireFirebase: isProductionEnvironment,
+    );
   } on ProxyConfigError catch (error) {
     stderr.writeln('advisor proxy startup failed: ${error.message}');
     exitCode = 78;
     return;
   }
 
-  // 11a.10b: usage guard installed at boot with the scaffold-failing
-  // counter store + fixed launch-tier resolver. Real Postgres-backed
-  // store and per-operator tier resolution wire in later proxy slices;
-  // until then, usage-protected routes fail closed with 503.
+  // HARD-A: usage guard now installed with the Postgres-backed
+  // counter store from productionBindings. Per-operator tier
+  // resolution remains the launch-tier default until a later proxy
+  // slice introduces tier-aware policy lookup.
   final usageGuard = ProxyUsageGuard(
-    store: const ScaffoldFailingUsageCounterStore(),
+    store: productionBindings.usageCounterStore,
     tierResolver: const FixedLaunchTierResolver(),
   );
-  const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
-  // Phase 11A.4b — primary is now the real Anthropic Messages-API
-  // HTTP adapter (via productionBindings). The breaker still owns
-  // failure handling; the secondary slot is a real Gemini SDK
-  // adapter when GEMINI_API_KEY is loaded, otherwise null.
+  // HARD-A: registry-backed `/health` envelope. Reserved metrics from
+  // `proxy_health_contract.md` whose producers have not landed yet
+  // (B43 / B44 / B45 / B47) project to `status: unknown` without
+  // turning the response degraded.
+  final healthCheckStore = productionBindings.healthCheckStore;
+  // Phase 11A.4b — primary is the real Anthropic Messages-API HTTP
+  // adapter (via productionBindings). The breaker still owns failure
+  // handling; the secondary slot is a real Gemini SDK adapter when
+  // GEMINI_API_KEY is loaded, otherwise null.
   final llmProvider = productionBindings.llmProvider;
 
   // Lock 7 v1: per-instance breaker + always-miss cache stub.
@@ -95,6 +131,14 @@ Future<void> main(List<String> args) async {
   );
 
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
+
+  // HARD-A: own line for gemini_slot_enabled so deploy verification
+  // can grep for the slot status without parsing the larger
+  // diagnostics envelope below. `true` when GEMINI_API_KEY was loaded
+  // at startup; `false` otherwise.
+  stdout.writeln(
+    'gemini_slot_enabled: ${productionBindings.geminiSlotEnabled}',
+  );
 
   // Diagnostics line — names only, never values. Reports whether the
   // 9.1 Firebase verifier is wired (true when FIREBASE_PROJECT_ID is
