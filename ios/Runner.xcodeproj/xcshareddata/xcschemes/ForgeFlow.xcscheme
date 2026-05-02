@@ -54,6 +54,10 @@
             argument = "--flavor forgeflow"
             isEnabled = "YES">
          </CommandLineArgument>
+         <CommandLineArgument
+            argument = "--dart-define=FLUTTER_TARGET=lib/main_forgeflow.dart"
+            isEnabled = "YES">
+         </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>
    <ProfileAction

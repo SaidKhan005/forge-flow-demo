@@ -6,13 +6,21 @@ on:
   pull_request:
     branches: [master]
 
+# HARD-E — third-party actions pinned to commit SHA. Floating @v<n>
+# refs are forbidden by `tool/actions_pinning_lint.dart` (see the
+# `repo-lints` job below). The `# v<n>` trailing comment names the
+# tag the pin originally satisfied so reviewers can scan upgrades at
+# a glance. Tag → SHA mapping is verifiable with:
+#
+#   gh api repos/<org>/<repo>/git/ref/tags/<tag> --jq '.object.sha'
+
 jobs:
   analyze-and-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2
         with:
           channel: stable
 
@@ -30,16 +38,19 @@ jobs:
   repo-lints:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
 
-      - uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2  # v2
         with:
           channel: stable
 
       - run: flutter pub get
 
-      - name: postgres-import / index-leading-column / permission-key lints
+      - name: postgres-import / index-leading-column / permission-key / migration-cutoff / release-dart-defines / actions-pinning lints
         run: |
           dart run tool/postgres_import_lint.dart && \
           dart run tool/index_leading_column_lint.dart && \
-          dart run tool/permission_key_lint.dart
+          dart run tool/permission_key_lint.dart && \
+          dart run tool/migration_cutoff_lint.dart && \
+          dart run tool/release_dart_defines_lint.dart && \
+          dart run tool/actions_pinning_lint.dart

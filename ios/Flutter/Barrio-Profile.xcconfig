@@ -2,3 +2,5 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.forgeflow.barrio
 FLUTTER_FLAVOR = barrio
 DISPLAY_NAME = Barrio
+// HARD-E — see Barrio-Release.xcconfig for rationale.
+FLUTTER_TARGET = lib/main_barrio.dart

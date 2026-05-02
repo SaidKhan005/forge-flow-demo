@@ -1,0 +1,95 @@
+# HARD-E — Cloud Build pipeline for the mfa_removal_worker Cloud Run
+# Job container image.
+#
+# Invocation (from repo root):
+#
+#   gcloud builds submit . \
+#     --config=tool/mfa_removal_worker/cloudbuild.yaml \
+#     --substitutions=_REGION=northamerica-northeast1,_REPO=forge-flow
+#
+# Build context MUST be the repo root (the Dockerfile copies pubspec.*
+# and lib/ from the workspace). Do NOT submit from
+# `tool/mfa_removal_worker/`.
+#
+# Outputs two tags so deploys can pin a specific commit and the
+# scheduler can always fall back to `:latest` for ad-hoc executions:
+#   - {repo}/mfa-removal-worker:{SHORT_SHA}
+#   - {repo}/mfa-removal-worker:latest
+#
+# Gating: `dart analyze --fatal-infos` and the MFA test suite run
+# before the build step. A build that does not satisfy both gates
+# never produces an image; cloudbuild fails fast.
+
+substitutions:
+  # Artifact Registry region. Override at submit time per environment.
+  _REGION: northamerica-northeast1
+  # Artifact Registry repository name (already provisioned).
+  _REPO: forge-flow
+  # Image base name; rarely overridden.
+  _IMAGE_NAME: mfa-removal-worker
+
+# 30-minute ceiling. Flutter pub get + dart compile exe completes
+# well under this; the budget covers cold layer cache fetches.
+timeout: 1800s
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  # Larger machine speeds the dart-compile step; the Flutter build
+  # image (~3 GB) and the AOT compile both benefit. Drop to default
+  # if cost matters more than build latency.
+  machineType: E2_HIGHCPU_8
+
+steps:
+  - id: analyze
+    name: ghcr.io/cirruslabs/flutter:stable
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        flutter --version
+        flutter pub get
+        flutter analyze --fatal-infos
+
+  - id: test-mfa
+    name: ghcr.io/cirruslabs/flutter:stable
+    entrypoint: bash
+    args:
+      - -lc
+      - |
+        flutter pub get
+        flutter test \
+          test/mfa_test.dart \
+          test/mfa_operations_gateway_test.dart \
+          test/mfa_recovery_request_rate_limiter_test.dart \
+          test/proxy_mfa_operations_gateway_test.dart
+    waitFor: [analyze]
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --file=tool/mfa_removal_worker/Dockerfile
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+      - --tag=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest
+      - .
+    waitFor: [test-mfa]
+
+  - id: push-sha
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+    waitFor: [build]
+
+  - id: push-latest
+    name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest
+    waitFor: [build]
+
+# Records both tags in the Cloud Build artifacts list so the deploy
+# script can pin to the SHA-tagged image without re-querying the registry.
+images:
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:${SHORT_SHA}
+  - ${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_IMAGE_NAME}:latest
