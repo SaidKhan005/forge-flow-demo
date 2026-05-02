@@ -65,6 +65,9 @@ void main() {
             integrationAdminActorResolver:
                 resolverConfigured ? resolver : null,
             now: () => clockNow,
+            adminCorsAllowList: const <String>[
+              'https://admin.forgeflow.app',
+            ],
           );
         } catch (_) {
           try {

@@ -86,6 +86,7 @@ Future<void> main(List<String> args) async {
   }
   final authGuard = ProxyRequestGuard(verifier: verifier);
   ProxyProductionBindings productionBindings;
+  List<String> adminCorsAllowList;
   try {
     productionBindings = buildProxyProductionBindings(
       config,
@@ -94,6 +95,24 @@ Future<void> main(List<String> args) async {
       // scaffold-failing client so the proxy still binds and unauth
       // probes (`/health`, `/healthz`, `/readyz`) keep working.
       requireFirebase: isProductionEnvironment,
+    );
+    // HARD-C — read supplemental CORS origins from the
+    // `admin_cors_origins_extra` row in `public.feature_flags` once
+    // at boot. When that row is enabled, its description column is
+    // comma-split into the supplemental allow-list and merged below.
+    // Read happens before binding the port so a flaky DB at startup
+    // fails closed rather than silently dropping the extras.
+    final adminCorsExtraOrigins = await loadAdminCorsExtraOrigins(
+      flag: productionBindings.adminCorsOriginsExtraFlag,
+    );
+    // HARD-C — resolve the admin CORS allow-list at startup.
+    // `resolveAdminCorsAllowList` fails closed when the merged list
+    // is empty AND `PROXY_ENVIRONMENT` is not a known dev/staging
+    // value (`dev` or `staging`); the surrounding catch translates
+    // that into exit 78.
+    adminCorsAllowList = resolveAdminCorsAllowList(
+      config,
+      featureFlagExtras: adminCorsExtraOrigins,
     );
   } on ProxyConfigError catch (error) {
     stderr.writeln('advisor proxy startup failed: ${error.message}');
@@ -164,6 +183,7 @@ Future<void> main(List<String> args) async {
     'corpus_admin: postgres, '
     'integration_admin: postgres_kms_stub, '
     'feature_flags_admin: postgres, '
+    'admin_cors_allow_list_count: ${adminCorsAllowList.length}, '
     'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache'
     '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''})',
   );
@@ -206,6 +226,7 @@ Future<void> main(List<String> args) async {
             productionBindings.integrationAdminActorResolver,
         featureFlagsAdminGateway:
             productionBindings.featureFlagsAdminGateway,
+        adminCorsAllowList: adminCorsAllowList,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');

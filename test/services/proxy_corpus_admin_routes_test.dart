@@ -58,6 +58,9 @@ void main() {
           guard,
           corpusAdminGateway: gatewayConfigured ? gateway : null,
           now: () => DateTime.utc(2026, 5, 1, 12),
+          adminCorsAllowList: const <String>[
+            'https://admin.forgeflow.app',
+          ],
         );
       } catch (_) {
         try {

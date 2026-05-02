@@ -4665,6 +4665,9 @@ void main() {
             guard,
             operatorLocationAdminGateway: gatewayConfigured ? gateway : null,
             now: () => DateTime.utc(2026, 4, 29, 12),
+            adminCorsAllowList: const <String>[
+              'https://admin.forgeflow.app',
+            ],
           );
         } catch (_) {
           try {
@@ -4705,9 +4708,12 @@ void main() {
           await response.drain<void>();
 
           expect(response.statusCode, equals(HttpStatus.noContent));
+          // HARD-C — exact-origin echo, never `*`. The allow-list
+          // wired through spinUp contains the origin we send below,
+          // so the proxy responds with that exact string.
           expect(
             response.headers.value('access-control-allow-origin'),
-            equals('*'),
+            equals('https://admin.forgeflow.app'),
           );
           expect(
             response.headers.value('access-control-allow-methods'),
@@ -5317,6 +5323,9 @@ void main() {
             guard,
             pricingTierAdminGateway: gatewayConfigured ? gateway : null,
             now: () => DateTime.utc(2026, 4, 30, 12),
+            adminCorsAllowList: const <String>[
+              'https://admin.forgeflow.app',
+            ],
           );
         } catch (_) {
           try {
@@ -5866,9 +5875,10 @@ void main() {
               response.headers.value('access-control-allow-methods') ?? '';
           expect(allowMethods.toUpperCase(), contains('PUT'));
           expect(allowMethods.toUpperCase(), contains('OPTIONS'));
+          // HARD-C — exact-origin echo, never `*`.
           expect(
             response.headers.value('access-control-allow-origin'),
-            equals('*'),
+            equals('https://admin.forgeflow.app'),
           );
         } finally {
           ctx.client.close(force: true);
