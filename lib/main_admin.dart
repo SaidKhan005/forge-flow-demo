@@ -26,7 +26,6 @@
 //     `--allow-unauthenticated` Cloud Run service is a privilege
 //     bypass.
 
-import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
@@ -39,6 +38,8 @@ import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
+import 'services/auth/firebase_auth_client.dart';
+import 'services/auth/firebase_auth_client_sdk.dart';
 import 'theme/app_theme.dart';
 
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
@@ -73,18 +74,22 @@ const FirebaseOptions kAdminFirebaseOptions = FirebaseOptions(
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   try {
-    final source = await _resolveAuthSource();
-    final gateway = _resolveOperatorLocationGateway();
-    final pricingGateway =
-        gateway == null ? null : _resolvePricingTierAdminGateway();
-    final corpusGateway =
-        gateway == null ? null : _resolveCorpusAdminGateway();
-    final integrationGateway =
-        gateway == null ? null : _resolveIntegrationAdminGateway();
-    final healthGateway =
-        gateway == null ? null : _resolveHealthAdminGateway();
-    final featureFlagsGateway =
-        gateway == null ? null : _resolveFeatureFlagsAdminGateway();
+    final authBinding = await _resolveAuthSource();
+    final source = authBinding.source;
+    final gateway = _resolveOperatorLocationGateway(authBinding.authClient);
+    final pricingGateway = gateway == null
+        ? null
+        : _resolvePricingTierAdminGateway(authBinding.authClient);
+    final corpusGateway = gateway == null
+        ? null
+        : _resolveCorpusAdminGateway(authBinding.authClient);
+    final integrationGateway = gateway == null
+        ? null
+        : _resolveIntegrationAdminGateway(authBinding.authClient);
+    final healthGateway = gateway == null ? null : _resolveHealthAdminGateway();
+    final featureFlagsGateway = gateway == null
+        ? null
+        : _resolveFeatureFlagsAdminGateway(authBinding.authClient);
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
@@ -112,14 +117,28 @@ Future<void> main() async {
   }
 }
 
-Future<AdminAuthSource> _resolveAuthSource() async {
+class _AdminAuthBinding {
+  const _AdminAuthBinding({required this.source, required this.authClient});
+
+  final AdminAuthSource source;
+  final FirebaseAuthClient? authClient;
+}
+
+Future<_AdminAuthBinding> _resolveAuthSource() async {
   if (_kAdminDemoAuth) {
-    return DemoAdminAuthSource.signedOut();
+    return _AdminAuthBinding(
+      source: DemoAdminAuthSource.signedOut(),
+      authClient: null,
+    );
   }
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: kAdminFirebaseOptions);
   }
-  return FirebaseAdminAuthSource();
+  final authClient = FirebaseAuthSdkClient();
+  return _AdminAuthBinding(
+    source: FirebaseAdminAuthSource(client: authClient),
+    authClient: authClient,
+  );
 }
 
 /// Resolves the operator/location admin gateway for the live
@@ -127,8 +146,11 @@ Future<AdminAuthSource> _resolveAuthSource() async {
 /// Firebase ID-token bearer source. Demo mode returns null, which
 /// lets the route fall back to the seeded in-memory demo gateway in
 /// `admin_routes.dart`.
-OperatorLocationAdminGateway? _resolveOperatorLocationGateway() {
+OperatorLocationAdminGateway? _resolveOperatorLocationGateway(
+  FirebaseAuthClient? authClient,
+) {
   if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) {
     throw StateError(
@@ -141,7 +163,7 @@ OperatorLocationAdminGateway? _resolveOperatorLocationGateway() {
   }
   return HttpOperatorLocationAdminGateway(
     baseUri: baseUri,
-    bearerTokenProvider: _firebaseIdTokenProvider,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 
@@ -149,45 +171,52 @@ OperatorLocationAdminGateway? _resolveOperatorLocationGateway() {
 /// proxy base URI as the operator/location gateway. Demo mode returns
 /// null and the route falls back to the seeded in-memory pricing
 /// gateway in `admin_routes.dart`.
-PricingTierAdminGateway? _resolvePricingTierAdminGateway() {
+PricingTierAdminGateway? _resolvePricingTierAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
   if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpPricingTierAdminGateway(
     baseUri: baseUri,
-    bearerTokenProvider: _firebaseIdTokenProvider,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 
 /// Phase 11A.3a — corpus admin gateway. Same admin proxy base URI as
 /// the pricing gateway. Demo mode returns null and the route falls
 /// back to the seeded in-memory corpus gateway in `admin_routes.dart`.
-CorpusAdminGateway? _resolveCorpusAdminGateway() {
+CorpusAdminGateway? _resolveCorpusAdminGateway(FirebaseAuthClient? authClient) {
   if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpCorpusAdminGateway(
     baseUri: baseUri,
-    bearerTokenProvider: _firebaseIdTokenProvider,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 
 /// Phase 11A.4 — integration management admin gateway. Lives on the
 /// same admin proxy base URI; demo mode falls back to the seeded
 /// in-memory gateway in `admin_routes.dart`.
-IntegrationAdminGateway? _resolveIntegrationAdminGateway() {
+IntegrationAdminGateway? _resolveIntegrationAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
   if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpIntegrationAdminGateway(
     baseUri: baseUri,
-    bearerTokenProvider: _firebaseIdTokenProvider,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 
@@ -209,26 +238,30 @@ HealthAdminGateway? _resolveHealthAdminGateway() {
 /// Phase 11A.7 — feature flags admin gateway. Same admin proxy base
 /// URI as the other admin surfaces; demo mode falls back to the
 /// seeded in-memory gateway in `admin_routes.dart`.
-FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway() {
+FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
   if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
   final rawBaseUri = _kAdminProxyBaseUri.trim();
   if (rawBaseUri.isEmpty) return null;
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpFeatureFlagsAdminGateway(
     baseUri: baseUri,
-    bearerTokenProvider: _firebaseIdTokenProvider,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
 }
 
-Future<String> _firebaseIdTokenProvider() async {
-  final user = fb.FirebaseAuth.instance.currentUser;
-  if (user == null) {
-    throw StateError(
-      'admin proxy call attempted without a signed-in Firebase user',
-    );
+FirebaseAuthClient _requireLiveAuthClient(FirebaseAuthClient? authClient) {
+  if (authClient == null) {
+    throw StateError('live admin auth client is required outside demo mode');
   }
-  final token = await user.getIdToken();
+  return authClient;
+}
+
+Future<String> _firebaseIdTokenProvider(FirebaseAuthClient authClient) async {
+  final token = await authClient.currentIdToken();
   if (token == null || token.isEmpty) {
     throw StateError('Firebase did not return an ID token for the admin user');
   }
