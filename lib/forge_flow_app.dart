@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 
 import 'auth/auth_session.dart';
 import 'auth/permission_effect.dart';
+import 'domain/models/restaurant_location.dart';
 import 'services/advisor_corpus_admin_service.dart';
 import 'services/advisor_model_config_service.dart';
 import 'services/auth/auth_operations_gateway.dart';
@@ -43,7 +44,7 @@ import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/team/team_settings_section.dart';
 import 'screens/variance_report.dart';
-import 'services/current_state_boundary_monitor.dart';
+import 'state/boundary_monitor_supervisor.dart';
 import 'theme/app_theme.dart';
 
 /// Shared Forge & Flow runtime that can run standalone or inside Barrio.
@@ -276,30 +277,34 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// duplicate refresh — notifiers already load in their constructors.
   bool _hasBeenBackgrounded = false;
 
-  /// Phase 7.55n.10: foreground-only business-date boundary monitor.
-  /// Detects boundary changes while the app stays open and routes
-  /// refresh through the shared coordinator seam.
-  CurrentStateBoundaryMonitor? _boundaryMonitor;
+  /// Foreground-only business-date boundary supervisor. Spawns one
+  /// `CurrentStateBoundaryMonitor` per accessible `RestaurantLocation`
+  /// so multi-location operators get independent restaurant-local
+  /// boundary clocks (Time Boundary Contract Rule 1).
+  BoundaryMonitorSupervisor? _boundarySupervisor;
+  RestaurantScopeNotifier? _scopeListenedFor;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Initialize boundary monitor after first frame when providers
+    // Initialize boundary supervisor after first frame when providers
     // are available in the widget tree.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initBoundaryMonitor();
+      _initBoundarySupervisor();
     });
   }
 
-  /// Creates and starts the boundary monitor.
+  /// Creates and starts the boundary supervisor, then subscribes to
+  /// [RestaurantScopeNotifier] so monitor membership tracks the
+  /// currently accessible locations.
   ///
   /// Uses [widget.testBusinessDateResolver] when provided (tests),
   /// otherwise falls back to production
   /// [BusinessDateAuthorityService.resolveBusinessDate].
-  void _initBoundaryMonitor() {
+  void _initBoundarySupervisor() {
     if (!mounted) return;
-    _boundaryMonitor = CurrentStateBoundaryMonitor(
+    _boundarySupervisor = BoundaryMonitorSupervisor(
       resolveBusinessDate:
           widget.testBusinessDateResolver ??
           BusinessDateAuthorityService.instance.resolveBusinessDate,
@@ -309,12 +314,32 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         }
       },
     );
-    _boundaryMonitor!.start();
+    final scope = context.read<RestaurantScopeNotifier>();
+    scope.addListener(_syncSupervisorToScope);
+    _scopeListenedFor = scope;
+    _syncSupervisorToScope();
+    _boundarySupervisor!.start();
+  }
+
+  /// Mirrors the active locations from [RestaurantScopeNotifier] into
+  /// the supervisor. Today the notifier exposes a single active
+  /// restaurant; multi-location wiring lands in a later phase.
+  void _syncSupervisorToScope() {
+    final supervisor = _boundarySupervisor;
+    if (supervisor == null || !mounted) return;
+    final restaurant = context.read<RestaurantScopeNotifier>().restaurant;
+    supervisor.syncTo(
+      restaurant != null
+          ? <RestaurantLocation>[restaurant]
+          : const <RestaurantLocation>[],
+    );
   }
 
   @override
   void dispose() {
-    _boundaryMonitor?.stop();
+    _scopeListenedFor?.removeListener(_syncSupervisorToScope);
+    _scopeListenedFor = null;
+    _boundarySupervisor?.dispose();
     _teamRoleOptionsListenable.dispose();
     _teamRoleCatalogListenable.dispose();
     _teamRoleCatalogLoadStateListenable.dispose();
@@ -331,7 +356,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
 
   /// Phase 7.55n.9 + 7.55n.9a + 7.55n.10: revalidate current-state
   /// surfaces on app resume after real backgrounding, and manage the
-  /// boundary monitor lifecycle.
+  /// boundary supervisor lifecycle.
   ///
   /// Routes through the shared [AppRefreshCoordinator] seam so the
   /// definition of "current-state surfaces" stays centralized.
@@ -343,27 +368,27 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   ///   `inactive -> resumed` (e.g., phone call overlay) does not
   ///   false-positive
   ///
-  /// Boundary monitor lifecycle:
+  /// Boundary supervisor lifecycle:
   /// - stopped on `paused` (no checking while backgrounded)
   /// - re-seeded and restarted on `resumed` after real backgrounding;
-  ///   the re-seed picks up the current business date so the monitor
-  ///   does not duplicate the refresh already handled by the resume
+  ///   the re-seed picks up the current business date so the monitors
+  ///   do not duplicate the refresh already handled by the resume
   ///   path (7.55n.9)
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _hasBeenBackgrounded) {
       _hasBeenBackgrounded = false;
       context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces();
-      // Re-seed and restart boundary monitor after resume refresh.
-      // The re-seed picks up the current business date so the monitor
-      // does not detect a "change" that the resume path already handled.
-      _boundaryMonitor?.start();
+      // Re-seed and restart boundary monitors after resume refresh.
+      // The re-seed picks up the current business date so the monitors
+      // do not detect a "change" that the resume path already handled.
+      _boundarySupervisor?.start();
     } else if (state == AppLifecycleState.resumed) {
       // resumed without prior paused — no-op (cold start or inactive)
     }
     if (state == AppLifecycleState.paused) {
       _hasBeenBackgrounded = true;
-      _boundaryMonitor?.stop();
+      _boundarySupervisor?.stop();
     }
   }
 
