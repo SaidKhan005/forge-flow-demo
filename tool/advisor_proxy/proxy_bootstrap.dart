@@ -3,9 +3,11 @@
 // Kept separate from `main.dart` so production wiring can be tested
 // without binding a socket or opening a live database connection.
 
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:path/path.dart' as p;
 
@@ -2522,16 +2524,45 @@ class RepositoryIntegrationAdminProxyGateway
 /// Plaintext flag values are not secrets — the table holds gating
 /// bits and operator-facing copy only — so the response payload
 /// returns the row JSON as-is.
+///
+/// HARD-D — toggle idempotency. Per
+/// `docs/contracts/hardening_feature_flag_idempotency_contract.md`,
+/// retries with the same `Idempotency-Key` collapse to one DB
+/// mutation + one audit row. The contract names `proxy_requests` as
+/// the durable backstop, but that table is keyed on
+/// `(operator_id, location_id, idempotency_key)` with NOT NULL FKs
+/// to `locations` (see `db/migrations/202604250007_advisor_rls_index_hardening.sql`)
+/// and the toggle route is cross-tenant (super_admin actor with no
+/// operator/location scope). The 11A.3a comment in
+/// `db/migrations/202605010000_phase_11A_3a_corpus_versions_ledger.sql`
+/// already records this fit problem and points cross-tenant admin
+/// dedup at a separate cache. Until that cache table grows the
+/// `payload_hash` / `request_type` columns the contract needs, this
+/// gateway runs the in-memory LRU posture only — same shape as the
+/// graph-commit pattern at the top of this file. Loss of dedup on
+/// proxy restart costs at most one duplicate audit row; the flag
+/// state itself is naturally idempotent (`UPDATE feature_flags SET
+/// enabled=...` is the same write whether run once or many).
 class RepositoryFeatureFlagsAdminProxyGateway
     implements FeatureFlagsAdminProxyGateway {
   RepositoryFeatureFlagsAdminProxyGateway({
     required FeatureFlagsRepository featureFlagsRepository,
     required AuthEventsAuditRepository auditRepository,
+    FeatureFlagToggleIdempotencyCache? idempotencyCache,
   })  : _flags = featureFlagsRepository,
-        _auditRepository = auditRepository;
+        _auditRepository = auditRepository,
+        _idempotencyCache =
+            idempotencyCache ?? FeatureFlagToggleIdempotencyCache();
 
   final FeatureFlagsRepository _flags;
   final AuthEventsAuditRepository _auditRepository;
+  final FeatureFlagToggleIdempotencyCache _idempotencyCache;
+
+  /// `request_type` value the cache stores alongside each entry. The
+  /// 409 `idempotency_request_in_flight` envelope fires when a
+  /// future caller reuses the same key against a different
+  /// `request_type`.
+  static const String _toggleRequestType = 'admin.feature_flag_toggle';
 
   @override
   Future<List<Map<String, Object?>>> listFlags({
@@ -2551,29 +2582,317 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required bool enabled,
     required String idempotencyKey,
     required String adminReason,
+  }) {
+    // SYNC prefix — no `await` before `runOrReplay` returns. Two
+    // concurrent calls with the same key cannot both observe a cache
+    // miss because the reservation runs in `runOrReplay`'s synchronous
+    // prefix (mirrors the graph-commit pattern in this file).
+    final payloadHash = _computePayloadHash(
+      flagId: flagId,
+      enabled: enabled,
+      adminReason: adminReason,
+      actorUserId: actorUserId,
+    );
+    try {
+      return _idempotencyCache.runOrReplay(
+        requestType: _toggleRequestType,
+        idempotencyKey: idempotencyKey,
+        payloadHash: payloadHash,
+        compute: () => _toggleFlagInternal(
+          actorUserId: actorUserId,
+          flagId: flagId,
+          enabled: enabled,
+          idempotencyKey: idempotencyKey,
+          adminReason: adminReason,
+        ),
+      );
+    } on _IdempotencyRequestTypeMismatch {
+      throw const FeatureFlagsAdminGatewayValidationError(
+        statusCode: 409,
+        code: 'idempotency_request_in_flight',
+        message:
+            'Idempotency-Key was already used by a request of a different '
+            'type; pick a fresh key for this request',
+      );
+    } on _IdempotencyPayloadMismatch {
+      throw const FeatureFlagsAdminGatewayValidationError(
+        statusCode: 422,
+        code: 'idempotency_payload_mismatch',
+        message:
+            'Idempotency-Key was already used with a different request '
+            'payload; pick a fresh key or resubmit the original payload',
+      );
+    }
+  }
+
+  Future<Map<String, Object?>?> _toggleFlagInternal({
+    required String actorUserId,
+    required String flagId,
+    required bool enabled,
+    required String idempotencyKey,
+    required String adminReason,
   }) async {
+    // Toggle + audit + audit_logs fan-out commit together. The audit
+    // write rides the same `withSystem` transaction the UPDATE opens
+    // (via the [onCommit] callback on the repository), so either
+    // both rows land or both roll back. If we instead split them
+    // into two transactions, an audit failure after a successful
+    // toggle would (a) leave the state change unaudited and
+    // (b) drop the cache slot via catchError, letting a retry
+    // re-mutate (and emit a fresh audit row attributed to the
+    // retry's transaction, with stale-vs-original timestamps).
     final row = await _flags.toggleFlag(
       flagId: flagId,
       enabled: enabled,
       actorUserId: actorUserId,
       adminReason: adminReason,
-    );
-    if (row == null) return null;
-    await _auditRepository.insertSystemEvent(
-      actorUserId: actorUserId,
-      eventType: 'admin.feature_flags.toggle',
-      adminReason: adminReason,
-      payload: <String, Object?>{
-        'admin_reason': adminReason,
-        'flag_id': row.flagId,
-        'flag_name': row.flagName,
-        'enabled': row.enabled,
-        'kind': row.kind,
-        'idempotency_key': idempotencyKey,
+      onCommit: (exec, row) async {
+        await _auditRepository.insertSystemEventOn(
+          exec,
+          actorUserId: actorUserId,
+          eventType: 'admin.feature_flags.toggle',
+          payload: <String, Object?>{
+            'admin_reason': adminReason,
+            'flag_id': row.flagId,
+            'flag_name': row.flagName,
+            'enabled': row.enabled,
+            'kind': row.kind,
+            'idempotency_key': idempotencyKey,
+          },
+        );
       },
     );
+    if (row == null) return null;
     return row.toJson();
   }
+
+  /// SHA-256 of canonical (sorted-key, no-whitespace) JSON of the
+  /// fields the contract names. Used to detect same-key + different-
+  /// payload retries (the 422 `idempotency_payload_mismatch` case).
+  /// Hand-built so a future change to `dart:convert`'s map-iteration
+  /// order cannot silently shift the hash.
+  static String _computePayloadHash({
+    required String flagId,
+    required bool enabled,
+    required String adminReason,
+    required String actorUserId,
+  }) {
+    final canonical = '{'
+        '"actor_user_id":${jsonEncode(actorUserId)},'
+        '"admin_reason":${jsonEncode(adminReason)},'
+        '"enabled":$enabled,'
+        '"flag_id":${jsonEncode(flagId)}'
+        '}';
+    return sha256.convert(utf8.encode(canonical)).toString();
+  }
+}
+
+/// In-memory dedup for HARD-D. See the comment on
+/// [RepositoryFeatureFlagsAdminProxyGateway] for why this cache lives
+/// here instead of in `proxy_requests` / `admin_idempotency_cache`.
+///
+/// Concurrent-safe by construction: [runOrReplay] does its lookup +
+/// reservation in its synchronous prefix (no `await` before it
+/// returns), so two simultaneous calls with the same key cannot both
+/// miss — the second arrival reads the first arrival's pending
+/// Future and awaits the same compute.
+class FeatureFlagToggleIdempotencyCache {
+  FeatureFlagToggleIdempotencyCache({this.maxEntries = 1024})
+      : assert(maxEntries > 0, 'maxEntries must be positive');
+
+  /// Hard cap on cached entries. The toggle route is super-admin
+  /// only so unique-key floods are extremely unlikely in practice;
+  /// the bound is here so a long-running proxy cannot leak unbounded
+  /// memory across months of operator activity.
+  final int maxEntries;
+
+  /// LinkedHashMap preserves insertion order, which doubles as LRU
+  /// eviction order: cache hits re-insert the entry to promote it,
+  /// pure misses pop the oldest insertion when the map exceeds
+  /// [maxEntries].
+  final LinkedHashMap<String, _FeatureFlagToggleCacheEntry> _store =
+      LinkedHashMap<String, _FeatureFlagToggleCacheEntry>();
+
+  /// Cached entry count — exposed so the LRU-eviction test can
+  /// assert on the bound without poking at private fields.
+  int get length => _store.length;
+
+  /// Looks up [idempotencyKey]:
+  ///   - cache miss → reserves the slot synchronously (before any
+  ///     await happens inside [compute]) and returns the [compute]
+  ///     Future. Two concurrent calls with the same key cannot both
+  ///     observe a miss because the reservation runs in this
+  ///     method's synchronous prefix.
+  ///   - cache hit, [requestType] mismatch → throws
+  ///     [_IdempotencyRequestTypeMismatch] (the contract's 409 case).
+  ///   - cache hit, [payloadHash] mismatch → throws
+  ///     [_IdempotencyPayloadMismatch] (the contract's 422 case).
+  ///   - cache hit, both match → returns the prior Future without
+  ///     re-running [compute] (the contract's "exactly one audit
+  ///     row" guarantee).
+  ///
+  /// On compute failure the entry is removed so a fresh retry with
+  /// the same key gets a clean attempt — Stripe-style: a transient
+  /// failure does not poison the key permanently.
+  ///
+  /// **In-flight entries are pinned from eviction.** The contract's
+  /// concurrent-collapse guarantee requires that two same-key calls
+  /// in flight at the same time share one Future. If LRU eviction
+  /// were allowed to drop a pending entry under burst pressure, a
+  /// retry of the evicted-but-still-running key would be a cache
+  /// miss and start a second compute — duplicate toggle, duplicate
+  /// audit. So the eviction loop walks past entries whose Future
+  /// has not settled and only removes settled entries. Under a
+  /// burst of more than [maxEntries] simultaneous in-flight calls
+  /// the cache temporarily exceeds [maxEntries]; pending entries
+  /// drain naturally when their Futures complete and the cache
+  /// returns to bound. Toggle compute is bounded by Postgres
+  /// latency (sub-second), so this is self-limiting in practice.
+  Future<Map<String, Object?>?> runOrReplay({
+    required String requestType,
+    required String idempotencyKey,
+    required String payloadHash,
+    required Future<Map<String, Object?>?> Function() compute,
+  }) {
+    final cached = _store.remove(idempotencyKey);
+    if (cached != null) {
+      // Re-insert at the tail so frequently-replayed entries survive
+      // longer under LRU eviction than untouched ones.
+      _store[idempotencyKey] = cached;
+      if (cached.requestType != requestType) {
+        throw const _IdempotencyRequestTypeMismatch();
+      }
+      if (cached.payloadHash != payloadHash) {
+        throw const _IdempotencyPayloadMismatch();
+      }
+      return cached.future;
+    }
+    // Reserve the slot BEFORE the first await inside [compute].
+    // Two equivalent shapes were considered:
+    //   - `Future.sync(compute).catchError(handler)` — concise but
+    //     `catchError` + `Error.throwWithStackTrace` surfaces the
+    //     rethrown error as an unhandled-future-error in some test
+    //     zones even when the caller does `await` and try/catch.
+    //   - The async wrapper below — handles the same removal logic
+    //     with a plain try/rethrow that the awaiting caller catches
+    //     normally. We use this one.
+    late Future<Map<String, Object?>?> pending;
+    late _FeatureFlagToggleCacheEntry entry;
+    pending = () async {
+      try {
+        return await compute();
+      } catch (_) {
+        // Drop the entry only if it still points at OUR future — a
+        // later overwrite (e.g., key reuse after our removal)
+        // shouldn't be evicted by our failure.
+        final current = _store[idempotencyKey];
+        if (current != null && identical(current.future, pending)) {
+          _store.remove(idempotencyKey);
+        }
+        rethrow;
+      }
+    }();
+    entry = _FeatureFlagToggleCacheEntry(
+      requestType: requestType,
+      payloadHash: payloadHash,
+      future: pending,
+    );
+    _store[idempotencyKey] = entry;
+    // Mark the entry settled when the Future resolves (success OR
+    // failure) AND trim any settled overflow. The trim is what
+    // brings the cache back to [maxEntries] after a burst of
+    // pending entries drain — without it, a completed burst would
+    // leave the cache above its bound until the next insert
+    // happened to fire.
+    //
+    // For failures the entry is already removed from the map by
+    // the catch block above; this whenComplete just flips the
+    // in-flight flag on the orphaned entry (harmless) and re-runs
+    // the trim against any other settled entries.
+    //
+    // The trailing `.catchError((_) {})` is load-bearing: a Future
+    // can have multiple listeners, and each unhandled failure is
+    // reported separately. The caller's `await pending` handles the
+    // primary listener; this secondary listener (the whenComplete
+    // chain) needs its own error sink, otherwise the test runner
+    // and prod zones see a duplicate "unhandled async error" report
+    // for every failed compute.
+    // ignore: unawaited_futures
+    pending.whenComplete(() {
+      entry.isPending = false;
+      // No `exceptKey`: the just-settled entry is now fair game
+      // for eviction. Any awaiter holding the Future already has
+      // it; removing the cache slot just means subsequent retries
+      // are cache misses (which is the LRU contract).
+      _trimSettledOverflow();
+    }).catchError((Object _) {
+      // Secondary listener — primary `await` consumer handles the
+      // real error. Returning null aligns with the chain's
+      // `Map<String, Object?>?` value type so the analyzer's
+      // `body_might_complete_normally_catch_error` rule is satisfied.
+      return null;
+    });
+    _trimSettledOverflow(exceptKey: idempotencyKey);
+    return pending;
+  }
+
+  /// Drops settled entries (oldest first) until the cache is back
+  /// to [maxEntries], skipping any entry that is still pending and
+  /// optionally [exceptKey] (used by the insert path so an entry's
+  /// own overflow trigger can never evict the entry it just
+  /// inserted). When called from the post-settle whenComplete chain
+  /// no [exceptKey] is supplied — the just-settled entry is
+  /// evictable like any other settled one. In-flight entries stay
+  /// pinned so the concurrent-collapse guarantee holds (see
+  /// [runOrReplay] doc comment); the cache may legitimately exceed
+  /// [maxEntries] until pending entries drain.
+  void _trimSettledOverflow({String? exceptKey}) {
+    if (_store.length <= maxEntries) return;
+    final keys = _store.keys.toList(growable: false);
+    var overflow = _store.length - maxEntries;
+    for (final key in keys) {
+      if (overflow == 0) return;
+      if (exceptKey != null && key == exceptKey) continue;
+      final entry = _store[key];
+      if (entry == null || entry.isPending) continue;
+      _store.remove(key);
+      overflow -= 1;
+    }
+  }
+}
+
+class _FeatureFlagToggleCacheEntry {
+  _FeatureFlagToggleCacheEntry({
+    required this.requestType,
+    required this.payloadHash,
+    required this.future,
+  });
+
+  final String requestType;
+  final String payloadHash;
+  final Future<Map<String, Object?>?> future;
+
+  /// Flipped to false by [FeatureFlagToggleIdempotencyCache.runOrReplay]
+  /// once [future] settles. Used by `_evictOverflow` to skip
+  /// in-flight entries — see the doc comment on `runOrReplay` for
+  /// why pending entries cannot be evicted without breaking the
+  /// concurrent-collapse guarantee.
+  bool isPending = true;
+}
+
+/// Sentinel raised by [FeatureFlagToggleIdempotencyCache.runOrReplay]
+/// when the cached entry's `request_type` differs from the caller's
+/// — the contract's 409 envelope.
+class _IdempotencyRequestTypeMismatch implements Exception {
+  const _IdempotencyRequestTypeMismatch();
+}
+
+/// Sentinel raised by [FeatureFlagToggleIdempotencyCache.runOrReplay]
+/// when the cached entry's `payload_hash` differs from the caller's
+/// — the contract's 422 envelope. The cached row is preserved (no
+/// mutation) so the original caller's response is still replayable.
+class _IdempotencyPayloadMismatch implements Exception {
+  const _IdempotencyPayloadMismatch();
 }
 
 /// Production [IntegrationAdminActorResolver] backed by

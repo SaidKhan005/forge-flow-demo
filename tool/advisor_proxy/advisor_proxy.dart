@@ -8459,9 +8459,22 @@ Future<void> routeRequest(
         idempotencyKey =
             request.headers.value('Idempotency-Key')?.trim();
         if (idempotencyKey == null || idempotencyKey.isEmpty) {
+          // HARD-D — error code matches
+          // `docs/contracts/hardening_feature_flag_idempotency_contract.md`.
+          // Other admin POST handlers in this file still emit
+          // `missing_idempotency_key` for backward compatibility with
+          // their own tests; aligning them is out of scope here.
           _writeJson(response, 400, <String, Object?>{
-            'error': 'missing_idempotency_key',
+            'error': 'idempotency_key_missing',
             'message': 'Idempotency-Key header is required',
+          });
+          return;
+        }
+        if (idempotencyKey.length > 200) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'idempotency_key_too_long',
+            'message':
+                'Idempotency-Key header must be 200 characters or fewer',
           });
           return;
         }

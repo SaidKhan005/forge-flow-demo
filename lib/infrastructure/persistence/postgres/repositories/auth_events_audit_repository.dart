@@ -262,55 +262,94 @@ class AuthEventsAuditRepository extends OperatorScopedRepository {
     required String adminReason,
   }) {
     return withSystem<String>((exec) async {
-      final rows = await exec.query(
-        'insert into auth_events_audit ('
-        'actor_user_id, actor_kind, actor_service_principal_id, '
-        'target_user_id, operator_id, location_id, '
-        'event_type, event_payload, ip, user_agent, '
-        'geo_country, request_id) '
-        'values (@actor_user_id::uuid, @actor_kind, '
-        '@actor_service_principal_id::uuid, @target_user_id::uuid, '
-        '@operator_id::uuid, @location_id::uuid, @event_type, '
-        '@payload::jsonb, @ip::inet, @user_agent, @geo_country, '
-        '@request_id::uuid) '
-        'returning event_id::text as event_id',
-        parameters: <String, Object?>{
-          'actor_user_id': actorUserId,
-          'actor_kind': actorKind,
-          'actor_service_principal_id': actorServicePrincipalId,
-          'target_user_id': targetUserId,
-          'operator_id': operatorId,
-          'location_id': locationId,
-          'event_type': eventType,
-          'payload': jsonEncode(payload),
-          'ip': ip,
-          'user_agent': userAgent,
-          'geo_country': geoCountry,
-          'request_id': requestId,
-        },
-      );
-      if (rows.isEmpty) {
-        throw StateError('auth_events_audit system insert returned no rows');
-      }
-      final id = rows.single['event_id'];
-      if (id is! String || id.isEmpty) {
-        throw StateError(
-          'auth_events_audit system insert returned a malformed event_id',
-        );
-      }
-      await _fanOutToAuditLogs(
+      return insertSystemEventOn(
         exec,
+        eventType: eventType,
         operatorId: operatorId,
         locationId: locationId,
-        eventType: eventType,
         actorUserId: actorUserId,
         actorKind: actorKind,
         actorServicePrincipalId: actorServicePrincipalId,
         targetUserId: targetUserId,
         payload: payload,
+        ip: ip,
+        userAgent: userAgent,
+        geoCountry: geoCountry,
+        requestId: requestId,
       );
-      return id;
     }, reason: adminReason);
+  }
+
+  /// Same as [insertSystemEvent] but runs on a caller-supplied
+  /// [PostgresExecutor] instead of opening its own `withSystem`
+  /// transaction. Use this when the audit row must commit atomically
+  /// with another mutation in the same transaction (HARD-D
+  /// `feature_flags` toggle, future admin-write paths). The
+  /// fan-out into `audit_logs` runs inside the same `exec` so the
+  /// hash-chained audit row is bound to the same commit boundary.
+  Future<String> insertSystemEventOn(
+    PostgresExecutor exec, {
+    required String eventType,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+    String actorKind = 'user',
+    String? actorServicePrincipalId,
+    String? targetUserId,
+    Map<String, Object?> payload = const <String, Object?>{},
+    String? ip,
+    String? userAgent,
+    String? geoCountry,
+    String? requestId,
+  }) async {
+    final rows = await exec.query(
+      'insert into auth_events_audit ('
+      'actor_user_id, actor_kind, actor_service_principal_id, '
+      'target_user_id, operator_id, location_id, '
+      'event_type, event_payload, ip, user_agent, '
+      'geo_country, request_id) '
+      'values (@actor_user_id::uuid, @actor_kind, '
+      '@actor_service_principal_id::uuid, @target_user_id::uuid, '
+      '@operator_id::uuid, @location_id::uuid, @event_type, '
+      '@payload::jsonb, @ip::inet, @user_agent, @geo_country, '
+      '@request_id::uuid) '
+      'returning event_id::text as event_id',
+      parameters: <String, Object?>{
+        'actor_user_id': actorUserId,
+        'actor_kind': actorKind,
+        'actor_service_principal_id': actorServicePrincipalId,
+        'target_user_id': targetUserId,
+        'operator_id': operatorId,
+        'location_id': locationId,
+        'event_type': eventType,
+        'payload': jsonEncode(payload),
+        'ip': ip,
+        'user_agent': userAgent,
+        'geo_country': geoCountry,
+        'request_id': requestId,
+      },
+    );
+    if (rows.isEmpty) {
+      throw StateError('auth_events_audit system insert returned no rows');
+    }
+    final id = rows.single['event_id'];
+    if (id is! String || id.isEmpty) {
+      throw StateError(
+        'auth_events_audit system insert returned a malformed event_id',
+      );
+    }
+    await _fanOutToAuditLogs(
+      exec,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: eventType,
+      actorUserId: actorUserId,
+      actorKind: actorKind,
+      actorServicePrincipalId: actorServicePrincipalId,
+      targetUserId: targetUserId,
+      payload: payload,
+    );
+    return id;
   }
 
   /// Phase 9.UX.6 — self-service Audit Log read projection.

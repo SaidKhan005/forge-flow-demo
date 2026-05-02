@@ -262,7 +262,9 @@ void main() {
             );
             expect(response.statusCode, equals(400));
             final body = jsonDecode(response.body) as Map<String, Object?>;
-            expect(body['error'], equals('missing_idempotency_key'));
+            // HARD-D — code aligned with
+            // docs/contracts/hardening_feature_flag_idempotency_contract.md.
+            expect(body['error'], equals('idempotency_key_missing'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
