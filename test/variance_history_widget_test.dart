@@ -215,8 +215,9 @@ void main() {
     });
   });
 
-  group('WeekHistoryTile â€” unknown lever falls back to coversDown', () {
-    testWidgets('unknown primaryLeverId does not crash', (tester) async {
+  group('WeekHistoryTile â€” unknown lever degrades to "—" (7.58.UX.5 F-1)', () {
+    testWidgets('unknown primaryLeverId renders the degraded badge, not coversDown',
+        (tester) async {
       const record = WeekRecord(
         weekId: 'stale', weekLabel: 'Stale',
         totalCovers: 1100, forecastCovers: 1200,
@@ -227,8 +228,11 @@ void main() {
       );
       await tester.pumpWidget(_wrap(WeekHistoryTile(week: record)));
       await tester.pump();
-      // Falls back to coversDown shortLabel = 'COVERS'
-      expect(find.text('COVERS'), findsOneWidget);
+      // 7.58.UX.5 F-1: explicit lookup; unknown id → '—' badge.
+      // The pre-fix behaviour fell through to LeverCards.coversDown
+      // shortLabel ('COVERS') and overclaimed a real driver.
+      expect(find.text('—'), findsOneWidget);
+      expect(find.text('COVERS'), findsNothing);
     });
   });
 
@@ -490,6 +494,60 @@ void main() {
         );
       });
     }
+  });
+
+  group('Primary Driver degraded surfaces (7.58.UX.5 F-1, F-6)', () {
+    testWidgets('LeverCardNotYetAvailable shows the degraded copy', (tester) async {
+      await tester.pumpWidget(_wrap(const LeverCardNotYetAvailable()));
+      await tester.pump();
+      // F-1: explicit degraded text replaces the silent coversDown
+      // 'COVERS CAME IN LIGHT' fall-through.
+      expect(find.text('NOT YET ON-MODEL'), findsOneWidget);
+      expect(find.text('PENDING'), findsOneWidget);
+      expect(find.text('COVERS CAME IN LIGHT'), findsNothing);
+    });
+
+    testWidgets('WeekDetailScreen renders LeverCardNotYetAvailable for the on_model sentinel',
+        (tester) async {
+      // F-6: row with the `on_model` sentinel must surface the degraded
+      // card explicitly — never fall through to coversDown.
+      const record = WeekRecord(
+        weekId: 'sentinel', weekLabel: 'Sentinel',
+        totalCovers: 1100, forecastCovers: 1200,
+        totalFohHours: 265, totalBohHours: 280,
+        avgPPA: 41.79, avgCPLH: 4.15,
+        theoreticalLaborPct: 20.48, actualLaborPct: 22.0,
+        dollarGap: 800.0, primaryLeverId: 'on_model',
+        targetSourceType: 'system_baseline',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+        lockedRequiredFohHours: 260, lockedRequiredBohHours: 275,
+      );
+      await _pumpWeekDetail(tester, record);
+      await _scrollWeekDetailToText(tester, 'NOT YET ON-MODEL');
+      expect(find.text('NOT YET ON-MODEL'), findsOneWidget);
+      expect(find.text('COVERS CAME IN LIGHT'), findsNothing);
+    });
+
+    testWidgets('WeekDetailScreen renders LeverCardNotYetAvailable for an unknown lever id',
+        (tester) async {
+      // F-1: any id outside the 16 known levers must degrade explicitly.
+      const record = WeekRecord(
+        weekId: 'unknown', weekLabel: 'Unknown',
+        totalCovers: 1100, forecastCovers: 1200,
+        totalFohHours: 265, totalBohHours: 280,
+        avgPPA: 41.79, avgCPLH: 4.15,
+        theoreticalLaborPct: 20.48, actualLaborPct: 22.0,
+        dollarGap: 800.0, primaryLeverId: 'unknown_lever_xyz',
+        targetSourceType: 'system_baseline',
+        targetCPLH: 4.58, targetSPLH: 180.0, targetPPA: 41.50,
+        targetFohWage: 16.50, targetBohWage: 21.35,
+        lockedRequiredFohHours: 260, lockedRequiredBohHours: 275,
+      );
+      await _pumpWeekDetail(tester, record);
+      await _scrollWeekDetailToText(tester, 'NOT YET ON-MODEL');
+      expect(find.text('NOT YET ON-MODEL'), findsOneWidget);
+    });
   });
 
   group('WeekDetailScreen â€” partial week (7.55q.5)', () {

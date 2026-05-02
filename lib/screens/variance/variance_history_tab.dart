@@ -444,10 +444,9 @@ class _HistoryTabState extends State<HistoryTab>
         LeverCardData? leakCard;
         if (patternRecords.isNotEmpty) {
           teachingSummary = HistoryTeachingAnalyzer.summarize(patternRecords);
-          leakCard = LeverCards.all.firstWhere(
-            (l) => l.id == teachingSummary!.mostCommonLeakId,
-            orElse: () => LeverCards.coversDown,
-          );
+          // 7.58.UX.5 (F-1): explicit lookup; null → suppress leak card
+          // rather than fabricating a coversDown leak from an unknown id.
+          leakCard = LeverCards.lookup(teachingSummary.mostCommonLeakId);
         }
 
         // Benchmark daypart evidence (7.55k.5).

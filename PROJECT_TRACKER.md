@@ -24,6 +24,12 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   idempotency-key parcel (operator/pricing/integration + proxy
   `_runAdminIdempotent`); MFA test parcel (4 files, 45 tests,
   `lib/services/mfa/` 87.3% coverage).
+- **Recently accepted (2026-05-02 follow-up)**: `7.58.UX.5` Variance day-row
+  renderer honesty (F-1 / F-6 / F-7 closed). `LeverCards.lookup` helper +
+  `LeverCardNotYetAvailable` widget; 8 renderer sites migrated off the silent
+  `coversDown` fall-through; closed-row `_driverLabel` lowercased; inline
+  `_LeverBadge` switched to `LeverCardData.metric` copy. Contract test stays
+  green (22/22); regression suite 181/181. Phase 7.58 has zero DRIFT.
 - **Earlier 2026-05-02 batch**: `HARD-A`–`HARD-H` hardening (PRs #41–49);
   `11A.3b`, `11A.4`/`4b`/`4c`, `11A.7`, `11A.UX.health`; `G.2` boundary
   monitor; `7.58.5` variance row purity. Hardening contracts `Status: Closed`
@@ -82,6 +88,9 @@ on `.claude/worktrees/trusting-greider-0f6f9d`. Remaining candidates by readines
 1. **Production1 migration apply event** — 22 migrations queued
    (`202604280014`–`202605021500`); runbook `phase_9_production1_migration_apply_runbook.md`.
    Operator-driven; no code change needed.
+2. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
+3. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
+4. **`10.5` daypart projections** — Shift companion (per HP non-blocking ordering).
 2. **`7.58.UX.5` F-1 fallthrough** — primary-driver audit deferral; UX surface,
    keep contract test green.
 3. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
@@ -102,6 +111,8 @@ Live board lists active + queued only.
 | --- | --- | --- |
 | `11A` foundation | active; `0`–`4c`/`7`/`UX.health` accepted; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
+| `7.58` | `7.58.0` (contract pinned) + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
+| `7.61`, `10a`, `10.5`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `7.58` | `7.58.0` (contract pinned) + `7.58.5` accepted; `7.58.UX.5` queued (F-1 fallthrough) | `phase_7_58/*` |
 | `10.5` | active; `10.5.0` daypart toggle scaffold landing on `.claude/worktrees/trusting-greider-0f6f9d` | `phase_10_5/*` |
 | `7.61`, `10a`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |

@@ -208,7 +208,10 @@ void main() {
         _closedShift(primaryLever: 'CPLH_DOWN'),
       ]);
       final child = projection.dayRows.first.children.first;
-      expect(child.driverLabel, 'CPLH DOWN');
+      // 7.58.UX.5 F-7: lowercase canonical form (matches engine output);
+      // the upper-snake 'CPLH DOWN' form was a visual case mismatch
+      // against every other lever surface.
+      expect(child.driverLabel, 'cplh down');
     });
   });
 
@@ -471,8 +474,9 @@ void main() {
       final wed = projection.dayRows.firstWhere((d) => d.dayLabel == 'Wed');
 
       // Closed row renders its own detected lever (regression check).
-      expect(mon.children.first.driverLabel, 'COVERS DOWN');
-      // Open and projected rows must not inherit Mon's COVERS DOWN.
+      // 7.58.UX.5 F-7: lowercase canonical form replaces upper-snake.
+      expect(mon.children.first.driverLabel, 'covers down');
+      // Open and projected rows must not inherit Mon's covers_down.
       expect(tue.children.first.driverLabel, 'Not yet available');
       expect(wed.children.first.driverLabel, 'Not yet available');
     });

@@ -104,7 +104,9 @@ the 16 cards or the legacy `'covers_down'` no-signal fallback. The
 id is always lowercase snake_case. Storage layers persist the
 upper-snake form (`'COVERS_DOWN'`) at `ShiftRecord.primaryLever`;
 `ShiftRecord.normalizedLeverId` lowercases it for lookup. Renderers
-use the lowercase id for `LeverCards.all.firstWhere(...)`.
+resolve the id through `LeverCards.lookup`, which is
+case-insensitive and returns `null` for the `on_model` sentinel and
+unknown ids — see Presentation Split Rules.
 
 ## Presentation Split (Short vs Deep)
 
@@ -134,11 +136,24 @@ to pick the right shape — never to invent a new one.
 - The **medium** surfaces (Baseline Manager chip, History leak
   evidence card) MUST use `LeverCardData.metric` only — never
   `whatHappened` or `whatToDo`. They are evidence, not teaching.
-- Rendering MUST use `LeverCards.all.firstWhere(... orElse: …)` so
-  an unknown id degrades to a sensible default rather than crashing.
-  Today's defaults are `LeverCards.coversDown` (most surfaces) and
-  `LeverCards.ppaUp` (Learn wins, Learn short-label helper). See
-  Finding F-1.
+- Rendering MUST resolve a lever id through `LeverCards.lookup(id)`
+  (case-insensitive, returns `LeverCardData?`). The helper returns
+  `null` for the `on_model` sentinel, an unknown id, and empty / null
+  input. Renderers MUST then surface the null return as an explicit
+  degraded state — never fall through to a real lever card. The
+  shared user-facing label is `LeverCards.notYetOnModelLabel`
+  (`'Not yet on-model'`); the deep-card surfaces render
+  `LeverCardNotYetAvailable`, the short-badge surfaces render `'—'`,
+  and the inline `_LeverBadge` renders
+  `'PRIMARY LEVER: NOT YET ON-MODEL'`. The pre-7.58.UX.5 pattern
+  (`firstWhere(... orElse: () => coversDown)` / `() => ppaUp`)
+  silently overclaimed a real driver and is banned. Owned by
+  Finding F-1 (closed by `7.58.UX.5`).
+- Read-model layers that consume guaranteed-engine output (per R6
+  `determineLever` never returns `on_model`) MAY assert non-null via
+  `LeverCards.lookup(id)!` so a hypothetical R6 violation surfaces
+  as a crash rather than a silent fall-through. Used today by
+  `ShiftDashboardReadModel.buildWholeDay`.
 
 ## Row-Status Honesty Rules
 
@@ -161,10 +176,13 @@ For Primary Driver this means:
   current behaviour at
   `lib/services/variance_week_projection_read_service.dart:155`.
 - **The `on_model` sentinel** — the constructor-time placeholder used
-  by `CurrentWeekState.shiftRecordFromSnapshot`. Renderers MAY treat
-  this as "no driver yet" (same visual treatment as
-  "Not yet available") but MUST NOT fall through to `LeverCards.coversDown`
-  for it. See Finding F-1.
+  by `CurrentWeekState.shiftRecordFromSnapshot`. Renderers MUST resolve
+  it through `LeverCards.lookup` (which returns `null` for this
+  sentinel, per Output Cardinality + Presentation Split Rules) and
+  surface a "no driver yet" treatment — same visual class as
+  "Not yet available". The pre-7.58.UX.5 silent fall-through to
+  `LeverCards.coversDown` is banned. Owned by Finding F-1 / F-6
+  (closed by `7.58.UX.5`).
 
 ### What an open / projected row MUST NOT say
 

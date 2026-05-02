@@ -182,26 +182,39 @@ their own test additions.
 
 ### Consumers (read the persisted id and render)
 
+State as of 7.58.UX.5 close (2026-05-02). All renderer sites resolve
+the id through `LeverCards.lookup` (returns `LeverCardData?`); null
+returns drive a deliberate degraded surface, never silent
+fall-through. Pre-UX.5 history of each site is preserved in the
+Findings section below.
+
 - [variance_this_week_tab.dart:90](../../../lib/screens/variance/variance_this_week_tab.dart) —
-  full `LeverCardWidget` for `weekData.primaryLeverId`.
+  full `LeverCardWidget` for `weekData.primaryLeverId`; null →
+  `LeverCardNotYetAvailable`.
 - [variance_this_week_tab.dart:938, :1194](../../../lib/screens/variance/variance_this_week_tab.dart) —
-  inline `_LeverBadge` rendering `s.primaryLever.replaceAll('_',' ')`.
+  inline `_LeverBadge`; renders `LeverCardData.metric` for known
+  ids, `'PRIMARY LEVER: NOT YET ON-MODEL'` (muted) for null lookup.
 - [week_history_tile.dart:28](../../../lib/widgets/week_history_tile.dart) —
-  short badge rendering `LeverCardData.shortLabel`.
+  short badge rendering `LeverCardData.shortLabel`; null → `'—'`.
 - [week_detail_screen.dart:138](../../../lib/screens/week_detail_screen.dart) —
-  full `LeverCardWidget` for `WeekRecord.primaryLeverId`.
+  full `LeverCardWidget` for `WeekRecord.primaryLeverId`; null →
+  `LeverCardNotYetAvailable`.
 - [variance_history_tab.dart:225, :447](../../../lib/screens/variance/variance_history_tab.dart) —
-  `_LeakEvidenceCard` rendering `LeverCardData.metric` only.
+  `_LeakEvidenceCard` rendering `LeverCardData.metric` only; null
+  lookup suppresses the leak card rather than fabricating one.
 - [variance_learn_tab.dart:148, :479](../../../lib/screens/variance/variance_learn_tab.dart) —
-  three-card teaching shape; also `_leverShortLabel` helper.
+  three-card teaching shape; null lookup falls back to the existing
+  "no patterns yet" placeholder. `_leverShortLabel` returns `'—'`
+  for null lookup.
 - [baseline_manager_helpers.dart:44, :58](../../../lib/screens/baseline_manager/baseline_manager_helpers.dart) —
-  `isSuggestedStar` + `leverLabel`.
+  `isSuggestedStar` + `leverLabel`. (Out of `7.58.UX.5` scope; uses
+  its own helper. Audit deferred.)
 - [baseline_manager_day_detail.dart:242](../../../lib/screens/baseline_manager/baseline_manager_day_detail.dart) —
-  candidate `LEVER` chip.
-- [variance_week_projection_read_service.dart:147](../../../lib/services/variance_week_projection_read_service.dart) —
-  `_driverLabel` returns `s.primaryLever.replaceAll('_', ' ')` for
-  closed rows; **inherits via daypart carry-forward** for non-closed
-  rows (see Finding F-5).
+  candidate `LEVER` chip. (Same scope note as above.)
+- [variance_week_projection_read_service.dart:138](../../../lib/services/variance_week_projection_read_service.dart) —
+  `_driverLabel` returns `s.normalizedLeverId.replaceAll('_', ' ')`
+  (lowercase) for closed rows; `'Not yet available'` for non-closed
+  rows (`7.58.5` G.5 fold lift; `7.58.UX.5` F-7 case fix).
 
 ## Findings
 
@@ -235,6 +248,14 @@ crashing"; row-status honesty rule — "Renderers MAY treat
 **Owns:** `7.58.UX.5` (variance row purity touches the same renderer
 sites; cleaner to fix the `orElse` once when the projection-row fix
 lands).
+
+**Status:** RESOLVED by `7.58.UX.5` (2026-05-02). Pre-fix
+`firstWhere(... orElse: coversDown)` replaced at all 8 renderer sites
+by `LeverCards.lookup` returning `LeverCardData?`; null returns drive
+explicit degraded surfaces — `LeverCardNotYetAvailable` (deep cards),
+`'—'` (short badges), `'PRIMARY LEVER: NOT YET ON-MODEL'` (inline
+`_LeverBadge`). Contract Presentation Split rule revised in lockstep.
+See `docs/_walkthroughs/7.58.UX.5.md`.
 
 ### F-2 / `7.58.0b` — Empty-candidate path returns `'covers_down'`
 
@@ -348,6 +369,13 @@ Presentation Split.
 flips to `on_model`) + `7.58.UX.5` (renderer side, when "Not yet
 available" / "On-model" gets a deliberate visual treatment).
 
+**Status:** Renderer side RESOLVED by `7.58.UX.5` (2026-05-02). The
+`'ON_MODEL'` sentinel now resolves to `null` via `LeverCards.lookup`
+and renders the "Not yet on-model" treatment. Sentinel ownership
+documented in `current_week_state.dart` and `shift_record.dart`
+docstrings, both pointing at the contract's Output Cardinality
+clause. Engine-side flip (when `7.58.0b` lands) remains queued.
+
 ### F-7 / `7.58.0g` — Persistence form / lookup form mismatch
 
 **Where:**
@@ -371,6 +399,13 @@ inline-badge surfaces should call `LeverCardData.shortLabel` (or
 
 **Owns:** `7.58.UX.5` — fix the renderer when row purity work
 already touches the projection display.
+
+**Status:** RESOLVED by `7.58.UX.5` (2026-05-02). Closed-row
+projection `_driverLabel` now uses `s.normalizedLeverId` (lowercase,
+matches engine output). Inline `_LeverBadge` switched to
+`LeverCardData.metric` per the contract's recommendation. Closed-row
+contract test (R1 + R18 + R32) round-trips the lowercase form back
+to engine ids.
 
 ## Notes for `7.58.1`-`7.58.5` Authors
 

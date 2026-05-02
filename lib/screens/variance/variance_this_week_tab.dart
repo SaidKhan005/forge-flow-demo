@@ -87,10 +87,10 @@ class _ThisWeekContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final lever = LeverCards.all.firstWhere(
-      (l) => l.id == weekData.primaryLeverId,
-      orElse: () => LeverCards.coversDown,
-    );
+    // 7.58.UX.5 (F-1): explicit lookup; null → on_model / unknown id, render
+    // the degraded `LeverCardNotYetAvailable` instead of silently falling
+    // through to coversDown. See phase_7_58_primary_driver_contract.md.
+    final lever = LeverCards.lookup(weekData.primaryLeverId);
 
     return CustomScrollView(
       // Build all slivers eagerly so section labels below the fold are
@@ -161,7 +161,11 @@ class _ThisWeekContent extends StatelessWidget {
               pinned: true,
               delegate: StickySectionDelegate('PRIMARY DRIVER'),
             ),
-            SliverToBoxAdapter(child: LeverCardWidget(data: lever)),
+            SliverToBoxAdapter(
+              child: lever == null
+                  ? const LeverCardNotYetAvailable()
+                  : LeverCardWidget(data: lever),
+            ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
         ),
@@ -1197,18 +1201,28 @@ class _LeverBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 7.58.UX.5 (F-1 + F-7): degrade explicitly when the storage form is
+    // the `on_model` sentinel or an unknown id (no silent coversDown
+    // fall-through), and source the user-facing copy from
+    // `LeverCardData.metric` so the badge matches every other deep-card
+    // surface instead of leaking the upper-snake id.
+    final card = LeverCards.lookup(lever);
+    final color = card == null ? AppColors.textMuted : AppColors.warning;
+    final label = card == null
+        ? 'PRIMARY LEVER: ${LeverCards.notYetOnModelLabel.toUpperCase()}'
+        : 'PRIMARY LEVER: ${card.metric}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: AppColors.backgroundSurface,
         border: Border.all(
-          color: AppColors.warning.withValues(alpha: 0.6),
+          color: color.withValues(alpha: 0.6),
           width: 1,
         ),
       ),
       child: Text(
-        'PRIMARY LEVER: ${lever.replaceAll('_', ' ')}',
-        style: AppTextStyles.mono8(color: AppColors.warning),
+        label,
+        style: AppTextStyles.mono8(color: color),
       ),
     );
   }
