@@ -19,9 +19,19 @@ import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 
 class OperatorLocationAdminScreen extends StatefulWidget {
-  const OperatorLocationAdminScreen({super.key, required this.gateway});
+  const OperatorLocationAdminScreen({
+    super.key,
+    required this.gateway,
+    this.idempotencyKeyFactory,
+  });
 
   final OperatorLocationAdminGateway gateway;
+
+  /// Factory for the idempotency key the gateway attaches to each
+  /// mutating call. Production binds this to a UUID-shaped generator;
+  /// widget tests inject a deterministic counter so retries can be
+  /// asserted.
+  final String Function()? idempotencyKeyFactory;
 
   @override
   State<OperatorLocationAdminScreen> createState() =>
@@ -35,6 +45,20 @@ class _OperatorLocationAdminScreenState
   List<OperatorAdminBundle> _bundles = const <OperatorAdminBundle>[];
   String? _selectedOperatorId;
   String? _actionError;
+  int _idempotencyCounter = 0;
+
+  /// Mints a fresh idempotency key per user action so a retried POST
+  /// or PATCH at the proxy collapses to one ledger row + one audit
+  /// row in `admin_request_idempotency`. A new key is minted each
+  /// time the user triggers a mutation; it is NEVER reused across
+  /// re-renders or repeated screen builds.
+  String _nextIdempotencyKey() {
+    final factory = widget.idempotencyKeyFactory;
+    if (factory != null) return factory();
+    _idempotencyCounter += 1;
+    return 'operator-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+        '$_idempotencyCounter';
+  }
 
   @override
   void initState() {
@@ -216,7 +240,8 @@ class _OperatorLocationAdminScreenState
   Future<void> _openOnboardingDialog() async {
     final command = await showDialog<OperatorOnboardCommand>(
       context: context,
-      builder: (_) => const _OnboardOperatorDialog(),
+      builder: (_) =>
+          _OnboardOperatorDialog(idempotencyKey: _nextIdempotencyKey()),
     );
     if (command == null) return;
     await _runAndRefresh(
@@ -230,7 +255,10 @@ class _OperatorLocationAdminScreenState
   Future<void> _openEditOperatorDialog(OperatorAdminBundle bundle) async {
     final patch = await showDialog<OperatorPatchCommand>(
       context: context,
-      builder: (_) => _EditOperatorDialog(bundle: bundle),
+      builder: (_) => _EditOperatorDialog(
+        bundle: bundle,
+        idempotencyKey: _nextIdempotencyKey(),
+      ),
     );
     if (patch == null) return;
     await _runAndRefresh(
@@ -242,18 +270,26 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _suspend(OperatorAdminBundle bundle) async {
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
-        await widget.gateway.suspendOperator(bundle.operator.operatorId);
+        await widget.gateway.suspendOperator(
+          bundle.operator.operatorId,
+          idempotencyKey: key,
+        );
       },
       successHint: 'Operator suspended.',
     );
   }
 
   Future<void> _reactivate(OperatorAdminBundle bundle) async {
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
-        await widget.gateway.reactivateOperator(bundle.operator.operatorId);
+        await widget.gateway.reactivateOperator(
+          bundle.operator.operatorId,
+          idempotencyKey: key,
+        );
       },
       successHint: 'Operator reactivated.',
     );
@@ -262,8 +298,10 @@ class _OperatorLocationAdminScreenState
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {
     final command = await showDialog<LocationCreateCommand>(
       context: context,
-      builder: (_) =>
-          _LocationDialog(operatorId: bundle.operator.operatorId),
+      builder: (_) => _LocationDialog(
+        operatorId: bundle.operator.operatorId,
+        idempotencyKey: _nextIdempotencyKey(),
+      ),
     );
     if (command == null) return;
     await _runAndRefresh(
@@ -280,6 +318,7 @@ class _OperatorLocationAdminScreenState
       builder: (_) => _LocationDialog(
         operatorId: location.operatorId,
         existing: location,
+        idempotencyKey: _nextIdempotencyKey(),
       ),
     );
     if (command == null) return;
@@ -302,11 +341,13 @@ class _OperatorLocationAdminScreenState
       ),
     );
     if (confirmed != true) return;
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
         await widget.gateway.removeLocation(
           operatorId: location.operatorId,
           locationId: location.locationId,
+          idempotencyKey: key,
         );
       },
       successHint: 'Location removed.',
@@ -317,12 +358,14 @@ class _OperatorLocationAdminScreenState
     OperatorAdminBundle bundle,
     LocationAdminRecord location,
   ) async {
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
         await widget.gateway.patchOperator(
           OperatorPatchCommand(
             operatorId: bundle.operator.operatorId,
             primaryLocationId: location.locationId,
+            idempotencyKey: key,
           ),
         );
       },
@@ -822,7 +865,12 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _OnboardOperatorDialog extends StatefulWidget {
-  const _OnboardOperatorDialog();
+  const _OnboardOperatorDialog({required this.idempotencyKey});
+
+  /// Per-action idempotency key minted by the screen and threaded
+  /// down so the proxy dedups on retries — see `_nextIdempotencyKey`
+  /// in `_OperatorLocationAdminScreenState`.
+  final String idempotencyKey;
 
   @override
   State<_OnboardOperatorDialog> createState() =>
@@ -862,6 +910,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         primaryLocationTimezone: _locationTimezone.text.trim(),
         primaryLocationRolloverHour: _rolloverHour,
         adminUserEmail: _adminEmail.text.trim(),
+        idempotencyKey: widget.idempotencyKey,
       ),
     );
   }
@@ -966,9 +1015,15 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
 }
 
 class _EditOperatorDialog extends StatefulWidget {
-  const _EditOperatorDialog({required this.bundle});
+  const _EditOperatorDialog({
+    required this.bundle,
+    required this.idempotencyKey,
+  });
 
   final OperatorAdminBundle bundle;
+
+  /// Per-action idempotency key minted by the screen.
+  final String idempotencyKey;
 
   @override
   State<_EditOperatorDialog> createState() => _EditOperatorDialogState();
@@ -1011,6 +1066,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
         subscriptionTier: _subscriptionTier,
         preferredCurrency: _preferredCurrency,
         primaryLocationId: _primaryLocationId,
+        idempotencyKey: widget.idempotencyKey,
       ),
     );
   }
@@ -1089,10 +1145,17 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
 }
 
 class _LocationDialog extends StatefulWidget {
-  const _LocationDialog({required this.operatorId, this.existing});
+  const _LocationDialog({
+    required this.operatorId,
+    required this.idempotencyKey,
+    this.existing,
+  });
 
   final String operatorId;
   final LocationAdminRecord? existing;
+
+  /// Per-action idempotency key minted by the screen.
+  final String idempotencyKey;
 
   @override
   State<_LocationDialog> createState() => _LocationDialogState();
@@ -1130,6 +1193,7 @@ class _LocationDialogState extends State<_LocationDialog> {
           name: _name.text.trim(),
           timezone: _timezone.text.trim(),
           businessDayRolloverHour: _rolloverHour,
+          idempotencyKey: widget.idempotencyKey,
         ),
       );
     } else {
@@ -1139,6 +1203,7 @@ class _LocationDialogState extends State<_LocationDialog> {
           name: _name.text.trim(),
           timezone: _timezone.text.trim(),
           businessDayRolloverHour: _rolloverHour,
+          idempotencyKey: widget.idempotencyKey,
         ),
       );
     }

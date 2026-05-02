@@ -10,9 +10,13 @@
 //   * `kPricingTierTemplates` — pins the locked tier-template catalog
 //     so adding/removing a tier requires an explicit test edit.
 
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/admin/models/pricing_tier_admin_models.dart';
 import 'package:forge_and_flow/admin/services/pricing_tier_admin_gateway.dart';
+import 'package:http/http.dart' as http;
 
 void main() {
   PricingOperatorBundle bundle({
@@ -92,6 +96,7 @@ void main() {
         const OperatorTierPatchCommand(
           operatorId: 'op-1',
           subscriptionTier: 'premium',
+          idempotencyKey: 'k-tier-premium',
         ),
       );
       expect(updated.subscriptionTier, equals('premium'));
@@ -107,6 +112,7 @@ void main() {
           const OperatorTierPatchCommand(
             operatorId: 'op-1',
             subscriptionTier: 'megapremium',
+            idempotencyKey: 'k-tier-bad',
           ),
         );
       } catch (e) {
@@ -127,6 +133,7 @@ void main() {
           const OperatorTierPatchCommand(
             operatorId: 'op-missing',
             subscriptionTier: 'pilot',
+            idempotencyKey: 'k-tier-missing',
           ),
         );
       } catch (e) {
@@ -153,6 +160,7 @@ void main() {
           usageClass: 'advisor_qa',
           monthlyCapUsd: 50.0,
           perInvocationCapUsd: 0.10,
+          idempotencyKey: 'k-cap-insert',
         ),
       );
       expect(inserted.monthlyCapUsd, equals(50.0));
@@ -164,6 +172,7 @@ void main() {
           usageClass: 'advisor_qa',
           monthlyCapUsd: 100.0,
           perInvocationCapUsd: 0.10,
+          idempotencyKey: 'k-cap-update',
         ),
       );
       expect(updated.monthlyCapUsd, equals(100.0));
@@ -185,6 +194,7 @@ void main() {
             usageClass: 'advisor_qa',
             monthlyCapUsd: -5.0,
             perInvocationCapUsd: 0.10,
+            idempotencyKey: 'k-cap-negative',
           ),
         );
       } catch (e) {
@@ -210,6 +220,7 @@ void main() {
             usageClass: '',
             monthlyCapUsd: 50.0,
             perInvocationCapUsd: 0.10,
+            idempotencyKey: 'k-cap-empty-class',
           ),
         );
       } catch (e) {
@@ -233,6 +244,7 @@ void main() {
         const ApplyTierTemplateCommand(
           operatorId: 'op-1',
           tierKey: 'premium',
+          idempotencyKey: 'k-tmpl-premium',
         ),
       );
       expect(updated.subscriptionTier, equals('premium'));
@@ -249,6 +261,7 @@ void main() {
         const ApplyTierTemplateCommand(
           operatorId: 'op-1',
           tierKey: 'pro',
+          idempotencyKey: 'k-tmpl-pro',
         ),
       );
       expect(updated.subscriptionTier, equals('pro'));
@@ -282,6 +295,7 @@ void main() {
         const ApplyTierTemplateCommand(
           operatorId: 'op-1',
           tierKey: 'enterprise',
+          idempotencyKey: 'k-tmpl-enterprise',
         ),
       );
       expect(updated.subscriptionTier, equals('enterprise'));
@@ -300,6 +314,7 @@ void main() {
           const ApplyTierTemplateCommand(
             operatorId: 'op-1',
             tierKey: 'megapremium',
+            idempotencyKey: 'k-tmpl-bad',
           ),
         );
       } catch (e) {
@@ -325,6 +340,7 @@ void main() {
           const ApplyTierTemplateCommand(
             operatorId: 'op-1',
             tierKey: 'pilot',
+            idempotencyKey: 'k-tmpl-no-primary',
           ),
         );
       } catch (e) {
@@ -337,4 +353,235 @@ void main() {
       );
     });
   });
+
+  // HARD-H — admin idempotency parcel. The InMemory gateway caches
+  // per-key like the proxy does against `admin_request_idempotency`.
+  group('InMemoryPricingTierAdminGateway — idempotency replay', () {
+    test(
+      'second updateOperatorTier with same key returns cached bundle',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle(tier: 'starter')],
+        );
+        final command = const OperatorTierPatchCommand(
+          operatorId: 'op-1',
+          subscriptionTier: 'premium',
+          idempotencyKey: 'idem-tier',
+        );
+        final first = await gateway.updateOperatorTier(command);
+        final second = await gateway.updateOperatorTier(command);
+        expect(second.subscriptionTier, equals(first.subscriptionTier));
+      },
+    );
+
+    test(
+      'second upsertUsageCap with same key returns cached row '
+      '(no second mutation)',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle()],
+          actorUserId: 'actor-x',
+        );
+        final first = await gateway.upsertUsageCap(
+          const UsageCapUpsertCommand(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            usageClass: 'advisor_qa',
+            monthlyCapUsd: 50.0,
+            perInvocationCapUsd: 0.10,
+            idempotencyKey: 'idem-cap',
+          ),
+        );
+        // Replay with a DIFFERENT cap value under the same key — the
+        // cached result wins (matches the proxy's
+        // `idempotency_payload_mismatch` envelope by ignoring the
+        // mutation).
+        final second = await gateway.upsertUsageCap(
+          const UsageCapUpsertCommand(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            usageClass: 'advisor_qa',
+            monthlyCapUsd: 999.0,
+            perInvocationCapUsd: 0.99,
+            idempotencyKey: 'idem-cap',
+          ),
+        );
+        expect(second.monthlyCapUsd, equals(first.monthlyCapUsd));
+        expect(second.monthlyCapUsd, equals(50.0));
+      },
+    );
+
+    test(
+      'second applyTierTemplate with same key returns cached bundle',
+      () async {
+        final gateway = InMemoryPricingTierAdminGateway(
+          seed: <PricingOperatorBundle>[bundle()],
+        );
+        final command = const ApplyTierTemplateCommand(
+          operatorId: 'op-1',
+          tierKey: 'premium',
+          idempotencyKey: 'idem-apply',
+        );
+        final first = await gateway.applyTierTemplate(command);
+        final second = await gateway.applyTierTemplate(command);
+        expect(second.subscriptionTier, equals(first.subscriptionTier));
+        expect(second.caps, hasLength(first.caps.length));
+      },
+    );
+  });
+
+  // HARD-H — Http variant attaches the Idempotency-Key header on
+  // mutating commands.
+  group('HttpPricingTierAdminGateway — Idempotency-Key wiring', () {
+    test(
+      'upsertUsageCap PUTs with Idempotency-Key header and JSON body '
+      'WITHOUT the key inside',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'cap': <String, Object?>{
+                'cap_id': 'cap-x',
+                'operator_id': 'op-1',
+                'location_id': 'loc-1',
+                'usage_class': 'advisor_qa',
+                'monthly_cap_usd': 50.0,
+                'per_invocation_cap_usd': 0.10,
+                'staff_id': null,
+                'workflow_id': null,
+                'created_by': null,
+                'updated_by': null,
+                'created_at': '2026-05-02T12:00:00.000Z',
+                'updated_at': '2026-05-02T12:00:00.000Z',
+              },
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        await gateway.upsertUsageCap(
+          const UsageCapUpsertCommand(
+            operatorId: 'op-1',
+            locationId: 'loc-1',
+            usageClass: 'advisor_qa',
+            monthlyCapUsd: 50.0,
+            perInvocationCapUsd: 0.10,
+            idempotencyKey: 'idem-http-cap',
+          ),
+        );
+        final req = captured.single;
+        expect(req.method, equals('PUT'));
+        expect(req.uri.path, equals('/v1/admin/pricing/usage-caps'));
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-cap'),
+        );
+        expect(req.body.containsKey('idempotency_key'), isFalse);
+      },
+    );
+
+    test(
+      'applyTierTemplate POSTs with Idempotency-Key header',
+      () async {
+        final captured = <_CapturedAdminRequest>[];
+        final client = _SingleResponseClient(
+          captured: captured,
+          response: _HttpFixture(
+            statusCode: 200,
+            body: <String, Object?>{
+              'operator': <String, Object?>{
+                'operator_id': 'op-1',
+                'business_name': 'Cafe',
+                'subscription_tier': 'premium',
+                'preferred_currency': 'USD',
+                'primary_location_id': 'loc-1',
+              },
+              'caps': <Map<String, Object?>>[],
+            },
+          ),
+        );
+        final gateway = HttpPricingTierAdminGateway(
+          baseUri: Uri.parse('https://proxy.example.com'),
+          bearerTokenProvider: () async => 'fake.token',
+          httpClient: client,
+        );
+        await gateway.applyTierTemplate(
+          const ApplyTierTemplateCommand(
+            operatorId: 'op-1',
+            tierKey: 'premium',
+            idempotencyKey: 'idem-http-apply',
+          ),
+        );
+        final req = captured.single;
+        expect(req.method, equals('POST'));
+        expect(
+          req.uri.path,
+          equals('/v1/admin/pricing/operators/op-1/apply-template'),
+        );
+        expect(
+          req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
+          equals('idem-http-apply'),
+        );
+      },
+    );
+  });
+}
+
+// ─── Test helpers ─────────────────────────────────────────────────
+
+class _CapturedAdminRequest {
+  _CapturedAdminRequest({
+    required this.method,
+    required this.uri,
+    required this.headers,
+    required this.body,
+  });
+  final String method;
+  final Uri uri;
+  final Map<String, String> headers;
+  final Map<String, Object?> body;
+}
+
+class _HttpFixture {
+  _HttpFixture({required this.statusCode, required this.body});
+  final int statusCode;
+  final Map<String, Object?> body;
+}
+
+class _SingleResponseClient extends http.BaseClient {
+  _SingleResponseClient({required this.captured, required this.response});
+
+  final List<_CapturedAdminRequest> captured;
+  final _HttpFixture response;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) async {
+    final bodyBytes = await request.finalize().toBytes();
+    Map<String, Object?> body = const <String, Object?>{};
+    if (bodyBytes.isNotEmpty) {
+      final decoded = jsonDecode(utf8.decode(bodyBytes));
+      if (decoded is Map) body = decoded.cast<String, Object?>();
+    }
+    captured.add(
+      _CapturedAdminRequest(
+        method: request.method,
+        uri: request.url,
+        headers: Map<String, String>.from(request.headers),
+        body: body,
+      ),
+    );
+    final encoded = utf8.encode(jsonEncode(response.body));
+    return http.StreamedResponse(
+      Stream<List<int>>.fromIterable(<List<int>>[encoded]),
+      response.statusCode,
+      contentLength: encoded.length,
+      headers: const <String, String>{'content-type': 'application/json'},
+    );
+  }
 }

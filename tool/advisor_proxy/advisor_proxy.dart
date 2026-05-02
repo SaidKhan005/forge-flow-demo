@@ -9073,6 +9073,22 @@ Future<void> routeRequest(
         return;
       }
 
+      // HARD-H — optional Idempotency-Key on rotation POST so retries
+      // collapse to one KMS write + one audit row at the proxy. The
+      // header is OPTIONAL for back-compat with older callers and the
+      // existing test surface; when present and the store is wired,
+      // `_runAdminIdempotent` handles reserve→complete against
+      // `admin_request_idempotency`.
+      final integrationsIdempotencyKey =
+          (request.headers.value('Idempotency-Key') ?? '').trim();
+      if (integrationsIdempotencyKey.length > 200) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message':
+              'Idempotency-Key header must be 200 characters or fewer',
+        });
+        return;
+      }
       try {
         await _routeIntegrationsAdmin(
           request: request,
@@ -9082,6 +9098,8 @@ Future<void> routeRequest(
           actorUserId: resolvedActorUserId,
           actorLogId: firebaseUidLookup,
           body: body,
+          idempotencyKey: integrationsIdempotencyKey,
+          idempotencyStore: adminRequestIdempotencyStore,
         );
       } catch (error) {
         if (_maybeWriteDependencyTimeout(response, error)) return;
@@ -9095,6 +9113,13 @@ Future<void> routeRequest(
         if (error is IntegrationAdminGatewayValidationError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is AdminIdempotencyKeyConflict) {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_key_conflict',
             'message': error.message,
           });
           return;
@@ -9154,6 +9179,21 @@ Future<void> routeRequest(
         return;
       }
 
+      // HARD-H — optional Idempotency-Key on PATCH/PUT/POST so retries
+      // collapse to one tier mutation + one audit row at the proxy.
+      // Header is OPTIONAL for back-compat (existing tests don't send
+      // it). When present + store is wired, `_runAdminIdempotent`
+      // handles reserve→complete against `admin_request_idempotency`.
+      final pricingIdempotencyKey =
+          (request.headers.value('Idempotency-Key') ?? '').trim();
+      if (pricingIdempotencyKey.length > 200) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message':
+              'Idempotency-Key header must be 200 characters or fewer',
+        });
+        return;
+      }
       try {
         await _routePricingAdmin(
           request: request,
@@ -9162,6 +9202,8 @@ Future<void> routeRequest(
           gateway: pricingTierAdminGateway,
           actorUserId: actor.userId,
           body: body,
+          idempotencyKey: pricingIdempotencyKey,
+          idempotencyStore: adminRequestIdempotencyStore,
         );
       } catch (error) {
         if (_maybeWriteDependencyTimeout(response, error)) return;
@@ -9175,6 +9217,13 @@ Future<void> routeRequest(
         if (error is PricingTierAdminGatewayValidationError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is AdminIdempotencyKeyConflict) {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_key_conflict',
             'message': error.message,
           });
           return;
@@ -9609,6 +9658,21 @@ Future<void> routeRequest(
         return;
       }
 
+      // HARD-H — optional Idempotency-Key on POST/PATCH/DELETE so
+      // retries collapse to one mutation + one audit row at the proxy.
+      // Header is OPTIONAL for back-compat (existing tests don't send
+      // it). When present + store is wired, `_runAdminIdempotent`
+      // handles reserve→complete against `admin_request_idempotency`.
+      final operatorLocationIdempotencyKey =
+          (request.headers.value('Idempotency-Key') ?? '').trim();
+      if (operatorLocationIdempotencyKey.length > 200) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'idempotency_key_too_long',
+          'message':
+              'Idempotency-Key header must be 200 characters or fewer',
+        });
+        return;
+      }
       try {
         await _routeOperatorLocationAdmin(
           request: request,
@@ -9617,12 +9681,21 @@ Future<void> routeRequest(
           gateway: operatorLocationAdminGateway,
           actorUserId: actor.userId,
           body: body,
+          idempotencyKey: operatorLocationIdempotencyKey,
+          idempotencyStore: adminRequestIdempotencyStore,
         );
       } catch (error) {
         if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is AdminIdempotencyKeyConflict) {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_key_conflict',
             'message': error.message,
           });
           return;
@@ -9686,6 +9759,8 @@ Future<void> _routeOperatorLocationAdmin({
   required OperatorLocationAdminProxyGateway gateway,
   required String actorUserId,
   required Map<String, Object?> body,
+  String idempotencyKey = '',
+  AdminRequestIdempotencyStore? idempotencyStore,
 }) async {
   final method = request.method;
   final reasonPrefix = 'admin.operator_location.$method:$actorUserId';
@@ -9720,19 +9795,29 @@ Future<void> _routeOperatorLocationAdmin({
       primaryMap,
       'business_day_rollover_hour',
     );
-    final bundle = await gateway.onboardOperator(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.onboard',
       actorUserId: actorUserId,
-      businessName: businessName,
-      ownerEmail: ownerEmail,
-      subscriptionTier: subscriptionTier,
-      preferredCurrency: preferredCurrency,
-      adminUserEmail: adminEmail,
-      primaryLocationName: locationName,
-      primaryLocationTimezone: locationTimezone,
-      primaryLocationRolloverHour: rolloverHour,
-      adminReason: '$reasonPrefix:onboard',
+      requestBody: body,
+      compute: () async {
+        final bundle = await gateway.onboardOperator(
+          actorUserId: actorUserId,
+          businessName: businessName,
+          ownerEmail: ownerEmail,
+          subscriptionTier: subscriptionTier,
+          preferredCurrency: preferredCurrency,
+          adminUserEmail: adminEmail,
+          primaryLocationName: locationName,
+          primaryLocationTimezone: locationTimezone,
+          primaryLocationRolloverHour: rolloverHour,
+          adminReason: '$reasonPrefix:onboard',
+        );
+        return (statusCode: 201, payload: bundle);
+      },
     );
-    _writeJson(response, 201, bundle);
     return;
   }
 
@@ -9746,24 +9831,36 @@ Future<void> _routeOperatorLocationAdmin({
     if (body.containsKey('preferred_currency')) {
       preferredCurrency = _requireBodyCurrency(body, 'preferred_currency');
     }
-    final patched = await gateway.patchOperator(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.patch_operator',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      businessName: _optionalBodyString(body, 'business_name'),
-      ownerEmail: _optionalBodyString(body, 'owner_email'),
-      subscriptionTier: _optionalBodyString(body, 'subscription_tier'),
-      preferredCurrency: preferredCurrency,
-      primaryLocationId: _optionalBodyString(body, 'primary_location_id'),
-      adminReason: '$reasonPrefix:patch:$operatorId',
+      requestBody: body,
+      compute: () async {
+        final patched = await gateway.patchOperator(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          businessName: _optionalBodyString(body, 'business_name'),
+          ownerEmail: _optionalBodyString(body, 'owner_email'),
+          subscriptionTier: _optionalBodyString(body, 'subscription_tier'),
+          preferredCurrency: preferredCurrency,
+          primaryLocationId: _optionalBodyString(body, 'primary_location_id'),
+          adminReason: '$reasonPrefix:patch:$operatorId',
+        );
+        if (patched == null) {
+          return (statusCode: 404, payload: <String, Object?>{
+            'error': 'unknown_operator',
+            'message': 'operator not found',
+          });
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'operator': patched},
+        );
+      },
     );
-    if (patched == null) {
-      _writeJson(response, 404, <String, Object?>{
-        'error': 'unknown_operator',
-        'message': 'operator not found',
-      });
-      return;
-    }
-    _writeJson(response, 200, <String, Object?>{'operator': patched});
     return;
   }
 
@@ -9773,31 +9870,45 @@ Future<void> _routeOperatorLocationAdmin({
       _writeNotFound(response, request);
       return;
     }
-    Map<String, Object?>? updated;
-    if (action.action == 'suspend') {
-      updated = await gateway.suspendOperator(
-        actorUserId: actorUserId,
-        operatorId: action.operatorId,
-        adminReason: '$reasonPrefix:suspend:${action.operatorId}',
-      );
-    } else if (action.action == 'reactivate') {
-      updated = await gateway.reactivateOperator(
-        actorUserId: actorUserId,
-        operatorId: action.operatorId,
-        adminReason: '$reasonPrefix:reactivate:${action.operatorId}',
-      );
-    } else {
+    final actionKind = action.action;
+    if (actionKind != 'suspend' && actionKind != 'reactivate') {
       _writeNotFound(response, request);
       return;
     }
-    if (updated == null) {
-      _writeJson(response, 404, <String, Object?>{
-        'error': 'unknown_operator',
-        'message': 'operator not found',
-      });
-      return;
-    }
-    _writeJson(response, 200, <String, Object?>{'operator': updated});
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.$actionKind',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        Map<String, Object?>? updated;
+        if (actionKind == 'suspend') {
+          updated = await gateway.suspendOperator(
+            actorUserId: actorUserId,
+            operatorId: action.operatorId,
+            adminReason: '$reasonPrefix:suspend:${action.operatorId}',
+          );
+        } else {
+          updated = await gateway.reactivateOperator(
+            actorUserId: actorUserId,
+            operatorId: action.operatorId,
+            adminReason: '$reasonPrefix:reactivate:${action.operatorId}',
+          );
+        }
+        if (updated == null) {
+          return (statusCode: 404, payload: <String, Object?>{
+            'error': 'unknown_operator',
+            'message': 'operator not found',
+          });
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'operator': updated},
+        );
+      },
+    );
     return;
   }
 
@@ -9810,16 +9921,29 @@ Future<void> _routeOperatorLocationAdmin({
       'business_day_rollover_hour',
     );
     final address = _optionalBodyString(body, 'address') ?? '';
-    final created = await gateway.addLocation(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.add_location',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      name: name,
-      address: address,
-      timezone: timezone,
-      businessDayRolloverHour: rolloverHour,
-      adminReason: '$reasonPrefix:add_location:$operatorId',
+      requestBody: body,
+      compute: () async {
+        final created = await gateway.addLocation(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          name: name,
+          address: address,
+          timezone: timezone,
+          businessDayRolloverHour: rolloverHour,
+          adminReason: '$reasonPrefix:add_location:$operatorId',
+        );
+        return (
+          statusCode: 201,
+          payload: <String, Object?>{'location': created},
+        );
+      },
     );
-    _writeJson(response, 201, <String, Object?>{'location': created});
     return;
   }
 
@@ -9840,23 +9964,35 @@ Future<void> _routeOperatorLocationAdmin({
         'business_day_rollover_hour',
       );
     }
-    final patched = await gateway.patchLocation(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.patch_location',
       actorUserId: actorUserId,
-      locationId: locationId,
-      name: _optionalBodyString(body, 'name'),
-      address: _optionalBodyString(body, 'address'),
-      timezone: timezone,
-      businessDayRolloverHour: rolloverHour,
-      adminReason: '$reasonPrefix:patch_location:$locationId',
+      requestBody: body,
+      compute: () async {
+        final patched = await gateway.patchLocation(
+          actorUserId: actorUserId,
+          locationId: locationId,
+          name: _optionalBodyString(body, 'name'),
+          address: _optionalBodyString(body, 'address'),
+          timezone: timezone,
+          businessDayRolloverHour: rolloverHour,
+          adminReason: '$reasonPrefix:patch_location:$locationId',
+        );
+        if (patched == null) {
+          return (statusCode: 404, payload: <String, Object?>{
+            'error': 'unknown_location',
+            'message': 'location not found',
+          });
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'location': patched},
+        );
+      },
     );
-    if (patched == null) {
-      _writeJson(response, 404, <String, Object?>{
-        'error': 'unknown_location',
-        'message': 'location not found',
-      });
-      return;
-    }
-    _writeJson(response, 200, <String, Object?>{'location': patched});
     return;
   }
 
@@ -9867,33 +10003,41 @@ Future<void> _routeOperatorLocationAdmin({
       return;
     }
     final operatorId = _requireBodyString(body, 'operator_id');
-    final result = await gateway.removeLocation(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.operator_location.remove_location',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      locationId: locationId,
-      adminReason: '$reasonPrefix:remove_location:$locationId',
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.removeLocation(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          locationId: locationId,
+          adminReason: '$reasonPrefix:remove_location:$locationId',
+        );
+        switch (result) {
+          case AdminLocationRemovalResult.removed:
+            return (statusCode: 200, payload: <String, Object?>{
+              'ok': true,
+              'removed': true,
+            });
+          case AdminLocationRemovalResult.notFound:
+            return (statusCode: 404, payload: <String, Object?>{
+              'error': 'unknown_location',
+              'message': 'location not found',
+            });
+          case AdminLocationRemovalResult.primaryLocationProtected:
+            return (statusCode: 400, payload: <String, Object?>{
+              'error': 'cannot_remove_primary_location',
+              'message':
+                  "reassign the operator's primary_location_id before removing this location",
+            });
+        }
+      },
     );
-    switch (result) {
-      case AdminLocationRemovalResult.removed:
-        _writeJson(response, 200, <String, Object?>{
-          'ok': true,
-          'removed': true,
-        });
-        return;
-      case AdminLocationRemovalResult.notFound:
-        _writeJson(response, 404, <String, Object?>{
-          'error': 'unknown_location',
-          'message': 'location not found',
-        });
-        return;
-      case AdminLocationRemovalResult.primaryLocationProtected:
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'cannot_remove_primary_location',
-          'message':
-              "reassign the operator's primary_location_id before removing this location",
-        });
-        return;
-    }
+    return;
   }
 
   _writeNotFound(response, request);
@@ -9953,6 +10097,8 @@ Future<void> _routeIntegrationsAdmin({
   required String actorUserId,
   required String actorLogId,
   required Map<String, Object?> body,
+  String idempotencyKey = '',
+  AdminRequestIdempotencyStore? idempotencyStore,
 }) async {
   final method = request.method;
   // [actorLogId] is the original verified Firebase UID (the value the
@@ -9990,13 +10136,23 @@ Future<void> _routeIntegrationsAdmin({
       return;
     }
     final plaintext = _requireBodyString(body, 'plaintext_value');
-    final result = await gateway.rotateProviderKey(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.integrations.rotate_$keyKind',
       actorUserId: actorUserId,
-      keyKind: keyKind,
-      plaintextValue: plaintext,
-      adminReason: '$reasonPrefix:rotate:$keyKind',
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.rotateProviderKey(
+          actorUserId: actorUserId,
+          keyKind: keyKind,
+          plaintextValue: plaintext,
+          adminReason: '$reasonPrefix:rotate:$keyKind',
+        );
+        return (statusCode: 200, payload: result);
+      },
     );
-    _writeJson(response, 200, result);
     return;
   }
 
@@ -10031,6 +10187,8 @@ Future<void> _routePricingAdmin({
   required PricingTierAdminProxyGateway gateway,
   required String actorUserId,
   required Map<String, Object?> body,
+  String idempotencyKey = '',
+  AdminRequestIdempotencyStore? idempotencyStore,
 }) async {
   final method = request.method;
   final reasonPrefix = 'admin.pricing.$method:$actorUserId';
@@ -10061,20 +10219,29 @@ Future<void> _routePricingAdmin({
             '${kProxyPricingTierTemplateKeys.join(', ')}',
       );
     }
-    final updated = await gateway.updateOperatorTier(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.update_operator_tier',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      subscriptionTier: subscriptionTier,
-      adminReason: '$reasonPrefix:tier:$operatorId',
+      requestBody: body,
+      compute: () async {
+        final updated = await gateway.updateOperatorTier(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          subscriptionTier: subscriptionTier,
+          adminReason: '$reasonPrefix:tier:$operatorId',
+        );
+        if (updated == null) {
+          return (statusCode: 404, payload: <String, Object?>{
+            'error': 'unknown_operator',
+            'message': 'operator not found',
+          });
+        }
+        return (statusCode: 200, payload: updated);
+      },
     );
-    if (updated == null) {
-      _writeJson(response, 404, <String, Object?>{
-        'error': 'unknown_operator',
-        'message': 'operator not found',
-      });
-      return;
-    }
-    _writeJson(response, 200, updated);
     return;
   }
 
@@ -10103,20 +10270,29 @@ Future<void> _routePricingAdmin({
         message: 'tier_key "$tierKey" is not a known pricing template',
       );
     }
-    final result = await gateway.applyTierTemplate(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.apply_template',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      tierKey: tierKey,
-      adminReason: '$reasonPrefix:apply_template:$operatorId:$tierKey',
+      requestBody: body,
+      compute: () async {
+        final result = await gateway.applyTierTemplate(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          tierKey: tierKey,
+          adminReason: '$reasonPrefix:apply_template:$operatorId:$tierKey',
+        );
+        if (result == null) {
+          return (statusCode: 404, payload: <String, Object?>{
+            'error': 'unknown_operator',
+            'message': 'operator not found',
+          });
+        }
+        return (statusCode: 200, payload: result);
+      },
     );
-    if (result == null) {
-      _writeJson(response, 404, <String, Object?>{
-        'error': 'unknown_operator',
-        'message': 'operator not found',
-      });
-      return;
-    }
-    _writeJson(response, 200, result);
     return;
   }
 
@@ -10128,19 +10304,32 @@ Future<void> _routePricingAdmin({
     final perInvocation = _requireBodyMoney(body, 'per_invocation_cap_usd');
     final staffId = _optionalBodyString(body, 'staff_id');
     final workflowId = _optionalBodyString(body, 'workflow_id');
-    final cap = await gateway.upsertUsageCap(
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.pricing.upsert_usage_cap',
       actorUserId: actorUserId,
-      operatorId: operatorId,
-      locationId: locationId,
-      usageClass: usageClass,
-      monthlyCapUsd: monthlyCap,
-      perInvocationCapUsd: perInvocation,
-      staffId: staffId,
-      workflowId: workflowId,
-      adminReason:
-          '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
+      requestBody: body,
+      compute: () async {
+        final cap = await gateway.upsertUsageCap(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          locationId: locationId,
+          usageClass: usageClass,
+          monthlyCapUsd: monthlyCap,
+          perInvocationCapUsd: perInvocation,
+          staffId: staffId,
+          workflowId: workflowId,
+          adminReason:
+              '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
+        );
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'cap': cap},
+        );
+      },
     );
-    _writeJson(response, 200, <String, Object?>{'cap': cap});
     return;
   }
 
@@ -10483,6 +10672,100 @@ String _hashRequestBody(Map<String, Object?> body) {
     for (final key in sortedKeys) key: body[key],
   };
   return sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
+}
+
+/// HARD-H — Runs [compute] under cross-tenant admin idempotency dedup
+/// against `public.admin_request_idempotency`. Mirrors the
+/// reserve→run→complete envelope inlined inside `_routeFeatureFlagsAdmin`
+/// so the operator/location, pricing, and integration admin routes get
+/// the same Postgres-durable backstop without each handler having to
+/// re-implement it.
+///
+/// Cases:
+///   * [store] is null OR [idempotencyKey] is empty → run [compute] and
+///     write its response without dedup. Preserves back-compat with
+///     callers that don't (yet) wire a store + with the previously
+///     header-optional admin routes.
+///   * Cache hit, response complete → write the cached response.
+///   * Cache hit, response in flight → 409 `idempotency_request_in_flight`.
+///   * Reserve loses the race → look up again; replay or 409.
+///   * Reserve succeeds → run [compute] exactly once; stamp response in
+///     the ledger; write the response. If [compute] throws, the row
+///     stays in flight (the dispatch-site catch translates the throw
+///     into the appropriate HTTP envelope) — same Stripe-style retry
+///     posture HARD-D / HARD-H ship for the toggle handler.
+///
+/// [AdminIdempotencyKeyConflict] thrown from `lookup` (different
+/// `request_type` or differing `request_body_hash`) bubbles out so the
+/// dispatch-site catch can translate it into the contract's 409 / 422
+/// envelopes — same handling the toggle path uses.
+Future<void> _runAdminIdempotent({
+  required HttpResponse response,
+  required AdminRequestIdempotencyStore? store,
+  required String idempotencyKey,
+  required String requestType,
+  required String? actorUserId,
+  required Map<String, Object?> requestBody,
+  required Future<({int statusCode, Map<String, Object?> payload})>
+      Function() compute,
+}) async {
+  if (store == null || idempotencyKey.isEmpty) {
+    final result = await compute();
+    _writeJson(response, result.statusCode, result.payload);
+    return;
+  }
+  final bodyHash = _hashRequestBody(requestBody);
+  final cached = await store.lookup(
+    idempotencyKey: idempotencyKey,
+    requestType: requestType,
+    requestBodyHash: bodyHash,
+  );
+  if (cached != null) {
+    if (cached.responseStatus == null || cached.responsePayload == null) {
+      _writeJson(response, 409, <String, Object?>{
+        'error': 'idempotency_request_in_flight',
+        'message': 'idempotent request is already in flight',
+      });
+      return;
+    }
+    _writeJson(response, cached.responseStatus!, cached.responsePayload!);
+    return;
+  }
+  final reserved = await store.reserve(
+    idempotencyKey: idempotencyKey,
+    requestType: requestType,
+    actorUserId: actorUserId,
+    requestBodyHash: bodyHash,
+  );
+  if (!reserved) {
+    final raceCached = await store.lookup(
+      idempotencyKey: idempotencyKey,
+      requestType: requestType,
+      requestBodyHash: bodyHash,
+    );
+    if (raceCached != null &&
+        raceCached.responseStatus != null &&
+        raceCached.responsePayload != null) {
+      _writeJson(
+        response,
+        raceCached.responseStatus!,
+        raceCached.responsePayload!,
+      );
+      return;
+    }
+    _writeJson(response, 409, <String, Object?>{
+      'error': 'idempotency_request_in_flight',
+      'message': 'idempotent request is already in flight',
+    });
+    return;
+  }
+  final result = await compute();
+  await store.completeReservation(
+    idempotencyKey: idempotencyKey,
+    responseStatus: result.statusCode,
+    responsePayload: result.payload,
+  );
+  _writeJson(response, result.statusCode, result.payload);
 }
 
 /// Phase 11A.3b — Graphify candidate review route handler. Same shape

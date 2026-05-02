@@ -55,13 +55,20 @@ abstract class OperatorLocationAdminGateway {
   Future<List<OperatorAdminBundle>> listOperators();
   Future<OperatorAdminBundle> onboardOperator(OperatorOnboardCommand command);
   Future<OperatorAdminRecord> patchOperator(OperatorPatchCommand command);
-  Future<OperatorAdminRecord> suspendOperator(String operatorId);
-  Future<OperatorAdminRecord> reactivateOperator(String operatorId);
+  Future<OperatorAdminRecord> suspendOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  });
+  Future<OperatorAdminRecord> reactivateOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  });
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command);
   Future<LocationAdminRecord> patchLocation(LocationPatchCommand command);
   Future<void> removeLocation({
     required String operatorId,
     required String locationId,
+    required String idempotencyKey,
   });
 }
 
@@ -82,6 +89,12 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   static const String operatorsPath = '/v1/admin/operators';
   static const String locationsPath = '/v1/admin/locations';
 
+  // Idempotency key generation lives in the screen layer
+  // (`_OperatorLocationAdminScreenState._nextIdempotencyKey`) so a
+  // single minted key flows through both the dialog → command → gateway
+  // path and the action handler. Keeping the minter here too would
+  // double-mint keys for the same user action.
+
   @override
   Future<List<OperatorAdminBundle>> listOperators() async {
     final body = await _send(method: 'GET', path: operatorsPath);
@@ -99,6 +112,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
     final body = await _send(
       method: 'POST',
       path: operatorsPath,
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return OperatorAdminBundle.fromJson(body);
@@ -111,6 +125,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
     final body = await _send(
       method: 'PATCH',
       path: '$operatorsPath/${Uri.encodeComponent(command.operatorId)}',
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return OperatorAdminRecord.fromJson(
@@ -119,10 +134,14 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   }
 
   @override
-  Future<OperatorAdminRecord> suspendOperator(String operatorId) async {
+  Future<OperatorAdminRecord> suspendOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) async {
     final body = await _send(
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/suspend',
+      idempotencyKey: idempotencyKey,
       jsonBody: const <String, Object?>{},
     );
     return OperatorAdminRecord.fromJson(
@@ -131,10 +150,14 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   }
 
   @override
-  Future<OperatorAdminRecord> reactivateOperator(String operatorId) async {
+  Future<OperatorAdminRecord> reactivateOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) async {
     final body = await _send(
       method: 'POST',
       path: '$operatorsPath/${Uri.encodeComponent(operatorId)}/reactivate',
+      idempotencyKey: idempotencyKey,
       jsonBody: const <String, Object?>{},
     );
     return OperatorAdminRecord.fromJson(
@@ -147,6 +170,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
     final body = await _send(
       method: 'POST',
       path: locationsPath,
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return LocationAdminRecord.fromJson(
@@ -161,6 +185,7 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
     final body = await _send(
       method: 'PATCH',
       path: '$locationsPath/${Uri.encodeComponent(command.locationId)}',
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return LocationAdminRecord.fromJson(
@@ -172,10 +197,12 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   Future<void> removeLocation({
     required String operatorId,
     required String locationId,
+    required String idempotencyKey,
   }) async {
     await _send(
       method: 'DELETE',
       path: '$locationsPath/${Uri.encodeComponent(locationId)}',
+      idempotencyKey: idempotencyKey,
       jsonBody: <String, Object?>{'operator_id': operatorId},
     );
   }
@@ -184,12 +211,16 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
     required String method,
     required String path,
     Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      request.headers['Idempotency-Key'] = idempotencyKey;
+    }
     if (jsonBody != null) {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
@@ -243,6 +274,11 @@ class InMemoryOperatorLocationAdminGateway
   final String Function() _idGenerator;
   final Map<String, _MutableBundle> _bundles;
 
+  /// Per-key cache so a retried mutation on the in-memory gateway
+  /// returns the prior result instead of mutating again — mirrors the
+  /// proxy's `admin_request_idempotency` backstop.
+  final Map<String, Object> _idempotentResults = <String, Object>{};
+
   @override
   Future<List<OperatorAdminBundle>> listOperators() async {
     final list = _bundles.values.map((b) => b.toBundle()).toList()
@@ -258,6 +294,8 @@ class InMemoryOperatorLocationAdminGateway
   Future<OperatorAdminBundle> onboardOperator(
     OperatorOnboardCommand command,
   ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is OperatorAdminBundle) return cached;
     _validateCurrency(command.preferredCurrency);
     _validateTimezone(command.primaryLocationTimezone);
     _validateRolloverHour(command.primaryLocationRolloverHour);
@@ -298,13 +336,17 @@ class InMemoryOperatorLocationAdminGateway
       locations: <LocationAdminRecord>[location],
     );
     _bundles[operatorId] = bundle;
-    return bundle.toBundle();
+    final result = bundle.toBundle();
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
   }
 
   @override
   Future<OperatorAdminRecord> patchOperator(
     OperatorPatchCommand command,
   ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is OperatorAdminRecord) return cached;
     final bundle = _bundleOrThrow(command.operatorId);
     if (command.preferredCurrency != null) {
       _validateCurrency(command.preferredCurrency!);
@@ -336,11 +378,17 @@ class InMemoryOperatorLocationAdminGateway
       );
     }
     bundle.operator = updated;
+    _idempotentResults[command.idempotencyKey] = updated;
     return updated;
   }
 
   @override
-  Future<OperatorAdminRecord> suspendOperator(String operatorId) async {
+  Future<OperatorAdminRecord> suspendOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) async {
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is OperatorAdminRecord) return cached;
     final bundle = _bundleOrThrow(operatorId);
     final updated = _copyOperator(
       bundle.operator,
@@ -348,11 +396,17 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: _now().toUtc(),
     );
     bundle.operator = updated;
+    _idempotentResults[idempotencyKey] = updated;
     return updated;
   }
 
   @override
-  Future<OperatorAdminRecord> reactivateOperator(String operatorId) async {
+  Future<OperatorAdminRecord> reactivateOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) async {
+    final cached = _idempotentResults[idempotencyKey];
+    if (cached is OperatorAdminRecord) return cached;
     final bundle = _bundleOrThrow(operatorId);
     final updated = _copyOperator(
       bundle.operator,
@@ -361,11 +415,14 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: _now().toUtc(),
     );
     bundle.operator = updated;
+    _idempotentResults[idempotencyKey] = updated;
     return updated;
   }
 
   @override
   Future<LocationAdminRecord> addLocation(LocationCreateCommand command) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is LocationAdminRecord) return cached;
     _validateTimezone(command.timezone);
     _validateRolloverHour(command.businessDayRolloverHour);
     _validateNonBlank(command.name, field: 'name');
@@ -382,6 +439,7 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: ts,
     );
     bundle.locations.add(location);
+    _idempotentResults[command.idempotencyKey] = location;
     return location;
   }
 
@@ -389,6 +447,8 @@ class InMemoryOperatorLocationAdminGateway
   Future<LocationAdminRecord> patchLocation(
     LocationPatchCommand command,
   ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is LocationAdminRecord) return cached;
     if (command.timezone != null) _validateTimezone(command.timezone!);
     if (command.businessDayRolloverHour != null) {
       _validateRolloverHour(command.businessDayRolloverHour!);
@@ -410,6 +470,7 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: _now().toUtc(),
     );
     bundle.locations[index] = updated;
+    _idempotentResults[command.idempotencyKey] = updated;
     return updated;
   }
 
@@ -417,7 +478,9 @@ class InMemoryOperatorLocationAdminGateway
   Future<void> removeLocation({
     required String operatorId,
     required String locationId,
+    required String idempotencyKey,
   }) async {
+    if (_idempotentResults.containsKey(idempotencyKey)) return;
     final bundle = _bundleOrThrow(operatorId);
     if (bundle.operator.primaryLocationId == locationId) {
       throw const OperatorLocationAdminGatewayError(
@@ -439,6 +502,9 @@ class InMemoryOperatorLocationAdminGateway
     bundle.locations
       ..clear()
       ..addAll(removed);
+    // Sentinel value — `removeLocation` returns void so any non-null
+    // marker suffices for the cache hit branch above.
+    _idempotentResults[idempotencyKey] = const Object();
   }
 
   _MutableBundle _bundleOrThrow(String operatorId) {

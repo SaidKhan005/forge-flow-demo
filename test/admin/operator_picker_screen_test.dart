@@ -49,11 +49,17 @@ class _FailOnceGateway implements OperatorLocationAdminGateway {
       throw UnimplementedError();
 
   @override
-  Future<OperatorAdminRecord> suspendOperator(String operatorId) =>
+  Future<OperatorAdminRecord> suspendOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) =>
       throw UnimplementedError();
 
   @override
-  Future<OperatorAdminRecord> reactivateOperator(String operatorId) =>
+  Future<OperatorAdminRecord> reactivateOperator(
+    String operatorId, {
+    required String idempotencyKey,
+  }) =>
       throw UnimplementedError();
 
   @override
@@ -68,6 +74,7 @@ class _FailOnceGateway implements OperatorLocationAdminGateway {
   Future<void> removeLocation({
     required String operatorId,
     required String locationId,
+    required String idempotencyKey,
   }) =>
       throw UnimplementedError();
 }

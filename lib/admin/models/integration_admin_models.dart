@@ -146,10 +146,20 @@ typedef KeyMaskedRow = ProviderKeyRow;
 /// admin can verify it before closing the reveal modal.
 @immutable
 class RotateKeyCommand {
-  const RotateKeyCommand({required this.keyKind, required this.plaintextValue});
+  const RotateKeyCommand({
+    required this.keyKind,
+    required this.plaintextValue,
+    required this.idempotencyKey,
+  });
 
   final ProviderKeyKind keyKind;
   final String plaintextValue;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried POST collapses to one
+  /// KMS write + one audit row instead of stamping a duplicate
+  /// rotation.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'plaintext_value': plaintextValue,

@@ -72,6 +72,12 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   static const String rotateGeminiPath = '/v1/admin/integrations/rotate-gemini';
   static const String statusPath = '/v1/admin/integrations/status';
 
+  // Idempotency key generation lives in the screen layer
+  // (`_IntegrationAdminScreenState._nextIdempotencyKey`) so a single
+  // minted key flows through both the dialog → command → gateway path
+  // and the action handler. Keeping the minter here too would double-
+  // mint keys for the same user action.
+
   static String rotatePathFor(ProviderKeyKind kind) {
     switch (kind) {
       case ProviderKeyKind.anthropic:
@@ -97,6 +103,7 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
     final body = await _send(
       method: 'POST',
       path: path,
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return RotateKeyResult.fromJson(body);
@@ -106,12 +113,16 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
     required String method,
     required String path,
     Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      request.headers['Idempotency-Key'] = idempotencyKey;
+    }
     if (jsonBody != null) {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
@@ -219,6 +230,12 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
   final VendorConnectorStatus _fxRateSource;
   final VendorConnectorStatus _emailProvider;
 
+  /// Per-key cache so a retried rotation on the in-memory gateway
+  /// returns the prior result instead of writing a second KMS row —
+  /// mirrors the proxy's `admin_request_idempotency` backstop.
+  final Map<String, RotateKeyResult> _idempotentResults =
+      <String, RotateKeyResult>{};
+
   KmsStubProvider get kmsProvider => _kmsProvider;
 
   @override
@@ -238,6 +255,8 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
 
   @override
   Future<RotateKeyResult> rotateKey(RotateKeyCommand command) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached != null) return cached;
     if (command.plaintextValue.trim().isEmpty) {
       throw const IntegrationAdminGatewayError(
         statusCode: 400,
@@ -269,7 +288,10 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
       rotatedAt: ts,
     );
     _ledger[command.keyKind] = row;
-    return RotateKeyResult(row: row, plaintextValue: command.plaintextValue);
+    final result =
+        RotateKeyResult(row: row, plaintextValue: command.plaintextValue);
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
   }
 
   static const List<VendorConnectorStatus> _defaultVendorConnectors =

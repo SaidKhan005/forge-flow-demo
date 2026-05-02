@@ -135,10 +135,16 @@ class OperatorTierPatchCommand {
   const OperatorTierPatchCommand({
     required this.operatorId,
     required this.subscriptionTier,
+    required this.idempotencyKey,
   });
 
   final String operatorId;
   final String subscriptionTier;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PATCH collapses to one
+  /// tier mutation + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'subscription_tier': subscriptionTier,
@@ -158,6 +164,7 @@ class UsageCapUpsertCommand {
     required this.usageClass,
     required this.monthlyCapUsd,
     required this.perInvocationCapUsd,
+    required this.idempotencyKey,
     this.staffId,
     this.workflowId,
   });
@@ -169,6 +176,11 @@ class UsageCapUpsertCommand {
   final double perInvocationCapUsd;
   final String? staffId;
   final String? workflowId;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PUT collapses to one
+  /// upsert + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'operator_id': operatorId,
@@ -189,10 +201,16 @@ class ApplyTierTemplateCommand {
   const ApplyTierTemplateCommand({
     required this.operatorId,
     required this.tierKey,
+    required this.idempotencyKey,
   });
 
   final String operatorId;
   final String tierKey;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried POST collapses to one
+  /// template apply + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'tier_key': tierKey,
