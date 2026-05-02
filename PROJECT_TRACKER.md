@@ -7,17 +7,26 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 
 ## Now
 
-- **Active**: 11A Operations Console foundation (`11A.3a` partial: corpus
-  upload/diff/rollback shipped; graph commit blocked on operator-picker),
-  `11A.5`/`11A.6` not started (`11A.6` blocked on B44/B45/B47 producers).
-- **Recently accepted (2026-05-02)**: `HARD-A`–`HARD-H` hardening sprint
-  (PRs #41–49); `11A.3b`, `11A.4`/`4b`/`4c`, `11A.7`, `11A.UX.health`;
-  `G.2` boundary monitor; `7.58.5` variance row purity. Contracts marked
-  `Status: Closed` in `docs/contracts/hardening_*.md`.
+- **Active**: queued sprint (see `Active Lanes`). 11A Operations Console
+  foundation now spans `11A.0`–`4c`/`7`/`UX.health` accepted; `11A.5`/`11A.6`
+  blocked on B44/B45/B47 producers.
+- **Recently accepted (2026-05-02 sprint, PRs #50–54)**: `7.58.0` Primary
+  Driver contract pin (test-only, 22 assertions / 12 fixtures, 31 of 32 rules
+  MET, F-1 deferred to 7.58.UX.5); `11A.3a` operator-picker (Graph candidates
+  commit unblocked); `9.0Σ.l` RLS depth on `proxy_requests` + `feature_flags`
+  (wrapper-based policies, migration `202605021500`); admin gateway
+  idempotency-key parcel (operator/pricing/integration + proxy
+  `_runAdminIdempotent`); MFA test parcel (4 files, 45 tests,
+  `lib/services/mfa/` 87.3% coverage).
+- **Earlier 2026-05-02 batch**: `HARD-A`–`HARD-H` hardening (PRs #41–49);
+  `11A.3b`, `11A.4`/`4b`/`4c`, `11A.7`, `11A.UX.health`; `G.2` boundary
+  monitor; `7.58.5` variance row purity. Hardening contracts `Status: Closed`
+  in `docs/contracts/hardening_*.md`.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
   Postgres on CMK (`forge-flow-production1-pg-cmk`). 32 baseline migrations
-  applied (`202604250000`–`202604280013`); **21 newer pending Production1
-  apply** (`202604280014`–`202605021000`) — see runbook + `docs/POST_HARDENING_FOLLOWUPS.md` P0.
+  applied (`202604250000`–`202604280013`); **22 newer pending Production1
+  apply** (`202604280014`–`202605021500`) — see runbook +
+  `docs/POST_HARDENING_FOLLOWUPS.md` P0.
 - **Cloud Armor**: preview-only at sensitivity 2; awaits ≥3 clean post-tuning
   days + approval before enforcement.
 - **iOS physical device matrix**: deferred until Apple device/signing lane
@@ -61,14 +70,21 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run
 in parallel. File ownership, walkthrough, merge sequencing:
 `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 
-1. **`11A.3a` operator-picker** — single-screen unblock for graph candidate commit.
-2. **`7.58.0` Primary Driver audit** — first logic-deciding slice (per HP #3).
-3. **Admin gateway idempotency-key + RLS gap parcel** — `docs/POST_HARDENING_FOLLOWUPS.md` P1/P2.
-4. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
+Sprint just closed (PRs #50–54); next sprint to be selected from queue. Top
+candidates by readiness:
 
-**Then queued (rough order):** `11A.5`/`11A.6` (after producer wiring), `10a`, `10.5`,
-`9.5`, `9.75`, `7.61`, `8`/`8R`/`8.5`, `11b`/`11b.1`/`11b.2`, `12.*`, `9.8`,
-`cutover.0b`–`0-5`.
+1. **Production1 migration apply event** — 22 migrations queued
+   (`202604280014`–`202605021500`); runbook `phase_9_production1_migration_apply_runbook.md`.
+   Operator-driven; no code change needed.
+2. **`7.58.UX.5` F-1 fallthrough** — primary-driver audit deferral; UX surface,
+   keep contract test green.
+3. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
+4. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
+5. **`10.5` daypart projections** — Shift companion (per HP non-blocking ordering).
+
+**Then queued (rough order):** `11A.5`/`11A.6` (after B44/B45/B47 producer
+wiring), `9.5`, `9.75`, `7.61`, `8`/`8R`/`8.5`, `11b`/`11b.1`/`11b.2`, `12.*`,
+`9.8`, `cutover.0b`–`0-5`.
 
 ## Phase Board
 
@@ -77,9 +93,9 @@ Live board lists active + queued only.
 
 | Phase | Status | Plan |
 | --- | --- | --- |
-| `11A` foundation | active; `0`/`1`/`2`/`3b`/`4`/`4b`/`4c`/`7`/`UX.health` accepted; `3a` partial; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
-| `9` framework + `9.0Σ.b-k` + `9.UX.*` | accepted on master + applied to staging/Production1; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
-| `7.58` | `7.58.5` accepted; `7.58.0` queued (first logic-deciding slice per HP #3) | `phase_7_58/*` |
+| `11A` foundation | active; `0`–`4c`/`7`/`UX.health` accepted; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
+| `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
+| `7.58` | `7.58.0` (contract pinned) + `7.58.5` accepted; `7.58.UX.5` queued (F-1 fallthrough) | `phase_7_58/*` |
 | `7.61`, `10a`, `10.5`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on `11A.5`/`11A.6` + B43 prod anchor) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |

@@ -5,13 +5,17 @@ in scope of HARD-A→HARD-H but warrant attention before launch. Each item
 has a single owner-suggested next-action; none are launch-blocking unless
 flagged.
 
+PRs #50–54 (`7.58.0`/`11A.3a`/`9.0Σ.l`/L4 admin idempotency/L5 MFA tests)
+landed 2026-05-02 PM and resolved P1 (RLS depth), P2 (idempotency), P2
+(11A.3a operator-picker), and P2 (MFA test coverage to 87.3%). Open items
+below are the remainder.
+
 ## P0 — Production1 migration apply gap
 
 **22 migrations pending Production1 apply** (`202604280014` through
-`202605021500`). PROJECT_TRACKER had said 8; the actual gap is 22 because
-HARD-B/HARD-H, all 11A admin column additions, B41/B42/B43, the audit
-privacy role, and Phase 9.0Σ.l (RLS depth on `proxy_requests` +
-`feature_flags`) are queued.
+`202605021500`). HARD-B/HARD-H, all 11A admin column additions,
+B41/B42/B43, the audit privacy role, and Phase 9.0Σ.l (RLS depth on
+`proxy_requests` + `feature_flags`) are queued.
 
 Files to apply (lex order):
 
@@ -95,17 +99,15 @@ The companion `runbooks/phase_9_production1_migration_apply_runbook.md`
 may mention an older cutoff in narrative form — verify and amend before
 the next apply event.
 
-## P2 — Phase 11A.3a corpus version ledger admin (graph commit blocker)
+## P2 — Phase 11A.3a operator-picker — RESOLVED 2026-05-02 (PR #50)
 
-`11A.3a` ships corpus upload / diff / rollback. **Graph candidate commit
-button is disabled** because the operator-picker screen does not exist —
-the screen would otherwise silently fall back to demo IDs in live mode.
-Single-screen follow-up: an "operator + location" dropdown that resolves a
-real `(operator_id, location_id)` pair before commit.
-
-**Action:** ~1-day slice (`11A.3a.fix.operator-picker`) — add dropdown
-screen + wire `targetOperatorId`/`targetLocationId` into corpus gateway
-calls. After this, the corpus admin is launch-grade.
+`11A.3a` corpus upload / diff / rollback shipped earlier. The Graph
+candidate commit button has been unblocked by the operator-picker
+modal at `/operator-picker`: cascading operator → location dropdowns
+over `OperatorLocationAdminGateway`, session-scoped state hold, and a
+green "Targeting <X>" indicator once a pair is resolved.
+`targetOperatorId` / `targetLocationId` now thread into corpus gateway
+calls. Corpus admin is launch-grade.
 
 ## P2 — Admin idempotency-key gap on three gateways — RESOLVED (L4, 2026-05-02)
 

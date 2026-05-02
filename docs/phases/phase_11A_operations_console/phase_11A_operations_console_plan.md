@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
 Updated: 2026-05-02
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3b`/`4b`/`4c`/`7`/`UX.health` accepted.
-Remaining: `11A.3a`, `11A.5`, `11A.6` (latter two pending B44/B45/B47 producers).
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7`/`UX.health` accepted.
+Remaining: `11A.5`, `11A.6` (pending B44/B45/B47 producers); `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-02)
