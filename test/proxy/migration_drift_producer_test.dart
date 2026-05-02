@@ -6,6 +6,8 @@
 // is gated by the standard SQL apply checks; here we focus on the
 // behavior the proxy depends on.
 
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
@@ -13,6 +15,42 @@ import '../../tool/advisor_proxy/health_producers/audit_producers.dart';
 import '../../tool/advisor_proxy/health_producers/health_producer.dart';
 
 void main() {
+  group('B42 migration grants', () {
+    late String migration;
+
+    setUpAll(() {
+      migration = File(
+        'db/migrations/202605020000_phase_11A_b42_proxy_migrations_applied.sql',
+      ).readAsStringSync().replaceAll(RegExp(r'\s+'), ' ');
+    });
+
+    test('grants registry writes and drift reads to runtime roles', () {
+      expect(
+        migration,
+        contains(
+          'grant insert, select on public.proxy_migrations_applied '
+          'to service_role, forge_admin',
+        ),
+      );
+      expect(
+        migration,
+        contains(
+          'grant usage, select on sequence '
+          'public.proxy_migrations_applied_id_seq '
+          'to service_role, forge_admin',
+        ),
+      );
+      expect(
+        migration,
+        contains(
+          'grant execute on function '
+          'public.proxy_migration_apply_drift(text[]) '
+          'to service_role, forge_admin',
+        ),
+      );
+    });
+  });
+
   group('ProxyMigrationApplyRegistryWriter', () {
     test('records applied migration filenames idempotently', () async {
       final inserted = <String>[];
