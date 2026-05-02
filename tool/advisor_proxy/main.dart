@@ -68,10 +68,8 @@ Future<void> main(List<String> args) async {
   // socket or invoking `dart run` in a subprocess.
   final firebaseProjectId = config.firebaseProjectId;
   final isProductionEnvironment =
-      (Platform.environment['PROXY_ENVIRONMENT'] ?? '')
-              .trim()
-              .toLowerCase() ==
-          'prod';
+      (Platform.environment['PROXY_ENVIRONMENT'] ?? '').trim().toLowerCase() ==
+      'prod';
   final startupFailure = evaluateProxyStartup(
     config: config,
     environment: Platform.environment,
@@ -239,6 +237,7 @@ Future<void> main(List<String> args) async {
   stdout.writeln(
     'gemini_slot_enabled: ${productionBindings.geminiSlotEnabled}',
   );
+  stdout.writeln('admin_cors_allow_list_count: ${adminCorsAllowList.length}');
 
   // Diagnostics line — names only, never values. Reports whether the
   // 9.1 Firebase verifier is wired (true when FIREBASE_PROJECT_ID is
@@ -250,8 +249,7 @@ Future<void> main(List<String> args) async {
     fields: <String, Object?>{
       'port': config.port,
       'loaded_secret_names': config.loadedSecretNames,
-      'firebase_verifier':
-          firebaseProjectId == null ? 'scaffold' : 'firebase',
+      'firebase_verifier': firebaseProjectId == null ? 'scaffold' : 'firebase',
       'auth_session_ledger': 'postgres',
       'accounting_store': 'postgres',
       'permission_snapshot': 'postgres',
@@ -318,8 +316,7 @@ Future<void> main(List<String> args) async {
         integrationAdminGateway: productionBindings.integrationAdminGateway,
         integrationAdminActorResolver:
             productionBindings.integrationAdminActorResolver,
-        featureFlagsAdminGateway:
-            productionBindings.featureFlagsAdminGateway,
+        featureFlagsAdminGateway: productionBindings.featureFlagsAdminGateway,
         // HARD-B - auth lockout / retry enforcement.
         authLockoutEnforcer: productionBindings.authLockoutEnforcer,
         authLockoutAuditSink: productionBindings.authLockoutAuditSink,
