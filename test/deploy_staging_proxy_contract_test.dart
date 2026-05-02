@@ -17,6 +17,25 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('proxy Dockerfile', () {
+    late String dockerfile;
+
+    setUpAll(() {
+      dockerfile = File('Dockerfile').readAsStringSync();
+    });
+
+    test('copies db/migrations into the build and runtime images', () {
+      expect(dockerfile, contains('COPY db/migrations ./db/migrations'));
+      expect(
+        dockerfile,
+        contains(
+          'COPY --from=build --chown=app:app '
+          '/workspace/db/migrations /app/db/migrations',
+        ),
+      );
+    });
+  });
+
   group('deploy_staging_proxy.ps1', () {
     late String script;
 

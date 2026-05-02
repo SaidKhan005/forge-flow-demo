@@ -367,6 +367,7 @@ ProxyProductionBindings buildProxyProductionBindings(
   ProxyConfig config, {
   PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
   bool requireFirebase = true,
+  List<String> expectedMigrationFilenames = const <String>[],
 }) {
   final firebaseAdmin = _buildFirebaseAdminAuthClient(
     config,
@@ -684,7 +685,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // concurrently against the admin pool with `set local role
     // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
     // event_outbox, audit_logs, vector indexes, etc.) succeed.
-    healthCheckStore: _buildRegistryProxyHealthCheckStore(adminWrapper),
+    healthCheckStore: _buildRegistryProxyHealthCheckStore(
+      adminWrapper,
+      expectedMigrationFilenames: expectedMigrationFilenames,
+    ),
     // HARD-G observability — pools exposed for the startup
     // connectivity probe in `main.dart`. The probe opens + commits
     // one `select 1` per pool so a slow / broken Postgres surfaces
@@ -990,8 +994,9 @@ class _AdvisorProxyUsageCounterStoreAdapter implements ProxyUsageCounterStore {
 /// reserved metrics aggregate platform-wide signals (event_outbox,
 /// graph_health_metrics, audit chain anchors) that span operators.
 RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
-  TenantTransactionWrapper adminWrapper,
-) {
+  TenantTransactionWrapper adminWrapper, {
+  List<String> expectedMigrationFilenames = const <String>[],
+}) {
   Future<List<Map<String, Object?>>> runnerFn(
     String sql, {
     Map<String, Object?> parameters = const <String, Object?>{},
@@ -1008,8 +1013,35 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     // not just extension presence, so a regressed AGE path or vector
     // operator surfaces as `red` instead of green.
     dependencyProbe: (fn, now) => strictProxyHealthDependencyProbe(fn, now),
-    producers: buildProxyHealthRegistryProducers(),
+    producers: buildProxyHealthRegistryProducers(
+      expectedMigrationFilenames: expectedMigrationFilenames,
+    ),
   );
+}
+
+/// Records the runtime migration catalog in `proxy_migrations_applied`.
+///
+/// The writer runs through the admin pool with `runAsSystem`, matching
+/// the health registry's platform-wide read posture and keeping the
+/// startup registry write independent from any operator tenant scope.
+Future<int> recordProxyStartupMigrations(
+  ProxyProductionBindings bindings,
+  List<String> migrationFilenames,
+) {
+  final adminWrapper = TenantTransactionWrapper(bindings.adminPool);
+  Future<List<Map<String, Object?>>> runnerFn(
+    String sql, {
+    Map<String, Object?> parameters = const <String, Object?>{},
+  }) {
+    return adminWrapper.runAsSystem<List<Map<String, Object?>>>(
+      (exec) => exec.query(sql, parameters: parameters),
+      reason: 'proxy_migration_registry',
+    );
+  }
+
+  return ProxyMigrationApplyRegistryWriter(
+    runnerFn: runnerFn,
+  ).recordAppliedMigrations(migrationFilenames);
 }
 
 /// HARD-G observability — startup connectivity probe.

@@ -25,6 +25,7 @@ RUN flutter pub get
 
 COPY lib ./lib
 COPY tool ./tool
+COPY db/migrations ./db/migrations
 
 RUN mkdir -p /workspace/build \
     && dart compile exe tool/advisor_proxy/main.dart -o /workspace/build/advisor_proxy
@@ -46,6 +47,7 @@ RUN useradd --create-home --uid 10001 --user-group app \
 WORKDIR /app
 
 COPY --from=build --chown=app:app /workspace/build/advisor_proxy /app/advisor_proxy
+COPY --from=build --chown=app:app /workspace/db/migrations /app/db/migrations
 
 USER app
 
