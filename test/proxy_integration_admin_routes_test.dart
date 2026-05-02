@@ -70,6 +70,9 @@ void main() {
             integrationAdminActorResolver:
                 resolverConfigured ? resolver : null,
             now: () => clockNow,
+            adminCorsAllowList: const <String>[
+              'https://admin.forgeflow.app',
+            ],
           );
         } catch (_) {
           try {
@@ -731,9 +734,10 @@ void main() {
               response.headers.value('access-control-allow-methods') ?? '';
           expect(allowMethods.toUpperCase(), contains('POST'));
           expect(allowMethods.toUpperCase(), contains('OPTIONS'));
+          // HARD-C — exact-origin echo, never `*`.
           expect(
             response.headers.value('access-control-allow-origin'),
-            equals('*'),
+            equals('https://admin.forgeflow.app'),
           );
         } finally {
           ctx.client.close(force: true);

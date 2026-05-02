@@ -139,6 +139,7 @@ class ProxyProductionBindings {
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
     required this.featureFlagsAdminGateway,
+    required this.adminCorsOriginsExtraFlag,
     required this.llmProvider,
     required this.secondaryLlmProvider,
     required this.geminiSlotEnabled,
@@ -173,6 +174,14 @@ class ProxyProductionBindings {
   /// (which fans out to `audit_logs` per the `audit_logs_cutover_enabled`
   /// flag).
   final FeatureFlagsAdminProxyGateway featureFlagsAdminGateway;
+
+  /// HARD-C — Postgres-backed gate for the supplemental admin CORS
+  /// allow-list. `main.dart` awaits this flag at startup; when
+  /// enabled, [resolveAdminCorsAllowList] merges
+  /// [ProxyConfig.adminCorsAllowedOriginsExtraFromEnv] into the
+  /// active list. Backed by [FeatureFlagsTableAdminCorsOriginsExtraFlag]
+  /// against the admin pool.
+  final AdminCorsOriginsExtraFlag adminCorsOriginsExtraFlag;
 
   /// Phase 11A.4b — primary LLM provider feeding the
   /// `AdvisorRequestPipeline`. Real Anthropic Messages API HTTP
@@ -592,6 +601,13 @@ ProxyProductionBindings buildProxyProductionBindings(
     featureFlagsAdminGateway: RepositoryFeatureFlagsAdminProxyGateway(
       featureFlagsRepository: FeatureFlagsRepository(adminWrapper),
       auditRepository: adminAudit,
+    ),
+    // HARD-C — Postgres-backed gate for the supplemental admin CORS
+    // allow-list. main.dart awaits this once during bootstrap before
+    // binding a port; flipping the row in `feature_flags` does not
+    // take effect until the next deploy / restart.
+    adminCorsOriginsExtraFlag: FeatureFlagsTableAdminCorsOriginsExtraFlag(
+      adminPool,
     ),
     // Phase 11A.4b — LLM providers feeding the AdvisorRequestPipeline.
     llmProvider: llmProviders.primary,
@@ -2850,6 +2866,202 @@ KmsProvider _buildKmsProvider({
       );
     },
   );
+}
+
+/// HARD-C — known non-production deployment environments. Only
+/// these values trigger the localhost CORS fallback in
+/// [resolveAdminCorsAllowList]; an unset, misspelled, or unknown
+/// `PROXY_ENVIRONMENT` is treated as production-equivalent so a
+/// misconfigured deploy fails closed instead of silently allowing
+/// `http://localhost:*` to call admin routes.
+const Set<String> kAdminCorsDevStagingEnvironments = <String>{
+  'dev',
+  'staging',
+};
+
+/// HARD-C — name of the Postgres feature flag that supplies
+/// supplemental admin CORS origins. Must match the `flag_name`
+/// column on the `feature_flags` row at the global scope
+/// (operator_id null, location_id null).
+const String kAdminCorsOriginsExtraFlagName = 'admin_cors_origins_extra';
+
+/// HARD-C — Postgres-backed source of supplemental CORS origins.
+/// The contract names this row in `public.feature_flags` as the
+/// authority for "ephemeral preview deploy" allow-list extras.
+/// Production startup reads it once before binding a port; the
+/// returned origins are merged into the active allow-list by
+/// [resolveAdminCorsAllowList].
+///
+/// Schema overload: `feature_flags` rows carry `enabled` (bool) and
+/// `description` (text). For `admin_cors_origins_extra`, the
+/// description column doubles as the comma-separated origin payload
+/// when the flag is enabled. This is documented behaviour for this
+/// specific flag; other rows still treat description as
+/// human-readable copy. Future schema work may move the payload to
+/// a dedicated column without changing the contract surface
+/// because callers only ever see [List<String>].
+abstract class AdminCorsOriginsExtraFlag {
+  /// Returns the supplemental origin list when the
+  /// `admin_cors_origins_extra` flag row is enabled and its
+  /// description column parses to a non-empty CSV. Returns the
+  /// empty list when the flag is disabled, missing, or the
+  /// description is blank.
+  Future<List<String>> read();
+}
+
+/// Fixed-value implementation — used for tests / scaffolds and for
+/// the rare production boot where the admin pool is unavailable
+/// (e.g. a smoke run). Defaults to an empty list so a missing wire
+/// silently emits no extras instead of opening up the allow-list.
+class FixedAdminCorsOriginsExtraFlag implements AdminCorsOriginsExtraFlag {
+  const FixedAdminCorsOriginsExtraFlag(this.origins);
+
+  /// Convenience constructor for the most common test posture: the
+  /// flag is disabled, so no extras are emitted.
+  const FixedAdminCorsOriginsExtraFlag.empty() : origins = const <String>[];
+
+  final List<String> origins;
+
+  @override
+  Future<List<String>> read() async => origins;
+}
+
+/// Production source — reads `enabled` + `description` from the
+/// `admin_cors_origins_extra` row in `public.feature_flags` inside
+/// a one-shot read transaction against the admin pool. Comma-splits
+/// the description column when the flag is enabled. Default-off
+/// when the row is missing so a fresh DB without the seed migration
+/// silently emits no extras.
+class FeatureFlagsTableAdminCorsOriginsExtraFlag
+    implements AdminCorsOriginsExtraFlag {
+  FeatureFlagsTableAdminCorsOriginsExtraFlag(PostgresPool pool)
+      : _pool = pool;
+
+  final PostgresPool _pool;
+
+  @override
+  Future<List<String>> read() async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final rows = await tx.query(
+        'select enabled, description from public.feature_flags '
+        "where flag_name = '$kAdminCorsOriginsExtraFlagName' "
+        'and operator_id is null '
+        'and location_id is null '
+        'limit 1',
+      );
+      await tx.commit();
+      if (rows.isEmpty) return const <String>[];
+      final enabledValue = rows.single['enabled'];
+      final enabled = _coerceBool(enabledValue);
+      if (!enabled) return const <String>[];
+      final description = rows.single['description']?.toString() ?? '';
+      return _parseOriginCsv(description);
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  static bool _coerceBool(Object? value) {
+    if (value is bool) return value;
+    if (value is num) return value != 0;
+    if (value is String) {
+      return value.toLowerCase() == 'true' || value == 't';
+    }
+    return false;
+  }
+}
+
+/// Comma-splits a CSV origin payload — used by the
+/// `admin_cors_origins_extra` flag reader. Trims each entry, drops
+/// empty results. Public for the test wiring; production callers
+/// reach through [FeatureFlagsTableAdminCorsOriginsExtraFlag.read].
+List<String> _parseOriginCsv(String raw) {
+  final out = <String>[];
+  for (final part in raw.split(',')) {
+    final trimmed = part.trim();
+    if (trimmed.isEmpty) continue;
+    out.add(trimmed);
+  }
+  return List<String>.unmodifiable(out);
+}
+
+/// HARD-C — resolve the supplemental allow-list at startup. The
+/// production main.dart awaits this once before binding a port;
+/// callers pass the result as `featureFlagExtras` to
+/// [resolveAdminCorsAllowList]. Read failures propagate so a flaky
+/// DB at boot fails the bootstrap instead of silently turning the
+/// flag off.
+Future<List<String>> loadAdminCorsExtraOrigins({
+  required AdminCorsOriginsExtraFlag flag,
+}) async {
+  return flag.read();
+}
+
+/// HARD-C — resolve the admin CORS allow-list at startup.
+///
+/// Layers (in order, all are unioned):
+///   1. The env-var list parsed by [ProxyConfig.fromEnvironment] from
+///      `ADMIN_CORS_ALLOWED_ORIGINS`.
+///   2. `featureFlagExtras` — origins surfaced from the
+///      `admin_cors_origins_extra` feature flag. The production
+///      `main.dart` reads the flag via
+///      [FeatureFlagsTableAdminCorsOriginsExtraFlag] before calling
+///      this function; tests pass an inline list.
+///   3. `http://localhost:*` when [ProxyConfig.proxyEnvironment] is
+///      one of [kAdminCorsDevStagingEnvironments] (`dev` or
+///      `staging`). Any other value — including null, empty, or a
+///      misspelled `production` / `PRD` — does NOT add localhost.
+///
+/// Fail-closed: when the resolved list is empty AND
+/// [ProxyConfig.proxyEnvironment] is anything other than a known
+/// dev/staging value, throws a [ProxyConfigError]. The startup
+/// wrapper in `main.dart` translates that into `exit 78` with the
+/// contract-required event token `admin_cors_allowlist_missing_in_prod`
+/// in the message. Treating unknown values as prod-equivalent is
+/// deliberate — a typo in `PROXY_ENVIRONMENT` (e.g. `production`,
+/// `PRD`) must never silently bind without an explicit allow-list.
+List<String> resolveAdminCorsAllowList(
+  ProxyConfig config, {
+  List<String> featureFlagExtras = const <String>[],
+}) {
+  final merged = <String>{};
+  for (final entry in config.adminCorsAllowedOriginsFromEnv) {
+    final trimmed = entry.trim();
+    if (trimmed.isEmpty) continue;
+    merged.add(trimmed);
+  }
+  for (final entry in featureFlagExtras) {
+    final trimmed = entry.trim();
+    if (trimmed.isEmpty) continue;
+    merged.add(trimmed);
+  }
+  final environment = config.proxyEnvironment;
+  final isKnownDevOrStaging =
+      environment != null &&
+          kAdminCorsDevStagingEnvironments.contains(environment);
+  if (isKnownDevOrStaging) {
+    merged.add('http://localhost:*');
+  }
+  if (merged.isEmpty && !isKnownDevOrStaging) {
+    throw ProxyConfigError(
+      'advisor proxy startup failed: '
+      'admin_cors_allowlist_missing_in_prod. '
+      '${ProxyConfigNames.adminCorsAllowedOrigins} must be set to a '
+      'non-empty comma-separated list of origins (e.g. '
+      'https://admin.forgeandflow.app) unless '
+      '${ProxyConfigNames.proxyEnvironment} is one of '
+      '${kAdminCorsDevStagingEnvironments.join(", ")}. '
+      'Current ${ProxyConfigNames.proxyEnvironment} value: '
+      '${environment ?? "<unset>"}. '
+      'Refusing to bind a port without an admin CORS allow-list.',
+      missingSecretNames: const <String>[
+        ProxyConfigNames.adminCorsAllowedOrigins,
+      ],
+    );
+  }
+  return List<String>.unmodifiable(merged);
 }
 
 /// Build the Cloud Run admin client for forced-revision restarts

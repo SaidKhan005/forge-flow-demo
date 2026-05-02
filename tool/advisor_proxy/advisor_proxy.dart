@@ -191,6 +191,27 @@ abstract class ProxyConfigNames {
   /// the proxy — `CloudRunAdminClient` patches this service to bump
   /// its revision when a runtime-read API key rotates.
   static const String cloudRunServiceName = 'CLOUD_RUN_SERVICE_NAME';
+
+  /// HARD-C — comma-split list of origins allowed to call the admin
+  /// CORS-protected routes. Required in production; staged values
+  /// land in Cloud Run env per the contract. Values are exact-string
+  /// matches (e.g. `https://admin.forgeandflow.app`). Empty / missing
+  /// in prod fails the bootstrap closed (exit 78).
+  ///
+  /// The supplemental "extras" allow-list is NOT an env var — it is
+  /// the comma-separated description column on the
+  /// `admin_cors_origins_extra` row in `public.feature_flags`,
+  /// read at startup via
+  /// `FeatureFlagsTableAdminCorsOriginsExtraFlag`.
+  static const String adminCorsAllowedOrigins =
+      'ADMIN_CORS_ALLOWED_ORIGINS';
+
+  /// HARD-C — declared deployment environment. Only `dev` and
+  /// `staging` (case-sensitive) trigger the localhost CORS
+  /// fallback. Any other value, including `prod`, an empty string,
+  /// or a misspelled `production` / `PRD`, fails closed when no
+  /// explicit allow-list is configured.
+  static const String proxyEnvironment = 'PROXY_ENVIRONMENT';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -215,7 +236,12 @@ class ProxyConfig {
     required this.gcpProjectId,
     required this.cloudRunRegion,
     required this.cloudRunServiceName,
-  }) : _secrets = Map<String, String>.unmodifiable(secrets);
+    required List<String> adminCorsAllowedOriginsFromEnv,
+    required this.proxyEnvironment,
+  })  : _secrets = Map<String, String>.unmodifiable(secrets),
+        adminCorsAllowedOriginsFromEnv = List<String>.unmodifiable(
+          adminCorsAllowedOriginsFromEnv,
+        );
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
   final int port;
@@ -247,6 +273,23 @@ class ProxyConfig {
   /// Phase 11A.4c — Cloud Run service name. The same service that's
   /// running this proxy.
   final String? cloudRunServiceName;
+
+  /// HARD-C — admin CORS allow-list parsed from
+  /// [ProxyConfigNames.adminCorsAllowedOrigins] (comma-split, trimmed,
+  /// empty entries dropped). The bootstrap-time resolver
+  /// (`resolveAdminCorsAllowList`) layers feature-flag extras
+  /// (sourced from the `admin_cors_origins_extra` row in
+  /// `public.feature_flags`) and a dev/staging localhost fallback on
+  /// top; this field is the env-only slice. Empty list when the env
+  /// var is unset or blank.
+  final List<String> adminCorsAllowedOriginsFromEnv;
+
+  /// HARD-C — declared deployment environment. Trimmed lowercase
+  /// string from [ProxyConfigNames.proxyEnvironment], or null when
+  /// unset. The resolver treats `prod` as production (fail-closed on
+  /// empty allow-list) and any other value as non-prod (localhost is
+  /// added to the allow-list for ergonomic dev / staging access).
+  final String? proxyEnvironment;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -358,6 +401,12 @@ class ProxyConfig {
       );
     }
 
+    final adminCorsRaw = environment[ProxyConfigNames.adminCorsAllowedOrigins];
+    final adminCorsList = _parseCsvOrigins(adminCorsRaw);
+    final proxyEnvironmentValue =
+        trimmedOrNull(environment[ProxyConfigNames.proxyEnvironment])
+            ?.toLowerCase();
+
     return ProxyConfig._(
       port: port,
       secrets: loaded,
@@ -367,6 +416,8 @@ class ProxyConfig {
       gcpProjectId: gcpProjectIdValue,
       cloudRunRegion: cloudRunRegionValue,
       cloudRunServiceName: cloudRunServiceNameValue,
+      adminCorsAllowedOriginsFromEnv: adminCorsList,
+      proxyEnvironment: proxyEnvironmentValue,
     );
   }
 
@@ -379,6 +430,20 @@ class ProxyConfig {
     if (raw == null) return false;
     final trimmed = raw.trim().toLowerCase();
     return trimmed == 'true' || trimmed == '1' || trimmed == 'on';
+  }
+
+  /// HARD-C — parse a comma-separated CORS origin list from an env
+  /// var. Trims each entry; drops empty results. Returns an empty
+  /// list when [raw] is null or contains only whitespace / commas.
+  static List<String> _parseCsvOrigins(String? raw) {
+    if (raw == null) return const <String>[];
+    final out = <String>[];
+    for (final part in raw.split(',')) {
+      final trimmed = part.trim();
+      if (trimmed.isEmpty) continue;
+      out.add(trimmed);
+    }
+    return out;
   }
 
   static int _parsePort(String? raw) {
@@ -5743,53 +5808,58 @@ Future<void> routeRequest(
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
   DateTime Function()? now,
+  List<String> adminCorsAllowList = const <String>[],
 }) async {
   final response = request.response;
   final clock = now ?? DateTime.now;
   try {
     final path = request.uri.path;
+    // HARD-C — admin CORS dispatch. Each admin path family resolves
+    // to a single methods list; preflight + non-preflight responses
+    // both flow through the central helpers (respondAdminCorsPreflight
+    // / _applyAdminCorsHeaders) so the origin allow-list lives in
+    // exactly one place.
     final isAdminOperatorLocationPath = _isAdminOperatorOrLocationPath(path);
-    if (isAdminOperatorLocationPath) {
-      _setAdminOperatorLocationCorsHeaders(response);
-      if (request.method == 'OPTIONS') {
-        response.statusCode = HttpStatus.noContent;
-        response.contentLength = 0;
-        return;
-      }
-    }
     final isAdminPricingPath = _isAdminPricingPath(path);
-    if (isAdminPricingPath) {
-      _setAdminPricingCorsHeaders(response);
-      if (request.method == 'OPTIONS') {
-        response.statusCode = HttpStatus.noContent;
-        response.contentLength = 0;
-        return;
-      }
-    }
     final isAdminCorpusPath = _isAdminCorpusPath(path);
-    if (isAdminCorpusPath) {
-      _setAdminCorpusCorsHeaders(response);
-      if (request.method == 'OPTIONS') {
-        response.statusCode = HttpStatus.noContent;
-        response.contentLength = 0;
-        return;
-      }
-    }
     final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
-    if (isAdminIntegrationsPath) {
-      _setAdminIntegrationsCorsHeaders(response);
+    final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
+    final List<String>? adminCorsMethods = isAdminOperatorLocationPath
+        ? kAdminOperatorLocationCorsMethods
+        : isAdminPricingPath
+            ? kAdminPricingCorsMethods
+            : isAdminCorpusPath
+                ? kAdminCorpusCorsMethods
+                : isAdminIntegrationsPath
+                    ? kAdminIntegrationsCorsMethods
+                    : isAdminFeatureFlagsPath
+                        ? kAdminFeatureFlagsCorsMethods
+                        : null;
+    if (adminCorsMethods != null) {
       if (request.method == 'OPTIONS') {
-        response.statusCode = HttpStatus.noContent;
-        response.contentLength = 0;
+        respondAdminCorsPreflight(
+          request,
+          adminCorsAllowList,
+          allowedMethods: adminCorsMethods,
+        );
         return;
       }
+      _applyAdminCorsHeaders(request, adminCorsAllowList);
     }
-    final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
-    if (isAdminFeatureFlagsPath) {
-      _setAdminFeatureFlagsCorsHeaders(response);
-      if (request.method == 'OPTIONS') {
-        response.statusCode = HttpStatus.noContent;
-        response.contentLength = 0;
+
+    // HARD-C — request body cap. POST/PATCH/PUT must declare a
+    // Content-Length and stay under the 1 MB ceiling. Missing or
+    // oversized bodies short-circuit with 413 before any handler
+    // runs. CORS headers were already applied above for admin paths,
+    // so the browser still sees the echo on the 413 response.
+    if (_isBodyMethod(request.method)) {
+      final declaredLength = request.contentLength;
+      if (declaredLength < 0 ||
+          declaredLength > kAdminCorsRequestBodyLimitBytes) {
+        _writeJson(response, 413, <String, Object?>{
+          'error': 'request_too_large',
+          'limit_bytes': kAdminCorsRequestBodyLimitBytes,
+        });
         return;
       }
     }
@@ -10124,85 +10194,175 @@ void _writeJson(
   response.write(jsonEncode(body));
 }
 
-void _setAdminOperatorLocationCorsHeaders(HttpResponse response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set(
-    'Access-Control-Allow-Methods',
-    'GET,POST,PATCH,DELETE,OPTIONS',
-  );
-  response.headers.set(
-    'Access-Control-Allow-Headers',
-    'Authorization,Content-Type,Accept',
-  );
-  response.headers.set('Access-Control-Max-Age', '3600');
+/// HARD-C — request methods that are required to declare a body.
+/// Used by the routeRequest body-cap pre-handler to reject oversized
+/// or unannounced (Content-Length: -1) mutations before any handler
+/// reads the stream.
+bool _isBodyMethod(String method) {
+  return method == 'POST' || method == 'PATCH' || method == 'PUT';
 }
 
-// Phase 11A.4 — Integration management CORS. Mirrors the pricing
-// helper shape; rotation routes are POST-only so the allowed-methods
-// list excludes PUT.
-void _setAdminIntegrationsCorsHeaders(HttpResponse response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set(
-    'Access-Control-Allow-Methods',
-    'GET,POST,OPTIONS',
-  );
-  response.headers.set(
-    'Access-Control-Allow-Headers',
-    'Authorization,Content-Type,Accept',
-  );
-  response.headers.set('Access-Control-Max-Age', '3600');
+/// HARD-C — admin CORS request body cap. Hard limit on every
+/// admin-route mutation; oversized requests get 413 before any
+/// gateway runs.
+const int kAdminCorsRequestBodyLimitBytes = 1000000;
+
+/// HARD-C — admin CORS preflight cache duration. Browsers may keep
+/// the preflight response for this many seconds before re-issuing
+/// the OPTIONS request.
+const int kAdminCorsPreflightMaxAgeSeconds = 600;
+
+/// HARD-C — Allow-Headers value used for every admin CORS surface.
+/// Matches the contract's required value exactly:
+/// `Authorization, Content-Type, Idempotency-Key`. Idempotency-Key
+/// is included so the corpus / feature-flags / future idempotent
+/// admin routes can carry it past the browser preflight.
+const String kAdminCorsAllowedRequestHeaders =
+    'Authorization, Content-Type, Idempotency-Key';
+
+/// HARD-C — Allowed methods list per admin CORS surface, threaded
+/// through the centralized [respondAdminCorsPreflight] helper. Each
+/// list MUST contain `OPTIONS`; CORS preflight refuses methods that
+/// aren't echoed in `Access-Control-Allow-Methods`.
+const List<String> kAdminOperatorLocationCorsMethods = <String>[
+  'GET',
+  'POST',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
+const List<String> kAdminPricingCorsMethods = <String>[
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'OPTIONS',
+];
+const List<String> kAdminCorpusCorsMethods = <String>[
+  'GET',
+  'POST',
+  'OPTIONS',
+];
+const List<String> kAdminIntegrationsCorsMethods = <String>[
+  'GET',
+  'POST',
+  'OPTIONS',
+];
+const List<String> kAdminFeatureFlagsCorsMethods = <String>[
+  'GET',
+  'POST',
+  'OPTIONS',
+];
+
+/// HARD-C — sole origin-decision site for admin CORS.
+///
+/// Returns the matched origin (the literal value to echo back) when
+/// [requestOrigin] is permitted by [allowList]. Returns null when:
+/// the request carries no `Origin` header, the header is blank, or
+/// none of the allow-list entries match.
+///
+/// Allow-list semantics:
+///   * exact strings are case-sensitive equality matches;
+///   * an entry ending in `:*` (e.g. `http://localhost:*`) matches
+///     any numeric port on the same scheme + host. Used for the
+///     dev / staging localhost fallback the bootstrap resolver adds
+///     so the operator console served from `localhost:5173` and
+///     `localhost:5174` both round-trip.
+///
+/// Wildcard `*` is intentionally not supported. The HARD-C contract
+/// bans wildcard origin echoes on admin routes because admin JWTs
+/// are sensitive and must not be redeemable from any origin.
+String? _matchAdminCorsOrigin(
+  String? requestOrigin,
+  List<String> allowList,
+) {
+  if (requestOrigin == null) return null;
+  final origin = requestOrigin.trim();
+  if (origin.isEmpty) return null;
+  for (final allowed in allowList) {
+    if (allowed == origin) return origin;
+    if (allowed.endsWith(':*')) {
+      final prefix = allowed.substring(0, allowed.length - 2);
+      if (prefix.isEmpty) continue;
+      if (!origin.startsWith('$prefix:')) continue;
+      final port = origin.substring(prefix.length + 1);
+      if (port.isEmpty) continue;
+      if (int.tryParse(port) == null) continue;
+      return origin;
+    }
+  }
+  return null;
 }
 
-// Phase 11A.2 — pricing routes use PUT for `/v1/admin/pricing/usage-caps`
-// upserts. Browser preflight refuses any method missing from
-// Access-Control-Allow-Methods, so the pricing surface gets its own
-// header set with PUT included; the 11A.1 operator/location helper
-// stays unchanged.
-void _setAdminPricingCorsHeaders(HttpResponse response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set(
+/// HARD-C — admin CORS preflight handler.
+///
+/// Writes a complete response and returns. On match: 204, exact
+/// origin echoed in `Access-Control-Allow-Origin`, `Vary: Origin`,
+/// the [allowedMethods] list, [kAdminCorsAllowedRequestHeaders], and
+/// `Access-Control-Max-Age: 600`. On disallowed / missing origin:
+/// 403 with `Vary: Origin` set but NO `Access-Control-Allow-Origin`
+/// header echoed, so a browser refuses to attach credentials on the
+/// follow-up request.
+///
+/// Routed admin paths must pass through this single helper so the
+/// origin allow-list lives in one place. The previous slice exposed
+/// five `_setAdmin*CorsHeaders` helpers that all hard-coded a
+/// wildcard origin echo; HARD-C deletes those and replaces them
+/// with this one decision site.
+void respondAdminCorsPreflight(
+  HttpRequest request,
+  List<String> allowList, {
+  required List<String> allowedMethods,
+}) {
+  final originHeader = request.headers.value('origin');
+  final matched = _matchAdminCorsOrigin(originHeader, allowList);
+  request.response.headers.set('Vary', 'Origin');
+  if (matched == null) {
+    _writeJson(
+      request.response,
+      HttpStatus.forbidden,
+      const <String, Object?>{'error': 'cors_origin_not_allowed'},
+    );
+    return;
+  }
+  request.response.statusCode = HttpStatus.noContent;
+  request.response.headers.set('Access-Control-Allow-Origin', matched);
+  request.response.headers.set(
     'Access-Control-Allow-Methods',
-    'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+    allowedMethods.join(', '),
   );
-  response.headers.set(
+  request.response.headers.set(
     'Access-Control-Allow-Headers',
-    'Authorization,Content-Type,Accept',
+    kAdminCorsAllowedRequestHeaders,
   );
-  response.headers.set('Access-Control-Max-Age', '3600');
+  request.response.headers.set(
+    'Access-Control-Max-Age',
+    '$kAdminCorsPreflightMaxAgeSeconds',
+  );
+  request.response.contentLength = 0;
 }
 
-// Phase 11A.3a — corpus admin routes accept POST + GET only. The
-// commit / rollback / preview-diff routes also need the
-// `Idempotency-Key` request header in CORS preflight, otherwise the
-// browser strips it before the proxy ever sees it.
-void _setAdminCorpusCorsHeaders(HttpResponse response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set(
-    'Access-Control-Allow-Methods',
-    'GET,POST,OPTIONS',
-  );
-  response.headers.set(
-    'Access-Control-Allow-Headers',
-    'Authorization,Content-Type,Accept,Idempotency-Key',
-  );
-  response.headers.set('Access-Control-Max-Age', '3600');
-}
-
-// Phase 11A.7 — feature flags admin routes accept GET (list) + POST
-// (toggle). The toggle POST carries `Idempotency-Key` so the browser
-// preflight needs that header in the allow-list mirror of the corpus
-// helper.
-void _setAdminFeatureFlagsCorsHeaders(HttpResponse response) {
-  response.headers.set('Access-Control-Allow-Origin', '*');
-  response.headers.set(
-    'Access-Control-Allow-Methods',
-    'GET,POST,OPTIONS',
-  );
-  response.headers.set(
-    'Access-Control-Allow-Headers',
-    'Authorization,Content-Type,Accept,Idempotency-Key',
-  );
-  response.headers.set('Access-Control-Max-Age', '3600');
+/// HARD-C — apply admin CORS headers to a non-preflight admin
+/// response. Always sets `Vary: Origin`. When the request origin
+/// matches [allowList], also sets `Access-Control-Allow-Origin` to
+/// the literal matched origin string. Returns whether the origin
+/// matched.
+///
+/// Preflight responses use [respondAdminCorsPreflight] instead;
+/// this is the helper for the regular admin handler responses
+/// (200 / 4xx / 5xx) so the browser receives the echo on every
+/// admin response, not just OPTIONS.
+bool _applyAdminCorsHeaders(
+  HttpRequest request,
+  List<String> allowList,
+) {
+  request.response.headers.set('Vary', 'Origin');
+  final originHeader = request.headers.value('origin');
+  final matched = _matchAdminCorsOrigin(originHeader, allowList);
+  if (matched == null) return false;
+  request.response.headers.set('Access-Control-Allow-Origin', matched);
+  return true;
 }
 
 String _nonBlankOr(String? raw, String fallback) {
