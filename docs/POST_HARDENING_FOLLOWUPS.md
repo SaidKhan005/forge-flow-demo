@@ -145,7 +145,7 @@ toggle contract).
 | `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/integration_admin_gateway.dart` | 311 | 0 | 0% |
-| 15 of 29 postgres repositories | 9,327 | 0 | 0% |
+| 10 of 29 postgres repositories | ~7,734 | 5 (`test/infrastructure/persistence/postgres/repositories/`, L2, 2026-05-02) + scattered phase-prefix / live-binding | partial |
 
 **Action:** chip away during routine slices; not a launch blocker because
 the proxy-level live-binding tests (`mfa_live_binding_test.dart`,
@@ -199,6 +199,87 @@ covered by `mfa_live_binding_test.dart` / `auth_live_binding_test.dart`.
 **Remaining MFA gaps:** none locally testable after this parcel; live
 Identity Toolkit / proxy contract drift is owned by the live-binding
 suites above. No production code changed; no bugs surfaced.
+
+**Postgres repositories — partially resolved 2026-05-02 (L2).** New
+`test/infrastructure/persistence/postgres/repositories/` parcel adds
+canonical-path unit tests for 5 high-priority surfaces (chosen by
+tenant-isolation / audit-chain criticality). 70 tests across 5 new
+files; `flutter analyze` clean. No production code changed.
+
+- `audit_logs_repository_test.dart` (341 lines) — SHA-256 chain
+  inputs (no client-side `prev_row_hash` / `row_hash` — the BEFORE
+  INSERT trigger computes both), `actor_kind` never-NULL guard at
+  the API surface AND in the SQL column list, `operator_id` RLS
+  posture (`writeRow` runs in caller's tx, no SET LOCAL emitted by
+  the repo), and `AuditLogsCutoverFlag` resolver shapes — pinning
+  the **default-ON** behavior of the production resolver vs the
+  KMS rollout flag's default-OFF so a future refactor cannot
+  silently flip them. Companion to the existing
+  `test/repositories/audit_logs_repository_test.dart` (`writeRow`
+  parameter shape).
+- `event_outbox_repository_test.dart` (452 lines) — `markDelivered`
+  shape (HARD-H backlog drain seal: `delivered_at IS NULL`
+  idempotency guard, affected-row reporting), `claimBatch(topic:)`
+  filter (HARD-H consumer isolation — filter inside the inner CTE
+  so single-topic consumers don't lock other-topic rows), payload
+  normalization edges (`Map<dynamic, dynamic>`, empty-string,
+  malformed → `StateError`), defensive RETURNING-id guards
+  (non-string / empty → `StateError`). Companion to
+  `test/phase_9_0sigma_e_event_outbox_test.dart` (core enqueue +
+  claim SQL contract).
+- `operators_repository_test.dart` (668 lines) — `listOperators`
+  cross-tenant sweep (no `where operator_id` predicate, ordered by
+  `business_name` for stable admin grouping), `suspendOperator`
+  idempotency (`coalesce(suspended_at, now())`), `reactivateOperator`
+  unconditional `null`, `onboardOperatorAtomically` 3-statement
+  ordering (insert operator → insert location → UPDATE operator
+  with primary_location_id) and rollback semantics for each step's
+  empty-RETURNING failure mode, plus `withSystem` audit-marker
+  shape (`system:<reason>`) and `set local role forge_admin`
+  elevation pinning. First canonical-path coverage for this repo.
+- `user_roles_repository_test.dart` (648 lines) — scope-payload
+  CHECK enforcement (six rejection paths covering every illegal
+  combination across `operator_wide` / `org_unit` / `location` ×
+  null-vs-non-null `grantLocationId` / `grantOrgUnitId`, plus three
+  happy paths), `roles_version` bump atomicity (insert success →
+  bump runs, RLS-denied insert → bump skipped, revoke
+  affected-row > 0 → bump runs, revoke affected-row = 0 → bump
+  skipped), `bumpActiveGrantHoldersForRole` EXISTS-subquery shape
+  (active-grant filter so revoked / expired grants don't trigger
+  bump fan-out), tenant predicate folding via observed SET LOCAL
+  ordering, and `UserRoleScope` value-object conversions
+  (`sqlKey` round-trip, unknown rejection, legacy
+  `fromGrantLocationId` convention). First canonical-path coverage
+  for this repo.
+- `usage_caps_repository_test.dart` (422 lines) — two-slot UNIQUE
+  NULLS NOT DISTINCT upsert targeting the named constraint
+  (`usage_caps_two_slot_uq` — by name, not column list, so a
+  migration rename surfaces as a hard test failure); `DO UPDATE`
+  preserves `created_by` while rewriting `updated_by` (audit
+  trail keeps original creator); NULLS NOT DISTINCT collision
+  relies on the literal `null` reaching the bind (no sentinel
+  coercion that would defeat the constraint dedup); `withSystem`
+  audit-marker pinning. First canonical-path coverage for this repo.
+
+**Remaining postgres-repository gaps:** 23 of 29 surfaces still
+without canonical-path unit tests when counted strictly by
+`test/infrastructure/persistence/postgres/repositories/` location.
+Most have non-canonical unit tests at `test/repositories/` or
+`test/<repo_name>_test.dart` (`corpus`, `feature_flags`, `graph`,
+`provider_credentials`, `recovery_code_attempt_store`,
+`service_principals`, `users`, `auth_login_attempts`) or
+phase-prefix tests (`auth_events_audit` via cutover test); a smaller
+set (`auth_invites`, `auth_sessions`, `invited_user_activation`,
+`locations`, `password_history`, `advisor_conversation_log`,
+`mfa_factor_removal_requests`, `mfa_factors`,
+`mfa_recovery_request_attempts`, `operator_admins`, `org_units`,
+`roles`, `role_permissions`) appears only inside larger live-binding
+/ gateway test files as fixtures, not under direct unit-test
+coverage. `user_scoped_repository.dart` is a base class covered
+indirectly by `test/operator_scoped_repository_test.dart`. Chip away
+the canonical-path migration during routine slices that touch each
+repo; treat the indirect-only group as the highest priority for
+direct unit-test coverage.
 
 ## P3 — Unused public classes (4)
 
