@@ -204,11 +204,13 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
     },
     'azure_extensions_present': <String, Object?>{
       'status': 'green',
-      'value': 7,
+      'value': 6,
       'unit': 'count',
       'description':
-          'Required Azure extensions installed (AGE, pgvector, pg_diskann, '
-          'pg_cron, pg_partman, pg_stat_statements, pgcrypto).',
+          'Required Azure extensions installed in the active business '
+          'database (AGE, pgvector, pg_diskann, pg_partman, '
+          'pg_stat_statements, pgcrypto). pg_cron is tracked separately '
+          'from Azure''s maintenance database.',
       'source': 'pg_extension',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',

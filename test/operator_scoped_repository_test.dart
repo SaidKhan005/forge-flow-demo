@@ -439,6 +439,78 @@ void main() {
         expect(connection.forceCloseCalls, equals(1));
       },
     );
+
+    test(
+      'reusable mode returns committed connections to the adapter pool',
+      () async {
+        final created = <_FakePackagePostgresConnection>[];
+        final pool = PackagePostgresPool(
+          openConnection: () async {
+            final connection = _FakePackagePostgresConnection();
+            created.add(connection);
+            return connection;
+          },
+          reuseConnections: true,
+          maxConnectionCount: 1,
+        );
+
+        final first = await pool.beginTransaction();
+        await first.commit();
+        final second = await pool.beginTransaction();
+        await second.commit();
+
+        expect(created, hasLength(1));
+        expect(created.single.queries.map((call) => call.sqlText), <String>[
+          'begin',
+          'commit',
+          'begin',
+          'commit',
+        ]);
+        expect(created.single.closeCalls, equals(0));
+        expect(created.single.forceCloseCalls, equals(0));
+
+        await pool.closeIdleConnections();
+        expect(created.single.closeCalls, equals(1));
+        expect(created.single.forceCloseCalls, equals(0));
+      },
+    );
+
+    test(
+      'reusable mode discards rolled-back connections before reuse',
+      () async {
+        final created = <_FakePackagePostgresConnection>[];
+        final pool = PackagePostgresPool(
+          openConnection: () async {
+            final connection = _FakePackagePostgresConnection();
+            created.add(connection);
+            return connection;
+          },
+          reuseConnections: true,
+          maxConnectionCount: 1,
+        );
+
+        final first = await pool.beginTransaction();
+        await first.rollback();
+        final second = await pool.beginTransaction();
+        await second.commit();
+
+        expect(created, hasLength(2));
+        expect(created.first.queries.map((call) => call.sqlText), <String>[
+          'begin',
+          'rollback',
+        ]);
+        expect(created.first.closeCalls, equals(1));
+        expect(created.first.forceCloseCalls, equals(1));
+        expect(created.last.queries.map((call) => call.sqlText), <String>[
+          'begin',
+          'commit',
+        ]);
+        expect(created.last.closeCalls, equals(0));
+
+        await pool.closeIdleConnections();
+        expect(created.last.closeCalls, equals(1));
+      },
+    );
   });
 
   group('Phase 9.2 RLS per-tenant policy migration '
@@ -741,27 +813,29 @@ void main() {
   });
 
   group('UserScopedRepository (subclass-facing API)', () {
-    test('withUser delegates to runInUserContext and forwards body return',
-        () async {
-      final pool = _RecordingPool();
-      final repo = _ExampleUserRepository(TenantTransactionWrapper(pool));
+    test(
+      'withUser delegates to runInUserContext and forwards body return',
+      () async {
+        final pool = _RecordingPool();
+        final repo = _ExampleUserRepository(TenantTransactionWrapper(pool));
 
-      final result = await repo.exampleUserRead(_validUserId);
+        final result = await repo.exampleUserRead(_validUserId);
 
-      expect(result, equals(<String>['row-a', 'row-b']));
-      expect(pool.transactions, hasLength(1));
-      final tx = pool.transactions.single;
-      // SET LOCAL app.user_id ran before the body's read.
-      expect(tx.executedSql[0], contains("set_config('app.user_id'"));
-      expect(tx.parameters[0]['value'], equals(_validUserId));
-      // Body's query ran after SET LOCAL + audit marker.
-      expect(tx.executedSql.any((sql) => sql.contains('from users')), isTrue);
-      // Repository never touches forge_admin.
-      expect(
-        tx.executedSql.any((sql) => sql.contains('forge_admin')),
-        isFalse,
-      );
-    });
+        expect(result, equals(<String>['row-a', 'row-b']));
+        expect(pool.transactions, hasLength(1));
+        final tx = pool.transactions.single;
+        // SET LOCAL app.user_id ran before the body's read.
+        expect(tx.executedSql[0], contains("set_config('app.user_id'"));
+        expect(tx.parameters[0]['value'], equals(_validUserId));
+        // Body's query ran after SET LOCAL + audit marker.
+        expect(tx.executedSql.any((sql) => sql.contains('from users')), isTrue);
+        // Repository never touches forge_admin.
+        expect(
+          tx.executedSql.any((sql) => sql.contains('forge_admin')),
+          isFalse,
+        );
+      },
+    );
   });
 }
 

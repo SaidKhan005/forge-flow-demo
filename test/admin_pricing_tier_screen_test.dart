@@ -23,10 +23,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   PricingOperatorBundle seedBundle({
     String operatorId = 'op-seed-1',
@@ -70,22 +70,20 @@ void main() {
     );
   }
 
-  testWidgets('renders one row per seeded operator with cap counts',
-      (tester) async {
+  testWidgets('renders one row per seeded operator with cap counts', (
+    tester,
+  ) async {
     final gateway = InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[
         seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
         seedBundle(
           operatorId: 'op-2',
           businessName: 'Beta Bistro',
-          caps: <UsageCapRow>[
-            seedCap(operatorId: 'op-2', locationId: 'loc-2'),
-          ],
+          caps: <UsageCapRow>[seedCap(operatorId: 'op-2', locationId: 'loc-2')],
         ),
       ],
     );
-    await tester
-        .pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
@@ -95,26 +93,59 @@ void main() {
     expect(find.text('Beta Bistro'), findsWidgets);
   });
 
-  testWidgets('renders the empty state when no operators are seeded',
-      (tester) async {
+  testWidgets('stacks master/detail panes on compact widths', (tester) async {
+    tester.view.physicalSize = const Size(520, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final cap = seedCap(
+      operatorId: 'op-compact',
+      usageClass: 'advisor_qa_with_long_suffix',
+    );
+    final gateway = InMemoryPricingTierAdminGateway(
+      seed: <PricingOperatorBundle>[
+        seedBundle(
+          operatorId: 'op-compact',
+          businessName: 'Very Long Compact Width Operator Name',
+          caps: <UsageCapRow>[cap],
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_pricing_operator_list')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_pricing_detail_op-compact')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders the empty state when no operators are seeded', (
+    tester,
+  ) async {
     final gateway = InMemoryPricingTierAdminGateway();
-    await tester
-        .pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_empty')), findsOneWidget);
     expect(find.text('No operators on file'), findsOneWidget);
   });
 
-  testWidgets('apply Premium template seeds advisor_qa cap row',
-      (tester) async {
+  testWidgets('apply Premium template seeds advisor_qa cap row', (
+    tester,
+  ) async {
     final gateway = InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[
         seedBundle(operatorId: 'op-prem', tier: 'starter'),
       ],
     );
-    await tester
-        .pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -146,8 +177,7 @@ void main() {
         ),
       ],
     );
-    await tester
-        .pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     final editKey = Key('admin_pricing_cap_edit_${cap.capId}');
@@ -156,17 +186,12 @@ void main() {
     await tester.tap(find.byKey(editKey));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_pricing_cap_dialog')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_pricing_cap_dialog')), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('admin_pricing_cap_monthly')),
       '125.00',
     );
-    await tester.tap(
-      find.byKey(const Key('admin_pricing_cap_submit_button')),
-    );
+    await tester.tap(find.byKey(const Key('admin_pricing_cap_submit_button')));
     await tester.pumpAndSettle();
 
     final operators = await gateway.listOperators();
@@ -174,144 +199,136 @@ void main() {
   });
 
   testWidgets(
-      'editingEnabled: false hides templates, add, and edit affordances',
-      (tester) async {
-    final cap = seedCap(operatorId: 'op-readonly');
-    final gateway = InMemoryPricingTierAdminGateway(
-      seed: <PricingOperatorBundle>[
-        seedBundle(
-          operatorId: 'op-readonly',
-          primaryLocationId: 'loc-seed-1',
-          caps: <UsageCapRow>[cap],
-        ),
-      ],
-    );
-    await tester.pumpWidget(
-      wrap(
-        PricingTierAdminScreen(
-          gateway: gateway,
-          editingEnabled: false,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    'editingEnabled: false hides templates, add, and edit affordances',
+    (tester) async {
+      final cap = seedCap(operatorId: 'op-readonly');
+      final gateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(
+            operatorId: 'op-readonly',
+            primaryLocationId: 'loc-seed-1',
+            caps: <UsageCapRow>[cap],
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(PricingTierAdminScreen(gateway: gateway, editingEnabled: false)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_pricing_readonly_banner')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_add_cap_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_template_premium_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(Key('admin_pricing_cap_edit_${cap.capId}')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_pricing_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_add_cap_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_template_premium_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(Key('admin_pricing_cap_edit_${cap.capId}')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
-      'admin shell with ff_support source renders pricing in read-only mode',
-      (tester) async {
-    final pricingGateway = InMemoryPricingTierAdminGateway(
-      seed: <PricingOperatorBundle>[
-        seedBundle(
-          operatorId: 'op-support',
-          businessName: 'Support View Co',
+    'admin shell with ff_support source renders pricing in read-only mode',
+    (tester) async {
+      final pricingGateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-support', businessName: 'Support View Co'),
+        ],
+      );
+      final source = DemoAdminAuthSource(
+        initial: const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-ff-support',
+            email: 'support@forgeflow.test',
+            displayName: 'Demo F&F Support',
+            roles: <String>['ff_support'],
+          ),
         ),
-      ],
-    );
-    final source = DemoAdminAuthSource(
-      initial: const AdminAuthAuthenticated(
-        AdminAuthSession(
-          uid: 'demo-ff-support',
-          email: 'support@forgeflow.test',
-          displayName: 'Demo F&F Support',
-          roles: <String>['ff_support'],
+      );
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          pricingTierGateway: pricingGateway,
+          adminAuthSource: source,
+          child: AdminConsoleApp(authSource: source),
         ),
-      ),
-    );
-    addTearDown(source.dispose);
-    await tester.pumpWidget(
-      AdminConsoleServicesScope(
-        pricingTierGateway: pricingGateway,
-        adminAuthSource: source,
-        child: AdminConsoleApp(authSource: source),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_pricing_readonly_banner')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_add_cap_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_template_premium_button')),
-      findsNothing,
-    );
-  });
+      expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_pricing_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_add_cap_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_template_premium_button')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
-      'admin shell with super_admin source renders pricing with edit affordances',
-      (tester) async {
-    final pricingGateway = InMemoryPricingTierAdminGateway(
-      seed: <PricingOperatorBundle>[
-        seedBundle(operatorId: 'op-super', businessName: 'Super View Co'),
-      ],
-    );
-    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-    addTearDown(source.dispose);
-    await tester.pumpWidget(
-      AdminConsoleServicesScope(
-        pricingTierGateway: pricingGateway,
-        adminAuthSource: source,
-        child: AdminConsoleApp(authSource: source),
-      ),
-    );
-    await tester.pumpAndSettle();
+    'admin shell with super_admin source renders pricing with edit affordances',
+    (tester) async {
+      final pricingGateway = InMemoryPricingTierAdminGateway(
+        seed: <PricingOperatorBundle>[
+          seedBundle(operatorId: 'op-super', businessName: 'Super View Co'),
+        ],
+      );
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          pricingTierGateway: pricingGateway,
+          adminAuthSource: source,
+          child: AdminConsoleApp(authSource: source),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_pricing')));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_pricing_readonly_banner')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_add_cap_button')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_pricing_template_premium_button')),
-      findsOneWidget,
-    );
-  });
+      expect(find.byKey(const Key('admin_pricing_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_pricing_readonly_banner')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_add_cap_button')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_pricing_template_premium_button')),
+        findsOneWidget,
+      );
+    },
+  );
 
-  testWidgets('apply-template error renders in the action banner',
-      (tester) async {
+  testWidgets('apply-template error renders in the action banner', (
+    tester,
+  ) async {
     final gateway = InMemoryPricingTierAdminGateway(
       seed: <PricingOperatorBundle>[
-        seedBundle(
-          operatorId: 'op-no-loc',
-          primaryLocationId: null,
-        ),
+        seedBundle(operatorId: 'op-no-loc', primaryLocationId: null),
       ],
     );
-    await tester
-        .pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
+    await tester.pumpWidget(wrap(PricingTierAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     await tester.tap(
@@ -321,9 +338,6 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_pricing_confirm_ok')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_pricing_action_error')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_pricing_action_error')), findsOneWidget);
   });
 }

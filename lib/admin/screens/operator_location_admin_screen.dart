@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
+import '../widgets/admin_responsive_layout.dart';
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -83,8 +84,9 @@ class _OperatorLocationAdminScreenState
             )) {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??=
-            bundles.isEmpty ? null : bundles.first.operator.operatorId;
+        _selectedOperatorId ??= bundles.isEmpty
+            ? null
+            : bundles.first.operator.operatorId;
       });
     } on OperatorLocationAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -119,9 +121,9 @@ class _OperatorLocationAdminScreenState
       await action();
       await _refresh();
       if (successHint != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successHint)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successHint)));
       }
     } on OperatorLocationAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -142,7 +144,25 @@ class _OperatorLocationAdminScreenState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _Header(onNewOperator: _openOnboardingDialog),
+            AdminPageHeader(
+              title: 'Operators',
+              subtitle:
+                  'Onboard, edit, suspend, and manage locations for '
+                  'every F&F-managed operator.',
+              trailing: FilledButton.icon(
+                key: const Key('admin_operators_new_button'),
+                onPressed: _openOnboardingDialog,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sunset,
+                  foregroundColor: AppColors.backgroundSurface,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                ),
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('New operator'),
+              ),
+            ),
             const SizedBox(height: 14),
             if (_actionError != null)
               _ErrorBanner(
@@ -189,17 +209,13 @@ class _OperatorLocationAdminScreenState
               children: [
                 Text(
                   'No operators onboarded yet',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Click "New operator" to create the first operator, '
                   'their primary location, and the initial admin assignment.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -207,33 +223,24 @@ class _OperatorLocationAdminScreenState
         ),
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 280,
-          child: _OperatorList(
-            bundles: _bundles,
-            selectedOperatorId: _selectedOperatorId,
-            onSelect: (id) => setState(() => _selectedOperatorId = id),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _selected == null
-              ? const SizedBox.shrink()
-              : _OperatorDetail(
-                  bundle: _selected!,
-                  onEditOperator: _openEditOperatorDialog,
-                  onSuspend: _suspend,
-                  onReactivate: _reactivate,
-                  onAddLocation: _openAddLocationDialog,
-                  onEditLocation: _openEditLocationDialog,
-                  onRemoveLocation: _removeLocation,
-                  onSetPrimary: _setPrimaryLocation,
-                ),
-        ),
-      ],
+    return AdminMasterDetailLayout(
+      master: _OperatorList(
+        bundles: _bundles,
+        selectedOperatorId: _selectedOperatorId,
+        onSelect: (id) => setState(() => _selectedOperatorId = id),
+      ),
+      detail: _selected == null
+          ? const SizedBox.shrink()
+          : _OperatorDetail(
+              bundle: _selected!,
+              onEditOperator: _openEditOperatorDialog,
+              onSuspend: _suspend,
+              onReactivate: _reactivate,
+              onAddLocation: _openAddLocationDialog,
+              onEditLocation: _openEditLocationDialog,
+              onRemoveLocation: _removeLocation,
+              onSetPrimary: _setPrimaryLocation,
+            ),
     );
   }
 
@@ -244,12 +251,9 @@ class _OperatorLocationAdminScreenState
           _OnboardOperatorDialog(idempotencyKey: _nextIdempotencyKey()),
     );
     if (command == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.onboardOperator(command);
-      },
-      successHint: 'Operator onboarded.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.onboardOperator(command);
+    }, successHint: 'Operator onboarded.');
   }
 
   Future<void> _openEditOperatorDialog(OperatorAdminBundle bundle) async {
@@ -261,38 +265,29 @@ class _OperatorLocationAdminScreenState
       ),
     );
     if (patch == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.patchOperator(patch);
-      },
-      successHint: 'Operator updated.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.patchOperator(patch);
+    }, successHint: 'Operator updated.');
   }
 
   Future<void> _suspend(OperatorAdminBundle bundle) async {
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.suspendOperator(
-          bundle.operator.operatorId,
-          idempotencyKey: key,
-        );
-      },
-      successHint: 'Operator suspended.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.suspendOperator(
+        bundle.operator.operatorId,
+        idempotencyKey: key,
+      );
+    }, successHint: 'Operator suspended.');
   }
 
   Future<void> _reactivate(OperatorAdminBundle bundle) async {
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.reactivateOperator(
-          bundle.operator.operatorId,
-          idempotencyKey: key,
-        );
-      },
-      successHint: 'Operator reactivated.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.reactivateOperator(
+        bundle.operator.operatorId,
+        idempotencyKey: key,
+      );
+    }, successHint: 'Operator reactivated.');
   }
 
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {
@@ -304,12 +299,9 @@ class _OperatorLocationAdminScreenState
       ),
     );
     if (command == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.addLocation(command);
-      },
-      successHint: 'Location added.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.addLocation(command);
+    }, successHint: 'Location added.');
   }
 
   Future<void> _openEditLocationDialog(LocationAdminRecord location) async {
@@ -322,12 +314,9 @@ class _OperatorLocationAdminScreenState
       ),
     );
     if (command == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.patchLocation(command);
-      },
-      successHint: 'Location updated.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.patchLocation(command);
+    }, successHint: 'Location updated.');
   }
 
   Future<void> _removeLocation(LocationAdminRecord location) async {
@@ -335,23 +324,21 @@ class _OperatorLocationAdminScreenState
       context: context,
       builder: (_) => _ConfirmDialog(
         title: 'Remove ${location.name}?',
-        message: 'This cannot be undone. The location must not be the '
+        message:
+            'This cannot be undone. The location must not be the '
             "operator's primary location.",
         confirmLabel: 'Remove',
       ),
     );
     if (confirmed != true) return;
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.removeLocation(
-          operatorId: location.operatorId,
-          locationId: location.locationId,
-          idempotencyKey: key,
-        );
-      },
-      successHint: 'Location removed.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.removeLocation(
+        operatorId: location.operatorId,
+        locationId: location.locationId,
+        idempotencyKey: key,
+      );
+    }, successHint: 'Location removed.');
   }
 
   Future<void> _setPrimaryLocation(
@@ -359,64 +346,15 @@ class _OperatorLocationAdminScreenState
     LocationAdminRecord location,
   ) async {
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.patchOperator(
-          OperatorPatchCommand(
-            operatorId: bundle.operator.operatorId,
-            primaryLocationId: location.locationId,
-            idempotencyKey: key,
-          ),
-        );
-      },
-      successHint: 'Primary location updated.',
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header({required this.onNewOperator});
-
-  final VoidCallback onNewOperator;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Operators',
-                style: AppTextStyles.display28(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Onboard, edit, suspend, and manage locations for every '
-                'F&F-managed operator.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
+    await _runAndRefresh(() async {
+      await widget.gateway.patchOperator(
+        OperatorPatchCommand(
+          operatorId: bundle.operator.operatorId,
+          primaryLocationId: location.locationId,
+          idempotencyKey: key,
         ),
-        FilledButton.icon(
-          key: const Key('admin_operators_new_button'),
-          onPressed: onNewOperator,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(6),
-            ),
-          ),
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text('New operator'),
-        ),
-      ],
-    );
+      );
+    }, successHint: 'Primary location updated.');
   }
 }
 
@@ -540,7 +478,8 @@ class _OperatorDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Card(
+          AdminCard(
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -562,16 +501,19 @@ class _OperatorDetail extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 10),
-                _DetailRow(label: 'Owner email', value: operator.ownerEmail),
-                _DetailRow(
+                AdminDetailRow(
+                  label: 'Owner email',
+                  value: operator.ownerEmail,
+                ),
+                AdminDetailRow(
                   label: 'Subscription tier',
                   value: operator.subscriptionTier,
                 ),
-                _DetailRow(
+                AdminDetailRow(
                   label: 'Preferred currency',
                   value: operator.preferredCurrency,
                 ),
-                _DetailRow(
+                AdminDetailRow(
                   label: 'Primary location',
                   value: bundle.primaryLocation?.name ?? '—',
                 ),
@@ -613,7 +555,8 @@ class _OperatorDetail extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _Card(
+          AdminCard(
+            padding: const EdgeInsets.all(20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -641,11 +584,10 @@ class _OperatorDetail extends StatelessWidget {
                 const SizedBox(height: 10),
                 ...bundle.locations.map(
                   (location) => _LocationRow(
-                    key: Key(
-                      'admin_location_row_${location.locationId}',
-                    ),
+                    key: Key('admin_location_row_${location.locationId}'),
                     location: location,
-                    isPrimary: bundle.operator.primaryLocationId ==
+                    isPrimary:
+                        bundle.operator.primaryLocationId ==
                         location.locationId,
                     onEdit: () => onEditLocation(location),
                     onRemove: () => onRemoveLocation(location),
@@ -703,18 +645,13 @@ class _LocationRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (isPrimary)
-                      _StatusPill(
-                        label: 'primary',
-                        color: AppColors.peacock,
-                      ),
+                      _StatusPill(label: 'primary', color: AppColors.peacock),
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
                   '${location.timezone} · rollover ${rolloverHour.toString().padLeft(2, '0')}:00',
-                  style: AppTextStyles.mono11(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
@@ -722,9 +659,7 @@ class _LocationRow extends StatelessWidget {
           ),
           if (!isPrimary)
             IconButton(
-              key: Key(
-                'admin_location_make_primary_${location.locationId}',
-              ),
+              key: Key('admin_location_make_primary_${location.locationId}'),
               tooltip: 'Make primary',
               onPressed: onMakePrimary,
               icon: const Icon(Icons.star_outline, size: 16),
@@ -747,57 +682,6 @@ class _LocationRow extends StatelessWidget {
   }
 }
 
-class _Card extends StatelessWidget {
-  const _Card({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: child,
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 160,
-            child: Text(
-              label,
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.mono14(color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _StatusPill extends StatelessWidget {
   const _StatusPill({required this.label, required this.color});
 
@@ -810,16 +694,10 @@ class _StatusPill extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
-        border: Border.all(
-          color: color.withValues(alpha: 0.45),
-          width: 1,
-        ),
+        border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono8(color: color),
-      ),
+      child: Text(label, style: AppTextStyles.mono8(color: color)),
     );
   }
 }
@@ -846,11 +724,7 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 16,
-            color: AppColors.negative,
-          ),
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -873,8 +747,7 @@ class _OnboardOperatorDialog extends StatefulWidget {
   final String idempotencyKey;
 
   @override
-  State<_OnboardOperatorDialog> createState() =>
-      _OnboardOperatorDialogState();
+  State<_OnboardOperatorDialog> createState() => _OnboardOperatorDialogState();
 }
 
 class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
@@ -1040,10 +913,12 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
   @override
   void initState() {
     super.initState();
-    _businessName =
-        TextEditingController(text: widget.bundle.operator.businessName);
-    _ownerEmail =
-        TextEditingController(text: widget.bundle.operator.ownerEmail);
+    _businessName = TextEditingController(
+      text: widget.bundle.operator.businessName,
+    );
+    _ownerEmail = TextEditingController(
+      text: widget.bundle.operator.ownerEmail,
+    );
     _subscriptionTier = widget.bundle.operator.subscriptionTier;
     _preferredCurrency = widget.bundle.operator.preferredCurrency;
     _primaryLocationId = widget.bundle.operator.primaryLocationId;
@@ -1213,7 +1088,9 @@ class _LocationDialogState extends State<_LocationDialog> {
   Widget build(BuildContext context) {
     final isEdit = widget.existing != null;
     return AlertDialog(
-      key: Key(isEdit ? 'admin_location_edit_dialog' : 'admin_location_add_dialog'),
+      key: Key(
+        isEdit ? 'admin_location_edit_dialog' : 'admin_location_add_dialog',
+      ),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
         isEdit ? 'Edit location' : 'Add location',
@@ -1346,12 +1223,13 @@ class _DialogField extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-        floatingLabelStyle:
-            AppTextStyles.mono11(color: AppColors.sunsetDark),
+        floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 12,
+        ),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
@@ -1445,10 +1323,7 @@ class _CurrencyDropdown extends StatelessWidget {
 }
 
 class _RolloverHourDropdown extends StatelessWidget {
-  const _RolloverHourDropdown({
-    required this.value,
-    required this.onChanged,
-  });
+  const _RolloverHourDropdown({required this.value, required this.onChanged});
 
   final int value;
   final ValueChanged<int> onChanged;

@@ -40,6 +40,7 @@ import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'services/auth/firebase_auth_client.dart';
 import 'services/auth/firebase_auth_client_sdk.dart';
+import 'services/auth/timeout_firebase_auth_client.dart';
 import 'theme/app_theme.dart';
 
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
@@ -134,7 +135,9 @@ Future<_AdminAuthBinding> _resolveAuthSource() async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp(options: kAdminFirebaseOptions);
   }
-  final authClient = FirebaseAuthSdkClient();
+  final authClient = TimeoutFirebaseAuthClient(
+    delegate: FirebaseAuthSdkClient(),
+  );
   return _AdminAuthBinding(
     source: FirebaseAdminAuthSource(client: authClient),
     authClient: authClient,

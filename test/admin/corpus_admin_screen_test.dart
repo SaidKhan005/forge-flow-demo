@@ -27,10 +27,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   CorpusBundle seedBundle({
     required String versionId,
@@ -79,8 +79,9 @@ void main() {
     );
   }
 
-  testWidgets('renders one row per seeded version with current chip',
-      (tester) async {
+  testWidgets('renders one row per seeded version with current chip', (
+    tester,
+  ) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(
@@ -106,8 +107,34 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_current_v1')), findsNothing);
   });
 
-  testWidgets('renders the empty state with an upload prompt',
-      (tester) async {
+  testWidgets('stacks version list/detail panes on compact widths', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(520, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final gateway = InMemoryCorpusAdminGateway(
+      seed: <CorpusBundle>[
+        seedBundle(
+          versionId: 'v-compact',
+          summary: 'Compact width smoke with a longer summary',
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_corpus_version_list')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_corpus_detail_v-compact')),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('renders the empty state with an upload prompt', (tester) async {
     final gateway = InMemoryCorpusAdminGateway();
     await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
@@ -120,8 +147,7 @@ void main() {
     );
   });
 
-  testWidgets('upload + preview produces a staged diff card',
-      (tester) async {
+  testWidgets('upload + preview produces a staged diff card', (tester) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
@@ -143,22 +169,17 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_corpus_staged_diff')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_commit_button')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_corpus_staged_diff')), findsOneWidget);
+    expect(find.byKey(const Key('admin_corpus_commit_button')), findsOneWidget);
     expect(
       find.byKey(const Key('admin_corpus_discard_button')),
       findsOneWidget,
     );
   });
 
-  testWidgets('commit promotes staged upload to the current version',
-      (tester) async {
+  testWidgets('commit promotes staged upload to the current version', (
+    tester,
+  ) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
@@ -168,10 +189,8 @@ void main() {
       wrap(
         CorpusAdminScreen(
           gateway: gateway,
-          uploadPicker: (_) => demoPicker(
-            '# Forge\n\n## Cycles\n\nSixty-day cycles.\n',
-            'k1',
-          ),
+          uploadPicker: (_) =>
+              demoPicker('# Forge\n\n## Cycles\n\nSixty-day cycles.\n', 'k1'),
           idempotencyKeyGenerator: () => 'commit-key-1',
         ),
       ),
@@ -204,13 +223,12 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_corpus_commit_button')));
     await tester.pumpAndSettle();
 
-    final errorBanner =
-        find.byKey(const Key('admin_corpus_action_error'));
+    final errorBanner = find.byKey(const Key('admin_corpus_action_error'));
     if (errorBanner.evaluate().isNotEmpty) {
       // Surface the actual error so the failure message names the
       // missing field instead of an opaque "no action error".
-      final errorText = (errorBanner.evaluate().first.widget as dynamic)
-          .message as String;
+      final errorText =
+          (errorBanner.evaluate().first.widget as dynamic).message as String;
       fail('action error after commit: $errorText');
     }
 
@@ -221,8 +239,9 @@ void main() {
     expect(versions.first.versionId, isNot(equals('v1')));
   });
 
-  testWidgets('rollback writes a new current version pointing at target',
-      (tester) async {
+  testWidgets('rollback writes a new current version pointing at target', (
+    tester,
+  ) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(
@@ -266,95 +285,82 @@ void main() {
   });
 
   testWidgets(
-      'editingEnabled: false hides upload, commit, and rollback affordances',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      seed: <CorpusBundle>[
-        seedBundle(
-          versionId: 'v1',
-          summary: 'v1 prior',
-          createdAt: DateTime.utc(2026, 1, 1),
-          supersededAt: DateTime.utc(2026, 1, 2),
-        ),
-        seedBundle(
-          versionId: 'v2',
-          summary: 'v2 current',
-          createdAt: DateTime.utc(2026, 1, 2),
-        ),
-      ],
-    );
-    await tester.pumpWidget(
-      wrap(
-        CorpusAdminScreen(
-          gateway: gateway,
-          editingEnabled: false,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    'editingEnabled: false hides upload, commit, and rollback affordances',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(
+            versionId: 'v1',
+            summary: 'v1 prior',
+            createdAt: DateTime.utc(2026, 1, 1),
+            supersededAt: DateTime.utc(2026, 1, 2),
+          ),
+          seedBundle(
+            versionId: 'v2',
+            summary: 'v2 current',
+            createdAt: DateTime.utc(2026, 1, 2),
+          ),
+        ],
+      );
+      await tester.pumpWidget(
+        wrap(CorpusAdminScreen(gateway: gateway, editingEnabled: false)),
+      );
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_corpus_readonly_banner')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_upload_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_rollback_v1')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_corpus_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+      expect(find.byKey(const Key('admin_corpus_rollback_v1')), findsNothing);
+    },
+  );
 
   testWidgets(
-      'admin shell with ff_support source renders corpus in read-only mode',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      seed: <CorpusBundle>[
-        seedBundle(
-          versionId: 'v1',
-          summary: 'support read view',
-          createdAt: DateTime.utc(2026, 1, 1),
+    'admin shell with ff_support source renders corpus in read-only mode',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(
+            versionId: 'v1',
+            summary: 'support read view',
+            createdAt: DateTime.utc(2026, 1, 1),
+          ),
+        ],
+      );
+      final source = DemoAdminAuthSource(
+        initial: const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-ff-support',
+            email: 'support@forgeflow.test',
+            displayName: 'Demo F&F Support',
+            roles: <String>['ff_support'],
+          ),
         ),
-      ],
-    );
-    final source = DemoAdminAuthSource(
-      initial: const AdminAuthAuthenticated(
-        AdminAuthSession(
-          uid: 'demo-ff-support',
-          email: 'support@forgeflow.test',
-          displayName: 'Demo F&F Support',
-          roles: <String>['ff_support'],
+      );
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          corpusAdminGateway: gateway,
+          adminAuthSource: source,
+          child: AdminConsoleApp(authSource: source),
         ),
-      ),
-    );
-    addTearDown(source.dispose);
-    await tester.pumpWidget(
-      AdminConsoleServicesScope(
-        corpusAdminGateway: gateway,
-        adminAuthSource: source,
-        child: AdminConsoleApp(authSource: source),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_nav_item_corpus')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_corpus')));
+      await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
-    expect(
-      find.byKey(const Key('admin_corpus_readonly_banner')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_upload_button')),
-      findsNothing,
-    );
-  });
+      expect(find.byKey(const Key('admin_corpus_screen')), findsOneWidget);
+      expect(
+        find.byKey(const Key('admin_corpus_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('admin_corpus_upload_button')), findsNothing);
+    },
+  );
 
-  testWidgets('binary upload surfaces the action-error banner',
-      (tester) async {
+  testWidgets('binary upload surfaces the action-error banner', (tester) async {
     final gateway = InMemoryCorpusAdminGateway(
       seed: <CorpusBundle>[
         seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
@@ -380,13 +386,7 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_corpus_upload_button')));
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_corpus_action_error')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_staged_diff')),
-      findsNothing,
-    );
+    expect(find.byKey(const Key('admin_corpus_action_error')), findsOneWidget);
+    expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
   });
 }

@@ -40,6 +40,26 @@ class OperatorAdminsRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
+  /// Counts admin grants for every operator in one cross-tenant sweep.
+  ///
+  /// The Operators admin list only needs counts, not full grant rows. Keeping
+  /// this as one `withSystem` transaction avoids an N+1 series of admin-pool
+  /// borrows when staging has many operators.
+  Future<Map<String, int>> countByOperator({required String adminReason}) {
+    return withSystem<Map<String, int>>((exec) async {
+      final rows = await exec.query(
+        'select operator_id::text as operator_id, '
+        'count(*)::int as admin_grant_count '
+        'from operator_admins '
+        'group by operator_id',
+      );
+      return <String, int>{
+        for (final row in rows)
+          row['operator_id']! as String: _toInt(row['admin_grant_count']),
+      };
+    }, reason: adminReason);
+  }
+
   /// INSERT an admin grant. Idempotent via
   /// `ON CONFLICT (user_id, operator_id) DO UPDATE` so re-running
   /// the same assignment refreshes `updated_at`, `is_super_admin`,
@@ -122,12 +142,12 @@ class OperatorAdminGrantRow {
   final DateTime updatedAt;
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'user_id': userId,
-        'operator_id': operatorId,
-        'is_super_admin': isSuperAdmin,
-        'created_at': createdAt.toUtc().toIso8601String(),
-        'updated_at': updatedAt.toUtc().toIso8601String(),
-      };
+    'user_id': userId,
+    'operator_id': operatorId,
+    'is_super_admin': isSuperAdmin,
+    'created_at': createdAt.toUtc().toIso8601String(),
+    'updated_at': updatedAt.toUtc().toIso8601String(),
+  };
 }
 
 OperatorAdminGrantRow _adminGrantRowFromMap(PostgresRow row) {
@@ -144,4 +164,12 @@ DateTime _toDateTime(Object? value) {
   if (value is DateTime) return value.toUtc();
   if (value is String) return DateTime.parse(value).toUtc();
   throw StateError('operator_admins lookup returned a malformed timestamp');
+}
+
+int _toInt(Object? value) {
+  if (value is int) return value;
+  if (value is BigInt) return value.toInt();
+  if (value is num) return value.toInt();
+  if (value is String) return int.parse(value);
+  throw StateError('operator_admins count returned a malformed count');
 }

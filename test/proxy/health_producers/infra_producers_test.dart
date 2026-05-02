@@ -14,7 +14,6 @@ void main() {
             {'extname': 'age'},
             {'extname': 'vector'},
             {'extname': 'pg_diskann'},
-            {'extname': 'pg_cron'},
             {'extname': 'pg_partman'},
             {'extname': 'pg_stat_statements'},
             {'extname': 'pgcrypto'},
@@ -23,8 +22,9 @@ void main() {
       );
       final metric = await azureExtensionsPresentProducer(contextWith(runner));
       expect(metric.status, equals('green'));
-      expect(metric.value, equals(7));
+      expect(metric.value, equals(6));
       expect(metric.metadata['tier'], equals(1));
+      expect(metric.metadata['required_count'], equals(6));
       expect(metric.metadata.containsKey('missing'), isFalse);
     });
 

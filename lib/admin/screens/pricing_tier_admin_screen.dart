@@ -28,6 +28,7 @@ import 'package:flutter/services.dart';
 import '../../theme/app_theme.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
+import '../widgets/admin_responsive_layout.dart';
 
 class PricingTierAdminScreen extends StatefulWidget {
   const PricingTierAdminScreen({
@@ -51,8 +52,7 @@ class PricingTierAdminScreen extends StatefulWidget {
   final String Function()? idempotencyKeyFactory;
 
   @override
-  State<PricingTierAdminScreen> createState() =>
-      _PricingTierAdminScreenState();
+  State<PricingTierAdminScreen> createState() => _PricingTierAdminScreenState();
 }
 
 class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
@@ -95,8 +95,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
             bundles.every((b) => b.operatorId != _selectedOperatorId)) {
           _selectedOperatorId = null;
         }
-        _selectedOperatorId ??=
-            bundles.isEmpty ? null : bundles.first.operatorId;
+        _selectedOperatorId ??= bundles.isEmpty
+            ? null
+            : bundles.first.operatorId;
       });
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -131,9 +132,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       await action();
       await _refresh();
       if (successHint != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successHint)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successHint)));
       }
     } on PricingTierAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -154,12 +155,16 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const _Header(),
+            const AdminPageHeader(
+              title: 'Pricing',
+              subtitle:
+                  'Subscription tier + per-(operator, location, '
+                  'usage_class) usage caps. Apply a tier template to seed '
+                  'defaults, or edit individual cap rows inline.',
+            ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_pricing_readonly_banner'),
-              ),
+              const _ReadOnlyBanner(key: Key('admin_pricing_readonly_banner')),
             if (_actionError != null)
               _ErrorBanner(
                 key: const Key('admin_pricing_action_error'),
@@ -205,17 +210,13 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
               children: [
                 Text(
                   'No operators on file',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Onboard an operator from the Operators tab before '
                   'configuring pricing tiers.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -223,31 +224,22 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         ),
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 280,
-          child: _OperatorList(
-            bundles: _bundles,
-            selectedOperatorId: _selectedOperatorId,
-            onSelect: (id) => setState(() => _selectedOperatorId = id),
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _selected == null
-              ? const SizedBox.shrink()
-              : _OperatorPricingDetail(
-                  bundle: _selected!,
-                  editingEnabled: widget.editingEnabled,
-                  onApplyTemplate: _onApplyTemplate,
-                  onChangeTier: _onChangeTier,
-                  onEditCap: _onEditCap,
-                  onAddCap: _onAddCap,
-                ),
-        ),
-      ],
+    return AdminMasterDetailLayout(
+      master: _OperatorList(
+        bundles: _bundles,
+        selectedOperatorId: _selectedOperatorId,
+        onSelect: (id) => setState(() => _selectedOperatorId = id),
+      ),
+      detail: _selected == null
+          ? const SizedBox.shrink()
+          : _OperatorPricingDetail(
+              bundle: _selected!,
+              editingEnabled: widget.editingEnabled,
+              onApplyTemplate: _onApplyTemplate,
+              onChangeTier: _onChangeTier,
+              onEditCap: _onEditCap,
+              onAddCap: _onAddCap,
+            ),
     );
   }
 
@@ -270,18 +262,15 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     );
     if (confirmed != true) return;
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.applyTierTemplate(
-          ApplyTierTemplateCommand(
-            operatorId: bundle.operatorId,
-            tierKey: template.tierKey,
-            idempotencyKey: key,
-          ),
-        );
-      },
-      successHint: '${template.displayName} template applied.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.applyTierTemplate(
+        ApplyTierTemplateCommand(
+          operatorId: bundle.operatorId,
+          tierKey: template.tierKey,
+          idempotencyKey: key,
+        ),
+      );
+    }, successHint: '${template.displayName} template applied.');
   }
 
   Future<void> _onChangeTier(
@@ -290,24 +279,18 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   ) async {
     if (newTier == bundle.subscriptionTier) return;
     final key = _nextIdempotencyKey();
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.updateOperatorTier(
-          OperatorTierPatchCommand(
-            operatorId: bundle.operatorId,
-            subscriptionTier: newTier,
-            idempotencyKey: key,
-          ),
-        );
-      },
-      successHint: 'Subscription tier set to $newTier.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.updateOperatorTier(
+        OperatorTierPatchCommand(
+          operatorId: bundle.operatorId,
+          subscriptionTier: newTier,
+          idempotencyKey: key,
+        ),
+      );
+    }, successHint: 'Subscription tier set to $newTier.');
   }
 
-  Future<void> _onEditCap(
-    PricingOperatorBundle bundle,
-    UsageCapRow row,
-  ) async {
+  Future<void> _onEditCap(PricingOperatorBundle bundle, UsageCapRow row) async {
     final command = await showDialog<UsageCapUpsertCommand>(
       context: context,
       builder: (_) => _UsageCapDialog(
@@ -318,12 +301,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       ),
     );
     if (command == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.upsertUsageCap(command);
-      },
-      successHint: 'Cap row updated.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.upsertUsageCap(command);
+    }, successHint: 'Cap row updated.');
   }
 
   Future<void> _onAddCap(PricingOperatorBundle bundle) async {
@@ -336,37 +316,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       ),
     );
     if (command == null) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.upsertUsageCap(command);
-      },
-      successHint: 'Cap row added.',
-    );
-  }
-}
-
-class _Header extends StatelessWidget {
-  const _Header();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          'Pricing',
-          style: AppTextStyles.display28(color: AppColors.textPrimary),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Subscription tier + per-(operator, location, usage_class) '
-          'usage caps. Apply a tier template to seed defaults, or edit '
-          'individual cap rows inline.',
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        ),
-      ],
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.upsertUsageCap(command);
+    }, successHint: 'Cap row added.');
   }
 }
 
@@ -385,11 +337,7 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 16,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -493,7 +441,7 @@ class _OperatorPricingDetail extends StatelessWidget {
   final PricingOperatorBundle bundle;
   final bool editingEnabled;
   final void Function(PricingOperatorBundle, PricingTierTemplate)
-      onApplyTemplate;
+  onApplyTemplate;
   final void Function(PricingOperatorBundle, String) onChangeTier;
   final void Function(PricingOperatorBundle, UsageCapRow) onEditCap;
   final void Function(PricingOperatorBundle) onAddCap;
@@ -506,25 +454,24 @@ class _OperatorPricingDetail extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Card(
+          AdminCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   bundle.businessName,
-                  style:
-                      AppTextStyles.display20(color: AppColors.textPrimary),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
-                _DetailRow(
+                AdminDetailRow(
                   label: 'Subscription tier',
                   value: bundle.subscriptionTier,
                 ),
-                _DetailRow(
+                AdminDetailRow(
                   label: 'Preferred currency',
                   value: bundle.preferredCurrency,
                 ),
-                _DetailRow(
+                AdminDetailRow(
                   label: 'Primary location',
                   value: bundle.primaryLocationId ?? '—',
                 ),
@@ -557,7 +504,7 @@ class _OperatorPricingDetail extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          _Card(
+          AdminCard(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -628,7 +575,8 @@ class _UsageCapRowTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final keySuffix = row.capId ??
+    final keySuffix =
+        row.capId ??
         '${row.locationId}:${row.usageClass}:${row.staffId ?? ''}:${row.workflowId ?? ''}';
     return Container(
       key: Key('admin_pricing_cap_$keySuffix'),
@@ -660,18 +608,18 @@ class _UsageCapRowTile extends StatelessWidget {
                 Text(
                   '\$${row.monthlyCapUsd.toStringAsFixed(2)} monthly · '
                   '\$${row.perInvocationCapUsd.toStringAsFixed(2)} per call',
-                  style:
-                      AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  overflow: TextOverflow.ellipsis,
                 ),
                 if (row.staffId != null || row.workflowId != null) ...[
                   const SizedBox(height: 2),
                   Text(
                     [
                       if (row.staffId != null) 'staff: ${row.staffId}',
-                      if (row.workflowId != null)
-                        'workflow: ${row.workflowId}',
+                      if (row.workflowId != null) 'workflow: ${row.workflowId}',
                     ].join(' · '),
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 2),
@@ -679,6 +627,7 @@ class _UsageCapRowTile extends StatelessWidget {
                   'updated by ${row.updatedBy ?? '—'} · '
                   '${row.updatedAt.toUtc().toIso8601String()}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -790,8 +739,9 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   label: 'Monthly cap (USD)',
                   controller: _monthly,
                   fieldKey: const Key('admin_pricing_cap_monthly'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: <TextInputFormatter>[
                     FilteringTextInputFormatter.allow(
                       RegExp(r'^[0-9]*\.?[0-9]*'),
@@ -803,8 +753,9 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   label: 'Per-invocation cap (USD)',
                   controller: _perInvocation,
                   fieldKey: const Key('admin_pricing_cap_per_invocation'),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   inputFormatters: <TextInputFormatter>[
                     FilteringTextInputFormatter.allow(
                       RegExp(r'^[0-9]*\.?[0-9]*'),
@@ -845,8 +796,8 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
           ),
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
-            final locationId = widget.existing?.locationId ??
-                widget.primaryLocationId;
+            final locationId =
+                widget.existing?.locationId ?? widget.primaryLocationId;
             if (locationId == null) return;
             final monthly = double.tryParse(_monthly.text.trim()) ?? 0;
             final perInv = double.tryParse(_perInvocation.text.trim()) ?? 0;
@@ -913,62 +864,13 @@ class _LabelledField extends StatelessWidget {
           hintStyle: AppTextStyles.mono11(color: AppColors.textMuted),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(6),
-            borderSide:
-                const BorderSide(color: AppColors.borderSubtle, width: 1),
+            borderSide: const BorderSide(
+              color: AppColors.borderSubtle,
+              width: 1,
+            ),
           ),
         ),
       ),
-    );
-  }
-}
-
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.label, required this.value});
-
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 160,
-            child: Text(
-              label,
-              style: AppTextStyles.mono11(color: AppColors.textMuted),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.mono14(color: AppColors.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _Card extends StatelessWidget {
-  const _Card({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.backgroundSurface,
-        border: Border.all(color: AppColors.borderSubtle, width: 1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      padding: const EdgeInsets.all(16),
-      child: child,
     );
   }
 }
