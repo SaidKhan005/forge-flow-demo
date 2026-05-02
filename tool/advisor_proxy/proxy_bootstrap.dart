@@ -6,6 +6,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:path/path.dart' as p;
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
@@ -67,6 +68,7 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyEdgeCandidatesFileName,
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
+import 'anthropic_http_complete_fn.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
@@ -92,6 +94,9 @@ class ProxyProductionBindings {
     required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
+    required this.llmProvider,
+    required this.secondaryLlmProvider,
+    required this.geminiSlotEnabled,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -114,6 +119,110 @@ class ProxyProductionBindings {
   final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
   final IntegrationAdminActorResolver integrationAdminActorResolver;
+
+  /// Phase 11A.4b — primary LLM provider feeding the
+  /// `AdvisorRequestPipeline`. Real Anthropic Messages API HTTP
+  /// adapter; the breaker wraps this and trips on consecutive
+  /// failures.
+  final ProxyLlmProvider llmProvider;
+
+  /// Phase 11A.4b — Gemini Flash secondary used by the pipeline when
+  /// Anthropic fails or the breaker is open. Null when
+  /// `GEMINI_API_KEY` is unset (pipeline reduces to anthropic →
+  /// cache → refusal).
+  final ProxyLlmProvider? secondaryLlmProvider;
+
+  /// True when GEMINI_API_KEY was loaded at startup. Surfaces to the
+  /// diagnostics line in main.dart so a startup grep can confirm
+  /// which fallback slots are armed without echoing the key.
+  final bool geminiSlotEnabled;
+}
+
+// ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
+
+/// Production callback that drives the `google_generative_ai` SDK.
+/// Streams chunks via `generateContentStream` so [onChunk] fires once
+/// per chunk; the returned future resolves to a
+/// [ProxyLlmCompletePayload] carrying the concatenated text plus real
+/// input/output token counts pulled from the SDK's `usageMetadata`.
+///
+/// Applies a [chunkTimeout] per stream chunk so a wedged Gemini stream
+/// fails fast instead of blocking the request.
+///
+/// Server-side ONLY — every caller of this fn lives under
+/// `tool/advisor_proxy/`. Hard Promise #7 in CLAUDE.md.
+GeminiProxyCompleteFn buildGeminiSdkCompleteFn({
+  required String apiKey,
+  Duration chunkTimeout = const Duration(seconds: 30),
+}) {
+  return ({
+    required String modelId,
+    required String question,
+    required String context,
+    void Function(String chunk)? onChunk,
+  }) async {
+    final model = gemini.GenerativeModel(
+      model: modelId,
+      apiKey: apiKey,
+      systemInstruction: context.isEmpty ? null : gemini.Content.system(context),
+    );
+    final stream = model
+        .generateContentStream(<gemini.Content>[gemini.Content.text(question)])
+        .timeout(chunkTimeout);
+    final buffer = StringBuffer();
+    // Usage metadata is typically only populated on the FINAL streamed
+    // chunk. Track the most recent non-null reading and consume it
+    // after the stream drains so partial-stream surfaces still report
+    // whatever the SDK gave us last.
+    gemini.UsageMetadata? lastUsage;
+    await for (final response in stream) {
+      if (response.usageMetadata != null) {
+        lastUsage = response.usageMetadata;
+      }
+      final text = response.text;
+      if (text != null && text.isNotEmpty) {
+        buffer.write(text);
+        onChunk?.call(text);
+      }
+    }
+    return ProxyLlmCompletePayload(
+      text: buffer.toString(),
+      inputTokens: lastUsage?.promptTokenCount ?? 0,
+      outputTokens: lastUsage?.candidatesTokenCount ?? 0,
+    );
+  };
+}
+
+/// Build the production LLM providers from [config]. Always wires the
+/// Anthropic primary to the real Messages API HTTP adapter using
+/// `ANTHROPIC_API_KEY`. When `GEMINI_API_KEY` is loaded, also wires
+/// the live Gemini secondary; otherwise the secondary is null and
+/// the pipeline reduces to anthropic → cache → refusal.
+({
+  ProxyLlmProvider primary,
+  ProxyLlmProvider? secondary,
+  bool geminiSlotEnabled,
+})
+buildProxyLlmProviders(ProxyConfig config) {
+  final primary = AnthropicProxyLlmProvider(
+    completeFn: buildAnthropicHttpCompleteFn(
+      apiKey: config.secretFor(ProxySecretNames.anthropicApiKey),
+    ),
+  );
+  ProxyLlmProvider? secondary;
+  final hasGeminiKey = config.hasSecretFor(ProxySecretNames.geminiApiKey);
+  if (hasGeminiKey) {
+    secondary = GeminiProxyLlmProvider(
+      completeFn: buildGeminiSdkCompleteFn(
+        apiKey: config.secretFor(ProxySecretNames.geminiApiKey),
+      ),
+    );
+  }
+  return (
+    primary: primary,
+    secondary: secondary,
+    geminiSlotEnabled: hasGeminiKey,
+  );
 }
 
 /// Builds all Phase 9 production route bindings without opening network or
@@ -205,6 +314,11 @@ ProxyProductionBindings buildProxyProductionBindings(
     rolePermissionsRepository: tenantRolePermissions,
     requiresMfaKeys: PermissionKeys.requiresMfa,
   );
+
+  // Phase 11A.4b — assemble the LLM providers (Anthropic primary +
+  // optional Gemini secondary). Built once at startup so the
+  // adapter instances are stable across requests.
+  final llmProviders = buildProxyLlmProviders(config);
 
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
@@ -367,6 +481,10 @@ ProxyProductionBindings buildProxyProductionBindings(
         RepositoryIntegrationAdminActorResolver(
           usersRepository: UsersRepository(adminWrapper),
         ),
+    // Phase 11A.4b — LLM providers feeding the AdvisorRequestPipeline.
+    llmProvider: llmProviders.primary,
+    secondaryLlmProvider: llmProviders.secondary,
+    geminiSlotEnabled: llmProviders.geminiSlotEnabled,
   );
 }
 

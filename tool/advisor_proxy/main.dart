@@ -78,18 +78,20 @@ Future<void> main(List<String> args) async {
     tierResolver: const FixedLaunchTierResolver(),
   );
   const healthCheckStore = ScaffoldFailingProxyHealthCheckStore();
-  const llmProvider = ScaffoldRejectingProxyLlmProvider();
+  // Phase 11A.4b — primary is now the real Anthropic Messages-API
+  // HTTP adapter (via productionBindings). The breaker still owns
+  // failure handling; the secondary slot is a real Gemini SDK
+  // adapter when GEMINI_API_KEY is loaded, otherwise null.
+  final llmProvider = productionBindings.llmProvider;
 
-  // Lock 7 v1: per-instance breaker + always-miss cache stub. The
-  // pipeline wraps every advisor LLM call so failures (including the
-  // current ScaffoldRejecting provider's StateError) trip the breaker
-  // and fall through to the graceful refusal path. Replace the cache
-  // with a real impl in E.2b.
+  // Lock 7 v1: per-instance breaker + always-miss cache stub.
+  // Replace the cache with a real impl in E.2b.
   final anthropicBreaker = CircuitBreaker(providerId: 'anthropic');
   const advisorResponseCache = AlwaysMissAdvisorResponseCache();
   final advisorRequestPipeline = AdvisorRequestPipeline(
     breaker: anthropicBreaker,
     cache: advisorResponseCache,
+    secondaryLlmProvider: productionBindings.secondaryLlmProvider,
   );
 
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
@@ -117,7 +119,8 @@ Future<void> main(List<String> args) async {
     'pricing_tier_admin: postgres, '
     'corpus_admin: postgres, '
     'integration_admin: postgres_kms_stub, '
-    'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache)',
+    'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache'
+    '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''})',
   );
 
   await for (final request in server) {

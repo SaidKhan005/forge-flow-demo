@@ -43,10 +43,90 @@ abstract class AdvisorProviderConstants {
   /// constant is the fallback when no override is set.
   static const String sonnetModelId = 'claude-sonnet-4-6';
 
+  // ── Gemini fallback tiers (Phase 11A.4b) ─────────────────────────────────
+  // Server-side fallback model when Anthropic's circuit is open. Tier
+  // mapping: quick -> gemini-flash (default fallback),
+  // nuanced -> gemini-pro (reserved). Server-side keys only — see Hard
+  // Promise #7 in CLAUDE.md.
+  static const String geminiProviderId = 'gemini';
+  static const String geminiFlashModelId = 'gemini-2.5-flash';
+  static const String geminiProModelId = 'gemini-2.5-pro';
+
   // ── Mock replay data source ───────────────────────────────────────────────
   /// Provider identifier for the kDemoMode writer that fills SQLite from
   /// `MockIntegrationReplaySeed`. Phase 8 will introduce additional vendor
   /// provider identifiers (e.g. `toast_pos`) that implement the same
   /// `DataSourceProvider` interface.
   static const String mockReplayProviderId = 'mock_replay';
+}
+
+/// Per-model token-cost rates. Cents per million tokens, stored as ints
+/// so we can do integer-arithmetic cost computation without floats.
+/// Numbers are list prices per provider as of late 2025 / early 2026 —
+/// promote to a runtime config table when prices drift.
+class LlmCostRates {
+  const LlmCostRates({
+    required this.inputCentsPerMillion,
+    required this.outputCentsPerMillion,
+  });
+
+  final int inputCentsPerMillion;
+  final int outputCentsPerMillion;
+
+  /// Compute total cost in whole cents for the given token counts.
+  /// Truncates fractional cents — at the dollar/cent precision the
+  /// existing accounting layer enforces, this is the right behavior.
+  int costCentsFor({required int inputTokens, required int outputTokens}) {
+    final inputMicrocents = inputTokens * inputCentsPerMillion;
+    final outputMicrocents = outputTokens * outputCentsPerMillion;
+    return (inputMicrocents + outputMicrocents) ~/ 1000000;
+  }
+}
+
+/// Cost rate registry keyed by `modelId`. Looked up at the proxy
+/// adapter layer so each request charges the correct per-model rate.
+abstract class LlmCostRateRegistry {
+  LlmCostRateRegistry._();
+
+  // Anthropic — list prices per https://www.anthropic.com/pricing.
+  // Haiku 4.5: $1/MTok input, $5/MTok output → 100/500 cents/MTok.
+  // Sonnet 4.6: $3/MTok input, $15/MTok output → 300/1500 cents/MTok.
+  static const LlmCostRates _haiku45 = LlmCostRates(
+    inputCentsPerMillion: 100,
+    outputCentsPerMillion: 500,
+  );
+  static const LlmCostRates _sonnet46 = LlmCostRates(
+    inputCentsPerMillion: 300,
+    outputCentsPerMillion: 1500,
+  );
+
+  // Gemini — list prices per https://ai.google.dev/pricing.
+  // Flash 2.5: $0.075/MTok input, $0.30/MTok output → 7.5/30 cents/MTok
+  // (rounded up to 8/30 for integer arithmetic).
+  // Pro 2.5: $1.25/MTok input, $5/MTok output → 125/500 cents/MTok.
+  static const LlmCostRates _geminiFlash25 = LlmCostRates(
+    inputCentsPerMillion: 8,
+    outputCentsPerMillion: 30,
+  );
+  static const LlmCostRates _geminiPro25 = LlmCostRates(
+    inputCentsPerMillion: 125,
+    outputCentsPerMillion: 500,
+  );
+
+  /// Returns the rate for [modelId], or null when the model is not
+  /// recognized (the proxy falls back to a zero charge in that case
+  /// AND logs a warning so unknown models don't silently bypass caps).
+  static LlmCostRates? rateFor(String modelId) {
+    switch (modelId) {
+      case AdvisorProviderConstants.haikuModelId:
+        return _haiku45;
+      case AdvisorProviderConstants.sonnetModelId:
+        return _sonnet46;
+      case AdvisorProviderConstants.geminiFlashModelId:
+        return _geminiFlash25;
+      case AdvisorProviderConstants.geminiProModelId:
+        return _geminiPro25;
+    }
+    return null;
+  }
 }

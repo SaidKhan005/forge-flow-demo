@@ -69,6 +69,8 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
       '/v1/admin/integrations/rotate-voyage';
   static const String rotateAzureDbPath =
       '/v1/admin/integrations/rotate-azure-db';
+  static const String rotateGeminiPath =
+      '/v1/admin/integrations/rotate-gemini';
   static const String statusPath = '/v1/admin/integrations/status';
 
   static String rotatePathFor(ProviderKeyKind kind) {
@@ -79,6 +81,8 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
         return rotateVoyagePath;
       case ProviderKeyKind.azureDb:
         return rotateAzureDbPath;
+      case ProviderKeyKind.gemini:
+        return rotateGeminiPath;
     }
   }
 

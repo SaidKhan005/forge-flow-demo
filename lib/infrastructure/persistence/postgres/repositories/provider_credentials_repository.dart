@@ -34,6 +34,7 @@ const Set<String> kProviderCredentialKinds = <String>{
   'anthropic',
   'voyage',
   'azure_db',
+  'gemini',
 };
 
 class ProviderCredentialsRepository extends OperatorScopedRepository {
