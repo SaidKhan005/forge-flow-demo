@@ -202,6 +202,52 @@ Future<void> main(List<String> args) async {
         stdout.writeln('Output: ${result.outputDirectory}');
         stdout.writeln('Generated SQL only; no DB mutation by this command.');
         break;
+      case 'prepare-graphify-candidates':
+        // Phase 11A.3b — read graphify-out/graph.json, apply the
+        // corpus_manifest.yaml scope filter, and emit the deterministic
+        // JSONL artifacts the proxy serves to the Corpus Admin "Graph
+        // candidates" tab. Does NOT mutate the database.
+        final graphifyDirectory =
+            _option(args, 'graphify-out') ?? defaultGraphifyOutputDirectory;
+        final outputDirectory = _option(args, 'output') ??
+            defaultGraphifyCandidatesOutputDirectory;
+        final graphScope = _option(args, 'graph-scope') ?? 'methodology';
+        final graphVersion = _option(args, 'graph-version') ?? '1';
+        final graphifyVersion =
+            _option(args, 'graphify-version') ?? 'v5';
+        final graphifySourceCommit =
+            _option(args, 'graphify-source-commit');
+        final importer = GraphifyCandidateImporter(
+          repoRoot: repoRoot,
+          graphifyVersion: graphifyVersion,
+          graphifySourceCommit: graphifySourceCommit,
+        );
+        final result = await importer.prepare(
+          manifest: validation.manifest,
+          graphifyDirectory: graphifyDirectory,
+          outputDirectory: outputDirectory,
+          graphScope: graphScope,
+          graphVersion: graphVersion,
+        );
+        stdout.writeln(
+          'Graphify candidate prep OK: '
+          '${result.nodeCandidateCount} nodes, '
+          '${result.edgeCandidateCount} edges, '
+          '${result.droppedOutOfScopeCount} dropped out-of-scope.',
+        );
+        stdout.writeln(
+          'Graphify version: ${result.manifest['graphify_version']}',
+        );
+        stdout.writeln('Output: ${result.outputDirectory}');
+        stdout.writeln(
+          'Files: $graphifyNodeCandidatesFileName, '
+          '$graphifyEdgeCandidatesFileName, '
+          '$graphifyCandidateManifestFileName',
+        );
+        stdout.writeln(
+          'Mode: read-only against graph.json; no DB mutation, no live API call.',
+        );
+        break;
       case 'execute-contexts':
         final materializationDirectory =
             _option(args, 'materialized') ?? 'build/advisor_corpus';
@@ -238,7 +284,7 @@ Future<void> main(List<String> args) async {
           'Usage: dart run tool/advisor_corpus/main.dart '
           '[validate|plan-chunks|materialize|prepare-load|'
           'prepare-embeddings|execute-embeddings|execute-contexts|'
-          'prepare-age-projection]',
+          'prepare-age-projection|prepare-graphify-candidates]',
         );
         exitCode = 64;
     }

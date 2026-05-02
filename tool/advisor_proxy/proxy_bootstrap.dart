@@ -3,6 +3,11 @@
 // Kept separate from `main.dart` so production wiring can be tested
 // without binding a socket or opening a live database connection.
 
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:path/path.dart' as p;
+
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
@@ -11,6 +16,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factors_repository.dart';
@@ -26,6 +32,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/user_roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
@@ -51,6 +58,14 @@ import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
 
+import '../advisor_corpus/advisor_corpus.dart'
+    show
+        CorpusManifest,
+        defaultGraphifyCandidatesOutputDirectory,
+        defaultManifestPath,
+        graphifyCandidateManifestFileName,
+        graphifyEdgeCandidatesFileName,
+        graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
@@ -74,6 +89,7 @@ class ProxyProductionBindings {
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
     required this.corpusAdminGateway,
+    required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
   });
@@ -95,6 +111,7 @@ class ProxyProductionBindings {
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
   final CorpusAdminProxyGateway corpusAdminGateway;
+  final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
   final IntegrationAdminActorResolver integrationAdminActorResolver;
 }
@@ -306,6 +323,28 @@ ProxyProductionBindings buildProxyProductionBindings(
       // hit-rate drops with corpus material changes. Sourced from the
       // CACHE_TELEMETRY_V2 env var; defaults off in [ProxyConfig].
       emitInvalidationEvent: config.cacheTelemetryV2,
+    ),
+    // Phase 11A.3b — Graphify candidate review gateway. The launch
+    // posture mirrors `RepositoryCorpusAdminProxyGateway`: the route
+    // contract exists with the right shape and role/idempotency
+    // gates, but live read/commit lights up in a follow-up slice.
+    // The production binding raises a typed
+    // `graph_candidates_not_configured` 503 so the screen surfaces
+    // the actionable banner instead of a generic 5xx, while the
+    // demo gateway runs end-to-end via [InMemoryCorpusAdminGateway]
+    // which is what the operator walkthrough uses.
+    // Phase 11A.3b — Graphify candidate review gateway. Backed by the
+    // `GraphRepository` (canonical `graph_nodes` / `graph_edges`
+    // writes through the tenant pool so RLS stays engaged) and the
+    // admin-pool audit repository (cross-tenant audit row, since the
+    // F&F super_admin actor does not live inside the operator's
+    // tenant scope). The repo root is `Directory.current`, which is
+    // the proxy's CWD on Cloud Run; the gateway resolves the
+    // `graphify-out/candidates/` JSONL artifacts under that root.
+    graphCandidatesGateway: RepositoryGraphCandidatesProxyGateway(
+      graphRepository: GraphRepository(tenantWrapper),
+      auditRepository: adminAudit,
+      repoRoot: Directory.current,
     ),
     // Phase 11A.4 — Integration management gateway. Backed by the
     // `provider_credentials` masked-display ledger and a KMS stub
@@ -1211,6 +1250,674 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
       payload: <String, Object?>{'admin_reason': adminReason, ...payload},
     );
   }
+}
+
+/// Production [GraphCandidatesProxyGateway] backed by [GraphRepository].
+///
+/// `listCandidates` reads the deterministic JSONL artifacts written
+/// by `tool/advisor_corpus prepare-graphify-candidates` under
+/// `graphify-out/candidates/` and projects them into the
+/// [GraphCandidateDiff] wire shape the screen consumes. When the
+/// artifacts are missing (the operator has not run the build tool
+/// yet), the gateway raises a typed
+/// `graph_candidates_not_configured` 503 so the screen renders the
+/// actionable banner.
+///
+/// `commitBatch` resolves each wire `ApprovalDecision` against the
+/// candidate id index built from the JSONL, translates it into a
+/// repository-shaped [GraphCommitDecision], opens a tenant-scoped
+/// transaction via [GraphRepository.commitBatch], and projects the
+/// returned [GraphCommitBatchResult] back to JSON. The whole batch
+/// runs atomically inside one withTenant transaction (composite-FK
+/// ordering and audit fan-out are the repository's job).
+class RepositoryGraphCandidatesProxyGateway
+    implements GraphCandidatesProxyGateway {
+  RepositoryGraphCandidatesProxyGateway({
+    required GraphRepository graphRepository,
+    required AuthEventsAuditRepository auditRepository,
+    required Directory repoRoot,
+    String candidatesDirectory =
+        defaultGraphifyCandidatesOutputDirectory,
+  })  : _graph = graphRepository,
+        _auditRepository = auditRepository,
+        _repoRoot = repoRoot,
+        _candidatesDirectory = candidatesDirectory;
+
+  final GraphRepository _graph;
+  final AuthEventsAuditRepository _auditRepository;
+  final Directory _repoRoot;
+  final String _candidatesDirectory;
+
+  /// Phase 11A.3b — in-process idempotency-key dedup for
+  /// `commit-batch` retries. A retry with the same key returns the
+  /// cached result map instead of re-running the writes, which
+  /// would otherwise cause duplicate audit rows and canonical
+  /// uniqueness errors (the canonical inserts have a UNIQUE on
+  /// `(operator_id, graph_scope, graph_version, node_key)`).
+  ///
+  /// **Launch posture:** in-process map. The 9.0Σ.f
+  /// `proxy_requests` table-backed dedup (the same posture the
+  /// 11A.3a corpus rollback path lights up via
+  /// `CorpusRepository.rollbackToVersion(idempotencyKey: ...)`)
+  /// is the production-grade path; the in-process map covers the
+  /// single-Cloud-Run-instance launch shape and the F&F admin
+  /// screen's retry behaviour. Multi-instance fan-out lands in a
+  /// follow-up slice that promotes this to the table-backed path.
+  ///
+  /// **Concurrent-safe.** The cache stores the in-flight Future
+  /// (not the resolved result), and [commitBatch] reserves the
+  /// key SYNCHRONOUSLY — before any await — so two overlapping
+  /// requests with the same key share the same Future and only
+  /// one transaction opens. The earlier "cache the resolved
+  /// result after the work completes" shape allowed two concurrent
+  /// requests to both observe `cached == null`, both open
+  /// transactions, and both trip the canonical UNIQUE on retry.
+  ///
+  /// On error the cache entry is removed so a fresh retry can
+  /// succeed (matches Stripe-style idempotency semantics — a
+  /// transient failure should not poison the key permanently).
+  ///
+  /// Keyed by `(idempotencyKey)` — the route handler already
+  /// rejects POST requests without a key (400 missing_idempotency_key)
+  /// so a non-empty key is guaranteed by the time we enter
+  /// [commitBatch].
+  final Map<String, Future<Map<String, Object?>>> _idempotentCommitResults =
+      <String, Future<Map<String, Object?>>>{};
+
+  @override
+  Future<Map<String, Object?>> listGraphCandidates({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final bundle = await _loadCandidateBundle();
+    // Spec line 195-196 + 264-265: graph_candidates.jsonl is NOT
+    // production truth — the active corpus manifest is the
+    // authority on which docs are in scope, and Graphify output
+    // for files outside the manifest is ignored. Apply the same
+    // fail-closed scope filter listGraphCandidates uses for the
+    // commit path so a stale/tampered JSONL entry cannot render
+    // in the diff and tempt an operator to queue a decision the
+    // commit path will then reject anyway.
+    final manifestScope = await _loadManifestScopeForFilter();
+    if (manifestScope == null) {
+      throw const GraphCandidatesGatewayValidationError(
+        statusCode: 503,
+        code: 'manifest_unavailable',
+        message:
+            'corpus_manifest.yaml could not be loaded; the diff '
+            'cannot be rendered without the manifest scope filter '
+            '(stale or tampered JSONL entries would otherwise reach '
+            'the operator). Restore the manifest at '
+            'docs/Knowledge_graph_docs/corpus_manifest.yaml and retry.',
+      );
+    }
+
+    final extracted = <Map<String, Object?>>[];
+    final inferred = <Map<String, Object?>>[];
+    final ambiguous = <Map<String, Object?>>[];
+    var droppedOutOfScope = 0;
+
+    void route(Map<String, Object?> candidate) {
+      // Drop candidates whose source_file is missing/blank or not
+      // in the active manifest scope. Silent drop matches the
+      // spec ("Graphify output outside the active manifest is
+      // ignored") — the operator never queues an invalid row.
+      final src = candidate['source_file'] as String?;
+      if (src == null ||
+          src.trim().isEmpty ||
+          !_isManifestSourceInScope(src, manifestScope)) {
+        droppedOutOfScope += 1;
+        return;
+      }
+      final label = (candidate['label'] as String?) ?? 'EXTRACTED';
+      switch (label) {
+        case 'EXTRACTED':
+          extracted.add(candidate);
+          break;
+        case 'INFERRED':
+          inferred.add(candidate);
+          break;
+        case 'AMBIGUOUS':
+          ambiguous.add(candidate);
+          break;
+        default:
+          // Unknown label → safest bucket so the admin still sees it.
+          ambiguous.add(candidate);
+      }
+    }
+
+    for (final node in bundle.nodes) {
+      route(node);
+    }
+    for (final edge in bundle.edges) {
+      route(edge);
+    }
+
+    await _audit(
+      actorUserId: actorUserId,
+      eventType: 'admin.corpus.graph_candidates.list',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'graph_scope': bundle.graphScope,
+        'graph_version': bundle.graphVersion,
+        'graphify_version': bundle.graphifyVersion,
+        'extracted_count': extracted.length,
+        'inferred_count': inferred.length,
+        'ambiguous_count': ambiguous.length,
+        'dropped_out_of_scope_count': droppedOutOfScope,
+      },
+    );
+
+    return <String, Object?>{
+      'graph_scope': bundle.graphScope,
+      'graph_version': bundle.graphVersion,
+      'graphify_version': bundle.graphifyVersion,
+      if (bundle.graphifySourceCommit != null)
+        'graphify_source_commit': bundle.graphifySourceCommit,
+      'extracted': extracted,
+      'inferred': inferred,
+      'ambiguous': ambiguous,
+    };
+  }
+
+  @override
+  Future<Map<String, Object?>> commitBatch({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required List<Map<String, Object?>> decisions,
+    required String idempotencyKey,
+    required String adminReason,
+  }) {
+    // Phase 11A.3b — idempotency-key dedup, concurrent-safe.
+    //
+    // Note: this method is intentionally NOT async. The
+    // synchronous prefix runs to completion before returning,
+    // which means two overlapping calls with the same key cannot
+    // both observe `cached == null` and both open a write
+    // transaction. The first arrival inserts the in-flight Future
+    // into the cache synchronously; the second arrival reads the
+    // same Future and awaits its result.
+    //
+    // The route handler already rejects POST requests without an
+    // Idempotency-Key (400 missing_idempotency_key), so a
+    // non-empty key is guaranteed here.
+    final existing = _idempotentCommitResults[idempotencyKey];
+    if (existing != null) {
+      // Hot path: a prior call already started (and possibly
+      // completed). Return its Future; replay either gets the
+      // cached resolved value or awaits the in-flight result.
+      // The first call's audit-events row already fired — we
+      // never double-emit because the same Future is returned.
+      return existing;
+    }
+    // Reserve the key by inserting the chained Future BEFORE any
+    // await. The chained `.catchError` removes the entry on
+    // failure so a retry after a transient error gets a fresh
+    // attempt; on success the resolved Future stays cached.
+    final pending = _commitBatchInternal(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      decisions: decisions,
+      idempotencyKey: idempotencyKey,
+      adminReason: adminReason,
+    ).catchError((Object error, StackTrace stackTrace) {
+      _idempotentCommitResults.remove(idempotencyKey);
+      // Rethrow so awaiters see the original error. The catchError
+      // handler completes the chained Future with the same error.
+      // ignore: only_throw_errors
+      throw error;
+    });
+    _idempotentCommitResults[idempotencyKey] = pending;
+    return pending;
+  }
+
+  /// Body of [commitBatch]. Extracted so the public method can
+  /// reserve the idempotency key synchronously before the first
+  /// await, which is what makes concurrent retries with the same
+  /// key share one Future instead of opening two transactions.
+  Future<Map<String, Object?>> _commitBatchInternal({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required List<Map<String, Object?>> decisions,
+    required String idempotencyKey,
+    required String adminReason,
+  }) async {
+    if (decisions.isEmpty) {
+      throw const GraphCandidatesGatewayValidationError(
+        statusCode: 400,
+        code: 'empty_batch',
+        message: 'commit-batch requires at least one decision',
+      );
+    }
+    final bundle = await _loadCandidateBundle();
+    // Defense-in-depth manifest scope filter on the resolved
+    // candidates' `source_file`. The route handler's filter only
+    // sees `edited_payload.source_file`, but approve / reject
+    // requests carry only `candidate_id` over the wire; this is
+    // the only point where we know the producer-recorded source
+    // for those decisions. Stale or tampered out-of-scope JSONL
+    // entries are rejected here even if they passed the importer
+    // (e.g. the manifest changed between importer time and commit).
+    //
+    // **Fail-closed:** when the manifest cannot be loaded
+    // (missing, unreadable, or malformed) we abort the commit
+    // with a typed 503 rather than silently skipping the check.
+    // A missing manifest means the safety net is gone — the
+    // alternative (fail-open) would let stale JSONL pass through
+    // unchecked, which is exactly the hole the importer-time
+    // primary filter cannot close. Production deployments always
+    // ship the manifest as part of the artifact, so this case
+    // means a configuration error worth halting on.
+    final manifestScope = await _loadManifestScopeForFilter();
+    if (manifestScope == null) {
+      throw const GraphCandidatesGatewayValidationError(
+        statusCode: 503,
+        code: 'manifest_unavailable',
+        message:
+            'corpus_manifest.yaml could not be loaded; the '
+            'defense-in-depth scope check on resolved candidates '
+            'cannot run, so the commit is rejected to prevent stale '
+            'or tampered out-of-scope JSONL entries from leaking. '
+            'Restore the manifest at '
+            'docs/Knowledge_graph_docs/corpus_manifest.yaml and retry.',
+      );
+    }
+    final byId = <String, Map<String, Object?>>{};
+    for (final node in bundle.nodes) {
+      byId[node['candidate_id']! as String] = node;
+    }
+    for (final edge in bundle.edges) {
+      byId[edge['candidate_id']! as String] = edge;
+    }
+
+    final repoDecisions = <GraphCommitDecision>[];
+    for (var i = 0; i < decisions.length; i++) {
+      final wire = decisions[i];
+      final candidateIdRaw = wire['candidate_id'];
+      if (candidateIdRaw is! String || candidateIdRaw.trim().isEmpty) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 400,
+          code: 'missing_candidate_id',
+          message: 'decisions[$i] is missing candidate_id',
+        );
+      }
+      final candidate = byId[candidateIdRaw];
+      if (candidate == null) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 404,
+          code: 'unknown_candidate',
+          message:
+              'decisions[$i] references candidate_id "$candidateIdRaw" '
+              'which is not in the current diff',
+        );
+      }
+      final kindRaw = wire['kind'];
+      if (kindRaw is! String) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 400,
+          code: 'invalid_decision_kind',
+          message: 'decisions[$i] is missing kind (approve/reject/edit)',
+        );
+      }
+      final decisionKind = _parseDecisionKind(kindRaw, i);
+      final candidateKindRaw = candidate['kind'] as String?;
+      final candidateKind = candidateKindRaw == 'edge'
+          ? GraphCandidateKind.edge
+          : GraphCandidateKind.node;
+      final candidatePayload =
+          ((candidate['payload'] as Map?)?.cast<String, Object?>()) ??
+              const <String, Object?>{};
+      final editedPayloadRaw = wire['edited_payload'];
+      final editedPayload = editedPayloadRaw is Map
+          ? editedPayloadRaw.cast<String, Object?>()
+          : null;
+      if (decisionKind == GraphDecisionKind.edit && editedPayload == null) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 400,
+          code: 'missing_edited_payload',
+          message:
+              'decisions[$i] is an edit but does not carry edited_payload',
+        );
+      }
+      // Spec line 249 (server-side guard): AMBIGUOUS relationships
+      // are debug-only until edited into a clear approved
+      // relationship. The screen hides the Approve button on
+      // AMBIGUOUS rows and a programmatic guard exists in
+      // `_toggleApprove`; this is the matching server-side check
+      // so a direct or stale HTTP request cannot bypass the widget
+      // and route an unedited ambiguous relationship into
+      // canonical graph storage. `edit` (which carries
+      // `edited_payload` + `edited_candidate_type`) is the only
+      // way to land an AMBIGUOUS candidate in canonical storage.
+      final candidateLabel = candidate['label'] as String?;
+      if (candidateLabel == 'AMBIGUOUS' &&
+          decisionKind == GraphDecisionKind.approve) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 400,
+          code: 'ambiguous_requires_edit',
+          message:
+              'decisions[$i] is a bare approve on candidate '
+              '"$candidateIdRaw" which the producer flagged AMBIGUOUS; '
+              'AMBIGUOUS candidates must be edited into a clear '
+              'approved relationship before they can land in canonical '
+              'storage (spec line 249). Use kind="edit" with an '
+              'edited_candidate_type and edited_payload instead.',
+        );
+      }
+      // Defense-in-depth manifest scope check on the resolved
+      // candidate's `source_file`. The route-handler filter only
+      // sees `edited_payload.source_file`; approve / reject
+      // requests carry only `candidate_id`, so this is the only
+      // point that catches a stale or tampered out-of-scope JSONL
+      // entry on those decisions. The scope set is fail-closed
+      // (see `_loadManifestScopeForFilter`): a missing or
+      // unreadable manifest aborts before this loop, so by the
+      // time we reach this check the scope is authoritative.
+      final candidateSourceFile = candidate['source_file'] as String?;
+      // Spec line 253-255: every approved candidate records the
+      // source document. The importer's primary filter treats
+      // candidates with null/blank source_file as out-of-scope and
+      // drops them; this server-side check rejects any stale or
+      // tampered JSONL row that slipped through with a missing
+      // source_file so a candidate cannot land in canonical
+      // storage without provenance.
+      if (candidateSourceFile == null || candidateSourceFile.trim().isEmpty) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 403,
+          code: 'source_out_of_scope',
+          message:
+              'decisions[$i] resolved candidate "$candidateIdRaw" '
+              'has no source_file; approved candidates must carry '
+              'a source_file (spec line 253-255) and the importer '
+              'treats null source paths as out-of-scope. Re-run '
+              'prepare-graphify-candidates before retrying.',
+        );
+      }
+      if (!_isManifestSourceInScope(candidateSourceFile, manifestScope)) {
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 403,
+          code: 'source_out_of_scope',
+          message:
+              'decisions[$i] resolved candidate "$candidateIdRaw" '
+              'whose source_file "$candidateSourceFile" is not in the '
+              'corpus manifest; the candidate JSONL may be stale — '
+              're-run prepare-graphify-candidates against the current '
+              'manifest before retrying',
+        );
+      }
+      final candidateType = (wire['edited_candidate_type'] as String?) ??
+          (candidate['candidate_type']! as String);
+      final confidenceLabel = GraphCandidateLabel.fromWire(
+        candidate['label']! as String,
+      );
+      final confidenceScore = (candidate['confidence_score'] as num?)?.toDouble();
+      final reasonRaw = wire['reason'];
+      final reason = reasonRaw is String && reasonRaw.trim().isNotEmpty
+          ? reasonRaw.trim()
+          : null;
+      repoDecisions.add(
+        GraphCommitDecision(
+          kind: candidateKind,
+          decision: decisionKind,
+          candidateKey: candidate['candidate_key']! as String,
+          candidateType: candidateType,
+          payload: editedPayload ?? candidatePayload,
+          confidenceLabel: confidenceLabel,
+          confidenceScore: confidenceScore,
+          sourceFile: candidate['source_file'] as String?,
+          sourceRef: candidate['source_ref'] as String?,
+          fromNodeKey: candidate['from_node_key'] as String?,
+          toNodeKey: candidate['to_node_key'] as String?,
+          reason: reason,
+        ),
+      );
+    }
+
+    final TenantContext tenantContext;
+    try {
+      tenantContext = TenantContext(
+        operatorId: operatorId,
+        locationId: locationId,
+        userId: actorUserId,
+      );
+    } on TenantContextValidationError catch (error) {
+      throw GraphCandidatesGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_${error.field}',
+        message: error.message,
+      );
+    }
+
+    final result = await _graph.commitBatch(
+      tenantContext: tenantContext,
+      graphScope: bundle.graphScope,
+      graphVersion: bundle.graphVersion,
+      graphifyVersion: bundle.graphifyVersion,
+      graphifySourceCommit: bundle.graphifySourceCommit,
+      idempotencyKey: idempotencyKey,
+      decisions: repoDecisions,
+    );
+
+    // Graph side effects have committed. From this point on the
+    // operation is a success from the operator's standpoint and
+    // the response shape is fixed. The audit row below is
+    // best-effort observability (auth_events_audit, written via
+    // a separate `withSystem` transaction in
+    // `AuthEventsAuditRepository.insertSystemEvent`); a failure
+    // there must NOT propagate as an error to the caller because:
+    //
+    //   1. The wrapper's .catchError would clear the
+    //      idempotency cache entry, and a retry with the same
+    //      `Idempotency-Key` would re-run `_graph.commitBatch`
+    //      and trip the canonical UNIQUE on
+    //      `(operator_id, graph_scope, graph_version, node_key)`
+    //      for the rows just written, surfacing as a 503 to the
+    //      operator for an operation that actually succeeded.
+    //
+    //   2. The `graph_repository.dart` audit fan-out into
+    //      `audit_logs` already ran inside the same tenant
+    //      transaction as the graph writes (see
+    //      `_fanOutToAuditLogs`), so the hash-chained system
+    //      audit trail is intact even if the auth_events_audit
+    //      row below is missed. Ops monitoring catches missed
+    //      auth_events_audit rows via row-count drift.
+    //
+    // The `auth_events_audit` failure is logged for ops to
+    // investigate; the operator-visible response is the success
+    // shape, the cache entry stays populated, and a retry with
+    // the same key returns the cached success.
+    final response = result.toJson();
+    try {
+      await _audit(
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.corpus.graph_candidates.commit_batch',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'graph_scope': bundle.graphScope,
+          'graph_version': bundle.graphVersion,
+          'idempotency_key': idempotencyKey,
+          'approved_node_count': result.approvedNodeCount,
+          'approved_edge_count': result.approvedEdgeCount,
+          'rejected_count': result.rejectedCount,
+        },
+      );
+    } catch (auditError, auditStack) {
+      // Best-effort: log and proceed. Re-throwing would clear
+      // the idempotency cache and cause a retry to double-write.
+      stderr.writeln(
+        'admin.corpus.graph_candidates.commit_batch '
+        'auth_events_audit_write_failed '
+        'idempotency_key=$idempotencyKey '
+        'operator_id=$operatorId '
+        'approved_node_count=${result.approvedNodeCount} '
+        'approved_edge_count=${result.approvedEdgeCount} '
+        'rejected_count=${result.rejectedCount} '
+        'error=$auditError\n$auditStack',
+      );
+    }
+
+    // Cache write happens in the [commitBatch] wrapper via the
+    // chained Future inserted before the first await; the wrapper's
+    // .catchError handles failure-removal for pre-graph-commit
+    // errors only. Post-graph-commit (audit) failures are swallowed
+    // above so the cache stays populated with the success
+    // response.
+    return response;
+  }
+
+  /// Loads the current corpus manifest scope set (source_path
+  /// normalized to forward-slash form, plus bare file_name aliases)
+  /// for the defense-in-depth check on resolved candidates. Returns
+  /// `null` when the manifest cannot be read — the caller treats
+  /// that as a typed 503 `manifest_unavailable` and rejects the
+  /// commit. **Fail-closed:** without the safety net we cannot
+  /// trust the importer's primary filter alone, so a missing or
+  /// malformed manifest aborts the commit instead of silently
+  /// allowing every decision through.
+  ///
+  /// An empty-but-loadable manifest (zero included documents) is
+  /// still considered loaded — the caller treats every decision's
+  /// `source_file` as out-of-scope in that case, which is the
+  /// correct behaviour: no docs included → no candidates valid.
+  Future<Set<String>?> _loadManifestScopeForFilter() async {
+    try {
+      final manifestFile = File(p.join(_repoRoot.path, defaultManifestPath));
+      if (!manifestFile.existsSync()) return null;
+      final manifest = await CorpusManifest.load(manifestFile);
+      final scope = <String>{};
+      for (final doc in manifest.documents) {
+        if (doc.isIncluded) {
+          scope.add(doc.sourcePath.replaceAll(r'\', '/'));
+          scope.add(doc.fileName);
+        }
+      }
+      return scope;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isManifestSourceInScope(String sourceFile, Set<String> scope) {
+    final normalized = sourceFile.replaceAll(r'\', '/');
+    if (scope.contains(normalized)) return true;
+    final base = p.basename(normalized);
+    return scope.contains(base);
+  }
+
+  GraphDecisionKind _parseDecisionKind(String wire, int index) {
+    switch (wire) {
+      case 'approve':
+        return GraphDecisionKind.approve;
+      case 'reject':
+        return GraphDecisionKind.reject;
+      case 'edit':
+        return GraphDecisionKind.edit;
+      default:
+        throw GraphCandidatesGatewayValidationError(
+          statusCode: 400,
+          code: 'invalid_decision_kind',
+          message:
+              'decisions[$index] kind "$wire" must be approve/reject/edit',
+        );
+    }
+  }
+
+  Future<_GraphCandidateBundle> _loadCandidateBundle() async {
+    final dir = Directory(p.join(_repoRoot.path, _candidatesDirectory));
+    final manifestFile =
+        File(p.join(dir.path, graphifyCandidateManifestFileName));
+    final nodesFile = File(p.join(dir.path, graphifyNodeCandidatesFileName));
+    final edgesFile = File(p.join(dir.path, graphifyEdgeCandidatesFileName));
+    if (!manifestFile.existsSync() ||
+        !nodesFile.existsSync() ||
+        !edgesFile.existsSync()) {
+      throw const GraphCandidatesGatewayValidationError(
+        statusCode: 503,
+        code: 'graph_candidates_not_configured',
+        message:
+            'graphify candidate artifacts are not on disk; run '
+            '`dart run tool/advisor_corpus/main.dart prepare-graphify-candidates` '
+            'to materialize them before opening the review screen',
+      );
+    }
+    final manifestRaw = jsonDecode(await manifestFile.readAsString());
+    final manifest = manifestRaw is Map<String, Object?>
+        ? manifestRaw
+        : const <String, Object?>{};
+    final nodes = await _readJsonl(nodesFile);
+    final edges = await _readJsonl(edgesFile);
+    return _GraphCandidateBundle(
+      graphScope: (manifest['graph_scope'] as String?) ?? 'methodology',
+      graphVersion: (manifest['graph_version'] as String?) ?? '1',
+      graphifyVersion:
+          (manifest['graphify_version'] as String?) ?? 'unknown',
+      graphifySourceCommit:
+          manifest['graphify_source_commit'] as String?,
+      nodes: nodes,
+      edges: edges,
+    );
+  }
+
+  Future<List<Map<String, Object?>>> _readJsonl(File file) async {
+    final lines = await file.readAsLines();
+    final out = <Map<String, Object?>>[];
+    for (final raw in lines) {
+      final trimmed = raw.trim();
+      if (trimmed.isEmpty) continue;
+      final decoded = jsonDecode(trimmed);
+      if (decoded is Map<String, Object?>) {
+        out.add(decoded);
+      } else if (decoded is Map) {
+        out.add(decoded.cast<String, Object?>());
+      }
+    }
+    return out;
+  }
+
+  Future<void> _audit({
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: eventType,
+      adminReason: adminReason,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+}
+
+/// In-memory snapshot of the candidate JSONL artifacts. Captures the
+/// manifest header and the parsed node/edge maps so the gateway can
+/// project both `listGraphCandidates` and `commitBatch` off the same
+/// bundle without re-reading disk on each call.
+class _GraphCandidateBundle {
+  const _GraphCandidateBundle({
+    required this.graphScope,
+    required this.graphVersion,
+    required this.graphifyVersion,
+    required this.graphifySourceCommit,
+    required this.nodes,
+    required this.edges,
+  });
+
+  final String graphScope;
+  final String graphVersion;
+  final String graphifyVersion;
+  final String? graphifySourceCommit;
+  final List<Map<String, Object?>> nodes;
+  final List<Map<String, Object?>> edges;
 }
 
 

@@ -21,7 +21,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import '../models/corpus_admin_models.dart';
 
@@ -64,6 +65,41 @@ abstract class CorpusAdminGateway {
   /// Rolls back to a prior version. Writes a fresh corpus_versions
   /// row pointing at the target.
   Future<CorpusVersionRef> rollbackToVersion(RollbackCommand command);
+
+  // ─── Phase 11A.3b — Graphify candidate review ──────────────────
+
+  /// Loads the current Graphify candidate diff. The proxy applies
+  /// the corpus_manifest scope filter again as defense-in-depth, so
+  /// every candidate returned here references an in-scope source
+  /// document. Used by both super_admin (mutates) and ff_support
+  /// (read-only) — the role gate sits server-side.
+  Future<GraphCandidateDiff> listGraphCandidates();
+
+  /// Commits a batch of approve/reject/edit decisions atomically.
+  /// Returns the per-bucket counts of what landed.
+  Future<BatchCommitResult> commitGraphCandidatesBatch(
+    BatchCommitCommand command,
+  );
+
+  /// Triggers an AGE projection rebuild against the canonical
+  /// graph tables. The launch slice ships a 501 stub on the
+  /// proxy; the screen surfaces the response message in a banner so
+  /// the operator knows the button is wired but the rebuild infra
+  /// is not yet enabled.
+  Future<AgeRebuildResult> requestAgeRebuild({required String idempotencyKey});
+}
+
+/// Result returned by [CorpusAdminGateway.requestAgeRebuild]. A 501
+/// stub from the proxy projects through with [implemented] = false.
+@immutable
+class AgeRebuildResult {
+  const AgeRebuildResult({
+    required this.implemented,
+    required this.message,
+  });
+
+  final bool implemented;
+  final String message;
 }
 
 class HttpCorpusAdminGateway implements CorpusAdminGateway {
@@ -84,6 +120,12 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   static const String previewDiffPath = '/v1/admin/corpus/preview-diff';
   static const String commitPath = '/v1/admin/corpus/commit';
   static const String rollbackPath = '/v1/admin/corpus/rollback';
+  // Phase 11A.3b — Graphify candidate review routes.
+  static const String graphCandidatesPath =
+      '/v1/admin/corpus/graph-candidates';
+  static const String graphCandidatesCommitPath =
+      '/v1/admin/corpus/graph-candidates/commit-batch';
+  static const String ageRebuildPath = '/v1/admin/age/rebuild';
 
   @override
   Future<List<CorpusVersionRef>> listVersions() async {
@@ -145,6 +187,65 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
     );
   }
 
+  @override
+  Future<GraphCandidateDiff> listGraphCandidates() async {
+    final body = await _send(method: 'GET', path: graphCandidatesPath);
+    return GraphCandidateDiff.fromJson(body);
+  }
+
+  @override
+  Future<BatchCommitResult> commitGraphCandidatesBatch(
+    BatchCommitCommand command,
+  ) async {
+    final body = await _send(
+      method: 'POST',
+      path: graphCandidatesCommitPath,
+      idempotencyKey: command.idempotencyKey,
+      jsonBody: command.toJson(),
+    );
+    return BatchCommitResult.fromJson(body);
+  }
+
+  @override
+  Future<AgeRebuildResult> requestAgeRebuild({
+    required String idempotencyKey,
+  }) async {
+    final token = await bearerTokenProvider();
+    final uri = baseUri.resolve(ageRebuildPath);
+    final request = await _httpClient.openUrl('POST', uri);
+    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    request.headers.set('Idempotency-Key', idempotencyKey);
+    request.headers.contentType = ContentType.json;
+    request.add(utf8.encode(jsonEncode(<String, Object?>{})));
+    final response = await request.close();
+    final raw = await response.transform(utf8.decoder).join();
+    Map<String, Object?> parsed = const <String, Object?>{};
+    if (raw.isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) parsed = decoded.cast<String, Object?>();
+    }
+    if (response.statusCode == 501) {
+      return AgeRebuildResult(
+        implemented: false,
+        message: (parsed['message'] as String?) ??
+            'AGE rebuild infrastructure is not yet enabled',
+      );
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return AgeRebuildResult(
+        implemented: true,
+        message: (parsed['message'] as String?) ?? 'AGE rebuild scheduled',
+      );
+    }
+    throw CorpusAdminGatewayError(
+      statusCode: response.statusCode,
+      errorCode: (parsed['error'] as String?) ?? 'unknown_error',
+      message: (parsed['message'] as String?) ??
+          'admin AGE rebuild proxy returned an error',
+    );
+  }
+
   Future<Map<String, Object?>> _send({
     required String method,
     required String path,
@@ -197,6 +298,7 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
 class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
   InMemoryCorpusAdminGateway({
     Iterable<CorpusBundle> seed = const <CorpusBundle>[],
+    GraphCandidateDiff? graphCandidateSeed,
     DateTime Function()? now,
     String Function()? idGenerator,
     String? actorUserId,
@@ -206,7 +308,9 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
         _bundles = <String, _MutableBundle>{
           for (final bundle in seed)
             bundle.version.versionId: _MutableBundle.from(bundle),
-        };
+        },
+        _graphCandidates =
+            graphCandidateSeed ?? _defaultDemoGraphCandidates();
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
@@ -217,6 +321,25 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
   final Map<String, CorpusVersionRef> _idempotentResults =
       <String, CorpusVersionRef>{};
   final Map<String, CorpusDiff> _idempotentDiffs = <String, CorpusDiff>{};
+
+  // Phase 11A.3b — Graph candidate state.
+  GraphCandidateDiff _graphCandidates;
+  // Decisions the demo gateway has consumed in prior commits;
+  // approved → no longer in the diff; rejected → moved to the audit
+  // log. Replays with a known idempotency-key return the cached
+  // result.
+  final Map<String, BatchCommitResult> _idempotentBatchResults =
+      <String, BatchCommitResult>{};
+  // In-memory audit log so the demo walkthrough can show that
+  // rejections did NOT touch canonical storage. Each entry is the
+  // payload of a single rejected candidate.
+  final List<Map<String, Object?>> _graphifyReviewAudit =
+      <Map<String, Object?>>[];
+  // In-memory canonical storage so the demo walkthrough can show
+  // approved candidates landed somewhere. Same shape the production
+  // GraphRepository would write.
+  final List<Map<String, Object?>> _approvedNodes = <Map<String, Object?>>[];
+  final List<Map<String, Object?>> _approvedEdges = <Map<String, Object?>>[];
 
   @override
   Future<List<CorpusVersionRef>> listVersions() async {
@@ -429,6 +552,148 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
     _idempotentResults[command.idempotencyKey] = ref;
     return ref;
   }
+
+  @override
+  Future<GraphCandidateDiff> listGraphCandidates() async {
+    return _graphCandidates;
+  }
+
+  @override
+  Future<BatchCommitResult> commitGraphCandidatesBatch(
+    BatchCommitCommand command,
+  ) async {
+    final cached = _idempotentBatchResults[command.idempotencyKey];
+    if (cached != null) return cached;
+    if (_seenIdempotencyKeys.contains(command.idempotencyKey)) {
+      throw const CorpusAdminGatewayError(
+        statusCode: 409,
+        errorCode: 'idempotency_key_reused',
+        message: 'Idempotency-Key was already used for another request',
+      );
+    }
+    final byId = <String, GraphCandidate>{
+      for (final c in _graphCandidates.extracted) c.candidateId: c,
+      for (final c in _graphCandidates.inferred) c.candidateId: c,
+      for (final c in _graphCandidates.ambiguous) c.candidateId: c,
+    };
+    var approvedNodes = 0;
+    var approvedEdges = 0;
+    var rejected = 0;
+    final consumedIds = <String>{};
+    for (final decision in command.decisions) {
+      final candidate = byId[decision.candidateId];
+      if (candidate == null) {
+        throw CorpusAdminGatewayError(
+          statusCode: 404,
+          errorCode: 'unknown_candidate',
+          message:
+              'candidate ${decision.candidateId} is not in the current diff',
+        );
+      }
+      consumedIds.add(decision.candidateId);
+      switch (decision.kind) {
+        case GraphDecisionKind.approve:
+        case GraphDecisionKind.edit:
+          if (candidate.kind == GraphCandidateKind.node) {
+            _approvedNodes.add(<String, Object?>{
+              'node_key': candidate.candidateKey,
+              'node_type': decision.editedCandidateType ??
+                  candidate.candidateType,
+              'properties': decision.editedPayload ?? candidate.payload,
+              'graphify_version': _graphCandidates.graphifyVersion,
+            });
+            approvedNodes += 1;
+          } else {
+            _approvedEdges.add(<String, Object?>{
+              'edge_key': candidate.candidateKey,
+              'edge_type': decision.editedCandidateType ??
+                  candidate.candidateType,
+              'from_node_key': candidate.fromNodeKey,
+              'to_node_key': candidate.toNodeKey,
+              'properties': decision.editedPayload ?? candidate.payload,
+              'graphify_version': _graphCandidates.graphifyVersion,
+            });
+            approvedEdges += 1;
+          }
+          break;
+        case GraphDecisionKind.reject:
+          _graphifyReviewAudit.add(<String, Object?>{
+            'candidate_id': candidate.candidateId,
+            'candidate_kind': candidate.kind.name,
+            'candidate_key': candidate.candidateKey,
+            'candidate_payload': candidate.payload,
+            'target_graph_scope': _graphCandidates.graphScope,
+            'target_graph_version': _graphCandidates.graphVersion,
+            'confidence_label': candidate.label.wireValue,
+            'confidence_score': candidate.confidenceScore,
+            'reason': decision.reason,
+            'idempotency_key': command.idempotencyKey,
+          });
+          rejected += 1;
+          break;
+      }
+    }
+    // Drop the consumed candidates from the diff so a follow-up
+    // listGraphCandidates() reflects the post-commit state.
+    GraphCandidateDiff dropConsumed(GraphCandidateDiff diff) {
+      List<GraphCandidate> filter(List<GraphCandidate> bucket) =>
+          <GraphCandidate>[
+            for (final c in bucket)
+              if (!consumedIds.contains(c.candidateId)) c,
+          ];
+      return GraphCandidateDiff(
+        graphScope: diff.graphScope,
+        graphVersion: diff.graphVersion,
+        graphifyVersion: diff.graphifyVersion,
+        graphifySourceCommit: diff.graphifySourceCommit,
+        extracted: filter(diff.extracted),
+        inferred: filter(diff.inferred),
+        ambiguous: filter(diff.ambiguous),
+      );
+    }
+
+    _graphCandidates = dropConsumed(_graphCandidates);
+    _seenIdempotencyKeys.add(command.idempotencyKey);
+    final result = BatchCommitResult(
+      approvedNodeCount: approvedNodes,
+      approvedEdgeCount: approvedEdges,
+      rejectedCount: rejected,
+    );
+    _idempotentBatchResults[command.idempotencyKey] = result;
+    return result;
+  }
+
+  @override
+  Future<AgeRebuildResult> requestAgeRebuild({
+    required String idempotencyKey,
+  }) async {
+    if (_seenIdempotencyKeys.contains(idempotencyKey) &&
+        _idempotentBatchResults.containsKey(idempotencyKey)) {
+      throw const CorpusAdminGatewayError(
+        statusCode: 409,
+        errorCode: 'idempotency_key_reused',
+        message: 'Idempotency-Key was already used for another request',
+      );
+    }
+    _seenIdempotencyKeys.add(idempotencyKey);
+    return const AgeRebuildResult(
+      implemented: false,
+      message:
+          'AGE rebuild infrastructure is not yet enabled (501 in '
+          'demo and proxy until the rebuild slice ships)',
+    );
+  }
+
+  // Inspector hooks for the demo walkthrough + widget tests so they
+  // can assert that approved candidates landed in canonical storage
+  // and rejected candidates landed in the audit log only. Production
+  // never reads these — the proxy is the read path.
+  List<Map<String, Object?>> get debugApprovedNodes =>
+      List<Map<String, Object?>>.unmodifiable(_approvedNodes);
+  List<Map<String, Object?>> get debugApprovedEdges =>
+      List<Map<String, Object?>>.unmodifiable(_approvedEdges);
+  List<Map<String, Object?>> get debugRejectedAudit =>
+      List<Map<String, Object?>>.unmodifiable(_graphifyReviewAudit);
 
   void _validateUpload(UploadCommand command) {
     if (command.bytes.length > kCorpusUploadMaxBytes) {
@@ -651,3 +916,86 @@ class _PendingUpload {
 /// in the test layer.
 Uint8List corpusUploadBytesFromString(String markdown) =>
     Uint8List.fromList(utf8.encode(markdown));
+
+/// Phase 11A.3b — deterministic demo seed for the Graph candidates
+/// tab. Mirrors the kind of payload the importer would produce from
+/// `graphify-out/graph.json` against the seeded methodology corpus.
+GraphCandidateDiff _defaultDemoGraphCandidates() {
+  return GraphCandidateDiff(
+    graphScope: 'methodology',
+    graphVersion: '1',
+    graphifyVersion: 'v5',
+    graphifySourceCommit: 'demo-seed',
+    extracted: <GraphCandidate>[
+      GraphCandidate(
+        candidateId: 'node:graphify:methodology_seed_doc',
+        kind: GraphCandidateKind.node,
+        candidateKey: 'graphify:methodology_seed_doc',
+        candidateType: 'Document',
+        label: GraphCandidateLabel.extracted,
+        confidenceScore: 0.95,
+        sourceFile: 'methodology_seed.md',
+        sourceRef: null,
+        payload: const <String, Object?>{
+          'label': 'Methodology Seed',
+          'community': 0,
+        },
+      ),
+      GraphCandidate(
+        candidateId: 'edge:graphify:edge:methodology_seed_doc:cycles_section:contains',
+        kind: GraphCandidateKind.edge,
+        candidateKey:
+            'graphify:edge:methodology_seed_doc:cycles_section:contains',
+        candidateType: 'CONTAINS',
+        label: GraphCandidateLabel.extracted,
+        confidenceScore: 0.92,
+        sourceFile: 'methodology_seed.md',
+        sourceRef: null,
+        fromNodeKey: 'graphify:methodology_seed_doc',
+        toNodeKey: 'graphify:cycles_section',
+        payload: const <String, Object?>{
+          'graphify_relation': 'CONTAINS',
+          'label': 'doc CONTAINS cycles section',
+        },
+      ),
+    ],
+    inferred: <GraphCandidate>[
+      GraphCandidate(
+        candidateId: 'edge:graphify:edge:cycles_section:weekly_plan_concept:informs',
+        kind: GraphCandidateKind.edge,
+        candidateKey:
+            'graphify:edge:cycles_section:weekly_plan_concept:informs',
+        candidateType: 'INFORMS',
+        label: GraphCandidateLabel.inferred,
+        confidenceScore: 0.62,
+        sourceFile: 'methodology_seed.md',
+        sourceRef: null,
+        fromNodeKey: 'graphify:cycles_section',
+        toNodeKey: 'graphify:weekly_plan_concept',
+        payload: const <String, Object?>{
+          'graphify_relation': 'TEACHES',
+          'label': 'cycles INFORMS weekly plan concept',
+        },
+      ),
+    ],
+    ambiguous: <GraphCandidate>[
+      GraphCandidate(
+        candidateId: 'edge:graphify:edge:daypart_section:cycles_section:relates_to',
+        kind: GraphCandidateKind.edge,
+        candidateKey:
+            'graphify:edge:daypart_section:cycles_section:relates_to',
+        candidateType: 'RELATES_TO',
+        label: GraphCandidateLabel.ambiguous,
+        confidenceScore: 0.41,
+        sourceFile: 'methodology_seed.md',
+        sourceRef: null,
+        fromNodeKey: 'graphify:daypart_section',
+        toNodeKey: 'graphify:cycles_section',
+        payload: const <String, Object?>{
+          'graphify_relation': 'NEAR',
+          'label': 'daypart section near cycles section',
+        },
+      ),
+    ],
+  );
+}

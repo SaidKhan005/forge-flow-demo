@@ -63,8 +63,10 @@ import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/utils/iana_timezones.dart';
+import 'package:path/path.dart' as p;
 import 'package:pointycastle/pointycastle.dart' as pc;
 
+import '../advisor_corpus/advisor_corpus.dart' show CorpusManifest, defaultManifestPath;
 import 'proxy_idempotency_cache.dart';
 export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
 
@@ -4782,6 +4784,19 @@ const String adminCorpusPreviewDiffPath = '/v1/admin/corpus/preview-diff';
 const String adminCorpusCommitPath = '/v1/admin/corpus/commit';
 const String adminCorpusRollbackPath = '/v1/admin/corpus/rollback';
 
+// Phase 11A.3b — Graphify candidate review routes. Same role-gate
+// posture as the rest of `/v1/admin/corpus/*`: GET admits
+// `super_admin` + `ff_support` so support can browse the diff;
+// POST stays strictly `super_admin`. The AGE rebuild route is a
+// stub for the launch slice — role gate + Idempotency-Key still
+// fire, then the handler returns 501 because the rebuild
+// infrastructure ships in 11A.3c.
+const String adminCorpusGraphCandidatesPath =
+    '/v1/admin/corpus/graph-candidates';
+const String adminCorpusGraphCandidatesCommitPath =
+    '/v1/admin/corpus/graph-candidates/commit-batch';
+const String adminAgeRebuildPath = '/v1/admin/age/rebuild';
+
 const Set<String> kFfCorpusAdminWriteRoles = <String>{'super_admin'};
 const Set<String> kFfCorpusAdminReadRoles = <String>{
   'super_admin',
@@ -4853,6 +4868,81 @@ abstract class CorpusAdminProxyGateway {
     required String actorUserId,
     required String targetVersionId,
     required String summary,
+    required String idempotencyKey,
+    required String adminReason,
+  });
+}
+
+/// Validation error raised by [GraphCandidatesProxyGateway]
+/// implementations when a request is rejected for business reasons
+/// (e.g. candidates pipeline not yet wired, source out of manifest
+/// scope). The proxy route handler maps it back to a structured
+/// 4xx / 5xx response with the carried `code` and `message`.
+class GraphCandidatesGatewayValidationError implements Exception {
+  const GraphCandidatesGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'GraphCandidatesGatewayValidationError($statusCode/$code): $message';
+}
+
+/// Gateway the proxy delegates to for `/v1/admin/corpus/graph-
+/// candidates*` route handling. Mirrors the [CorpusAdminProxyGateway]
+/// shape — one method per route, returning JSON-ready maps so the
+/// route handler can wrap them in a 200 response without translating
+/// shapes a second time.
+abstract class GraphCandidatesProxyGateway {
+  /// Returns the JSON payload `GraphCandidateDiff.fromJson` reads:
+  ///
+  ///   {
+  ///     'graph_scope': '...',
+  ///     'graph_version': '...',
+  ///     'graphify_version': '...',
+  ///     'graphify_source_commit': '...',
+  ///     'extracted': [...],
+  ///     'inferred': [...],
+  ///     'ambiguous': [...],
+  ///   }
+  Future<Map<String, Object?>> listGraphCandidates({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Commits a batch of approve/reject/edit decisions. Returns the
+  /// JSON payload `BatchCommitResult.fromJson` reads:
+  ///
+  ///   {
+  ///     'approved_node_count': int,
+  ///     'approved_edge_count': int,
+  ///     'rejected_count': int,
+  ///     'outcomes': [...],
+  ///   }
+  ///
+  /// `decisions` is the raw client list from the request body (each
+  /// entry already cast to `Map<String, Object?>`). The route handler
+  /// has already enforced the manifest defense-in-depth filter against
+  /// every decision's `source_file` payload before dispatching here;
+  /// the gateway is responsible for translating into the repository's
+  /// [GraphCommitDecision] shape and writing through the
+  /// [GraphRepository] under the supplied tenant scope.
+  ///
+  /// `operatorId` and `locationId` come from the request body
+  /// (`target_operator_id` / `target_location_id`) — F&F admin actors
+  /// are cross-tenant, so the operator the candidates land in is an
+  /// explicit per-request choice, not a JWT claim.
+  Future<Map<String, Object?>> commitBatch({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required List<Map<String, Object?>> decisions,
     required String idempotencyKey,
     required String adminReason,
   });
@@ -5198,6 +5288,7 @@ Future<void> routeRequest(
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
+  GraphCandidatesProxyGateway? graphCandidatesGateway,
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
   bool trustProxyAuditHeaders = false,
@@ -7626,6 +7717,139 @@ Future<void> routeRequest(
       return;
     }
 
+    // Phase 11A.3b — Graphify candidate review routes. Same role-gate
+    // posture as the corpus admin block above (GET admits read roles,
+    // POST stays super_admin only) and the same Idempotency-Key dance
+    // on writes so retries collapse to a single ledger row.
+    if (_isGraphCandidatesOperation(path, request.method)) {
+      if (graphCandidatesGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'graph_candidates_not_configured',
+          'message':
+              'route requires a GraphCandidatesProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      final graphMethod = request.method;
+      final graphRoles = graphMethod == 'GET'
+          ? kFfCorpusAdminReadRoles
+          : kFfCorpusAdminWriteRoles;
+      if (!_callerHasAnyRole(actor, graphRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': graphRoles.toList(),
+        });
+        return;
+      }
+
+      String? idempotencyKey;
+      if (graphMethod != 'GET') {
+        idempotencyKey =
+            request.headers.value('Idempotency-Key')?.trim();
+        if (idempotencyKey == null || idempotencyKey.isEmpty) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'missing_idempotency_key',
+            'message': 'Idempotency-Key header is required',
+          });
+          return;
+        }
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      try {
+        await _routeGraphCandidates(
+          request: request,
+          response: response,
+          path: path,
+          gateway: graphCandidatesGateway,
+          actorUserId: actor.userId,
+          idempotencyKey: idempotencyKey ?? '',
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is GraphCandidatesGatewayValidationError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'graph_candidates_unavailable',
+          'message':
+              'graph candidates operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
+    // Phase 11A.3b — AGE rebuild route. Role gate + Idempotency-Key
+    // are still enforced so the test contract can verify the gating
+    // is wired even though the actual rebuild infrastructure ships
+    // in 11A.3c. Returns 501 with a typed `not_implemented` error so
+    // the screen surfaces the actionable banner instead of a 5xx.
+    if (_isAgeRebuildOperation(path, request.method)) {
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      if (!_callerHasAnyRole(actor, kFfCorpusAdminWriteRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': kFfCorpusAdminWriteRoles.toList(),
+        });
+        return;
+      }
+
+      final idempotencyKey =
+          request.headers.value('Idempotency-Key')?.trim();
+      if (idempotencyKey == null || idempotencyKey.isEmpty) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'missing_idempotency_key',
+          'message': 'Idempotency-Key header is required',
+        });
+        return;
+      }
+
+      _writeJson(response, 501, <String, Object?>{
+        'error': 'not_implemented',
+        'message':
+            'AGE rebuild ships in slice 11A.3c — '
+            'corpus_pipeline_not_configured',
+      });
+      return;
+    }
+
     if (_isAdminOperatorOrLocationOperation(path, request.method)) {
       if (operatorLocationAdminGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -8198,8 +8422,29 @@ bool _isAdminCorpusPath(String path) {
   if (path == adminCorpusPreviewDiffPath) return true;
   if (path == adminCorpusCommitPath) return true;
   if (path == adminCorpusRollbackPath) return true;
+  // Phase 11A.3b — graph-candidate review + AGE rebuild stub share
+  // the corpus admin CORS preflight (Idempotency-Key allow-listed,
+  // GET/POST methods admitted) so the browser preflight succeeds
+  // for the new routes too.
+  if (_isGraphCandidatesPath(path)) return true;
+  if (path == adminAgeRebuildPath) return true;
   return false;
 }
+
+bool _isGraphCandidatesPath(String path) =>
+    path == adminCorpusGraphCandidatesPath ||
+    path == adminCorpusGraphCandidatesCommitPath;
+
+bool _isGraphCandidatesOperation(String path, String method) {
+  if (method == 'GET' && path == adminCorpusGraphCandidatesPath) return true;
+  if (method == 'POST' && path == adminCorpusGraphCandidatesCommitPath) {
+    return true;
+  }
+  return false;
+}
+
+bool _isAgeRebuildOperation(String path, String method) =>
+    method == 'POST' && path == adminAgeRebuildPath;
 
 bool _isAdminCorpusOperation(String path, String method) {
   if (method == 'GET' && path == adminCorpusVersionsPath) return true;
@@ -8319,6 +8564,176 @@ Future<void> _routeCorpusAdmin({
   }
 
   _writeNotFound(response, request);
+}
+
+/// Phase 11A.3b — Graphify candidate review route handler. Same shape
+/// as [_routeCorpusAdmin]: GET → list, POST → commit-batch. The
+/// commit-batch arm reads the operator/location target from the
+/// request body (super_admin actors are cross-tenant, so the operator
+/// the candidates land in is an explicit per-request choice) and
+/// applies the corpus-manifest scope filter as defense-in-depth
+/// before handing the decisions off to the
+/// [GraphCandidatesProxyGateway] for repository persistence.
+Future<void> _routeGraphCandidates({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required GraphCandidatesProxyGateway gateway,
+  required String actorUserId,
+  required String idempotencyKey,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.corpus.graph_candidates.$method:$actorUserId';
+
+  if (method == 'GET' && path == adminCorpusGraphCandidatesPath) {
+    final diff = await gateway.listGraphCandidates(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, diff);
+    return;
+  }
+
+  if (method == 'POST' && path == adminCorpusGraphCandidatesCommitPath) {
+    final rawDecisions = body['decisions'];
+    if (rawDecisions is! List) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'missing_decisions',
+        message: 'decisions array is required',
+      );
+    }
+    // F&F super_admin actors are cross-tenant — they don't carry an
+    // operator_id in their JWT. The body must name the operator the
+    // candidates land in so the gateway can build the [TenantContext]
+    // for the [GraphRepository.commitBatch] call.
+    final operatorId = _requireBodyString(body, 'target_operator_id');
+    final locationId = _requireBodyString(body, 'target_location_id');
+    final castDecisions = <Map<String, Object?>>[];
+    for (var i = 0; i < rawDecisions.length; i++) {
+      final entry = rawDecisions[i];
+      if (entry is! Map) {
+        throw _AdminInputError(
+          statusCode: 400,
+          code: 'invalid_decision_entry',
+          message: 'decisions[$i] must be a JSON object',
+        );
+      }
+      castDecisions.add(entry.cast<String, Object?>());
+    }
+    // Manifest scope filter (defense in depth). The importer already
+    // dropped out-of-scope candidates when it wrote the JSONL, but the
+    // wire body could carry a hand-crafted decision whose payload
+    // points at a markdown source the manifest does not cover. Reject
+    // before the gateway gets near the canonical-graph tables.
+    await _enforceGraphCandidateSourceScope(castDecisions);
+    final result = await gateway.commitBatch(
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      decisions: castDecisions,
+      idempotencyKey: idempotencyKey,
+      adminReason: '$reasonPrefix:commit_batch',
+    );
+    _writeJson(response, 200, result);
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+/// Lazy cache of in-scope source-file identifiers (both `source_path`
+/// and bare `file_name`) loaded from the corpus manifest. Populated on
+/// first commit-batch call so the manifest YAML parse cost is paid
+/// once per process instead of per request. Reset via
+/// [resetGraphCandidatesManifestCache] from tests that need to swap
+/// the manifest mid-process.
+Set<String>? _graphCandidatesManifestCache;
+
+/// Resets the lazy [CorpusManifest] cache used by the graph-candidate
+/// commit-batch handler. Tests that swap the manifest YAML mid-process
+/// (e.g. by writing a fixture file under a temp dir) call this between
+/// scenarios so the next request re-reads the fresh manifest.
+void resetGraphCandidatesManifestCache() {
+  _graphCandidatesManifestCache = null;
+}
+
+/// Defense-in-depth manifest filter for graph-candidate commit
+/// batches. The wire `ApprovalDecision` only carries an opaque
+/// `candidate_id` (the server resolves the canonical payload from
+/// the JSONL artifacts), so for `approve` / `reject` decisions there
+/// is nothing for the route handler to filter — the importer already
+/// dropped out-of-scope candidates when it wrote the JSONL.
+///
+/// The filter still has work to do on `edit` decisions: the admin
+/// can swap in an `edited_payload` that names a `source_file` the
+/// manifest does not cover, which would smuggle out-of-scope content
+/// into canonical storage. Reject those with a typed
+/// `source_out_of_scope` 403 before the gateway gets near
+/// `graph_nodes` / `graph_edges`. Decisions without an
+/// `edited_payload.source_file` are passed through.
+Future<void> _enforceGraphCandidateSourceScope(
+  List<Map<String, Object?>> decisions,
+) async {
+  Set<String>? scope;
+  for (var i = 0; i < decisions.length; i++) {
+    final decision = decisions[i];
+    // Inspect both `edited_payload.source_file` (the edit-swap case)
+    // and a top-level `payload.source_file` (defensive: if a future
+    // wire shape inlines the candidate payload onto the decision,
+    // we want the same filter to catch it).
+    final candidateSources = <String>[];
+    final editedPayload = decision['edited_payload'];
+    if (editedPayload is Map) {
+      final raw = editedPayload['source_file'];
+      if (raw is String) candidateSources.add(raw);
+    }
+    final inlinedPayload = decision['payload'];
+    if (inlinedPayload is Map) {
+      final raw = inlinedPayload['source_file'];
+      if (raw is String) candidateSources.add(raw);
+    }
+    for (final rawSource in candidateSources) {
+      final trimmed = rawSource.trim();
+      if (trimmed.isEmpty) continue;
+      scope ??= _graphCandidatesManifestCache ??
+          await _loadGraphCandidatesManifestScope();
+      final normalized = trimmed.replaceAll(r'\', '/');
+      if (scope.contains(normalized)) continue;
+      final base = p.basename(normalized);
+      if (scope.contains(base)) continue;
+      throw _AdminInputError(
+        statusCode: 403,
+        code: 'source_out_of_scope',
+        message:
+            'decision $i references source_file "$rawSource" which is '
+            'not in the corpus manifest',
+      );
+    }
+  }
+}
+
+Future<Set<String>> _loadGraphCandidatesManifestScope() async {
+  final manifestFile = File(defaultManifestPath);
+  if (!manifestFile.existsSync()) {
+    // No manifest on disk — fall through with an empty scope. The
+    // route handler will reject EVERY decision that names a
+    // source_file, which is the safe default for a misconfigured
+    // deployment.
+    final empty = <String>{};
+    _graphCandidatesManifestCache = empty;
+    return empty;
+  }
+  final manifest = await CorpusManifest.load(manifestFile);
+  final scope = <String>{};
+  for (final document in manifest.documents) {
+    if (!document.isIncluded) continue;
+    scope.add(document.sourcePath.replaceAll(r'\', '/'));
+    scope.add(document.fileName);
+  }
+  _graphCandidatesManifestCache = scope;
+  return scope;
 }
 
 double _requireBodyMoney(Map<String, Object?> body, String field) {
