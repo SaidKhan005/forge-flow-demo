@@ -91,13 +91,20 @@ Test coverage:
   DELETE sweep (passive-by-default; runs only with
   `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true`).
 
-## P1 — Migration cutoff lint bumped, runbook needs companion update
+## P1 — Migration cutoff lint bumped, runbook companion updated — RESOLVED 2026-05-02
 
 `scripts/postgres_staging_setup.ps1` line 49 cutoff bumped to
 `202605021500_phase_9_0sigma_l_rls_depth.sql` (slice 9.0Σ.l).
-The companion `runbooks/phase_9_production1_migration_apply_runbook.md`
-may mention an older cutoff in narrative form — verify and amend before
-the next apply event.
+`runbooks/phase_9_production1_migration_apply_runbook.md` was refreshed in
+the same window: the `Updated` header now reads 2026-05-02; the Scope and
+Apply Order blocks list the 22 pending migrations (lex order, matching the
+P0 inventory above); dependency notes call out the same-timestamp lex pairs
+(`...010000_3a_corpus` before `...010000_4_provider`; `...020001_3b_graphify`
+before `...020001_4b_gemini`), the `4 → 4b/4c` provider_credentials
+ordering, and the wrapper-foundation / RLS-depth dependencies on the prior
+batch. The 2026-04-29 historical block was preserved under a new
+`Apply History` section but rephrased to reference slice names rather than
+the prior numeric cutoff so a grep for stale sentinels comes back clean.
 
 ## P2 — Phase 11A.3a operator-picker — RESOLVED 2026-05-02 (PR #50)
 
