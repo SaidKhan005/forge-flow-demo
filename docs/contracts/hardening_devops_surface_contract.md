@@ -1,5 +1,10 @@
 # Hardening — DevOps Surface Contract
 
+> **Status (2026-05-02):** Closed. Shipped commit `efad2fd` (PR #43).
+> Contract is retained as historical authority; no further implementation
+> work owed.
+
+
 Updated: 2026-05-02
 Owner: HARD-E (DevOps surface sprint)
 Status: Active authority

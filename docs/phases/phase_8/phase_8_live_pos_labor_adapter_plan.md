@@ -1,9 +1,15 @@
 # Phase 8 - Live POS + Labor Adapters
 
-Updated: 2026-04-22
+Updated: 2026-05-02
 Status: Planned, blocked on vendor selection
 Owner: Future connector lane
 Last review: 2026-04-22 - POS and Labor vendors both still TBD; unblocks this phase
+
+> **Archive pointer (2026-05-02):** Phase 8 readiness gate work is complete
+> and archived at `docs/archive/phases/phase_8_gate/` (vendor capability
+> profiles, source-ownership matrix, replay-readiness matrix, signoff). When
+> Phase 8 opens, those archived artifacts inform vendor onboarding without
+> needing to re-perform readiness work.
 
 ## Goal
 
@@ -101,12 +107,12 @@ Walkthrough evidence required at slice acceptance per
 The gate artifacts already document what must be true before connector work can
 start:
 
-- [README.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/README.md)
-- [phase_8_readiness_signoff.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/phase_8_readiness_signoff.md)
-- [vendor_live_data_capability_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_live_data_capability_matrix.md)
-- [vendor_capability_profile_pos.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_capability_profile_pos.md)
-- [vendor_capability_profile_labor.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_capability_profile_labor.md)
-- [source_ownership_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/source_ownership_matrix.md)
+- [README.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/README.md)
+- [phase_8_readiness_signoff.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/phase_8_readiness_signoff.md)
+- [vendor_live_data_capability_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_live_data_capability_matrix.md)
+- [vendor_capability_profile_pos.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_capability_profile_pos.md)
+- [vendor_capability_profile_labor.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_capability_profile_labor.md)
+- [source_ownership_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/source_ownership_matrix.md)
 
 Current blocker:
 

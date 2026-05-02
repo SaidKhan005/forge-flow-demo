@@ -1,7 +1,7 @@
 # Phase 9.8 - Compliance, Privacy, and Legal
 
-Updated: 2026-04-26
-Status: Planned
+Updated: 2026-05-02
+Status: Launch-blocking; queued sequentially after Phase 9 auth (accepted), Phase 8/8R vendor contracts (queued), and `cutover.0a` (complete). Lands before `cutover.0b` Tier-M perf gate.
 Owner: Future compliance/legal lane
 
 **2026-04-26 — Postgres host re-locked to Microsoft Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16).** Replaces Supabase. Mechanical impact on Phase 9.8: covered processor chain swaps Supabase out, Microsoft Azure in. SOC 2 / ISO 27001 inheritance docs reference Azure attestations instead of Supabase. DPA signed with Microsoft (existing customer agreement covers Azure DB) instead of Supabase. Data residency for Canadian operators unchanged (both `ca-central-1` Montreal on Supabase and `Canada Central` Toronto on Azure are Canadian-resident — Quebec PIPEDA / Ontario PHIPA compliance posture preserved). Cyber-liability insurance review now references Azure DB. See `phase_9_auth_plan.md` 2026-04-26 banner for the trigger and broader rationale.

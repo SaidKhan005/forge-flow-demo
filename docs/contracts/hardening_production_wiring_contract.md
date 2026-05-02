@@ -2,7 +2,7 @@
 
 Updated: 2026-05-02
 Owner: HARD-A (production wiring sprint)
-Status: Active authority
+Status: Closed (shipped commit `9936126`, PR #41) — retained as historical authority.
 
 ## Why This Exists
 

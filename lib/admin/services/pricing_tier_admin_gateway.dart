@@ -20,7 +20,8 @@
 // `tool/advisor_proxy/advisor_proxy.dart` 11A.2 route handlers.
 
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:http/http.dart' as http;
 
 import '../models/pricing_tier_admin_models.dart';
 
@@ -67,14 +68,14 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   HttpPricingTierAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/pricing/*` against this.
   final Uri baseUri;
   final PricingAdminBearerTokenProvider bearerTokenProvider;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String operatorsPath = '/v1/admin/pricing/operators';
   static const String operatorsPrefix = '$operatorsPath/';
@@ -109,9 +110,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       path: usageCapsPath,
       jsonBody: command.toJson(),
     );
-    return UsageCapRow.fromJson(
-      (body['cap'] as Map).cast<String, Object?>(),
-    );
+    return UsageCapRow.fromJson((body['cap'] as Map).cast<String, Object?>());
   }
 
   @override
@@ -134,15 +133,17 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
-    final request = await _httpClient.openUrl(method, uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
     if (jsonBody != null) {
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(jsonBody)));
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -157,7 +158,8 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
       message:
-          (parsed['message'] as String?) ?? 'admin pricing proxy returned an error',
+          (parsed['message'] as String?) ??
+          'admin pricing proxy returned an error',
     );
   }
 }
@@ -176,13 +178,13 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     DateTime Function()? now,
     String Function()? idGenerator,
     String? actorUserId,
-  })  : _now = now ?? DateTime.now,
-        _idGenerator = idGenerator ?? _randomId,
-        _actorUserId = actorUserId,
-        _bundles = <String, _MutableBundle>{
-          for (final bundle in seed)
-            bundle.operatorId: _MutableBundle.from(bundle),
-        };
+  }) : _now = now ?? DateTime.now,
+       _idGenerator = idGenerator ?? _randomId,
+       _actorUserId = actorUserId,
+       _bundles = <String, _MutableBundle>{
+         for (final bundle in seed)
+           bundle.operatorId: _MutableBundle.from(bundle),
+       };
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
@@ -193,8 +195,9 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   Future<List<PricingOperatorBundle>> listOperators() async {
     final list = _bundles.values.map((b) => b.toBundle()).toList()
       ..sort(
-        (a, b) =>
-            a.businessName.toLowerCase().compareTo(b.businessName.toLowerCase()),
+        (a, b) => a.businessName.toLowerCase().compareTo(
+          b.businessName.toLowerCase(),
+        ),
       );
     return list;
   }
@@ -398,12 +401,12 @@ class _MutableBundle {
   DateTime updatedAt;
 
   PricingOperatorBundle toBundle() => PricingOperatorBundle(
-        operatorId: operatorId,
-        businessName: businessName,
-        subscriptionTier: subscriptionTier,
-        preferredCurrency: preferredCurrency,
-        primaryLocationId: primaryLocationId,
-        suspended: suspended,
-        caps: List<UsageCapRow>.unmodifiable(caps),
-      );
+    operatorId: operatorId,
+    businessName: businessName,
+    subscriptionTier: subscriptionTier,
+    preferredCurrency: preferredCurrency,
+    primaryLocationId: primaryLocationId,
+    suspended: suspended,
+    caps: List<UsageCapRow>.unmodifiable(caps),
+  );
 }

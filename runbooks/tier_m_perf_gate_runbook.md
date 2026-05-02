@@ -66,7 +66,8 @@ Not in scope:
   proxy with a staged "no-op" Anthropic key that returns canned
   responses. The runbook does not authorize either fallback in this
   draft — the launch decision lands during the live preflight.
-- The rollups perf gate. That is `phase_9_rollups_tierm_load_result.md`
+- The rollups perf gate. That is
+  `docs/archive/phases/phase_9/phase_9_rollups_tierm_load_result.md`
   (B38, cutover.0b row 8). Row 8 is gated separately and clears with
   its own evidence.
 

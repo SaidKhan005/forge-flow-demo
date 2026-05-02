@@ -1,5 +1,13 @@
 # Hardening — Feature Flag Idempotency Contract
 
+> **Status (2026-05-02):** Closed (in-memory layer shipped; Postgres-durable
+> backstop deferred — see "Implementation Decision (2026-05-02)" section
+> below). Shipped commit `5b51fd0` (PR #45). Contract is retained as
+> historical authority and as the future-promotion checklist for when
+> `admin_idempotency_cache` next gets touched or the proxy moves off
+> single-instance posture.
+
+
 Updated: 2026-05-02
 Owner: HARD-D (idempotency sprint)
 Status: Active authority

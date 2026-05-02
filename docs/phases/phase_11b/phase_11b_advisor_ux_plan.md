@@ -1,7 +1,7 @@
 # Phase 11b - Agentic Advisor UX
 
-Updated: 2026-04-29
-Status: Planned
+Updated: 2026-05-02
+Status: Planned (gated on `11A.5`/`11A.6` debug + observability surfaces and on B43 prod anchor deploy)
 Owner: Future advisor UX lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies
@@ -52,9 +52,16 @@ how each restaurant actually operates, not one that retrieves similar text.
   or reason about another operator's numbers. This is a non-negotiable.
 - **Stateless reasoning:** the model retains nothing between queries. Every
   answer assembles context fresh from 11a's graph + tools.
-- **Model lane:** advisor answers run through Claude / Anthropic. Phase 11a's
-  retrieval substrate uses Voyage `voyage-4-large` embeddings in pgvector and
-  Voyage `rerank-2.5` before Claude receives grounded context.
+- **Model lane:** advisor answers run through Claude / Anthropic. Phase 11a
+  ships the **Modular Adaptive Agentic RAG** stack locked 2026-04-26
+  (`phase_11a_decision_register.md` "Retrieval Posture"): Haiku classifier
+  routes the question to one of three retrievers — (a) **Anthropic Contextual
+  Retrieval** (Voyage `voyage-4-large` vector + BM25 + RRF + Voyage
+  `rerank-2.5`) for methodology Q&A at launch, (b) **AGE traversal** for
+  causal/multi-hop (incremental, `11b.2`), (c) SQL for personal metrics —
+  before Claude (Sonnet, with prompt cache) synthesizes the answer. Phase 11b
+  consumes this through 11a's proxy contract; it does not own retriever
+  selection.
 - **First-surface order:** Forge & Flow manager chat ships first (simplest
   permission model), then Barrio manager chat, then Barrio staff chat.
   Staff chat depends on Phase 9.5 for staff-level identity.

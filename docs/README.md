@@ -37,7 +37,6 @@ Still-live lane docs grouped by phase family.
 Current live groups:
 
 - `docs/phases/phase_8/`
-- `docs/phases/phase_8_gate/`
 - `docs/phases/phase_8R/`
 - `docs/phases/phase_9/`
 - `docs/phases/phase_9_5/`

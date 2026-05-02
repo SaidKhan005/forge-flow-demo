@@ -1,5 +1,10 @@
 # Hardening — Test Corrections Contract
 
+> **Status (2026-05-02):** Closed. Shipped commit `31854f4` (PR #49).
+> Contract is retained as historical authority; no further implementation
+> work owed.
+
+
 Updated: 2026-05-02
 Owner: HARD-H (test correctness sprint)
 Status: Active authority

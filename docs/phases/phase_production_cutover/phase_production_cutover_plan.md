@@ -1,8 +1,7 @@
 # Phase Production Cutover
 
-Updated: 2026-04-29
-Status: Planned (opens after `11b` ships against staging and `11A.0-6`,
-`9`, `9.8` accept)
+Updated: 2026-05-02
+Status: In execution. **`cutover.0a` (CMK provisioning) + `cutover.0a.pg` (Production1 PG re-create with CMK) accepted 2026-05-01.** `cutover.0b` Tier-M 14-row perf-gate is the launch blocker; remains queued until `11b` ships against staging and `11A.0-6` + `9.8` accept. `cutover.1-5` queued after `0b` clears.
 Owner: F&F launch lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies
