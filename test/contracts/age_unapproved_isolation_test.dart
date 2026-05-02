@@ -168,7 +168,8 @@ void main() {
       expect(migrationFile.existsSync(), isTrue,
           reason: 'the 11A.3b migration must exist on disk for this '
               'contract to be exercised');
-      final source = await migrationFile.readAsString();
+      final source =
+          (await migrationFile.readAsString()).replaceAll('\r\n', '\n');
       final lower = source.toLowerCase();
 
       // ── 1. ZERO FKs into the canonical-graph tables ─────────────

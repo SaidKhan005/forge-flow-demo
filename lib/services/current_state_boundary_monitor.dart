@@ -80,11 +80,29 @@ tz.Location _resolveTzLocation({
   }
 }
 
+/// Pre-fire hook called BEFORE the synchronous `onBoundaryChanged`
+/// callback. The hook persists a row to a durable backlog (e.g.
+/// `event_outbox`) so that a callback that crashes before recording
+/// the boundary can be replayed on the next supervisor restart. The
+/// hook returns the persisted event id (rendered as a string to match
+/// the `event_outbox` `bigserial` projection); a null return signals
+/// "persistence failed but proceed anyway" — the supervisor should
+/// log the error and skip the post-fire mark-delivered call.
+typedef BoundaryWillFireHook = Future<String?> Function(String businessDate);
+
+/// Post-fire hook called AFTER the synchronous `onBoundaryChanged`
+/// callback returns successfully. The hook stamps the persisted row
+/// (identified by [eventId] from [BoundaryWillFireHook]) as delivered
+/// so a subsequent backlog drain does not re-fire it.
+typedef BoundaryFiredHook = Future<void> Function(String eventId);
+
 class CurrentStateBoundaryMonitor {
   final RestaurantLocation _location;
   final tz.Location _tzLocation;
   final Future<String?> Function(DateTime) _resolveBusinessDate;
   final void Function() _onBoundaryChanged;
+  final BoundaryWillFireHook? _onBoundaryWillFire;
+  final BoundaryFiredHook? _onBoundaryFired;
   final DateTime Function() _clock;
   final Duration _checkInterval;
 
@@ -96,6 +114,8 @@ class CurrentStateBoundaryMonitor {
     required RestaurantLocation location,
     required Future<String?> Function(DateTime) resolveBusinessDate,
     required void Function() onBoundaryChanged,
+    BoundaryWillFireHook? onBoundaryWillFire,
+    BoundaryFiredHook? onBoundaryFired,
     DateTime Function()? clock,
     Duration checkInterval = const Duration(minutes: 1),
   }) {
@@ -108,6 +128,8 @@ class CurrentStateBoundaryMonitor {
       tzLocation: tzLocation,
       resolveBusinessDate: resolveBusinessDate,
       onBoundaryChanged: onBoundaryChanged,
+      onBoundaryWillFire: onBoundaryWillFire,
+      onBoundaryFired: onBoundaryFired,
       clock: clock ?? (() => tz.TZDateTime.now(tzLocation)),
       checkInterval: checkInterval,
     );
@@ -120,10 +142,14 @@ class CurrentStateBoundaryMonitor {
     required void Function() onBoundaryChanged,
     required DateTime Function() clock,
     required Duration checkInterval,
+    BoundaryWillFireHook? onBoundaryWillFire,
+    BoundaryFiredHook? onBoundaryFired,
   })  : _location = location,
         _tzLocation = tzLocation,
         _resolveBusinessDate = resolveBusinessDate,
         _onBoundaryChanged = onBoundaryChanged,
+        _onBoundaryWillFire = onBoundaryWillFire,
+        _onBoundaryFired = onBoundaryFired,
         _clock = clock,
         _checkInterval = checkInterval;
 
@@ -187,21 +213,54 @@ class CurrentStateBoundaryMonitor {
 
   Future<void> _check() async {
     if (!_seeded) return;
+    String current;
     try {
-      final current = await _resolveBusinessDate(_clock());
-      if (current == null) return;
-      if (_lastKnownBusinessDate == null) {
-        // First successful resolve after null seed — treat as initial
-        // seed, not a boundary change.
-        _lastKnownBusinessDate = current;
-        return;
-      }
-      if (current != _lastKnownBusinessDate) {
-        _lastKnownBusinessDate = current;
-        _onBoundaryChanged();
-      }
+      final resolved = await _resolveBusinessDate(_clock());
+      if (resolved == null) return;
+      current = resolved;
     } catch (_) {
       // Resolver unavailable — skip this check cycle.
+      return;
+    }
+    if (_lastKnownBusinessDate == null) {
+      // First successful resolve after null seed — treat as initial
+      // seed, not a boundary change.
+      _lastKnownBusinessDate = current;
+      return;
+    }
+    if (current == _lastKnownBusinessDate) return;
+
+    _lastKnownBusinessDate = current;
+
+    // HARD-H persist-before-fire: if a backlog hook is wired, persist
+    // the boundary event before firing the user's callback so a
+    // crashing callback leaves an undelivered row that the next
+    // supervisor restart can drain via [BoundaryMonitorSupervisor.drainBacklog].
+    String? persistedEventId;
+    final willFire = _onBoundaryWillFire;
+    if (willFire != null) {
+      try {
+        persistedEventId = await willFire(current);
+      } catch (_) {
+        // Persistence failed — still fire callback so foreground UX
+        // does not stall. The monitor cannot replay this boundary
+        // later because nothing got persisted; the next genuine
+        // boundary will reach drainBacklog normally.
+        persistedEventId = null;
+      }
+    }
+
+    _onBoundaryChanged();
+
+    final fired = _onBoundaryFired;
+    if (persistedEventId != null && fired != null) {
+      try {
+        await fired(persistedEventId);
+      } catch (_) {
+        // Mark-delivered failed — drainBacklog dedups via the same
+        // (operator_id, business_date) pair so an extra in-flight row
+        // does not produce a duplicate fire.
+      }
     }
   }
 }

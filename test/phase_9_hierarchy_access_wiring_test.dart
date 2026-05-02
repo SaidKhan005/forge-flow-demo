@@ -94,7 +94,7 @@ void main() {
   group('Phase 9 hierarchy access wiring migration shape', () {
     final migration = File(
       'db/migrations/202604290101_phase_9_hierarchy_access_wiring.sql',
-    ).readAsStringSync();
+    ).readAsStringSync().replaceAll('\r\n', '\n');
 
     test('attaches locations to org_units with denormalized paths', () {
       expect(

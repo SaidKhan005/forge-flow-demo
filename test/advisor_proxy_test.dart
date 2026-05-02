@@ -1107,7 +1107,7 @@ void main() {
         'operator/location/tier/minute uniqueness', () {
       final migration = File(
         'db/migrations/202604250004_advisor_proxy_usage_counters.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
 
       // Table + columns.
       expect(
@@ -1162,7 +1162,7 @@ void main() {
       migration = File(
         'db/migrations/'
         '202604250005_advisor_cloud_foundation.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
     });
 
     test('creates the four foundational identity tables', () {
@@ -1424,12 +1424,12 @@ void main() {
       migration = File(
         'db/migrations/'
         '202604250006_advisor_contextual_retrieval_telemetry.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
       auditSql = File(
         'db/verification/'
         '202604250006_advisor_schema_hardening_audits.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
     });
 
     test('migration file is next in deterministic order', () {
@@ -1610,7 +1610,7 @@ void main() {
             ..sort();
       migration = File(
         'db/migrations/202604250007_advisor_rls_index_hardening.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
     });
 
@@ -1740,7 +1740,7 @@ void main() {
             ..sort();
       migration = File(
         'db/migrations/202604250008_auth_schema_foundation.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       normalizedMigration = migration.replaceAll(RegExp(r'\s+'), ' ');
       permissionKeysSource = File(
         'lib/auth/permission_keys.dart',
@@ -2222,7 +2222,9 @@ void main() {
         final allMigrations = StringBuffer();
         for (final entry in Directory('db/migrations').listSync()) {
           if (entry is File && entry.path.endsWith('.sql')) {
-            allMigrations.write(entry.readAsStringSync());
+            allMigrations.write(
+              entry.readAsStringSync().replaceAll('\r\n', '\n'),
+            );
             allMigrations.write('\n');
           }
         }

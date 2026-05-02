@@ -143,7 +143,8 @@ List<String> _migrationPartialPredicateClauses() {
   final repoRoot = Directory.current.path;
   final migrationPath =
       '$repoRoot/db/migrations/202604250003_advisor_vector_search.sql';
-  final migration = File(migrationPath).readAsStringSync();
+  final migration =
+      File(migrationPath).readAsStringSync().replaceAll('\r\n', '\n');
 
   // Find the `create index ... advisor_source_chunks_voyage_hnsw_idx`
   // statement and capture everything up to the terminating semicolon.

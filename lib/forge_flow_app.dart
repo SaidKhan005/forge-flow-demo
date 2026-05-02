@@ -14,7 +14,9 @@ import 'services/auth/password_change_gateway.dart';
 import 'services/auth/password_reset_deep_link_source.dart';
 import 'services/auth/password_reset_gateway.dart';
 import 'services/auth/proxy_permission_snapshot_loader.dart';
+import 'services/boundary_event_outbox.dart';
 import 'services/business_date_authority_service.dart';
+import 'services/sqlite_boundary_event_outbox.dart';
 import 'services/mfa/mfa_operations_gateway.dart';
 import 'services/mfa/mfa_recovery_request_gateway.dart';
 import 'services/shift_data_source.dart';
@@ -194,6 +196,18 @@ class AppShell extends StatefulWidget {
   @visibleForTesting
   final Future<String?> Function(DateTime)? testBusinessDateResolver;
 
+  /// Test-only: override the boundary durable backlog adapter.
+  /// Production wires [SqliteBoundaryEventOutbox]; widget tests can
+  /// pass `null` (no persistence) or an in-memory fake.
+  @visibleForTesting
+  final BoundaryEventOutbox? testBoundaryEventOutbox;
+
+  /// Test-only flag: when true, do not wire the default
+  /// [SqliteBoundaryEventOutbox] in production. Lets widget tests
+  /// that don't initialize SQLite opt out cleanly.
+  @visibleForTesting
+  final bool testDisableDefaultBoundaryEventOutbox;
+
   const AppShell({
     super.key,
     this.embeddedInBarrio = false,
@@ -203,6 +217,8 @@ class AppShell extends StatefulWidget {
     this.passwordChangeGateway,
     this.mfaOperationsGateway,
     this.testBusinessDateResolver,
+    this.testBoundaryEventOutbox,
+    this.testDisableDefaultBoundaryEventOutbox = false,
   });
 
   @override
@@ -302,8 +318,31 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   /// Uses [widget.testBusinessDateResolver] when provided (tests),
   /// otherwise falls back to production
   /// [BusinessDateAuthorityService.resolveBusinessDate].
+  ///
+  /// HARD-H — durable backlog wiring uses [SqliteBoundaryEventOutbox]
+  /// in production: the Flutter app cannot reach Postgres directly
+  /// (Hard Promise #7 in CLAUDE.md — "F&F holds all provider keys
+  /// server-side"), so the per-device boundary backlog persists
+  /// locally. The boundary monitor's purpose is local UI refresh, so
+  /// per-device durability is sufficient — the persisted rows do not
+  /// need to fan out to Pub/Sub or other consumers. A killed /
+  /// backgrounded app mid-fire leaves an undelivered row that
+  /// [BoundaryMonitorSupervisor.drainBacklog] replays on the next
+  /// foreground start (and on resume-after-background).
+  ///
+  /// The server-side analogue ([PostgresBoundaryEventOutbox], wraps
+  /// `event_outbox`) is exercised by the live-binding test and used
+  /// by future server-side supervisors.
   void _initBoundarySupervisor() {
     if (!mounted) return;
+    final BoundaryEventOutbox? outbox;
+    if (widget.testBoundaryEventOutbox != null) {
+      outbox = widget.testBoundaryEventOutbox;
+    } else if (widget.testDisableDefaultBoundaryEventOutbox) {
+      outbox = null;
+    } else {
+      outbox = SqliteBoundaryEventOutbox();
+    }
     _boundarySupervisor = BoundaryMonitorSupervisor(
       resolveBusinessDate:
           widget.testBusinessDateResolver ??
@@ -313,12 +352,16 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces();
         }
       },
+      eventOutbox: outbox,
     );
     final scope = context.read<RestaurantScopeNotifier>();
     scope.addListener(_syncSupervisorToScope);
     _scopeListenedFor = scope;
     _syncSupervisorToScope();
     _boundarySupervisor!.start();
+    // Replay any rollover events the previous foreground session
+    // persisted but did not mark delivered (e.g. crash mid-fire).
+    unawaited(_boundarySupervisor!.drainBacklog());
   }
 
   /// Mirrors the active locations from [RestaurantScopeNotifier] into
@@ -383,6 +426,15 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       // The re-seed picks up the current business date so the monitors
       // do not detect a "change" that the resume path already handled.
       _boundarySupervisor?.start();
+      // HARD-H — drain any rollover events the previous foreground
+      // session persisted but did not mark delivered before the user
+      // backgrounded / killed the app. No-op until the proxy adapter
+      // for `EventOutboxRepository` lands; see comment on
+      // `_initBoundarySupervisor`.
+      final supervisor = _boundarySupervisor;
+      if (supervisor != null) {
+        unawaited(supervisor.drainBacklog());
+      }
     } else if (state == AppLifecycleState.resumed) {
       // resumed without prior paused — no-op (cold start or inactive)
     }

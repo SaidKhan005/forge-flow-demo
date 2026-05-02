@@ -144,6 +144,7 @@ class ProxyProductionBindings {
     required this.integrationAdminActorResolver,
     required this.featureFlagsAdminGateway,
     required this.adminCorsOriginsExtraFlag,
+    required this.adminRequestIdempotencyStore,
     required this.llmProvider,
     required this.secondaryLlmProvider,
     required this.geminiSlotEnabled,
@@ -202,6 +203,13 @@ class ProxyProductionBindings {
   /// active list. Backed by [FeatureFlagsTableAdminCorsOriginsExtraFlag]
   /// against the admin pool.
   final AdminCorsOriginsExtraFlag adminCorsOriginsExtraFlag;
+
+  /// HARD-H — admin idempotency cache backed by
+  /// `public.admin_request_idempotency`. The router uses this to dedupe
+  /// duplicate `Idempotency-Key` headers on admin POST routes (today:
+  /// feature flags toggle), so a retry returns the cached response
+  /// instead of re-executing the gateway.
+  final AdminRequestIdempotencyStore adminRequestIdempotencyStore;
 
   /// Phase 11A.4b — primary LLM provider feeding the
   /// `AdvisorRequestPipeline`. Real Anthropic Messages API HTTP
@@ -650,6 +658,14 @@ ProxyProductionBindings buildProxyProductionBindings(
     // take effect until the next deploy / restart.
     adminCorsOriginsExtraFlag: FeatureFlagsTableAdminCorsOriginsExtraFlag(
       adminPool,
+    ),
+    // HARD-H — admin idempotency cache for cross-tenant POST routes.
+    // Uses the admin pool because `admin_request_idempotency` has no
+    // operator_id column (admin actors live outside any tenant scope)
+    // and the HARD-H migration grants `service_role` SELECT/INSERT/
+    // UPDATE on the table.
+    adminRequestIdempotencyStore: PostgresAdminRequestIdempotencyStore(
+      pool: adminPool,
     ),
     // Phase 11A.4b — LLM providers feeding the AdvisorRequestPipeline.
     llmProvider: llmProviders.primary,
@@ -2996,9 +3012,18 @@ class RepositoryFeatureFlagsAdminProxyGateway
       actorUserId: actorUserId,
       adminReason: adminReason,
       onCommit: (exec, row) async {
+        // HARD-H audit fan-out: pass the flag's operator_id +
+        // location_id through to the audit boundary so the
+        // audit_logs hash-chained mirror row lands when the flag is
+        // operator-scoped. `_fanOutToAuditLogs` short-circuits on
+        // `operatorId == null` (true global flags), and the
+        // audit_logs schema cannot store those anyway because
+        // `operator_id NOT NULL`.
         await _auditRepository.insertSystemEventOn(
           exec,
           actorUserId: actorUserId,
+          operatorId: row.operatorId,
+          locationId: row.locationId,
           eventType: 'admin.feature_flags.toggle',
           payload: <String, Object?>{
             'admin_reason': adminReason,
@@ -3253,6 +3278,139 @@ class _IdempotencyRequestTypeMismatch implements Exception {
 /// mutation) so the original caller's response is still replayable.
 class _IdempotencyPayloadMismatch implements Exception {
   const _IdempotencyPayloadMismatch();
+}
+
+/// HARD-H — production [AdminRequestIdempotencyStore] backed by
+/// `public.admin_request_idempotency`. The store operates against the
+/// admin pool because admin routes are cross-tenant and the table has
+/// no operator_id column; `service_role` is granted SELECT/INSERT/
+/// UPDATE on the table by the HARD-H migration.
+class PostgresAdminRequestIdempotencyStore
+    implements AdminRequestIdempotencyStore {
+  PostgresAdminRequestIdempotencyStore({required PostgresPool pool})
+      : _pool = pool;
+
+  final PostgresPool _pool;
+
+  @override
+  Future<AdminRequestIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  }) async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final rows = await tx.query(
+        'select idempotency_key, request_type, request_body_hash, '
+        '       response_status, response_payload, completed_at '
+        '  from public.admin_request_idempotency '
+        ' where idempotency_key = @key '
+        ' limit 1',
+        parameters: <String, Object?>{'key': idempotencyKey},
+      );
+      await tx.commit();
+      if (rows.isEmpty) return null;
+      final row = rows.single;
+      final storedRequestType = row['request_type']! as String;
+      if (storedRequestType != requestType) {
+        throw AdminIdempotencyKeyConflict(
+          message:
+              'Idempotency-Key was already used for a different request '
+              'type ($storedRequestType)',
+        );
+      }
+      final storedBodyHash = row['request_body_hash'] as String?;
+      if (storedBodyHash != null && storedBodyHash != requestBodyHash) {
+        throw AdminIdempotencyKeyConflict(
+          message:
+              'Idempotency-Key was already used with a different request '
+              'body',
+        );
+      }
+      final status = row['response_status'];
+      final payloadRaw = row['response_payload'];
+      Map<String, Object?>? payload;
+      if (payloadRaw is Map) {
+        payload = Map<String, Object?>.from(payloadRaw);
+      } else if (payloadRaw is String && payloadRaw.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(payloadRaw);
+          if (decoded is Map) {
+            payload = Map<String, Object?>.from(decoded);
+          }
+        } on FormatException {
+          payload = null;
+        }
+      }
+      return AdminRequestIdempotencyEntry(
+        idempotencyKey: row['idempotency_key']! as String,
+        requestType: storedRequestType,
+        responseStatus: status is int ? status : null,
+        responsePayload: payload,
+        completedAt: row['completed_at'] as DateTime?,
+      );
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<bool> reserve({
+    required String idempotencyKey,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
+  }) async {
+    final tx = await _pool.beginTransaction();
+    try {
+      final rows = await tx.query(
+        'insert into public.admin_request_idempotency '
+        '(idempotency_key, request_type, actor_user_id, request_body_hash) '
+        'values (@key, @kind, @actor::uuid, @hash) '
+        'on conflict (idempotency_key) do nothing '
+        'returning idempotency_key',
+        parameters: <String, Object?>{
+          'key': idempotencyKey,
+          'kind': requestType,
+          'actor': actorUserId,
+          'hash': requestBodyHash,
+        },
+      );
+      await tx.commit();
+      return rows.isNotEmpty;
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  }) async {
+    final tx = await _pool.beginTransaction();
+    try {
+      await tx.execute(
+        'update public.admin_request_idempotency '
+        'set response_status = @status, '
+        '    response_payload = @payload::jsonb, '
+        '    completed_at = now() '
+        'where idempotency_key = @key',
+        parameters: <String, Object?>{
+          'key': idempotencyKey,
+          'status': responseStatus,
+          'payload': jsonEncode(responsePayload),
+        },
+      );
+      await tx.commit();
+    } catch (_) {
+      await tx.rollback();
+      rethrow;
+    }
+  }
 }
 
 /// Production [IntegrationAdminActorResolver] backed by

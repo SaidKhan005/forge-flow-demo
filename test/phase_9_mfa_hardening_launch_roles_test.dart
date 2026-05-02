@@ -17,7 +17,8 @@ void main() {
     );
   });
 
-  String migration() => migrationFile.readAsStringSync();
+  String migration() =>
+      migrationFile.readAsStringSync().replaceAll('\r\n', '\n');
 
   group('team.users.reset_mfa permission', () {
     test('is exposed by PermissionKeys and seeded by the migration', () {

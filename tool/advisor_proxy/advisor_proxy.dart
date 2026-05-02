@@ -6195,6 +6195,71 @@ abstract class FeatureFlagsAdminProxyGateway {
   });
 }
 
+/// HARD-H — idempotency ledger for cross-tenant F&F admin routes.
+/// The Phase 9 `proxy_requests` table is per-tenant; admin routes
+/// driven by super_admin / ff_support actors have no operator scope
+/// so they need a separate ledger keyed on idempotency_key alone.
+/// Backed by `public.admin_request_idempotency` (HARD-H migration).
+abstract class AdminRequestIdempotencyStore {
+  /// Look up a prior response for [idempotencyKey] + [requestType].
+  /// Returns null when the key has never been used. Throws
+  /// [AdminIdempotencyKeyConflict] when the key was used for a
+  /// different [requestType] or with a different request body.
+  Future<AdminRequestIdempotencyEntry?> lookup({
+    required String idempotencyKey,
+    required String requestType,
+    required String requestBodyHash,
+  });
+
+  /// Reserve [idempotencyKey] for [requestType]. Returns true when the
+  /// reserve succeeded (caller should run the work and then call
+  /// [completeReservation]); returns false when another caller raced
+  /// and reserved the key first (caller should re-run [lookup] to
+  /// fetch the in-flight or completed result).
+  Future<bool> reserve({
+    required String idempotencyKey,
+    required String requestType,
+    required String? actorUserId,
+    required String requestBodyHash,
+  });
+
+  /// Stamp [responseStatus] + [responsePayload] on a previously
+  /// reserved row so subsequent [lookup] calls return the cached
+  /// response.
+  Future<void> completeReservation({
+    required String idempotencyKey,
+    required int responseStatus,
+    required Map<String, Object?> responsePayload,
+  });
+}
+
+class AdminRequestIdempotencyEntry {
+  const AdminRequestIdempotencyEntry({
+    required this.idempotencyKey,
+    required this.requestType,
+    required this.responseStatus,
+    required this.responsePayload,
+    required this.completedAt,
+  });
+
+  final String idempotencyKey;
+  final String requestType;
+
+  /// Null when the row is reserved but the work has not completed
+  /// yet — the route handler returns a 409 `idempotency_request_in_flight`
+  /// in that case (matching the service-principal contract).
+  final int? responseStatus;
+  final Map<String, Object?>? responsePayload;
+  final DateTime? completedAt;
+}
+
+class AdminIdempotencyKeyConflict implements Exception {
+  const AdminIdempotencyKeyConflict({required this.message});
+  final String message;
+  @override
+  String toString() => 'AdminIdempotencyKeyConflict: $message';
+}
+
 /// Gateway the proxy delegates to for `/v1/admin/operators` and
 /// `/v1/admin/locations` route handling. The gateway returns
 /// JSON-ready maps so the proxy handler can wrap them in a 200/201
@@ -6429,6 +6494,12 @@ Future<void> routeRequest(
   AuthLockoutAuditSink? authLockoutAuditSink,
   RollingWindowAttemptCounter? mfaTotpRetryCounter,
   RollingWindowAttemptCounter? passwordResetThrottleCounter,
+  // HARD-H — admin idempotency cache for cross-tenant POST routes
+  // (today: feature flags toggle). Optional: when null, the route
+  // runs without route-level dedup and the gateway-side cache
+  // (today: `FeatureFlagToggleIdempotencyCache`) is the only
+  // protection against duplicate POST execution.
+  AdminRequestIdempotencyStore? adminRequestIdempotencyStore,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -9467,6 +9538,7 @@ Future<void> routeRequest(
           actorUserId: resolvedActorUserId ?? actor.userId,
           idempotencyKey: idempotencyKey ?? '',
           body: body,
+          idempotencyStore: adminRequestIdempotencyStore,
         );
       } catch (error) {
         if (_maybeWriteDependencyTimeout(response, error)) return;
@@ -9480,6 +9552,13 @@ Future<void> routeRequest(
         if (error is FeatureFlagsAdminGatewayValidationError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is AdminIdempotencyKeyConflict) {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_key_conflict',
             'message': error.message,
           });
           return;
@@ -10240,6 +10319,7 @@ Future<void> _routeFeatureFlagsAdmin({
   required String actorUserId,
   required String idempotencyKey,
   required Map<String, Object?> body,
+  AdminRequestIdempotencyStore? idempotencyStore,
 }) async {
   final method = request.method;
   final reasonPrefix = 'admin.feature_flags.$method:$actorUserId';
@@ -10287,6 +10367,74 @@ Future<void> _routeFeatureFlagsAdmin({
     final reason = reasonRaw is String ? reasonRaw.trim() : null;
     final reasonForAudit =
         reason == null || reason.isEmpty ? null : reason;
+
+    // HARD-H idempotency wrap. When an idempotency store is wired the
+    // route reserves the key + body hash, runs the gateway exactly
+    // once, and returns the cached response on retry. When no store is
+    // wired (older deploys / unit tests) the route degrades to the
+    // legacy direct-delegate behavior — `_isAdminFeatureFlagsOperation`
+    // already enforces the Idempotency-Key header is present, so the
+    // observability story (every retry has a key in the audit
+    // payload) is preserved. The body hash includes HARD-B's `reason`
+    // (via the canonical sorted-key encoding in `_hashRequestBody`),
+    // so a retry that changes the rationale is treated as a new
+    // request body — matching the gateway-side
+    // `FeatureFlagToggleIdempotencyCache` contract.
+    const requestType = 'admin.feature_flags.toggle';
+    final bodyHash = _hashRequestBody(body);
+
+    if (idempotencyStore != null) {
+      final cached = await idempotencyStore.lookup(
+        idempotencyKey: idempotencyKey,
+        requestType: requestType,
+        requestBodyHash: bodyHash,
+      );
+      if (cached != null) {
+        if (cached.responseStatus == null || cached.responsePayload == null) {
+          _writeJson(response, 409, <String, Object?>{
+            'error': 'idempotency_request_in_flight',
+            'message': 'idempotent request is already in flight',
+          });
+          return;
+        }
+        _writeJson(
+          response,
+          cached.responseStatus!,
+          cached.responsePayload!,
+        );
+        return;
+      }
+      final reserved = await idempotencyStore.reserve(
+        idempotencyKey: idempotencyKey,
+        requestType: requestType,
+        actorUserId: actorUserId,
+        requestBodyHash: bodyHash,
+      );
+      if (!reserved) {
+        // Lost the race — re-fetch and replay.
+        final raceCached = await idempotencyStore.lookup(
+          idempotencyKey: idempotencyKey,
+          requestType: requestType,
+          requestBodyHash: bodyHash,
+        );
+        if (raceCached != null &&
+            raceCached.responseStatus != null &&
+            raceCached.responsePayload != null) {
+          _writeJson(
+            response,
+            raceCached.responseStatus!,
+            raceCached.responsePayload!,
+          );
+          return;
+        }
+        _writeJson(response, 409, <String, Object?>{
+          'error': 'idempotency_request_in_flight',
+          'message': 'idempotent request is already in flight',
+        });
+        return;
+      }
+    }
+
     final result = await gateway.toggleFlag(
       actorUserId: actorUserId,
       flagId: flagId,
@@ -10296,17 +10444,45 @@ Future<void> _routeFeatureFlagsAdmin({
       reason: reasonForAudit,
     );
     if (result == null) {
-      _writeJson(response, 404, <String, Object?>{
+      const statusCode = 404;
+      final responsePayload = <String, Object?>{
         'error': 'unknown_flag',
         'message': 'feature flag not found',
-      });
+      };
+      if (idempotencyStore != null) {
+        await idempotencyStore.completeReservation(
+          idempotencyKey: idempotencyKey,
+          responseStatus: statusCode,
+          responsePayload: responsePayload,
+        );
+      }
+      _writeJson(response, statusCode, responsePayload);
       return;
     }
-    _writeJson(response, 200, <String, Object?>{'flag': result});
+    const statusCode = 200;
+    final responsePayload = <String, Object?>{'flag': result};
+    if (idempotencyStore != null) {
+      await idempotencyStore.completeReservation(
+        idempotencyKey: idempotencyKey,
+        responseStatus: statusCode,
+        responsePayload: responsePayload,
+      );
+    }
+    _writeJson(response, statusCode, responsePayload);
     return;
   }
 
   _writeNotFound(response, request);
+}
+
+/// Canonicalize a JSON body so two POSTs with semantically identical
+/// payloads (different key order, etc.) hash to the same value.
+String _hashRequestBody(Map<String, Object?> body) {
+  final sortedKeys = body.keys.toList()..sort();
+  final canonical = <String, Object?>{
+    for (final key in sortedKeys) key: body[key],
+  };
+  return sha256.convert(utf8.encode(jsonEncode(canonical))).toString();
 }
 
 /// Phase 11A.3b — Graphify candidate review route handler. Same shape

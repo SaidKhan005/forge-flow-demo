@@ -336,13 +336,20 @@ void main() {
       // `.last` points at to the audit_logs payload (which uses
       // `action`, not `event_type`). The indexWhere pattern stays
       // pinned to the auth_events_audit row regardless of how many
-      // collateral writes flow through the same transaction.
+      // collateral writes flow through the same transaction. The
+      // `.toLowerCase()` guard keeps the match honest if the SQL
+      // emitter ever case-shifts. Contract:
+      // docs/contracts/hardening_test_corrections_contract.md.
       final auditEventsIndex = tx.executedSql.indexWhere(
         (sql) =>
-            sql.contains('insert into auth_events_audit') &&
-            sql.contains('returning event_id'),
+            sql.toLowerCase().contains('insert into auth_events_audit') &&
+            sql.toLowerCase().contains('returning event_id'),
       );
-      expect(auditEventsIndex, isNonNegative);
+      expect(
+        auditEventsIndex,
+        isNonNegative,
+        reason: 'auth_events_audit INSERT not observed in transaction',
+      );
       final params = tx.parameters[auditEventsIndex];
       expect(params['event_type'], equals('auth.login_succeeded'));
       expect(params['ip'], equals('1.2.3.4'));

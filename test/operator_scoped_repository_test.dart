@@ -456,7 +456,8 @@ void main() {
       );
     });
 
-    String migration() => migrationFile.readAsStringSync();
+    String migration() =>
+        migrationFile.readAsStringSync().replaceAll('\r\n', '\n');
 
     test('creates forge_admin role with BYPASSRLS and grants it to '
         'service_role', () {
@@ -614,7 +615,8 @@ void main() {
       );
     });
 
-    String migration() => migrationFile.readAsStringSync();
+    String migration() =>
+        migrationFile.readAsStringSync().replaceAll('\r\n', '\n');
 
     test('permission_keys is granted SELECT only to service_role', () {
       final sql = migration().toLowerCase();

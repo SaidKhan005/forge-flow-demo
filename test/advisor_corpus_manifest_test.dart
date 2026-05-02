@@ -784,10 +784,10 @@ void main() {
     test('requires pgvector while keeping Apache AGE projection optional', () {
       final migration = File(
         'db/migrations/202604250001_advisor_corpus_storage_schema.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
       final embeddingContractMigration = File(
         'db/migrations/202604250002_advisor_embedding_contract.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
 
       expect(migration, contains('create extension if not exists vector'));
       expect(migration, contains("where name = 'age'"));
@@ -819,7 +819,7 @@ void main() {
         'scoped advisor_search_chunks function', () {
       final migration = File(
         'db/migrations/202604250003_advisor_vector_search.sql',
-      ).readAsStringSync();
+      ).readAsStringSync().replaceAll('\r\n', '\n');
 
       // Provider/model/dimension columns.
       expect(
