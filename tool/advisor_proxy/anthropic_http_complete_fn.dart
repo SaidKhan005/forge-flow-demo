@@ -19,6 +19,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:forge_and_flow/services/observability/log.dart';
 import 'package:http/http.dart' as http;
 
 import 'advisor_proxy.dart'
@@ -111,6 +112,11 @@ AnthropicProxyCompleteFn buildAnthropicHttpCompleteFn({
             'x-api-key': apiKey,
             'anthropic-version': anthropicApiVersion,
             HttpHeaders.contentTypeHeader: 'application/json',
+            // HARD-G observability: thread correlation_id +
+            // request_id into the User-Agent so Anthropic-side logs
+            // can correlate back to a Cloud Logging request without
+            // a separate header that Anthropic might strip.
+            HttpHeaders.userAgentHeader: _buildUserAgent(),
           },
           body: jsonEncode(body),
         )
@@ -156,4 +162,21 @@ AnthropicProxyCompleteFn buildAnthropicHttpCompleteFn({
       outputTokens: outputTokens,
     );
   };
+}
+
+/// HARD-G observability — User-Agent enrichment.
+///
+/// When called inside a [withProxyLogContext] zone (i.e. during a
+/// `routeRequest` invocation), tags the outgoing User-Agent with the
+/// correlation_id and request_id so a remote log search on
+/// Anthropic's side can be joined back to a Cloud Logging entry by
+/// correlation id. Falls back to a static label outside a request
+/// scope (startup probe, tests, etc.).
+String _buildUserAgent() {
+  const base = 'forge-and-flow-advisor-proxy/1.0';
+  final context = currentProxyLogContext();
+  if (context == null) return base;
+  return '$base '
+      '(correlation_id=${context.correlationId}; '
+      'request_id=${context.requestId})';
 }

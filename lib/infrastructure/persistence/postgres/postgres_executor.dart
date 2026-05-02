@@ -14,6 +14,20 @@
 //     transactions — see [TenantTransactionWrapper].
 //   * Statement parameters are positional/named bindings, never
 //     string concatenation.
+//
+// HARD-G observability defaults (the contract pins these values):
+//   * `kPostgresPerStatementTimeout` — every executed query / write
+//     must complete within 5 s. The package adapter wraps each
+//     `query`/`execute` call in `.timeout(...)`; on expiry the call
+//     throws so callers surface the failure as `dependency_timeout`.
+//   * `kPostgresAcquireConnectionTimeout` — pool `beginTransaction`
+//     (which currently opens a fresh connection) must complete within
+//     10 s. The package adapter wraps the connection-open + initial
+//     `BEGIN` in `.timeout(...)`. At startup the proxy refuses to
+//     bind a port if the timer elapses (exit 78).
+
+const Duration kPostgresPerStatementTimeout = Duration(seconds: 5);
+const Duration kPostgresAcquireConnectionTimeout = Duration(seconds: 10);
 
 /// Result row shape. Column names map to dynamic values produced by
 /// the underlying driver (UUIDs as strings, timestamptz as

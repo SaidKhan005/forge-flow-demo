@@ -31,15 +31,34 @@ import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 
 import 'advisor_proxy.dart';
+import 'log.dart';
 import 'proxy_bootstrap.dart';
 
 Future<void> main(List<String> args) async {
+  // Startup banner — plain text only, before the log module owns
+  // stdout. Once `ProxyConfig.fromEnvironment` returns, every subsequent
+  // event flows through `log()` as JSON (HARD-G observability baseline).
+  stdout.writeln('advisor proxy starting up');
   ProxyConfig config;
   try {
     config = ProxyConfig.fromEnvironment(Platform.environment);
+  } on ProxyKmsMisconfiguredError {
+    // ProxyConfig.fromEnvironment already emitted
+    // startup.kms_misconfigured. Exit with EX_CONFIG.
+    exitCode = 78;
+    return;
   } on ProxyConfigError catch (error) {
     // Names only — never values. EX_CONFIG (78) signals config error.
-    stderr.writeln('advisor proxy startup failed: ${error.message}');
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'config',
+        'message': error.message,
+        'missing_secret_names': error.missingSecretNames,
+        'exit_code': 78,
+      },
+    );
     exitCode = 78;
     return;
   }
@@ -62,6 +81,25 @@ Future<void> main(List<String> args) async {
     exitCode = startupFailure.exitCode;
     return;
   }
+
+  // HARD-G observability: report the resolved config block so an
+  // operator can grep startup logs for what was bound (names only,
+  // never values). Runs after the HARD-A fail-closed gate so the
+  // line only appears when the proxy will actually proceed to bind.
+  log(
+    LogSeverity.info,
+    'startup.config_resolved',
+    fields: <String, Object?>{
+      'port': config.port,
+      'environment': config.proxyEnvironment,
+      'kms_real_provider_enabled': config.kmsRealProviderEnabled,
+      'firebase_project_id_loaded': config.firebaseProjectId != null,
+      'gcp_project_id_loaded': config.gcpProjectId != null,
+      'cloud_run_region_loaded': config.cloudRunRegion != null,
+      'cloud_run_service_name_loaded': config.cloudRunServiceName != null,
+      'loaded_secret_names': config.loadedSecretNames,
+    },
+  );
 
   // 9.1 live-closeout: FIREBASE_PROJECT_ID selects the local Firebase
   // ID-token verifier with a pointycastle-backed RS256 validator.
@@ -114,8 +152,51 @@ Future<void> main(List<String> args) async {
       config,
       featureFlagExtras: adminCorsExtraOrigins,
     );
+  } on ProxyKmsMisconfiguredError catch (error) {
+    // HARD-G: _buildKmsProvider already emitted the structured
+    // startup.kms_misconfigured event. Exit with EX_CONFIG.
+    exitCode = 78;
+    // Reference the error so the static analyzer does not flag the
+    // local as unused; the operator-facing message is in the log.
+    assert(error.missingSecretNames.isNotEmpty);
+    return;
   } on ProxyConfigError catch (error) {
-    stderr.writeln('advisor proxy startup failed: ${error.message}');
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'production_bindings',
+        'message': error.message,
+        'missing_secret_names': error.missingSecretNames,
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+
+  // HARD-G observability: probe Postgres connectivity before binding
+  // the listener so a slow / broken pool fails the deploy with
+  // exit 78 instead of degrading every request. The executor emits
+  // `request.dependency_timeout` at the wire boundary; the probe
+  // helper translates that into a startup-level log line.
+  try {
+    await probeProxyStartupConnectivity(productionBindings);
+  } on DependencyTimeoutException {
+    exitCode = 78;
+    return;
+  } catch (error, stack) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'postgres_probe',
+        'error_type': error.runtimeType.toString(),
+        'error_message': error.toString(),
+        'stack_first_frame': firstStackFrame(stack),
+        'exit_code': 78,
+      },
+    );
     exitCode = 78;
     return;
   }
@@ -163,29 +244,37 @@ Future<void> main(List<String> args) async {
   // 9.1 Firebase verifier is wired (true when FIREBASE_PROJECT_ID is
   // set) so a startup grep can confirm the verifier path that is in
   // use without echoing the project ID.
-  stdout.writeln(
-    'advisor proxy listening on port ${config.port} '
-    '(loaded secret names: ${config.loadedSecretNames.join(', ')}, '
-    'firebase_verifier: ${firebaseProjectId == null ? 'scaffold' : 'firebase'}, '
-    'auth_session_ledger: postgres, '
-    'accounting_store: postgres, '
-    'permission_snapshot: postgres, '
-    'account_info: postgres, '
-    'admin_permission_guard: postgres, '
-    'auth_operations: postgres, '
-    'service_principal_issuance: postgres, '
-    'password_change: postgres, '
-    'password_reset_confirm: postgres, '
-    'mfa_operations: postgres_identitytoolkit_firebase_mfa, '
-    'mfa_recovery_request: postgres_event_outbox, '
-    'operator_location_admin: postgres, '
-    'pricing_tier_admin: postgres, '
-    'corpus_admin: postgres, '
-    'integration_admin: postgres_kms_stub, '
-    'feature_flags_admin: postgres, '
-    'admin_cors_allow_list_count: ${adminCorsAllowList.length}, '
-    'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache'
-    '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''})',
+  log(
+    LogSeverity.info,
+    'startup.complete',
+    fields: <String, Object?>{
+      'port': config.port,
+      'loaded_secret_names': config.loadedSecretNames,
+      'firebase_verifier':
+          firebaseProjectId == null ? 'scaffold' : 'firebase',
+      'auth_session_ledger': 'postgres',
+      'accounting_store': 'postgres',
+      'permission_snapshot': 'postgres',
+      'account_info': 'postgres',
+      'admin_permission_guard': 'postgres',
+      'auth_operations': 'postgres',
+      'service_principal_issuance': 'postgres',
+      'password_change': 'postgres',
+      'password_reset_confirm': 'postgres',
+      'mfa_operations': 'postgres_identitytoolkit_firebase_mfa',
+      'mfa_recovery_request': 'postgres_event_outbox',
+      'operator_location_admin': 'postgres',
+      'pricing_tier_admin': 'postgres',
+      'corpus_admin': 'postgres',
+      'integration_admin': 'postgres_kms_stub',
+      'feature_flags_admin': 'postgres',
+      // HARD-C surfaces the admin CORS allow-list size so a deploy
+      // grep can confirm the value without dumping origins to the log.
+      'admin_cors_allow_list_count': adminCorsAllowList.length,
+      'advisor_pipeline':
+          'lock7_v1_per_instance_breaker_alwaysmiss_cache'
+          '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''}',
+    },
   );
 
   await for (final request in server) {
@@ -229,7 +318,15 @@ Future<void> main(List<String> args) async {
         adminCorsAllowList: adminCorsAllowList,
       );
     } catch (error, stack) {
-      stderr.writeln('advisor proxy request handler error: $error\n$stack');
+      log(
+        LogSeverity.error,
+        'proxy.listener_loop_error',
+        fields: <String, Object?>{
+          'error_type': error.runtimeType.toString(),
+          'error_message': error.toString(),
+          'stack_first_frame': firstStackFrame(stack),
+        },
+      );
     }
   }
 }

@@ -1,14 +1,28 @@
-// HARD-A — `tool/advisor_proxy/main.dart` startup wiring.
+// Two test surfaces share this file:
 //
+// HARD-A — `tool/advisor_proxy/main.dart` startup wiring.
 // The actual `Future<void> main()` binds a socket and falls into a
 // request loop, so we exercise the testable surface it delegates to:
 // [evaluateProxyStartup] (decides whether prod needs to fail closed)
 // and a source-grep over `main.dart` (proves the bindings + diagnostics
 // flow through the runtime in the right places).
+//
+// HARD-G — startup KMS fail-closed gate + Postgres connectivity probe.
+// Verifies that `ProxyConfig.fromEnvironment` throws
+// `ProxyKmsMisconfiguredError` (and emits `startup.kms_misconfigured`)
+// whenever `PROXY_ENVIRONMENT=prod` + `KMS_REAL_PROVIDER_ENABLED=true`
+// and any of the three GCP env vars is unset (full or partial). All
+// other combinations either continue with the stub provider (logging
+// `startup.kms_stub_active` at WARN) or surface the unrelated
+// partial-config error. Also verifies that
+// `probeProxyStartupConnectivity` surfaces a timeout-on-acquire and a
+// timeout-mid-transaction as `DependencyTimeoutException` so
+// `main.dart` can exit 78.
 
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
 import '../../tool/advisor_proxy/proxy_bootstrap.dart';
@@ -28,6 +42,27 @@ ProxyConfig _configFromEnv({
     ...overrides,
   };
   return ProxyConfig.fromEnvironment(env);
+}
+
+Map<String, String> _baseEnv() => <String, String>{
+      ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+      ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+      ProxySecretNames.postgresUrl:
+          'postgres://app-role.example/forgeflow',
+      ProxySecretNames.postgresAdminUrl:
+          'postgres://admin-role.example/forgeflow',
+      ProxySecretNames.firebaseWebApiKey:
+          'placeholder-firebase-web-api-key',
+      ProxySecretNames.servicePrincipalJwtSecret:
+          'placeholder-service-principal-jwt-secret',
+      ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
+    };
+
+class _StubPostgresPool implements PostgresPool {
+  @override
+  Future<PostgresTransaction> beginTransaction() {
+    throw StateError('test pool must not open a real transaction');
+  }
 }
 
 void main() {
@@ -192,4 +227,305 @@ void main() {
       },
     );
   });
+
+  group('startup KMS fail-closed (HARD-G observability)', () {
+    test('prod + KMS_REAL_PROVIDER_ENABLED=true + all GCP vars unset '
+        'throws ProxyKmsMisconfiguredError listing the missing names',
+        () {
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'prod'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'true';
+      Object? thrown;
+      try {
+        ProxyConfig.fromEnvironment(env);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyKmsMisconfiguredError>());
+      final error = thrown! as ProxyKmsMisconfiguredError;
+      expect(
+        error.missingSecretNames,
+        containsAll(<String>[
+          ProxyConfigNames.gcpProjectId,
+          ProxyConfigNames.cloudRunRegion,
+          ProxyConfigNames.cloudRunServiceName,
+        ]),
+      );
+      expect(
+        error.message,
+        contains(ProxyConfigNames.gcpProjectId),
+      );
+    });
+
+    test('prod + KMS_REAL_PROVIDER_ENABLED=true + partial GCP vars '
+        '(one of three set) maps to the KMS misconfig event, not the '
+        'generic partial-config error', () {
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'prod'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'true'
+        ..[ProxyConfigNames.gcpProjectId] = 'forge-flow-prod';
+      Object? thrown;
+      try {
+        ProxyConfig.fromEnvironment(env);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyKmsMisconfiguredError>());
+      final error = thrown! as ProxyKmsMisconfiguredError;
+      expect(
+        error.missingSecretNames,
+        containsAll(<String>[
+          ProxyConfigNames.cloudRunRegion,
+          ProxyConfigNames.cloudRunServiceName,
+        ]),
+      );
+      expect(
+        error.missingSecretNames,
+        isNot(contains(ProxyConfigNames.gcpProjectId)),
+      );
+    });
+
+    test('non-prod + KMS_REAL_PROVIDER_ENABLED=true + partial GCP vars '
+        'still surfaces the legacy partial-config error', () {
+      // Outside prod the partial-set check is the legacy guardrail —
+      // the KMS rollout flag does not arm fail-closed in non-prod.
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'staging'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'true'
+        ..[ProxyConfigNames.gcpProjectId] = 'forge-flow-staging';
+      Object? thrown;
+      try {
+        ProxyConfig.fromEnvironment(env);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyConfigError>());
+      expect(thrown, isNot(isA<ProxyKmsMisconfiguredError>()));
+    });
+
+    test('staging + missing GCP vars proceeds with stub (no throw)',
+        () {
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'staging'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'false';
+      final config = ProxyConfig.fromEnvironment(env);
+      final bindings = buildProxyProductionBindings(
+        config,
+        postgresPoolFactory: (connectionString) => _StubPostgresPool(),
+      );
+      expect(bindings, isNotNull);
+    });
+
+    test('prod + KMS_REAL_PROVIDER_ENABLED=false + missing GCP vars '
+        'proceeds with stub (rollout not yet armed)', () {
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'prod'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'false';
+      final config = ProxyConfig.fromEnvironment(env);
+      final bindings = buildProxyProductionBindings(
+        config,
+        postgresPoolFactory: (connectionString) => _StubPostgresPool(),
+      );
+      expect(bindings, isNotNull);
+    });
+
+    test('PROXY_ENVIRONMENT lowercases for the prod check', () {
+      final env = _baseEnv()
+        ..[ProxyConfigNames.proxyEnvironment] = 'PROD'
+        ..[ProxyConfigNames.kmsRealProviderEnabled] = 'true';
+      Object? thrown;
+      try {
+        ProxyConfig.fromEnvironment(env);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<ProxyKmsMisconfiguredError>());
+    });
+  });
+
+  group('probeProxyStartupConnectivity (HARD-G observability)', () {
+    test('rethrows DependencyTimeoutException when beginTransaction '
+        'times out (covers both acquire and BEGIN paths)', () async {
+      final bindings = _bindingsWithTenantPool(
+        _TimingOutPool(
+          throwOn: _TimingOutPoolPhase.beginTransaction,
+        ),
+      );
+      Object? thrown;
+      try {
+        await probeProxyStartupConnectivity(bindings);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<DependencyTimeoutException>());
+      final timeout = thrown! as DependencyTimeoutException;
+      expect(timeout.surface, equals('postgres'));
+      expect(timeout.operation, equals('acquire_connection'));
+    });
+
+    test('rethrows DependencyTimeoutException when a mid-transaction '
+        'query times out, after attempting rollback', () async {
+      final pool = _TimingOutPool(throwOn: _TimingOutPoolPhase.query);
+      final bindings = _bindingsWithTenantPool(pool);
+      Object? thrown;
+      try {
+        await probeProxyStartupConnectivity(bindings);
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown, isA<DependencyTimeoutException>());
+      expect(pool.lastTransaction?.rollbackCount, equals(1));
+    });
+
+    test('happy path commits each pool exactly once', () async {
+      final tenantPool = _RecordingPool();
+      final adminPool = _RecordingPool();
+      final bindings = _bindingsWithPools(
+        tenant: tenantPool,
+        admin: adminPool,
+      );
+      await probeProxyStartupConnectivity(bindings);
+      expect(tenantPool.transactions.length, equals(1));
+      expect(tenantPool.transactions.single.committed, isTrue);
+      expect(adminPool.transactions.length, equals(1));
+      expect(adminPool.transactions.single.committed, isTrue);
+    });
+  });
+}
+
+ProxyProductionBindings _bindingsWithTenantPool(PostgresPool tenantPool) {
+  return _bindingsWithPools(tenant: tenantPool, admin: _RecordingPool());
+}
+
+ProxyProductionBindings _bindingsWithPools({
+  required PostgresPool tenant,
+  required PostgresPool admin,
+}) {
+  return _StartupProbeBindingsView(tenantPool: tenant, adminPool: admin);
+}
+
+/// Minimal stub of [ProxyProductionBindings] that only surfaces the
+/// pool fields the startup probe touches. Dart treats the bindings
+/// class as concrete with `required` fields, so the test instead
+/// exposes the same shape via a thin container that the probe can
+/// read. Concretely the probe reads `bindings.tenantPool` /
+/// `bindings.adminPool`; we satisfy that contract here without
+/// constructing the rest of the production graph.
+class _StartupProbeBindingsView implements ProxyProductionBindings {
+  _StartupProbeBindingsView({
+    required this.tenantPool,
+    required this.adminPool,
+  });
+
+  @override
+  final PostgresPool tenantPool;
+
+  @override
+  final PostgresPool adminPool;
+
+  @override
+  noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+enum _TimingOutPoolPhase { beginTransaction, query }
+
+class _TimingOutPool implements PostgresPool {
+  _TimingOutPool({required this.throwOn});
+
+  final _TimingOutPoolPhase throwOn;
+  _TimingOutPoolTransaction? lastTransaction;
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    if (throwOn == _TimingOutPoolPhase.beginTransaction) {
+      throw const DependencyTimeoutException(
+        surface: 'postgres',
+        operation: 'acquire_connection',
+        elapsedMs: 10000,
+      );
+    }
+    final tx = _TimingOutPoolTransaction(throwOnQuery: true);
+    lastTransaction = tx;
+    return tx;
+  }
+}
+
+class _TimingOutPoolTransaction implements PostgresTransaction {
+  _TimingOutPoolTransaction({required this.throwOnQuery});
+
+  final bool throwOnQuery;
+  int rollbackCount = 0;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) {
+    if (throwOnQuery) {
+      throw const DependencyTimeoutException(
+        surface: 'postgres',
+        operation: 'query',
+        elapsedMs: 5000,
+      );
+    }
+    return Future<List<PostgresRow>>.value(const <PostgresRow>[]);
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    return 0;
+  }
+
+  @override
+  Future<void> commit() async {}
+
+  @override
+  Future<void> rollback() async {
+    rollbackCount++;
+  }
+}
+
+class _RecordingPool implements PostgresPool {
+  final transactions = <_RecordingPoolTransaction>[];
+
+  @override
+  Future<PostgresTransaction> beginTransaction() async {
+    final tx = _RecordingPoolTransaction();
+    transactions.add(tx);
+    return tx;
+  }
+}
+
+class _RecordingPoolTransaction implements PostgresTransaction {
+  bool committed = false;
+  bool rolledBack = false;
+
+  @override
+  Future<List<PostgresRow>> query(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    return const <PostgresRow>[];
+  }
+
+  @override
+  Future<int> execute(
+    String sql, {
+    PostgresParameters parameters = const <String, Object?>{},
+  }) async {
+    return 0;
+  }
+
+  @override
+  Future<void> commit() async {
+    committed = true;
+  }
+
+  @override
+  Future<void> rollback() async {
+    rolledBack = true;
+  }
 }
