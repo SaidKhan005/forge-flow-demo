@@ -163,7 +163,390 @@ void main() {
       expect(failure.code, equals('invalid_verification_code'));
       expect(failure.message, equals('Code did not match. Try again.'));
     });
+
+    test(
+      'begin enrollment 400 INVALID_ID_TOKEN propagates typed error verbatim',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'error': <String, Object?>{'message': 'INVALID_ID_TOKEN'},
+          }, statusCode: 400),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final error = await _captureError(
+          client.beginTotpEnrollment(
+            authorizationIdToken: 'expired-id-token',
+            userId: 'user-1',
+            userEmail: 'owner@example.test',
+            issuerName: 'Forge & Flow',
+          ),
+        );
+
+        expect(error, isA<IdentityToolkitFirebaseMfaError>());
+        final firebaseError = error! as IdentityToolkitFirebaseMfaError;
+        expect(firebaseError.code, equals('invalid_id_token'));
+        expect(firebaseError.statusCode, equals(400));
+        expect(httpClient.requests, hasLength(1));
+      },
+    );
+
+    test(
+      'begin enrollment 500 makes a single HTTP attempt (no retry)',
+      () async {
+        // Only one fake response is queued; if the production adapter retried,
+        // the second postUrl would throw StateError from _RecordingHttpClient.
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'error': <String, Object?>{'message': 'INTERNAL'},
+          }, statusCode: 500),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final error = await _captureError(
+          client.beginTotpEnrollment(
+            authorizationIdToken: 'user-id-token',
+            userId: 'user-1',
+            userEmail: 'owner@example.test',
+            issuerName: 'Forge & Flow',
+          ),
+        );
+
+        expect(error, isA<IdentityToolkitFirebaseMfaError>());
+        expect(
+          (error! as IdentityToolkitFirebaseMfaError).statusCode,
+          equals(500),
+        );
+        expect(httpClient.requests, hasLength(1));
+      },
+    );
+
+    test(
+      'begin enrollment empty error body falls back to generic code',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{}, statusCode: 503),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final error = await _captureError(
+          client.beginTotpEnrollment(
+            authorizationIdToken: 'user-id-token',
+            userId: 'user-1',
+            userEmail: 'owner@example.test',
+            issuerName: 'Forge & Flow',
+          ),
+        );
+
+        expect(error, isA<IdentityToolkitFirebaseMfaError>());
+        final firebaseError = error! as IdentityToolkitFirebaseMfaError;
+        expect(
+          firebaseError.code,
+          equals('identitytoolkit_mfa_request_failed'),
+        );
+        expect(firebaseError.statusCode, equals(503));
+      },
+    );
+
+    test(
+      'confirm enrollment 429 TOO_MANY_ATTEMPTS_TRY_LATER maps to stable code',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'error': <String, Object?>{
+              'message': 'TOO_MANY_ATTEMPTS_TRY_LATER',
+            },
+          }, statusCode: 429),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '654321',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmFailed>());
+        final failure = outcome as FirebaseMfaConfirmFailed;
+        expect(failure.code, equals('too_many_attempts_try_later'));
+        expect(
+          failure.message,
+          equals('MFA enrollment failed. Please try again.'),
+        );
+      },
+    );
+
+    test(
+      'confirm enrollment SECOND_FACTOR_EXISTS surfaces stable code path',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'error': <String, Object?>{'message': 'SECOND_FACTOR_EXISTS'},
+          }, statusCode: 400),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '123456',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmFailed>());
+        expect(
+          (outcome as FirebaseMfaConfirmFailed).code,
+          equals('second_factor_exists'),
+        );
+      },
+    );
+
+    test(
+      'confirm enrollment with missing idToken in finalize body returns safe failure',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{}),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '123456',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmFailed>());
+        final failure = outcome as FirebaseMfaConfirmFailed;
+        expect(failure.code, equals('mfa_finalize_missing_id_token'));
+        expect(
+          failure.message,
+          equals('MFA enrollment could not be verified. Please try again.'),
+        );
+        // Lookup must not run when finalize did not return a fresh idToken.
+        expect(httpClient.requests, hasLength(1));
+      },
+    );
+
+    test(
+      'confirm enrollment with no TOTP in lookup returns mfa_lookup_missing_totp',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{'idToken': 'updated-token'}),
+          const _FakeResponse(<String, Object?>{
+            'users': <Object?>[
+              <String, Object?>{
+                'localId': 'user-1',
+                'mfaInfo': <Object?>[
+                  // SMS factor only — no totpInfo key.
+                  <String, Object?>{
+                    'mfaEnrollmentId': 'sms-1',
+                    'enrolledAt': '2026-04-30T12:00:00Z',
+                    'phoneInfo': <String, Object?>{},
+                  },
+                ],
+              },
+            ],
+          }),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final outcome = await client.confirmTotpEnrollment(
+          authorizationIdToken: 'user-id-token',
+          factorId: 'enrollment-session-1',
+          oneTimeCode: '123456',
+        );
+
+        expect(outcome, isA<FirebaseMfaConfirmFailed>());
+        final failure = outcome as FirebaseMfaConfirmFailed;
+        expect(failure.code, equals('mfa_lookup_missing_totp'));
+      },
+    );
+
+    test('listTotpFactors filters non-TOTP factors and parses fields', () async {
+      final httpClient = _RecordingHttpClient(<_FakeResponse>[
+        const _FakeResponse(<String, Object?>{
+          'users': <Object?>[
+            <String, Object?>{
+              'localId': 'user-1',
+              'mfaInfo': <Object?>[
+                <String, Object?>{
+                  'mfaEnrollmentId': 'totp-1',
+                  'displayName': 'Forge & Flow',
+                  'enrolledAt': '2026-04-30T12:00:00Z',
+                  'totpInfo': <String, Object?>{},
+                },
+                <String, Object?>{
+                  'mfaEnrollmentId': 'sms-1',
+                  'enrolledAt': '2026-04-29T12:00:00Z',
+                  'phoneInfo': <String, Object?>{},
+                },
+                // Missing mfaEnrollmentId — dropped.
+                <String, Object?>{'totpInfo': <String, Object?>{}},
+                'not-a-map',
+              ],
+            },
+          ],
+        }),
+      ]);
+      final client = IdentityToolkitFirebaseMfaClient(
+        apiKey: 'public-api-key',
+        httpClient: httpClient,
+      );
+
+      final factors = await client.listTotpFactors(
+        authorizationIdToken: 'user-id-token',
+        userId: 'user-1',
+      );
+
+      expect(factors, hasLength(1));
+      expect(factors.single.factorId, equals('totp-1'));
+      expect(factors.single.displayName, equals('Forge & Flow'));
+      expect(
+        factors.single.enrolledAt.toIso8601String(),
+        equals('2026-04-30T12:00:00.000Z'),
+      );
+      expect(
+        () => factors.add(
+          FirebaseMfaTotpFactor(
+            factorId: 'mutated',
+            enrolledAt: DateTime.utc(2026),
+          ),
+        ),
+        throwsUnsupportedError,
+      );
+      expect(
+        httpClient.requests.single.url.path,
+        equals('/v1/accounts:lookup'),
+      );
+    });
+
+    test('listTotpFactors with empty users returns empty list', () async {
+      final httpClient = _RecordingHttpClient(<_FakeResponse>[
+        const _FakeResponse(<String, Object?>{'users': <Object?>[]}),
+      ]);
+      final client = IdentityToolkitFirebaseMfaClient(
+        apiKey: 'public-api-key',
+        httpClient: httpClient,
+      );
+
+      final factors = await client.listTotpFactors(
+        authorizationIdToken: 'user-id-token',
+        userId: 'user-1',
+      );
+
+      expect(factors, isEmpty);
+    });
+
+    test('unenrollFactor posts mfaEnrollmentId and idToken verbatim', () async {
+      final httpClient = _RecordingHttpClient(<_FakeResponse>[
+        const _FakeResponse(<String, Object?>{}),
+      ]);
+      final client = IdentityToolkitFirebaseMfaClient(
+        apiKey: 'public-api-key',
+        httpClient: httpClient,
+      );
+
+      await client.unenrollFactor(
+        authorizationIdToken: 'user-id-token',
+        userId: 'user-1',
+        factorId: 'totp-to-revoke',
+      );
+
+      // ignore: close_sinks - fake request was already closed by the client.
+      final request = httpClient.requests.single;
+      expect(
+        request.url.path,
+        equals('/v2/accounts/mfaEnrollment:withdraw'),
+      );
+      expect(
+        request.url.queryParameters['key'],
+        equals('public-api-key'),
+      );
+      expect(request.jsonBody['idToken'], equals('user-id-token'));
+      expect(
+        request.jsonBody['mfaEnrollmentId'],
+        equals('totp-to-revoke'),
+      );
+      // No extra keys leaked into the request body.
+      expect(request.jsonBody.length, equals(2));
+    });
+
+    test(
+      'unenrollFactor 400 propagates IdentityToolkitFirebaseMfaError',
+      () async {
+        final httpClient = _RecordingHttpClient(<_FakeResponse>[
+          const _FakeResponse(<String, Object?>{
+            'error': <String, Object?>{'message': 'INVALID_ID_TOKEN'},
+          }, statusCode: 400),
+        ]);
+        final client = IdentityToolkitFirebaseMfaClient(
+          apiKey: 'public-api-key',
+          httpClient: httpClient,
+        );
+
+        final error = await _captureError(
+          client.unenrollFactor(
+            authorizationIdToken: 'expired-id-token',
+            userId: 'user-1',
+            factorId: 'totp-to-revoke',
+          ),
+        );
+
+        expect(error, isA<IdentityToolkitFirebaseMfaError>());
+        final firebaseError = error! as IdentityToolkitFirebaseMfaError;
+        expect(firebaseError.code, equals('invalid_id_token'));
+        expect(firebaseError.statusCode, equals(400));
+      },
+    );
+
+    test('every request sets Content-Type: application/json', () async {
+      final httpClient = _RecordingHttpClient(<_FakeResponse>[
+        const _FakeResponse(<String, Object?>{'users': <Object?>[]}),
+      ]);
+      final client = IdentityToolkitFirebaseMfaClient(
+        apiKey: 'public-api-key',
+        httpClient: httpClient,
+      );
+
+      await client.listTotpFactors(
+        authorizationIdToken: 'user-id-token',
+        userId: 'user-1',
+      );
+
+      final contentType = httpClient.requests.single.headers.contentType;
+      expect(contentType, isNotNull);
+      expect(contentType!.mimeType, equals('application/json'));
+    });
   });
+}
+
+Future<Object?> _captureError(Future<Object?> future) async {
+  try {
+    await future;
+    return null;
+  } catch (error) {
+    return error;
+  }
 }
 
 class _FakeResponse {
