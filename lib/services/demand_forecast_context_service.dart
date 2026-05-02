@@ -73,7 +73,7 @@ class DemandForecastContextService {
         baselineWeeklyAvgCovers: null,
         baselineWeeksRepresented: 0,
         coversSource: ForecastDemandSource.unavailable,
-        builtAt: DateTime.now().toIso8601String(),
+        builtAt: DateTime.now().toUtc().toIso8601String(),
       );
     }
 
@@ -103,7 +103,7 @@ class DemandForecastContextService {
         baselineWeeklyAvgCovers: null,
         baselineWeeksRepresented: 0,
         coversSource: ForecastDemandSource.unavailable,
-        builtAt: DateTime.now().toIso8601String(),
+        builtAt: DateTime.now().toUtc().toIso8601String(),
       );
     }
 
@@ -152,7 +152,7 @@ class DemandForecastContextService {
       recentTrendDeltaCovers: trendDelta,
       resolvedWeeklyForecastCovers: resolvedWeekly,
       coversSource: ForecastDemandSource.appDerivedFromHistoricalAverage,
-      builtAt: DateTime.now().toIso8601String(),
+      builtAt: DateTime.now().toUtc().toIso8601String(),
     );
   }
 

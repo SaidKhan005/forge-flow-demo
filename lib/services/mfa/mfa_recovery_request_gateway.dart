@@ -139,7 +139,7 @@ class RepositoryMfaRecoveryRequestGateway implements MfaRecoveryRequestGateway {
       topic: 'auth.user.mfa_recovery_requested',
       payload: <String, Object?>{
         'event_id': requestId,
-        'occurred_at': occurredAt.toIso8601String(),
+        'occurred_at': occurredAt.toUtc().toIso8601String(),
         'event_type': 'auth.user.mfa_recovery_requested',
         'user_id': target.userId,
         'user_email': target.email,

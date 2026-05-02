@@ -561,7 +561,7 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
       eventType: 'mfa_factor_revocation_cancelled',
       payload: <String, Object?>{
         'request_id': requestId,
-        'cancelled_at': cancelledAt.toIso8601String(),
+        'cancelled_at': cancelledAt.toUtc().toIso8601String(),
       },
     );
     return const MfaCancelFactorRemovalCompleted(cancelled: true);

@@ -72,7 +72,7 @@ class AppDataStatusService {
           final age = effectiveNow.difference(latestUpdated);
           if (age.inHours >= staleThresholdHours) {
             return AppDataStatus.stale(
-                timestamp: latestUpdated.toIso8601String());
+                timestamp: latestUpdated.toUtc().toIso8601String());
           }
         }
       }

@@ -100,7 +100,7 @@ class MfaRemovalWorker {
             'factor_id': request.factorId,
             'request_id': request.requestId,
             'requested_by_user_id': request.requestedByUserId,
-            'completed_at': now.toIso8601String(),
+            'completed_at': now.toUtc().toIso8601String(),
             'worker_owner': workerOwner,
           },
           adminReason: 'system.mfa_factor_removal_worker_complete',
@@ -113,7 +113,7 @@ class MfaRemovalWorker {
           payload: <String, Object?>{
             'event_id': request.requestId,
             'event_type': 'auth.user.mfa_factor_removed',
-            'occurred_at': now.toIso8601String(),
+            'occurred_at': now.toUtc().toIso8601String(),
             'operator_id': request.operatorId,
             'location_id': request.locationId,
             'user_id': request.userId,

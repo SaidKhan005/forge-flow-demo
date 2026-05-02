@@ -32,7 +32,7 @@ class WageStandardContextService {
   /// Resolves the current wage authority for a restaurant using the
   /// integration-first precedence waterfall.
   Future<WageStandardContext> resolve(String restaurantId) async {
-    final now = DateTime.now().toIso8601String();
+    final now = DateTime.now().toUtc().toIso8601String();
 
     // ── Step 1: labor-derived from actual dollars ─────────────────────────
     // Clean seam for Phase 8 labor adapters. Not available yet.
@@ -139,7 +139,7 @@ class WageStandardContextService {
       theoreticalFohLaborPct: fohPct,
       theoreticalBohLaborPct: bohPct,
       theoreticalLaborPct: fohPct + bohPct,
-      builtAt: DateTime.now().toIso8601String(),
+      builtAt: DateTime.now().toUtc().toIso8601String(),
     );
 
     await SqliteTargetProfileRepository.instance

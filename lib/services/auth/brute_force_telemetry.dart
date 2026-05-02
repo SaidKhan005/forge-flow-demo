@@ -48,7 +48,7 @@ class BruteForceTelemetryEvent {
 
   Map<String, Object?> toJson() => <String, Object?>{
     'event_type': eventType,
-    'occurred_at': occurredAt.toIso8601String(),
+    'occurred_at': occurredAt.toUtc().toIso8601String(),
     if (actorUserId != null) 'actor_user_id': actorUserId,
     if (targetUserId != null) 'target_user_id': targetUserId,
     if (operatorId != null) 'operator_id': operatorId,
