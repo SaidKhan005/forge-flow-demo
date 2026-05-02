@@ -123,18 +123,49 @@ proxy.
 
 ## P2 — Test coverage gaps
 
-| Surface | LOC | Test files |
-|---|---|---|
-| `lib/services/mfa/` | 2,933 | **0** |
-| `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 0 |
-| `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 0 |
-| `lib/admin/services/integration_admin_gateway.dart` | 311 | 0 |
-| 15 of 29 postgres repositories | 9,327 | 0 |
+| Surface | LOC | Test files | Line coverage |
+|---|---|---|---|
+| `lib/services/mfa/` | 2,933 | 4 (`test/mfa/`) + 4 top-level | **87.3%** (L5, 2026-05-02) |
+| `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 0 | 0% |
+| `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 0 | 0% |
+| `lib/admin/services/integration_admin_gateway.dart` | 311 | 0 | 0% |
+| 15 of 29 postgres repositories | 9,327 | 0 | 0% |
 
 **Action:** chip away during routine slices; not a launch blocker because
 the proxy-level live-binding tests (`mfa_live_binding_test.dart`,
 `auth_live_binding_test.dart`) cover the integration paths. Add unit
 coverage when modifying any of these surfaces.
+
+**MFA — partially resolved 2026-05-02 (L5).** New `test/mfa/` parcel
+adds:
+
+- `test/mfa/firebase_mfa_enrollment_service_test.dart` — boundary
+  contract: arg forwarding, payload projection, factor-id resolution
+  (firebase_factor_uid wins; non-string / empty / missing falls back),
+  failure verbatim, replay rejection, adapter-error rethrow.
+- `test/mfa/mfa_recovery_request_attempts_test.dart` — gateway email
+  normalization, invalid_email/400, rate-limit 429 with retryAfter,
+  silent (queued=false) responses for unknown / no-admins / no-location
+  targets, happy-path outbox enqueue, scaffold-failing 503, plus
+  in-memory rate-limiter rolloff + blank-IP collapse + email-cooldown
+  retryAfter.
+- `test/mfa/mfa_removal_worker_test.dart` — empty batch, multiple due,
+  Firebase admin failure isolated to one row, `markCompleted=0` race
+  skips audit/outbox, `workerOwner` propagation, optional outbox
+  graceful-degrade, `batchSize` plumbing.
+- `test/mfa/mfa_factor_verifier_test.dart` — Sha256RecoveryCodeHasher
+  output length / determinism / symmetric verify / JSON round-trip /
+  degenerate inputs / mismatched-length short-circuit; consumer
+  lowercase+dashed match, whitespace-Invalid burns budget, multi-factor
+  single-match, malformed-metadata silently skipped; limiter 59/61s
+  per-minute boundary + 4/5 daily-budget boundary + resetsAt formula.
+
+47 tests, `flutter analyze --fatal-infos` clean.
+
+**Remaining MFA gaps:** `identity_toolkit_firebase_mfa_client.dart`
+(production HTTP adapter), `proxy_mfa_*.dart` (proxy HTTP adapters) —
+both better covered by integration tests. No production code changed;
+no bugs surfaced.
 
 ## P3 — Unused public classes (4)
 
