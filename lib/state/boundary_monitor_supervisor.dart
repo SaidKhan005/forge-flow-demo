@@ -21,16 +21,36 @@
 //   stopped, new monitor spawned with the new tz; started if running).
 // - An id no longer in the input list has its monitor stopped and
 //   removed.
+//
+// HARD-H — durable backlog:
+// - The supervisor takes an optional [BoundaryEventOutbox]. When
+//   wired, every fire persists a row BEFORE the in-process callback
+//   runs and stamps it delivered AFTER the callback succeeds. A crash
+//   mid-fire leaves an undelivered row that the next supervisor
+//   `start()` replays via [drainBacklog].
+// - Two adapters ship today:
+//     * `SqliteBoundaryEventOutbox` — Flutter app shell (per-device
+//       backlog; the app cannot hold Postgres credentials per Hard
+//       Promise #7).
+//     * `PostgresBoundaryEventOutbox` — server-side / live-binding
+//       tests (wraps the canonical `event_outbox` table).
 
 import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import '../domain/models/restaurant_location.dart';
+import '../services/boundary_event_outbox.dart';
 import '../services/current_state_boundary_monitor.dart';
+
+// Re-export the boundary topic constant from the Postgres adapter so
+// existing imports in tests + docs continue to resolve.
+export '../services/postgres_boundary_event_outbox.dart' show boundaryRolloverEventTopic;
 
 typedef BoundaryMonitorFactory = CurrentStateBoundaryMonitor Function({
   required RestaurantLocation location,
   required Future<String?> Function(DateTime) resolveBusinessDate,
   required void Function() onBoundaryChanged,
+  BoundaryWillFireHook? onBoundaryWillFire,
+  BoundaryFiredHook? onBoundaryFired,
 });
 
 class BoundaryMonitorSupervisor {
@@ -38,25 +58,32 @@ class BoundaryMonitorSupervisor {
     required Future<String?> Function(DateTime) resolveBusinessDate,
     required void Function() onBoundaryChanged,
     BoundaryMonitorFactory? monitorFactory,
+    BoundaryEventOutbox? eventOutbox,
   })  : _resolveBusinessDate = resolveBusinessDate,
         _onBoundaryChanged = onBoundaryChanged,
-        _monitorFactory = monitorFactory ?? _defaultFactory;
+        _monitorFactory = monitorFactory ?? _defaultFactory,
+        _eventOutbox = eventOutbox;
 
   static CurrentStateBoundaryMonitor _defaultFactory({
     required RestaurantLocation location,
     required Future<String?> Function(DateTime) resolveBusinessDate,
     required void Function() onBoundaryChanged,
+    BoundaryWillFireHook? onBoundaryWillFire,
+    BoundaryFiredHook? onBoundaryFired,
   }) {
     return CurrentStateBoundaryMonitor(
       location: location,
       resolveBusinessDate: resolveBusinessDate,
       onBoundaryChanged: onBoundaryChanged,
+      onBoundaryWillFire: onBoundaryWillFire,
+      onBoundaryFired: onBoundaryFired,
     );
   }
 
   final Future<String?> Function(DateTime) _resolveBusinessDate;
   final void Function() _onBoundaryChanged;
   final BoundaryMonitorFactory _monitorFactory;
+  final BoundaryEventOutbox? _eventOutbox;
 
   final Map<String, CurrentStateBoundaryMonitor> _monitors =
       <String, CurrentStateBoundaryMonitor>{};
@@ -139,6 +166,45 @@ class BoundaryMonitorSupervisor {
     _monitors.clear();
   }
 
+  /// HARD-H — drain any rollover events that were persisted but not
+  /// marked delivered (e.g. the previous supervisor instance crashed
+  /// after persisting + before the callback completed). For each
+  /// pending row, fire `onBoundaryChanged` once and stamp the row
+  /// delivered so subsequent drains pass it over.
+  ///
+  /// No-op when the supervisor is constructed without a
+  /// [BoundaryEventOutbox]. Safe to call any time after [start];
+  /// production wiring should invoke this once at app launch /
+  /// supervisor restart, before the first periodic check fires.
+  Future<void> drainBacklog({int batchSize = 100}) async {
+    _ensureNotDisposed();
+    final outbox = _eventOutbox;
+    if (outbox == null) return;
+
+    final claimed = await outbox.claimPending(batchSize: batchSize);
+    for (final row in claimed) {
+      try {
+        _onBoundaryChanged();
+      } catch (_) {
+        // Callback failed AGAIN — leave the row claimed (the adapter
+        // either holds the lock until the reclaim window passes
+        // (Postgres) or simply leaves `delivered_at IS NULL` so the
+        // next session's drain re-tries (SQLite)). The HARD-H
+        // contract asks for "exactly once" on the SUCCESS path;
+        // repeated callback failures fall back to the at-least-once
+        // safety net.
+        continue;
+      }
+      try {
+        await outbox.markDelivered(row.eventId);
+      } catch (_) {
+        // markDelivered failed — the next drain will re-claim and
+        // re-fire. The boundary callback is idempotent because the
+        // monitor's `lastKnownBusinessDate` dedups within a process.
+      }
+    }
+  }
+
   // ── Internal ────────────────────────────────────────────────────────
 
   void _spawn(RestaurantLocation location) {
@@ -146,11 +212,35 @@ class BoundaryMonitorSupervisor {
       location: location,
       resolveBusinessDate: _resolveBusinessDate,
       onBoundaryChanged: _onBoundaryChanged,
+      onBoundaryWillFire: _eventOutbox == null
+          ? null
+          : (businessDate) => _persistBoundaryEvent(location, businessDate),
+      onBoundaryFired: _eventOutbox == null
+          ? null
+          : (eventId) => _markBoundaryEventDelivered(eventId),
     );
     _monitors[location.restaurantId] = monitor;
     if (_isRunning) {
       monitor.start();
     }
+  }
+
+  Future<String?> _persistBoundaryEvent(
+    RestaurantLocation location,
+    String businessDate,
+  ) async {
+    final outbox = _eventOutbox;
+    if (outbox == null) return null;
+    return outbox.persist(
+      restaurantId: location.restaurantId,
+      businessDate: businessDate,
+    );
+  }
+
+  Future<void> _markBoundaryEventDelivered(String eventId) async {
+    final outbox = _eventOutbox;
+    if (outbox == null) return;
+    await outbox.markDelivered(eventId);
   }
 
   void _ensureNotDisposed() {

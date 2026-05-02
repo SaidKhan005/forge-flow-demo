@@ -218,7 +218,10 @@ Widget _buildAppShellWithBoundaryMonitor() {
       ),
     ],
     child: MaterialApp(
-      home: AppShell(testBusinessDateResolver: (_) async => _testBusinessDate),
+      home: AppShell(
+        testBusinessDateResolver: (_) async => _testBusinessDate,
+        testDisableDefaultBoundaryEventOutbox: true,
+      ),
     ),
   );
 }

@@ -367,6 +367,42 @@ Future<void> _createAllTables(Database db) async {
     )
   ''');
 
+  // ── HARD-H — boundary monitor durable backlog ────────────────────────
+  // Per-device backlog used by `CurrentStateBoundaryMonitor` /
+  // `BoundaryMonitorSupervisor` so a foreground crash mid-fire does
+  // not drop a business-date rollover. The Flutter app cannot reach
+  // Postgres directly (Hard Promise #7 in CLAUDE.md), so this local
+  // SQLite table is the client-side analogue of the server-side
+  // `event_outbox` rollover topic. The monitor's purpose is local UI
+  // refresh, so per-device durability is sufficient.
+  //
+  // `picked_up_at` mirrors the Postgres `event_outbox.picked_up_at`
+  // claim marker. The drain stamps it inside a transaction so two
+  // concurrent `drainBacklog` calls (e.g. the unawaited startup drain
+  // racing the resume drain) never read the same row twice. A
+  // claimant that crashes between claim + mark-delivered leaves a
+  // stale `picked_up_at`; the reclaim window in
+  // `SqliteBoundaryEventOutbox` lets the next drain re-claim it.
+  await db.execute('''
+    CREATE TABLE boundary_event_outbox (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      restaurant_id  TEXT NOT NULL,
+      business_date  TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      picked_up_at   TEXT,
+      delivered_at   TEXT
+    )
+  ''');
+  // Drain claim leads with delivered_at so the index probe skips
+  // already-published rows; picked_up_at follows so the predicate
+  // `delivered_at IS NULL AND (picked_up_at IS NULL OR picked_up_at < ?)`
+  // can fold into the index walk; the trailing `(restaurant_id, id)`
+  // keeps the oldest-first replay contract per location.
+  await db.execute('''
+    CREATE INDEX ix_boundary_event_outbox_pending
+    ON boundary_event_outbox(delivered_at, picked_up_at, restaurant_id, id)
+  ''');
+
 }
 
 Future<void> _createTableIfNotExists(

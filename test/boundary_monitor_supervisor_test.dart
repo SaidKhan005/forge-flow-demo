@@ -53,6 +53,8 @@ const _gamma = RestaurantLocation(
     required RestaurantLocation location,
     required Future<String?> Function(DateTime) resolveBusinessDate,
     required void Function() onBoundaryChanged,
+    BoundaryWillFireHook? onBoundaryWillFire,
+    BoundaryFiredHook? onBoundaryFired,
   }) {
     spawnCount[location.restaurantId] =
         (spawnCount[location.restaurantId] ?? 0) + 1;
@@ -61,6 +63,8 @@ const _gamma = RestaurantLocation(
         location: location,
         resolveBusinessDate: (_) async => dates[location.restaurantId],
         onBoundaryChanged: onBoundaryChanged,
+        onBoundaryWillFire: onBoundaryWillFire,
+        onBoundaryFired: onBoundaryFired,
         clock: () => DateTime(2026, 4, 13, 10, 0),
         checkInterval: const Duration(hours: 99),
       ),
@@ -341,6 +345,8 @@ void main() {
         required RestaurantLocation location,
         required Future<String?> Function(DateTime) resolveBusinessDate,
         required void Function() onBoundaryChanged,
+        BoundaryWillFireHook? onBoundaryWillFire,
+        BoundaryFiredHook? onBoundaryFired,
       }) {
         return CurrentStateBoundaryMonitor(
           location: location,
@@ -349,6 +355,8 @@ void main() {
             fired[location.restaurantId] =
                 (fired[location.restaurantId] ?? 0) + 1;
           },
+          onBoundaryWillFire: onBoundaryWillFire,
+          onBoundaryFired: onBoundaryFired,
           clock: () => DateTime(2026, 4, 13, 10, 0),
           checkInterval: const Duration(hours: 99),
         );

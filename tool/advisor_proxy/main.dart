@@ -268,6 +268,11 @@ Future<void> main(List<String> args) async {
       'corpus_admin': 'postgres',
       'integration_admin': 'postgres_kms_stub',
       'feature_flags_admin': 'postgres',
+      // HARD-H — admin idempotency cache backed by
+      // `public.admin_request_idempotency`. Surfacing the binding
+      // here lets a deploy grep confirm dedup is wired before the
+      // first toggle POST hits.
+      'admin_request_idempotency': 'postgres',
       // HARD-C surfaces the admin CORS allow-list size so a deploy
       // grep can confirm the value without dumping origins to the log.
       'admin_cors_allow_list_count': adminCorsAllowList.length,
@@ -322,6 +327,11 @@ Future<void> main(List<String> args) async {
         passwordResetThrottleCounter:
             productionBindings.passwordResetThrottleCounter,
         adminCorsAllowList: adminCorsAllowList,
+        // HARD-H — admin idempotency cache wired in so duplicate
+        // POSTs (today: feature flags toggle) return the cached
+        // response instead of re-running the gateway.
+        adminRequestIdempotencyStore:
+            productionBindings.adminRequestIdempotencyStore,
       );
     } catch (error, stack) {
       log(

@@ -48,9 +48,11 @@ void main() {
     );
   });
 
-  String migration() => migrationFile.readAsStringSync();
-  String superAdminTeamGrantsMigration() =>
-      superAdminTeamGrantsMigrationFile.readAsStringSync();
+  String migration() =>
+      migrationFile.readAsStringSync().replaceAll('\r\n', '\n');
+  String superAdminTeamGrantsMigration() => superAdminTeamGrantsMigrationFile
+      .readAsStringSync()
+      .replaceAll('\r\n', '\n');
 
   group('user_roles.scope_type (9.0a)', () {
     test('column added with NOT NULL + CHECK in (operator_wide, location)', () {

@@ -111,6 +111,36 @@ Future<void> _migrateToV23(Database db) async {
   ]);
 }
 
+/// HARD-H — boundary monitor durable backlog.
+///
+/// Adds the per-device `boundary_event_outbox` table so a foreground
+/// crash mid-fire does not drop a business-date rollover. The Flutter
+/// app cannot reach Postgres directly (Hard Promise #7), so this is
+/// the client-side analogue of the server-side `event_outbox` rollover
+/// topic. The boundary monitor's purpose is local UI refresh, so
+/// per-device durability is sufficient.
+///
+/// `picked_up_at` mirrors the server-side claim marker so concurrent
+/// drains cannot double-fire — `SqliteBoundaryEventOutbox.claimPending`
+/// runs a transactional select + update that stamps `picked_up_at` on
+/// the rows it returns.
+Future<void> _migrateToV25(Database db) async {
+  await _createTableIfNotExists(db, 'boundary_event_outbox', '''
+    CREATE TABLE boundary_event_outbox (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      restaurant_id  TEXT NOT NULL,
+      business_date  TEXT NOT NULL,
+      created_at     TEXT NOT NULL,
+      picked_up_at   TEXT,
+      delivered_at   TEXT
+    )
+  ''');
+  await db.execute('''
+    CREATE INDEX IF NOT EXISTS ix_boundary_event_outbox_pending
+    ON boundary_event_outbox(delivered_at, picked_up_at, restaurant_id, id)
+  ''');
+}
+
 Future<void> _migrateToV24(Database db) async {
   await db.execute('''
     UPDATE week_records

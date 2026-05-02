@@ -53,7 +53,7 @@ void main() {
   group('user_roles scope-payload CHECK migration shape', () {
     final migration = File(
       'db/migrations/202604290101_phase_9_hierarchy_access_wiring.sql',
-    ).readAsStringSync();
+    ).readAsStringSync().replaceAll('\r\n', '\n');
 
     test('declares user_roles_scope_payload_check', () {
       expect(migration, contains('user_roles_scope_payload_check'));

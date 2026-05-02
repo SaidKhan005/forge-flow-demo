@@ -14,4 +14,4 @@ Removed entries live in git history; do not keep a "resolved" section here.
 
 | File | Notes | Discovered | Owning slice |
 |------|-------|------------|--------------|
-| `test/advisor_proxy_test.dart` | Windows checkout CRLF flake in the Phase 9 auth schema foundation group. Confirmed pre-existing on clean HEAD: `legacy users.role column is migrated into user_roles and dropped` and sibling SQL-shape assertions compare LF-only substrings against CRLF migration content. Not a B33 regression. | 2026-04-29 | test hygiene |
+| ~~`test/advisor_proxy_test.dart`~~ | ~~Windows checkout CRLF flake in the Phase 9 auth schema foundation group. Confirmed pre-existing on clean HEAD: `legacy users.role column is migrated into user_roles and dropped` and sibling SQL-shape assertions compare LF-only substrings against CRLF migration content. Not a B33 regression.~~ **resolved 2026-05-02 in HARD-H** — every `db/migrations/*.sql` reader in the test suite now normalizes `\r\n` → `\n` at read time per `docs/contracts/hardening_test_corrections_contract.md`. Helper available at `test/_helpers/migration_lf.dart`. | 2026-04-29 | test hygiene |

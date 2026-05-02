@@ -189,6 +189,7 @@ class EventOutboxRepository extends OperatorScopedRepository {
     required int batchSize,
     String? userId,
     Duration claimReclaimAfter = defaultClaimReclaimAfter,
+    String? topic,
   }) {
     if (batchSize <= 0) {
       throw ArgumentError.value(
@@ -211,6 +212,16 @@ class EventOutboxRepository extends OperatorScopedRepository {
       userId: userId,
     );
     final reclaimSeconds = claimReclaimAfter.inSeconds;
+    // HARD-H — when a single-topic consumer (e.g. the boundary
+    // backlog drain) calls claimBatch, push the topic filter inside
+    // the inner CTE. Without it, the consumer would lock + stamp
+    // `picked_up_at` on rows belonging to other topics (delaying
+    // their real consumers until the reclaim window) and a batch
+    // full of older non-matching rows could starve the consumer's
+    // own backlog. The filter is optional so existing
+    // multi-topic callers (Phase 10a bridge worker) keep their
+    // behavior.
+    final topicFilter = topic == null ? '' : '    and topic = @topic ';
     return withTenant<List<EventOutboxClaimedRow>>(ctx, (exec) async {
       final rows = await exec.query(
         'with claimed as ('
@@ -223,6 +234,7 @@ class EventOutboxRepository extends OperatorScopedRepository {
         // that means each delivered row would be republished every
         // <reclaim_window> for a week.
         '    and delivered_at is null '
+        '$topicFilter'
         "    and (picked_up_at is null or picked_up_at < now() - (@reclaim_seconds * interval '1 second')) "
         '  order by id '
         '  for update skip locked '
@@ -255,9 +267,43 @@ class EventOutboxRepository extends OperatorScopedRepository {
           'operator_id': operatorId,
           'batch_size': batchSize,
           'reclaim_seconds': reclaimSeconds,
+          if (topic != null) 'topic': topic,
         },
       );
       return rows.map(_projectClaimedRow).toList(growable: false);
+    });
+  }
+
+  /// Mark the row identified by [eventId] as delivered. Stamps
+  /// `delivered_at = now()` so subsequent [claimBatch] calls pass it
+  /// over (the claim predicate filters on `delivered_at IS NULL`).
+  ///
+  /// Used by the HARD-H boundary-monitor backlog drain in
+  /// [BoundaryMonitorSupervisor]. Phase 10a's Pub/Sub bridge will use
+  /// the same method to seal a row after a successful publish.
+  Future<int> markDelivered({
+    required String operatorId,
+    required String locationId,
+    required String eventId,
+    String? userId,
+  }) {
+    final ctx = TenantContext(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+    );
+    return withTenant<int>(ctx, (exec) async {
+      return exec.execute(
+        'update event_outbox '
+        'set delivered_at = now() '
+        'where id = @id::bigint '
+        'and operator_id = @operator_id::uuid '
+        'and delivered_at is null',
+        parameters: <String, Object?>{
+          'id': eventId,
+          'operator_id': operatorId,
+        },
+      );
     });
   }
 
