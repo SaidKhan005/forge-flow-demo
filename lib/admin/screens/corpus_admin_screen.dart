@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
+import 'operator_picker_screen.dart';
 
 /// Test seam: lets widget tests inject a synthetic upload byte source
 /// without driving the platform file picker. Production's
@@ -38,6 +39,14 @@ import '../services/corpus_admin_gateway.dart';
 /// launch slice exposes a "Choose demo upload" affordance that returns
 /// a fixture markdown body when this picker is left null.
 typedef CorpusUploadPicker = Future<UploadCommand?> Function(
+  BuildContext context,
+);
+
+/// Phase 11A.3a follow-up — opens [OperatorPickerScreen] (or a stub
+/// in tests) and resolves to the picked (operator, location) pair, or
+/// null if the admin cancels. Wired by `admin_routes.dart`'s
+/// `_buildCorpus`; tests can pass a deterministic stub.
+typedef OperatorPickerOpener = Future<OperatorPickerResult?> Function(
   BuildContext context,
 );
 
@@ -50,6 +59,7 @@ class CorpusAdminScreen extends StatefulWidget {
     this.idempotencyKeyGenerator,
     this.targetOperatorId,
     this.targetLocationId,
+    this.operatorPickerOpener,
   });
 
   final CorpusAdminGateway gateway;
@@ -73,12 +83,19 @@ class CorpusAdminScreen extends StatefulWidget {
   /// itself does NOT default these — the host wiring in
   /// [lib/admin/admin_routes.dart] picks the targets explicitly:
   /// the demo path passes the kDemoMode tenant seed; the live path
-  /// leaves them null until the operator-picker slice ships, and
-  /// the Graph candidates commit button is disabled with a banner
-  /// in that case so the operator cannot accidentally write
-  /// against a wrong tenant.
+  /// leaves them null until the admin uses the "Pick operator"
+  /// button (Phase 11A.3a follow-up), and the Graph candidates
+  /// commit button stays disabled in that case so the operator
+  /// cannot accidentally write against a wrong tenant.
   final String? targetOperatorId;
   final String? targetLocationId;
+
+  /// Phase 11A.3a follow-up — opens the operator picker modal. When
+  /// the admin confirms a pair, the screen state takes over the
+  /// effective target so the commit button enables. Null disables
+  /// the picker affordance (pre-follow-up tests; the banner still
+  /// renders in that path).
+  final OperatorPickerOpener? operatorPickerOpener;
 
   @override
   State<CorpusAdminScreen> createState() => _CorpusAdminScreenState();
@@ -95,6 +112,20 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   String? _actionError;
   bool _busy = false;
   int _idempotencyCounter = 0;
+
+  // Phase 11A.3a follow-up — once the admin confirms a pair through
+  // the operator picker, these override [widget.targetOperatorId] /
+  // [widget.targetLocationId] for the rest of the admin session. They
+  // are intentionally session-scoped (not durable) — durable
+  // persistence is a future slice.
+  String? _pickedOperatorId;
+  String? _pickedLocationId;
+  String? _pickedTargetLabel;
+
+  String? get _effectiveTargetOperatorId =>
+      _pickedOperatorId ?? widget.targetOperatorId;
+  String? get _effectiveTargetLocationId =>
+      _pickedLocationId ?? widget.targetLocationId;
 
   @override
   void initState() {
@@ -247,6 +278,19 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     );
   }
 
+  Future<void> _onPickOperatorPressed() async {
+    final opener = widget.operatorPickerOpener;
+    if (opener == null) return;
+    final result = await opener(context);
+    if (result == null || !mounted) return;
+    setState(() {
+      _pickedOperatorId = result.operatorId;
+      _pickedLocationId = result.locationId;
+      _pickedTargetLabel =
+          '${result.operatorBusinessName} — ${result.locationName}';
+    });
+  }
+
   Future<void> _onRollbackPressed(CorpusVersionRef target) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -355,8 +399,12 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                       gateway: widget.gateway,
                       editingEnabled: widget.editingEnabled,
                       newIdempotencyKey: _newIdempotencyKey,
-                      targetOperatorId: widget.targetOperatorId,
-                      targetLocationId: widget.targetLocationId,
+                      targetOperatorId: _effectiveTargetOperatorId,
+                      targetLocationId: _effectiveTargetLocationId,
+                      onPickOperator: widget.operatorPickerOpener == null
+                          ? null
+                          : _onPickOperatorPressed,
+                      pickedTargetLabel: _pickedTargetLabel,
                     ),
                   ],
                 ),
@@ -513,6 +561,8 @@ class _GraphCandidatesTab extends StatefulWidget {
     required this.newIdempotencyKey,
     required this.targetOperatorId,
     required this.targetLocationId,
+    required this.onPickOperator,
+    required this.pickedTargetLabel,
   });
 
   final CorpusAdminGateway gateway;
@@ -520,11 +570,23 @@ class _GraphCandidatesTab extends StatefulWidget {
   final String Function() newIdempotencyKey;
 
   /// When either is null the tab still renders the diff but disables
-  /// the commit button + shows a "select operator" banner. The host
+  /// the commit button + shows the "Pick operator" banner. The host
   /// in [admin_routes.dart] passes the demo tenant in demo mode and
-  /// leaves both null in live mode (until the operator picker ships).
+  /// leaves both null in live mode until the admin uses the picker
+  /// (Phase 11A.3a follow-up).
   final String? targetOperatorId;
   final String? targetLocationId;
+
+  /// Phase 11A.3a follow-up — opens the operator picker. Null when
+  /// the host did not wire a picker (legacy test path); the banner
+  /// still renders, the button stays disabled.
+  final VoidCallback? onPickOperator;
+
+  /// "Business name — Location name" for the actively-picked target,
+  /// when the admin resolved it through the picker this session.
+  /// Null when no pick has occurred yet (or the target came from a
+  /// host-supplied default).
+  final String? pickedTargetLabel;
 
   bool get hasTarget =>
       (targetOperatorId?.isNotEmpty ?? false) &&
@@ -896,7 +958,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
               margin: const EdgeInsets.only(bottom: 12),
               padding: const EdgeInsets.symmetric(
                 horizontal: 14,
-                vertical: 10,
+                vertical: 12,
               ),
               decoration: BoxDecoration(
                 color: AppColors.warningBadgeBg,
@@ -906,25 +968,89 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                 ),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Row(
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        size: 16,
+                        color: AppColors.warning,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Operator selection is required to commit graph '
+                          'decisions. Pick the (operator, location) pair '
+                          'this session should commit graph approvals '
+                          'against — the choice is remembered for the '
+                          'rest of the admin session so a super_admin '
+                          'cannot accidentally write against the wrong '
+                          'tenant.',
+                          style: AppTextStyles.body13(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      key: const Key(
+                        'admin_corpus_graph_pick_operator_button',
+                      ),
+                      onPressed:
+                          (widget.onPickOperator == null || _busy)
+                              ? null
+                              : widget.onPickOperator,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.sunset,
+                        foregroundColor: AppColors.backgroundSurface,
+                      ),
+                      icon: const Icon(Icons.swap_horiz, size: 16),
+                      label: const Text('Pick operator'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (widget.editingEnabled &&
+              widget.hasTarget &&
+              widget.pickedTargetLabel != null)
+            Container(
+              key: const Key('admin_corpus_graph_picked_target_indicator'),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.positive.withValues(alpha: 0.10),
+                border: Border.all(
+                  color: AppColors.positive.withValues(alpha: 0.6),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
                   const Icon(
-                    Icons.info_outline,
+                    Icons.check_circle_outline,
                     size: 16,
-                    color: AppColors.warning,
+                    color: AppColors.positive,
                   ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Operator selection is required to commit graph '
-                      'decisions in live mode. The operator picker '
-                      'lands in a follow-up slice; Graph candidates '
-                      'commits stay disabled here until then so a '
-                      'super_admin cannot accidentally write '
-                      'against the wrong tenant.',
+                      'Targeting ${widget.pickedTargetLabel} for this '
+                      'session.',
                       style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
+                        color: AppColors.positive,
                       ),
                     ),
                   ),
