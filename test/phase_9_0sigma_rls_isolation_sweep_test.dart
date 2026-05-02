@@ -22,11 +22,14 @@
 // covered for every assertion.
 //
 // Tables covered (B36-named, even though the B36 prose mentions "11
-// tables" while listing 13):
+// tables" while listing 13; Phase 9.0Σ.l adds proxy_requests +
+// feature_flags to close the cloud-foundation RLS gap from
+// docs/POST_HARDENING_FOLLOWUPS.md P1):
 //   audit_logs, rollup_daypart, rollup_business_day, rollup_week,
 //   rollup_accounting_period, rollup_month, rollup_quarter,
 //   rollup_year, advisor_conversation_log, service_principals,
-//   event_outbox, graph_nodes, graph_edges.
+//   event_outbox, graph_nodes, graph_edges, proxy_requests,
+//   feature_flags.
 //
 // `user_effective_locations` (added in
 // `202604290101_phase_9_hierarchy_access_wiring.sql`) is trigger-
@@ -316,6 +319,7 @@ class _TableSpec {
     required this.markerColumn,
     required this.markerSeedValueFor,
     required this.markerNewValue,
+    this.explainSqlOverride,
   });
 
   final String name;
@@ -354,6 +358,16 @@ class _TableSpec {
   // Value the cross-tenant UPDATE would try to write. Picking a
   // distinct value so a successful (forbidden) write would be visible.
   final String markerNewValue;
+  // Optional EXPLAIN SQL the index-posture test runs instead of the
+  // default `select 1 from <table> limit 1`. Tables whose RLS predicate
+  // cannot be folded into a single index without an explicit WHERE
+  // (`feature_flags`, whose USING is `operator_id IS NULL OR operator_id
+  // = wrapper` and whose indexes are partial unique on `(flag_name,
+  // operator_id)` etc.) set this so the planner is steered toward the
+  // tenant-leading partial unique index and the assertion sees an
+  // operator_id-bearing Index Cond. Default null = use the generic
+  // `select 1 ... limit 1` shape.
+  final String? explainSqlOverride;
 }
 
 const String _markerSeedAValue = '$_fixtureMarker:a';
@@ -734,6 +748,111 @@ final List<_TableSpec> _tableSpecs = <_TableSpec>[
     markerNewValue: _markerNewValue,
   ),
 
+  // ── proxy_requests (Phase 9.0Σ.l) ──
+  //
+  // Cloud-foundation idempotency table. RLS predicate is the strict
+  // (operator_id, location_id) shape so the policy folds into the
+  // tenant-leading PK from 202604250007. The fixture seeds a
+  // per-operator stable idempotency_key and uses `request_type` as
+  // the marker; cross-INSERT swaps idempotency_key to a cross-
+  // direction-distinct value so the unique constraint cannot reject
+  // the row before WITH CHECK gets a chance to fire.
+  _TableSpec(
+    name: 'proxy_requests',
+    insertSqlFor: (_) => 'insert into public.proxy_requests ('
+        'operator_id, location_id, idempotency_key, '
+        'request_type, usage_class) '
+        'values ('
+        '@operator_id::uuid, @location_id::uuid, '
+        '@idempotency_key, @request_type, @usage_class)',
+    insertParamsFor: _proxyRequestsInsertParams,
+    // Per-operator unique key is (operator_id, location_id,
+    // idempotency_key). The cross-INSERT clones crossOpId's params
+    // (so the composite FK to locations passes) and overrides
+    // idempotency_key to a direction-distinct value so the unique
+    // constraint cannot reject. request_type carries the caller's
+    // marker so admin verification can spot a forged row.
+    crossInsertParamsFor: (callerOpId, crossOpId) {
+      final params = _proxyRequestsInsertParams(crossOpId);
+      params['idempotency_key'] = _crossKey(callerOpId, crossOpId);
+      params['request_type'] = _markerForOp(callerOpId);
+      return params;
+    },
+    updateSqlFor: (_) => 'update public.proxy_requests '
+        'set request_type = @new_marker '
+        'where operator_id = @target_op::uuid',
+    updateParamsFor: (targetOpId) => <String, Object?>{
+      'new_marker': _markerNewValue,
+      'target_op': targetOpId,
+    },
+    deleteSqlFor: (_) => 'delete from public.proxy_requests '
+        'where operator_id = @target_op::uuid',
+    deleteParamsFor: (targetOpId) => <String, Object?>{
+      'target_op': targetOpId,
+    },
+    markerColumn: 'request_type',
+    markerSeedValueFor: _markerForOp,
+    markerNewValue: _markerNewValue,
+  ),
+
+  // ── feature_flags (Phase 9.0Σ.l) ──
+  //
+  // Cloud-foundation flag store with three logical scopes. The B36
+  // sweep only covers the operator-scoped slice (location_id NULL)
+  // because that is the slice where cross-tenant isolation makes
+  // sense — global rows (operator_id NULL) are visible to every
+  // tenant by design. The fixture's seeded rows are operator-scoped,
+  // so the cross-tenant SELECT predicate `where operator_id =
+  // @other_op` returns 0 rows under the new policy `(op IS NULL OR
+  // op = wrapper)` because @other_op is concrete and not the caller.
+  //
+  // EXPLAIN steering: feature_flags has no plain operator_id-leading
+  // B-tree index — its three partial unique indexes lead with
+  // `flag_name`. The default `select 1 from feature_flags limit 1`
+  // can fall back to seq scan even with seqscan/bitmapscan disabled
+  // because PG cannot combine disjoint partial indexes for the OR
+  // predicate. Pre-targeting `where operator_id = wrapper` matches
+  // the operator_scope partial's predicate (`operator_id is not
+  // null`), giving the planner a tenant-leading index path whose
+  // Index Cond mentions operator_id.
+  _TableSpec(
+    name: 'feature_flags',
+    insertSqlFor: (_) => 'insert into public.feature_flags ('
+        'operator_id, location_id, flag_name) '
+        'values (@operator_id::uuid, null, @flag_name)',
+    insertParamsFor: _featureFlagsInsertParams,
+    // Per-operator-scope unique partial index is (flag_name,
+    // operator_id) where operator_id is not null and location_id is
+    // null. Cloning crossOpId's params and overriding flag_name with
+    // the caller's marker keeps the partial unique constraint happy
+    // (callerMarker, crossOpId) is distinct from crossOpId's own
+    // seed (crossMarker, crossOpId). WITH CHECK is the only barrier.
+    crossInsertParamsFor: (callerOpId, crossOpId) =>
+        _cloneTargetParamsWithCallerMarker(
+      targetParams: _featureFlagsInsertParams(crossOpId),
+      markerColumn: 'flag_name',
+      callerOpId: callerOpId,
+    ),
+    updateSqlFor: (_) => 'update public.feature_flags '
+        'set flag_name = @new_marker '
+        'where operator_id = @target_op::uuid',
+    updateParamsFor: (targetOpId) => <String, Object?>{
+      'new_marker': _markerNewValue,
+      'target_op': targetOpId,
+    },
+    deleteSqlFor: (_) => 'delete from public.feature_flags '
+        'where operator_id = @target_op::uuid',
+    deleteParamsFor: (targetOpId) => <String, Object?>{
+      'target_op': targetOpId,
+    },
+    markerColumn: 'flag_name',
+    markerSeedValueFor: _markerForOp,
+    markerNewValue: _markerNewValue,
+    explainSqlOverride:
+        'explain (format json) select 1 from public.feature_flags '
+        'where operator_id = public.app_current_operator() limit 1',
+  ),
+
   // ── graph_edges ──
   //
   // The seed (`b36_seed_a` / `b36_seed_b`) and the cross-INSERT
@@ -840,6 +959,32 @@ Map<String, Object?> _eventOutboxInsertParams(String opId) =>
       'payload': '{"b36": "${_markerForOp(opId)}"}',
     };
 
+Map<String, Object?> _proxyRequestsInsertParams(String opId) {
+  final locId = opId == _opA ? _locA : _locB;
+  final shortTail = opId == _opA ? 'a1' : 'b1';
+  return <String, Object?>{
+    'operator_id': opId,
+    'location_id': locId,
+    // Per-operator stable seed for the (operator_id, location_id,
+    // idempotency_key) UNIQUE; cross-INSERT swaps to a direction-
+    // distinct value so unique cannot reject before WITH CHECK fires.
+    'idempotency_key': 'b36_seed_$shortTail',
+    'request_type': _markerForOp(opId),
+    // Free-form text bucket; the cloud-foundation usage_caps key uses
+    // arbitrary class names, so any non-empty string is valid here.
+    'usage_class': 'b36-sweep',
+  };
+}
+
+Map<String, Object?> _featureFlagsInsertParams(String opId) =>
+    <String, Object?>{
+      'operator_id': opId,
+      // location_id stays NULL via the SQL literal, so this row lands
+      // in the operator-scope partial unique index. flag_name doubles
+      // as the marker AND the per-operator-scope unique key.
+      'flag_name': _markerForOp(opId),
+    };
+
 Map<String, Object?> _graphNodeInsertParams(String opId) {
   // Used only by crossInsertParamsFor (graph_nodes seed lives in
   // _seedBaseFixtures); the node_key here is overridden in the cross
@@ -926,6 +1071,15 @@ Future<void> _cleanupFixtures(PostgresExecutor exec) async {
     'graph_edges',
     'graph_nodes',
     'audit_logs',
+    // Cloud-foundation tables added in Phase 9.0Σ.l. proxy_requests
+    // composite-FKs to locations; feature_flags single-column FKs to
+    // operators. Both delete cleanly via the operator_id::text predicate
+    // since the sweep only seeds operator-scoped feature_flags rows
+    // (NULL operator_id global rows would be excluded by `is null`
+    // semantics on `operator_id::text in (...)` and would survive
+    // cleanup, which is the desired behavior).
+    'proxy_requests',
+    'feature_flags',
     'event_outbox',
     'service_principals',
     'advisor_conversation_log',
@@ -1365,8 +1519,12 @@ Future<void> _expectTenantLeadingIndexPlan({
         // works on advisor_conversation_log (column-restricted
         // grants for service_role); the RLS predicate is appended
         // automatically, exercising the operator_id-leading index.
-        'explain (format json) select 1 from public.${spec.name} '
-        'limit 1',
+        // Tables whose RLS predicate cannot be folded into a single
+        // index without an explicit WHERE (feature_flags) set
+        // [explainSqlOverride] to steer the planner.
+        spec.explainSqlOverride ??
+            'explain (format json) select 1 from public.${spec.name} '
+                'limit 1',
       );
       expect(rows, hasLength(1));
       return rows.single['QUERY PLAN'];

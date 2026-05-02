@@ -7,10 +7,11 @@ flagged.
 
 ## P0 — Production1 migration apply gap
 
-**21 migrations pending Production1 apply** (`202604280014` through
-`202605021000`). PROJECT_TRACKER had said 8; the actual gap is 21 because
-HARD-B/HARD-H, all 11A admin column additions, B41/B42/B43, and the audit
-privacy role are queued.
+**22 migrations pending Production1 apply** (`202604280014` through
+`202605021500`). PROJECT_TRACKER had said 8; the actual gap is 22 because
+HARD-B/HARD-H, all 11A admin column additions, B41/B42/B43, the audit
+privacy role, and Phase 9.0Σ.l (RLS depth on `proxy_requests` +
+`feature_flags`) are queued.
 
 Files to apply (lex order):
 
@@ -36,33 +37,63 @@ Files to apply (lex order):
 202605020452_hardening_auth_login_attempts.sql                   (HARD-B)
 202605020500_hardening_auth_rls_to_wrappers.sql                  (HARD-F)
 202605021000_phase_hardh_admin_idempotency.sql                   (HARD-H)
+202605021500_phase_9_0sigma_l_rls_depth.sql                      (9.0Σ.l)
 ```
 
 **Action:** schedule a Production1 apply event under existing runbook
 (`runbooks/phase_9_production1_migration_apply_runbook.md`) — does NOT
 require a new runbook; the lex-order pattern is the same.
 
-## P1 — `proxy_requests` and `feature_flags` lack RLS enable
+## P1 — `proxy_requests` and `feature_flags` lack RLS enable — RESOLVED 2026-05-02 (slice 9.0Σ.l)
 
 Both tables (created in `202604250005_advisor_cloud_foundation.sql`) carry
-operator scope but never call `ALTER TABLE … ENABLE ROW LEVEL SECURITY`.
-Today's posture is that `service_role` reads/writes them without per-tenant
-isolation — protected only by application-layer scoping in
-`OperatorScopedRepository`.
+operator scope. The original audit prose said RLS was never enabled, but
+re-reading the cloud-foundation migration shows RLS *was* enabled —
+both tables carried permissive `*_service_role_all using (true)` stubs
+that did not assert tenant isolation. Today's posture was therefore
+application-layer only — `OperatorScopedRepository` injects the tenant
+predicate, and the database-side policies allowed everything for the
+service_role grant. The actual gap was the policy bodies, not the
+RLS enable.
 
-**Action:** new migration (slice-shaped: ~30 LOC) that enables RLS on both
-and adds wrapper-based policies. Pair with index review for
-`proxy_requests` (currently has no indexes; idempotency lookup is a full
-table scan). Suggest sequencing as a `9.0Σ.l` patch alongside the next
-prod apply event.
+Resolution: `db/migrations/202605021500_phase_9_0sigma_l_rls_depth.sql`
+re-asserts RLS on both tables (idempotent on top of 202604250005),
+drops the permissive stubs, and adds wrapper-based per-tenant policies
+that fold into the tenant-leading PK / partial unique indexes:
+
+- `proxy_requests_tenant_isolation`: `(operator_id, location_id) =
+  (wrapper, wrapper)` — folds into the `(operator_id, location_id, …)`
+  PK from `202604250007_advisor_rls_index_hardening.sql`. No index
+  changes were needed; `proxy_requests` already had tenant-leading PK
+  + the `(operator_id, location_id, idempotency_key)` UNIQUE +
+  `(operator_id, location_id, created_at)` index from 11a.11c.6.
+- `feature_flags_global_or_tenant`: `op IS NULL OR op = wrapper` for
+  USING (so launch-wide kill switches stay readable from every tenant
+  context); `op IS NOT NULL AND op = wrapper` for WITH CHECK (tenants
+  cannot mutate global rows; super_admin paths elevate to forge_admin).
+
+Index posture compliance: both tables already lead every B-tree index
+with `operator_id` (or with the partial-index pattern for
+`feature_flags`); this slice ships zero new index DDL. The original
+"no indexes on proxy_requests" claim in the audit was incorrect —
+that index audit was settled in 11a.11c.6.
+
+Test coverage:
+- `test/migrations/202605021500_rls_depth_test.dart` — local-framework
+  shape coverage (RLS enabled, stubs dropped, wrapper-based policies
+  present, no bare GUC reads).
+- `test/phase_9_0sigma_rls_isolation_sweep_test.dart` — extended to
+  include both tables in the live cross-tenant SELECT/INSERT/UPDATE/
+  DELETE sweep (passive-by-default; runs only with
+  `FORGE_FLOW_RUN_STAGING_RLS_SWEEP=true`).
 
 ## P1 — Migration cutoff lint bumped, runbook needs companion update
 
 `scripts/postgres_staging_setup.ps1` line 49 cutoff bumped to
-`202605021000_phase_hardh_admin_idempotency.sql` in this audit pass. The
-companion `runbooks/phase_9_production1_migration_apply_runbook.md` may
-mention the older cutoff in narrative form — verify and amend before the
-next apply event.
+`202605021500_phase_9_0sigma_l_rls_depth.sql` (slice 9.0Σ.l).
+The companion `runbooks/phase_9_production1_migration_apply_runbook.md`
+may mention an older cutoff in narrative form — verify and amend before
+the next apply event.
 
 ## P2 — Phase 11A.3a corpus version ledger admin (graph commit blocker)
 
