@@ -1,6 +1,6 @@
 # Forge & Flow Project Tracker
 
-Updated: 2026-05-01 (9.UX family closed; 11A.3/11A.4/7.58 batch queued)
+Updated: 2026-05-02 (post-batch lean: 11A.3b/4b/4c/7/UX.health, G.2, 7.58.5 accepted; hardening sprint underway)
 Owner: You
 Execution model: We think, Claude codes
 
@@ -112,22 +112,16 @@ WeeklyPlanSnapshot -> Shift -> Variance -> History -> Learn.
 
 ## Now
 
-- **Current phase:** `9` framework + `9.0Σ.b-k` accepted on 2026-04-29.
-  `9.UX.*` family fully shipped on operator surface; `11A.0-6` foundation
-  active; `7.58` queued first per Hard Promise #3.
-- **Recent acceptances** (last batch — see phase doc Frontend Exposure +
-  walkthroughs for detail):
-  - `9.UX.grant-payload.0` per-grant scope payload (commit `7bc4f4e`)
-  - `9.UX.3` Settings Team explain-permissions surface (commit `1eea31d`)
-  - `9.UX.6` self-service Audit Log viewer (commit `a56fdac`)
-  - `9.UX.7` self-service password reset (commit `3b3b17d`)
-- **Operational gates pending live apply/deploy:** `202604280014` (B46),
-  `202604290000` (B41), `202604290001` (`9.UX.4` hierarchy wiring);
-  proxy redeploy with `account_info: postgres` binding (unblocks
-  `9.UX.account-info` device QA); proxy redeploy with B48 reset-confirm
-  route (unblocks `9.UX.7` live email-link reset); Cloud Run audit
-  anchor deploy (B43); B44/B45/B47 producer wiring (unblocks
-  `11A.5`/`11A.6`).
+- **Current phase:** `9` framework + `9.0Σ.b-k` accepted; `9.UX.*` family
+  shipped on operator surface; `11A.0-6` foundation active. Latest batch
+  accepted (2026-05-01 → 2026-05-02): `11A.3b` corpus admin, `11A.4b/4c`
+  integrations + KMS, `11A.7` feature flags admin, `11A.UX.health` admin
+  Health surface, `G.2` per-location boundary monitor, `7.58.5` variance
+  row purity. Next phase: hardening sprint (no new slices).
+- **Operational gates pending live apply/deploy:** see
+  `docs/phases/phase_9/phase_9_execution_backlog.md` `Remaining Live-Closeout
+  Gates` for B41, B43, B44/B45/B47, B46, B48 status. `B44/B45/B47` producer
+  wiring still gates `11A.5`/`11A.6`.
 - **`cutover.0a` + `cutover.0a.pg` complete 2026-05-01** per
   `runbooks/cmk_provisioning_runbook.md`. End state: vault
   `forgeflow-prod-kv` (Premium, RBAC, 90d soft-delete + purge
@@ -238,8 +232,11 @@ Slice scopes live in their phase plans. Architecture rationale lives in
 | `9.0-9.10` (incl. `9.0a`) | accepted; Cloud Armor monitored, iOS physical deferred | `phase_9/phase_9_auth_plan.md` + `phase_9/phase_9_execution_backlog.md` |
 | `9.0 Sigma b-k` | complete on master and applied to staging + Production1 | `phase_9/phase_9_scalability_decisions_2026-04-27.md` + backlog B23-B32 |
 | `9.UX.*` family | operator surface complete; staging proxy redeployed 2026-05-01 (rev `00032-lgs`) with `account_info: postgres` + B48 `password_reset_confirm: postgres` bindings live; Production1 redeploy queued behind Production1 GCP provisioning | `phase_9/phase_9_auth_plan.md` `Frontend Exposure` + `runbooks/proxy_redeploy_reset_confirm_account_info_runbook.md` |
-| `11A.0-6` | active; accepted: `11A.0`/`1`/`2`; owed: `11A.3-6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
-| `7.58`, `7.61` | queued | their respective plans |
+| `11A.0-6` | active; accepted: `11A.0`/`1`/`2`/`3b`/`4b`/`4c`; owed: `11A.3a`/`5`/`6` (`11A.5`/`11A.6` blocked on B44/B45/B47 producers) | `phase_11A_operations_console_plan.md` |
+| `11A.7`, `11A.UX.health` | accepted on master 2026-05-02 (PRs #40, #41) | `phase_11A_operations_console_plan.md` |
+| `G.2` (per-location boundary monitor) | accepted on master 2026-05-02 | inline (hardening lane, no phase doc) |
+| `7.58.5` (variance row purity) | accepted (sub-slice of `7.58`) | inline |
+| `7.58`, `7.61` | queued; `7.58.0` is the first logic-deciding slice per HP #3 | their respective plans |
 | `10a`, `10.5` | queued | their respective plans |
 | `9.5`, `9.75` | queued | their respective plans |
 | `8` | queued | phase 8 plan |
