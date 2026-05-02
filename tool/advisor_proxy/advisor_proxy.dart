@@ -68,9 +68,12 @@ import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:path/path.dart' as p;
 import 'package:pointycastle/pointycastle.dart' as pc;
 
+import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
+
 import '../advisor_corpus/advisor_corpus.dart' show CorpusManifest, defaultManifestPath;
 import 'log.dart';
 import 'proxy_idempotency_cache.dart';
+import 'realtime_route.dart' show handleRealtimeUpgrade, realtimeSubscribePath;
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
     show DependencyTimeoutException;
 export 'log.dart'
@@ -6500,6 +6503,11 @@ Future<void> routeRequest(
   // (today: `FeatureFlagToggleIdempotencyCache`) is the only
   // protection against duplicate POST execution.
   AdminRequestIdempotencyStore? adminRequestIdempotencyStore,
+  // Phase 10a.0 — realtime publisher the WebSocket route subscribes
+  // to. Optional: when null, `/v1/realtime` returns 503 so unauth
+  // probes still work and existing tests do not need to plumb a
+  // publisher through every routeRequest call site.
+  InProcessRealtimePublisher? realtimePublisher,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -6643,6 +6651,28 @@ Future<void> routeRequest(
             '11a.10a scaffold smoke. No provider call performed. '
             'Budgets and rate limits land in 11a.10b.',
       });
+      return;
+    }
+
+    // Phase 10a.0 — realtime push WebSocket. Authenticates via the
+    // standard `requireOperatorContext` path (operator_id from JWT,
+    // never from URL). Returns 503 when the publisher is not
+    // installed so unauth probes (`/health`, `/healthz`, `/readyz`)
+    // do not regress on environments that ship without the bridge.
+    if (path == realtimeSubscribePath) {
+      if (realtimePublisher == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'realtime_publisher_not_configured',
+          'message':
+              'route requires an InProcessRealtimePublisher to be installed',
+        });
+        return;
+      }
+      await handleRealtimeUpgrade(
+        request: request,
+        authGuard: authGuard,
+        publisher: realtimePublisher,
+      );
       return;
     }
 

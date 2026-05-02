@@ -1,7 +1,18 @@
 # Phase 10a - Shared Multi-Device State (V1)
 
-Updated: 2026-04-26
-Status: Planned, ready to build against the locked stack
+Updated: 2026-05-02
+Status: Active. `10a.0` realtime push channel scaffold accepted (NOTIFY
+→ `EventOutboxRepository.claimBatch` → `RealtimeEventPublisher`
+in-process binding → `/v1/realtime` WebSocket → client
+`RealtimeSubscription` with reconnect/back-off; `WeekDataNotifier`
+hook for `rollup.invalidate.variance_week`). See
+`docs/_walkthroughs/10a.0.md`. Cloud Pub/Sub publisher, retry ledger,
+dead-letter cap, retention sweep, yellow/red tripwires, and
+`last_event_id` replay are queued Phase 10a follow-ups; they layer on
+the `RealtimeEventPublisher` seam without touching the bridge worker
+or the WebSocket route. UX sub-slice family `10a.UX.0-1` (sync-state
+badge, peer-edit toast, freshness rows) wires the shipped subscription
+into the operator shell.
 Owner: Future shared-state lane
 
 ## 2026-04-28 - Phase 9 Foundation Available
