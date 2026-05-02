@@ -174,6 +174,23 @@ abstract class ProxyConfigNames {
   /// Accepted values (case-insensitive): `true`/`1`/`on` enable;
   /// anything else (including unset) keeps the flag off.
   static const String cacheTelemetryV2 = 'CACHE_TELEMETRY_V2';
+
+  /// Phase 11A.4c — GCP project hosting the proxy + Secret Manager.
+  /// Required when any `kms_real_provider_<kind>_enabled` flag is ON;
+  /// optional at config-parse time so dev / test contexts that run
+  /// against the stub can still boot.
+  static const String gcpProjectId = 'GCP_PROJECT_ID';
+
+  /// Phase 11A.4c — Cloud Run region (e.g. `northamerica-northeast2`).
+  /// Required for the Cloud Run Admin API call that forces a new
+  /// revision after a runtime-read key rotates.
+  static const String cloudRunRegion = 'CLOUD_RUN_REGION';
+
+  /// Phase 11A.4c — Cloud Run service name (e.g.
+  /// `forge-flow-advisor-proxy`). The same service that's running
+  /// the proxy — `CloudRunAdminClient` patches this service to bump
+  /// its revision when a runtime-read API key rotates.
+  static const String cloudRunServiceName = 'CLOUD_RUN_SERVICE_NAME';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -195,6 +212,9 @@ class ProxyConfig {
     required this.firebaseProjectId,
     required this.firebaseEmailActionContinueUrl,
     required this.cacheTelemetryV2,
+    required this.gcpProjectId,
+    required this.cloudRunRegion,
+    required this.cloudRunServiceName,
   }) : _secrets = Map<String, String>.unmodifiable(secrets);
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
@@ -215,6 +235,18 @@ class ProxyConfig {
   /// telemetry writes. Wired from [ProxyConfigNames.cacheTelemetryV2].
   /// `false` until the table is observed for one drift cycle in staging.
   final bool cacheTelemetryV2;
+
+  /// Phase 11A.4c — GCP project hosting Cloud Run + Secret Manager.
+  /// Optional at parse time so dev contexts boot; production bootstrap
+  /// requires it when any `kms_real_provider_*_enabled` flag is ON.
+  final String? gcpProjectId;
+
+  /// Phase 11A.4c — Cloud Run region (e.g. `northamerica-northeast2`).
+  final String? cloudRunRegion;
+
+  /// Phase 11A.4c — Cloud Run service name. The same service that's
+  /// running this proxy.
+  final String? cloudRunServiceName;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -276,12 +308,65 @@ class ProxyConfig {
     final cacheTelemetryV2 = _parseBoolFlag(
       environment[ProxyConfigNames.cacheTelemetryV2],
     );
+    String? trimmedOrNull(String? raw) =>
+        (raw == null || raw.trim().isEmpty) ? null : raw.trim();
+    final gcpProjectIdValue =
+        trimmedOrNull(environment[ProxyConfigNames.gcpProjectId]);
+    final cloudRunRegionValue =
+        trimmedOrNull(environment[ProxyConfigNames.cloudRunRegion]);
+    final cloudRunServiceNameValue =
+        trimmedOrNull(environment[ProxyConfigNames.cloudRunServiceName]);
+
+    // Phase 11A.4c — GCP / Cloud Run config is all-or-nothing.
+    // Setting `GCP_PROJECT_ID` alone would enable real Secret Manager
+    // writes via the KMS lane router while leaving the Cloud Run
+    // admin client as a no-op — runtime-read rotations (anthropic /
+    // voyage / gemini) would land in Secret Manager but never trigger
+    // an instance restart, and the audit row would carry a synthetic
+    // `no-op-cloud-run:...` operation name. Fail closed at startup
+    // instead.
+    final gcpVarsPresent = <bool>[
+      gcpProjectIdValue != null,
+      cloudRunRegionValue != null,
+      cloudRunServiceNameValue != null,
+    ];
+    final anyPresent = gcpVarsPresent.contains(true);
+    final allPresent = !gcpVarsPresent.contains(false);
+    if (anyPresent && !allPresent) {
+      final missingNames = <String>[];
+      if (gcpProjectIdValue == null) {
+        missingNames.add(ProxyConfigNames.gcpProjectId);
+      }
+      if (cloudRunRegionValue == null) {
+        missingNames.add(ProxyConfigNames.cloudRunRegion);
+      }
+      if (cloudRunServiceNameValue == null) {
+        missingNames.add(ProxyConfigNames.cloudRunServiceName);
+      }
+      throw ProxyConfigError(
+        'advisor proxy GCP / Cloud Run config is partial: '
+        '${missingNames.length} missing name(s): ${missingNames.join(', ')}. '
+        'All three of ${ProxyConfigNames.gcpProjectId}, '
+        '${ProxyConfigNames.cloudRunRegion}, and '
+        '${ProxyConfigNames.cloudRunServiceName} must be set together '
+        '(real Phase 11A.4c KMS rollout) or all unset (dev / scaffold). '
+        'Setting only a subset would cause runtime-read key rotations '
+        'to land in Secret Manager without restarting Cloud Run '
+        'instances, and the audit log would record synthetic '
+        'no-op operation names instead of real ones.',
+        missingSecretNames: List<String>.unmodifiable(missingNames),
+      );
+    }
+
     return ProxyConfig._(
       port: port,
       secrets: loaded,
       firebaseProjectId: firebaseProjectId,
       firebaseEmailActionContinueUrl: firebaseEmailActionContinueUrl,
       cacheTelemetryV2: cacheTelemetryV2,
+      gcpProjectId: gcpProjectIdValue,
+      cloudRunRegion: cloudRunRegionValue,
+      cloudRunServiceName: cloudRunServiceNameValue,
     );
   }
 

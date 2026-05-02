@@ -1,15 +1,14 @@
 // Phase 11A.4 — KMS stub provider.
 //
-// Provider abstraction for "write a plaintext credential to KMS,
-// receive an opaque pointer in return". The launch admin flow runs
-// against the stub: it generates a deterministic
-// `kms://stub/<uuid>` reference, logs nothing about plaintext (the
-// stub never echoes the secret), and lets the proxy persist the
-// pointer + masked-display string in `provider_credentials`.
+// In-memory implementation of [KmsProvider] used by the launch demo,
+// widget tests, and the per-lane KMS router for any lane whose
+// `kms_real_provider_<kind>_enabled` feature flag is OFF. Generates a
+// deterministic `kms://stub/<uuid>` reference, never echoes plaintext.
 //
-// Production swaps in a real implementation that writes to Cloud Run
-// KMS / Azure Key Vault and returns the live secret reference. The
-// admin path stays identical — only the binding changes.
+// Production paths run [GcpSecretManagerKmsProvider] for any lane
+// whose flag has been flipped on. The two providers share the
+// [KmsProvider] contract so the admin gateway code path stays
+// identical — only the binding inside [KmsLaneRouter] changes.
 //
 // The stub also models a forced-failure mode (`failNextWrite`) so the
 // rotate route's audit-on-failure path can be exercised end-to-end
@@ -17,40 +16,14 @@
 
 import 'dart:math';
 
-class KmsWriteResult {
-  const KmsWriteResult({
-    required this.secretName,
-    required this.maskedDisplay,
-  });
+import 'kms_provider.dart';
 
-  /// Opaque KMS pointer the proxy persists in
-  /// `provider_credentials.kms_secret_name`. Format depends on the
-  /// implementation; the stub uses `kms://stub/<uuid>`.
-  final String secretName;
-
-  /// Display string the admin console renders. Built from the first
-  /// few + last few characters of the plaintext so an operator can
-  /// recognise the rotated key without leaking it.
-  final String maskedDisplay;
-}
-
-abstract class KmsProvider {
-  /// Persist [plaintext] under [logicalKeyKind] and return an opaque
-  /// pointer plus a masked display string. Implementations must NOT
-  /// log [plaintext] — failing closed is preferable to leaking the
-  /// secret.
-  Future<KmsWriteResult> writeSecret({
-    required String logicalKeyKind,
-    required String plaintext,
-  });
-}
-
-class KmsWriteFailure implements Exception {
-  const KmsWriteFailure(this.message);
-  final String message;
-  @override
-  String toString() => 'KmsWriteFailure: $message';
-}
+// Re-export the abstract contract so existing consumers that
+// `import 'kms_stub_provider.dart'` keep getting [KmsProvider],
+// [KmsWriteResult], and [KmsWriteFailure] without changing their
+// imports. New consumers (production providers, the lane router)
+// import `kms_provider.dart` directly.
+export 'kms_provider.dart';
 
 /// Stub provider used by the launch demo + widget tests + the
 /// pre-production proxy binding. Returns a deterministic

@@ -27,7 +27,11 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/org_units_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/password_history_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/provider_credentials_repository.dart';
+import 'package:forge_and_flow/infrastructure/cloud_run/cloud_run_admin_client.dart';
+import 'package:forge_and_flow/infrastructure/kms/gcp_secret_manager_kms_provider.dart';
+import 'package:forge_and_flow/infrastructure/kms/kms_lane_router.dart';
 import 'package:forge_and_flow/infrastructure/kms/kms_stub_provider.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/kms_rollout_flag.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/role_permissions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/roles_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/usage_caps_repository.dart';
@@ -320,6 +324,12 @@ ProxyProductionBindings buildProxyProductionBindings(
   // adapter instances are stable across requests.
   final llmProviders = buildProxyLlmProviders(config);
 
+  // Phase 11A.4c — single OAuth token provider shared between the
+  // GCP Secret Manager client and the Cloud Run admin client.
+  // Constructed here (NOT inside the helpers) so the cache is
+  // shared across both surfaces.
+  final kmsTokenProvider = MetadataServerAccessTokenProvider();
+
   return ProxyProductionBindings(
     accountingStore: PostgresProxyAccountingStore(wrapper: tenantWrapper),
     firebaseAdminAuthClient: firebaseAdmin,
@@ -460,17 +470,33 @@ ProxyProductionBindings buildProxyProductionBindings(
       auditRepository: adminAudit,
       repoRoot: Directory.current,
     ),
-    // Phase 11A.4 — Integration management gateway. Backed by the
-    // `provider_credentials` masked-display ledger and a KMS stub
-    // provider. Production swaps in a real KMS implementation
-    // (Cloud Run KMS / Azure Key Vault) post-launch; the gateway
-    // contract stays identical.
+    // Phase 11A.4c — Integration management gateway with the GCP
+    // Secret Manager rollout wired in. The KmsLaneRouter dispatches
+    // each lane (anthropic, voyage, gemini, azure_db) to either the
+    // stub or the real provider based on its
+    // `kms_real_provider_<kind>_enabled` feature flag. All four
+    // flags ship OFF — production stays on the stub until the
+    // operator flips one. When the GCP config is missing (dev /
+    // scaffold contexts), the router collapses to stub-everywhere
+    // and the Cloud Run admin client becomes a no-op.
+    //
+    // The OAuth access-token provider is constructed once and shared
+    // between Secret Manager and Cloud Run admin so the cached token
+    // serves both surfaces.
     integrationAdminGateway: RepositoryIntegrationAdminProxyGateway(
       providerCredentialsRepository: ProviderCredentialsRepository(
         adminWrapper,
       ),
-      kmsProvider: KmsStubProvider(),
+      kmsProvider: _buildKmsProvider(
+        config: config,
+        adminWrapper: adminWrapper,
+        accessTokenProvider: kmsTokenProvider,
+      ),
       auditRepository: adminAudit,
+      cloudRunAdminClient: _buildCloudRunAdminClient(
+        config: config,
+        accessTokenProvider: kmsTokenProvider,
+      ),
     ),
     // Phase 11A.4 — Resolves the verified Firebase UID into a
     // Postgres `users.user_id` (UUID) for audit attribution before
@@ -2090,13 +2116,16 @@ class RepositoryIntegrationAdminProxyGateway
     required ProviderCredentialsRepository providerCredentialsRepository,
     required KmsProvider kmsProvider,
     required AuthEventsAuditRepository auditRepository,
+    required CloudRunAdminClient cloudRunAdminClient,
   }) : _credentials = providerCredentialsRepository,
        _kmsProvider = kmsProvider,
-       _auditRepository = auditRepository;
+       _auditRepository = auditRepository,
+       _cloudRunAdminClient = cloudRunAdminClient;
 
   final ProviderCredentialsRepository _credentials;
   final KmsProvider _kmsProvider;
   final AuthEventsAuditRepository _auditRepository;
+  final CloudRunAdminClient _cloudRunAdminClient;
 
   @override
   Future<Map<String, Object?>> listBundle({
@@ -2201,6 +2230,72 @@ class RepositoryIntegrationAdminProxyGateway
         'kms_secret_name': row.kmsSecretName,
       },
     );
+    // Phase 11A.4c — for runtime-read lanes (anthropic / voyage /
+    // gemini), force a new Cloud Run revision so existing instances
+    // restart and pick up the latest Secret Manager version. The
+    // rotation itself has already succeeded; refresh failures are
+    // best-effort and audit-only — a retried rotation or a manual
+    // `gcloud run deploy --revision-suffix` recovers from a missed
+    // refresh. `azure_db` is NOT in the runtime-read set so it
+    // skips this step entirely.
+    //
+    // Two gates apply, BOTH must hold:
+    //   1. The lane is one whose plaintext the proxy reads at runtime
+    //      (`kRuntimeReadKeyKinds`). `azure_db` rotations skip Cloud
+    //      Run entirely — its plaintext is consumed by ops scripts,
+    //      not the proxy runtime.
+    //   2. The persisted KMS pointer indicates a REAL Secret Manager
+    //      write actually happened. During the staged rollout the
+    //      `KmsLaneRouter` may be wired with the GCP provider AND
+    //      Cloud Run admin client (because GCP env vars are set on
+    //      the Cloud Run service), but the lane's
+    //      `kms_real_provider_<kind>_enabled` flag is still OFF —
+    //      so the router dispatches to `KmsStubProvider` and the
+    //      pointer comes back as `kms://stub/<uuid>`. PATCHing Cloud
+    //      Run in that scenario would trigger a pointless instance
+    //      restart and an audit row that misleadingly suggests a
+    //      Secret Manager version landed. Gate on the GCP pointer
+    //      prefix so the restart only fires when the audit row is
+    //      truthful.
+    final landedInRealKms = row.kmsSecretName.startsWith(
+      GcpSecretManagerKmsProvider.pointerPrefix,
+    );
+    if (kRuntimeReadKeyKinds.contains(keyKind) && landedInRealKms) {
+      try {
+        final operationName = await _cloudRunAdminClient.forceNewRevision(
+          reason: 'kms_rotation:$keyKind:${row.credentialId}',
+        );
+        await _audit(
+          actorUserId: actorUserId,
+          eventType: 'admin.integrations.cloud_run_revision_forced',
+          adminReason: adminReason,
+          payload: <String, Object?>{
+            'key_kind': keyKind,
+            'credential_id': row.credentialId,
+            // Long-running operation name (e.g.
+            // `projects/<P>/locations/<R>/operations/<op-id>`). The
+            // actual revision name is assigned asynchronously by
+            // Cloud Run; resolve it via
+            // `gcloud run operations describe <op>`.
+            'operation_name': operationName,
+          },
+        );
+      } catch (error) {
+        // Cloud Run patch failed AFTER KMS + Postgres succeeded.
+        // The rotation itself stands; the operator can retry the
+        // restart manually. Audit so the discrepancy is visible.
+        await _audit(
+          actorUserId: actorUserId,
+          eventType: 'admin.integrations.cloud_run_refresh_failed',
+          adminReason: adminReason,
+          payload: <String, Object?>{
+            'key_kind': keyKind,
+            'credential_id': row.credentialId,
+            'message': error.toString(),
+          },
+        );
+      }
+    }
     return <String, Object?>{
       'row': row.toJson(),
       'plaintext_value': plaintextValue,
@@ -2466,4 +2561,65 @@ class _PermissionBundle {
 
   final List<UserRoleGrant> grants;
   final List<RolePermissionRule> rules;
+}
+
+// ─── Phase 11A.4c — KMS provider + Cloud Run admin wiring ────────────────────
+
+/// Build the KMS provider for the integration admin gateway.
+///
+/// When [ProxyConfig.gcpProjectId] is set, returns a [KmsLaneRouter]
+/// that dispatches per-lane to either the stub (flag OFF — default)
+/// or [GcpSecretManagerKmsProvider] (flag ON). When the GCP project
+/// id is missing, returns the stub directly so dev / scaffold
+/// contexts still function without GCP credentials.
+KmsProvider _buildKmsProvider({
+  required ProxyConfig config,
+  required TenantTransactionWrapper adminWrapper,
+  required OAuthAccessTokenProvider accessTokenProvider,
+}) {
+  final gcpProjectId = config.gcpProjectId;
+  if (gcpProjectId == null) {
+    return KmsStubProvider();
+  }
+  return KmsLaneRouter(
+    stub: KmsStubProvider(),
+    real: GcpSecretManagerKmsProvider(
+      projectId: gcpProjectId,
+      accessTokenProvider: accessTokenProvider,
+    ),
+    flagLookup: (keyKind) async {
+      return adminWrapper.runAsSystem<bool>(
+        (exec) async {
+          return const FeatureFlagsTableKmsRolloutFlag()
+              .isEnabledFor(keyKind, exec);
+        },
+        reason: 'kms_rollout_flag_check:$keyKind',
+      );
+    },
+  );
+}
+
+/// Build the Cloud Run admin client for forced-revision restarts
+/// after a runtime-read key rotation.
+///
+/// Production wires [HttpCloudRunAdminClient] when all three GCP
+/// env vars are set. Dev / scaffold contexts get a [NoOpCloudRunAdminClient]
+/// so the rotation handler still runs end-to-end without a live
+/// Cloud Run service.
+CloudRunAdminClient _buildCloudRunAdminClient({
+  required ProxyConfig config,
+  required OAuthAccessTokenProvider accessTokenProvider,
+}) {
+  final projectId = config.gcpProjectId;
+  final region = config.cloudRunRegion;
+  final serviceName = config.cloudRunServiceName;
+  if (projectId == null || region == null || serviceName == null) {
+    return const NoOpCloudRunAdminClient();
+  }
+  return HttpCloudRunAdminClient(
+    projectId: projectId,
+    region: region,
+    serviceName: serviceName,
+    accessTokenProvider: accessTokenProvider,
+  );
 }

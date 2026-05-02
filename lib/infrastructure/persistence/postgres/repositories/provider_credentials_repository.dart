@@ -37,6 +37,20 @@ const Set<String> kProviderCredentialKinds = <String>{
   'gemini',
 };
 
+/// Phase 11A.4c — lanes whose plaintext API key the proxy reads at
+/// runtime (advisor/embedding HTTP calls). Rotating one of these
+/// lanes via the real KMS path triggers a Cloud Run revision restart
+/// so existing instances pick up the new Secret Manager version.
+///
+/// `azure_db` is intentionally absent: its plaintext is consumed by
+/// ops scripts (`pg_dump`, manual migrations) — NOT by the proxy
+/// runtime — so its rotation is audit-only and skips the restart.
+const Set<String> kRuntimeReadKeyKinds = <String>{
+  'anthropic',
+  'voyage',
+  'gemini',
+};
+
 class ProviderCredentialsRepository extends OperatorScopedRepository {
   ProviderCredentialsRepository(super.tenantWrapper);
 
