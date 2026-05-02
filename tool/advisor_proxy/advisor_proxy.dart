@@ -5351,6 +5351,76 @@ abstract class IntegrationAdminActorResolver {
   });
 }
 
+// Phase 11A.7 — Feature flags admin routes. F&F internal-only with
+// the same method-scoped role split as 11A.2 / 11A.3a / 11A.4: GET
+// admits `super_admin` + `ff_support` so support users can browse
+// the flag list; POST is strictly `super_admin` because flipping a
+// destructive flag (audit_logs cutover, KMS rollout lanes) directly
+// changes production runtime behaviour. The toggle POST also requires
+// an `Idempotency-Key` so a retried request collapses to one toggle
+// + one audit row, not two.
+const String adminFeatureFlagsListPath = '/v1/admin/feature-flags';
+const String adminFeatureFlagsTogglePath =
+    '/v1/admin/feature-flags/toggle';
+
+const Set<String> kFfFeatureFlagsAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+const Set<String> kFfFeatureFlagsAdminWriteRoles = <String>{'super_admin'};
+
+/// Validation error raised by [FeatureFlagsAdminProxyGateway]
+/// implementations when a request is rejected for business reasons
+/// (e.g. unknown flag_id, invalid kind). The proxy route handler maps
+/// it back to a structured 4xx / 5xx response with the carried `code`
+/// and `message`.
+class FeatureFlagsAdminGatewayValidationError implements Exception {
+  const FeatureFlagsAdminGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'FeatureFlagsAdminGatewayValidationError($statusCode/$code): $message';
+}
+
+/// Gateway the proxy delegates to for `/v1/admin/feature-flags/*`
+/// route handling. Returns JSON-ready maps so the proxy handler can
+/// wrap them in a 200 response without translating shapes a second
+/// time.
+///
+/// `actorUserId` is REQUIRED on toggle and must be a UUID-shaped
+/// Postgres `users.user_id`. The proxy resolves the verified Firebase
+/// UID into a Postgres user UUID via [IntegrationAdminActorResolver]
+/// (shared with the 11A.4 surface) and rejects with 403
+/// `actor_user_not_resolvable` when no active users row matches.
+abstract class FeatureFlagsAdminProxyGateway {
+  /// Returns `{flags: [{flag_id: ..., flag_name: ..., enabled: ...,
+  /// kind: ..., ...}, ...]}`. Ordered destructive-first then
+  /// alphabetical so kill switches surface at the top of the grid.
+  Future<List<Map<String, Object?>>> listFlags({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  /// Toggle one flag's `enabled` bit by `flagId`. Returns the
+  /// post-toggle row JSON. Returns null when no row matches; the
+  /// route handler maps that into 404 `unknown_flag`.
+  Future<Map<String, Object?>?> toggleFlag({
+    required String actorUserId,
+    required String flagId,
+    required bool enabled,
+    required String idempotencyKey,
+    required String adminReason,
+  });
+}
+
 /// Gateway the proxy delegates to for `/v1/admin/operators` and
 /// `/v1/admin/locations` route handling. The gateway returns
 /// JSON-ready maps so the proxy handler can wrap them in a 200/201
@@ -5577,6 +5647,7 @@ Future<void> routeRequest(
   GraphCandidatesProxyGateway? graphCandidatesGateway,
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
+  FeatureFlagsAdminProxyGateway? featureFlagsAdminGateway,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -5616,6 +5687,15 @@ Future<void> routeRequest(
     final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
     if (isAdminIntegrationsPath) {
       _setAdminIntegrationsCorsHeaders(response);
+      if (request.method == 'OPTIONS') {
+        response.statusCode = HttpStatus.noContent;
+        response.contentLength = 0;
+        return;
+      }
+    }
+    final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
+    if (isAdminFeatureFlagsPath) {
+      _setAdminFeatureFlagsCorsHeaders(response);
       if (request.method == 'OPTIONS') {
         response.statusCode = HttpStatus.noContent;
         response.contentLength = 0;
@@ -8136,6 +8216,142 @@ Future<void> routeRequest(
       return;
     }
 
+    // Phase 11A.7 — feature flags admin. Method-scoped role split:
+    // GET admits `super_admin` + `ff_support`; POST is strictly
+    // `super_admin`. Toggle POST requires an Idempotency-Key. Audit
+    // attribution reuses the integrations actor resolver — F&F admins
+    // live outside any operator's tenant scope, so the verified
+    // Firebase UID resolves to a Postgres `users.user_id` UUID before
+    // the gateway is touched.
+    if (_isAdminFeatureFlagsOperation(path, request.method)) {
+      if (featureFlagsAdminGateway == null) {
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'feature_flags_admin_not_configured',
+          'message':
+              'route requires a FeatureFlagsAdminProxyGateway to be installed',
+        });
+        return;
+      }
+
+      final actor = await _resolveVerifiedClaimsOrWrite(
+        request,
+        response,
+        authGuard,
+      );
+      if (actor == null) return;
+
+      final flagsMethod = request.method;
+      final flagsRoles = flagsMethod == 'GET'
+          ? kFfFeatureFlagsAdminReadRoles
+          : kFfFeatureFlagsAdminWriteRoles;
+      if (!_callerHasAnyRole(actor, flagsRoles)) {
+        _writeJson(response, 403, <String, Object?>{
+          'error': 'permission_denied',
+          'message': 'admin role claim required',
+          'required_roles': flagsRoles.toList(),
+        });
+        return;
+      }
+
+      String? idempotencyKey;
+      if (flagsMethod != 'GET') {
+        idempotencyKey =
+            request.headers.value('Idempotency-Key')?.trim();
+        if (idempotencyKey == null || idempotencyKey.isEmpty) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'missing_idempotency_key',
+            'message': 'Idempotency-Key header is required',
+          });
+          return;
+        }
+      }
+
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request, allowEmpty: true);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      // Audit attribution gate. The same Firebase UID → users.user_id
+      // resolver from the 11A.4 integrations dispatch backs the
+      // 11A.7 toggle audit row. Reads (GET) skip resolver lookup —
+      // listing flags is non-mutating.
+      String? resolvedActorUserId;
+      if (flagsMethod != 'GET') {
+        if (integrationAdminActorResolver == null) {
+          _writeJson(response, 503, <String, Object?>{
+            'error': 'feature_flags_actor_resolver_not_configured',
+            'message':
+                'route requires an IntegrationAdminActorResolver to be installed',
+          });
+          return;
+        }
+        final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
+        try {
+          resolvedActorUserId =
+              await integrationAdminActorResolver.resolveActorUserId(
+            firebaseUid: firebaseUidLookup,
+            adminReason: 'admin.feature_flags.${request.method}:'
+                '$firebaseUidLookup:resolve_actor',
+          );
+        } catch (_) {
+          _writeJson(response, 503, <String, Object?>{
+            'error': 'feature_flags_actor_resolve_failed',
+            'message':
+                'actor resolution is unavailable; please retry',
+          });
+          return;
+        }
+        if (resolvedActorUserId == null) {
+          _writeJson(response, 403, <String, Object?>{
+            'error': 'actor_user_not_resolvable',
+            'message':
+                'verified Firebase user has no matching Postgres users row '
+                '(audit attribution requires a UUID-shaped actor)',
+          });
+          return;
+        }
+      }
+
+      try {
+        await _routeFeatureFlagsAdmin(
+          request: request,
+          response: response,
+          path: path,
+          gateway: featureFlagsAdminGateway,
+          actorUserId: resolvedActorUserId ?? actor.userId,
+          idempotencyKey: idempotencyKey ?? '',
+          body: body,
+        );
+      } catch (error) {
+        if (error is _AdminInputError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        if (error is FeatureFlagsAdminGatewayValidationError) {
+          _writeJson(response, error.statusCode, <String, Object?>{
+            'error': error.code,
+            'message': error.message,
+          });
+          return;
+        }
+        _writeJson(response, 503, <String, Object?>{
+          'error': 'feature_flags_admin_unavailable',
+          'message':
+              'feature flags admin operation is unavailable; please retry',
+        });
+      }
+      return;
+    }
+
     if (_isAdminOperatorOrLocationOperation(path, request.method)) {
       if (operatorLocationAdminGateway == null) {
         _writeJson(response, 503, <String, Object?>{
@@ -8849,6 +9065,69 @@ Future<void> _routeCorpusAdmin({
       return;
     }
     _writeJson(response, 200, <String, Object?>{'version': result});
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+bool _isAdminFeatureFlagsPath(String path) {
+  return path == adminFeatureFlagsListPath ||
+      path == adminFeatureFlagsTogglePath;
+}
+
+bool _isAdminFeatureFlagsOperation(String path, String method) {
+  if (method == 'GET' && path == adminFeatureFlagsListPath) return true;
+  if (method == 'POST' && path == adminFeatureFlagsTogglePath) return true;
+  return false;
+}
+
+Future<void> _routeFeatureFlagsAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required FeatureFlagsAdminProxyGateway gateway,
+  required String actorUserId,
+  required String idempotencyKey,
+  required Map<String, Object?> body,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.feature_flags.$method:$actorUserId';
+
+  if (method == 'GET' && path == adminFeatureFlagsListPath) {
+    final flags = await gateway.listFlags(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+    );
+    _writeJson(response, 200, <String, Object?>{'flags': flags});
+    return;
+  }
+
+  if (method == 'POST' && path == adminFeatureFlagsTogglePath) {
+    final flagId = _requireBodyString(body, 'flag_id');
+    final enabledRaw = body['enabled'];
+    if (enabledRaw is! bool) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'missing_enabled',
+        message: 'enabled boolean is required',
+      );
+    }
+    final result = await gateway.toggleFlag(
+      actorUserId: actorUserId,
+      flagId: flagId,
+      enabled: enabledRaw,
+      idempotencyKey: idempotencyKey,
+      adminReason: '$reasonPrefix:toggle:$flagId:$enabledRaw',
+    );
+    if (result == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_flag',
+        'message': 'feature flag not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'flag': result});
     return;
   }
 
@@ -9766,6 +10045,23 @@ void _setAdminPricingCorsHeaders(HttpResponse response) {
 // `Idempotency-Key` request header in CORS preflight, otherwise the
 // browser strips it before the proxy ever sees it.
 void _setAdminCorpusCorsHeaders(HttpResponse response) {
+  response.headers.set('Access-Control-Allow-Origin', '*');
+  response.headers.set(
+    'Access-Control-Allow-Methods',
+    'GET,POST,OPTIONS',
+  );
+  response.headers.set(
+    'Access-Control-Allow-Headers',
+    'Authorization,Content-Type,Accept,Idempotency-Key',
+  );
+  response.headers.set('Access-Control-Max-Age', '3600');
+}
+
+// Phase 11A.7 — feature flags admin routes accept GET (list) + POST
+// (toggle). The toggle POST carries `Idempotency-Key` so the browser
+// preflight needs that header in the allow-list mirror of the corpus
+// helper.
+void _setAdminFeatureFlagsCorsHeaders(HttpResponse response) {
   response.headers.set('Access-Control-Allow-Origin', '*');
   response.headers.set(
     'Access-Control-Allow-Methods',

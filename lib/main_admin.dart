@@ -34,6 +34,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/corpus_admin_gateway.dart';
+import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
@@ -82,12 +83,15 @@ Future<void> main() async {
         gateway == null ? null : _resolveIntegrationAdminGateway();
     final healthGateway =
         gateway == null ? null : _resolveHealthAdminGateway();
+    final featureFlagsGateway =
+        gateway == null ? null : _resolveFeatureFlagsAdminGateway();
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
-    // Corpus / Integrations routes can read `adminAuthSource` and
-    // switch to the read-only branch for `ff_support`. Live gateways
-    // are still null in demo mode; the route accessors fall back to
-    // the seeded in-memory demo gateways in `admin_routes.dart`.
+    // Corpus / Integrations / Feature Flags routes can read
+    // `adminAuthSource` and switch to the read-only branch for
+    // `ff_support`. Live gateways are still null in demo mode; the
+    // route accessors fall back to the seeded in-memory demo gateways
+    // in `admin_routes.dart`.
     runApp(
       AdminConsoleServicesScope(
         operatorLocationGateway: gateway,
@@ -95,6 +99,7 @@ Future<void> main() async {
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
         healthGateway: healthGateway,
+        featureFlagsGateway: featureFlagsGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -199,6 +204,21 @@ HealthAdminGateway? _resolveHealthAdminGateway() {
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpHealthAdminGateway(baseUri: baseUri);
+}
+
+/// Phase 11A.7 — feature flags admin gateway. Same admin proxy base
+/// URI as the other admin surfaces; demo mode falls back to the
+/// seeded in-memory gateway in `admin_routes.dart`.
+FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway() {
+  if (_kAdminDemoAuth) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpFeatureFlagsAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: _firebaseIdTokenProvider,
+  );
 }
 
 Future<String> _firebaseIdTokenProvider() async {

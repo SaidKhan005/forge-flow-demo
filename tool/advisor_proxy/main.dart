@@ -119,6 +119,7 @@ Future<void> main(List<String> args) async {
     'pricing_tier_admin: postgres, '
     'corpus_admin: postgres, '
     'integration_admin: postgres_kms_stub, '
+    'feature_flags_admin: postgres, '
     'advisor_pipeline: lock7_v1_per_instance_breaker_alwaysmiss_cache'
     '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''})',
   );
@@ -159,6 +160,8 @@ Future<void> main(List<String> args) async {
         integrationAdminGateway: productionBindings.integrationAdminGateway,
         integrationAdminActorResolver:
             productionBindings.integrationAdminActorResolver,
+        featureFlagsAdminGateway:
+            productionBindings.featureFlagsAdminGateway,
       );
     } catch (error, stack) {
       stderr.writeln('advisor proxy request handler error: $error\n$stack');
