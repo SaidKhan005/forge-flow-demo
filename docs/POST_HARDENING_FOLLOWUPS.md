@@ -141,7 +141,7 @@ toggle contract).
 
 | Surface | LOC | Test files | Line coverage |
 |---|---|---|---|
-| `lib/services/mfa/` | 2,933 | 4 (`test/mfa/`) + 4 top-level | **87.3%** (L5, 2026-05-02) |
+| `lib/services/mfa/` | 2,933 | 5 (`test/mfa/`) + 4 top-level | **>90%** est. (L5+adapter parcel, 2026-05-02) |
 | `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/integration_admin_gateway.dart` | 311 | 0 | 0% |
@@ -178,10 +178,27 @@ adds:
 
 47 tests, `flutter analyze --fatal-infos` clean.
 
-**Remaining MFA gaps:** `identity_toolkit_firebase_mfa_client.dart`
-(production HTTP adapter), `proxy_mfa_*.dart` (proxy HTTP adapters) —
-both better covered by integration tests. No production code changed;
-no bugs surfaced.
+**MFA adapter parcel — RESOLVED 2026-05-02.** Closes the proxy +
+identity-toolkit gap left over from L5:
+
+- `test/mfa/proxy_mfa_recovery_request_gateway_test.dart` (NEW, 12
+  tests) — 202 envelope (queued / request_id with non-string +
+  whitespace edge cases), non-202 error envelope (default +
+  populated), URL composition, header isolation (no Authorization),
+  reason/email forwarding verbatim.
+- `test/identity_toolkit_firebase_mfa_client_test.dart` (extended
+  3 → 15 tests) — 4xx/5xx error envelope, INVALID_ID_TOKEN /
+  SECOND_FACTOR_EXISTS / TOO_MANY_ATTEMPTS_TRY_LATER stable code
+  paths, mfa_finalize_missing_id_token / mfa_lookup_missing_totp
+  failure paths, single-attempt no-retry posture on 5xx,
+  listTotpFactors / unenrollFactor coverage, Content-Type pinning.
+
+Both adapters now boundary-tested locally; live contract drift remains
+covered by `mfa_live_binding_test.dart` / `auth_live_binding_test.dart`.
+
+**Remaining MFA gaps:** none locally testable after this parcel; live
+Identity Toolkit / proxy contract drift is owned by the live-binding
+suites above. No production code changed; no bugs surfaced.
 
 ## P3 — Unused public classes (4)
 
