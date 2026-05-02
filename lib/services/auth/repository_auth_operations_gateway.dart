@@ -326,7 +326,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     final userId = _idFactory();
     final defaultLocationId = command.targetLocationId ?? command.locationId;
     final expiresAt = _now().toUtc().add(const Duration(days: 7));
-    final claims = await _claimsForUser(
+    final claims = _baseClaimsForUser(
       userId: userId,
       operatorId: command.operatorId,
       locationId: defaultLocationId,
@@ -381,20 +381,15 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       targetLocationId: command.targetLocationId,
       targetOrgUnitId: command.targetOrgUnitId,
     );
-    final rolesVersion = await usersRepository.rolesVersionForUser(
-      operatorId: command.operatorId,
-      locationId: command.locationId,
+    final claimProjection = await usersRepository.firebaseCustomClaimsForUser(
       userId: userId,
-      actorUserId: command.actorUserId,
+      operatorId: command.operatorId,
+      locationId: defaultLocationId,
+      adminReason: 'team.invite_claims_refresh',
     );
     await firebaseAdmin.setCustomClaims(
-      uid: userId,
-      customClaims: await _claimsForUser(
-        userId: userId,
-        operatorId: command.operatorId,
-        locationId: defaultLocationId,
-        rolesVersion: rolesVersion,
-      ),
+      uid: claimProjection.firebaseUid,
+      customClaims: claimProjection.toCustomClaims(),
     );
     await firebaseAdmin.sendPasswordResetEmail(email: command.email);
     await _audit(
@@ -1117,11 +1112,6 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
   }
 
   Future<void> _refreshTargetClaims(Object command) async {
-    final actorUserId = switch (command) {
-      TeamRoleGrantCreateCommand(:final actorUserId) => actorUserId,
-      TeamRoleGrantRevokeCommand(:final actorUserId) => actorUserId,
-      _ => throw ArgumentError.value(command, 'command'),
-    };
     final operatorId = switch (command) {
       TeamRoleGrantCreateCommand(:final operatorId) => operatorId,
       TeamRoleGrantRevokeCommand(:final operatorId) => operatorId,
@@ -1143,26 +1133,15 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       TeamRoleGrantRevokeCommand() => locationId,
       _ => locationId,
     };
-    final firebaseUid = await usersRepository.firebaseUidForUser(
-      operatorId: operatorId,
-      locationId: locationId,
+    final claimProjection = await usersRepository.firebaseCustomClaimsForUser(
       userId: targetUserId,
-      actorUserId: actorUserId,
-    );
-    final rolesVersion = await usersRepository.rolesVersionForUser(
       operatorId: operatorId,
-      locationId: locationId,
-      userId: targetUserId,
-      actorUserId: actorUserId,
+      locationId: defaultLocationId,
+      adminReason: 'team.role_claims_refresh',
     );
     await firebaseAdmin.setCustomClaims(
-      uid: firebaseUid,
-      customClaims: await _claimsForUser(
-        userId: targetUserId,
-        operatorId: operatorId,
-        locationId: defaultLocationId,
-        rolesVersion: rolesVersion,
-      ),
+      uid: claimProjection.firebaseUid,
+      customClaims: claimProjection.toCustomClaims(),
     );
   }
 
@@ -1334,12 +1313,12 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     return changed;
   }
 
-  Future<Map<String, Object?>> _claimsForUser({
+  Map<String, Object?> _baseClaimsForUser({
     required String userId,
     required String operatorId,
     required String locationId,
     required int rolesVersion,
-  }) async {
+  }) {
     return <String, Object?>{
       'postgres_user_id': userId,
       'operator_id': operatorId,

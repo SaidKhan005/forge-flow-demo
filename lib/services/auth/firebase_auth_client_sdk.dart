@@ -178,7 +178,7 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     if (user == null) {
       throw StateError('Firebase sign-in returned no user');
     }
-    return _credentialFromUser(user);
+    return _credentialFromUser(user, forceRefresh: true);
   }
 
   Future<FirebaseAuthCredential> _credentialFromUser(
