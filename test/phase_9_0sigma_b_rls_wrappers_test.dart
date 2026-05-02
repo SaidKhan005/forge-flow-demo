@@ -221,6 +221,187 @@ void main() {
     });
   });
 
+  // HARD-F — defense-in-depth re-assert of the same wrapper-based
+  // policies. The hardening migration is intentionally a wire-for-wire
+  // duplicate of 202604280001 so that a database that lost the rewrite
+  // (hand-edit on staging, out-of-band restore that resurrected the
+  // 9.2 shape) still ends up wrapper-clean after this slice applies.
+  // Asserting it here keeps a future hand-edit from quietly diverging
+  // the two migrations — name presence is not enough; the predicate
+  // body, the role grant, and the WITH CHECK clause must all match.
+  group('HARD-F hardening migration', () {
+    final hardeningSql = _readSqlNormalized(
+      'db/migrations/'
+      '202605020500_hardening_auth_rls_to_wrappers.sql',
+    );
+    final rewriteParitySql = _readSqlNormalized(
+      'db/migrations/'
+      '202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql',
+    );
+
+    test('every CREATE POLICY block matches the 202604280001 rewrite '
+        'byte-for-byte (after whitespace normalization) — the migration '
+        'must be a wire-for-wire duplicate so a widened/narrowed '
+        'predicate or an altered WITH CHECK cannot drift unnoticed', () {
+      final hardeningPolicies = _extractCreatePolicyBlocks(hardeningSql);
+      final rewritePolicies = _extractCreatePolicyBlocks(rewriteParitySql);
+
+      // Sanity check: both files capture the same 16-policy set the
+      // 9.2 migration originally created.
+      expect(
+        hardeningPolicies.keys.toSet(),
+        equals(rewritePolicies.keys.toSet()),
+        reason:
+            'hardening migration must drop+recreate exactly the same '
+            'set of policies as 202604280001 — different policy sets '
+            'mean the migrations are no longer parity siblings',
+      );
+      expect(
+        hardeningPolicies, hasLength(16),
+        reason:
+            '202604280001 recreates 16 policies (12 tables, 4 of which '
+            'have two policies each); hardening must match',
+      );
+
+      // Each policy body is identical after whitespace normalization.
+      // The normalized form preserves every keyword, identifier,
+      // operator, and predicate — only collapses runs of whitespace.
+      for (final name in hardeningPolicies.keys) {
+        expect(
+          hardeningPolicies[name],
+          equals(rewritePolicies[name]),
+          reason:
+              'policy "$name" body diverges from 202604280001. The '
+              'hardening migration MUST be wire-for-wire identical so '
+              'a widened predicate, narrowed WITH CHECK, or changed '
+              'role grant cannot land here without also landing in the '
+              'rewrite. Diff:\n'
+              '  hardening: ${hardeningPolicies[name]}\n'
+              '  rewrite:   ${rewritePolicies[name]}',
+        );
+      }
+    });
+
+    test('every COMMENT ON POLICY restored matches the 202604280001 '
+        'rewrite — DROP POLICY removes the comment along with the '
+        'policy object, so the re-assert must lay every comment back '
+        'down with identical wording or `\\dp+` diverges between the '
+        'two parity sibling migrations', () {
+      final hardeningComments = _extractCommentOnPolicy(hardeningSql);
+      final rewriteComments = _extractCommentOnPolicy(rewriteParitySql);
+
+      expect(
+        hardeningComments.keys.toSet(),
+        equals(rewriteComments.keys.toSet()),
+        reason:
+            'hardening migration must restore exactly the same set of '
+            'COMMENT ON POLICY statements as 202604280001 — missing '
+            'restorations leave the database without comments after '
+            'the DROP POLICY pass; extra restorations mean a comment '
+            'lives in HARD-F that has no rewrite-side counterpart. '
+            'hardening: ${hardeningComments.keys.toList()..sort()}, '
+            'rewrite: ${rewriteComments.keys.toList()..sort()}',
+      );
+      expect(
+        hardeningComments, hasLength(5),
+        reason:
+            '202604280001 carries forward 5 COMMENT ON POLICY '
+            'statements (permission_keys, roles_per_tenant_select, '
+            'user_roles_per_tenant, auth_sessions_per_user, '
+            'auth_events_audit_per_tenant_select); hardening must '
+            'match',
+      );
+
+      for (final name in hardeningComments.keys) {
+        expect(
+          hardeningComments[name],
+          equals(rewriteComments[name]),
+          reason:
+              'comment on policy "$name" diverges from 202604280001. '
+              'Reword in lockstep across both files or the database '
+              'state diverges by which one was applied last. Diff:\n'
+              '  hardening: ${hardeningComments[name]}\n'
+              '  rewrite:   ${rewriteComments[name]}',
+        );
+      }
+    });
+
+    test('drops + recreates every per-tenant policy from 202604260000', () {
+      const policiesFromOriginal = <String, String>{
+        'permission_keys_authenticated_select': 'public.permission_keys',
+        'roles_per_tenant_select': 'public.roles',
+        'roles_per_tenant_modify': 'public.roles',
+        'role_permissions_per_tenant_select': 'public.role_permissions',
+        'role_permissions_per_tenant_modify': 'public.role_permissions',
+        'user_roles_per_tenant': 'public.user_roles',
+        'auth_sessions_per_user': 'public.auth_sessions',
+        'mfa_factors_per_user': 'public.mfa_factors',
+        'tncs_acceptances_per_tenant': 'public.tncs_acceptances',
+        'password_history_per_user': 'public.password_history',
+        'auth_invites_per_tenant': 'public.auth_invites',
+        'auth_events_audit_per_tenant_select': 'public.auth_events_audit',
+        'auth_events_audit_append_insert': 'public.auth_events_audit',
+        'role_audit_log_per_tenant_select': 'public.role_audit_log',
+        'role_audit_log_append_insert': 'public.role_audit_log',
+        'external_identity_links_per_tenant': 'public.external_identity_links',
+      };
+      for (final entry in policiesFromOriginal.entries) {
+        expect(
+          hardeningSql,
+          contains(
+            'drop policy if exists "${entry.key}" '
+            'on ${entry.value}',
+          ),
+          reason:
+              'hardening migration must drop ${entry.key} so the '
+              're-assert is atomic on a database that lost the '
+              '202604280001 rewrite',
+        );
+        expect(
+          hardeningSql,
+          contains('create policy "${entry.key}"'),
+          reason:
+              'hardening migration must recreate ${entry.key} '
+              'through wrappers',
+        );
+      }
+    });
+
+    test('hardening policy bodies contain no bare current_setting calls', () {
+      final result = RlsPolicyLintRunner(
+        files: <String, String>{
+          '202605020500_hardening_auth_rls_to_wrappers.sql': hardeningSql,
+        },
+        allowlist: const <String>{},
+      ).run();
+      expect(
+        result.isClean,
+        isTrue,
+        reason:
+            'hardening migration must read GUCs through wrappers '
+            'only; violations: ${result.violations}',
+      );
+    });
+
+    test('hardening migration calls the same two wrappers as the rewrite', () {
+      // app_current_location / app_acting_as_operator are not used
+      // by the auth tables (matches the 202604280001 rewrite scope).
+      expect(hardeningSql, contains('app_current_operator()'));
+      expect(hardeningSql, contains('app_current_actor_user()'));
+    });
+
+    test('preserves auth-events-audit append-only WITH CHECK shape', () {
+      expect(
+        hardeningSql,
+        contains(
+          'create policy "auth_events_audit_append_insert"\n'
+          '  on public.auth_events_audit for insert to service_role\n'
+          '  with check (true);',
+        ),
+      );
+    });
+  });
+
   group('rls_policy_lint', () {
     test('clean against the real on-disk migrations + allowlist', () {
       final files = _readMigrationsDir();
@@ -412,6 +593,78 @@ Set<String> _readAllowlist() {
     final line = raw.trim();
     if (line.isEmpty || line.startsWith('#')) continue;
     out.add(line);
+  }
+  return out;
+}
+
+/// Extracts every `create policy "<name>" ... ;` block from [sql] and
+/// returns a map of policy name → whitespace-normalized block body.
+/// Used by the HARD-F parity test to compare the hardening migration
+/// against `202604280001` byte-for-byte. Only matches the quoted-name
+/// form because both files declare every policy with double quotes;
+/// extending to bare identifiers would introduce ambiguity (a future
+/// migration that mixed forms could mask drift).
+Map<String, String> _extractCreatePolicyBlocks(String sql) {
+  final pattern = RegExp(
+    r'''create\s+policy\s+"([^"]+)"([\s\S]*?);''',
+    caseSensitive: false,
+  );
+  final out = <String, String>{};
+  for (final match in pattern.allMatches(sql)) {
+    final name = match.group(1)!;
+    final block = match.group(0)!;
+    out[name] = _normalizeWhitespaceLowered(block);
+  }
+  return out;
+}
+
+/// Lowercases [s] and collapses every whitespace run (spaces, tabs,
+/// newlines) to a single space, then trims. Two SQL blocks that
+/// differ only in indentation, line wrapping, or keyword case
+/// normalize to the same string; any token, identifier, predicate, or
+/// grant difference survives the normalization and shows up as a
+/// diff. Safe for CREATE POLICY bodies because Postgres parses SQL
+/// case-insensitively and stores no string literal — every byte is
+/// part of the policy definition, not user-visible text.
+String _normalizeWhitespaceLowered(String s) {
+  return s.toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+/// Like [_normalizeWhitespaceLowered] but **preserves case**. Use for
+/// `COMMENT ON POLICY '<text>'` because the SQL string literal IS the
+/// stored comment text — Postgres keeps it byte-identical, and `\dp+`
+/// renders it verbatim. Lowercasing here would silently equate two
+/// comments whose stored text differs only in case (e.g. one says
+/// `WITH CHECK` and the other says `with check`), which would still
+/// diverge in production.
+String _normalizeWhitespacePreserveCase(String s) {
+  return s.replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+/// Extracts every `comment on policy "<name>" on <table> is '<text>';`
+/// statement from [sql] and returns a map of policy name →
+/// case-preserving, whitespace-normalized statement.
+///
+/// Whitespace collapse handles the SQL standard's adjacent-string-
+/// literal concatenation rule (`'first ' 'second'` parses as
+/// `first second`) — the two parity siblings can split their literal
+/// across lines differently and still compare equal as long as the
+/// case-preserving payload is the same.
+///
+/// Case is preserved precisely because Postgres stores the literal
+/// verbatim. A future writer that swaps the case inside the literal
+/// (deliberately or by accident) shows up as a real diff here even
+/// though the surrounding SQL keywords are case-insensitive.
+Map<String, String> _extractCommentOnPolicy(String sql) {
+  final pattern = RegExp(
+    r'''comment\s+on\s+policy\s+"([^"]+)"([\s\S]*?);''',
+    caseSensitive: false,
+  );
+  final out = <String, String>{};
+  for (final match in pattern.allMatches(sql)) {
+    final name = match.group(1)!;
+    final stmt = match.group(0)!;
+    out[name] = _normalizeWhitespacePreserveCase(stmt);
   }
   return out;
 }
