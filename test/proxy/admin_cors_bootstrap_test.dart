@@ -394,7 +394,7 @@ void main() {
           matches(
             RegExp(
               r'try\s*\{[\s\S]*?'
-              r'buildProxyProductionBindings\(config\);[\s\S]*?'
+              r'buildProxyProductionBindings\([\s\S]*?\);[\s\S]*?'
               r'resolveAdminCorsAllowList\(',
             ),
           ),
