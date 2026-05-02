@@ -1,8 +1,17 @@
 # Phase 10.5 - Shift Daypart-Aware Service Period View + Primary Driver
 
 Updated: 2026-05-02
-Status: Active. `10.5.0` daypart toggle scaffold accepted 2026-05-02 (Shift dashboard segmented control; whole-day stays default + authoritative). Bucketing engine + per-period read service + driver teaching slices queued.
+Status: Active. `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted 2026-05-02. `10.5.0` opens the Shift dashboard segmented control (whole-day stays default + authoritative). `10.5.1` ships the pure-function `DaypartBucketer` (POS / labor punch with split / reservation) sitting on `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; engine is stateless, segments include `non_service` slivers, and missing IANA tz throws `MissingTimezoneError`. Per-period read service + driver teaching slices queued. Walkthroughs: `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`.
 Owner: Shift / daypart lane
+
+## Slice History
+
+- `10.5.0` — daypart toggle scaffold (RESOLVED 2026-05-02; walkthrough
+  `docs/_walkthroughs/10.5.0.md`)
+- `10.5.1` — daypart bucketing engine (RESOLVED 2026-05-02; walkthrough
+  `docs/_walkthroughs/10.5.1.md`)
+- `10.5.2` — per-period read service (queued)
+- `10.5.3+` — daypart-live primary-driver teaching (queued)
 
 ## Decisions Locked (2026-04-23 review)
 
