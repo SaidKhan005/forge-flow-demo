@@ -16,7 +16,6 @@ const List<String> _requiredAzureExtensions = <String>[
   'age',
   'vector',
   'pg_diskann',
-  'pg_cron',
   'pg_partman',
   'pg_stat_statements',
   'pgcrypto',
@@ -27,9 +26,10 @@ ProxyHealthMetric _azureExtensionsTemplate() => const ProxyHealthMetric(
   value: null,
   unit: 'count',
   description:
-      'Number of required Azure extensions installed in the active database. '
-      'Required set: AGE, pgvector, pg_diskann, pg_cron, pg_partman, '
-      'pg_stat_statements, pgcrypto.',
+      'Number of required Azure extensions installed in the active business '
+      'database. Required set: AGE, pgvector, pg_diskann, pg_partman, '
+      'pg_stat_statements, pgcrypto. pg_cron lives in Azure''s maintenance '
+      'database and is checked by scheduler-specific metrics.',
   source: 'pg_extension',
   owner: 'B42',
   metadata: <String, Object?>{'tier': 1},

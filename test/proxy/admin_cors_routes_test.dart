@@ -88,18 +88,30 @@ Future<({int statusCode, HttpHeaders headers, String body})> _options(
   );
 }
 
-void _expectAllowed(
-  ({int statusCode, HttpHeaders headers, String body}) res,
-) {
+Future<({int statusCode, HttpHeaders headers, String body})> _get(
+  HttpClient client,
+  Uri uri, {
+  String? origin,
+}) async {
+  final request = await client.openUrl('GET', uri);
+  request.persistentConnection = false;
+  if (origin != null) request.headers.set('Origin', origin);
+  final response = await request.close();
+  final body = await response.transform(utf8.decoder).join();
+  return (
+    statusCode: response.statusCode,
+    headers: response.headers,
+    body: body,
+  );
+}
+
+void _expectAllowed(({int statusCode, HttpHeaders headers, String body}) res) {
   expect(res.statusCode, equals(HttpStatus.noContent));
   expect(
     res.headers.value('access-control-allow-origin'),
     equals(_adminOrigin),
   );
-  expect(
-    res.headers.value('access-control-allow-origin'),
-    isNot(equals('*')),
-  );
+  expect(res.headers.value('access-control-allow-origin'), isNot(equals('*')));
   expect(res.headers.value('vary'), equals('Origin'));
   expect(res.headers.value('access-control-max-age'), equals('600'));
 }
@@ -214,10 +226,7 @@ void main() {
             _expectAllowed(res);
             final allowedHeaders =
                 res.headers.value('access-control-allow-headers') ?? '';
-            expect(
-              allowedHeaders.toLowerCase(),
-              contains('idempotency-key'),
-            );
+            expect(allowedHeaders.toLowerCase(), contains('idempotency-key'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -299,10 +308,7 @@ void main() {
             _expectAllowed(res);
             final allowedHeaders =
                 res.headers.value('access-control-allow-headers') ?? '';
-            expect(
-              allowedHeaders.toLowerCase(),
-              contains('idempotency-key'),
-            );
+            expect(allowedHeaders.toLowerCase(), contains('idempotency-key'));
           } finally {
             ctx.client.close(force: true);
             await ctx.server.close(force: true);
@@ -330,30 +336,76 @@ void main() {
     });
   });
 
+  group('admin route CORS - deep health', () {
+    test('OPTIONS allowed origin echoes origin and announces GET', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(deepHealthPath),
+            requestMethod: 'GET',
+            origin: _adminOrigin,
+          );
+          _expectAllowed(res);
+          final methods =
+              res.headers.value('access-control-allow-methods') ?? '';
+          expect(methods.toUpperCase(), contains('GET'));
+          expect(methods.toUpperCase(), contains('OPTIONS'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('GET degraded response echoes allowed origin', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _get(
+            ctx.client,
+            ctx.baseUri.resolve(deepHealthPath),
+            origin: _adminOrigin,
+          );
+          expect(res.statusCode, equals(HttpStatus.serviceUnavailable));
+          expect(
+            res.headers.value('access-control-allow-origin'),
+            equals(_adminOrigin),
+          );
+          expect(res.headers.value('vary'), equals('Origin'));
+          final decoded = jsonDecode(res.body) as Map<String, Object?>;
+          expect(decoded['error'], equals('health_check_not_configured'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
   group('admin route CORS — source grep guard', () {
-    test(
-      'no Dart code sets Access-Control-Allow-Origin to a wildcard',
-      () {
-        // Contract acceptance: HARD-C deletes every `*` echo on
-        // admin paths. Catch reintroductions before they ship.
-        // Search only for the Dart code form (quoted header name +
-        // quoted `*` value) — doc comments mentioning the legacy
-        // wildcard for context are allowed.
-        final source = File('tool/advisor_proxy/advisor_proxy.dart')
-            .readAsStringSync();
-        // Tolerate any whitespace between the header name and `'*'`.
-        final wildcardCallSite = RegExp(
-          r"""'Access-Control-Allow-Origin'\s*,\s*'\*'""",
-        );
-        expect(
-          wildcardCallSite.hasMatch(source),
-          isFalse,
-          reason:
-              'admin CORS regression — a Dart call site echoes '
-              "`Access-Control-Allow-Origin: '*'`. Replace with "
-              'respondAdminCorsPreflight in advisor_proxy.dart.',
-        );
-      },
-    );
+    test('no Dart code sets Access-Control-Allow-Origin to a wildcard', () {
+      // Contract acceptance: HARD-C deletes every `*` echo on
+      // admin paths. Catch reintroductions before they ship.
+      // Search only for the Dart code form (quoted header name +
+      // quoted `*` value) — doc comments mentioning the legacy
+      // wildcard for context are allowed.
+      final source = File(
+        'tool/advisor_proxy/advisor_proxy.dart',
+      ).readAsStringSync();
+      // Tolerate any whitespace between the header name and `'*'`.
+      final wildcardCallSite = RegExp(
+        r"""'Access-Control-Allow-Origin'\s*,\s*'\*'""",
+      );
+      expect(
+        wildcardCallSite.hasMatch(source),
+        isFalse,
+        reason:
+            'admin CORS regression — a Dart call site echoes '
+            "`Access-Control-Allow-Origin: '*'`. Replace with "
+            'respondAdminCorsPreflight in advisor_proxy.dart.',
+      );
+    });
   });
 }

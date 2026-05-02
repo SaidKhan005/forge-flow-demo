@@ -31,6 +31,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
+import '../widgets/admin_responsive_layout.dart';
 import 'operator_picker_screen.dart';
 
 /// Test seam: lets widget tests inject a synthetic upload byte source
@@ -38,17 +39,15 @@ import 'operator_picker_screen.dart';
 /// drag-and-drop / file picker integration lands in 11A.3b; the
 /// launch slice exposes a "Choose demo upload" affordance that returns
 /// a fixture markdown body when this picker is left null.
-typedef CorpusUploadPicker = Future<UploadCommand?> Function(
-  BuildContext context,
-);
+typedef CorpusUploadPicker =
+    Future<UploadCommand?> Function(BuildContext context);
 
 /// Phase 11A.3a follow-up — opens [OperatorPickerScreen] (or a stub
 /// in tests) and resolves to the picked (operator, location) pair, or
 /// null if the admin cancels. Wired by `admin_routes.dart`'s
 /// `_buildCorpus`; tests can pass a deterministic stub.
-typedef OperatorPickerOpener = Future<OperatorPickerResult?> Function(
-  BuildContext context,
-);
+typedef OperatorPickerOpener =
+    Future<OperatorPickerResult?> Function(BuildContext context);
 
 class CorpusAdminScreen extends StatefulWidget {
   const CorpusAdminScreen({
@@ -148,8 +147,9 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
             versions.every((v) => v.versionId != _selectedVersionId)) {
           _selectedVersionId = null;
         }
-        _selectedVersionId ??=
-            versions.isEmpty ? null : versions.first.versionId;
+        _selectedVersionId ??= versions.isEmpty
+            ? null
+            : versions.first.versionId;
       });
       await _loadSelectedBundle();
     } on CorpusAdminGatewayError catch (error) {
@@ -212,9 +212,9 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       await action();
       await _refresh();
       if (successHint != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(successHint)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(successHint)));
       }
     } on CorpusAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -259,23 +259,20 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     final diff = _stagedDiff;
     if (diff == null) return;
     final summary = diff.summary;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.commitVersion(
-          CommitCommand(
-            previewToken: diff.previewToken,
-            summary: summary,
-            idempotencyKey: _newIdempotencyKey(),
-          ),
-        );
-        if (!mounted) return;
-        setState(() {
-          _stagedDiff = null;
-          _stagedFileName = null;
-        });
-      },
-      successHint: 'Corpus updated.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.commitVersion(
+        CommitCommand(
+          previewToken: diff.previewToken,
+          summary: summary,
+          idempotencyKey: _newIdempotencyKey(),
+        ),
+      );
+      if (!mounted) return;
+      setState(() {
+        _stagedDiff = null;
+        _stagedFileName = null;
+      });
+    }, successHint: 'Corpus updated.');
   }
 
   Future<void> _onPickOperatorPressed() async {
@@ -305,18 +302,15 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       ),
     );
     if (confirmed != true) return;
-    await _runAndRefresh(
-      () async {
-        await widget.gateway.rollbackToVersion(
-          RollbackCommand(
-            targetVersionId: target.versionId,
-            summary: 'Rolled back to ${_shortVersion(target.versionId)}',
-            idempotencyKey: _newIdempotencyKey(),
-          ),
-        );
-      },
-      successHint: 'Corpus rolled back.',
-    );
+    await _runAndRefresh(() async {
+      await widget.gateway.rollbackToVersion(
+        RollbackCommand(
+          targetVersionId: target.versionId,
+          summary: 'Rolled back to ${_shortVersion(target.versionId)}',
+          idempotencyKey: _newIdempotencyKey(),
+        ),
+      );
+    }, successHint: 'Corpus rolled back.');
   }
 
   CorpusVersionRef? get _selected {
@@ -343,9 +337,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
               const _Header(),
               const SizedBox(height: 14),
               if (!widget.editingEnabled)
-                const _ReadOnlyBanner(
-                  key: Key('admin_corpus_readonly_banner'),
-                ),
+                const _ReadOnlyBanner(key: Key('admin_corpus_readonly_banner')),
               if (_actionError != null)
                 _ErrorBanner(
                   key: const Key('admin_corpus_action_error'),
@@ -358,10 +350,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                 labelColor: AppColors.textPrimary,
                 unselectedLabelColor: AppColors.textSecondary,
                 tabs: <Widget>[
-                  Tab(
-                    key: Key('admin_corpus_versions_tab'),
-                    text: 'Versions',
-                  ),
+                  Tab(key: Key('admin_corpus_versions_tab'), text: 'Versions'),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
                     text: 'Graph candidates',
@@ -486,17 +475,13 @@ class _VersionsTab extends StatelessWidget {
               children: [
                 Text(
                   'No corpus versions yet',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
                   'Upload a markdown methodology seed to commit the '
                   'first corpus version.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 16),
@@ -517,37 +502,30 @@ class _VersionsTab extends StatelessWidget {
         ),
       );
     }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 320,
-          child: _VersionList(
-            versions: versions,
-            selectedVersionId: selectedVersionId,
-            editingEnabled: editingEnabled,
-            busy: busy,
-            onSelect: onSelect,
-            onUploadPressed: onUploadPressed,
-            onRollbackPressed: onRollbackPressed,
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: selected == null
-              ? const SizedBox.shrink()
-              : _VersionDetail(
-                  version: selected!,
-                  bundle: selectedBundle,
-                  stagedDiff: stagedDiff,
-                  stagedFileName: stagedFileName,
-                  editingEnabled: editingEnabled,
-                  busy: busy,
-                  onCommitPressed: onCommitPressed,
-                  onDiscardStaged: onDiscardStaged,
-                ),
-        ),
-      ],
+    return AdminMasterDetailLayout(
+      masterWidth: 320,
+      compactMasterHeight: 260,
+      master: _VersionList(
+        versions: versions,
+        selectedVersionId: selectedVersionId,
+        editingEnabled: editingEnabled,
+        busy: busy,
+        onSelect: onSelect,
+        onUploadPressed: onUploadPressed,
+        onRollbackPressed: onRollbackPressed,
+      ),
+      detail: selected == null
+          ? const SizedBox.shrink()
+          : _VersionDetail(
+              version: selected!,
+              bundle: selectedBundle,
+              stagedDiff: stagedDiff,
+              stagedFileName: stagedFileName,
+              editingEnabled: editingEnabled,
+              busy: busy,
+              onCommitPressed: onCommitPressed,
+              onDiscardStaged: onDiscardStaged,
+            ),
     );
   }
 }
@@ -602,8 +580,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
   GraphCandidateDiff? _diff;
   final Set<String> _approveQueue = <String>{};
   final Set<String> _rejectQueue = <String>{};
-  final Map<String, ApprovalDecision> _editQueue =
-      <String, ApprovalDecision>{};
+  final Map<String, ApprovalDecision> _editQueue = <String, ApprovalDecision>{};
   String? _actionError;
   AgeRebuildResult? _ageRebuildBanner;
   bool _busy = false;
@@ -750,15 +727,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
     try {
       final decisions = <ApprovalDecision>[
         for (final id in _approveQueue)
-          ApprovalDecision(
-            candidateId: id,
-            kind: GraphDecisionKind.approve,
-          ),
+          ApprovalDecision(candidateId: id, kind: GraphDecisionKind.approve),
         for (final id in _rejectQueue)
-          ApprovalDecision(
-            candidateId: id,
-            kind: GraphDecisionKind.reject,
-          ),
+          ApprovalDecision(candidateId: id, kind: GraphDecisionKind.reject),
         ..._editQueue.values,
       ];
       final result = await widget.gateway.commitGraphCandidatesBatch(
@@ -770,13 +741,10 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
         ),
       );
       if (!mounted) return;
-      final approved =
-          result.approvedNodeCount + result.approvedEdgeCount;
+      final approved = result.approvedNodeCount + result.approvedEdgeCount;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '$approved approved, ${result.rejectedCount} rejected',
-          ),
+          content: Text('$approved approved, ${result.rejectedCount} rejected'),
         ),
       );
       setState(() {
@@ -876,12 +844,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           _GraphCandidateMetaCard(diff: diff),
           const SizedBox(height: 16),
           _GraphCandidateSection(
-            sectionKey: const Key(
-              'admin_corpus_graph_extracted_section',
-            ),
+            sectionKey: const Key('admin_corpus_graph_extracted_section'),
             label: 'Extracted',
-            description:
-                'Producer-emitted EXTRACTED edges. Bulk-approve safe.',
+            description: 'Producer-emitted EXTRACTED edges. Bulk-approve safe.',
             candidates: diff.extracted,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -894,9 +859,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             onEdit: _onEditPressed,
             trailing: widget.editingEnabled && diff.extracted.isNotEmpty
                 ? FilledButton.icon(
-                    key: const Key(
-                      'admin_corpus_graph_bulk_approve_extracted',
-                    ),
+                    key: const Key('admin_corpus_graph_bulk_approve_extracted'),
                     onPressed: _busy ? null : _bulkApproveExtracted,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunset,
@@ -909,9 +872,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           ),
           const SizedBox(height: 16),
           _GraphCandidateSection(
-            sectionKey: const Key(
-              'admin_corpus_graph_inferred_section',
-            ),
+            sectionKey: const Key('admin_corpus_graph_inferred_section'),
             label: 'Inferred',
             description:
                 'Producer flagged INFERRED. Per-edge approve / reject required.',
@@ -928,9 +889,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           ),
           const SizedBox(height: 16),
           _GraphCandidateSection(
-            sectionKey: const Key(
-              'admin_corpus_graph_ambiguous_section',
-            ),
+            sectionKey: const Key('admin_corpus_graph_ambiguous_section'),
             label: 'Ambiguous',
             description:
                 'Producer flagged AMBIGUOUS. Edit into a clear approved '
@@ -956,10 +915,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             Container(
               key: const Key('admin_corpus_graph_no_target_banner'),
               margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
               decoration: BoxDecoration(
                 color: AppColors.warningBadgeBg,
                 border: Border.all(
@@ -1000,13 +956,10 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   Align(
                     alignment: Alignment.centerLeft,
                     child: FilledButton.icon(
-                      key: const Key(
-                        'admin_corpus_graph_pick_operator_button',
-                      ),
-                      onPressed:
-                          (widget.onPickOperator == null || _busy)
-                              ? null
-                              : widget.onPickOperator,
+                      key: const Key('admin_corpus_graph_pick_operator_button'),
+                      onPressed: (widget.onPickOperator == null || _busy)
+                          ? null
+                          : widget.onPickOperator,
                       style: FilledButton.styleFrom(
                         backgroundColor: AppColors.sunset,
                         foregroundColor: AppColors.backgroundSurface,
@@ -1024,10 +977,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
             Container(
               key: const Key('admin_corpus_graph_picked_target_indicator'),
               margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.positive.withValues(alpha: 0.10),
                 border: Border.all(
@@ -1049,9 +999,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                     child: Text(
                       'Targeting ${widget.pickedTargetLabel} for this '
                       'session.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.positive,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.positive),
                     ),
                   ),
                 ],
@@ -1063,9 +1011,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
               runSpacing: 8,
               children: <Widget>[
                 FilledButton.icon(
-                  key: const Key(
-                    'admin_corpus_graph_commit_button',
-                  ),
+                  key: const Key('admin_corpus_graph_commit_button'),
                   // Disabled when no decisions are queued, when a
                   // commit is already in flight, OR when the host
                   // (admin_routes.dart) has not picked a target
@@ -1073,8 +1019,8 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   // pre-operator-picker).
                   onPressed:
                       (!_hasQueuedDecisions || _busy || !widget.hasTarget)
-                          ? null
-                          : _onCommitBatch,
+                      ? null
+                      : _onCommitBatch,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.sunset,
                     foregroundColor: AppColors.backgroundSurface,
@@ -1087,9 +1033,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   ),
                 ),
                 OutlinedButton.icon(
-                  key: const Key(
-                    'admin_corpus_graph_candidates_discard_queue',
-                  ),
+                  key: const Key('admin_corpus_graph_candidates_discard_queue'),
                   onPressed: (!_hasQueuedDecisions || _busy)
                       ? null
                       : _discardQueue,
@@ -1097,9 +1041,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   label: const Text('Discard queue'),
                 ),
                 OutlinedButton.icon(
-                  key: const Key(
-                    'admin_corpus_age_rebuild_button',
-                  ),
+                  key: const Key('admin_corpus_age_rebuild_button'),
                   onPressed: _busy ? null : _onAgeRebuild,
                   icon: const Icon(Icons.refresh, size: 16),
                   label: const Text('Run AGE rebuild'),
@@ -1139,10 +1081,7 @@ class _GraphCandidateMetaCard extends StatelessWidget {
               label: 'Source commit',
               value: diff.graphifySourceCommit!,
             ),
-          _DetailRow(
-            label: 'Total candidates',
-            value: '${diff.totalCount}',
-          ),
+          _DetailRow(label: 'Total candidates', value: '${diff.totalCount}'),
         ],
       ),
     );
@@ -1235,9 +1174,7 @@ class _GraphCandidateSection extends StatelessWidget {
           else
             ...candidates.map(
               (c) => _GraphCandidateRow(
-                key: Key(
-                  'admin_corpus_graph_tile_${c.candidateId}',
-                ),
+                key: Key('admin_corpus_graph_tile_${c.candidateId}'),
                 candidate: c,
                 queuedForApprove: isQueuedForApprove(c.candidateId),
                 queuedForReject: isQueuedForReject(c.candidateId),
@@ -1355,14 +1292,12 @@ class _GraphCandidateRow extends StatelessWidget {
           if (queued) ...[
             const SizedBox(height: 6),
             _StagedDecisionChip(
-              key: Key(
-                'admin_corpus_graph_staged_${candidate.candidateId}',
-              ),
+              key: Key('admin_corpus_graph_staged_${candidate.candidateId}'),
               label: queuedForApprove
                   ? 'approve'
                   : queuedForReject
-                      ? 'reject'
-                      : 'edit',
+                  ? 'reject'
+                  : 'edit',
             ),
           ],
           if (editingEnabled) ...[
@@ -1480,10 +1415,7 @@ class _StagedDecisionChip extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text(
-        'Staged: $label',
-        style: AppTextStyles.mono11(color: fg),
-      ),
+      child: Text('Staged: $label', style: AppTextStyles.mono11(color: fg)),
     );
   }
 }
@@ -1503,9 +1435,7 @@ class _ConfidenceChip extends StatelessWidget {
     final scoreText = score.toStringAsFixed(2);
     return Container(
       key: low
-          ? Key(
-              'admin_corpus_graph_candidate_warning_${candidate.candidateId}',
-            )
+          ? Key('admin_corpus_graph_candidate_warning_${candidate.candidateId}')
           : Key(
               'admin_corpus_graph_candidate_confidence_${candidate.candidateId}',
             ),
@@ -1540,8 +1470,7 @@ class _GraphCandidateEditDialog extends StatefulWidget {
       _GraphCandidateEditDialogState();
 }
 
-class _GraphCandidateEditDialogState
-    extends State<_GraphCandidateEditDialog> {
+class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
   late final TextEditingController _typeController;
   late final TextEditingController _reasonController;
 
@@ -1549,7 +1478,8 @@ class _GraphCandidateEditDialogState
   void initState() {
     super.initState();
     _typeController = TextEditingController(
-      text: widget.initialDecision?.editedCandidateType ??
+      text:
+          widget.initialDecision?.editedCandidateType ??
           widget.candidate.candidateType,
     );
     _reasonController = TextEditingController(
@@ -1592,9 +1522,7 @@ class _GraphCandidateEditDialogState
                 child: Text(
                   '${widget.candidate.fromNodeKey ?? '?'} → '
                   '${widget.candidate.toNodeKey ?? '?'}',
-                  style: AppTextStyles.mono11(
-                    color: AppColors.textSecondary,
-                  ),
+                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
                 ),
               ),
             const SizedBox(height: 12),
@@ -1630,9 +1558,7 @@ class _GraphCandidateEditDialogState
           child: const Text('Cancel'),
         ),
         FilledButton(
-          key: const Key(
-            'admin_corpus_graph_candidates_edit_dialog_submit',
-          ),
+          key: const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
           style: FilledButton.styleFrom(
             backgroundColor: AppColors.sunset,
             foregroundColor: AppColors.backgroundSurface,
@@ -1748,11 +1674,7 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 16,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -1893,8 +1815,9 @@ class _VersionList extends StatelessWidget {
                                 key: Key(
                                   'admin_corpus_rollback_${v.versionId}',
                                 ),
-                                onPressed:
-                                    busy ? null : () => onRollbackPressed(v),
+                                onPressed: busy
+                                    ? null
+                                    : () => onRollbackPressed(v),
                                 icon: const Icon(
                                   Icons.history_outlined,
                                   size: 14,
@@ -1953,18 +1876,14 @@ class _VersionDetail extends StatelessWidget {
               children: [
                 Text(
                   _shortVersion(version.versionId),
-                  style:
-                      AppTextStyles.display20(color: AppColors.textPrimary),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
                 _DetailRow(
                   label: 'Status',
                   value: version.isCurrent ? 'Current' : 'Superseded',
                 ),
-                _DetailRow(
-                  label: 'Created at',
-                  value: _iso(version.createdAt),
-                ),
+                _DetailRow(label: 'Created at', value: _iso(version.createdAt)),
                 _DetailRow(
                   label: 'Created by',
                   value: version.createdBy ?? '—',
@@ -1975,10 +1894,7 @@ class _VersionDetail extends StatelessWidget {
                     label: 'Rollback of',
                     value: _shortVersion(version.rollbackOf!),
                   ),
-                _DetailRow(
-                  label: 'Chunks',
-                  value: '${chunks.length}',
-                ),
+                _DetailRow(label: 'Chunks', value: '${chunks.length}'),
               ],
             ),
           ),
@@ -2172,13 +2088,13 @@ class _DiffSection extends StatelessWidget {
               ),
             )
           else
-            ...chunks.take(6).map(
+            ...chunks
+                .take(6)
+                .map(
                   (c) => Padding(
                     padding: const EdgeInsets.fromLTRB(18, 2, 0, 4),
                     child: _ChunkPreviewTile(
-                      key: Key(
-                        'admin_corpus_diff_${keyPrefix}_${c.chunkId}',
-                      ),
+                      key: Key('admin_corpus_diff_${keyPrefix}_${c.chunkId}'),
                       chunk: c,
                     ),
                   ),
@@ -2401,7 +2317,8 @@ String _iso(DateTime when) => when.toUtc().toIso8601String();
 /// platform file picker.
 Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
   final controller = TextEditingController(
-    text: '# Forge & Flow Methodology\n\n'
+    text:
+        '# Forge & Flow Methodology\n\n'
         '## Cycles\n\n'
         'Sixty-day target cycles lock standards. Weekly plan snapshots '
         'compare actuals against the locked target.\n\n'
@@ -2410,9 +2327,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
         '## Operator review\n\n'
         'Operators must review the corpus diff before commit.\n',
   );
-  final fileNameController = TextEditingController(
-    text: 'methodology_seed.md',
-  );
+  final fileNameController = TextEditingController(text: 'methodology_seed.md');
   final result = await showDialog<UploadCommand>(
     context: context,
     builder: (dialogContext) {
@@ -2469,8 +2384,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
               }
               Navigator.of(dialogContext).pop(
                 UploadCommand(
-                  fileName:
-                      fileName.isEmpty ? 'methodology_seed.md' : fileName,
+                  fileName: fileName.isEmpty ? 'methodology_seed.md' : fileName,
                   contentType: 'text/markdown',
                   bytes: Uint8List.fromList(body.codeUnits),
                   idempotencyKey:

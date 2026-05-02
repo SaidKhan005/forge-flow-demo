@@ -221,6 +221,48 @@ Future<void> main(List<String> args) async {
   }
 
   try {
+    await verifyAdminProxySchemaContract(productionBindings);
+    log(
+      LogSeverity.info,
+      'startup.admin_schema_contract_verified',
+      fields: <String, Object?>{
+        'required_table_count':
+            AdminProxySchemaContractVerifier.requiredTables.length,
+        'required_column_count':
+            AdminProxySchemaContractVerifier.requiredColumns.length,
+        'required_feature_flag_count':
+            AdminProxySchemaContractVerifier.requiredFeatureFlags.length,
+      },
+    );
+  } on ProxySchemaContractException catch (error) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'admin_schema_contract',
+        'missing_objects': error.missingObjects,
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  } catch (error, stack) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'admin_schema_contract',
+        'error_type': error.runtimeType.toString(),
+        'error_message': error.toString(),
+        'stack_first_frame': firstStackFrame(stack),
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+
+  try {
     final insertedMigrationRows = await recordProxyStartupMigrations(
       productionBindings,
       migrationFilenames,

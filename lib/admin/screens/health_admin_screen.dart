@@ -33,6 +33,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
+import '../widgets/admin_responsive_layout.dart';
 
 /// Default polling cadence per F.1 decision.
 const Duration kHealthAdminPollInterval = Duration(seconds: 30);
@@ -386,30 +387,16 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Health',
-                style: AppTextStyles.display28(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Read-only view of the proxy /health envelope. Three tabs '
-                'mirror the D.1 contract tiers (Retrieval / Proxy / Infra). '
-                'Auto-refreshes every 30 seconds.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Column(
+    return AdminPageHeader(
+      title: 'Health',
+      subtitle:
+          'Read-only view of the proxy /health envelope. Three tabs '
+          'mirror the D.1 contract tiers (Retrieval / Proxy / Infra). '
+          'Auto-refreshes every 30 seconds.',
+      compactBreakpoint: 640,
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 320),
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -424,13 +411,15 @@ class _Header extends StatelessWidget {
               lastRefreshed == null
                   ? 'Last refreshed: —'
                   : 'Last refreshed: '
-                      '${lastRefreshed!.toUtc().toIso8601String()}',
+                        '${lastRefreshed!.toUtc().toIso8601String()}',
               key: const Key('admin_health_last_refreshed'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
           ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -511,16 +500,12 @@ class _Tier1FailureBanner extends StatelessWidget {
                 if (failingDeps.isNotEmpty)
                   Text(
                     'Failing dependencies: ${failingDeps.join(", ")}',
-                    style: AppTextStyles.mono10(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.mono10(color: AppColors.textSecondary),
                   ),
                 if (failingTier1.isNotEmpty)
                   Text(
                     'Failing tier-1 metrics: ${failingTier1.join(", ")}',
-                    style: AppTextStyles.mono10(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: AppTextStyles.mono10(color: AppColors.textSecondary),
                   ),
               ],
             ),
@@ -556,8 +541,9 @@ class _DependenciesStrip extends StatelessWidget {
         children: <Widget>[
           Text(
             'Dependencies',
-            style: AppTextStyles.mono11(color: AppColors.textMuted)
-                .copyWith(fontWeight: FontWeight.w600),
+            style: AppTextStyles.mono11(
+              color: AppColors.textMuted,
+            ).copyWith(fontWeight: FontWeight.w600),
           ),
           for (final dep in envelope.dependencies)
             _DependencyChip(
@@ -587,8 +573,9 @@ class _DependencyChip extends StatelessWidget {
       ),
       child: Text(
         '${dep.name} · ${dep.check} · ${_severityLabel(dep.status)}',
-        style: AppTextStyles.mono10(color: color)
-            .copyWith(fontWeight: FontWeight.w600),
+        style: AppTextStyles.mono10(
+          color: color,
+        ).copyWith(fontWeight: FontWeight.w600),
       ),
     );
   }
@@ -616,17 +603,18 @@ class _OverallSeverityChip extends StatelessWidget {
           Container(
             width: 10,
             height: 10,
-            decoration: BoxDecoration(
-              color: color,
-              shape: BoxShape.circle,
-            ),
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 10),
-          Text(
-            'Overall severity: ${_severityLabel(severity)}'
-            '${envelope.status.isEmpty ? '' : ' · status ${envelope.status}'}',
-            style: AppTextStyles.mono11(color: AppColors.textPrimary)
-                .copyWith(fontWeight: FontWeight.w600),
+          Expanded(
+            child: Text(
+              'Overall severity: ${_severityLabel(severity)}'
+              '${envelope.status.isEmpty ? '' : ' · status ${envelope.status}'}',
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.mono11(
+                color: AppColors.textPrimary,
+              ).copyWith(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),
@@ -747,15 +735,14 @@ class _MetricTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     tile.shortLabel ?? tile.metricKey,
-                    style: AppTextStyles.mono11(color: AppColors.textPrimary)
-                        .copyWith(fontWeight: FontWeight.w600),
+                    style: AppTextStyles.mono11(
+                      color: AppColors.textPrimary,
+                    ).copyWith(fontWeight: FontWeight.w600),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 _TierChip(
-                  key: Key(
-                    'admin_health_tile_${tile.metricKey}_chip',
-                  ),
+                  key: Key('admin_health_tile_${tile.metricKey}_chip'),
                   tier: tier,
                   severity: severity,
                   color: chipColor,
@@ -815,8 +802,9 @@ class _TierChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono8(color: color)
-            .copyWith(fontWeight: FontWeight.w700),
+        style: AppTextStyles.mono8(
+          color: color,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }

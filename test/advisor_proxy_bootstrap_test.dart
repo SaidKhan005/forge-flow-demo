@@ -180,6 +180,9 @@ void main() {
         equals(<String>[
           'postgres://app-role.example/forgeflow',
           'postgres://admin-role.example/forgeflow',
+          // Deep health uses its own admin-role pool so producer
+          // fan-out cannot starve admin console gateway reads.
+          'postgres://admin-role.example/forgeflow',
         ]),
       );
       expect(appPool.beginTransactionCount, equals(0));

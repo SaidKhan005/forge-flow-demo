@@ -109,8 +109,9 @@ ProxyStartupFailure? evaluateProxyStartup({
   required ProxyConfig config,
   required Map<String, String> environment,
 }) {
-  final proxyEnvironment =
-      (environment['PROXY_ENVIRONMENT'] ?? '').trim().toLowerCase();
+  final proxyEnvironment = (environment['PROXY_ENVIRONMENT'] ?? '')
+      .trim()
+      .toLowerCase();
   if (proxyEnvironment == 'prod' && config.firebaseProjectId == null) {
     return const ProxyStartupFailure(
       message: 'startup_failure: firebase_project_id_required_in_prod',
@@ -236,7 +237,7 @@ class ProxyProductionBindings {
   final ProxyUsageCounterStore usageCounterStore;
 
   /// HARD-A — registry-backed health check store driving `/health`.
-  /// Producers run concurrently against the admin pool; reserved
+  /// Producers run through a bounded concurrency lane; reserved
   /// metrics from `proxy_health_contract.md` whose producers have not
   /// landed yet (B43 / B44 / B45 / B47) project to `status: unknown`
   /// without making the response degraded.
@@ -291,7 +292,9 @@ GeminiProxyCompleteFn buildGeminiSdkCompleteFn({
     final model = gemini.GenerativeModel(
       model: modelId,
       apiKey: apiKey,
-      systemInstruction: context.isEmpty ? null : gemini.Content.system(context),
+      systemInstruction: context.isEmpty
+          ? null
+          : gemini.Content.system(context),
     );
     final stream = model
         .generateContentStream(<gemini.Content>[gemini.Content.text(question)])
@@ -379,8 +382,12 @@ ProxyProductionBindings buildProxyProductionBindings(
   final adminPool = postgresPoolFactory(
     config.secretFor(ProxySecretNames.postgresAdminUrl),
   );
+  final healthPool = postgresPoolFactory(
+    config.secretFor(ProxySecretNames.postgresAdminUrl),
+  );
   final tenantWrapper = TenantTransactionWrapper(tenantPool);
   final adminWrapper = TenantTransactionWrapper(adminPool);
+  final healthWrapper = TenantTransactionWrapper(healthPool);
 
   // Phase 9.0Σ.f B.2 — live-wired audit_logs cutover flag. Both the
   // tenant- and admin-pool `AuthEventsAuditRepository` instances and
@@ -639,10 +646,9 @@ ProxyProductionBindings buildProxyProductionBindings(
     // any integration write runs. Backed by the admin pool because
     // the lookup is cross-tenant (F&F admins live outside any
     // operator scope).
-    integrationAdminActorResolver:
-        RepositoryIntegrationAdminActorResolver(
-          usersRepository: UsersRepository(adminWrapper),
-        ),
+    integrationAdminActorResolver: RepositoryIntegrationAdminActorResolver(
+      usersRepository: UsersRepository(adminWrapper),
+    ),
     // Phase 11A.7 — feature flags admin gateway. Reads + writes go
     // through the admin pool; toggles emit a `admin.feature_flags.toggle`
     // event via the same `AuthEventsAuditRepository` the integrations
@@ -682,11 +688,12 @@ ProxyProductionBindings buildProxyProductionBindings(
       AdvisorProxyUsageCounterStore(tenantWrapper),
     ),
     // HARD-A — registry-backed `/health`. Runs all 57 producers
-    // concurrently against the admin pool with `set local role
+    // with bounded concurrency against a separate admin-role pool with `set local role
     // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
-    // event_outbox, audit_logs, vector indexes, etc.) succeed.
+    // event_outbox, audit_logs, vector indexes, etc.) succeed without
+    // starving its own pool or the admin UX gateway pool.
     healthCheckStore: _buildRegistryProxyHealthCheckStore(
-      adminWrapper,
+      healthWrapper,
       expectedMigrationFilenames: expectedMigrationFilenames,
     ),
     // HARD-G observability — pools exposed for the startup
@@ -997,14 +1004,22 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
   TenantTransactionWrapper adminWrapper, {
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
+  const healthStatementTimeout = Duration(milliseconds: 1500);
+  const healthProducerConcurrency = 2;
+
   Future<List<Map<String, Object?>>> runnerFn(
     String sql, {
     Map<String, Object?> parameters = const <String, Object?>{},
   }) {
-    return adminWrapper.runAsSystem<List<Map<String, Object?>>>(
-      (exec) => exec.query(sql, parameters: parameters),
-      reason: 'proxy_health',
-    );
+    return adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      await exec.execute(
+        "select set_config('statement_timeout', @value, true)",
+        parameters: <String, Object?>{
+          'value': '${healthStatementTimeout.inMilliseconds}ms',
+        },
+      );
+      return exec.query(sql, parameters: parameters);
+    }, reason: 'proxy_health');
   }
 
   return RegistryProxyHealthCheckStore(
@@ -1012,10 +1027,17 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     // HARD-A: strict probe exercises cypher MATCH + vector distance,
     // not just extension presence, so a regressed AGE path or vector
     // operator surfaces as `red` instead of green.
-    dependencyProbe: (fn, now) => strictProxyHealthDependencyProbe(fn, now),
+    dependencyProbe: (fn, now) => strictProxyHealthDependencyProbe(
+      fn,
+      now,
+      budget: kPostgresPerStatementTimeout,
+    ),
     producers: buildProxyHealthRegistryProducers(
       expectedMigrationFilenames: expectedMigrationFilenames,
     ),
+    producerBudget: const Duration(seconds: 3),
+    outerProducerBudget: const Duration(seconds: 4),
+    producerConcurrency: healthProducerConcurrency,
   );
 }
 
@@ -1042,6 +1064,24 @@ Future<int> recordProxyStartupMigrations(
   return ProxyMigrationApplyRegistryWriter(
     runnerFn: runnerFn,
   ).recordAppliedMigrations(migrationFilenames);
+}
+
+/// Verifies the actual admin-console schema contract before the proxy
+/// binds. This closes the gap where startup can observe migration files
+/// in `db/migrations` while the target database has not run the SQL yet.
+Future<void> verifyAdminProxySchemaContract(ProxyProductionBindings bindings) {
+  final adminWrapper = TenantTransactionWrapper(bindings.adminPool);
+  Future<List<Map<String, Object?>>> runnerFn(
+    String sql, {
+    Map<String, Object?> parameters = const <String, Object?>{},
+  }) {
+    return adminWrapper.runAsSystem<List<Map<String, Object?>>>(
+      (exec) => exec.query(sql, parameters: parameters),
+      reason: 'proxy_admin_schema_contract',
+    );
+  }
+
+  return AdminProxySchemaContractVerifier(runnerFn: runnerFn).verify();
 }
 
 /// HARD-G observability — startup connectivity probe.
@@ -1139,6 +1179,9 @@ class RepositoryOperatorLocationAdminProxyGateway
     final allLocations = await _locations.listAllLocations(
       adminReason: adminReason,
     );
+    final adminGrantCounts = await _operatorAdmins.countByOperator(
+      adminReason: '$adminReason:admin_grant_counts',
+    );
     for (final loc in allLocations) {
       locationsByOperator
           .putIfAbsent(loc.operatorId, () => <LocationAdminRow>[])
@@ -1158,10 +1201,7 @@ class RepositoryOperatorLocationAdminProxyGateway
           // on demand via the future per-operator detail endpoint
           // (Phase 11A.x). Surfacing the count here lets the admin
           // console flag operators without an admin attached.
-          'admin_grant_count': (await _operatorAdmins.listForOperator(
-            operatorId: op.operatorId,
-            adminReason: '$adminReason:admin_grants:${op.operatorId}',
-          )).length,
+          'admin_grant_count': adminGrantCounts[op.operatorId] ?? 0,
         },
     ];
     await _audit(
@@ -1458,63 +1498,63 @@ class RepositoryOperatorLocationAdminProxyGateway
 /// `lib/admin/models/pricing_tier_admin_models.dart`. Keep in sync.
 const Map<String, List<_PricingTierTemplateCap>> _kPricingTierTemplateCaps =
     <String, List<_PricingTierTemplateCap>>{
-  'pilot': <_PricingTierTemplateCap>[
-    _PricingTierTemplateCap(
-      usageClass: 'advisor_qa',
-      monthlyCapUsd: 50.0,
-      perInvocationCapUsd: 0.10,
-    ),
-  ],
-  'starter': <_PricingTierTemplateCap>[
-    _PricingTierTemplateCap(
-      usageClass: 'advisor_qa',
-      monthlyCapUsd: 50.0,
-      perInvocationCapUsd: 0.10,
-    ),
-  ],
-  'premium': <_PricingTierTemplateCap>[
-    _PricingTierTemplateCap(
-      usageClass: 'advisor_qa',
-      monthlyCapUsd: 200.0,
-      perInvocationCapUsd: 0.20,
-    ),
-  ],
-  'elite': <_PricingTierTemplateCap>[
-    _PricingTierTemplateCap(
-      usageClass: 'advisor_qa',
-      monthlyCapUsd: 400.0,
-      perInvocationCapUsd: 0.20,
-    ),
-    _PricingTierTemplateCap(
-      usageClass: 'coach_qa',
-      monthlyCapUsd: 300.0,
-      perInvocationCapUsd: 0.20,
-    ),
-  ],
-  'pro': <_PricingTierTemplateCap>[
-    _PricingTierTemplateCap(
-      usageClass: 'advisor_qa',
-      monthlyCapUsd: 600.0,
-      perInvocationCapUsd: 0.20,
-    ),
-    _PricingTierTemplateCap(
-      usageClass: 'coach_qa',
-      monthlyCapUsd: 400.0,
-      perInvocationCapUsd: 0.20,
-    ),
-    _PricingTierTemplateCap(
-      usageClass: 'workflow_pl',
-      monthlyCapUsd: 500.0,
-      perInvocationCapUsd: 5.0,
-    ),
-    _PricingTierTemplateCap(
-      usageClass: 'workflow_schedule',
-      monthlyCapUsd: 300.0,
-      perInvocationCapUsd: 5.0,
-    ),
-  ],
-  'enterprise': <_PricingTierTemplateCap>[],
-};
+      'pilot': <_PricingTierTemplateCap>[
+        _PricingTierTemplateCap(
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 50.0,
+          perInvocationCapUsd: 0.10,
+        ),
+      ],
+      'starter': <_PricingTierTemplateCap>[
+        _PricingTierTemplateCap(
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 50.0,
+          perInvocationCapUsd: 0.10,
+        ),
+      ],
+      'premium': <_PricingTierTemplateCap>[
+        _PricingTierTemplateCap(
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 200.0,
+          perInvocationCapUsd: 0.20,
+        ),
+      ],
+      'elite': <_PricingTierTemplateCap>[
+        _PricingTierTemplateCap(
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 400.0,
+          perInvocationCapUsd: 0.20,
+        ),
+        _PricingTierTemplateCap(
+          usageClass: 'coach_qa',
+          monthlyCapUsd: 300.0,
+          perInvocationCapUsd: 0.20,
+        ),
+      ],
+      'pro': <_PricingTierTemplateCap>[
+        _PricingTierTemplateCap(
+          usageClass: 'advisor_qa',
+          monthlyCapUsd: 600.0,
+          perInvocationCapUsd: 0.20,
+        ),
+        _PricingTierTemplateCap(
+          usageClass: 'coach_qa',
+          monthlyCapUsd: 400.0,
+          perInvocationCapUsd: 0.20,
+        ),
+        _PricingTierTemplateCap(
+          usageClass: 'workflow_pl',
+          monthlyCapUsd: 500.0,
+          perInvocationCapUsd: 5.0,
+        ),
+        _PricingTierTemplateCap(
+          usageClass: 'workflow_schedule',
+          monthlyCapUsd: 300.0,
+          perInvocationCapUsd: 5.0,
+        ),
+      ],
+      'enterprise': <_PricingTierTemplateCap>[],
+    };
 
 class _PricingTierTemplateCap {
   const _PricingTierTemplateCap({
@@ -1548,10 +1588,10 @@ class RepositoryPricingTierAdminProxyGateway
     required UsageCapsRepository usageCapsRepository,
     required OrgUnitsRepository orgUnitsRepository,
     required AuthEventsAuditRepository auditRepository,
-  })  : _operators = operatorsRepository,
-        _caps = usageCapsRepository,
-        _orgUnits = orgUnitsRepository,
-        _auditRepository = auditRepository;
+  }) : _operators = operatorsRepository,
+       _caps = usageCapsRepository,
+       _orgUnits = orgUnitsRepository,
+       _auditRepository = auditRepository;
 
   final OperatorsRepository _operators;
   final UsageCapsRepository _caps;
@@ -1816,9 +1856,9 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
     required CorpusRepository corpusRepository,
     required AuthEventsAuditRepository auditRepository,
     bool emitInvalidationEvent = false,
-  })  : _corpus = corpusRepository,
-        _auditRepository = auditRepository,
-        _emitInvalidationEvent = emitInvalidationEvent;
+  }) : _corpus = corpusRepository,
+       _auditRepository = auditRepository,
+       _emitInvalidationEvent = emitInvalidationEvent;
 
   final CorpusRepository _corpus;
   final AuthEventsAuditRepository _auditRepository;
@@ -1943,9 +1983,7 @@ class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
     final result = await _corpus.rollbackToVersion(
       targetVersionId: targetVersionId,
       actorUserId: actorUserId,
-      summary: summary.isEmpty
-          ? 'Rolled back to $targetVersionId'
-          : summary,
+      summary: summary.isEmpty ? 'Rolled back to $targetVersionId' : summary,
       adminReason: adminReason,
       idempotencyKey: idempotencyKey,
       emitInvalidationEvent: _emitInvalidationEvent,
@@ -2007,12 +2045,11 @@ class RepositoryGraphCandidatesProxyGateway
     required GraphRepository graphRepository,
     required AuthEventsAuditRepository auditRepository,
     required Directory repoRoot,
-    String candidatesDirectory =
-        defaultGraphifyCandidatesOutputDirectory,
-  })  : _graph = graphRepository,
-        _auditRepository = auditRepository,
-        _repoRoot = repoRoot,
-        _candidatesDirectory = candidatesDirectory;
+    String candidatesDirectory = defaultGraphifyCandidatesOutputDirectory,
+  }) : _graph = graphRepository,
+       _auditRepository = auditRepository,
+       _repoRoot = repoRoot,
+       _candidatesDirectory = candidatesDirectory;
 
   final GraphRepository _graph;
   final AuthEventsAuditRepository _auditRepository;
@@ -2186,20 +2223,21 @@ class RepositoryGraphCandidatesProxyGateway
     // await. The chained `.catchError` removes the entry on
     // failure so a retry after a transient error gets a fresh
     // attempt; on success the resolved Future stays cached.
-    final pending = _commitBatchInternal(
-      actorUserId: actorUserId,
-      operatorId: operatorId,
-      locationId: locationId,
-      decisions: decisions,
-      idempotencyKey: idempotencyKey,
-      adminReason: adminReason,
-    ).catchError((Object error, StackTrace stackTrace) {
-      _idempotentCommitResults.remove(idempotencyKey);
-      // Rethrow so awaiters see the original error. The catchError
-      // handler completes the chained Future with the same error.
-      // ignore: only_throw_errors
-      throw error;
-    });
+    final pending =
+        _commitBatchInternal(
+          actorUserId: actorUserId,
+          operatorId: operatorId,
+          locationId: locationId,
+          decisions: decisions,
+          idempotencyKey: idempotencyKey,
+          adminReason: adminReason,
+        ).catchError((Object error, StackTrace stackTrace) {
+          _idempotentCommitResults.remove(idempotencyKey);
+          // Rethrow so awaiters see the original error. The catchError
+          // handler completes the chained Future with the same error.
+          // ignore: only_throw_errors
+          throw error;
+        });
     _idempotentCommitResults[idempotencyKey] = pending;
     return pending;
   }
@@ -2300,7 +2338,7 @@ class RepositoryGraphCandidatesProxyGateway
           : GraphCandidateKind.node;
       final candidatePayload =
           ((candidate['payload'] as Map?)?.cast<String, Object?>()) ??
-              const <String, Object?>{};
+          const <String, Object?>{};
       final editedPayloadRaw = wire['edited_payload'];
       final editedPayload = editedPayloadRaw is Map
           ? editedPayloadRaw.cast<String, Object?>()
@@ -2309,8 +2347,7 @@ class RepositoryGraphCandidatesProxyGateway
         throw GraphCandidatesGatewayValidationError(
           statusCode: 400,
           code: 'missing_edited_payload',
-          message:
-              'decisions[$i] is an edit but does not carry edited_payload',
+          message: 'decisions[$i] is an edit but does not carry edited_payload',
         );
       }
       // Spec line 249 (server-side guard): AMBIGUOUS relationships
@@ -2379,12 +2416,14 @@ class RepositoryGraphCandidatesProxyGateway
               'manifest before retrying',
         );
       }
-      final candidateType = (wire['edited_candidate_type'] as String?) ??
+      final candidateType =
+          (wire['edited_candidate_type'] as String?) ??
           (candidate['candidate_type']! as String);
       final confidenceLabel = GraphCandidateLabel.fromWire(
         candidate['label']! as String,
       );
-      final confidenceScore = (candidate['confidence_score'] as num?)?.toDouble();
+      final confidenceScore = (candidate['confidence_score'] as num?)
+          ?.toDouble();
       final reasonRaw = wire['reason'];
       final reason = reasonRaw is String && reasonRaw.trim().isNotEmpty
           ? reasonRaw.trim()
@@ -2556,16 +2595,16 @@ class RepositoryGraphCandidatesProxyGateway
         throw GraphCandidatesGatewayValidationError(
           statusCode: 400,
           code: 'invalid_decision_kind',
-          message:
-              'decisions[$index] kind "$wire" must be approve/reject/edit',
+          message: 'decisions[$index] kind "$wire" must be approve/reject/edit',
         );
     }
   }
 
   Future<_GraphCandidateBundle> _loadCandidateBundle() async {
     final dir = Directory(p.join(_repoRoot.path, _candidatesDirectory));
-    final manifestFile =
-        File(p.join(dir.path, graphifyCandidateManifestFileName));
+    final manifestFile = File(
+      p.join(dir.path, graphifyCandidateManifestFileName),
+    );
     final nodesFile = File(p.join(dir.path, graphifyNodeCandidatesFileName));
     final edgesFile = File(p.join(dir.path, graphifyEdgeCandidatesFileName));
     if (!manifestFile.existsSync() ||
@@ -2589,10 +2628,8 @@ class RepositoryGraphCandidatesProxyGateway
     return _GraphCandidateBundle(
       graphScope: (manifest['graph_scope'] as String?) ?? 'methodology',
       graphVersion: (manifest['graph_version'] as String?) ?? '1',
-      graphifyVersion:
-          (manifest['graphify_version'] as String?) ?? 'unknown',
-      graphifySourceCommit:
-          manifest['graphify_source_commit'] as String?,
+      graphifyVersion: (manifest['graphify_version'] as String?) ?? 'unknown',
+      graphifySourceCommit: manifest['graphify_source_commit'] as String?,
       nodes: nodes,
       edges: edges,
     );
@@ -2655,7 +2692,6 @@ class _GraphCandidateBundle {
   final List<Map<String, Object?>> edges;
 }
 
-
 /// Stable status placeholders the Integrations screen renders for
 /// non-rotatable rows (vendor connectors, FX-rate source, email
 /// provider). The proxy answers `GET /v1/admin/integrations` with
@@ -2663,19 +2699,19 @@ class _GraphCandidateBundle {
 /// for live status as those surfaces ship.
 const List<Map<String, Object?>> _kIntegrationDefaultVendorConnectors =
     <Map<String, Object?>>[
-  <String, Object?>{
-    'id': 'connector_compeat',
-    'display_name': 'Compeat connector',
-    'status_label': 'placeholder',
-    'detail_message': 'Vendor connector lights up in Phase 8.',
-  },
-  <String, Object?>{
-    'id': 'connector_mp',
-    'display_name': 'Marketman connector',
-    'status_label': 'placeholder',
-    'detail_message': 'Vendor connector lights up in Phase 8.',
-  },
-];
+      <String, Object?>{
+        'id': 'connector_compeat',
+        'display_name': 'Compeat connector',
+        'status_label': 'placeholder',
+        'detail_message': 'Vendor connector lights up in Phase 8.',
+      },
+      <String, Object?>{
+        'id': 'connector_mp',
+        'display_name': 'Marketman connector',
+        'status_label': 'placeholder',
+        'detail_message': 'Vendor connector lights up in Phase 8.',
+      },
+    ];
 
 const Map<String, Object?> _kIntegrationDefaultFxRateSource = <String, Object?>{
   'id': 'fx_rate',
@@ -2686,11 +2722,11 @@ const Map<String, Object?> _kIntegrationDefaultFxRateSource = <String, Object?>{
 
 const Map<String, Object?> _kIntegrationDefaultEmailProvider =
     <String, Object?>{
-  'id': 'email',
-  'display_name': 'Email provider',
-  'status_label': 'placeholder',
-  'detail_message': 'Email provider lands in Phase 9.8.',
-};
+      'id': 'email',
+      'display_name': 'Email provider',
+      'status_label': 'placeholder',
+      'detail_message': 'Email provider lands in Phase 9.8.',
+    };
 
 /// Production [IntegrationAdminProxyGateway] backed by
 /// [ProviderCredentialsRepository] + [KmsProvider]. Translates the
@@ -2731,9 +2767,7 @@ class RepositoryIntegrationAdminProxyGateway
       actorUserId: actorUserId,
       eventType: 'admin.integrations.list',
       adminReason: adminReason,
-      payload: <String, Object?>{
-        'provider_key_count': rows.length,
-      },
+      payload: <String, Object?>{'provider_key_count': rows.length},
     );
     return <String, Object?>{
       'provider_keys': keysJson,
@@ -2942,10 +2976,10 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required FeatureFlagsRepository featureFlagsRepository,
     required AuthEventsAuditRepository auditRepository,
     FeatureFlagToggleIdempotencyCache? idempotencyCache,
-  })  : _flags = featureFlagsRepository,
-        _auditRepository = auditRepository,
-        _idempotencyCache =
-            idempotencyCache ?? FeatureFlagToggleIdempotencyCache();
+  }) : _flags = featureFlagsRepository,
+       _auditRepository = auditRepository,
+       _idempotencyCache =
+           idempotencyCache ?? FeatureFlagToggleIdempotencyCache();
 
   final FeatureFlagsRepository _flags;
   final AuthEventsAuditRepository _auditRepository;
@@ -2963,9 +2997,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required String adminReason,
   }) async {
     final rows = await _flags.listFlags(adminReason: adminReason);
-    return <Map<String, Object?>>[
-      for (final row in rows) row.toJson(),
-    ];
+    return <Map<String, Object?>>[for (final row in rows) row.toJson()];
   }
 
   @override
@@ -3093,7 +3125,8 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required String actorUserId,
     String? reason,
   }) {
-    final canonical = '{'
+    final canonical =
+        '{'
         '"actor_user_id":${jsonEncode(actorUserId)},'
         '"admin_reason":${jsonEncode(adminReason)},'
         '"enabled":$enabled,'
@@ -3115,7 +3148,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
 /// Future and awaits the same compute.
 class FeatureFlagToggleIdempotencyCache {
   FeatureFlagToggleIdempotencyCache({this.maxEntries = 1024})
-      : assert(maxEntries > 0, 'maxEntries must be positive');
+    : assert(maxEntries > 0, 'maxEntries must be positive');
 
   /// Hard cap on cached entries. The toggle route is super-admin
   /// only so unique-key floods are extremely unlikely in practice;
@@ -3235,20 +3268,22 @@ class FeatureFlagToggleIdempotencyCache {
     // and prod zones see a duplicate "unhandled async error" report
     // for every failed compute.
     // ignore: unawaited_futures
-    pending.whenComplete(() {
-      entry.isPending = false;
-      // No `exceptKey`: the just-settled entry is now fair game
-      // for eviction. Any awaiter holding the Future already has
-      // it; removing the cache slot just means subsequent retries
-      // are cache misses (which is the LRU contract).
-      _trimSettledOverflow();
-    }).catchError((Object _) {
-      // Secondary listener — primary `await` consumer handles the
-      // real error. Returning null aligns with the chain's
-      // `Map<String, Object?>?` value type so the analyzer's
-      // `body_might_complete_normally_catch_error` rule is satisfied.
-      return null;
-    });
+    pending
+        .whenComplete(() {
+          entry.isPending = false;
+          // No `exceptKey`: the just-settled entry is now fair game
+          // for eviction. Any awaiter holding the Future already has
+          // it; removing the cache slot just means subsequent retries
+          // are cache misses (which is the LRU contract).
+          _trimSettledOverflow();
+        })
+        .catchError((Object _) {
+          // Secondary listener — primary `await` consumer handles the
+          // real error. Returning null aligns with the chain's
+          // `Map<String, Object?>?` value type so the analyzer's
+          // `body_might_complete_normally_catch_error` rule is satisfied.
+          return null;
+        });
     _trimSettledOverflow(exceptKey: idempotencyKey);
     return pending;
   }
@@ -3320,7 +3355,7 @@ class _IdempotencyPayloadMismatch implements Exception {
 class PostgresAdminRequestIdempotencyStore
     implements AdminRequestIdempotencyStore {
   PostgresAdminRequestIdempotencyStore({required PostgresPool pool})
-      : _pool = pool;
+    : _pool = pool;
 
   final PostgresPool _pool;
 
@@ -3763,13 +3798,12 @@ KmsProvider _buildKmsProvider({
       accessTokenProvider: accessTokenProvider,
     ),
     flagLookup: (keyKind) async {
-      return adminWrapper.runAsSystem<bool>(
-        (exec) async {
-          return const FeatureFlagsTableKmsRolloutFlag()
-              .isEnabledFor(keyKind, exec);
-        },
-        reason: 'kms_rollout_flag_check:$keyKind',
-      );
+      return adminWrapper.runAsSystem<bool>((exec) async {
+        return const FeatureFlagsTableKmsRolloutFlag().isEnabledFor(
+          keyKind,
+          exec,
+        );
+      }, reason: 'kms_rollout_flag_check:$keyKind');
     },
   );
 }
@@ -3780,10 +3814,7 @@ KmsProvider _buildKmsProvider({
 /// `PROXY_ENVIRONMENT` is treated as production-equivalent so a
 /// misconfigured deploy fails closed instead of silently allowing
 /// `http://localhost:*` to call admin routes.
-const Set<String> kAdminCorsDevStagingEnvironments = <String>{
-  'dev',
-  'staging',
-};
+const Set<String> kAdminCorsDevStagingEnvironments = <String>{'dev', 'staging'};
 
 /// HARD-C — name of the Postgres feature flag that supplies
 /// supplemental admin CORS origins. Must match the `flag_name`
@@ -3840,8 +3871,7 @@ class FixedAdminCorsOriginsExtraFlag implements AdminCorsOriginsExtraFlag {
 /// silently emits no extras.
 class FeatureFlagsTableAdminCorsOriginsExtraFlag
     implements AdminCorsOriginsExtraFlag {
-  FeatureFlagsTableAdminCorsOriginsExtraFlag(PostgresPool pool)
-      : _pool = pool;
+  FeatureFlagsTableAdminCorsOriginsExtraFlag(PostgresPool pool) : _pool = pool;
 
   final PostgresPool _pool;
 
@@ -3946,7 +3976,7 @@ List<String> resolveAdminCorsAllowList(
   final environment = config.proxyEnvironment;
   final isKnownDevOrStaging =
       environment != null &&
-          kAdminCorsDevStagingEnvironments.contains(environment);
+      kAdminCorsDevStagingEnvironments.contains(environment);
   if (isKnownDevOrStaging) {
     merged.add('http://localhost:*');
   }
