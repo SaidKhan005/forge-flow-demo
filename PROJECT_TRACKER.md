@@ -15,7 +15,8 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   from `demoDefinitions`) with live ACTIVE NOW chip. Whole-day stays
   default + authoritative. Walkthrough at `docs/_walkthroughs/10.5.0.md`.
 - 11A Operations Console foundation now spans `11A.0`–`4c`/`7`/`UX.health`
-  accepted; `11A.5`/`11A.6` blocked on B44/B45/B47 producers.
+  accepted; `11A.5`/`11A.6` blocked on B45/B47 producers (B44 graph producers
+  delivered — see `docs/_walkthroughs/B44.md`).
 - **Recently accepted (2026-05-02 sprint, PRs #50–54)**: `7.58.0` Primary
   Driver contract pin (test-only, 22 assertions / 12 fixtures, 31 of 32 rules
   MET, F-1 deferred to 7.58.UX.5); `11A.3a` operator-picker (Graph candidates
@@ -95,9 +96,9 @@ candidates by readiness:
    service + primary-driver teaching (sequence per phase doc).
 5. **`7.61` pre-Phase-8 cleanup** — driver-key audit; gated before Phase 8.
 
-**Then queued (rough order):** `11A.5`/`11A.6` (after B44/B45/B47 producer
-wiring), `9.5`, `9.75`, `8`/`8R`/`8.5`, `11b`/`11b.1`/`11b.2`, `12.*`,
-`9.8`, `cutover.0b`–`0-5`.
+**Then queued (rough order):** `11A.5`/`11A.6` (after B45/B47 producer
+wiring; B44 graph producers already delivered), `9.5`, `9.75`, `8`/`8R`/`8.5`,
+`11b`/`11b.1`/`11b.2`, `12.*`, `9.8`, `cutover.0b`–`0-5`.
 
 ## Phase Board
 

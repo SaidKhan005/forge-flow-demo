@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-02
+Updated: 2026-05-02 (B44 graph producer delivery acknowledged)
 Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7`/`UX.health` accepted.
-Remaining: `11A.5`, `11A.6` (pending B44/B45/B47 producers); `11A.8`/`9`/`10` not started.
+Remaining: `11A.5`, `11A.6` (pending B45/B47 producers; B44 graph producers delivered); `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-02)
@@ -15,7 +15,14 @@ proxy `/health` per-surface metrics. Producers from the 9.0Σ foundation series:
 
 - `audit_chain_lag_seconds` — **delivered** by B27 (`audit_logs` hash chain).
 - `vector_index_size_per_corpus`, latency, recall — **B47 producer wiring still owed**.
-- `graph_node_count`, `graph_edge_count`, traversal latency — **B44 producer wiring still owed**.
+- `graph_node_count`, `graph_edge_count`, traversal latency — **delivered** by B44
+  (graph health producer family at
+  `tool/advisor_proxy/health_producers/graph_producers.dart`; nine metrics
+  including p95/p99 latency, timeout rate, projection age, growth projection;
+  catalog wired via `producer_registry.dart` `familyGraph`; bootstrap call at
+  `tool/advisor_proxy/proxy_bootstrap.dart` line 1011; thresholds per Decision
+  30 and Lock 3 perf gate; tests at
+  `test/proxy/health_producers/graph_producers_test.dart`).
 - `rollup_freshness_per_grain` — **B45 producer wiring still owed**.
 - `event_outbox_undelivered_count`, lag — delivered by B26 (Phase 10a bridge consumes).
 - `usage_caps_breach_count` — delivered.
@@ -298,7 +305,7 @@ Acceptance:
   requests, notification/outbox status, and Firebase/local drift
   flags. Full repair actions consume Phase 9 safe backend routes;
   the admin client must not perform direct DB/Firebase writes.
-- `11A.6` **Observability dashboard.** *Status (2026-05-02): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; placeholder route only at `lib/admin/admin_routes.dart` line 175-183. Blocked on B44/B45/B47 metric producers.* System health
+- `11A.6` **Observability dashboard.** *Status (2026-05-02): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; placeholder route only at `lib/admin/admin_routes.dart` line 175-183. Graph metrics now delivered by B44; surface remains blocked on B45/B47 metric producers.* System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
   Cap-event stream (incoming alerts when operators hit cap).
