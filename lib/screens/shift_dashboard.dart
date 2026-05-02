@@ -2,8 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 import '../theme/app_theme.dart';
 import '../data/app_defaults.dart';
+import '../domain/models/restaurant_location.dart';
+import '../domain/models/service_period_definition.dart';
+import '../domain/services/business_date_resolver.dart';
+import '../domain/services/service_period_definition_resolver.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../state/shift_dashboard_notifier.dart';
 import '../models/current_state_freshness.dart';
@@ -15,15 +21,51 @@ import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
 import '../widgets/sales_forecast_card.dart';
 
-class ShiftDashboard extends StatelessWidget {
+/// Default business-day cutoff used by the daypart scaffold until the
+/// timing-config wiring (`RestaurantTimingConfigReadService`) is plumbed
+/// through to this widget tree. Matches the seeded
+/// `business_day_start_local_time` in
+/// `lib/infrastructure/persistence/sqlite/sqlite_database_seed.dart`.
+const String _defaultBusinessDayStartLocalTime = '04:00';
+
+bool _tzInitialized = false;
+
+void _ensureTzInitialized() {
+  if (_tzInitialized) return;
+  tzdata.initializeTimeZones();
+  _tzInitialized = true;
+}
+
+/// Shift surface scope selector.
+///
+/// Phase 10.5: whole-day is the default and the source of truth; daypart
+/// is an additive lens that opens alongside it. The bucketing engine and
+/// per-period live metrics land in subsequent 10.5 slices; this scaffold
+/// only opens the surface.
+enum ShiftScope { wholeDay, daypart }
+
+class ShiftDashboard extends StatefulWidget {
   final VoidCallback? onVarianceTap;
 
   /// Test seam: when non-null, used instead of [DateTime.now] for the
-  /// header clock display. Set in tests, clear in tearDown.
+  /// header clock display and the daypart scaffold's active-period
+  /// resolver. Set in tests, clear in tearDown.
   @visibleForTesting
   static DateTime Function()? clockOverride;
 
   const ShiftDashboard({super.key, this.onVarianceTap});
+
+  @override
+  State<ShiftDashboard> createState() => _ShiftDashboardState();
+}
+
+class _ShiftDashboardState extends State<ShiftDashboard> {
+  ShiftScope _scope = ShiftScope.wholeDay;
+
+  void _setScope(ShiftScope next) {
+    if (_scope == next) return;
+    setState(() => _scope = next);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,60 +111,100 @@ class ShiftDashboard extends StatelessWidget {
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-              // Each SliverMainAxisGroup bundles a header + its content
-              // so the next group's header pushes the entire previous
-              // group off — iOS UITableView-style, no stacking.
-              SliverMainAxisGroup(
-                slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: StickySectionDelegate('SHIFT OUTPUTS'),
+                SliverToBoxAdapter(
+                  child: _ShiftScopeToggle(
+                    scope: _scope,
+                    onChanged: _setScope,
                   ),
-                  SliverToBoxAdapter(
-                    child: _OutputsSection(readModel: rm),
-                  ),
-                ],
-              ),
-              SliverMainAxisGroup(
-                slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: StickySectionDelegate('SHIFT INPUTS'),
-                  ),
-                  SliverToBoxAdapter(
-                    child: _InputsSection(readModel: rm),
-                  ),
-                ],
-              ),
-              SliverMainAxisGroup(
-                slivers: [
-                  SliverPersistentHeader(
-                    pinned: true,
-                    delegate: StickySectionDelegate('FOH PRODUCTIVITY'),
-                  ),
-                  SliverToBoxAdapter(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: ZoneStatusCard(
-                        currentCPLH: rm.actualCPLH,
-                        opzFloorCPLH: rm.opzFloorCPLH,
-                        opzCeilingCPLH: rm.opzCeilingCPLH,
-                        targetCPLH: rm.targetCPLH,
-                        opzStatus: rm.opzStatus,
-                        opzLabel: rm.opzLabel,
-                        opzSubLabel: rm.opzSubLabel,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SliverToBoxAdapter(child: SizedBox(height: 48)),
-            ],
+                ),
+                if (_scope == ShiftScope.wholeDay) ..._wholeDaySlivers(rm),
+                if (_scope == ShiftScope.daypart) ..._daypartSlivers(),
+                const SliverToBoxAdapter(child: SizedBox(height: 48)),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  /// Existing whole-day slivers — kept identical to pre-10.5 behavior.
+  /// Whole-day Shift is authoritative; daypart is additive.
+  List<Widget> _wholeDaySlivers(ShiftDashboardReadModel rm) {
+    return [
+      // Each SliverMainAxisGroup bundles a header + its content
+      // so the next group's header pushes the entire previous
+      // group off — iOS UITableView-style, no stacking.
+      SliverMainAxisGroup(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: StickySectionDelegate('SHIFT OUTPUTS'),
+          ),
+          SliverToBoxAdapter(
+            child: _OutputsSection(readModel: rm),
+          ),
+        ],
+      ),
+      SliverMainAxisGroup(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: StickySectionDelegate('SHIFT INPUTS'),
+          ),
+          SliverToBoxAdapter(
+            child: _InputsSection(readModel: rm),
+          ),
+        ],
+      ),
+      SliverMainAxisGroup(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: StickySectionDelegate('FOH PRODUCTIVITY'),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: ZoneStatusCard(
+                currentCPLH: rm.actualCPLH,
+                opzFloorCPLH: rm.opzFloorCPLH,
+                opzCeilingCPLH: rm.opzCeilingCPLH,
+                targetCPLH: rm.targetCPLH,
+                opzStatus: rm.opzStatus,
+                opzLabel: rm.opzLabel,
+                opzSubLabel: rm.opzSubLabel,
+              ),
+            ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  /// Daypart scaffold — surface-only seam for slice 10.5.0. Renders the
+  /// service-period strip from [ServicePeriodDefinitionResolver.demoDefinitions]
+  /// so the operator can see the lens exists and which period is live; the
+  /// live bucketing engine, per-period metrics, and primary-driver teaching
+  /// land in subsequent 10.5 slices. The scaffold owns its own
+  /// restaurant-local clock and ticker — see [_DaypartScaffoldSection].
+  List<Widget> _daypartSlivers() {
+    return [
+      SliverMainAxisGroup(
+        slivers: [
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: StickySectionDelegate('SERVICE PERIODS'),
+          ),
+          const SliverToBoxAdapter(
+            child: _DaypartScaffoldSection(
+              definitions:
+                  ServicePeriodDefinitionResolver.demoDefinitions,
+            ),
+          ),
+        ],
+      ),
+    ];
   }
 }
 
@@ -545,6 +627,348 @@ class _TeachingTakeaway extends StatelessWidget {
           Text(
             lever.whatHappened,
             style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Scope toggle (Phase 10.5.0) ────────────────────────────────────────────
+
+/// Segmented control that switches the Shift surface between the
+/// authoritative whole-day view and the additive daypart lens.
+///
+/// Whole-day stays selected by default and stays the source of truth;
+/// the daypart selection opens a parallel lens without removing or
+/// rewriting the whole-day path. See `phase_10_5_*.md` for the full
+/// scope contract.
+class _ShiftScopeToggle extends StatelessWidget {
+  final ShiftScope scope;
+  final ValueChanged<ShiftScope> onChanged;
+
+  const _ShiftScopeToggle({required this.scope, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: _ScopePill(
+              label: 'Whole Day',
+              selected: scope == ShiftScope.wholeDay,
+              onTap: () => onChanged(ShiftScope.wholeDay),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _ScopePill(
+              label: 'Daypart',
+              selected: scope == ShiftScope.daypart,
+              onTap: () => onChanged(ShiftScope.daypart),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScopePill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ScopePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = selected ? AppColors.sunset : AppColors.backgroundMid;
+    final borderColor = selected
+        ? AppColors.sunsetDark
+        : AppColors.borderSubtle.withValues(alpha: 0.7);
+    final textColor =
+        selected ? AppColors.textPrimary : AppColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            border: Border.all(color: borderColor, width: 1),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: AppTextStyles.mono12(
+              color: textColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Daypart scaffold (Phase 10.5.0) ────────────────────────────────────────
+
+/// Surface-only scaffold for the daypart lens.
+///
+/// Renders one card per restaurant-scoped service-period definition
+/// (Lunch, Dinner, Late Night from the demo defaults) plus a banner
+/// reminding the operator that whole-day stays authoritative.
+///
+/// **Time-source contract (mirrors `current_state_boundary_monitor.dart`):**
+/// the active-period chip is computed from `tz.TZDateTime.now(loc)` for
+/// the active restaurant's IANA `businessTimezone`, then bucketed by
+/// **business-date weekday** via [BusinessDateResolver] — never by raw
+/// `DateTime.now().weekday`. Tests inject a restaurant-local
+/// [DateTime] via [ShiftDashboard.clockOverride]. When the
+/// restaurant has no usable IANA timezone, no `ACTIVE NOW` chip
+/// surfaces — the scaffold refuses to fall back to the device clock,
+/// matching the boundary monitor's contract refusal.
+///
+/// Has its own `Timer.periodic` (default 30s) so the chip stays
+/// accurate when the operator parks on the daypart view across a
+/// service-period boundary (e.g. Lunch → no-period → Dinner).
+///
+/// This intentionally has no live metrics — the bucketing engine and
+/// per-period numbers come from later 10.5 slices. The job of this
+/// slice is to open the surface seam without replacing whole-day.
+class _DaypartScaffoldSection extends StatefulWidget {
+  final List<ServicePeriodDefinition> definitions;
+
+  const _DaypartScaffoldSection({required this.definitions});
+
+  @override
+  State<_DaypartScaffoldSection> createState() =>
+      _DaypartScaffoldSectionState();
+}
+
+class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
+  /// Refresh interval for the active-period chip. Matches the live
+  /// header clock's 30-second cadence so both stay in sync.
+  static const Duration _tickInterval = Duration(seconds: 30);
+
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  /// Restaurant-local now. Returns null when the restaurant scope or
+  /// its IANA timezone is unavailable — caller renders no `ACTIVE NOW`
+  /// chip in that case (no fallback to the device clock).
+  DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
+    final override = ShiftDashboard.clockOverride;
+    if (override != null) return override();
+    if (restaurant == null) return null;
+    final tzName = restaurant.businessTimezone.trim();
+    if (tzName.isEmpty) return null;
+    _ensureTzInitialized();
+    try {
+      final loc = tz.getLocation(tzName);
+      return tz.TZDateTime.now(loc);
+    } on tz.LocationNotFoundException {
+      return null;
+    }
+  }
+
+  /// Resolves the active service-period id for [localNow] using the
+  /// **business-date weekday** (not the wall-clock weekday). Pure;
+  /// safe to call from the build path.
+  static String? _resolveActivePeriodId({
+    required DateTime localNow,
+    required String businessDayStartLocalTime,
+    required List<ServicePeriodDefinition> definitions,
+  }) {
+    final businessDateIso = BusinessDateResolver.resolve(
+      localTimestamp: localNow,
+      businessDayStartLocalTime: businessDayStartLocalTime,
+    );
+    final businessDate = DateTime.parse(businessDateIso);
+    final businessWeekday = businessDate.weekday; // 1 = Mon ... 7 = Sun
+    final minutes = localNow.hour * 60 + localNow.minute;
+    for (final d in definitions) {
+      if (!d.applicableDays.contains(businessWeekday)) continue;
+      final start = _parseHm(d.startLocalTime);
+      final end = _parseHm(d.endLocalTime);
+      if (start == null || end == null) continue;
+      if (d.rollsPastMidnight) {
+        if (minutes >= start || minutes <= end) return d.id;
+      } else {
+        if (minutes >= start && minutes <= end) return d.id;
+      }
+    }
+    return null;
+  }
+
+  static int? _parseHm(String hm) {
+    final parts = hm.split(':');
+    if (parts.length != 2) return null;
+    final h = int.tryParse(parts[0]);
+    final m = int.tryParse(parts[1]);
+    if (h == null || m == null) return null;
+    return h * 60 + m;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final restaurant =
+        context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final localNow = _restaurantLocalNow(restaurant);
+    final activeId = localNow == null
+        ? null
+        : _resolveActivePeriodId(
+            localNow: localNow,
+            // Business-day cutoff defaults to 04:00 until the
+            // RestaurantTimingConfig wiring lands in this widget tree
+            // (deferred-foundation work the phase 10.5 plan calls out).
+            businessDayStartLocalTime: _defaultBusinessDayStartLocalTime,
+            definitions: widget.definitions,
+          );
+    final ordered =
+        ServicePeriodDefinitionResolver.ordered(widget.definitions);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppColors.backgroundMid, AppColors.cardGlow],
+              ),
+              border: Border.all(
+                color: AppColors.borderSubtle.withValues(alpha: 0.7),
+                width: 1,
+              ),
+            ),
+            child: Text(
+              'Whole-day Shift remains the source of truth. Live daypart '
+              'projections build out in upcoming 10.5 slices.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(height: 8),
+          for (final def in ordered) ...[
+            _DaypartScaffoldCard(
+              definition: def,
+              isActive: def.id == activeId,
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DaypartScaffoldCard extends StatelessWidget {
+  final ServicePeriodDefinition definition;
+  final bool isActive;
+
+  const _DaypartScaffoldCard({
+    required this.definition,
+    required this.isActive,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = isActive ? AppColors.sunset : AppColors.borderSubtle;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: accent.withValues(alpha: isActive ? 0.85 : 0.6),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.sunset.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Text(
+                  definition.shortLabel,
+                  style: AppTextStyles.mono10(color: AppColors.sunsetDark)
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  definition.label,
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '${definition.startLocalTime} – ${definition.endLocalTime}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+              if (isActive) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: AppColors.sunset.withValues(alpha: 0.18),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  child: Text(
+                    'ACTIVE NOW',
+                    style: AppTextStyles.mono8(color: AppColors.sunsetDark)
+                        .copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Daypart bucketing not yet wired.',
+            style: AppTextStyles.mono10(color: AppColors.textMuted),
           ),
         ],
       ),
