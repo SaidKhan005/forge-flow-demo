@@ -172,6 +172,105 @@ void main() {
         throwsStateError,
       );
     });
+
+    group('Phase 11A.4c — GCP / Cloud Run config is all-or-nothing', () {
+      test('all three unset → boots cleanly (dev / scaffold path)', () {
+        final config = ProxyConfig.fromEnvironment(environmentWithAllSecrets());
+        expect(config.gcpProjectId, isNull);
+        expect(config.cloudRunRegion, isNull);
+        expect(config.cloudRunServiceName, isNull);
+      });
+
+      test('all three set → boots cleanly with the values trimmed', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxyConfigNames.gcpProjectId] = 'forge-flow-prod'
+          ..[ProxyConfigNames.cloudRunRegion] = 'northamerica-northeast2'
+          ..[ProxyConfigNames.cloudRunServiceName] = 'forge-flow-advisor-proxy';
+
+        final config = ProxyConfig.fromEnvironment(env);
+
+        expect(config.gcpProjectId, equals('forge-flow-prod'));
+        expect(config.cloudRunRegion, equals('northamerica-northeast2'));
+        expect(
+          config.cloudRunServiceName,
+          equals('forge-flow-advisor-proxy'),
+        );
+      });
+
+      test('only GCP_PROJECT_ID set → throws ProxyConfigError listing the '
+          'two missing names (would silently skip Cloud Run restarts)', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxyConfigNames.gcpProjectId] = 'forge-flow-prod';
+
+        Object? thrown;
+        try {
+          ProxyConfig.fromEnvironment(env);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyConfigError>());
+        final error = thrown! as ProxyConfigError;
+        expect(
+          error.missingSecretNames,
+          containsAll(<String>[
+            ProxyConfigNames.cloudRunRegion,
+            ProxyConfigNames.cloudRunServiceName,
+          ]),
+        );
+        expect(error.missingSecretNames, hasLength(2));
+        expect(error.message, contains('GCP / Cloud Run config is partial'));
+      });
+
+      test('CLOUD_RUN_REGION set without GCP_PROJECT_ID → throws', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxyConfigNames.cloudRunRegion] = 'northamerica-northeast2';
+
+        expect(
+          () => ProxyConfig.fromEnvironment(env),
+          throwsA(isA<ProxyConfigError>()),
+        );
+      });
+
+      test('two of three set → still throws, names the missing one', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxyConfigNames.gcpProjectId] = 'p'
+          ..[ProxyConfigNames.cloudRunRegion] = 'r';
+        // CLOUD_RUN_SERVICE_NAME deliberately missing.
+
+        Object? thrown;
+        try {
+          ProxyConfig.fromEnvironment(env);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyConfigError>());
+        final error = thrown! as ProxyConfigError;
+        expect(
+          error.missingSecretNames,
+          equals(<String>[ProxyConfigNames.cloudRunServiceName]),
+        );
+      });
+
+      test('blank-string values count as unset', () {
+        final env = environmentWithAllSecrets()
+          ..[ProxyConfigNames.gcpProjectId] = '   '
+          ..[ProxyConfigNames.cloudRunRegion] = 'r'
+          ..[ProxyConfigNames.cloudRunServiceName] = 's';
+
+        Object? thrown;
+        try {
+          ProxyConfig.fromEnvironment(env);
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<ProxyConfigError>());
+        final error = thrown! as ProxyConfigError;
+        expect(
+          error.missingSecretNames,
+          equals(<String>[ProxyConfigNames.gcpProjectId]),
+        );
+      });
+    });
   });
 
   group('extractBearerToken', () {

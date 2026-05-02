@@ -52,6 +52,17 @@ dependencies:
   flutter_secure_storage: ^10.0.0
   timezone: ^0.10.1
   qr_flutter: 4.1.0
+  # Phase 11A.4b — Gemini fallback LLM provider (server-side only,
+  # used by the advisor proxy in tool/advisor_proxy/. The client app
+  # never holds the key — see Hard Promise #7 in CLAUDE.md). Pure
+  # Dart, no platform plugins.
+  google_generative_ai: ^0.4.7
+  # HTTP client for the Anthropic Messages API adapter
+  # (tool/advisor_proxy/anthropic_http_complete_fn.dart). Server-side
+  # only — same Hard Promise #7 boundary as the Gemini provider.
+  # Promoted from transitive to direct so the proxy bootstrap can
+  # take a stable dependency on it.
+  http: ^1.6.0
 
 dev_dependencies:
   flutter_test:

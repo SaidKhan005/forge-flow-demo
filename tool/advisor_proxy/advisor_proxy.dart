@@ -43,6 +43,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
+import 'package:forge_and_flow/domain/services/advisor_provider_constants.dart';
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/domain/services/graceful_refusal_response.dart';
@@ -118,6 +119,12 @@ abstract class ProxySecretNames {
   static const String servicePrincipalJwtSecret =
       'SERVICE_PRINCIPAL_JWT_SECRET';
 
+  /// Phase 11A.4b — Gemini API key for the fallback LLM lane. Server-side
+  /// only (Hard Promise #7). Optional: when absent, the AdvisorRequestPipeline's
+  /// secondary slot is null and the pipeline falls through directly to
+  /// cache → refusal on Anthropic failure.
+  static const String geminiApiKey = 'GEMINI_API_KEY';
+
   /// Required server-side secret names. The proxy refuses to start
   /// when any of these are missing or blank.
   static const List<String> required = <String>[
@@ -127,6 +134,13 @@ abstract class ProxySecretNames {
     postgresAdminUrl,
     firebaseWebApiKey,
     servicePrincipalJwtSecret,
+  ];
+
+  /// Optional server-side secret names. Loaded into [ProxyConfig] when
+  /// present; absence is not a startup error. Callers gate behavior on
+  /// [ProxyConfig.hasSecretFor].
+  static const List<String> optional = <String>[
+    geminiApiKey,
   ];
 }
 
@@ -160,6 +174,23 @@ abstract class ProxyConfigNames {
   /// Accepted values (case-insensitive): `true`/`1`/`on` enable;
   /// anything else (including unset) keeps the flag off.
   static const String cacheTelemetryV2 = 'CACHE_TELEMETRY_V2';
+
+  /// Phase 11A.4c — GCP project hosting the proxy + Secret Manager.
+  /// Required when any `kms_real_provider_<kind>_enabled` flag is ON;
+  /// optional at config-parse time so dev / test contexts that run
+  /// against the stub can still boot.
+  static const String gcpProjectId = 'GCP_PROJECT_ID';
+
+  /// Phase 11A.4c — Cloud Run region (e.g. `northamerica-northeast2`).
+  /// Required for the Cloud Run Admin API call that forces a new
+  /// revision after a runtime-read key rotates.
+  static const String cloudRunRegion = 'CLOUD_RUN_REGION';
+
+  /// Phase 11A.4c — Cloud Run service name (e.g.
+  /// `forge-flow-advisor-proxy`). The same service that's running
+  /// the proxy — `CloudRunAdminClient` patches this service to bump
+  /// its revision when a runtime-read API key rotates.
+  static const String cloudRunServiceName = 'CLOUD_RUN_SERVICE_NAME';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -181,6 +212,9 @@ class ProxyConfig {
     required this.firebaseProjectId,
     required this.firebaseEmailActionContinueUrl,
     required this.cacheTelemetryV2,
+    required this.gcpProjectId,
+    required this.cloudRunRegion,
+    required this.cloudRunServiceName,
   }) : _secrets = Map<String, String>.unmodifiable(secrets);
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
@@ -201,6 +235,18 @@ class ProxyConfig {
   /// telemetry writes. Wired from [ProxyConfigNames.cacheTelemetryV2].
   /// `false` until the table is observed for one drift cycle in staging.
   final bool cacheTelemetryV2;
+
+  /// Phase 11A.4c — GCP project hosting Cloud Run + Secret Manager.
+  /// Optional at parse time so dev contexts boot; production bootstrap
+  /// requires it when any `kms_real_provider_*_enabled` flag is ON.
+  final String? gcpProjectId;
+
+  /// Phase 11A.4c — Cloud Run region (e.g. `northamerica-northeast2`).
+  final String? cloudRunRegion;
+
+  /// Phase 11A.4c — Cloud Run service name. The same service that's
+  /// running this proxy.
+  final String? cloudRunServiceName;
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -236,6 +282,16 @@ class ProxyConfig {
         missingSecretNames: List<String>.unmodifiable(missing),
       );
     }
+    // Phase 11A.4b — optional secrets: load when present, never raise on
+    // absence. GEMINI_API_KEY enables the fallback Gemini secondary in
+    // the AdvisorRequestPipeline; without it the secondary slot is null
+    // and the pipeline falls through directly to cache → refusal.
+    for (final name in ProxySecretNames.optional) {
+      final value = environment[name];
+      if (value != null && value.trim().isNotEmpty) {
+        loaded[name] = value;
+      }
+    }
     final port = _parsePort(environment['PORT']);
     final firebaseProjectIdRaw =
         environment[ProxyConfigNames.firebaseProjectId];
@@ -252,12 +308,65 @@ class ProxyConfig {
     final cacheTelemetryV2 = _parseBoolFlag(
       environment[ProxyConfigNames.cacheTelemetryV2],
     );
+    String? trimmedOrNull(String? raw) =>
+        (raw == null || raw.trim().isEmpty) ? null : raw.trim();
+    final gcpProjectIdValue =
+        trimmedOrNull(environment[ProxyConfigNames.gcpProjectId]);
+    final cloudRunRegionValue =
+        trimmedOrNull(environment[ProxyConfigNames.cloudRunRegion]);
+    final cloudRunServiceNameValue =
+        trimmedOrNull(environment[ProxyConfigNames.cloudRunServiceName]);
+
+    // Phase 11A.4c — GCP / Cloud Run config is all-or-nothing.
+    // Setting `GCP_PROJECT_ID` alone would enable real Secret Manager
+    // writes via the KMS lane router while leaving the Cloud Run
+    // admin client as a no-op — runtime-read rotations (anthropic /
+    // voyage / gemini) would land in Secret Manager but never trigger
+    // an instance restart, and the audit row would carry a synthetic
+    // `no-op-cloud-run:...` operation name. Fail closed at startup
+    // instead.
+    final gcpVarsPresent = <bool>[
+      gcpProjectIdValue != null,
+      cloudRunRegionValue != null,
+      cloudRunServiceNameValue != null,
+    ];
+    final anyPresent = gcpVarsPresent.contains(true);
+    final allPresent = !gcpVarsPresent.contains(false);
+    if (anyPresent && !allPresent) {
+      final missingNames = <String>[];
+      if (gcpProjectIdValue == null) {
+        missingNames.add(ProxyConfigNames.gcpProjectId);
+      }
+      if (cloudRunRegionValue == null) {
+        missingNames.add(ProxyConfigNames.cloudRunRegion);
+      }
+      if (cloudRunServiceNameValue == null) {
+        missingNames.add(ProxyConfigNames.cloudRunServiceName);
+      }
+      throw ProxyConfigError(
+        'advisor proxy GCP / Cloud Run config is partial: '
+        '${missingNames.length} missing name(s): ${missingNames.join(', ')}. '
+        'All three of ${ProxyConfigNames.gcpProjectId}, '
+        '${ProxyConfigNames.cloudRunRegion}, and '
+        '${ProxyConfigNames.cloudRunServiceName} must be set together '
+        '(real Phase 11A.4c KMS rollout) or all unset (dev / scaffold). '
+        'Setting only a subset would cause runtime-read key rotations '
+        'to land in Secret Manager without restarting Cloud Run '
+        'instances, and the audit log would record synthetic '
+        'no-op operation names instead of real ones.',
+        missingSecretNames: List<String>.unmodifiable(missingNames),
+      );
+    }
+
     return ProxyConfig._(
       port: port,
       secrets: loaded,
       firebaseProjectId: firebaseProjectId,
       firebaseEmailActionContinueUrl: firebaseEmailActionContinueUrl,
       cacheTelemetryV2: cacheTelemetryV2,
+      gcpProjectId: gcpProjectIdValue,
+      cloudRunRegion: cloudRunRegionValue,
+      cloudRunServiceName: cloudRunServiceNameValue,
     );
   }
 
@@ -4231,21 +4340,177 @@ class ScaffoldRejectingProxyLlmProvider implements ProxyLlmProvider {
   }
 }
 
+// ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
+//
+// Two thin proxy adapters wrap the real Anthropic Messages-API HTTP
+// client and the real google_generative_ai SDK. Production callbacks
+// live in proxy_bootstrap.dart so the SDK imports stay server-side
+// (Hard Promise #7 — keys never leave the proxy). Both adapters
+// return [ProxyLlmCompletePayload] so the wrapper class can compute
+// real cost via [LlmCostRateRegistry].
+//
+// Failure handling is the AdvisorRequestPipeline's job — these
+// adapters just call the SDK and surface results or rethrow.
+
+/// Token-and-text payload returned by a real LLM SDK call. Lifts the
+/// usage metadata from the response so the proxy adapter can compute
+/// cost from real token counts (not heuristics) and surface it into
+/// `usage_logs.cost_usd` for cap enforcement.
+class ProxyLlmCompletePayload {
+  const ProxyLlmCompletePayload({
+    required this.text,
+    required this.inputTokens,
+    required this.outputTokens,
+  });
+
+  final String text;
+  final int inputTokens;
+  final int outputTokens;
+}
+
+/// Adapter signature for an Anthropic Messages-API call. The
+/// production implementation lives in
+/// `tool/advisor_proxy/anthropic_http_complete_fn.dart` and uses
+/// `package:http`; tests pin a closure that captures inputs and
+/// returns a fixed payload.
+typedef AnthropicProxyCompleteFn = Future<ProxyLlmCompletePayload> Function({
+  required String modelId,
+  required String question,
+  required String context,
+});
+
+/// Adapter signature for a Gemini SDK call. The optional `onChunk`
+/// hook lets callers observe streaming chunks; the public
+/// [ProxyLlmProvider] surface stays non-streaming so the
+/// AdvisorRequestPipeline doesn't need to special-case streamed
+/// responses.
+typedef GeminiProxyCompleteFn = Future<ProxyLlmCompletePayload> Function({
+  required String modelId,
+  required String question,
+  required String context,
+  void Function(String chunk)? onChunk,
+});
+
+ProxyLlmCompletion _buildCompletionFromPayload({
+  required ProxyLlmCompletePayload payload,
+  required String modelId,
+  required ProxyLlmTier tier,
+}) {
+  // Real cost computed from real token counts via the per-model
+  // rate registry. Unknown models charge zero (the registry returns
+  // null) so cap enforcement is preserved for known models without
+  // breaking unrecognized-model paths during rollouts.
+  final rate = LlmCostRateRegistry.rateFor(modelId);
+  final costCents = rate == null
+      ? 0
+      : rate.costCentsFor(
+          inputTokens: payload.inputTokens,
+          outputTokens: payload.outputTokens,
+        );
+  return ProxyLlmCompletion(
+    text: payload.text,
+    modelId: modelId,
+    tier: tier,
+    outputTokens: payload.outputTokens,
+    costCents: costCents,
+  );
+}
+
+String _flattenPromptBlocks(List<ProxyPromptBlock> blocks) {
+  final buffer = StringBuffer();
+  for (var i = 0; i < blocks.length; i++) {
+    if (i > 0) buffer.write('\n\n');
+    buffer.write(blocks[i].text);
+  }
+  return buffer.toString();
+}
+
+class AnthropicProxyLlmProvider implements ProxyLlmProvider {
+  AnthropicProxyLlmProvider({required AnthropicProxyCompleteFn completeFn})
+    : _completeFn = completeFn;
+
+  final AnthropicProxyCompleteFn _completeFn;
+
+  @override
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
+    final payload = await _completeFn(
+      modelId: request.modelId,
+      question: request.question,
+      context: _flattenPromptBlocks(request.promptBlocks),
+    );
+    return _buildCompletionFromPayload(
+      payload: payload,
+      modelId: request.modelId,
+      tier: request.tier,
+    );
+  }
+}
+
+class GeminiProxyLlmProvider implements ProxyLlmProvider {
+  GeminiProxyLlmProvider({
+    required GeminiProxyCompleteFn completeFn,
+    void Function(String chunk)? onChunkObserver,
+  }) : _completeFn = completeFn,
+       _onChunkObserver = onChunkObserver;
+
+  final GeminiProxyCompleteFn _completeFn;
+  final void Function(String chunk)? _onChunkObserver;
+
+  /// Resolves the Gemini model id for the requested tier. The proxy
+  /// passes its own `request.modelId` (Anthropic-shaped: `claude-*`);
+  /// we override with the Gemini-equivalent so `usage_logs.model_used`
+  /// reports `gemini-*` when the secondary serves.
+  String _modelIdFor(ProxyLlmTier tier) {
+    switch (tier) {
+      case ProxyLlmTier.haiku:
+        return AdvisorProviderConstants.geminiFlashModelId;
+      case ProxyLlmTier.sonnet:
+        return AdvisorProviderConstants.geminiProModelId;
+    }
+  }
+
+  @override
+  Future<ProxyLlmCompletion> complete(ProxyLlmRequest request) async {
+    final modelId = _modelIdFor(request.tier);
+    final payload = await _completeFn(
+      modelId: modelId,
+      question: request.question,
+      context: _flattenPromptBlocks(request.promptBlocks),
+      onChunk: _onChunkObserver,
+    );
+    return _buildCompletionFromPayload(
+      payload: payload,
+      modelId: modelId,
+      tier: request.tier,
+    );
+  }
+}
+
 /// Block 2 (Lock 7 v1) — fallback chain executor.
 ///
-/// Wraps the primary [ProxyLlmProvider] with a [CircuitBreaker] and an
-/// [AdvisorResponseCache] secondary, with a graceful refusal tertiary.
-/// The Gemini slot between primary and cache is reserved for E.2b — a
-/// `// TODO(E.2b)` comment marks the integration point and tests assert
-/// `fallback_used` is never `'gemini-reserved'` in v1.
+/// Wraps the primary [ProxyLlmProvider] with a [CircuitBreaker], an
+/// optional [secondaryLlmProvider] (Gemini Flash, Phase 11A.4b), an
+/// [AdvisorResponseCache], and a graceful refusal tertiary. The
+/// secondary slot was reserved as `// TODO(E.2b)` in v1; this graft
+/// fills it with a real `GeminiProxyLlmProvider`. Tests assert that
+/// `fallback_used` reports `'gemini'` when the secondary serves.
 class AdvisorRequestPipeline {
   AdvisorRequestPipeline({
     required this.breaker,
     required this.cache,
+    this.secondaryLlmProvider,
   });
 
   final CircuitBreaker breaker;
   final AdvisorResponseCache cache;
+
+  /// Phase 11A.4b — optional Gemini Flash secondary. When non-null and
+  /// the primary fails (or the breaker is open), the pipeline tries
+  /// the secondary BEFORE falling through to the cache. A successful
+  /// secondary call returns `fallbackUsed: 'gemini'`. The secondary
+  /// is intentionally not protected by its own breaker in this slice
+  /// — that is a follow-up.
+  final ProxyLlmProvider? secondaryLlmProvider;
 
   Future<AdvisorPipelineResult> execute({
     required ProxyLlmProvider llmProvider,
@@ -4278,13 +4543,32 @@ class AdvisorRequestPipeline {
         );
       } catch (error) {
         breaker.recordFailure(classifyLlmFailure(error));
-        // Fall through to cache → refusal.
+        // Fall through to secondary → cache → refusal.
       }
     }
 
-    // TODO(E.2b): Gemini Flash secondary lands here. v1 no-op; the
-    // `'gemini-reserved'` value in `usage_logs.fallback_used` is wired
-    // into the schema CHECK constraint but unreachable until E.2b.
+    // Phase 11A.4b — Gemini Flash secondary fills the slot reserved
+    // for E.2b. When the secondary serves successfully, return as a
+    // normal HTTP 200 with the Gemini answer — the request did NOT
+    // fall to the degraded envelope, so don't flag it as `refused`.
+    final secondary = secondaryLlmProvider;
+    if (secondary != null) {
+      try {
+        final completion = await secondary.complete(llmRequest);
+        return AdvisorPipelineResult(
+          completion: completion,
+          cachedAnswer: null,
+          refused: false,
+          circuitStateAtStart: circuitStateAtStart,
+          fallbackUsed: 'gemini',
+          decision: decision,
+        );
+      } catch (_) {
+        // Gemini also failed. Fall through to cache → refusal.
+        // Intentionally NOT wired into the Anthropic breaker —
+        // breaker tracks the primary only.
+      }
+    }
 
     final cachedAnswer = await cache.lookup(
       operatorId: operatorId,
@@ -4970,6 +5254,8 @@ const String adminIntegrationsRotateVoyagePath =
     '/v1/admin/integrations/rotate-voyage';
 const String adminIntegrationsRotateAzureDbPath =
     '/v1/admin/integrations/rotate-azure-db';
+const String adminIntegrationsRotateGeminiPath =
+    '/v1/admin/integrations/rotate-gemini';
 const String adminIntegrationsStatusPath = '/v1/admin/integrations/status';
 
 /// Read-side role admit set for `/v1/admin/integrations*`. Mirrors
@@ -8194,6 +8480,7 @@ bool _isAdminIntegrationsPath(String path) {
       path == adminIntegrationsRotateAnthropicPath ||
       path == adminIntegrationsRotateVoyagePath ||
       path == adminIntegrationsRotateAzureDbPath ||
+      path == adminIntegrationsRotateGeminiPath ||
       path == adminIntegrationsStatusPath;
 }
 
@@ -8206,7 +8493,8 @@ bool _isAdminIntegrationsOperation(String path, String method) {
   if (method == 'POST' &&
       (path == adminIntegrationsRotateAnthropicPath ||
           path == adminIntegrationsRotateVoyagePath ||
-          path == adminIntegrationsRotateAzureDbPath)) {
+          path == adminIntegrationsRotateAzureDbPath ||
+          path == adminIntegrationsRotateGeminiPath)) {
     return true;
   }
   return false;
@@ -8274,6 +8562,7 @@ String? _integrationKeyKindForRoute(String path) {
   if (path == adminIntegrationsRotateAnthropicPath) return 'anthropic';
   if (path == adminIntegrationsRotateVoyagePath) return 'voyage';
   if (path == adminIntegrationsRotateAzureDbPath) return 'azure_db';
+  if (path == adminIntegrationsRotateGeminiPath) return 'gemini';
   return null;
 }
 

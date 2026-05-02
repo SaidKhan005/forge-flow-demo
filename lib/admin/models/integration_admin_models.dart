@@ -22,7 +22,8 @@ import 'package:flutter/foundation.dart';
 enum ProviderKeyKind {
   anthropic('anthropic', 'Anthropic API'),
   voyage('voyage', 'Voyage embeddings'),
-  azureDb('azure_db', 'Azure DB superuser');
+  azureDb('azure_db', 'Azure DB superuser'),
+  gemini('gemini', 'Gemini API');
 
   const ProviderKeyKind(this.wireName, this.displayName);
 
