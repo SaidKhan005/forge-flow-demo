@@ -28,6 +28,7 @@ import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
+import 'screens/operator_picker_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
@@ -100,6 +101,15 @@ const String kAdminHealthRouteId = 'health';
 
 /// Canonical Feature Flags route ID (11A.7).
 const String kAdminFeatureFlagsRouteId = 'feature_flags';
+
+/// Canonical operator-picker route ID (11A.3a follow-up). The picker
+/// is reached via Navigator.push from the Corpus admin "Pick operator"
+/// button — it is intentionally NOT in [kAdminRoutes] (no side-nav
+/// item) because its purpose is "internal helper of the Corpus
+/// surface," not a standalone admin destination. The constant exists
+/// so audit logs and route observers have a stable name to refer to
+/// the modal target.
+const String kAdminOperatorPickerRouteId = 'operator-picker';
 
 /// The admin route table. Order is the side-nav order. 11A.1 promotes
 /// `operators` from placeholder to live; the rest are deliberately
@@ -232,23 +242,43 @@ const String kCorpusAdminDemoTargetLocationId =
 
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
+  final operatorGateway =
+      AdminConsoleServicesScope.operatorLocationGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   // Demo mode (in-memory gateway) targets the seeded demo tenant.
   // Live mode (HTTP gateway, or any non-in-memory binding) leaves
-  // the targets null so the Graph candidates commit button is
-  // disabled with a banner — the operator picker that resolves the
-  // live target ships in a follow-up slice.
+  // the targets null so the Graph candidates commit button starts
+  // disabled. The "Pick operator" button on that surface opens
+  // [OperatorPickerScreen] via [_openOperatorPickerFromContext]; once
+  // the admin confirms a pair, the corpus screen state takes over
+  // and the commit button enables.
   final isDemoGateway = gateway is InMemoryCorpusAdminGateway;
   final demoTargetOperatorId =
       isDemoGateway ? kCorpusAdminDemoTargetOperatorId : null;
   final demoTargetLocationId =
       isDemoGateway ? kCorpusAdminDemoTargetLocationId : null;
+  Future<OperatorPickerResult?> openPicker(BuildContext routeContext) {
+    final state = source?.current;
+    final adminUid =
+        state is AdminAuthAuthenticated ? state.session.uid : null;
+    return Navigator.of(routeContext).push<OperatorPickerResult?>(
+      MaterialPageRoute<OperatorPickerResult?>(
+        settings: const RouteSettings(name: '/operator-picker'),
+        builder: (_) => OperatorPickerScreen(
+          gateway: operatorGateway,
+          adminUid: adminUid,
+        ),
+      ),
+    );
+  }
+
   if (source == null) {
     // No source wired (test path) — default to live edit affordances.
     return CorpusAdminScreen(
       gateway: gateway,
       targetOperatorId: demoTargetOperatorId,
       targetLocationId: demoTargetLocationId,
+      operatorPickerOpener: openPicker,
     );
   }
   return StreamBuilder<AdminAuthState>(
@@ -263,6 +293,7 @@ Widget _buildCorpus(BuildContext context) {
         editingEnabled: canEdit,
         targetOperatorId: demoTargetOperatorId,
         targetLocationId: demoTargetLocationId,
+        operatorPickerOpener: openPicker,
       );
     },
   );
