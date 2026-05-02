@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/database_helper.dart';
+import 'package:forge_and_flow/domain/models/active_target_profile.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/models/shift_record.dart';
 import 'package:forge_and_flow/domain/services/shift_fact_builder.dart';
@@ -191,9 +192,27 @@ void main() {
   // â”€â”€ F: Close-shift pipeline propagates non-default restaurant id â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   group('F â€” scope propagation through builders', () {
+    ActiveTargetProfile profileFor(String restaurantId) => ActiveTargetProfile(
+          targetProfileId: '${restaurantId}_active',
+          restaurantId: restaurantId,
+          sourceType: 'cycle_recommended',
+          targetCPLH: 4.75,
+          targetSPLH: 185.0,
+          targetPPA: 43.5,
+          fohWage: 17.0,
+          bohWage: 22.0,
+          opzFloorCPLH: 3.6,
+          opzCeilingCPLH: 5.9,
+          theoreticalFohLaborPct: 9.5,
+          theoreticalBohLaborPct: 11.9,
+          theoreticalLaborPct: 21.4,
+          builtAt: '2026-03-30T12:00:00',
+        );
+
     test('TargetSnapshotBuilder carries explicit restaurantId', () {
-      final snapshot = TargetSnapshotBuilder.fromCurrentBaseline(
-        restaurantId: 'restaurant_test_123',
+      final snapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
+        profileFor('restaurant_test_123'),
+        targetProfileVersionId: 'v1',
       );
       expect(snapshot.restaurantId, 'restaurant_test_123');
     });
@@ -211,16 +230,20 @@ void main() {
         actualFohHours: 50,
         actualBohHours: 50,
       );
-      final snapshot = TargetSnapshotBuilder.fromCurrentBaseline(
-        restaurantId: input.restaurantId,
+      final snapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
+        profileFor(input.restaurantId),
+        targetProfileVersionId: 'v1',
       );
       final fact = ShiftFactBuilder.fromClosedShiftInput(input, snapshot);
       expect(fact.restaurantId, 'restaurant_test_123');
       expect(fact.targetSnapshot.restaurantId, 'restaurant_test_123');
     });
 
-    test('default restaurantId still works when omitted', () {
-      final snapshot = TargetSnapshotBuilder.fromCurrentBaseline();
+    test('demo restaurantId propagates through fromActiveTargetProfile', () {
+      final snapshot = TargetSnapshotBuilder.fromActiveTargetProfile(
+        profileFor('demo_restaurant_001'),
+        targetProfileVersionId: 'v1',
+      );
       expect(snapshot.restaurantId, 'demo_restaurant_001');
     });
   });
