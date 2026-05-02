@@ -54,6 +54,10 @@
             argument = "--flavor barrio"
             isEnabled = "YES">
          </CommandLineArgument>
+         <CommandLineArgument
+            argument = "--dart-define=FLUTTER_TARGET=lib/main_barrio.dart"
+            isEnabled = "YES">
+         </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>
    <ProfileAction

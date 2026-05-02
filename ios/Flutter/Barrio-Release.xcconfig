@@ -2,3 +2,8 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.forgeflow.barrio
 FLUTTER_FLAVOR = barrio
 DISPLAY_NAME = Barrio
+// HARD-E — pin the Flutter entrypoint so an Xcode archive (which
+// does NOT pass `-t` on the command line) does not fall through to
+// `Generated.xcconfig`'s `lib/main.dart`. Without this override, a
+// Barrio archive would still launch ForgeFlowApp.
+FLUTTER_TARGET = lib/main_barrio.dart

@@ -2,3 +2,10 @@
 PRODUCT_BUNDLE_IDENTIFIER = com.forgeflow.app
 FLUTTER_FLAVOR = forgeflow
 DISPLAY_NAME = Forge & Flow
+// HARD-E — pin the Flutter entrypoint so an Xcode archive (which
+// does NOT pass `-t` on the command line) does not fall through to
+// `Generated.xcconfig`'s `lib/main.dart`. lib/main.dart launches
+// ForgeFlowApp directly and would silently produce the right brand
+// for ForgeFlow archives — but pinning here keeps the rule explicit
+// and parallel to Barrio-Release.xcconfig.
+FLUTTER_TARGET = lib/main_forgeflow.dart
