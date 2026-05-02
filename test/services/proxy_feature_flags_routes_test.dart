@@ -459,6 +459,7 @@ class _FakeFeatureFlagsAdminGateway implements FeatureFlagsAdminProxyGateway {
   String? lastToggleIdempotencyKey;
   String? lastToggleFlagId;
   bool? lastToggleEnabled;
+  String? lastToggleReason;
 
   @override
   Future<List<Map<String, Object?>>> listFlags({
@@ -476,11 +477,13 @@ class _FakeFeatureFlagsAdminGateway implements FeatureFlagsAdminProxyGateway {
     required bool enabled,
     required String idempotencyKey,
     required String adminReason,
+    String? reason,
   }) async {
     lastToggleActorUserId = actorUserId;
     lastToggleIdempotencyKey = idempotencyKey;
     lastToggleFlagId = flagId;
     lastToggleEnabled = enabled;
+    lastToggleReason = reason;
     return toggleResult;
   }
 }

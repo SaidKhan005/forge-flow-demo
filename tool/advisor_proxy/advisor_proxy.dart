@@ -2294,12 +2294,27 @@ select count(*)::int as issuance_count
     required DateTime issuedAt,
     required DateTime expiresAt,
   }) async {
+    // HARD-B - claims_hash binds the audit row to the exact JWT
+    // payload that was issued. Sorted-key canonical JSON so the
+    // hash is stable across Dart map-iteration changes; no signature
+    // / shared-secret bytes flow into the hash, so the audit row
+    // never carries material that would let a leaker reconstruct
+    // the JWT itself.
+    final claimsHash = _computeServicePrincipalClaimsHash(
+      servicePrincipalId: principal.id,
+      operatorId: command.operator.operatorId,
+      locationId: command.operator.locationId,
+      scopes: principal.scopes,
+      issuedAt: issuedAt,
+      expiresAt: expiresAt,
+    );
     final payload = <String, Object?>{
       'issued_by_user_id': command.operator.userId,
       'service_principal_id': principal.id,
       'scopes': principal.scopes,
       'issued_at': issuedAt.toIso8601String(),
       'expires_at': expiresAt.toIso8601String(),
+      'claims_hash': claimsHash,
     };
     await exec.query(
       '''
@@ -2425,6 +2440,41 @@ Map<String, Object?>? _jsonObjectOrNull(Object? value) {
 final RegExp _servicePrincipalUuidPattern = RegExp(
   r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
 );
+
+/// HARD-B - SHA-256 of the canonical JWT payload for the
+/// service-principal issuance audit row's `claims_hash` field. The
+/// canonical JSON is sorted-key with no whitespace so the hash is
+/// stable across Dart map-iteration changes; the hash never includes
+/// the signature bytes or the shared secret. Mirrors the JWT issuer's
+/// payload claim shape exactly so future refactors stay tight: any
+/// change to the JWT payload MUST update this helper at the same time
+/// or the audit row's hash drifts from the issued token.
+String _computeServicePrincipalClaimsHash({
+  required String servicePrincipalId,
+  required String operatorId,
+  required String locationId,
+  required List<String> scopes,
+  required DateTime issuedAt,
+  required DateTime expiresAt,
+}) {
+  final iat = issuedAt.toUtc().millisecondsSinceEpoch ~/ 1000;
+  final exp = expiresAt.toUtc().millisecondsSinceEpoch ~/ 1000;
+  // Sorted-key canonical JSON. Keys: exp, iat, location_id,
+  // operator_id, scopes, sub. Hand-built (not jsonEncode of a Map)
+  // because Dart map iteration is insertion-ordered and the JWT
+  // issuer constructs the payload in a different order; building the
+  // canonical string here avoids coupling this helper to whatever
+  // order the issuer happens to use.
+  final canonical = <String>[
+    '"exp":$exp',
+    '"iat":$iat',
+    '"location_id":${jsonEncode(locationId)}',
+    '"operator_id":${jsonEncode(operatorId)}',
+    '"scopes":${jsonEncode(scopes)}',
+    '"sub":${jsonEncode('sp:$servicePrincipalId')}',
+  ].join(',');
+  return sha256.convert(utf8.encode('{$canonical}')).toString();
+}
 
 class ProxyUsageChargeEstimate {
   const ProxyUsageChargeEstimate({
@@ -5132,6 +5182,481 @@ update public.proxy_requests
 ''';
 }
 
+// ─── HARD-B — Auth lockout / retry enforcement ──────────────────────────────
+//
+// Three surfaces share one shape: a rolling-window counter that the
+// route handler consults BEFORE the gateway call, and that records
+// every attempt the route observes. The contract pins the thresholds:
+//
+//   * Login (5 failures / 15 minutes per (email_hash, ip_hash))
+//     fans out through [AuthLockoutEnforcer] backed by Postgres
+//     `auth_login_attempts`. The repo lives in
+//     `lib/infrastructure/persistence/postgres/repositories/`.
+//
+//   * MFA TOTP confirm (3 failures per challenge_id) and password
+//     reset request (10 requests / 24h per email_hash) ride
+//     in-memory rolling-window counters defined here. Same shape as
+//     the HARD-D feature-flag idempotency cache: bounded LRU,
+//     volatile across proxy restarts, traded against the cost of a
+//     paired Postgres table that this slice does not need.
+//
+// All three audit-emit through the same `AuthLockoutAuditSink` so a
+// fake recorder in tests can assert payload shape without touching
+// the production audit fan-out.
+
+const Duration kAuthLoginLockoutWindow = Duration(minutes: 15);
+const int kAuthLoginLockoutThreshold = 5;
+const Duration kAuthLoginLockoutRetryAfter = Duration(seconds: 900);
+const int kAuthMfaTotpRetryThreshold = 3;
+const Duration kAuthMfaTotpRetryAfter = Duration(seconds: 30);
+const Duration kAuthPasswordResetWindow = Duration(hours: 24);
+const int kAuthPasswordResetThreshold = 10;
+
+class AuthLockoutEvaluation {
+  const AuthLockoutEvaluation({
+    required this.locked,
+    required this.failureCount,
+  });
+
+  /// True when the rolling window already contains a `locked` row OR
+  /// the failure count meets/exceeds [kAuthLoginLockoutThreshold].
+  /// The route returns 423 in this case.
+  final bool locked;
+
+  /// Number of `(failure, locked)` rows in the window. Audit rows
+  /// carry this so investigators can correlate the count at trip-time
+  /// without re-querying.
+  final int failureCount;
+}
+
+/// Outcome of a credential attempt the route reports. The contract
+/// pins the value set:
+///
+///   * `bad_password`   — Firebase rejected the password.
+///   * `unknown_user`   — Firebase reported the email is not enrolled.
+///   * `mfa_required`   — Firebase issued an MFA challenge.
+///   * `mfa_failed`     — Firebase rejected the MFA proof.
+///
+/// The set is closed: any other value is rejected at the route
+/// boundary (400 `invalid_failure_outcome`).
+abstract class AuthLoginFailureOutcomes {
+  AuthLoginFailureOutcomes._();
+
+  static const String badPassword = 'bad_password';
+  static const String unknownUser = 'unknown_user';
+  static const String mfaRequired = 'mfa_required';
+  static const String mfaFailed = 'mfa_failed';
+
+  static const Set<String> all = <String>{
+    badPassword,
+    unknownUser,
+    mfaRequired,
+    mfaFailed,
+  };
+}
+
+/// Audit sink the lockout enforcer + retry counters write through.
+/// The production binding fans out into the hash-chained `audit_logs`
+/// table (`auth.login_failed`, `auth.account_locked`,
+/// `auth.mfa_retry_exceeded`, `auth.password_reset_throttled`); tests
+/// inject [InMemoryAuthLockoutAuditSink] to assert payload shape +
+/// sensitive-field redaction.
+abstract class AuthLockoutAuditSink {
+  Future<void> recordLoginFailed({
+    required String emailHashHex,
+    required String ipHashHex,
+    required String outcome,
+    required int attemptCountInWindow,
+    required bool locked,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  });
+
+  /// Records an `auth.account_locked` event. When the success-path
+  /// pre-check trips a lock, the route knows the verified
+  /// `actorUserId`; passing it through here lets the production sink
+  /// fan the row out into the per-tenant `audit_logs` chain. Anonymous
+  /// failure-report locks pass `actorUserId = null` and stay in
+  /// `auth_events_audit` only (audit_logs is per-(operator_id,
+  /// chain_date), so events with no resolvable operator have no chain
+  /// to land in -- documented in
+  /// `docs/contracts/hardening_auth_protection_contract.md`).
+  Future<void> recordAccountLocked({
+    required String emailHashHex,
+    required String ipHashHex,
+    required int attemptCount,
+    required DateTime lockoutUntil,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  });
+
+  Future<void> recordMfaRetryExceeded({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String challengeIdHash,
+    required int retryCount,
+  });
+
+  Future<void> recordPasswordResetThrottled({
+    required String emailHashHex,
+    required int attemptCountIn24h,
+    required Duration retryAfter,
+  });
+}
+
+class InMemoryAuthLockoutAuditSink implements AuthLockoutAuditSink {
+  final List<Map<String, Object?>> events = <Map<String, Object?>>[];
+
+  @override
+  Future<void> recordLoginFailed({
+    required String emailHashHex,
+    required String ipHashHex,
+    required String outcome,
+    required int attemptCountInWindow,
+    required bool locked,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    events.add(<String, Object?>{
+      'event_type': 'auth.login_failed',
+      'email_hash': emailHashHex,
+      'ip_hash': ipHashHex,
+      'outcome': outcome,
+      'attempt_count_in_window': attemptCountInWindow,
+      'locked': locked,
+      if (operatorId != null) 'operator_id': operatorId,
+      if (locationId != null) 'location_id': locationId,
+      if (actorUserId != null) 'actor_user_id': actorUserId,
+    });
+  }
+
+  @override
+  Future<void> recordAccountLocked({
+    required String emailHashHex,
+    required String ipHashHex,
+    required int attemptCount,
+    required DateTime lockoutUntil,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    events.add(<String, Object?>{
+      'event_type': 'auth.account_locked',
+      'email_hash': emailHashHex,
+      'ip_hash': ipHashHex,
+      'attempt_count': attemptCount,
+      'lockout_until': lockoutUntil.toUtc().toIso8601String(),
+      if (operatorId != null) 'operator_id': operatorId,
+      if (locationId != null) 'location_id': locationId,
+      if (actorUserId != null) 'actor_user_id': actorUserId,
+    });
+  }
+
+  @override
+  Future<void> recordMfaRetryExceeded({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String challengeIdHash,
+    required int retryCount,
+  }) async {
+    events.add(<String, Object?>{
+      'event_type': 'auth.mfa_retry_exceeded',
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'actor_user_id': actorUserId,
+      'challenge_id_hash': challengeIdHash,
+      'retry_count': retryCount,
+    });
+  }
+
+  @override
+  Future<void> recordPasswordResetThrottled({
+    required String emailHashHex,
+    required int attemptCountIn24h,
+    required Duration retryAfter,
+  }) async {
+    events.add(<String, Object?>{
+      'event_type': 'auth.password_reset_throttled',
+      'email_hash': emailHashHex,
+      'attempt_count_24h': attemptCountIn24h,
+      'retry_after_seconds': retryAfter.inSeconds,
+    });
+  }
+}
+
+/// HARD-B abstraction over the Postgres `auth_login_attempts` table.
+/// One implementation lives in `proxy_bootstrap.dart`
+/// (`PostgresAuthLockoutEnforcer`); tests inject
+/// [InMemoryAuthLockoutEnforcer]. The route handler depends on this
+/// surface only — no `package:postgres` import on the proxy boundary.
+abstract class AuthLockoutEnforcer {
+  /// Reads the rolling-window failure count for the (email, ip) pair
+  /// and returns the lockout decision.
+  Future<AuthLockoutEvaluation> evaluate({
+    required String email,
+    required String ip,
+  });
+
+  /// Records one `outcome: failure` row (anonymous scope when
+  /// [operatorId] is null; tenant scope otherwise) and returns the
+  /// post-write count.
+  Future<int> recordFailure({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  });
+
+  /// Records one `outcome: locked` row at the threshold trip.
+  Future<void> recordLocked({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+  });
+
+  /// Records one `outcome: success` row attributed to the resolved
+  /// tenant. Used after a verified Firebase login completes
+  /// successfully so the audit trail carries both successes + failures.
+  Future<void> recordSuccess({
+    required String email,
+    required String ip,
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    String? userAgentClass,
+  });
+}
+
+/// Test-only enforcer. Tracks failures in a Map keyed by the same
+/// SHA-256(email):SHA-256(ip) shape the production path uses so tests
+/// can assert hash collisions / window boundaries deterministically.
+class InMemoryAuthLockoutEnforcer implements AuthLockoutEnforcer {
+  InMemoryAuthLockoutEnforcer({
+    this.window = kAuthLoginLockoutWindow,
+    this.threshold = kAuthLoginLockoutThreshold,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
+
+  final Duration window;
+  final int threshold;
+  final DateTime Function() _now;
+
+  /// All recorded attempts in insertion order. Tests assert on length
+  /// + outcome distribution.
+  final List<InMemoryAuthAttempt> attempts = <InMemoryAuthAttempt>[];
+
+  String _emailKey(String email) {
+    final normalized = email.trim().toLowerCase();
+    return sha256.convert(utf8.encode(normalized)).toString();
+  }
+
+  String _ipKey(String ip) =>
+      sha256.convert(utf8.encode(ip.trim())).toString();
+
+  Iterable<InMemoryAuthAttempt> _failuresInWindow(String email, String ip) {
+    final cutoff = _now().toUtc().subtract(window);
+    final emailKey = _emailKey(email);
+    final ipKey = _ipKey(ip);
+    // Per the contract reset semantics: a successful login inside the
+    // window resets the failure count for that (email, ip) pair, so
+    // only failures attempted *after* the most recent success in the
+    // window participate in the lockout count.
+    DateTime? latestSuccessAt;
+    for (final attempt in attempts) {
+      if (attempt.emailHashHex == emailKey &&
+          attempt.ipHashHex == ipKey &&
+          attempt.attemptedAt.isAfter(cutoff) &&
+          attempt.outcome == 'success' &&
+          (latestSuccessAt == null ||
+              attempt.attemptedAt.isAfter(latestSuccessAt))) {
+        latestSuccessAt = attempt.attemptedAt;
+      }
+    }
+    final effectiveCutoff = latestSuccessAt ?? cutoff;
+    return attempts.where(
+      (attempt) =>
+          attempt.emailHashHex == emailKey &&
+          attempt.ipHashHex == ipKey &&
+          attempt.attemptedAt.isAfter(effectiveCutoff) &&
+          (attempt.outcome == 'failure' || attempt.outcome == 'locked'),
+    );
+  }
+
+  @override
+  Future<AuthLockoutEvaluation> evaluate({
+    required String email,
+    required String ip,
+  }) async {
+    final failures = _failuresInWindow(email, ip).toList();
+    final locked =
+        failures.any((attempt) => attempt.outcome == 'locked') ||
+        failures.length >= threshold;
+    return AuthLockoutEvaluation(
+      locked: locked,
+      failureCount: failures.length,
+    );
+  }
+
+  @override
+  Future<int> recordFailure({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    attempts.add(
+      InMemoryAuthAttempt(
+        emailHashHex: _emailKey(email),
+        ipHashHex: _ipKey(ip),
+        outcome: 'failure',
+        attemptedAt: _now().toUtc(),
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+    );
+    return _failuresInWindow(email, ip).length;
+  }
+
+  @override
+  Future<void> recordLocked({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+  }) async {
+    attempts.add(
+      InMemoryAuthAttempt(
+        emailHashHex: _emailKey(email),
+        ipHashHex: _ipKey(ip),
+        outcome: 'locked',
+        attemptedAt: _now().toUtc(),
+      ),
+    );
+  }
+
+  @override
+  Future<void> recordSuccess({
+    required String email,
+    required String ip,
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    String? userAgentClass,
+  }) async {
+    attempts.add(
+      InMemoryAuthAttempt(
+        emailHashHex: _emailKey(email),
+        ipHashHex: _ipKey(ip),
+        outcome: 'success',
+        attemptedAt: _now().toUtc(),
+        operatorId: operatorId,
+        locationId: locationId,
+      ),
+    );
+  }
+}
+
+class InMemoryAuthAttempt {
+  InMemoryAuthAttempt({
+    required this.emailHashHex,
+    required this.ipHashHex,
+    required this.outcome,
+    required this.attemptedAt,
+    this.operatorId,
+    this.locationId,
+  });
+
+  final String emailHashHex;
+  final String ipHashHex;
+  final String outcome;
+  final DateTime attemptedAt;
+  final String? operatorId;
+  final String? locationId;
+}
+
+/// In-memory rolling-window counter. Used for the MFA TOTP retry cap
+/// (3 / per-challenge) and the password-reset 24h cap (10 / per-email).
+/// Bounded LRU so a long-running proxy cannot leak unbounded memory
+/// across an attacker-controlled key flood.
+class RollingWindowAttemptCounter {
+  RollingWindowAttemptCounter({
+    required this.window,
+    this.maxEntries = 4096,
+    DateTime Function()? now,
+  })  : assert(maxEntries > 0, 'maxEntries must be positive'),
+        _now = now ?? DateTime.now;
+
+  final Duration window;
+  final int maxEntries;
+  final DateTime Function() _now;
+
+  /// Insertion-ordered map so the oldest entry is the first key. Two
+  /// concurrent paths share the map under the assumption that Dart's
+  /// single-threaded event loop serializes the synchronous prefix of
+  /// each method (no `await` between mutations of `_attempts`).
+  final Map<String, List<DateTime>> _attempts = <String, List<DateTime>>{};
+
+  /// Increments the counter for [key] and returns the post-write
+  /// count of attempts inside the rolling window.
+  int incrementAndCount(String key) {
+    final now = _now().toUtc();
+    final cutoff = now.subtract(window);
+    _evictExpired(cutoff);
+    if (!_attempts.containsKey(key) && _attempts.length >= maxEntries) {
+      _attempts.remove(_attempts.keys.first);
+    }
+    final entries = _attempts.putIfAbsent(key, () => <DateTime>[]);
+    entries.add(now);
+    return entries.length;
+  }
+
+  /// Resets the counter for [key]. Called on a successful confirm
+  /// (MFA) or successful reset.
+  void reset(String key) {
+    _attempts.remove(key);
+  }
+
+  /// Counts the existing attempts in the window WITHOUT incrementing.
+  int countInWindow(String key) {
+    final cutoff = _now().toUtc().subtract(window);
+    final entries = _attempts[key];
+    if (entries == null) return 0;
+    entries.removeWhere((t) => !t.isAfter(cutoff));
+    if (entries.isEmpty) {
+      _attempts.remove(key);
+      return 0;
+    }
+    return entries.length;
+  }
+
+  void _evictExpired(DateTime cutoff) {
+    _attempts.removeWhere((_, entries) {
+      entries.removeWhere((t) => !t.isAfter(cutoff));
+      return entries.isEmpty;
+    });
+  }
+}
+
+/// Centralised hashing helpers shared between [InMemoryAuthLockoutEnforcer]
+/// and the route handler so audit payloads carry the same hex digest
+/// the lockout query keyed against.
+String hashAuthEmailHex(String email) {
+  final normalized = email.trim().toLowerCase();
+  return sha256.convert(utf8.encode(normalized)).toString();
+}
+
+String hashAuthIpHex(String ip) {
+  return sha256.convert(utf8.encode(ip.trim())).toString();
+}
+
 const String healthPath = '/healthz';
 const String readinessPath = '/readyz';
 const String deepHealthPath = '/health';
@@ -5653,12 +6178,20 @@ abstract class FeatureFlagsAdminProxyGateway {
   /// Toggle one flag's `enabled` bit by `flagId`. Returns the
   /// post-toggle row JSON. Returns null when no row matches; the
   /// route handler maps that into 404 `unknown_flag`.
+  ///
+  /// HARD-B - `reason` is an optional free-text rationale supplied by
+  /// the operator (max 500 chars). When present it is written to the
+  /// audit row's `reason` field so reviewers can correlate the toggle
+  /// with an incident ticket / change-management note. The
+  /// `idempotency_key` already binds to the rationale via the payload
+  /// hash, so two retries that disagree on the reason 422-conflict.
   Future<Map<String, Object?>?> toggleFlag({
     required String actorUserId,
     required String flagId,
     required bool enabled,
     required String idempotencyKey,
     required String adminReason,
+    String? reason,
   });
 }
 
@@ -5889,6 +6422,13 @@ Future<void> routeRequest(
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
   FeatureFlagsAdminProxyGateway? featureFlagsAdminGateway,
+  // HARD-B — auth lockout / retry enforcement. All four are optional
+  // for back-compat with existing tests + scaffolds. When null the
+  // route runs in legacy "no enforcement" mode.
+  AuthLockoutEnforcer? authLockoutEnforcer,
+  AuthLockoutAuditSink? authLockoutAuditSink,
+  RollingWindowAttemptCounter? mfaTotpRetryCounter,
+  RollingWindowAttemptCounter? passwordResetThrottleCounter,
   bool trustProxyAuditHeaders = false,
   ProxyRequestLogPolicy requestLogPolicy =
       const ProxyRequestLogPolicy.metaOnly(),
@@ -6586,6 +7126,34 @@ Future<void> routeRequest(
         });
         return;
       }
+      // HARD-B — per-account 24h cap. Counts requests against the
+      // SHA-256(normalized email) so the contract's "10 reset
+      // requests within 24h" applies regardless of whether the
+      // attacker varies the source IP. Existing PasswordResetRequestThrottled
+      // (Firebase-side rate limit) still rides the gateway.
+      final emailHashHex = hashAuthEmailHex(email);
+      if (passwordResetThrottleCounter != null) {
+        final priorCount =
+            passwordResetThrottleCounter.countInWindow(emailHashHex);
+        if (priorCount >= kAuthPasswordResetThreshold) {
+          if (authLockoutAuditSink != null) {
+            await authLockoutAuditSink.recordPasswordResetThrottled(
+              emailHashHex: emailHashHex,
+              attemptCountIn24h: priorCount,
+              retryAfter: kAuthPasswordResetWindow,
+            );
+          }
+          response.headers.add(
+            HttpHeaders.retryAfterHeader,
+            kAuthPasswordResetWindow.inSeconds.toString(),
+          );
+          _writeJson(response, 429, <String, Object?>{
+            'error': 'reset_request_throttled',
+            'retry_after_seconds': kAuthPasswordResetWindow.inSeconds,
+          });
+          return;
+        }
+      }
       // Idempotency-Key dedupe: a second tap on "Send reset link"
       // (or a network-retry that double-fires the request) must not
       // issue a second Firebase email. The cache replays the prior
@@ -6607,6 +7175,11 @@ Future<void> routeRequest(
             await passwordResetRequestGateway.requestReset(
               PasswordResetRequestCommand(email: email),
             );
+            // Increment the per-account 24h counter only after a real
+            // request flows through the gateway (the idempotent replay
+            // path sees a cache hit and returns BEFORE this compute
+            // body runs, so retries do not inflate the count).
+            passwordResetThrottleCounter?.incrementAndCount(emailHashHex);
             // Privacy-preserving: always return 200 with the same body so
             // the client can show a uniform "if an account exists..."
             // confirmation regardless of whether the email matched a
@@ -6888,22 +7461,66 @@ Future<void> routeRequest(
             });
             return;
           }
-          final completed = await mfaOperationsGateway.confirmTotpEnrollment(
-            MfaTotpConfirmCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              authorizationIdToken: authorizationIdToken,
-              factorId: factorId,
-              oneTimeCode: oneTimeCode,
-              issuerName:
-                  _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'factor_id': completed.factorId,
-          });
-          return;
+          // HARD-B - per-challenge retry cap. Counter key is
+          // SHA-256(factor_id + actor) so two users sharing a factor
+          // surface (impossible in practice but cheap to enforce) do
+          // not share a counter slot. 4th attempt within the window
+          // returns 429; success resets the slot via try/finally.
+          final challengeKey = sha256
+              .convert(utf8.encode('${scope.userId}:$factorId'))
+              .toString();
+          if (mfaTotpRetryCounter != null) {
+            final priorRetries =
+                mfaTotpRetryCounter.countInWindow(challengeKey);
+            if (priorRetries >= kAuthMfaTotpRetryThreshold) {
+              if (authLockoutAuditSink != null) {
+                await authLockoutAuditSink.recordMfaRetryExceeded(
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  actorUserId: scope.userId,
+                  challengeIdHash: challengeKey,
+                  retryCount: priorRetries,
+                );
+              }
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthMfaTotpRetryAfter.inSeconds.toString(),
+              );
+              _writeJson(response, 429, <String, Object?>{
+                'error': 'mfa_retry_limit',
+                'retry_after_seconds': kAuthMfaTotpRetryAfter.inSeconds,
+              });
+              return;
+            }
+          }
+          try {
+            final completed = await mfaOperationsGateway.confirmTotpEnrollment(
+              MfaTotpConfirmCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                authorizationIdToken: authorizationIdToken,
+                factorId: factorId,
+                oneTimeCode: oneTimeCode,
+                issuerName:
+                    _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
+              ),
+            );
+            // Successful confirm resets the retry slot so the next
+            // challenge starts fresh (the contract: "Each new
+            // challenge resets retry counter").
+            mfaTotpRetryCounter?.reset(challengeKey);
+            _writeJson(response, 200, <String, Object?>{
+              'factor_id': completed.factorId,
+            });
+            return;
+          } on MfaOperationRejected {
+            // Rejected attempts increment the per-challenge counter.
+            // The threshold check above sees the post-increment value
+            // on the next request, so the 4th failure trips the 429.
+            mfaTotpRetryCounter?.incrementAndCount(challengeKey);
+            rethrow;
+          }
         }
 
         if (request.method == 'POST' && path == authMfaFactorsListPath) {
@@ -7823,6 +8440,137 @@ Future<void> routeRequest(
     }
 
     if (request.method == 'POST' && path == authSessionLoginPath) {
+      // HARD-B - the login route serves two shapes:
+      //   * Success path: `{token_hash, email?}` plus a verified
+      //     Bearer token. Records the session ledger row + (if
+      //     `email` present + enforcer wired) an `outcome: success`
+      //     attempts row.
+      //   * Failure-report path: `{email, failure_outcome}` with no
+      //     bearer token. Records an `outcome: failure` attempts row,
+      //     emits `auth.login_failed`, and returns 401 -- or 423
+      //     when the count trips the threshold + an
+      //     `auth.account_locked` row.
+      //
+      // Body parse runs first so the failure-report branch can skip
+      // the auth check; the existing success path's writer/auth/
+      // token_hash checks still happen in their original order
+      // afterwards so previously-written tests keep their expected
+      // status codes.
+      Map<String, Object?> body;
+      try {
+        body = await _readJsonBody(request);
+      } on _MalformedJsonBodyError catch (error) {
+        _writeJson(response, 400, <String, Object?>{
+          'error': 'malformed_json_body',
+          'message': error.message,
+        });
+        return;
+      }
+
+      final email = _nonBlankString(body['email']);
+      final failureOutcome = _nonBlankString(body['failure_outcome']);
+      final tokenHash = _nonBlankString(body['token_hash']);
+      final ledgerContext = _resolveLedgerContextFromHeaders(
+        request,
+        trustProxyAuditHeaders: trustProxyAuditHeaders,
+      );
+      final clientIpForLockout = ledgerContext.ip ?? '';
+
+      // ---- Failure-report path ----
+      if (failureOutcome != null) {
+        if (!AuthLoginFailureOutcomes.all.contains(failureOutcome)) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'invalid_failure_outcome',
+            'message':
+                'failure_outcome must be one of: '
+                '${AuthLoginFailureOutcomes.all.join(', ')}',
+          });
+          return;
+        }
+        if (email == null) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'missing_email',
+            'message':
+                'failure_outcome requires an email field for lockout '
+                'attribution',
+          });
+          return;
+        }
+        if (clientIpForLockout.isEmpty) {
+          _writeJson(response, 400, <String, Object?>{
+            'error': 'missing_client_ip',
+            'message':
+                'failure-report path requires a resolvable client ip; '
+                'enable trustProxyAuditHeaders or send the request from '
+                'a peer the proxy can resolve directly',
+          });
+          return;
+        }
+        if (authLockoutEnforcer != null) {
+          final emailHashHex = hashAuthEmailHex(email);
+          final ipHashHex = hashAuthIpHex(clientIpForLockout);
+          final now = clock().toUtc();
+          final priorEval = await authLockoutEnforcer.evaluate(
+            email: email,
+            ip: clientIpForLockout,
+          );
+          // Already-locked: do not re-record a fresh failure; just
+          // emit the locked outcome + audit row + 423 response.
+          if (priorEval.locked) {
+            await authLockoutEnforcer.recordLocked(
+              email: email,
+              ip: clientIpForLockout,
+            );
+            await authLockoutAuditSink?.recordAccountLocked(
+              emailHashHex: emailHashHex,
+              ipHashHex: ipHashHex,
+              attemptCount: priorEval.failureCount,
+              lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
+            );
+            response.headers.add(
+              HttpHeaders.retryAfterHeader,
+              kAuthLoginLockoutRetryAfter.inSeconds.toString(),
+            );
+            _writeJson(response, 423, <String, Object?>{
+              'error': 'account_locked',
+              'retry_after_seconds':
+                  kAuthLoginLockoutRetryAfter.inSeconds,
+            });
+            return;
+          }
+          // Below threshold: insert the failure row + emit
+          // auth.login_failed. The lockout trip happens at the NEXT
+          // attempt because the contract reads "after 5 failed
+          // attempts ... the next failure inserts an outcome: locked
+          // row" -- the 5th failure is the last regular 401, and
+          // attempt #6 lands in the priorEval.locked branch above.
+          final newCount = await authLockoutEnforcer.recordFailure(
+            email: email,
+            ip: clientIpForLockout,
+          );
+          // `locked: true` here means "this failure brought the count
+          // up to the threshold; the next attempt will trip the
+          // lock." The audit row carries the hint so investigators
+          // see the count progression without joining tables, but
+          // the response stays 401 (the contract's lock trips at the
+          // *next* attempt).
+          final atThreshold = newCount >= kAuthLoginLockoutThreshold;
+          await authLockoutAuditSink?.recordLoginFailed(
+            emailHashHex: emailHashHex,
+            ipHashHex: ipHashHex,
+            outcome: failureOutcome,
+            attemptCountInWindow: newCount,
+            locked: atThreshold,
+          );
+        }
+        _writeJson(response, 401, <String, Object?>{
+          'error': 'login_failed',
+          'outcome': failureOutcome,
+        });
+        return;
+      }
+
+      // ---- Success path ----
       if (authSessionLedgerWriter == null) {
         _writeJson(response, 503, <String, Object?>{
           'error': 'auth_session_ledger_not_configured',
@@ -7846,18 +8594,6 @@ Future<void> routeRequest(
         return;
       }
 
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final tokenHash = _nonBlankString(body['token_hash']);
       if (tokenHash == null) {
         _writeJson(response, 400, <String, Object?>{
           'error': 'missing_token_hash',
@@ -7866,10 +8602,49 @@ Future<void> routeRequest(
         return;
       }
 
-      final ledgerContext = _resolveLedgerContextFromHeaders(
-        request,
-        trustProxyAuditHeaders: trustProxyAuditHeaders,
-      );
+      // Pre-success lockout check: if the email is locked, the
+      // success path must be refused even though the bearer token is
+      // valid (e.g., a concurrent attacker trips the threshold while
+      // a legitimate session-ledger write is in flight).
+      if (email != null &&
+          authLockoutEnforcer != null &&
+          clientIpForLockout.isNotEmpty) {
+        final priorEval = await authLockoutEnforcer.evaluate(
+          email: email,
+          ip: clientIpForLockout,
+        );
+        if (priorEval.locked) {
+          final emailHashHex = hashAuthEmailHex(email);
+          final ipHashHex = hashAuthIpHex(clientIpForLockout);
+          final now = clock().toUtc();
+          await authLockoutEnforcer.recordLocked(
+            email: email,
+            ip: clientIpForLockout,
+          );
+          await authLockoutAuditSink?.recordAccountLocked(
+            emailHashHex: emailHashHex,
+            ipHashHex: ipHashHex,
+            attemptCount: priorEval.failureCount,
+            lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            // Bearer token already verified -- pass scope.userId so
+            // the production sink can fan the audit row out into the
+            // hash-chained `audit_logs` chain (operator + actor both
+            // resolved is the contract-valid attribution shape).
+            actorUserId: scope.userId,
+          );
+          response.headers.add(
+            HttpHeaders.retryAfterHeader,
+            kAuthLoginLockoutRetryAfter.inSeconds.toString(),
+          );
+          _writeJson(response, 423, <String, Object?>{
+            'error': 'account_locked',
+            'retry_after_seconds': kAuthLoginLockoutRetryAfter.inSeconds,
+          });
+          return;
+        }
+      }
 
       String sessionId;
       try {
@@ -7892,6 +8667,32 @@ Future<void> routeRequest(
           'message': 'auth session ledger is unavailable; please retry',
         });
         return;
+      }
+
+      // Record success in the lockout ledger so the per-tenant audit
+      // surface carries the success row alongside any prior failures.
+      // Per the contract, "Successful login within window resets
+      // failure count" - the count query filters on outcome IN
+      // (failure, locked), so a success row does not contribute to
+      // the count at the next read.
+      if (email != null &&
+          authLockoutEnforcer != null &&
+          clientIpForLockout.isNotEmpty) {
+        try {
+          await authLockoutEnforcer.recordSuccess(
+            email: email,
+            ip: clientIpForLockout,
+            operatorId: scope.operatorId,
+            locationId: scope.locationId,
+            actorUserId: scope.userId,
+          );
+        } catch (_) {
+          // Lockout-ledger write failure must not block a successful
+          // login. The session is already recorded; missing the
+          // success row in the lockout ledger only affects the audit
+          // surface and is recoverable from the auth_events_audit
+          // success row.
+        }
       }
 
       _writeJson(response, 200, <String, Object?>{
@@ -9462,12 +10263,37 @@ Future<void> _routeFeatureFlagsAdmin({
         message: 'enabled boolean is required',
       );
     }
+    // HARD-B - optional operator-supplied rationale for the toggle.
+    // Capped at 500 chars per the contract; longer values are
+    // rejected at the route boundary so the audit row never carries
+    // an unbounded blob. The check uses the raw body value (not
+    // _nonBlankString) so a caller can explicitly pass an empty
+    // string to mean "no rationale" without a 400.
+    final reasonRaw = body['reason'];
+    if (reasonRaw != null && reasonRaw is! String) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_reason',
+        message: 'reason must be a string when present',
+      );
+    }
+    if (reasonRaw is String && reasonRaw.length > 500) {
+      throw const _AdminInputError(
+        statusCode: 400,
+        code: 'reason_too_long',
+        message: 'reason must be 500 characters or fewer',
+      );
+    }
+    final reason = reasonRaw is String ? reasonRaw.trim() : null;
+    final reasonForAudit =
+        reason == null || reason.isEmpty ? null : reason;
     final result = await gateway.toggleFlag(
       actorUserId: actorUserId,
       flagId: flagId,
       enabled: enabledRaw,
       idempotencyKey: idempotencyKey,
       adminReason: '$reasonPrefix:toggle:$flagId:$enabledRaw',
+      reason: reasonForAudit,
     );
     if (result == null) {
       _writeJson(response, 404, <String, Object?>{

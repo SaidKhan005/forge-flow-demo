@@ -315,6 +315,12 @@ Future<void> main(List<String> args) async {
             productionBindings.integrationAdminActorResolver,
         featureFlagsAdminGateway:
             productionBindings.featureFlagsAdminGateway,
+        // HARD-B - auth lockout / retry enforcement.
+        authLockoutEnforcer: productionBindings.authLockoutEnforcer,
+        authLockoutAuditSink: productionBindings.authLockoutAuditSink,
+        mfaTotpRetryCounter: productionBindings.mfaTotpRetryCounter,
+        passwordResetThrottleCounter:
+            productionBindings.passwordResetThrottleCounter,
         adminCorsAllowList: adminCorsAllowList,
       );
     } catch (error, stack) {

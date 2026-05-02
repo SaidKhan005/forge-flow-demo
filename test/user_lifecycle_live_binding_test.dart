@@ -329,7 +329,21 @@ void main() {
       );
       expect(id, equals(_validEventId));
       final tx = pool.transactions.single;
-      final params = tx.parameters.last;
+      // HARD-B (HARD-H pattern) — locate the auth_events_audit insert
+      // by SQL substring rather than `tx.parameters.last`. The
+      // 9.0Σ.f cutover fan-out adds an `insert into public.audit_logs`
+      // row in the same transaction; that newer call shifts what
+      // `.last` points at to the audit_logs payload (which uses
+      // `action`, not `event_type`). The indexWhere pattern stays
+      // pinned to the auth_events_audit row regardless of how many
+      // collateral writes flow through the same transaction.
+      final auditEventsIndex = tx.executedSql.indexWhere(
+        (sql) =>
+            sql.contains('insert into auth_events_audit') &&
+            sql.contains('returning event_id'),
+      );
+      expect(auditEventsIndex, isNonNegative);
+      final params = tx.parameters[auditEventsIndex];
       expect(params['event_type'], equals('auth.login_succeeded'));
       expect(params['ip'], equals('1.2.3.4'));
       expect(params['payload'], equals('{"method":"email_password"}'));
