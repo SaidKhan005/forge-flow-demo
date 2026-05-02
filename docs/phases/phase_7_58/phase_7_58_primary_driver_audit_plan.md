@@ -1,7 +1,7 @@
 # Phase 7.58 - Primary Driver Audit + Sub-Slice Plan
 
-Updated: 2026-05-01
-Status: Active (`7.58.0` audit shipping; `7.58.1`-`7.58.5` queued)
+Updated: 2026-05-02
+Status: Active. `7.58.0` contract pin + `7.58.5` row purity + `7.58.UX.5` renderer honesty (F-1/F-6/F-7) accepted 2026-05-02; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued.
 Owner: Variance / Learn lane
 Companion contract: `docs/contracts/phase_7_58_primary_driver_contract.md`
 

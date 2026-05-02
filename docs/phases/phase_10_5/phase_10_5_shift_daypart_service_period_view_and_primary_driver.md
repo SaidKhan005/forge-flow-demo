@@ -1,8 +1,8 @@
 # Phase 10.5 - Shift Daypart-Aware Service Period View + Primary Driver
 
-Updated: 2026-04-23
-Status: Planned, ready to build against real vendor capability profile
-Owner: Future live daypart/service-period lane
+Updated: 2026-05-02
+Status: Active. `10.5.0` daypart toggle scaffold accepted 2026-05-02 (Shift dashboard segmented control; whole-day stays default + authoritative). Bucketing engine + per-period read service + driver teaching slices queued.
+Owner: Shift / daypart lane
 
 ## Decisions Locked (2026-04-23 review)
 

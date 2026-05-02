@@ -7,8 +7,14 @@ flagged.
 
 PRs #50–54 (`7.58.0`/`11A.3a`/`9.0Σ.l`/L4 admin idempotency/L5 MFA tests)
 landed 2026-05-02 PM and resolved P1 (RLS depth), P2 (idempotency), P2
-(11A.3a operator-picker), and P2 (MFA test coverage to 87.3%). Open items
-below are the remainder.
+(11A.3a operator-picker), and P2 (MFA test coverage to 87.3%).
+
+PRs #55–59 (`7.58.UX.5`/`10.5.0`/L2 postgres repo tests/L4 runbook
+companion/L5 MFA adapter parcel) landed 2026-05-02 follow-up: P1 runbook
+companion **RESOLVED**; P2 test coverage parcels added (5 postgres repos
++ 2 MFA adapter test files, 82 new tests across the sprint); new
+walkthroughs `7.58.UX.5.md` + `10.5.0.md` shipped. Phase 7.58 has zero
+DRIFT. Open items below are the remainder.
 
 ## P0 — Production1 migration apply gap
 
