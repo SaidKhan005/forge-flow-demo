@@ -236,7 +236,7 @@ void main() {
           ),
         ),
       );
-      expect(source, contains('pricing_tier_admin: postgres'));
+      expect(source, contains("'pricing_tier_admin': 'postgres'"));
     });
 
     test('passes corpus admin binding into routeRequest', () {
@@ -250,7 +250,7 @@ void main() {
           ),
         ),
       );
-      expect(source, contains('corpus_admin: postgres'));
+      expect(source, contains("'corpus_admin': 'postgres'"));
     });
 
     test('passes feature flags admin binding into routeRequest', () {
@@ -264,7 +264,7 @@ void main() {
           ),
         ),
       );
-      expect(source, contains('feature_flags_admin: postgres'));
+      expect(source, contains("'feature_flags_admin': 'postgres'"));
     });
   });
 }

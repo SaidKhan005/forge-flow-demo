@@ -52,6 +52,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_context.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
@@ -68,7 +69,20 @@ import 'package:path/path.dart' as p;
 import 'package:pointycastle/pointycastle.dart' as pc;
 
 import '../advisor_corpus/advisor_corpus.dart' show CorpusManifest, defaultManifestPath;
+import 'log.dart';
 import 'proxy_idempotency_cache.dart';
+export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
+    show DependencyTimeoutException;
+export 'log.dart'
+    show
+        LogSeverity,
+        ProxyLogContext,
+        correlationIdHeaderName,
+        currentProxyLogContext,
+        generateUuidV4,
+        isValidUuidV4,
+        log,
+        withProxyLogContext;
 export 'proxy_idempotency_cache.dart' show ProxyAuthIdempotencyCache;
 
 /// Default in-memory idempotency cache shared by the password
@@ -206,12 +220,28 @@ abstract class ProxyConfigNames {
   static const String adminCorsAllowedOrigins =
       'ADMIN_CORS_ALLOWED_ORIGINS';
 
-  /// HARD-C — declared deployment environment. Only `dev` and
-  /// `staging` (case-sensitive) trigger the localhost CORS
-  /// fallback. Any other value, including `prod`, an empty string,
-  /// or a misspelled `production` / `PRD`, fails closed when no
-  /// explicit allow-list is configured.
+  /// Declared deployment environment. Two consumers:
+  ///
+  /// - HARD-C: only `dev` and `staging` (case-sensitive) trigger the
+  ///   localhost CORS fallback. Any other value, including `prod`,
+  ///   an empty string, or a misspelled `production` / `PRD`, fails
+  ///   closed when no explicit allow-list is configured.
+  /// - HARD-G observability: lower-cased value drives the startup
+  ///   KMS fail-closed check (`prod` arms the gate; any other value,
+  ///   including unset, is treated as non-prod).
   static const String proxyEnvironment = 'PROXY_ENVIRONMENT';
+
+  /// HARD-G observability — startup KMS rollout master switch. When
+  /// `true`/`1`/`on` (case-insensitive), the proxy expects the GCP
+  /// env vars to be set so the KMS lane router can dispatch to the
+  /// real provider. In prod with this flag on and any GCP var
+  /// missing, the proxy fails closed at startup (exit 78). The
+  /// per-lane `kms_real_provider_<kind>_enabled` feature-flag rows
+  /// in Postgres still gate per-lane rollout independently; this
+  /// env var is the safety interlock that prevents prod ever booting
+  /// against the stub when the rollout is supposed to be live.
+  static const String kmsRealProviderEnabled =
+      'KMS_REAL_PROVIDER_ENABLED';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -226,6 +256,23 @@ class ProxyConfigError implements Exception {
   String toString() => message;
 }
 
+/// HARD-G observability — startup KMS misconfiguration. Thrown when
+/// `PROXY_ENVIRONMENT=prod` and `KMS_REAL_PROVIDER_ENABLED=true` but
+/// any of `GCP_PROJECT_ID`, `CLOUD_RUN_REGION`, `CLOUD_RUN_SERVICE_NAME`
+/// is unset. The main entry point catches this distinctly so the log
+/// emits `startup.kms_misconfigured` instead of the generic
+/// `startup.production_bindings_invalid` event.
+class ProxyKmsMisconfiguredError extends ProxyConfigError {
+  ProxyKmsMisconfiguredError({required List<String> missing})
+      : super(
+          'advisor proxy KMS misconfigured: PROXY_ENVIRONMENT=prod and '
+          'KMS_REAL_PROVIDER_ENABLED=true but ${missing.length} GCP '
+          'env var(s) are unset: ${missing.join(', ')}. Set them or '
+          'flip KMS_REAL_PROVIDER_ENABLED off and redeploy.',
+          missingSecretNames: List<String>.unmodifiable(missing),
+        );
+}
+
 class ProxyConfig {
   ProxyConfig._({
     required this.port,
@@ -238,6 +285,7 @@ class ProxyConfig {
     required this.cloudRunServiceName,
     required List<String> adminCorsAllowedOriginsFromEnv,
     required this.proxyEnvironment,
+    required this.kmsRealProviderEnabled,
   })  : _secrets = Map<String, String>.unmodifiable(secrets),
         adminCorsAllowedOriginsFromEnv = List<String>.unmodifiable(
           adminCorsAllowedOriginsFromEnv,
@@ -284,12 +332,24 @@ class ProxyConfig {
   /// var is unset or blank.
   final List<String> adminCorsAllowedOriginsFromEnv;
 
-  /// HARD-C — declared deployment environment. Trimmed lowercase
-  /// string from [ProxyConfigNames.proxyEnvironment], or null when
-  /// unset. The resolver treats `prod` as production (fail-closed on
-  /// empty allow-list) and any other value as non-prod (localhost is
-  /// added to the allow-list for ergonomic dev / staging access).
+  /// Declared deployment environment. Trimmed lowercase string from
+  /// [ProxyConfigNames.proxyEnvironment], or null when unset.
+  ///
+  /// - HARD-C resolver: `prod` is production (fail-closed on empty
+  ///   admin CORS allow-list); any other value is non-prod
+  ///   (localhost is added to the allow-list for ergonomic dev /
+  ///   staging access).
+  /// - HARD-G observability: `prod` arms the startup KMS
+  ///   fail-closed gate; any other value (including unset) is
+  ///   treated as non-prod.
   final String? proxyEnvironment;
+
+  /// HARD-G observability — `KMS_REAL_PROVIDER_ENABLED` env-var flag.
+  /// `true` arms the prod fail-closed gate; combined with
+  /// [proxyEnvironment] == `prod` and any unset GCP var, the proxy
+  /// exits 78 at startup.
+  final bool kmsRealProviderEnabled;
+
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -360,6 +420,13 @@ class ProxyConfig {
     final cloudRunServiceNameValue =
         trimmedOrNull(environment[ProxyConfigNames.cloudRunServiceName]);
 
+    final proxyEnvironmentValue =
+        trimmedOrNull(environment[ProxyConfigNames.proxyEnvironment])
+            ?.toLowerCase();
+    final kmsRealProviderEnabled = _parseBoolFlag(
+      environment[ProxyConfigNames.kmsRealProviderEnabled],
+    );
+
     // Phase 11A.4c — GCP / Cloud Run config is all-or-nothing.
     // Setting `GCP_PROJECT_ID` alone would enable real Secret Manager
     // writes via the KMS lane router while leaving the Cloud Run
@@ -375,17 +442,29 @@ class ProxyConfig {
     ];
     final anyPresent = gcpVarsPresent.contains(true);
     final allPresent = !gcpVarsPresent.contains(false);
+    final missingNames = <String>[
+      if (gcpProjectIdValue == null) ProxyConfigNames.gcpProjectId,
+      if (cloudRunRegionValue == null) ProxyConfigNames.cloudRunRegion,
+      if (cloudRunServiceNameValue == null)
+        ProxyConfigNames.cloudRunServiceName,
+    ];
+    final isProd = proxyEnvironmentValue == 'prod';
+    // HARD-G observability: prod + flag-on with ANY missing GCP var
+    // (partial OR all-missing) maps to startup.kms_misconfigured. The
+    // contract requires this distinct event whenever the rollout is
+    // armed in prod but the GCP wiring is incomplete.
+    if (isProd && kmsRealProviderEnabled && !allPresent) {
+      log(
+        LogSeverity.error,
+        'startup.kms_misconfigured',
+        fields: <String, Object?>{
+          'missing': missingNames,
+          'environment': proxyEnvironmentValue,
+        },
+      );
+      throw ProxyKmsMisconfiguredError(missing: missingNames);
+    }
     if (anyPresent && !allPresent) {
-      final missingNames = <String>[];
-      if (gcpProjectIdValue == null) {
-        missingNames.add(ProxyConfigNames.gcpProjectId);
-      }
-      if (cloudRunRegionValue == null) {
-        missingNames.add(ProxyConfigNames.cloudRunRegion);
-      }
-      if (cloudRunServiceNameValue == null) {
-        missingNames.add(ProxyConfigNames.cloudRunServiceName);
-      }
       throw ProxyConfigError(
         'advisor proxy GCP / Cloud Run config is partial: '
         '${missingNames.length} missing name(s): ${missingNames.join(', ')}. '
@@ -403,9 +482,9 @@ class ProxyConfig {
 
     final adminCorsRaw = environment[ProxyConfigNames.adminCorsAllowedOrigins];
     final adminCorsList = _parseCsvOrigins(adminCorsRaw);
-    final proxyEnvironmentValue =
-        trimmedOrNull(environment[ProxyConfigNames.proxyEnvironment])
-            ?.toLowerCase();
+    // `proxyEnvironmentValue` was resolved earlier (above) for the
+    // HARD-G KMS gate; it is reused here so HARD-C and HARD-G see the
+    // same lower-cased environment tag.
 
     return ProxyConfig._(
       port: port,
@@ -418,6 +497,7 @@ class ProxyConfig {
       cloudRunServiceName: cloudRunServiceNameValue,
       adminCorsAllowedOriginsFromEnv: adminCorsList,
       proxyEnvironment: proxyEnvironmentValue,
+      kmsRealProviderEnabled: kmsRealProviderEnabled,
     );
   }
 
@@ -1497,6 +1577,11 @@ class ProxyRequestGuard {
         statusCode: 403,
       );
     }
+
+    // HARD-G observability: bind the operator id onto the active log
+    // context so every subsequent log line in this request inherits
+    // it. Safe to call when no zone is active (no-op).
+    bindOperatorIdToLogContext(operatorId);
 
     return OperatorContext(
       userId: claims.userId,
@@ -5812,7 +5897,22 @@ Future<void> routeRequest(
 }) async {
   final response = request.response;
   final clock = now ?? DateTime.now;
+  // HARD-G observability: read X-Correlation-Id (UUID v4 only),
+  // generate one when absent or malformed, mint a per-request
+  // request_id, set the response header, and run the body in a zone
+  // so nested log() calls inherit the IDs.
+  final inboundCorrelationId = request.headers.value(correlationIdHeaderName);
+  final correlationId =
+      (inboundCorrelationId != null && isValidUuidV4(inboundCorrelationId))
+      ? inboundCorrelationId
+      : generateUuidV4();
+  final requestId = generateUuidV4();
+  response.headers.set(correlationIdHeaderName, correlationId);
+  await withProxyLogContext(
+    ProxyLogContext(correlationId: correlationId, requestId: requestId),
+    () async {
   try {
+    try {
     final path = request.uri.path;
     // HARD-C — admin CORS dispatch. Each admin path family resolves
     // to a single methods list; preflight + non-preflight responses
@@ -6448,7 +6548,8 @@ Future<void> routeRequest(
           'message': error.message,
           'rejections': error.rejections,
         });
-      } catch (_) {
+      } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         _writeJson(response, 503, <String, Object?>{
           'error': 'password_change_unavailable',
           'message': 'password change is unavailable; please retry',
@@ -6606,6 +6707,20 @@ Future<void> routeRequest(
                 'error': error.code,
                 'message': error.message,
                 'rejections': error.rejections,
+              },
+            );
+          } on DependencyTimeoutException catch (error) {
+            // HARD-G observability: surface as the contract-pinned
+            // dependency_timeout envelope. Idempotency cache stores
+            // the result so retries with the same key replay the
+            // same response.
+            return CachedProxyResponse(
+              statusCode: 503,
+              body: <String, Object?>{
+                'error': 'dependency_timeout',
+                'surface': error.surface,
+                'operation': error.operation,
+                'message': 'Upstream dependency timed out; please retry',
               },
             );
           } catch (_) {
@@ -6902,9 +7017,13 @@ Future<void> routeRequest(
         });
         return;
       } on IdentityToolkitFirebaseMfaError catch (error) {
-        stderr.writeln(
-          'advisor proxy MFA Identity Toolkit error: '
-          'code=${error.code} status=${error.statusCode ?? 'n/a'}',
+        log(
+          LogSeverity.error,
+          'mfa.identity_toolkit_error',
+          fields: <String, Object?>{
+            'code': error.code,
+            'status_code': error.statusCode,
+          },
         );
         _writeJson(response, 503, <String, Object?>{
           'error': error.code,
@@ -6912,6 +7031,7 @@ Future<void> routeRequest(
         });
         return;
       } catch (error, stackTrace) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         _logProxyUnhandled(
           surface: 'mfa',
           method: request.method,
@@ -7510,6 +7630,7 @@ Future<void> routeRequest(
         });
         return;
       } catch (error, stackTrace) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         _logProxyUnhandled(
           surface: 'auth_operations',
           method: request.method,
@@ -8091,6 +8212,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8170,6 +8292,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8261,6 +8384,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8353,6 +8477,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8543,6 +8668,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8613,6 +8739,7 @@ Future<void> routeRequest(
           body: body,
         );
       } catch (error) {
+        if (_maybeWriteDependencyTimeout(response, error)) return;
         if (error is _AdminInputError) {
           _writeJson(response, error.statusCode, <String, Object?>{
             'error': error.code,
@@ -8634,9 +8761,17 @@ Future<void> routeRequest(
       'method': request.method,
       'path': path,
     });
+    } on DependencyTimeoutException catch (error) {
+      // HARD-G observability: any inner catch that did NOT rewrite
+      // the response with the timeout envelope rethrows so this
+      // outer handler can write the contract-pinned shape.
+      _writeDependencyTimeoutEnvelope(response, error);
+    }
   } finally {
     await response.close();
   }
+    },
+  );
 }
 
 bool _isFfOperatorLocationAdminCaller(ProxyJwtClaims actor) {
@@ -10174,6 +10309,37 @@ class _MalformedJsonBodyError implements Exception {
   final String message;
 }
 
+/// HARD-G observability — write the contract-pinned envelope for a
+/// dependency timeout. The Postgres / HIBP / Voyage / Firebase
+/// adapters already emitted `request.dependency_timeout` at the wire
+/// boundary; this helper just translates the typed exception into the
+/// 503 response shape clients see.
+void _writeDependencyTimeoutEnvelope(
+  HttpResponse response,
+  DependencyTimeoutException error,
+) {
+  _writeJson(response, 503, <String, Object?>{
+    'error': 'dependency_timeout',
+    'surface': error.surface,
+    'operation': error.operation,
+    'message': 'Upstream dependency timed out; please retry',
+  });
+}
+
+/// HARD-G observability — call inside any inner catch that writes a
+/// 503 response with a surface-specific code. When [error] is a
+/// [DependencyTimeoutException], writes the standardized timeout
+/// envelope and returns true. Otherwise returns false and the caller
+/// continues with its existing fallback path.
+bool _maybeWriteDependencyTimeout(
+  HttpResponse response,
+  Object error,
+) {
+  if (error is! DependencyTimeoutException) return false;
+  _writeDependencyTimeoutEnvelope(response, error);
+  return true;
+}
+
 void _logProxyUnhandled({
   required String surface,
   required String method,
@@ -10190,10 +10356,17 @@ void _logProxyUnhandled({
   final firstFrame = firstNewline == -1
       ? stackText
       : stackText.substring(0, firstNewline);
-  stderr.writeln(
-    'advisor proxy unhandled $surface error: '
-    'method=$method path=$path type=${error.runtimeType} '
-    'error=$clipped stack=$firstFrame',
+  log(
+    LogSeverity.error,
+    'proxy.unhandled_error',
+    fields: <String, Object?>{
+      'surface': surface,
+      'method': method,
+      'path': path,
+      'error_type': error.runtimeType.toString(),
+      'error_message': clipped,
+      'stack_first_frame': firstFrame,
+    },
   );
 }
 

@@ -9,6 +9,49 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../observability/dependency_timeout_exception.dart';
+import '../observability/log.dart';
+
+/// HARD-G observability — User-Agent enrichment for outbound Firebase
+/// requests. When inside an active [withProxyLogContext] zone, tags
+/// the outgoing User-Agent with the correlation_id and request_id so
+/// Cloud Logging can correlate Firebase-side traces back to a request.
+String _buildFirebaseUserAgent() {
+  const base = 'forge-and-flow-advisor-proxy/1.0';
+  final context = currentProxyLogContext();
+  if (context == null) return base;
+  return '$base '
+      '(correlation_id=${context.correlationId}; '
+      'request_id=${context.requestId})';
+}
+
+/// HARD-G observability — translate a raw [TimeoutException] into the
+/// typed [DependencyTimeoutException] used by the route layer to
+/// emit the contract-pinned envelope. Emits one
+/// `request.dependency_timeout` log line at the wire boundary so the
+/// timing signal reaches Cloud Logging even when the caller
+/// translates the throw into a fail-open / cached response.
+DependencyTimeoutException _emitFirebaseTimeout({
+  required String operation,
+  required Duration timeout,
+}) {
+  final exception = DependencyTimeoutException(
+    surface: 'firebase',
+    operation: operation,
+    elapsedMs: timeout.inMilliseconds,
+  );
+  log(
+    LogSeverity.error,
+    'request.dependency_timeout',
+    fields: <String, Object?>{
+      'surface': exception.surface,
+      'operation': exception.operation,
+      'elapsed_ms': exception.elapsedMs,
+    },
+  );
+  return exception;
+}
+
 class FirebaseAdminAuthError implements Exception {
   const FirebaseAdminAuthError(this.code, {this.statusCode});
 
@@ -149,7 +192,7 @@ abstract class OAuthAccessTokenProvider {
 class MetadataServerAccessTokenProvider implements OAuthAccessTokenProvider {
   MetadataServerAccessTokenProvider({
     HttpClient? httpClient,
-    Duration timeout = const Duration(seconds: 5),
+    Duration timeout = const Duration(seconds: 10),
   }) : _httpClient = httpClient ?? HttpClient(),
        _timeout = timeout;
 
@@ -174,12 +217,21 @@ class MetadataServerAccessTokenProvider implements OAuthAccessTokenProvider {
       'http://metadata.google.internal/computeMetadata/v1/instance/'
       'service-accounts/default/token',
     );
-    final request = await _httpClient.getUrl(uri).timeout(_timeout);
-    request.headers.set('Metadata-Flavor', 'Google');
-    final response = await request.close().timeout(_timeout);
-    final raw = await utf8
-        .decodeStream(response.cast<List<int>>())
-        .timeout(_timeout);
+    final HttpClientResponse response;
+    final String raw;
+    try {
+      final request = await _httpClient.getUrl(uri).timeout(_timeout);
+      request.headers.set('Metadata-Flavor', 'Google');
+      response = await request.close().timeout(_timeout);
+      raw = await utf8
+          .decodeStream(response.cast<List<int>>())
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw _emitFirebaseTimeout(
+        operation: 'metadata_token',
+        timeout: _timeout,
+      );
+    }
     if (response.statusCode != 200) {
       throw FirebaseAdminAuthError(
         'metadata_token_unavailable',
@@ -395,16 +447,29 @@ class IdentityToolkitFirebaseAdminAuthClient
       path,
       queryParameters,
     );
-    final request = await _httpClient.postUrl(uri).timeout(_timeout);
-    request.headers.contentType = ContentType.json;
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    final encoded = utf8.encode(jsonEncode(body));
-    request.contentLength = encoded.length;
-    request.add(encoded);
-    final response = await request.close().timeout(_timeout);
-    final raw = await utf8
-        .decodeStream(response.cast<List<int>>())
-        .timeout(_timeout);
+    final HttpClientResponse response;
+    final String raw;
+    try {
+      final request = await _httpClient.postUrl(uri).timeout(_timeout);
+      request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        _buildFirebaseUserAgent(),
+      );
+      final encoded = utf8.encode(jsonEncode(body));
+      request.contentLength = encoded.length;
+      request.add(encoded);
+      response = await request.close().timeout(_timeout);
+      raw = await utf8
+          .decodeStream(response.cast<List<int>>())
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw _emitFirebaseTimeout(
+        operation: _identityToolkitOperationName(path),
+        timeout: _timeout,
+      );
+    }
     if (response.statusCode != expectedStatus) {
       throw FirebaseAdminAuthError(
         _errorCodeFromBody(raw) ?? 'identitytoolkit_request_failed',
@@ -427,15 +492,28 @@ class IdentityToolkitFirebaseAdminAuthClient
       path,
       <String, String>{'key': apiKey},
     );
-    final request = await _httpClient.postUrl(uri).timeout(_timeout);
-    request.headers.contentType = ContentType.json;
-    final encoded = utf8.encode(jsonEncode(body));
-    request.contentLength = encoded.length;
-    request.add(encoded);
-    final response = await request.close().timeout(_timeout);
-    final raw = await utf8
-        .decodeStream(response.cast<List<int>>())
-        .timeout(_timeout);
+    final HttpClientResponse response;
+    final String raw;
+    try {
+      final request = await _httpClient.postUrl(uri).timeout(_timeout);
+      request.headers.contentType = ContentType.json;
+      request.headers.set(
+        HttpHeaders.userAgentHeader,
+        _buildFirebaseUserAgent(),
+      );
+      final encoded = utf8.encode(jsonEncode(body));
+      request.contentLength = encoded.length;
+      request.add(encoded);
+      response = await request.close().timeout(_timeout);
+      raw = await utf8
+          .decodeStream(response.cast<List<int>>())
+          .timeout(_timeout);
+    } on TimeoutException {
+      throw _emitFirebaseTimeout(
+        operation: _identityToolkitOperationName(path),
+        timeout: _timeout,
+      );
+    }
     if (response.statusCode != expectedStatus) {
       throw FirebaseAdminAuthError(
         _errorCodeFromBody(raw) ?? 'identitytoolkit_request_failed',
@@ -446,6 +524,19 @@ class IdentityToolkitFirebaseAdminAuthClient
     final decoded = jsonDecode(raw);
     if (decoded is! Map) return const <String, Object?>{};
     return Map<String, Object?>.from(decoded);
+  }
+
+  /// Maps an Identity Toolkit URL path onto a short operation label
+  /// for [DependencyTimeoutException]. Returns the trailing path
+  /// segment so the log line carries e.g. `accounts:resetPassword` or
+  /// `accounts:update` without echoing the full URL.
+  static String _identityToolkitOperationName(String path) {
+    final lastSlash = path.lastIndexOf('/');
+    if (lastSlash == -1 || lastSlash == path.length - 1) {
+      return 'identity_toolkit';
+    }
+    final tail = path.substring(lastSlash + 1);
+    return tail.isEmpty ? 'identity_toolkit' : tail;
   }
 
   String? _errorCodeFromBody(String raw) {

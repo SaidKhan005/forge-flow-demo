@@ -78,6 +78,7 @@ import '../advisor_corpus/advisor_corpus.dart'
 import 'advisor_proxy.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
+import 'log.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
@@ -147,7 +148,19 @@ class ProxyProductionBindings {
     required this.geminiSlotEnabled,
     required this.usageCounterStore,
     required this.healthCheckStore,
+    required this.tenantPool,
+    required this.adminPool,
   });
+
+  /// HARD-G observability: tenant-scope pool exposed for the startup
+  /// connectivity probe in `main.dart`. The probe opens + commits one
+  /// trivial transaction so a slow / broken Postgres surfaces as
+  /// `DependencyTimeoutException` and the proxy exits 78 instead of
+  /// binding the listener and degrading every request.
+  final PostgresPool tenantPool;
+
+  /// Admin-scope pool, exposed for the same startup probe.
+  final PostgresPool adminPool;
 
   final ProxyAccountingStore accountingStore;
   final AuthSessionLedgerWriter authSessionLedgerWriter;
@@ -629,6 +642,13 @@ ProxyProductionBindings buildProxyProductionBindings(
     // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
     // event_outbox, audit_logs, vector indexes, etc.) succeed.
     healthCheckStore: _buildRegistryProxyHealthCheckStore(adminWrapper),
+    // HARD-G observability — pools exposed for the startup
+    // connectivity probe in `main.dart`. The probe opens + commits
+    // one `select 1` per pool so a slow / broken Postgres surfaces
+    // as `DependencyTimeoutException` and the proxy exits 78
+    // instead of binding the listener and degrading every request.
+    tenantPool: tenantPool,
+    adminPool: adminPool,
   );
 }
 
@@ -710,6 +730,63 @@ RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
     dependencyProbe: (fn, now) => strictProxyHealthDependencyProbe(fn, now),
     producers: buildProxyHealthRegistryProducers(),
   );
+}
+
+/// HARD-G observability — startup connectivity probe.
+///
+/// Opens one transaction on each Postgres pool, runs `SELECT 1`, and
+/// commits. Surfaces a slow / broken Postgres as
+/// [DependencyTimeoutException] (the executor logs
+/// `request.dependency_timeout` at the wire boundary; this helper
+/// translates the failure into a startup-level event). The main
+/// entrypoint catches and exits 78.
+///
+/// Lives in the bootstrap (rather than inside
+/// `buildProxyProductionBindings`) so the build remains synchronous
+/// and the existing test that asserts "construction does not open
+/// connections" still holds.
+Future<void> probeProxyStartupConnectivity(
+  ProxyProductionBindings bindings,
+) async {
+  for (final entry in <MapEntry<String, PostgresPool>>[
+    MapEntry('tenant', bindings.tenantPool),
+    MapEntry('admin', bindings.adminPool),
+  ]) {
+    final scope = entry.key;
+    final pool = entry.value;
+    PostgresTransaction? tx;
+    try {
+      // beginTransaction covers both the acquire and BEGIN timeout
+      // paths — keep it inside the try so a timeout there still
+      // emits startup.failed before main.dart exits 78.
+      tx = await pool.beginTransaction();
+      await tx.query('select 1');
+      await tx.commit();
+    } catch (error) {
+      if (tx != null) {
+        try {
+          await tx.rollback();
+        } catch (_) {
+          // Already-finalized rollback is a no-op per the contract.
+        }
+      }
+      if (error is DependencyTimeoutException) {
+        log(
+          LogSeverity.error,
+          'startup.failed',
+          fields: <String, Object?>{
+            'phase': 'postgres_probe',
+            'scope': scope,
+            'surface': error.surface,
+            'operation': error.operation,
+            'elapsed_ms': error.elapsedMs,
+            'exit_code': 78,
+          },
+        );
+      }
+      rethrow;
+    }
+  }
 }
 
 /// Production [OperatorLocationAdminProxyGateway] backed by
@@ -2091,15 +2168,19 @@ class RepositoryGraphCandidatesProxyGateway
     } catch (auditError, auditStack) {
       // Best-effort: log and proceed. Re-throwing would clear
       // the idempotency cache and cause a retry to double-write.
-      stderr.writeln(
-        'admin.corpus.graph_candidates.commit_batch '
-        'auth_events_audit_write_failed '
-        'idempotency_key=$idempotencyKey '
-        'operator_id=$operatorId '
-        'approved_node_count=${result.approvedNodeCount} '
-        'approved_edge_count=${result.approvedEdgeCount} '
-        'rejected_count=${result.rejectedCount} '
-        'error=$auditError\n$auditStack',
+      log(
+        LogSeverity.warning,
+        'admin.corpus.graph_candidates.commit_batch.audit_write_failed',
+        fields: <String, Object?>{
+          'idempotency_key': idempotencyKey,
+          'operator_id': operatorId,
+          'approved_node_count': result.approvedNodeCount,
+          'approved_edge_count': result.approvedEdgeCount,
+          'rejected_count': result.rejectedCount,
+          'error_type': auditError.runtimeType.toString(),
+          'error_message': auditError.toString(),
+          'stack_first_frame': firstStackFrame(auditStack),
+        },
       );
     }
 
@@ -3160,19 +3241,56 @@ class _PermissionBundle {
 /// or [GcpSecretManagerKmsProvider] (flag ON). When the GCP project
 /// id is missing, returns the stub directly so dev / scaffold
 /// contexts still function without GCP credentials.
+///
+/// HARD-G observability fail-closed: when
+/// `PROXY_ENVIRONMENT == 'prod'` AND `KMS_REAL_PROVIDER_ENABLED == true`
+/// AND any of the three GCP env vars is unset, the build emits a
+/// `startup.kms_misconfigured` log line and throws
+/// [ProxyKmsMisconfiguredError] so the main entrypoint exits 78. In
+/// staging / dev, the same missing-vars condition only emits
+/// `startup.kms_stub_active` at WARN and continues with the stub
+/// (current scaffold behavior preserved for non-prod).
 KmsProvider _buildKmsProvider({
   required ProxyConfig config,
   required TenantTransactionWrapper adminWrapper,
   required OAuthAccessTokenProvider accessTokenProvider,
 }) {
   final gcpProjectId = config.gcpProjectId;
-  if (gcpProjectId == null) {
+  final cloudRunRegion = config.cloudRunRegion;
+  final cloudRunServiceName = config.cloudRunServiceName;
+  final missingGcpNames = <String>[
+    if (gcpProjectId == null) ProxyConfigNames.gcpProjectId,
+    if (cloudRunRegion == null) ProxyConfigNames.cloudRunRegion,
+    if (cloudRunServiceName == null) ProxyConfigNames.cloudRunServiceName,
+  ];
+  final isProd = config.proxyEnvironment == 'prod';
+  if (missingGcpNames.isNotEmpty) {
+    if (isProd && config.kmsRealProviderEnabled) {
+      log(
+        LogSeverity.error,
+        'startup.kms_misconfigured',
+        fields: <String, Object?>{
+          'missing': missingGcpNames,
+          'environment': config.proxyEnvironment,
+        },
+      );
+      throw ProxyKmsMisconfiguredError(missing: missingGcpNames);
+    }
+    log(
+      LogSeverity.warning,
+      'startup.kms_stub_active',
+      fields: <String, Object?>{
+        'missing': missingGcpNames,
+        'environment': config.proxyEnvironment,
+        'kms_real_provider_enabled': config.kmsRealProviderEnabled,
+      },
+    );
     return KmsStubProvider();
   }
   return KmsLaneRouter(
     stub: KmsStubProvider(),
     real: GcpSecretManagerKmsProvider(
-      projectId: gcpProjectId,
+      projectId: gcpProjectId!,
       accessTokenProvider: accessTokenProvider,
     ),
     flagLookup: (keyKind) async {

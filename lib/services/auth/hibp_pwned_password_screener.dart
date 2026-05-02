@@ -34,6 +34,9 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 
+import '../observability/dependency_timeout_exception.dart';
+import '../observability/log.dart';
+
 enum PwnedPasswordResult {
   /// Candidate is not in any HIBP-known breach.
   notPwned,
@@ -60,10 +63,15 @@ abstract class HibpRangeFetcher {
 
 /// Production HTTP impl. Honors a pessimistic timeout so the
 /// password-change path stays responsive when HIBP is slow.
+///
+/// HARD-G observability default: 15 s. Time-outs surface in
+/// [HibpPwnedPasswordScreener.screen] as
+/// [PwnedPasswordResult.screenerUnavailable] (the existing fail-open
+/// path). The contract pins this value.
 class HttpHibpRangeFetcher implements HibpRangeFetcher {
   HttpHibpRangeFetcher({
     HttpClient? httpClient,
-    Duration timeout = const Duration(seconds: 5),
+    Duration timeout = const Duration(seconds: 15),
     String userAgent = 'forge-and-flow-auth/1.0',
   }) : _httpClient = httpClient ?? HttpClient(),
        _timeout = timeout,
@@ -77,23 +85,50 @@ class HttpHibpRangeFetcher implements HibpRangeFetcher {
 
   @override
   Future<String> fetchRange(String hexPrefix) async {
-    final request = await _httpClient
-        .getUrl(_baseUri.resolve(hexPrefix))
-        .timeout(_timeout);
-    // Add-Padding header asks HIBP to pad responses with synthetic
-    // entries so the wire-byte count does not leak the candidate's
-    // breach status — a defense-in-depth measure HIBP documents.
-    request.headers.set('Add-Padding', 'true');
-    request.headers.set(HttpHeaders.userAgentHeader, _userAgent);
-    final response = await request.close().timeout(_timeout);
-    if (response.statusCode != 200) {
-      // Drain the socket so it stays reusable on the pool.
-      await response.drain<void>();
-      throw HttpException(
-        'HIBP range fetch failed with status ${response.statusCode}',
+    try {
+      final request = await _httpClient
+          .getUrl(_baseUri.resolve(hexPrefix))
+          .timeout(_timeout);
+      // Add-Padding header asks HIBP to pad responses with synthetic
+      // entries so the wire-byte count does not leak the candidate's
+      // breach status — a defense-in-depth measure HIBP documents.
+      request.headers.set('Add-Padding', 'true');
+      request.headers.set(HttpHeaders.userAgentHeader, _userAgent);
+      final response = await request.close().timeout(_timeout);
+      if (response.statusCode != 200) {
+        // Drain the socket so it stays reusable on the pool.
+        await response.drain<void>();
+        throw HttpException(
+          'HIBP range fetch failed with status ${response.statusCode}',
+        );
+      }
+      return await response
+          .transform(utf8.decoder)
+          .join()
+          .timeout(_timeout);
+    } on TimeoutException {
+      // HARD-G observability: emit the structured timeout log line
+      // before surfacing the typed exception. The screener catches
+      // anything thrown here and maps it to
+      // `PwnedPasswordResult.screenerUnavailable`, preserving the
+      // contract-pinned fail-open behavior; the log line is what
+      // gives operators the timing signal.
+      final timeoutException = DependencyTimeoutException(
+        surface: 'hibp',
+        operation: 'range_fetch',
+        elapsedMs: _timeout.inMilliseconds,
       );
+      log(
+        LogSeverity.error,
+        'request.dependency_timeout',
+        fields: <String, Object?>{
+          'surface': timeoutException.surface,
+          'operation': timeoutException.operation,
+          'elapsed_ms': timeoutException.elapsedMs,
+        },
+      );
+      throw timeoutException;
     }
-    return response.transform(utf8.decoder).join().timeout(_timeout);
   }
 }
 
