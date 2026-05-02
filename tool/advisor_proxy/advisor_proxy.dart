@@ -68,7 +68,9 @@ import 'package:forge_and_flow/utils/iana_timezones.dart';
 import 'package:path/path.dart' as p;
 import 'package:pointycastle/pointycastle.dart' as pc;
 
-import '../advisor_corpus/advisor_corpus.dart' show CorpusManifest, defaultManifestPath;
+import '../advisor_corpus/advisor_corpus.dart'
+    show CorpusManifest, defaultManifestPath;
+import 'health_operation_budget.dart';
 import 'log.dart';
 import 'proxy_idempotency_cache.dart';
 export 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart'
@@ -153,9 +155,7 @@ abstract class ProxySecretNames {
   /// Optional server-side secret names. Loaded into [ProxyConfig] when
   /// present; absence is not a startup error. Callers gate behavior on
   /// [ProxyConfig.hasSecretFor].
-  static const List<String> optional = <String>[
-    geminiApiKey,
-  ];
+  static const List<String> optional = <String>[geminiApiKey];
 }
 
 // ─── Non-secret config name registry (9.1) ───────────────────────────────────
@@ -217,8 +217,7 @@ abstract class ProxyConfigNames {
   /// `admin_cors_origins_extra` row in `public.feature_flags`,
   /// read at startup via
   /// `FeatureFlagsTableAdminCorsOriginsExtraFlag`.
-  static const String adminCorsAllowedOrigins =
-      'ADMIN_CORS_ALLOWED_ORIGINS';
+  static const String adminCorsAllowedOrigins = 'ADMIN_CORS_ALLOWED_ORIGINS';
 
   /// Declared deployment environment. Two consumers:
   ///
@@ -240,8 +239,7 @@ abstract class ProxyConfigNames {
   /// in Postgres still gate per-lane rollout independently; this
   /// env var is the safety interlock that prevents prod ever booting
   /// against the stub when the rollout is supposed to be live.
-  static const String kmsRealProviderEnabled =
-      'KMS_REAL_PROVIDER_ENABLED';
+  static const String kmsRealProviderEnabled = 'KMS_REAL_PROVIDER_ENABLED';
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
@@ -264,13 +262,13 @@ class ProxyConfigError implements Exception {
 /// `startup.production_bindings_invalid` event.
 class ProxyKmsMisconfiguredError extends ProxyConfigError {
   ProxyKmsMisconfiguredError({required List<String> missing})
-      : super(
-          'advisor proxy KMS misconfigured: PROXY_ENVIRONMENT=prod and '
-          'KMS_REAL_PROVIDER_ENABLED=true but ${missing.length} GCP '
-          'env var(s) are unset: ${missing.join(', ')}. Set them or '
-          'flip KMS_REAL_PROVIDER_ENABLED off and redeploy.',
-          missingSecretNames: List<String>.unmodifiable(missing),
-        );
+    : super(
+        'advisor proxy KMS misconfigured: PROXY_ENVIRONMENT=prod and '
+        'KMS_REAL_PROVIDER_ENABLED=true but ${missing.length} GCP '
+        'env var(s) are unset: ${missing.join(', ')}. Set them or '
+        'flip KMS_REAL_PROVIDER_ENABLED off and redeploy.',
+        missingSecretNames: List<String>.unmodifiable(missing),
+      );
 }
 
 class ProxyConfig {
@@ -286,10 +284,10 @@ class ProxyConfig {
     required List<String> adminCorsAllowedOriginsFromEnv,
     required this.proxyEnvironment,
     required this.kmsRealProviderEnabled,
-  })  : _secrets = Map<String, String>.unmodifiable(secrets),
-        adminCorsAllowedOriginsFromEnv = List<String>.unmodifiable(
-          adminCorsAllowedOriginsFromEnv,
-        );
+  }) : _secrets = Map<String, String>.unmodifiable(secrets),
+       adminCorsAllowedOriginsFromEnv = List<String>.unmodifiable(
+         adminCorsAllowedOriginsFromEnv,
+       );
 
   /// HTTP listen port. Cloud Run injects `PORT`; defaults to 8080.
   final int port;
@@ -349,7 +347,6 @@ class ProxyConfig {
   /// [proxyEnvironment] == `prod` and any unset GCP var, the proxy
   /// exits 78 at startup.
   final bool kmsRealProviderEnabled;
-
 
   /// Loaded secret values keyed by [ProxySecretNames] entries. Stored
   /// privately so external code can only retrieve a value via the
@@ -413,16 +410,19 @@ class ProxyConfig {
     );
     String? trimmedOrNull(String? raw) =>
         (raw == null || raw.trim().isEmpty) ? null : raw.trim();
-    final gcpProjectIdValue =
-        trimmedOrNull(environment[ProxyConfigNames.gcpProjectId]);
-    final cloudRunRegionValue =
-        trimmedOrNull(environment[ProxyConfigNames.cloudRunRegion]);
-    final cloudRunServiceNameValue =
-        trimmedOrNull(environment[ProxyConfigNames.cloudRunServiceName]);
+    final gcpProjectIdValue = trimmedOrNull(
+      environment[ProxyConfigNames.gcpProjectId],
+    );
+    final cloudRunRegionValue = trimmedOrNull(
+      environment[ProxyConfigNames.cloudRunRegion],
+    );
+    final cloudRunServiceNameValue = trimmedOrNull(
+      environment[ProxyConfigNames.cloudRunServiceName],
+    );
 
-    final proxyEnvironmentValue =
-        trimmedOrNull(environment[ProxyConfigNames.proxyEnvironment])
-            ?.toLowerCase();
+    final proxyEnvironmentValue = trimmedOrNull(
+      environment[ProxyConfigNames.proxyEnvironment],
+    )?.toLowerCase();
     final kmsRealProviderEnabled = _parseBoolFlag(
       environment[ProxyConfigNames.kmsRealProviderEnabled],
     );
@@ -3102,15 +3102,13 @@ String _tieredOverallSeverity({
   }
   for (final metric in metrics.values) {
     final tier = _metricTier(metric);
-    if (tier == 1 &&
-        (metric.status == 'red' || metric.status == 'yellow')) {
+    if (tier == 1 && (metric.status == 'red' || metric.status == 'yellow')) {
       return 'red';
     }
   }
   for (final metric in metrics.values) {
     final tier = _metricTier(metric);
-    if (tier == 2 &&
-        (metric.status == 'red' || metric.status == 'yellow')) {
+    if (tier == 2 && (metric.status == 'red' || metric.status == 'yellow')) {
       return 'yellow';
     }
   }
@@ -3145,10 +3143,7 @@ ProxyHealthMetric _enrichMetricWithReservedTier(
     owner: metric.owner,
     observedAt: metric.observedAt,
     thresholds: metric.thresholds,
-    metadata: <String, Object?>{
-      ...metric.metadata,
-      'tier': reservedTier,
-    },
+    metadata: <String, Object?>{...metric.metadata, 'tier': reservedTier},
   );
 }
 
@@ -3188,112 +3183,112 @@ String _rollUpSurfaceStatus(
 
 /// The original B42 reserved-11 metric set. Used when the
 /// `health_envelope_full_v1` feature flag is OFF as the rollback path.
-const Map<String, ProxyHealthMetric> _legacyReservedProxyHealthMetrics =
-    <String, ProxyHealthMetric>{
-      'audit_chain_lag_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description:
-            'Lag between current audit chain head and latest durable audit anchor.',
-        source: 'audit_chain_anchors',
-        owner: 'B37/B43',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'event_outbox_undelivered_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Undelivered event_outbox rows awaiting bridge delivery.',
-        source: 'event_outbox',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 10000, 'red': 100000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'event_outbox_lag_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Age of the oldest undelivered event_outbox row.',
-        source: 'event_outbox',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 60, 'red': 300},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'usage_caps_breach_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Requests refused because usage caps were reached.',
-        source: 'proxy usage accounting',
-        owner: 'B33',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_node_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Canonical graph node count for operations health.',
-        source: 'public.graph_health_metrics()',
-        owner: 'B44',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_edge_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Canonical active graph edge count for operations health.',
-        source: 'public.graph_health_metrics()',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 3000000, 'red': 4000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_traversal_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Graph traversal latency from the graph benchmark slice.',
-        source: 'graph benchmark',
-        owner: 'B44',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_index_size_per_corpus': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Per-corpus vector index size.',
-        source: 'vector index health helper',
-        owner: 'B47',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_query_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Filtered vector search latency summary.',
-        source: 'filtered-search benchmark',
-        owner: 'B47',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_recall': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Filtered vector search benchmark recall.',
-        source: 'filtered-search benchmark',
-        owner: 'B47',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'rollup_freshness_per_grain': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Rollup freshness lag grouped by grain.',
-        source: 'RollupFreshnessReporter.snapshot()',
-        owner: 'B45',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-    };
+const Map<String, ProxyHealthMetric>
+_legacyReservedProxyHealthMetrics = <String, ProxyHealthMetric>{
+  'audit_chain_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description:
+        'Lag between current audit chain head and latest durable audit anchor.',
+    source: 'audit_chain_anchors',
+    owner: 'B37/B43',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'event_outbox_undelivered_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Undelivered event_outbox rows awaiting bridge delivery.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 10000, 'red': 100000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the oldest undelivered event_outbox row.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 60, 'red': 300},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'usage_caps_breach_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Requests refused because usage caps were reached.',
+    source: 'proxy usage accounting',
+    owner: 'B33',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_node_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Canonical graph node count for operations health.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_edge_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Canonical active graph edge count for operations health.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 3000000, 'red': 4000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_traversal_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Graph traversal latency from the graph benchmark slice.',
+    source: 'graph benchmark',
+    owner: 'B44',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_index_size_per_corpus': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Per-corpus vector index size.',
+    source: 'vector index health helper',
+    owner: 'B47',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_query_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Filtered vector search latency summary.',
+    source: 'filtered-search benchmark',
+    owner: 'B47',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_recall': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Filtered vector search benchmark recall.',
+    source: 'filtered-search benchmark',
+    owner: 'B47',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'rollup_freshness_per_grain': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Rollup freshness lag grouped by grain.',
+    source: 'RollupFreshnessReporter.snapshot()',
+    owner: 'B45',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+};
 
 const Map<String, ProxyHealthSurface> _legacyReservedProxyHealthSurfaces =
     <String, ProxyHealthSurface>{
@@ -3343,612 +3338,608 @@ const Map<String, ProxyHealthSurface> _legacyReservedProxyHealthSurfaces =
 /// Full B42 producer catalog — 57 reserved metric slots covering every
 /// signal the producer registry knows how to fill. Slots without a live
 /// producer simply render with `status: 'unknown'`, `value: null`.
-const Map<String, ProxyHealthMetric> proxyHealthReservedMetrics =
-    <String, ProxyHealthMetric>{
-      // ── Tier 1 — foundation/auth/audit ─────────────────────────────
-      'audit_chain_lag_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description:
-            'Lag between current audit chain head and latest durable audit anchor.',
-        source: 'audit_chain_anchors',
-        owner: 'B37/B43',
-        thresholds: <String, Object?>{'yellow': 1800, 'red': 21600},
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'audit_chain_anchor_age_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description:
-            'Age of the most recent Azure Blob immutable audit anchor.',
-        source: 'audit_chain_anchors',
-        owner: 'B37/B43',
-        thresholds: <String, Object?>{'yellow': 86400, 'red': 172800},
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'migration_apply_drift_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Migration files in db/migrations not yet recorded as applied '
-            'in proxy_migrations_applied.',
-        source: 'proxy_migrations_applied',
-        owner: 'B42',
-        thresholds: <String, Object?>{'red': 1},
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'firebase_jwks_fetch_alive': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'boolean',
-        description: 'Firebase JWKS fetch succeeded inside cache TTL window.',
-        source: 'firebase_jwks_cache_status',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'service_principal_jwt_alive': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'boolean',
-        description:
-            'service-principal HMAC signer secret loaded and a recent sp: '
-            'token verified successfully.',
-        source: 'service_principals_signer_status',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'circuit_breaker_anthropic_state': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'state',
-        description:
-            'Lock 7 circuit breaker state for the Anthropic provider '
-            '(closed/half_open/open).',
-        source: 'circuit_breaker_state',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'circuit_breaker_voyage_state': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'state',
-        description:
-            'Lock 7 circuit breaker state for the Voyage provider '
-            '(closed/half_open/open).',
-        source: 'circuit_breaker_state',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'azure_extensions_present': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Required Azure extensions installed (AGE, pgvector, pg_diskann, '
-            'pg_cron, pg_partman, pg_stat_statements, pgcrypto).',
-        source: 'pg_extension',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'pg_cron_scheduler_alive': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'boolean',
-        description:
-            'pg_cron scheduler reported a successful run inside the last '
-            '5 minutes.',
-        source: 'cron.job_run_details',
-        owner: 'B42',
-        thresholds: <String, Object?>{'red_seconds_since_last_run': 300},
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      'proxy_idempotency_cache_alive': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'boolean',
-        description:
-            'proxy_requests idempotency table reachable and accepting reads.',
-        source: 'proxy_requests',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 1},
-      ),
-      // ── Tier 2 — production hardening ──────────────────────────────
-      'event_outbox_undelivered_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Undelivered event_outbox rows awaiting bridge delivery.',
-        source: 'event_outbox',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 10000, 'red': 100000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'event_outbox_lag_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Age of the oldest undelivered event_outbox row.',
-        source: 'event_outbox',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 60, 'red': 300},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'event_outbox_publish_error_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description:
-            'Rolling 5-minute event_outbox publish error rate (Decision 33).',
-        source: 'event_outbox_publish_metrics',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'notify_queue_usage_ratio': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'pg_notification_queue_usage() (Decision 33).',
-        source: 'pg_notification_queue_usage',
-        owner: 'Phase 10a',
-        thresholds: <String, Object?>{'yellow': 0.10, 'red': 0.25},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_node_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Canonical graph node count for operations health.',
-        source: 'public.graph_health_metrics()',
-        owner: 'B44',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_edge_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Canonical active graph edge count for operations health '
-            '(Decision 30: yellow 3M, red 4M).',
-        source: 'public.graph_health_metrics()',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 3000000, 'red': 4000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_traversal_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description:
-            'Graph traversal p95 latency from the latest benchmark. '
-            'Lock 3 isolated-p95 gate: yellow 250ms, red 500ms.',
-        source: 'graph_benchmark_runs',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 250, 'red': 500},
-        metadata: <String, Object?>{'tier': 2, 'percentile': 'p95'},
-      ),
-      'graph_traversal_p99_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Graph traversal p99 latency from the latest benchmark.',
-        source: 'graph_benchmark_runs',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 750, 'red': 1500},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_traversal_timeout_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute graph traversal timeout rate.',
-        source: 'graph_traversal_metrics',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_high_degree_node_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Vertices with degree above the high-degree band.',
-        source: 'public.graph_health_metrics()',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 100, 'red': 1000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_failed_traversals_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Graph traversal failure count over the last 5 minutes.',
-        source: 'graph_traversal_metrics',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 1, 'red': 100},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_projection_age_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Age of the most recent AGE projection rebuild.',
-        source: 'graph_projection_runs',
-        owner: 'B44',
-        thresholds: <String, Object?>{'yellow': 86400, 'red': 604800},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'graph_growth_projection_90d_edges': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            '90-day projected edge count (Decision 30: red ≥ 5M triggers '
-            'projection rollover planning).',
-        source: 'graph_growth_projection',
-        owner: 'B44',
-        thresholds: <String, Object?>{'red': 5000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_index_size_per_corpus': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Per-corpus vector index size.',
-        source: 'vector_index_health',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 5000000, 'red': 8000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_query_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Filtered vector search p50 latency.',
-        source: 'vector_benchmark_runs',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 200, 'red': 400},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_recall': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Filtered vector search recall@10.',
-        source: 'vector_benchmark_runs',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 0.85, 'red': 0.70},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_query_p99_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Filtered vector search p99 latency.',
-        source: 'vector_benchmark_runs',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 600, 'red': 1200},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_query_timeout_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute filtered vector search timeout rate.',
-        source: 'vector_query_metrics',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_active_count_per_corpus': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Active vector count per corpus (Decision 31: yellow 5M, red 8M).',
-        source: 'vector_index_health',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 5000000, 'red': 8000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_index_build_age_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Age of the most recent vector index build.',
-        source: 'vector_index_health',
-        owner: 'B47',
-        thresholds: <String, Object?>{'yellow': 604800, 'red': 2592000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'vector_growth_projection_90d_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            '90-day projected vector count per corpus (Decision 31: red '
-            '≥ 10M = DiskANN cutover trigger).',
-        source: 'vector_growth_projection',
-        owner: 'B47',
-        thresholds: <String, Object?>{'red': 10000000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'rollup_freshness_per_grain': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Rollup freshness lag grouped by grain.',
-        source: 'aggregation_state',
-        owner: 'B45',
-        thresholds: <String, Object?>{'yellow': 3600, 'red': 21600},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'rollup_refresh_lag_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description: 'Time since the most recent rollup refresh job ran.',
-        source: 'aggregation_state',
-        owner: 'B45',
-        thresholds: <String, Object?>{'yellow': 3600, 'red': 14400},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'rollup_failed_refreshes_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'pg_cron rollup refreshes that failed in last 24h.',
-        source: 'cron.job_run_details',
-        owner: 'B45',
-        thresholds: <String, Object?>{'yellow': 1, 'red': 5},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'rollup_concurrent_refresh_status': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'boolean',
-        description:
-            'Whether a REFRESH MATERIALIZED VIEW CONCURRENTLY is currently '
-            'running.',
-        source: 'pg_stat_activity',
-        owner: 'B45',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'partition_maintenance_last_run_age_seconds': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'seconds',
-        description:
-            'Age of the last successful pg_partman run_maintenance() (Lock 2).',
-        source: 'cron.job_run_details',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 7200, 'red': 14400},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'partition_default_row_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Rows landed in the pg_partman default partition for usage_logs '
-            '(Lock 2).',
-        source: 'usage_logs_default',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 1, 'red': 1000},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'partition_count_active': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Active child partitions registered with pg_partman (Lock 2).',
-        source: 'partman.part_config',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'pg_cron_jobs_failed_24h': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'pg_cron job runs failed in the last 24 hours.',
-        source: 'cron.job_run_details',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 1, 'red': 5},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      'usage_caps_breach_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Requests refused because usage caps were reached.',
-        source: 'proxy usage accounting',
-        owner: 'B33',
-        thresholds: <String, Object?>{'yellow': 1, 'red': 100},
-        metadata: <String, Object?>{'tier': 2},
-      ),
-      // ── Tier 3 — ops observability ─────────────────────────────────
-      'circuit_breaker_open_count_total': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Number of breakers currently in open or half_open state.',
-        source: 'circuit_breaker_state',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'fallback_chain_usage_count_anthropic': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Requests in last 5 minutes that traversed the Anthropic '
-            'fallback chain.',
-        source: 'usage_logs',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'fallback_chain_usage_count_voyage': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Requests in last 5 minutes that traversed the Voyage '
-            'fallback chain.',
-        source: 'usage_logs',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'provider_5xx_rate_anthropic': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute Anthropic 5xx rate.',
-        source: 'provider_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'provider_5xx_rate_voyage': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute Voyage 5xx rate.',
-        source: 'provider_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'provider_429_rate_anthropic': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute Anthropic 429 rate.',
-        source: 'provider_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'provider_429_rate_voyage': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute Voyage 429 rate.',
-        source: 'provider_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'proxy_request_p99_latency_ms': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'milliseconds',
-        description: 'Rolling 5-minute proxy request p99 latency.',
-        source: 'proxy_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 2000, 'red': 5000},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'proxy_request_5xx_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description: 'Rolling 5-minute proxy 5xx response rate.',
-        source: 'proxy_request_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'prompt_cache_hit_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description:
-            'Anthropic prompt cache hit rate (Hard Promise #9 lever 1).',
-        source: 'cache_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'response_cache_hit_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description:
-            'Memorystore response cache hit rate (Hard Promise #9 lever 3).',
-        source: 'cache_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'semantic_cache_hit_rate': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'ratio',
-        description:
-            'Semantic cache hit rate (Hard Promise #9 lever 3).',
-        source: 'cache_metrics',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'cost_per_query_class_haiku': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'usd',
-        description: 'Rolling 1-hour mean cost per Haiku-routed request (USD).',
-        source: 'usage_logs',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'cost_per_query_class_sonnet': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'usd',
-        description:
-            'Rolling 1-hour mean cost per Sonnet-routed request (USD).',
-        source: 'usage_logs',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'cost_per_query_class_voyage': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'usd',
-        description:
-            'Rolling 1-hour mean cost per Voyage embedding request (USD).',
-        source: 'usage_logs',
-        owner: 'B42',
-        thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'batch_api_pending_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description:
-            'Workflow runs in AWAITING_BATCH (Lock 8). Yellow at 100, '
-            'red at 1,000.',
-        source: 'workflow_runs',
-        owner: 'Phase 12.0',
-        thresholds: <String, Object?>{'yellow': 100, 'red': 1000},
-        metadata: <String, Object?>{'tier': 3},
-      ),
-      'cloud_run_instance_count': ProxyHealthMetric(
-        status: 'unknown',
-        value: null,
-        unit: 'count',
-        description: 'Active Cloud Run instance count for the proxy.',
-        source: 'cloud_run.instance_metrics',
-        owner: 'B42',
-        metadata: <String, Object?>{'tier': 3},
-      ),
-    };
+const Map<String, ProxyHealthMetric>
+proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
+  // ── Tier 1 — foundation/auth/audit ─────────────────────────────
+  'audit_chain_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description:
+        'Lag between current audit chain head and latest durable audit anchor.',
+    source: 'audit_chain_anchors',
+    owner: 'B37/B43',
+    thresholds: <String, Object?>{'yellow': 1800, 'red': 21600},
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'audit_chain_anchor_age_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the most recent Azure Blob immutable audit anchor.',
+    source: 'audit_chain_anchors',
+    owner: 'B37/B43',
+    thresholds: <String, Object?>{'yellow': 86400, 'red': 172800},
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'migration_apply_drift_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Migration files in db/migrations not yet recorded as applied '
+        'in proxy_migrations_applied.',
+    source: 'proxy_migrations_applied',
+    owner: 'B42',
+    thresholds: <String, Object?>{'red': 1},
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'firebase_jwks_fetch_alive': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'boolean',
+    description: 'Firebase JWKS fetch succeeded inside cache TTL window.',
+    source: 'firebase_jwks_cache_status',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'service_principal_jwt_alive': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'boolean',
+    description:
+        'service-principal HMAC signer secret loaded and a recent sp: '
+        'token verified successfully.',
+    source: 'service_principals_signer_status',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'circuit_breaker_anthropic_state': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'state',
+    description:
+        'Lock 7 circuit breaker state for the Anthropic provider '
+        '(closed/half_open/open).',
+    source: 'circuit_breaker_state',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'circuit_breaker_voyage_state': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'state',
+    description:
+        'Lock 7 circuit breaker state for the Voyage provider '
+        '(closed/half_open/open).',
+    source: 'circuit_breaker_state',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'azure_extensions_present': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Required Azure extensions installed in the active business '
+        'database (AGE, pgvector, pg_diskann, pg_partman, '
+        'pg_stat_statements, pgcrypto). pg_cron is tracked separately '
+        'from Azure'
+        's maintenance database.',
+    source: 'pg_extension',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'pg_cron_scheduler_alive': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'boolean',
+    description:
+        'pg_cron scheduler reported a successful run inside the last '
+        '5 minutes.',
+    source: 'cron.job_run_details',
+    owner: 'B42',
+    thresholds: <String, Object?>{'red_seconds_since_last_run': 300},
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  'proxy_idempotency_cache_alive': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'boolean',
+    description:
+        'proxy_requests idempotency table reachable and accepting reads.',
+    source: 'proxy_requests',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 1},
+  ),
+  // ── Tier 2 — production hardening ──────────────────────────────
+  'event_outbox_undelivered_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Undelivered event_outbox rows awaiting bridge delivery.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 10000, 'red': 100000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the oldest undelivered event_outbox row.',
+    source: 'event_outbox',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 60, 'red': 300},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_publish_error_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description:
+        'Rolling 5-minute event_outbox publish error rate (Decision 33).',
+    source: 'event_outbox_publish_metrics',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'notify_queue_usage_ratio': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'pg_notification_queue_usage() (Decision 33).',
+    source: 'pg_notification_queue_usage',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 0.10, 'red': 0.25},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_node_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Canonical graph node count for operations health.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_edge_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Canonical active graph edge count for operations health '
+        '(Decision 30: yellow 3M, red 4M).',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 3000000, 'red': 4000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_traversal_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description:
+        'Graph traversal p95 latency from the latest benchmark. '
+        'Lock 3 isolated-p95 gate: yellow 250ms, red 500ms.',
+    source: 'graph_benchmark_runs',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 250, 'red': 500},
+    metadata: <String, Object?>{'tier': 2, 'percentile': 'p95'},
+  ),
+  'graph_traversal_p99_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Graph traversal p99 latency from the latest benchmark.',
+    source: 'graph_benchmark_runs',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 750, 'red': 1500},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_traversal_timeout_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute graph traversal timeout rate.',
+    source: 'graph_traversal_metrics',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_high_degree_node_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Vertices with degree above the high-degree band.',
+    source: 'public.graph_health_metrics()',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 100, 'red': 1000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_failed_traversals_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Graph traversal failure count over the last 5 minutes.',
+    source: 'graph_traversal_metrics',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 100},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_projection_age_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the most recent AGE projection rebuild.',
+    source: 'graph_projection_runs',
+    owner: 'B44',
+    thresholds: <String, Object?>{'yellow': 86400, 'red': 604800},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'graph_growth_projection_90d_edges': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        '90-day projected edge count (Decision 30: red ≥ 5M triggers '
+        'projection rollover planning).',
+    source: 'graph_growth_projection',
+    owner: 'B44',
+    thresholds: <String, Object?>{'red': 5000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_index_size_per_corpus': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Per-corpus vector index size.',
+    source: 'vector_index_health',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 5000000, 'red': 8000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_query_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Filtered vector search p50 latency.',
+    source: 'vector_benchmark_runs',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 200, 'red': 400},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_recall': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Filtered vector search recall@10.',
+    source: 'vector_benchmark_runs',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 0.85, 'red': 0.70},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_query_p99_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Filtered vector search p99 latency.',
+    source: 'vector_benchmark_runs',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 600, 'red': 1200},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_query_timeout_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute filtered vector search timeout rate.',
+    source: 'vector_query_metrics',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_active_count_per_corpus': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Active vector count per corpus (Decision 31: yellow 5M, red 8M).',
+    source: 'vector_index_health',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 5000000, 'red': 8000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_index_build_age_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Age of the most recent vector index build.',
+    source: 'vector_index_health',
+    owner: 'B47',
+    thresholds: <String, Object?>{'yellow': 604800, 'red': 2592000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'vector_growth_projection_90d_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        '90-day projected vector count per corpus (Decision 31: red '
+        '≥ 10M = DiskANN cutover trigger).',
+    source: 'vector_growth_projection',
+    owner: 'B47',
+    thresholds: <String, Object?>{'red': 10000000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'rollup_freshness_per_grain': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Rollup freshness lag grouped by grain.',
+    source: 'aggregation_state',
+    owner: 'B45',
+    thresholds: <String, Object?>{'yellow': 3600, 'red': 21600},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'rollup_refresh_lag_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description: 'Time since the most recent rollup refresh job ran.',
+    source: 'aggregation_state',
+    owner: 'B45',
+    thresholds: <String, Object?>{'yellow': 3600, 'red': 14400},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'rollup_failed_refreshes_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'pg_cron rollup refreshes that failed in last 24h.',
+    source: 'cron.job_run_details',
+    owner: 'B45',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 5},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'rollup_concurrent_refresh_status': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'boolean',
+    description:
+        'Whether a REFRESH MATERIALIZED VIEW CONCURRENTLY is currently '
+        'running.',
+    source: 'pg_stat_activity',
+    owner: 'B45',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'partition_maintenance_last_run_age_seconds': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'seconds',
+    description:
+        'Age of the last successful pg_partman run_maintenance() (Lock 2).',
+    source: 'cron.job_run_details',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 7200, 'red': 14400},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'partition_default_row_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Rows landed in the pg_partman default partition for usage_logs '
+        '(Lock 2).',
+    source: 'usage_logs_default',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 1000},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'partition_count_active': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Active child partitions registered with pg_partman (Lock 2).',
+    source: 'partman.part_config',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'pg_cron_jobs_failed_24h': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'pg_cron job runs failed in the last 24 hours.',
+    source: 'cron.job_run_details',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 5},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'usage_caps_breach_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Requests refused because usage caps were reached.',
+    source: 'proxy usage accounting',
+    owner: 'B33',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 100},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  // ── Tier 3 — ops observability ─────────────────────────────────
+  'circuit_breaker_open_count_total': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Number of breakers currently in open or half_open state.',
+    source: 'circuit_breaker_state',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'fallback_chain_usage_count_anthropic': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Requests in last 5 minutes that traversed the Anthropic '
+        'fallback chain.',
+    source: 'usage_logs',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'fallback_chain_usage_count_voyage': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Requests in last 5 minutes that traversed the Voyage '
+        'fallback chain.',
+    source: 'usage_logs',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'provider_5xx_rate_anthropic': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute Anthropic 5xx rate.',
+    source: 'provider_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'provider_5xx_rate_voyage': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute Voyage 5xx rate.',
+    source: 'provider_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'provider_429_rate_anthropic': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute Anthropic 429 rate.',
+    source: 'provider_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'provider_429_rate_voyage': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute Voyage 429 rate.',
+    source: 'provider_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.05, 'red': 0.25},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'proxy_request_p99_latency_ms': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'milliseconds',
+    description: 'Rolling 5-minute proxy request p99 latency.',
+    source: 'proxy_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 2000, 'red': 5000},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'proxy_request_5xx_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Rolling 5-minute proxy 5xx response rate.',
+    source: 'proxy_request_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'prompt_cache_hit_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Anthropic prompt cache hit rate (Hard Promise #9 lever 1).',
+    source: 'cache_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'response_cache_hit_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description:
+        'Memorystore response cache hit rate (Hard Promise #9 lever 3).',
+    source: 'cache_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'semantic_cache_hit_rate': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'ratio',
+    description: 'Semantic cache hit rate (Hard Promise #9 lever 3).',
+    source: 'cache_metrics',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow': 0.30, 'red': 0.10},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'cost_per_query_class_haiku': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'usd',
+    description: 'Rolling 1-hour mean cost per Haiku-routed request (USD).',
+    source: 'usage_logs',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'cost_per_query_class_sonnet': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'usd',
+    description: 'Rolling 1-hour mean cost per Sonnet-routed request (USD).',
+    source: 'usage_logs',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'cost_per_query_class_voyage': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'usd',
+    description: 'Rolling 1-hour mean cost per Voyage embedding request (USD).',
+    source: 'usage_logs',
+    owner: 'B42',
+    thresholds: <String, Object?>{'yellow_factor': 2.0, 'red_factor': 5.0},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'batch_api_pending_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description:
+        'Workflow runs in AWAITING_BATCH (Lock 8). Yellow at 100, '
+        'red at 1,000.',
+    source: 'workflow_runs',
+    owner: 'Phase 12.0',
+    thresholds: <String, Object?>{'yellow': 100, 'red': 1000},
+    metadata: <String, Object?>{'tier': 3},
+  ),
+  'cloud_run_instance_count': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Active Cloud Run instance count for the proxy.',
+    source: 'cloud_run.instance_metrics',
+    owner: 'B42',
+    metadata: <String, Object?>{'tier': 3},
+  ),
+};
 
 const Map<String, ProxyHealthSurface> proxyHealthReservedSurfaces =
     <String, ProxyHealthSurface>{
@@ -4094,6 +4085,122 @@ typedef ProxyHealthQueryRunnerFn =
       Map<String, Object?> parameters,
     });
 
+class ProxySchemaContractException implements Exception {
+  ProxySchemaContractException(Iterable<String> missingObjects)
+    : missingObjects = List<String>.unmodifiable(missingObjects);
+
+  final List<String> missingObjects;
+
+  @override
+  String toString() =>
+      'admin proxy schema contract missing: ${missingObjects.join(', ')}';
+}
+
+/// Verifies that the live database contains the schema objects required
+/// by the non-demo admin console. This deliberately does not apply
+/// migrations; deploy/runbook tooling owns migration execution. The proxy
+/// only fails closed before binding when code and schema are out of step.
+class AdminProxySchemaContractVerifier {
+  AdminProxySchemaContractVerifier({required this.runnerFn});
+
+  final ProxyHealthQueryRunnerFn runnerFn;
+
+  static const List<String> requiredTables = <String>[
+    'public.operators',
+    'public.feature_flags',
+    'public.users',
+    'public.corpus_versions',
+    'public.corpus_version_chunks',
+    'public.admin_idempotency_cache',
+    'public.provider_credentials',
+    'public.graphify_review_audit',
+    'public.corpus_invalidation_events',
+    'public.admin_request_idempotency',
+  ];
+
+  static const List<String> requiredColumns = <String>[
+    'public.operators.suspended_at',
+    'public.feature_flags.kind',
+    'public.feature_flags.description',
+    'public.feature_flags.updated_by',
+    'public.users.firebase_uid',
+  ];
+
+  static const List<String> requiredFeatureFlags = <String>[
+    'kms_real_provider_azure_db_enabled',
+    'kms_real_provider_voyage_enabled',
+    'kms_real_provider_gemini_enabled',
+    'kms_real_provider_anthropic_enabled',
+  ];
+
+  static const String _schemaContractSql = '''
+with required_tables(object_name) as (
+  values
+    ('public.operators'),
+    ('public.feature_flags'),
+    ('public.users'),
+    ('public.corpus_versions'),
+    ('public.corpus_version_chunks'),
+    ('public.admin_idempotency_cache'),
+    ('public.provider_credentials'),
+    ('public.graphify_review_audit'),
+    ('public.corpus_invalidation_events'),
+    ('public.admin_request_idempotency')
+),
+required_columns(object_name) as (
+  values
+    ('public.operators.suspended_at'),
+    ('public.feature_flags.kind'),
+    ('public.feature_flags.description'),
+    ('public.feature_flags.updated_by'),
+    ('public.users.firebase_uid')
+),
+required_feature_flags(flag_name) as (
+  values
+    ('kms_real_provider_azure_db_enabled'),
+    ('kms_real_provider_voyage_enabled'),
+    ('kms_real_provider_gemini_enabled'),
+    ('kms_real_provider_anthropic_enabled')
+)
+select 'table:' || object_name as object_name
+from required_tables
+where to_regclass(object_name) is null
+union all
+select 'column:' || object_name as object_name
+from required_columns
+where not exists (
+  select 1
+  from information_schema.columns c
+  where c.table_schema = split_part(object_name, '.', 1)
+    and c.table_name = split_part(object_name, '.', 2)
+    and c.column_name = split_part(object_name, '.', 3)
+)
+union all
+select 'row:public.feature_flags.' || flag_name as object_name
+from required_feature_flags
+where to_regclass('public.feature_flags') is not null
+  and not exists (
+    select 1
+    from public.feature_flags f
+    where f.flag_name = flag_name
+      and f.operator_id is null
+      and f.location_id is null
+  )
+order by object_name
+''';
+
+  Future<void> verify({Duration budget = const Duration(seconds: 10)}) async {
+    final rows = await runnerFn(_schemaContractSql).timeout(budget);
+    final missing = rows
+        .map((row) => row['object_name']?.toString())
+        .whereType<String>()
+        .toList(growable: false);
+    if (missing.isNotEmpty) {
+      throw ProxySchemaContractException(missing);
+    }
+  }
+}
+
 /// Producer functions in `tool/advisor_proxy/health_producers/` use this
 /// inputs envelope. Defined here to avoid pulling the family files into
 /// the main proxy file. The shape mirrors
@@ -4124,9 +4231,7 @@ typedef ProxyHealthRegistryProducer =
 /// (Block 3, task 6); flipping to false reverts the route to the legacy
 /// 11-metric envelope as a rollback path.
 class ProxyHealthFeatureFlags {
-  const ProxyHealthFeatureFlags({
-    this.healthEnvelopeFullV1 = true,
-  });
+  const ProxyHealthFeatureFlags({this.healthEnvelopeFullV1 = true});
 
   final bool healthEnvelopeFullV1;
 }
@@ -4151,9 +4256,10 @@ class ProxyHealthRegistryResult {
 /// Drives deep health from a producer catalog + dependency probes.
 ///
 /// Producers receive a [ProxyHealthRegistryContext]; each producer is
-/// individually budget-bounded by its body and again by an outer wall-
-/// clock guard. A failing producer or timeout never crashes the route —
-/// the projection downgrades to `status: 'unknown'`.
+/// budget-bounded without abandoning already-started database work, and
+/// the registry also guards custom producers with the same budget helper.
+/// A failing producer or timeout never crashes the route; the projection
+/// downgrades to `status: 'unknown'`.
 class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
   RegistryProxyHealthCheckStore({
     required this.runnerFn,
@@ -4163,8 +4269,9 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
     this.now,
     this.producerBudget = const Duration(milliseconds: 250),
     this.outerProducerBudget = const Duration(milliseconds: 750),
+    this.producerConcurrency = 4,
     this.inMemoryBreakerStates,
-  });
+  }) : assert(producerConcurrency > 0);
 
   final ProxyHealthQueryRunnerFn runnerFn;
   final Future<ProxyHealthDependencyProbe> Function(
@@ -4177,6 +4284,7 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
   final DateTime Function()? now;
   final Duration producerBudget;
   final Duration outerProducerBudget;
+  final int producerConcurrency;
   final Map<String, CircuitState> Function()? inMemoryBreakerStates;
 
   @override
@@ -4194,18 +4302,9 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
         if (allowedKeys.contains(entry.key)) entry.key: entry.value,
     };
 
-    final context = ProxyHealthRegistryContext(
-      runnerFn: runnerFn,
-      now: asOf,
-      budget: producerBudget,
-      inMemoryBreakerStates: inMemoryBreakerStates,
-    );
-
-    final futures = <Future<MapEntry<String, ProxyHealthMetric>>>[
-      for (final entry in selected.entries)
-        _runOne(entry.key, entry.value, context),
-    ];
-    final results = await Future.wait(futures);
+    final results = probe.postgresOk
+        ? await _runSelected(selected.entries.toList(growable: false), asOf)
+        : const <MapEntry<String, ProxyHealthMetric>>[];
     final metrics = <String, ProxyHealthMetric>{
       for (final entry in results) entry.key: entry.value,
     };
@@ -4219,16 +4318,54 @@ class RegistryProxyHealthCheckStore implements ProxyHealthCheckStore {
     );
   }
 
+  Future<List<MapEntry<String, ProxyHealthMetric>>> _runSelected(
+    List<MapEntry<String, ProxyHealthRegistryProducer>> selected,
+    DateTime asOf,
+  ) async {
+    if (selected.isEmpty) return const <MapEntry<String, ProxyHealthMetric>>[];
+
+    final context = ProxyHealthRegistryContext(
+      runnerFn: runnerFn,
+      now: asOf,
+      budget: producerBudget,
+      inMemoryBreakerStates: inMemoryBreakerStates,
+    );
+    final results = <MapEntry<String, ProxyHealthMetric>>[];
+    var nextIndex = 0;
+    final workerCount = producerConcurrency < selected.length
+        ? producerConcurrency
+        : selected.length;
+
+    Future<void> runWorker() async {
+      while (true) {
+        final index = nextIndex;
+        nextIndex += 1;
+        if (index >= selected.length) return;
+        final entry = selected[index];
+        results.add(await _runOne(entry.key, entry.value, context));
+      }
+    }
+
+    await Future.wait(<Future<void>>[
+      for (var i = 0; i < workerCount; i += 1) runWorker(),
+    ]);
+    return results;
+  }
+
   Future<MapEntry<String, ProxyHealthMetric>> _runOne(
     String key,
     ProxyHealthRegistryProducer producer,
     ProxyHealthRegistryContext context,
   ) async {
     try {
-      final metric = await producer(context).timeout(outerProducerBudget);
+      final metric = await awaitHealthOperationWithBudget(
+        producer(context),
+        budget: outerProducerBudget,
+      );
       return MapEntry(key, metric);
     } catch (_) {
-      final reserved = proxyHealthReservedMetrics[key] ??
+      final reserved =
+          proxyHealthReservedMetrics[key] ??
           _legacyReservedProxyHealthMetrics[key];
       return MapEntry(
         key,
@@ -4285,7 +4422,10 @@ Future<ProxyHealthDependencyProbe> defaultProxyHealthDependencyProbe(
 }) async {
   Future<bool> probe(String sql) async {
     try {
-      final rows = await runnerFn(sql).timeout(budget);
+      final rows = await awaitHealthOperationWithBudget(
+        runnerFn(sql),
+        budget: budget,
+      );
       return rows.isNotEmpty;
     } catch (_) {
       return false;
@@ -4297,9 +4437,7 @@ Future<ProxyHealthDependencyProbe> defaultProxyHealthDependencyProbe(
     probe('select 1 as ok'),
     // AGE liveness: extension is loaded. The contract is "AGE is
     // installed and reachable", not "the graph contains data".
-    probe(
-      "select 1 as ok from pg_extension where extname = 'age'",
-    ),
+    probe("select 1 as ok from pg_extension where extname = 'age'"),
     // pgvector liveness: extension is loaded AND the `vector` type
     // round-trips a literal value. Independent of any embedding row
     // existing in the database.
@@ -4340,7 +4478,7 @@ Future<ProxyHealthDependencyProbe> strictProxyHealthDependencyProbe(
 }) async {
   Future<bool> probe(String sql) async {
     try {
-      await runnerFn(sql).timeout(budget);
+      await awaitHealthOperationWithBudget(runnerFn(sql), budget: budget);
       return true;
     } catch (_) {
       return false;
@@ -4468,8 +4606,9 @@ class ProxyMigrationApplyRegistryWriter {
   /// Reads the drift function with the supplied expected list and
   /// returns the count + missing filenames. Used by tests and by the
   /// `migration_apply_drift_count` producer for cross-checks.
-  Future<({int driftCount, List<String> missing})>
-  computeDrift(List<String> expectedFilenames) async {
+  Future<({int driftCount, List<String> missing})> computeDrift(
+    List<String> expectedFilenames,
+  ) async {
     final rows = await runnerFn(
       'select drift_count, missing_migrations '
       'from public.proxy_migration_apply_drift(@expected::text[])',
@@ -4578,10 +4717,7 @@ Map<String, Object?>? proxyPromptBlockToCacheControl(ProxyPromptBlock block) {
   if (!block.cacheBreakpoint) {
     return null;
   }
-  return <String, Object?>{
-    'type': 'ephemeral',
-    'ttl': block.cacheTtl,
-  };
+  return <String, Object?>{'type': 'ephemeral', 'ttl': block.cacheTtl};
 }
 
 class ProxyLlmRequest {
@@ -4664,23 +4800,25 @@ class ProxyLlmCompletePayload {
 /// `tool/advisor_proxy/anthropic_http_complete_fn.dart` and uses
 /// `package:http`; tests pin a closure that captures inputs and
 /// returns a fixed payload.
-typedef AnthropicProxyCompleteFn = Future<ProxyLlmCompletePayload> Function({
-  required String modelId,
-  required String question,
-  required String context,
-});
+typedef AnthropicProxyCompleteFn =
+    Future<ProxyLlmCompletePayload> Function({
+      required String modelId,
+      required String question,
+      required String context,
+    });
 
 /// Adapter signature for a Gemini SDK call. The optional `onChunk`
 /// hook lets callers observe streaming chunks; the public
 /// [ProxyLlmProvider] surface stays non-streaming so the
 /// AdvisorRequestPipeline doesn't need to special-case streamed
 /// responses.
-typedef GeminiProxyCompleteFn = Future<ProxyLlmCompletePayload> Function({
-  required String modelId,
-  required String question,
-  required String context,
-  void Function(String chunk)? onChunk,
-});
+typedef GeminiProxyCompleteFn =
+    Future<ProxyLlmCompletePayload> Function({
+      required String modelId,
+      required String question,
+      required String context,
+      void Function(String chunk)? onChunk,
+    });
 
 ProxyLlmCompletion _buildCompletionFromPayload({
   required ProxyLlmCompletePayload payload,
@@ -5457,8 +5595,7 @@ class InMemoryAuthLockoutEnforcer implements AuthLockoutEnforcer {
     return sha256.convert(utf8.encode(normalized)).toString();
   }
 
-  String _ipKey(String ip) =>
-      sha256.convert(utf8.encode(ip.trim())).toString();
+  String _ipKey(String ip) => sha256.convert(utf8.encode(ip.trim())).toString();
 
   Iterable<InMemoryAuthAttempt> _failuresInWindow(String email, String ip) {
     final cutoff = _now().toUtc().subtract(window);
@@ -5498,10 +5635,7 @@ class InMemoryAuthLockoutEnforcer implements AuthLockoutEnforcer {
     final locked =
         failures.any((attempt) => attempt.outcome == 'locked') ||
         failures.length >= threshold;
-    return AuthLockoutEvaluation(
-      locked: locked,
-      failureCount: failures.length,
-    );
+    return AuthLockoutEvaluation(locked: locked, failureCount: failures.length);
   }
 
   @override
@@ -5591,8 +5725,8 @@ class RollingWindowAttemptCounter {
     required this.window,
     this.maxEntries = 4096,
     DateTime Function()? now,
-  })  : assert(maxEntries > 0, 'maxEntries must be positive'),
-        _now = now ?? DateTime.now;
+  }) : assert(maxEntries > 0, 'maxEntries must be positive'),
+       _now = now ?? DateTime.now;
 
   final Duration window;
   final int maxEntries;
@@ -6126,8 +6260,7 @@ abstract class IntegrationAdminActorResolver {
 // an `Idempotency-Key` so a retried request collapses to one toggle
 // + one audit row, not two.
 const String adminFeatureFlagsListPath = '/v1/admin/feature-flags';
-const String adminFeatureFlagsTogglePath =
-    '/v1/admin/feature-flags/toggle';
+const String adminFeatureFlagsTogglePath = '/v1/admin/feature-flags/toggle';
 
 const Set<String> kFfFeatureFlagsAdminReadRoles = <String>{
   'super_admin',
@@ -6519,3212 +6652,3289 @@ Future<void> routeRequest(
       : generateUuidV4();
   final requestId = generateUuidV4();
   response.headers.set(correlationIdHeaderName, correlationId);
-  await withProxyLogContext(
-    ProxyLogContext(correlationId: correlationId, requestId: requestId),
-    () async {
-  try {
+  await withProxyLogContext(ProxyLogContext(correlationId: correlationId, requestId: requestId), () async {
     try {
-    final path = request.uri.path;
-    // HARD-C — admin CORS dispatch. Each admin path family resolves
-    // to a single methods list; preflight + non-preflight responses
-    // both flow through the central helpers (respondAdminCorsPreflight
-    // / _applyAdminCorsHeaders) so the origin allow-list lives in
-    // exactly one place.
-    final isAdminOperatorLocationPath = _isAdminOperatorOrLocationPath(path);
-    final isAdminPricingPath = _isAdminPricingPath(path);
-    final isAdminCorpusPath = _isAdminCorpusPath(path);
-    final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
-    final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
-    final List<String>? adminCorsMethods = isAdminOperatorLocationPath
-        ? kAdminOperatorLocationCorsMethods
-        : isAdminPricingPath
+      try {
+        final path = request.uri.path;
+        // HARD-C — admin CORS dispatch. Each admin path family resolves
+        // to a single methods list; preflight + non-preflight responses
+        // both flow through the central helpers (respondAdminCorsPreflight
+        // / _applyAdminCorsHeaders) so the origin allow-list lives in
+        // exactly one place.
+        final isAdminOperatorLocationPath = _isAdminOperatorOrLocationPath(
+          path,
+        );
+        final isAdminPricingPath = _isAdminPricingPath(path);
+        final isAdminCorpusPath = _isAdminCorpusPath(path);
+        final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
+        final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
+        final isDeepHealthPath = path == deepHealthPath;
+        final List<String>? adminCorsMethods = isAdminOperatorLocationPath
+            ? kAdminOperatorLocationCorsMethods
+            : isAdminPricingPath
             ? kAdminPricingCorsMethods
             : isAdminCorpusPath
-                ? kAdminCorpusCorsMethods
-                : isAdminIntegrationsPath
-                    ? kAdminIntegrationsCorsMethods
-                    : isAdminFeatureFlagsPath
-                        ? kAdminFeatureFlagsCorsMethods
-                        : null;
-    if (adminCorsMethods != null) {
-      if (request.method == 'OPTIONS') {
-        respondAdminCorsPreflight(
-          request,
-          adminCorsAllowList,
-          allowedMethods: adminCorsMethods,
-        );
-        return;
-      }
-      _applyAdminCorsHeaders(request, adminCorsAllowList);
-    }
-
-    // HARD-C — request body cap. POST/PATCH/PUT must declare a
-    // Content-Length and stay under the 1 MB ceiling. Missing or
-    // oversized bodies short-circuit with 413 before any handler
-    // runs. CORS headers were already applied above for admin paths,
-    // so the browser still sees the echo on the 413 response.
-    if (_isBodyMethod(request.method)) {
-      final declaredLength = request.contentLength;
-      if (declaredLength < 0 ||
-          declaredLength > kAdminCorsRequestBodyLimitBytes) {
-        _writeJson(response, 413, <String, Object?>{
-          'error': 'request_too_large',
-          'limit_bytes': kAdminCorsRequestBodyLimitBytes,
-        });
-        return;
-      }
-    }
-
-    if (request.method == 'GET' &&
-        (path == healthPath || path == readinessPath)) {
-      _writeJson(response, 200, <String, Object?>{'status': 'ok'});
-      return;
-    }
-
-    if (request.method == 'GET' && path == deepHealthPath) {
-      if (healthCheckStore == null) {
-        _writeJson(response, 503, <String, Object?>{
-          ...const ProxyHealthStatus(
-            postgresOk: false,
-            ageOk: false,
-            pgvectorOk: false,
-          ).toJson(checkedAt: clock().toUtc()),
-          'error': 'health_check_not_configured',
-          'message': 'route requires a ProxyHealthCheckStore to be installed',
-        });
-        return;
-      }
-
-      ProxyHealthStatus status;
-      try {
-        status = await healthCheckStore.check();
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          ...const ProxyHealthStatus(
-            postgresOk: false,
-            ageOk: false,
-            pgvectorOk: false,
-          ).toJson(checkedAt: clock().toUtc()),
-          'error': 'health_check_failed',
-          'message': 'proxy dependency health check failed',
-        });
-        return;
-      }
-
-      _writeJson(
-        response,
-        status.ok ? 200 : 503,
-        status.toJson(checkedAt: clock().toUtc()),
-      );
-      return;
-    }
-
-    if (request.method == 'GET' && path == scopeSmokePath) {
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      _writeJson(response, 200, <String, Object?>{
-        'user_id': scope.userId,
-        'operator_id': scope.operatorId,
-        'location_id': scope.locationId,
-        'roles': scope.roles,
-        'note':
-            '11a.10a scaffold smoke. No provider call performed. '
-            'Budgets and rate limits land in 11a.10b.',
-      });
-      return;
-    }
-
-    if (request.method == 'GET' && path == usageSmokePath) {
-      if (usageGuard == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'usage_guard_not_configured',
-          'message': 'route requires a ProxyUsageGuard to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      final estTokensRaw = request.uri.queryParameters['est_tokens'];
-      final estTokens = int.tryParse(estTokensRaw ?? '') ?? 100;
-      final estimate = UsageEstimate(requestTokens: estTokens);
-
-      UsageDecisionAllowed decision;
-      try {
-        decision = await usageGuard.requireAllowed(
-          operator: scope,
-          estimate: estimate,
-        );
-      } on UsageRefusal catch (refusal) {
-        _writeJson(response, refusal.statusCode, refusal.toJson());
-        return;
-      }
-
-      // HARD-A: advance the per-minute bucket so caps actually
-      // enforce on subsequent requests. Smoke calls carry cost 0 —
-      // the request count is what matters here.
-      await usageGuard.recordAllowed(
-        operator: scope,
-        decision: decision,
-        costCentsToAdd: 0,
-      );
-
-      // HARD-A wire shape per `hardening_production_wiring_contract.md`:
-      // `{minute_remaining, month_remaining, tier}` with no tenant
-      // identifiers. Tier limits / timeout / max-output are still
-      // returned alongside so the smoke caller can confirm the active
-      // tier policy without a separate call.
-      _writeJson(response, 200, <String, Object?>{
-        'tier': decision.tier.id,
-        'minute_remaining': decision.remainingRequestsThisMinute,
-        'month_remaining': decision.remainingCostCentsThisMonth,
-        'request_timeout_seconds': decision.tier.requestTimeoutSeconds,
-        'max_output_tokens': decision.tier.maxOutputTokens,
-        'cap_request_tokens': decision.tier.maxRequestTokens,
-        'cap_requests_per_minute': decision.tier.maxRequestsPerMinute,
-        'cap_monthly_cost_cents': decision.tier.maxMonthlyCostCents,
-        'estimate_request_tokens': estimate.requestTokens,
-      });
-      return;
-    }
-
-    if (request.method == 'GET' && path == advisorSmokePath) {
-      if (accountingStore == null || llmProvider == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'advisor_smoke_not_configured',
-          'message': 'route requires ProxyAccountingStore and ProxyLlmProvider',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_idempotency_key',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-
-      final params = request.uri.queryParameters;
-      final usageClass = _nonBlankOr(params['usage_class'], 'advisor_qa');
-      final queryClass = _nonBlankOr(
-        params['query_class'],
-        'methodology_lookup',
-      );
-      final subscriptionTier = _nonBlankOr(
-        params['subscription_tier'],
-        'basic',
-      );
-      final corpusVersion = _nonBlankOr(params['corpus_version'], 'launch_v1');
-      final question = _nonBlankOr(params['q'], 'advisor smoke question');
-      final estimate = ProxyUsageChargeEstimate(
-        tokenCount: int.tryParse(params['tokens'] ?? '') ?? 100,
-        costCents: int.tryParse(params['cost_cents'] ?? '') ?? 1,
-      );
-
-      // HARD-A: per-minute / monthly cap pre-check via the proxy
-      // usage guard. The accounting store's tier-cap check (below)
-      // gates per-tier monthly spend; this guard gates per-minute
-      // request rate + monthly cost in `advisor_proxy_usage_counters`.
-      // Both must pass before the pipeline runs. The guard is
-      // optional — only checked when wired (production main.dart wires
-      // it; some tests pass null).
-      UsageDecisionAllowed? usageDecision;
-      if (usageGuard != null) {
-        try {
-          usageDecision = await usageGuard.requireAllowed(
-            operator: scope,
-            estimate: UsageEstimate(requestTokens: estimate.tokenCount),
-          );
-        } on UsageRefusal catch (refusal) {
-          _writeJson(response, refusal.statusCode, refusal.toJson());
-          return;
-        }
-      }
-
-      const tierRouter = SubscriptionLlmTierRouter();
-      const modelRouting = ProxyLlmModelRouting();
-      const promptBuilder = AdvisorPromptCacheBuilder();
-      final llmTier = tierRouter.tierFor(
-        subscriptionTier: subscriptionTier,
-        queryClass: queryClass,
-      );
-      final modelId = modelRouting.modelIdFor(llmTier);
-      final telemetry = ProxyUsageTelemetry(
-        queryClass: queryClass,
-        cacheHit: false,
-        llmTier: llmTier.id,
-        modelUsed: modelId,
-      );
-
-      ProxyAccountingStartResult start;
-      try {
-        start = await accountingStore.startRequest(
-          idempotencyKey: idempotencyKey,
-          requestType: 'advisor_smoke',
-          operator: scope,
-          usageClass: usageClass,
-          telemetry: telemetry,
-          estimate: estimate,
-          now: clock().toUtc(),
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'accounting_store_unavailable',
-          'message': 'proxy accounting store unavailable',
-        });
-        return;
-      }
-
-      if (start is ProxyAccountingReplayed) {
-        _writeJson(response, 200, <String, Object?>{
-          ...start.responsePayload,
-          'idempotent_replay': true,
-        });
-        return;
-      }
-
-      if (start is ProxyAccountingRefused) {
-        _writeJson(response, 402, <String, Object?>{
-          'error': 'usage_cap_reached',
-          'message': 'usage cap reached before provider call',
-          'cap_status': start.capStatus.toJson(),
-        });
-        return;
-      }
-
-      final reserved = start as ProxyAccountingReserved;
-      final promptBlocks = promptBuilder.build(
-        corpusVersion: corpusVersion,
-        methodologyContext: 'launch methodology context placeholder',
-        toolDefinitions: 'advisor tool definitions placeholder',
-        operatorContext:
-            'operator=${scope.operatorId};location=${scope.locationId}',
-      );
-      final llmRequest = ProxyLlmRequest(
-        question: question,
-        promptBlocks: promptBlocks,
-        tier: llmTier,
-        modelId: modelId,
-        cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
-        maxOutputTokens: PolicyTier.launch.maxOutputTokens,
-      );
-      final questionHash =
-          sha256.convert(utf8.encode(question)).toString();
-
-      AdvisorPipelineResult pipelineResult;
-      if (advisorRequestPipeline != null) {
-        pipelineResult = await advisorRequestPipeline.execute(
-          llmProvider: llmProvider,
-          llmRequest: llmRequest,
-          operatorId: scope.operatorId,
-          locationId: scope.locationId,
-          queryClass: queryClass,
-          questionHash: questionHash,
-          corpusVersion: corpusVersion,
-        );
-      } else {
-        try {
-          final completion = await llmProvider.complete(llmRequest);
-          pipelineResult = AdvisorPipelineResult(
-            completion: completion,
-            cachedAnswer: null,
-            refused: false,
-            circuitStateAtStart: CircuitState.closed,
-            fallbackUsed: 'none',
-            decision: AcquireDecision.allow,
-          );
-        } catch (_) {
-          _writeJson(response, 503, <String, Object?>{
-            'error': 'llm_provider_unavailable',
-            'message': 'LLM provider unavailable',
-          });
-          return;
-        }
-      }
-
-      // Final telemetry written post-chain. `cache_hit` flips to true
-      // when the fallback cache served the response so the existing
-      // `usage_logs.cache_hit` contract stays consistent with
-      // `fallback_used='cache'`. `circuit_state` and `fallback_used` come
-      // from the pipeline; everything else carries from the pre-flight
-      // telemetry built at line 5362-5367.
-      final fallbackServedFromCache = pipelineResult.fallbackUsed == 'cache';
-      final finalTelemetry = ProxyUsageTelemetry(
-        queryClass: telemetry.queryClass,
-        cacheHit: telemetry.cacheHit || fallbackServedFromCache,
-        llmTier: telemetry.llmTier,
-        modelUsed: telemetry.modelUsed,
-        billingOwnerOrgUnitId: telemetry.billingOwnerOrgUnitId,
-        scopedOrgUnitId: telemetry.scopedOrgUnitId,
-        staffId: telemetry.staffId,
-        workflowId: telemetry.workflowId,
-        batchMode: telemetry.batchMode,
-        circuitState:
-            circuitStateToWireString(pipelineResult.circuitStateAtStart),
-        fallbackUsed: pipelineResult.fallbackUsed,
-      );
-
-      // Final estimate written to `usage_logs` reflects ACTUAL usage,
-      // not the pre-flight estimate used for the cap-check. Primary
-      // success rolls up input estimate + provider output; cache hits
-      // and graceful refusals consumed no provider tokens.
-      final ProxyUsageChargeEstimate finalEstimate;
-      if (pipelineResult.completion != null) {
-        final completion = pipelineResult.completion!;
-        finalEstimate = ProxyUsageChargeEstimate(
-          tokenCount: estimate.tokenCount + completion.outputTokens,
-          costCents: estimate.costCents + completion.costCents,
-        );
-      } else {
-        finalEstimate = const ProxyUsageChargeEstimate(
-          tokenCount: 0,
-          costCents: 0,
-        );
-      }
-
-      Map<String, Object?> responsePayload;
-      if (pipelineResult.completion != null) {
-        final completion = pipelineResult.completion!;
-        responsePayload = <String, Object?>{
-          'status': 'ok',
-          'operator_id': scope.operatorId,
-          'location_id': scope.locationId,
-          'usage_class': usageClass,
-          'query_class': queryClass,
-          'llm_tier': completion.tier.id,
-          'model_used': completion.modelId,
-          'cache_key': promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
-          'prompt_cache_breakpoints': <String>[
-            for (final block in promptBlocks)
-              if (block.cacheBreakpoint) block.id,
-          ],
-          'cap_status': reserved.capStatus.toJson(),
-          'answer': completion.text,
-          'idempotent_replay': false,
-          'request_log_preview': requestLogPolicy.buildEntry(
-            operator: scope,
-            usageClass: usageClass,
-            queryClass: queryClass,
-            tokenCount: estimate.tokenCount + completion.outputTokens,
-            costCents: estimate.costCents + completion.costCents,
-            statusCode: 200,
-            question: question,
-            answer: completion.text,
-          ),
-        };
-      } else {
-        final refusal = GracefulRefusalResponse(
-          cachedAnswer: pipelineResult.cachedAnswer,
-          providerId: 'anthropic',
-          circuitState: finalTelemetry.circuitState,
-        );
-        responsePayload = <String, Object?>{
-          ...refusal.toJson(),
-          'cap_status': reserved.capStatus.toJson(),
-          'idempotent_replay': false,
-        };
-      }
-
-      try {
-        await accountingStore.commitUsageLog(
-          operator: scope,
-          usageClass: usageClass,
-          telemetry: finalTelemetry,
-          estimate: finalEstimate,
-          now: clock().toUtc(),
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'accounting_store_unavailable',
-          'message': 'proxy accounting store unavailable',
-        });
-        return;
-      }
-
-      // HARD-A: advance `advisor_proxy_usage_counters` so per-minute
-      // and monthly caps actually enforce on the next request. Cost
-      // carries the final post-pipeline value, not the pre-call
-      // estimate.
-      if (usageGuard != null && usageDecision != null) {
-        await usageGuard.recordAllowed(
-          operator: scope,
-          decision: usageDecision,
-          costCentsToAdd: finalEstimate.costCents,
-        );
-      }
-
-      try {
-        await accountingStore.completeRequest(
-          operator: scope,
-          idempotencyKey: idempotencyKey,
-          responsePayload: responsePayload,
-          now: clock().toUtc(),
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'accounting_store_unavailable',
-          'message': 'proxy accounting store unavailable',
-        });
-        return;
-      }
-
-      _writeJson(response, 200, responsePayload);
-      return;
-    }
-
-    // ─── Phase 9 B6 — auth-session ledger endpoints ─────────────────────
-    //
-    // Every endpoint below:
-    //   1. Verifies the Firebase ID token via the existing auth guard
-    //      (operator + location scope must resolve).
-    //   2. Reads the JSON body (tolerating a missing/empty body for
-    //      revoke-all where only `reason` is required).
-    //   3. Resolves enrichment context. User-Agent is soft client
-    //      metadata; forwarded IP/geo are used only when trusted
-    //      ingress mode is explicitly enabled.
-    //   4. Calls the injected [AuthSessionLedgerWriter]. The
-    //      production binding is `RepositoryAuthSessionLedgerWriter`
-    //      over `AuthSessionsRepository`; the scaffold default fails
-    //      closed with a 503 so a misconfigured deploy surfaces the
-    //      gap instead of silently dropping ledger rows.
-    //   5. Returns narrow JSON: `session_id` (login),
-    //      `{ok: true}` (refresh / revoke), `{revoked_count}`
-    //      (revoke-all). NEVER echoes the bearer token, the
-    //      `token_hash`, or any error stack.
-
-    if (request.method == 'GET' && path == authAccountInfoPath) {
-      if (accountInfoGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'account_info_not_configured',
-          'message': 'route requires an AccountInfoGateway to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-
-      try {
-        final info = await accountInfoGateway.load(
-          AccountInfoRequest(
-            actorUserId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-          ),
-        );
-        _writeJson(response, 200, info.toJson());
-      } on AccountInfoUnavailable {
-        _writeJson(response, 404, <String, Object?>{
-          'error': 'account_info_unavailable',
-          'message': 'account info is unavailable; please retry',
-        });
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'account_info_unavailable',
-          'message': 'account info is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (request.method == 'GET' && path == authPermissionsSnapshotPath) {
-      if (permissionSnapshotResolver == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'permission_snapshot_not_configured',
-          'message':
-              'route requires a ProxyPermissionSnapshotResolver to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-
-      try {
-        final snapshot = await permissionSnapshotResolver.load(scope);
-        _writeJson(response, 200, snapshot.toJson());
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'permission_snapshot_unavailable',
-          'message': 'permission snapshot is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (request.method == 'POST' && path == authPasswordChangePath) {
-      if (passwordChangeGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'password_change_not_configured',
-          'message': 'route requires a PasswordChangeGateway to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final currentPassword = _nonBlankString(body['current_password']);
-      final newPassword = _nonBlankString(body['new_password']);
-      if (currentPassword == null || newPassword == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_password_fields',
-          'message':
-              'request body must include current_password and new_password',
-        });
-        return;
-      }
-
-      try {
-        final result = await passwordChangeGateway.changePassword(
-          PasswordChangeCommand(
-            actorUserId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            currentPassword: currentPassword,
-            newPassword: newPassword,
-            firebaseUid: scope.firebaseUid,
-          ),
-        );
-        _writeJson(response, 200, <String, Object?>{
-          'ok': true,
-          'hibp_unavailable': result.hibpUnavailable,
-        });
-      } on PasswordChangeRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-          'rejections': error.rejections,
-        });
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'password_change_unavailable',
-          'message': 'password change is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (request.method == 'POST' && path == authPasswordResetRequestPath) {
-      if (passwordResetRequestGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'password_reset_request_not_configured',
-          'message':
-              'route requires a PasswordResetRequestGateway to be installed',
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-      final email = _nonBlankString(body['email']);
-      if (email == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_email',
-          'message': 'request body must include email',
-        });
-        return;
-      }
-      // HARD-B — per-account 24h cap. Counts requests against the
-      // SHA-256(normalized email) so the contract's "10 reset
-      // requests within 24h" applies regardless of whether the
-      // attacker varies the source IP. Existing PasswordResetRequestThrottled
-      // (Firebase-side rate limit) still rides the gateway.
-      final emailHashHex = hashAuthEmailHex(email);
-      if (passwordResetThrottleCounter != null) {
-        final priorCount =
-            passwordResetThrottleCounter.countInWindow(emailHashHex);
-        if (priorCount >= kAuthPasswordResetThreshold) {
-          if (authLockoutAuditSink != null) {
-            await authLockoutAuditSink.recordPasswordResetThrottled(
-              emailHashHex: emailHashHex,
-              attemptCountIn24h: priorCount,
-              retryAfter: kAuthPasswordResetWindow,
+            ? kAdminCorpusCorsMethods
+            : isAdminIntegrationsPath
+            ? kAdminIntegrationsCorsMethods
+            : isAdminFeatureFlagsPath
+            ? kAdminFeatureFlagsCorsMethods
+            : isDeepHealthPath
+            ? kAdminHealthCorsMethods
+            : null;
+        if (adminCorsMethods != null) {
+          if (request.method == 'OPTIONS') {
+            respondAdminCorsPreflight(
+              request,
+              adminCorsAllowList,
+              allowedMethods: adminCorsMethods,
             );
+            return;
           }
-          response.headers.add(
-            HttpHeaders.retryAfterHeader,
-            kAuthPasswordResetWindow.inSeconds.toString(),
-          );
-          _writeJson(response, 429, <String, Object?>{
-            'error': 'reset_request_throttled',
-            'retry_after_seconds': kAuthPasswordResetWindow.inSeconds,
-          });
-          return;
+          _applyAdminCorsHeaders(request, adminCorsAllowList);
         }
-      }
-      // Idempotency-Key dedupe: a second tap on "Send reset link"
-      // (or a network-retry that double-fires the request) must not
-      // issue a second Firebase email. The cache replays the prior
-      // {200, ok:true} body for the same key inside [ttl].
-      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_idempotency_key',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-      final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
-      final cached = await cache.runOrReplay(
-        route: authPasswordResetRequestPath,
-        key: idempotencyKey,
-        compute: () async {
-          try {
-            await passwordResetRequestGateway.requestReset(
-              PasswordResetRequestCommand(email: email),
-            );
-            // Increment the per-account 24h counter only after a real
-            // request flows through the gateway (the idempotent replay
-            // path sees a cache hit and returns BEFORE this compute
-            // body runs, so retries do not inflate the count).
-            passwordResetThrottleCounter?.incrementAndCount(emailHashHex);
-            // Privacy-preserving: always return 200 with the same body so
-            // the client can show a uniform "if an account exists..."
-            // confirmation regardless of whether the email matched a
-            // real user.
-            return CachedProxyResponse(
-              statusCode: 200,
-              body: const <String, Object?>{'ok': true},
-            );
-          } on PasswordResetRequestThrottled {
-            return CachedProxyResponse(
-              statusCode: 429,
-              body: const <String, Object?>{
-                'error': 'rate_limited',
-                'message':
-                    'too many password-reset requests; please wait before retrying',
-              },
-            );
-          } catch (_) {
-            return CachedProxyResponse(
-              statusCode: 503,
-              body: const <String, Object?>{
-                'error': 'password_reset_request_unavailable',
-                'message': 'password reset is unavailable; please retry',
-              },
-            );
-          }
-        },
-      );
-      _writeJson(response, cached.statusCode, cached.body);
-      return;
-    }
 
-    if (request.method == 'POST' && path == authPasswordResetConfirmPath) {
-      if (passwordResetConfirmGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'password_reset_confirm_not_configured',
-          'message':
-              'route requires a PasswordResetConfirmGateway to be installed',
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-      final oobCode = _nonBlankString(body['oob_code']);
-      final newPassword = _nonBlankString(body['new_password']);
-      if (oobCode == null || newPassword == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_password_reset_fields',
-          'message': 'oob_code and new_password are required',
-        });
-        return;
-      }
-      // Idempotency-Key dedupe: a confirm retry after a successful
-      // but lost response replays the original {200, ok:true} body
-      // instead of trying the now-burned oobCode against Firebase
-      // again (which would surface as `password_reset_expired`).
-      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_idempotency_key',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-      final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
-      final cached = await cache.runOrReplay(
-        route: authPasswordResetConfirmPath,
-        key: idempotencyKey,
-        compute: () async {
-          try {
-            final completed = await passwordResetConfirmGateway
-                .confirmPasswordReset(
-                  PasswordResetConfirmCommand(
-                    oobCode: oobCode,
-                    newPassword: newPassword,
-                  ),
-                );
-            return CachedProxyResponse(
-              statusCode: 200,
-              body: <String, Object?>{
-                'ok': true,
-                'hibp_unavailable': completed.hibpUnavailable,
-              },
-            );
-          } on PasswordChangeRejected catch (error) {
-            return CachedProxyResponse(
-              statusCode: error.statusCode,
-              body: <String, Object?>{
-                'error': error.code,
-                'message': error.message,
-                'rejections': error.rejections,
-              },
-            );
-          } on DependencyTimeoutException catch (error) {
-            // HARD-G observability: surface as the contract-pinned
-            // dependency_timeout envelope. Idempotency cache stores
-            // the result so retries with the same key replay the
-            // same response.
-            return CachedProxyResponse(
-              statusCode: 503,
-              body: <String, Object?>{
-                'error': 'dependency_timeout',
-                'surface': error.surface,
-                'operation': error.operation,
-                'message': 'Upstream dependency timed out; please retry',
-              },
-            );
-          } catch (_) {
-            return CachedProxyResponse(
-              statusCode: 503,
-              body: const <String, Object?>{
-                'error': 'password_reset_confirm_unavailable',
-                'message': 'password reset is unavailable; please retry',
-              },
-            );
-          }
-        },
-      );
-      _writeJson(response, cached.statusCode, cached.body);
-      return;
-    }
-
-    if (request.method == 'POST' && path == authMfaRecoveryRequestPath) {
-      if (mfaRecoveryRequestGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'mfa_recovery_request_not_configured',
-          'message':
-              'route requires an MfaRecoveryRequestGateway to be installed',
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final email = _nonBlankString(body['email']);
-      if (email == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_email',
-          'message': 'request body must include email',
-        });
-        return;
-      }
-      try {
-        final accepted = await mfaRecoveryRequestGateway.requestRecovery(
-          MfaRecoveryRequestCommand(
-            email: email,
-            clientIp:
-                _resolveLedgerContextFromHeaders(
-                  request,
-                  trustProxyAuditHeaders: trustProxyAuditHeaders,
-                ).ip ??
-                'unknown',
-            reason:
-                _nonBlankString(body['reason']) ??
-                'mfa_challenge_no_factor_access',
-          ),
-        );
-        _writeJson(response, 202, <String, Object?>{
-          'ok': true,
-          'queued': accepted.queued,
-          if (accepted.requestId != null) 'request_id': accepted.requestId,
-        });
-      } on MfaRecoveryRequestRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-          if (error.retryAfter != null)
-            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
-        });
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'mfa_recovery_request_unavailable',
-          'message': 'MFA recovery request is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (_isMfaOperation(path, request.method)) {
-      if (mfaOperationsGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'mfa_operations_not_configured',
-          'message': 'route requires an MfaOperationsGateway to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-      final authorizationIdToken = extractBearerToken(
-        request.headers.value(HttpHeaders.authorizationHeader),
-      );
-      if (authorizationIdToken == null) {
-        _writeJson(response, 401, <String, Object?>{
-          'error': 'missing_or_malformed_authorization',
-          'message': 'MFA routes require a Firebase ID token',
-        });
-        return;
-      }
-
-      if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
-        final freshEnough = _requireFreshAuthenticationOrWrite(
-          response: response,
-          scope: scope,
-          requestedAt: clock().toUtc(),
-        );
-        if (!freshEnough) return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      try {
-        if (request.method == 'POST' && path == authMfaTotpBeginPath) {
-          final userEmail = _nonBlankString(body['user_email']);
-          if (userEmail == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_user_email',
-              'message': 'request body must include user_email',
+        // HARD-C — request body cap. POST/PATCH/PUT must declare a
+        // Content-Length and stay under the 1 MB ceiling. Missing or
+        // oversized bodies short-circuit with 413 before any handler
+        // runs. CORS headers were already applied above for admin paths,
+        // so the browser still sees the echo on the 413 response.
+        if (_isBodyMethod(request.method)) {
+          final declaredLength = request.contentLength;
+          if (declaredLength < 0 ||
+              declaredLength > kAdminCorsRequestBodyLimitBytes) {
+            _writeJson(response, 413, <String, Object?>{
+              'error': 'request_too_large',
+              'limit_bytes': kAdminCorsRequestBodyLimitBytes,
             });
             return;
           }
-          final setup = await mfaOperationsGateway.beginTotpEnrollment(
-            MfaTotpBeginCommand(
-              actorUserId: scope.userId,
+        }
+
+        if (request.method == 'GET' &&
+            (path == healthPath || path == readinessPath)) {
+          _writeJson(response, 200, <String, Object?>{'status': 'ok'});
+          return;
+        }
+
+        if (request.method == 'GET' && path == deepHealthPath) {
+          if (healthCheckStore == null) {
+            _writeJson(response, 503, <String, Object?>{
+              ...const ProxyHealthStatus(
+                postgresOk: false,
+                ageOk: false,
+                pgvectorOk: false,
+              ).toJson(checkedAt: clock().toUtc()),
+              'error': 'health_check_not_configured',
+              'message':
+                  'route requires a ProxyHealthCheckStore to be installed',
+            });
+            return;
+          }
+
+          ProxyHealthStatus status;
+          try {
+            status = await healthCheckStore.check();
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              ...const ProxyHealthStatus(
+                postgresOk: false,
+                ageOk: false,
+                pgvectorOk: false,
+              ).toJson(checkedAt: clock().toUtc()),
+              'error': 'health_check_failed',
+              'message': 'proxy dependency health check failed',
+            });
+            return;
+          }
+
+          _writeJson(
+            response,
+            status.ok ? 200 : 503,
+            status.toJson(checkedAt: clock().toUtc()),
+          );
+          return;
+        }
+
+        if (request.method == 'GET' && path == scopeSmokePath) {
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{
+            'user_id': scope.userId,
+            'operator_id': scope.operatorId,
+            'location_id': scope.locationId,
+            'roles': scope.roles,
+            'note':
+                '11a.10a scaffold smoke. No provider call performed. '
+                'Budgets and rate limits land in 11a.10b.',
+          });
+          return;
+        }
+
+        if (request.method == 'GET' && path == usageSmokePath) {
+          if (usageGuard == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'usage_guard_not_configured',
+              'message': 'route requires a ProxyUsageGuard to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          final estTokensRaw = request.uri.queryParameters['est_tokens'];
+          final estTokens = int.tryParse(estTokensRaw ?? '') ?? 100;
+          final estimate = UsageEstimate(requestTokens: estTokens);
+
+          UsageDecisionAllowed decision;
+          try {
+            decision = await usageGuard.requireAllowed(
+              operator: scope,
+              estimate: estimate,
+            );
+          } on UsageRefusal catch (refusal) {
+            _writeJson(response, refusal.statusCode, refusal.toJson());
+            return;
+          }
+
+          // HARD-A: advance the per-minute bucket so caps actually
+          // enforce on subsequent requests. Smoke calls carry cost 0 —
+          // the request count is what matters here.
+          await usageGuard.recordAllowed(
+            operator: scope,
+            decision: decision,
+            costCentsToAdd: 0,
+          );
+
+          // HARD-A wire shape per `hardening_production_wiring_contract.md`:
+          // `{minute_remaining, month_remaining, tier}` with no tenant
+          // identifiers. Tier limits / timeout / max-output are still
+          // returned alongside so the smoke caller can confirm the active
+          // tier policy without a separate call.
+          _writeJson(response, 200, <String, Object?>{
+            'tier': decision.tier.id,
+            'minute_remaining': decision.remainingRequestsThisMinute,
+            'month_remaining': decision.remainingCostCentsThisMonth,
+            'request_timeout_seconds': decision.tier.requestTimeoutSeconds,
+            'max_output_tokens': decision.tier.maxOutputTokens,
+            'cap_request_tokens': decision.tier.maxRequestTokens,
+            'cap_requests_per_minute': decision.tier.maxRequestsPerMinute,
+            'cap_monthly_cost_cents': decision.tier.maxMonthlyCostCents,
+            'estimate_request_tokens': estimate.requestTokens,
+          });
+          return;
+        }
+
+        if (request.method == 'GET' && path == advisorSmokePath) {
+          if (accountingStore == null || llmProvider == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'advisor_smoke_not_configured',
+              'message':
+                  'route requires ProxyAccountingStore and ProxyLlmProvider',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          final idempotencyKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+
+          final params = request.uri.queryParameters;
+          final usageClass = _nonBlankOr(params['usage_class'], 'advisor_qa');
+          final queryClass = _nonBlankOr(
+            params['query_class'],
+            'methodology_lookup',
+          );
+          final subscriptionTier = _nonBlankOr(
+            params['subscription_tier'],
+            'basic',
+          );
+          final corpusVersion = _nonBlankOr(
+            params['corpus_version'],
+            'launch_v1',
+          );
+          final question = _nonBlankOr(params['q'], 'advisor smoke question');
+          final estimate = ProxyUsageChargeEstimate(
+            tokenCount: int.tryParse(params['tokens'] ?? '') ?? 100,
+            costCents: int.tryParse(params['cost_cents'] ?? '') ?? 1,
+          );
+
+          // HARD-A: per-minute / monthly cap pre-check via the proxy
+          // usage guard. The accounting store's tier-cap check (below)
+          // gates per-tier monthly spend; this guard gates per-minute
+          // request rate + monthly cost in `advisor_proxy_usage_counters`.
+          // Both must pass before the pipeline runs. The guard is
+          // optional — only checked when wired (production main.dart wires
+          // it; some tests pass null).
+          UsageDecisionAllowed? usageDecision;
+          if (usageGuard != null) {
+            try {
+              usageDecision = await usageGuard.requireAllowed(
+                operator: scope,
+                estimate: UsageEstimate(requestTokens: estimate.tokenCount),
+              );
+            } on UsageRefusal catch (refusal) {
+              _writeJson(response, refusal.statusCode, refusal.toJson());
+              return;
+            }
+          }
+
+          const tierRouter = SubscriptionLlmTierRouter();
+          const modelRouting = ProxyLlmModelRouting();
+          const promptBuilder = AdvisorPromptCacheBuilder();
+          final llmTier = tierRouter.tierFor(
+            subscriptionTier: subscriptionTier,
+            queryClass: queryClass,
+          );
+          final modelId = modelRouting.modelIdFor(llmTier);
+          final telemetry = ProxyUsageTelemetry(
+            queryClass: queryClass,
+            cacheHit: false,
+            llmTier: llmTier.id,
+            modelUsed: modelId,
+          );
+
+          ProxyAccountingStartResult start;
+          try {
+            start = await accountingStore.startRequest(
+              idempotencyKey: idempotencyKey,
+              requestType: 'advisor_smoke',
+              operator: scope,
+              usageClass: usageClass,
+              telemetry: telemetry,
+              estimate: estimate,
+              now: clock().toUtc(),
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'accounting_store_unavailable',
+              'message': 'proxy accounting store unavailable',
+            });
+            return;
+          }
+
+          if (start is ProxyAccountingReplayed) {
+            _writeJson(response, 200, <String, Object?>{
+              ...start.responsePayload,
+              'idempotent_replay': true,
+            });
+            return;
+          }
+
+          if (start is ProxyAccountingRefused) {
+            _writeJson(response, 402, <String, Object?>{
+              'error': 'usage_cap_reached',
+              'message': 'usage cap reached before provider call',
+              'cap_status': start.capStatus.toJson(),
+            });
+            return;
+          }
+
+          final reserved = start as ProxyAccountingReserved;
+          final promptBlocks = promptBuilder.build(
+            corpusVersion: corpusVersion,
+            methodologyContext: 'launch methodology context placeholder',
+            toolDefinitions: 'advisor tool definitions placeholder',
+            operatorContext:
+                'operator=${scope.operatorId};location=${scope.locationId}',
+          );
+          final llmRequest = ProxyLlmRequest(
+            question: question,
+            promptBlocks: promptBlocks,
+            tier: llmTier,
+            modelId: modelId,
+            cacheKey: promptBuilder.cacheKeyForCorpusVersion(corpusVersion),
+            maxOutputTokens: PolicyTier.launch.maxOutputTokens,
+          );
+          final questionHash = sha256.convert(utf8.encode(question)).toString();
+
+          AdvisorPipelineResult pipelineResult;
+          if (advisorRequestPipeline != null) {
+            pipelineResult = await advisorRequestPipeline.execute(
+              llmProvider: llmProvider,
+              llmRequest: llmRequest,
               operatorId: scope.operatorId,
               locationId: scope.locationId,
-              authorizationIdToken: authorizationIdToken,
-              userEmail: userEmail,
-              issuerName:
-                  _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'factor_id': setup.factorId,
-            'secret_base32': setup.secretBase32,
-            'otp_auth_url': setup.otpAuthUrl,
-          });
-          return;
-        }
+              queryClass: queryClass,
+              questionHash: questionHash,
+              corpusVersion: corpusVersion,
+            );
+          } else {
+            try {
+              final completion = await llmProvider.complete(llmRequest);
+              pipelineResult = AdvisorPipelineResult(
+                completion: completion,
+                cachedAnswer: null,
+                refused: false,
+                circuitStateAtStart: CircuitState.closed,
+                fallbackUsed: 'none',
+                decision: AcquireDecision.allow,
+              );
+            } catch (_) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'llm_provider_unavailable',
+                'message': 'LLM provider unavailable',
+              });
+              return;
+            }
+          }
 
-        if (request.method == 'POST' && path == authMfaTotpConfirmPath) {
-          final factorId = _nonBlankString(body['factor_id']);
-          final oneTimeCode = _nonBlankString(body['one_time_code']);
-          if (factorId == null || oneTimeCode == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_totp_confirm_fields',
-              'message': 'factor_id and one_time_code are required',
+          // Final telemetry written post-chain. `cache_hit` flips to true
+          // when the fallback cache served the response so the existing
+          // `usage_logs.cache_hit` contract stays consistent with
+          // `fallback_used='cache'`. `circuit_state` and `fallback_used` come
+          // from the pipeline; everything else carries from the pre-flight
+          // telemetry built at line 5362-5367.
+          final fallbackServedFromCache =
+              pipelineResult.fallbackUsed == 'cache';
+          final finalTelemetry = ProxyUsageTelemetry(
+            queryClass: telemetry.queryClass,
+            cacheHit: telemetry.cacheHit || fallbackServedFromCache,
+            llmTier: telemetry.llmTier,
+            modelUsed: telemetry.modelUsed,
+            billingOwnerOrgUnitId: telemetry.billingOwnerOrgUnitId,
+            scopedOrgUnitId: telemetry.scopedOrgUnitId,
+            staffId: telemetry.staffId,
+            workflowId: telemetry.workflowId,
+            batchMode: telemetry.batchMode,
+            circuitState: circuitStateToWireString(
+              pipelineResult.circuitStateAtStart,
+            ),
+            fallbackUsed: pipelineResult.fallbackUsed,
+          );
+
+          // Final estimate written to `usage_logs` reflects ACTUAL usage,
+          // not the pre-flight estimate used for the cap-check. Primary
+          // success rolls up input estimate + provider output; cache hits
+          // and graceful refusals consumed no provider tokens.
+          final ProxyUsageChargeEstimate finalEstimate;
+          if (pipelineResult.completion != null) {
+            final completion = pipelineResult.completion!;
+            finalEstimate = ProxyUsageChargeEstimate(
+              tokenCount: estimate.tokenCount + completion.outputTokens,
+              costCents: estimate.costCents + completion.costCents,
+            );
+          } else {
+            finalEstimate = const ProxyUsageChargeEstimate(
+              tokenCount: 0,
+              costCents: 0,
+            );
+          }
+
+          Map<String, Object?> responsePayload;
+          if (pipelineResult.completion != null) {
+            final completion = pipelineResult.completion!;
+            responsePayload = <String, Object?>{
+              'status': 'ok',
+              'operator_id': scope.operatorId,
+              'location_id': scope.locationId,
+              'usage_class': usageClass,
+              'query_class': queryClass,
+              'llm_tier': completion.tier.id,
+              'model_used': completion.modelId,
+              'cache_key': promptBuilder.cacheKeyForCorpusVersion(
+                corpusVersion,
+              ),
+              'prompt_cache_breakpoints': <String>[
+                for (final block in promptBlocks)
+                  if (block.cacheBreakpoint) block.id,
+              ],
+              'cap_status': reserved.capStatus.toJson(),
+              'answer': completion.text,
+              'idempotent_replay': false,
+              'request_log_preview': requestLogPolicy.buildEntry(
+                operator: scope,
+                usageClass: usageClass,
+                queryClass: queryClass,
+                tokenCount: estimate.tokenCount + completion.outputTokens,
+                costCents: estimate.costCents + completion.costCents,
+                statusCode: 200,
+                question: question,
+                answer: completion.text,
+              ),
+            };
+          } else {
+            final refusal = GracefulRefusalResponse(
+              cachedAnswer: pipelineResult.cachedAnswer,
+              providerId: 'anthropic',
+              circuitState: finalTelemetry.circuitState,
+            );
+            responsePayload = <String, Object?>{
+              ...refusal.toJson(),
+              'cap_status': reserved.capStatus.toJson(),
+              'idempotent_replay': false,
+            };
+          }
+
+          try {
+            await accountingStore.commitUsageLog(
+              operator: scope,
+              usageClass: usageClass,
+              telemetry: finalTelemetry,
+              estimate: finalEstimate,
+              now: clock().toUtc(),
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'accounting_store_unavailable',
+              'message': 'proxy accounting store unavailable',
             });
             return;
           }
-          // HARD-B - per-challenge retry cap. Counter key is
-          // SHA-256(factor_id + actor) so two users sharing a factor
-          // surface (impossible in practice but cheap to enforce) do
-          // not share a counter slot. 4th attempt within the window
-          // returns 429; success resets the slot via try/finally.
-          final challengeKey = sha256
-              .convert(utf8.encode('${scope.userId}:$factorId'))
-              .toString();
-          if (mfaTotpRetryCounter != null) {
-            final priorRetries =
-                mfaTotpRetryCounter.countInWindow(challengeKey);
-            if (priorRetries >= kAuthMfaTotpRetryThreshold) {
+
+          // HARD-A: advance `advisor_proxy_usage_counters` so per-minute
+          // and monthly caps actually enforce on the next request. Cost
+          // carries the final post-pipeline value, not the pre-call
+          // estimate.
+          if (usageGuard != null && usageDecision != null) {
+            await usageGuard.recordAllowed(
+              operator: scope,
+              decision: usageDecision,
+              costCentsToAdd: finalEstimate.costCents,
+            );
+          }
+
+          try {
+            await accountingStore.completeRequest(
+              operator: scope,
+              idempotencyKey: idempotencyKey,
+              responsePayload: responsePayload,
+              now: clock().toUtc(),
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'accounting_store_unavailable',
+              'message': 'proxy accounting store unavailable',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, responsePayload);
+          return;
+        }
+
+        // ─── Phase 9 B6 — auth-session ledger endpoints ─────────────────────
+        //
+        // Every endpoint below:
+        //   1. Verifies the Firebase ID token via the existing auth guard
+        //      (operator + location scope must resolve).
+        //   2. Reads the JSON body (tolerating a missing/empty body for
+        //      revoke-all where only `reason` is required).
+        //   3. Resolves enrichment context. User-Agent is soft client
+        //      metadata; forwarded IP/geo are used only when trusted
+        //      ingress mode is explicitly enabled.
+        //   4. Calls the injected [AuthSessionLedgerWriter]. The
+        //      production binding is `RepositoryAuthSessionLedgerWriter`
+        //      over `AuthSessionsRepository`; the scaffold default fails
+        //      closed with a 503 so a misconfigured deploy surfaces the
+        //      gap instead of silently dropping ledger rows.
+        //   5. Returns narrow JSON: `session_id` (login),
+        //      `{ok: true}` (refresh / revoke), `{revoked_count}`
+        //      (revoke-all). NEVER echoes the bearer token, the
+        //      `token_hash`, or any error stack.
+
+        if (request.method == 'GET' && path == authAccountInfoPath) {
+          if (accountInfoGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'account_info_not_configured',
+              'message': 'route requires an AccountInfoGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          try {
+            final info = await accountInfoGateway.load(
+              AccountInfoRequest(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+              ),
+            );
+            _writeJson(response, 200, info.toJson());
+          } on AccountInfoUnavailable {
+            _writeJson(response, 404, <String, Object?>{
+              'error': 'account_info_unavailable',
+              'message': 'account info is unavailable; please retry',
+            });
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'account_info_unavailable',
+              'message': 'account info is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'GET' && path == authPermissionsSnapshotPath) {
+          if (permissionSnapshotResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_not_configured',
+              'message':
+                  'route requires a ProxyPermissionSnapshotResolver to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          try {
+            final snapshot = await permissionSnapshotResolver.load(scope);
+            _writeJson(response, 200, snapshot.toJson());
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'permission_snapshot_unavailable',
+              'message': 'permission snapshot is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'POST' && path == authPasswordChangePath) {
+          if (passwordChangeGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'password_change_not_configured',
+              'message':
+                  'route requires a PasswordChangeGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final currentPassword = _nonBlankString(body['current_password']);
+          final newPassword = _nonBlankString(body['new_password']);
+          if (currentPassword == null || newPassword == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_password_fields',
+              'message':
+                  'request body must include current_password and new_password',
+            });
+            return;
+          }
+
+          try {
+            final result = await passwordChangeGateway.changePassword(
+              PasswordChangeCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                currentPassword: currentPassword,
+                newPassword: newPassword,
+                firebaseUid: scope.firebaseUid,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'ok': true,
+              'hibp_unavailable': result.hibpUnavailable,
+            });
+          } on PasswordChangeRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+              'rejections': error.rejections,
+            });
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'password_change_unavailable',
+              'message': 'password change is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (request.method == 'POST' && path == authPasswordResetRequestPath) {
+          if (passwordResetRequestGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'password_reset_request_not_configured',
+              'message':
+                  'route requires a PasswordResetRequestGateway to be installed',
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          final email = _nonBlankString(body['email']);
+          if (email == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_email',
+              'message': 'request body must include email',
+            });
+            return;
+          }
+          // HARD-B — per-account 24h cap. Counts requests against the
+          // SHA-256(normalized email) so the contract's "10 reset
+          // requests within 24h" applies regardless of whether the
+          // attacker varies the source IP. Existing PasswordResetRequestThrottled
+          // (Firebase-side rate limit) still rides the gateway.
+          final emailHashHex = hashAuthEmailHex(email);
+          if (passwordResetThrottleCounter != null) {
+            final priorCount = passwordResetThrottleCounter.countInWindow(
+              emailHashHex,
+            );
+            if (priorCount >= kAuthPasswordResetThreshold) {
               if (authLockoutAuditSink != null) {
-                await authLockoutAuditSink.recordMfaRetryExceeded(
-                  operatorId: scope.operatorId,
-                  locationId: scope.locationId,
-                  actorUserId: scope.userId,
-                  challengeIdHash: challengeKey,
-                  retryCount: priorRetries,
+                await authLockoutAuditSink.recordPasswordResetThrottled(
+                  emailHashHex: emailHashHex,
+                  attemptCountIn24h: priorCount,
+                  retryAfter: kAuthPasswordResetWindow,
                 );
               }
               response.headers.add(
                 HttpHeaders.retryAfterHeader,
-                kAuthMfaTotpRetryAfter.inSeconds.toString(),
+                kAuthPasswordResetWindow.inSeconds.toString(),
               );
               _writeJson(response, 429, <String, Object?>{
-                'error': 'mfa_retry_limit',
-                'retry_after_seconds': kAuthMfaTotpRetryAfter.inSeconds,
+                'error': 'reset_request_throttled',
+                'retry_after_seconds': kAuthPasswordResetWindow.inSeconds,
               });
               return;
             }
+          }
+          // Idempotency-Key dedupe: a second tap on "Send reset link"
+          // (or a network-retry that double-fires the request) must not
+          // issue a second Firebase email. The cache replays the prior
+          // {200, ok:true} body for the same key inside [ttl].
+          final idempotencyKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+          final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+          final cached = await cache.runOrReplay(
+            route: authPasswordResetRequestPath,
+            key: idempotencyKey,
+            compute: () async {
+              try {
+                await passwordResetRequestGateway.requestReset(
+                  PasswordResetRequestCommand(email: email),
+                );
+                // Increment the per-account 24h counter only after a real
+                // request flows through the gateway (the idempotent replay
+                // path sees a cache hit and returns BEFORE this compute
+                // body runs, so retries do not inflate the count).
+                passwordResetThrottleCounter?.incrementAndCount(emailHashHex);
+                // Privacy-preserving: always return 200 with the same body so
+                // the client can show a uniform "if an account exists..."
+                // confirmation regardless of whether the email matched a
+                // real user.
+                return CachedProxyResponse(
+                  statusCode: 200,
+                  body: const <String, Object?>{'ok': true},
+                );
+              } on PasswordResetRequestThrottled {
+                return CachedProxyResponse(
+                  statusCode: 429,
+                  body: const <String, Object?>{
+                    'error': 'rate_limited',
+                    'message':
+                        'too many password-reset requests; please wait before retrying',
+                  },
+                );
+              } catch (_) {
+                return CachedProxyResponse(
+                  statusCode: 503,
+                  body: const <String, Object?>{
+                    'error': 'password_reset_request_unavailable',
+                    'message': 'password reset is unavailable; please retry',
+                  },
+                );
+              }
+            },
+          );
+          _writeJson(response, cached.statusCode, cached.body);
+          return;
+        }
+
+        if (request.method == 'POST' && path == authPasswordResetConfirmPath) {
+          if (passwordResetConfirmGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'password_reset_confirm_not_configured',
+              'message':
+                  'route requires a PasswordResetConfirmGateway to be installed',
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+          final oobCode = _nonBlankString(body['oob_code']);
+          final newPassword = _nonBlankString(body['new_password']);
+          if (oobCode == null || newPassword == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_password_reset_fields',
+              'message': 'oob_code and new_password are required',
+            });
+            return;
+          }
+          // Idempotency-Key dedupe: a confirm retry after a successful
+          // but lost response replays the original {200, ok:true} body
+          // instead of trying the now-burned oobCode against Firebase
+          // again (which would surface as `password_reset_expired`).
+          final idempotencyKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+          final cache = authIdempotencyCache ?? _defaultAuthIdempotencyCache;
+          final cached = await cache.runOrReplay(
+            route: authPasswordResetConfirmPath,
+            key: idempotencyKey,
+            compute: () async {
+              try {
+                final completed = await passwordResetConfirmGateway
+                    .confirmPasswordReset(
+                      PasswordResetConfirmCommand(
+                        oobCode: oobCode,
+                        newPassword: newPassword,
+                      ),
+                    );
+                return CachedProxyResponse(
+                  statusCode: 200,
+                  body: <String, Object?>{
+                    'ok': true,
+                    'hibp_unavailable': completed.hibpUnavailable,
+                  },
+                );
+              } on PasswordChangeRejected catch (error) {
+                return CachedProxyResponse(
+                  statusCode: error.statusCode,
+                  body: <String, Object?>{
+                    'error': error.code,
+                    'message': error.message,
+                    'rejections': error.rejections,
+                  },
+                );
+              } on DependencyTimeoutException catch (error) {
+                // HARD-G observability: surface as the contract-pinned
+                // dependency_timeout envelope. Idempotency cache stores
+                // the result so retries with the same key replay the
+                // same response.
+                return CachedProxyResponse(
+                  statusCode: 503,
+                  body: <String, Object?>{
+                    'error': 'dependency_timeout',
+                    'surface': error.surface,
+                    'operation': error.operation,
+                    'message': 'Upstream dependency timed out; please retry',
+                  },
+                );
+              } catch (_) {
+                return CachedProxyResponse(
+                  statusCode: 503,
+                  body: const <String, Object?>{
+                    'error': 'password_reset_confirm_unavailable',
+                    'message': 'password reset is unavailable; please retry',
+                  },
+                );
+              }
+            },
+          );
+          _writeJson(response, cached.statusCode, cached.body);
+          return;
+        }
+
+        if (request.method == 'POST' && path == authMfaRecoveryRequestPath) {
+          if (mfaRecoveryRequestGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mfa_recovery_request_not_configured',
+              'message':
+                  'route requires an MfaRecoveryRequestGateway to be installed',
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final email = _nonBlankString(body['email']);
+          if (email == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_email',
+              'message': 'request body must include email',
+            });
+            return;
           }
           try {
-            final completed = await mfaOperationsGateway.confirmTotpEnrollment(
-              MfaTotpConfirmCommand(
-                actorUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                authorizationIdToken: authorizationIdToken,
-                factorId: factorId,
-                oneTimeCode: oneTimeCode,
-                issuerName:
-                    _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
+            final accepted = await mfaRecoveryRequestGateway.requestRecovery(
+              MfaRecoveryRequestCommand(
+                email: email,
+                clientIp:
+                    _resolveLedgerContextFromHeaders(
+                      request,
+                      trustProxyAuditHeaders: trustProxyAuditHeaders,
+                    ).ip ??
+                    'unknown',
+                reason:
+                    _nonBlankString(body['reason']) ??
+                    'mfa_challenge_no_factor_access',
               ),
             );
-            // Successful confirm resets the retry slot so the next
-            // challenge starts fresh (the contract: "Each new
-            // challenge resets retry counter").
-            mfaTotpRetryCounter?.reset(challengeKey);
-            _writeJson(response, 200, <String, Object?>{
-              'factor_id': completed.factorId,
+            _writeJson(response, 202, <String, Object?>{
+              'ok': true,
+              'queued': accepted.queued,
+              if (accepted.requestId != null) 'request_id': accepted.requestId,
             });
-            return;
-          } on MfaOperationRejected {
-            // Rejected attempts increment the per-challenge counter.
-            // The threshold check above sees the post-increment value
-            // on the next request, so the 4th failure trips the 429.
-            mfaTotpRetryCounter?.incrementAndCount(challengeKey);
-            rethrow;
+          } on MfaRecoveryRequestRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+              if (error.retryAfter != null)
+                'retry_after': error.retryAfter!.toUtc().toIso8601String(),
+            });
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mfa_recovery_request_unavailable',
+              'message': 'MFA recovery request is unavailable; please retry',
+            });
           }
-        }
-
-        if (request.method == 'POST' && path == authMfaFactorsListPath) {
-          final listed = await mfaOperationsGateway.listFactors(
-            MfaListFactorsCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              authorizationIdToken: authorizationIdToken,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'factors': <Map<String, Object?>>[
-              for (final factor in listed.factors)
-                <String, Object?>{
-                  'factor_id': factor.factorId,
-                  'factor_type': factor.factorType,
-                  'enrolled_at': factor.enrolledAt.toUtc().toIso8601String(),
-                  'last_used_at': factor.lastUsedAt?.toUtc().toIso8601String(),
-                  'issuer_label': factor.issuerLabel,
-                  'can_revoke': factor.canRevoke,
-                },
-            ],
-            'removal_requests': <Map<String, Object?>>[
-              for (final removal in listed.removalRequests)
-                <String, Object?>{
-                  'request_id': removal.requestId,
-                  'factor_id': removal.factorId,
-                  'status': removal.status,
-                  'execute_after': removal.executeAfter
-                      .toUtc()
-                      .toIso8601String(),
-                  if (removal.completedAt != null)
-                    'completed_at': removal.completedAt!
-                        .toUtc()
-                        .toIso8601String(),
-                },
-            ],
-          });
           return;
         }
 
-        if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
-          final factorId = _nonBlankString(body['factor_id']);
-          if (factorId == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_factor_id',
-              'message': 'request body must include factor_id',
+        if (_isMfaOperation(path, request.method)) {
+          if (mfaOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mfa_operations_not_configured',
+              'message':
+                  'route requires an MfaOperationsGateway to be installed',
             });
             return;
           }
-          final completed = await mfaOperationsGateway.revokeFactor(
-            MfaRevokeFactorCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              authorizationIdToken: authorizationIdToken,
-              factorId: factorId,
-              stepUpProofId: _freshAuthProofId(
-                scope: scope,
-                path: path,
-                requestedAt: clock().toUtc(),
-              ),
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'revoked': completed.revoked,
-            if (completed.requestId != null) 'request_id': completed.requestId,
-            if (completed.executeAfter != null)
-              'execute_after': completed.executeAfter!
-                  .toUtc()
-                  .toIso8601String(),
-          });
-          return;
-        }
 
-        if (request.method == 'POST' &&
-            path == authMfaFactorsRemovalCancelPath) {
-          final requestId = _nonBlankString(body['request_id']);
-          if (requestId == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_removal_request_id',
-              'message': 'request body must include request_id',
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+          final authorizationIdToken = extractBearerToken(
+            request.headers.value(HttpHeaders.authorizationHeader),
+          );
+          if (authorizationIdToken == null) {
+            _writeJson(response, 401, <String, Object?>{
+              'error': 'missing_or_malformed_authorization',
+              'message': 'MFA routes require a Firebase ID token',
             });
             return;
           }
-          final completed = await mfaOperationsGateway.cancelFactorRemoval(
-            MfaCancelFactorRemovalCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              authorizationIdToken: authorizationIdToken,
-              requestId: requestId,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'cancelled': completed.cancelled,
-          });
-          return;
-        }
-      } on MfaOperationRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-          if (error.retryAfter != null)
-            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
-          if (error.resetsAt != null)
-            'resets_at': error.resetsAt!.toUtc().toIso8601String(),
-        });
-        return;
-      } on IdentityToolkitFirebaseMfaError catch (error) {
-        log(
-          LogSeverity.error,
-          'mfa.identity_toolkit_error',
-          fields: <String, Object?>{
-            'code': error.code,
-            'status_code': error.statusCode,
-          },
-        );
-        _writeJson(response, 503, <String, Object?>{
-          'error': error.code,
-          'message': 'MFA operation is unavailable; please retry',
-        });
-        return;
-      } catch (error, stackTrace) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        _logProxyUnhandled(
-          surface: 'mfa',
-          method: request.method,
-          path: path,
-          error: error,
-          stackTrace: stackTrace,
-        );
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'mfa_operations_unavailable',
-          'message': 'MFA operation is unavailable; please retry',
-        });
-        return;
-      }
-    }
 
-    final servicePrincipalJwtIssueId = _servicePrincipalJwtIssueId(
-      path,
-      request.method,
-    );
-    if (servicePrincipalJwtIssueId != null) {
-      if (servicePrincipalJwtIssuanceGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'service_principal_issuance_not_configured',
-          'message':
-              'route requires a ServicePrincipalJwtIssuanceGateway to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-
-      final allowed = await _requireAdminPermissionOrWrite(
-        response: response,
-        guard: adminPermissionGuard,
-        scope: scope,
-        permissionKey: PermissionKeys.adminServicePrincipalIssueToken,
-        requestedAt: clock().toUtc(),
-      );
-      if (!allowed) return;
-
-      final idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_idempotency_key',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-
-      try {
-        final issued = await servicePrincipalJwtIssuanceGateway.issue(
-          ServicePrincipalJwtIssueCommand(
-            servicePrincipalId: servicePrincipalJwtIssueId,
-            operator: scope,
-            idempotencyKey: idempotencyKey,
-            issuedAt: clock().toUtc(),
-          ),
-        );
-        _writeJson(response, 200, issued.toJson());
-      } on ServicePrincipalJwtIssueRejected catch (error) {
-        _writeJson(response, error.statusCode, error.toJson());
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'service_principal_issuance_unavailable',
-          'message':
-              'service principal JWT issuance is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (_isAdminAuthOperation(path, request.method)) {
-      if (authOperationsGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_operations_not_configured',
-          'message': 'route requires an AuthOperationsGateway to be installed',
-        });
-        return;
-      }
-
-      final scope = await _resolveOperatorContextOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (scope == null) return;
-
-      Future<bool> requirePermission(String permissionKey) {
-        return _requireAdminPermissionOrWrite(
-          response: response,
-          guard: adminPermissionGuard,
-          scope: scope,
-          permissionKey: permissionKey,
-          requestedAt: clock().toUtc(),
-        );
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      try {
-        if (request.method == 'GET' && path == adminAuthRolesPath) {
-          if (!await requirePermission('team.roles.view')) return;
-          final listed = await authOperationsGateway.listRoles(
-            TeamRoleCatalogListCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              scope: request.uri.queryParameters['scope'],
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'roles': listed.roles.map(_teamRoleToJson).toList(),
-          });
-          return;
-        }
-
-        if (request.method == 'GET' && path == adminAuthUsersPath) {
-          if (!await requirePermission('team.users.view')) return;
-          final listed = await authOperationsGateway.listUsers(
-            TeamUserListCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'users': listed.users.map(_teamUserToJson).toList(),
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path == adminAuthRolesPath) {
-          if (!await requirePermission('team.roles.create_custom')) return;
-          final roleKey = _nonBlankString(body['role_key']);
-          final displayName = _nonBlankString(body['display_name']);
-          if (roleKey == null || displayName == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_role_fields',
-              'message': 'role_key and display_name are required',
-            });
-            return;
-          }
-          final created = await authOperationsGateway.createRole(
-            TeamRoleCreateCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              roleKey: roleKey,
-              displayName: displayName,
-              description: _stringValue(body['description']) ?? '',
-              permissions: _rolePermissionUpdates(body['permissions']),
-              reason: _nonBlankString(body['reason']),
-            ),
-          );
-          _writeJson(response, 201, <String, Object?>{
-            'role': _teamRoleToJson(created.role),
-          });
-          return;
-        }
-
-        if (request.method == 'PATCH' && path.startsWith(adminAuthRolePrefix)) {
-          if (!await requirePermission('team.roles.create_custom')) return;
-          final roleId = _pathSuffix(path, adminAuthRolePrefix);
-          if (roleId == null) {
-            _writeJson(response, 404, <String, Object?>{
-              'error': 'not found',
-              'method': request.method,
-              'path': path,
-            });
-            return;
-          }
-          final patched = await authOperationsGateway.patchRole(
-            TeamRolePatchCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              roleId: roleId,
-              displayName: _stringValue(body['display_name']),
-              description: _stringValue(body['description']),
-              permissions: _rolePermissionUpdates(body['permissions']),
-              reason: _nonBlankString(body['reason']),
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'role': _teamRoleToJson(patched.role),
-            'bumped_users': patched.bumpedUsers,
-          });
-          return;
-        }
-
-        if (request.method == 'DELETE' &&
-            path.startsWith(adminAuthRolePrefix)) {
-          if (!await requirePermission('team.roles.create_custom')) return;
-          final roleId = _pathSuffix(path, adminAuthRolePrefix);
-          if (roleId == null) {
-            _writeJson(response, 404, <String, Object?>{
-              'error': 'not found',
-              'method': request.method,
-              'path': path,
-            });
-            return;
-          }
-          final deleted = await authOperationsGateway.deleteRole(
-            TeamRoleDeleteCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              roleId: roleId,
-              reason: _nonBlankString(body['reason']),
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'deleted': deleted.deleted,
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path == adminAuthInvitesPath) {
-          if (!await requirePermission('team.users.invite')) return;
-          final email = _nonBlankString(body['email']);
-          final roleId = _nonBlankString(body['role_id']);
-          final scopeType = _nonBlankString(body['scope_type']);
-          if (email == null || roleId == null || scopeType == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_invite_fields',
-              'message': 'email, role_id, and scope_type are required',
-            });
-            return;
-          }
-          final created = await authOperationsGateway.createInvite(
-            TeamInviteCreateCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              email: email,
-              roleId: roleId,
-              scopeType: scopeType,
-              targetLocationId: _nonBlankString(body['location_id']),
-              targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-            ),
-          );
-          _writeJson(response, 201, <String, Object?>{
-            'invite_id': created.inviteId,
-            'expires_at': created.expiresAt.toUtc().toIso8601String(),
-            if (created.userId != null) 'user_id': created.userId,
-          });
-          return;
-        }
-
-        if (request.method == 'GET' && path == adminAuthInvitesPath) {
-          if (!await requirePermission('team.users.view')) return;
-          final listed = await authOperationsGateway.listInvites(
-            TeamInviteListCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'invites': listed.invites.map(_teamInviteToJson).toList(),
-          });
-          return;
-        }
-
-        if (request.method == 'DELETE' &&
-            path.startsWith(adminAuthInvitePrefix)) {
-          if (!await requirePermission('team.users.invite')) return;
-          final inviteId = _pathSuffix(path, adminAuthInvitePrefix);
-          if (inviteId == null) {
-            _writeJson(response, 404, <String, Object?>{
-              'error': 'not found',
-              'method': request.method,
-              'path': path,
-            });
-            return;
-          }
-          final revoked = await authOperationsGateway.revokeInvite(
-            TeamInviteRevokeCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              inviteId: inviteId,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'revoked': revoked.revoked,
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path.startsWith(adminAuthUsersPrefix)) {
-          final action = _userActionFromPath(path);
-          if (action == null) {
-            _writeJson(response, 404, <String, Object?>{
-              'error': 'not found',
-              'method': request.method,
-              'path': path,
-            });
-            return;
-          }
-          final permissionKey = switch (action.action) {
-            'suspend' => 'team.users.deactivate',
-            'reactivate' => 'team.users.reactivate',
-            'soft-delete' => 'team.users.soft_delete',
-            'reset-password' => 'team.users.reset_password',
-            'reset-mfa' => PermissionKeys.teamUsersResetMfa,
-            'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
-            _ => null,
-          };
-          if (permissionKey == null) {
-            _writeJson(response, 404, <String, Object?>{
-              'error': 'not found',
-              'method': request.method,
-              'path': path,
-            });
-            return;
-          }
-          if (!await requirePermission(permissionKey)) return;
-          if (action.action == 'reset-password') {
-            await authOperationsGateway.requestPasswordReset(
-              TeamPasswordResetCommand(
-                actorUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                targetUserId: action.userId,
-              ),
-            );
-            _writeJson(response, 200, <String, Object?>{'ok': true});
-            return;
-          }
-          if (action.action == 'reset-mfa') {
-            if (mfaOperationsGateway == null) {
-              _writeJson(response, 503, <String, Object?>{
-                'error': 'mfa_operations_not_configured',
-                'message':
-                    'route requires an MfaOperationsGateway to be installed',
-              });
-              return;
-            }
+          if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
             final freshEnough = _requireFreshAuthenticationOrWrite(
               response: response,
               scope: scope,
               requestedAt: clock().toUtc(),
             );
             if (!freshEnough) return;
-            final queued = await mfaOperationsGateway.revokeUserFactors(
-              MfaRevokeUserFactorsCommand(
-                actorUserId: scope.userId,
-                operatorId: scope.operatorId,
-                locationId: scope.locationId,
-                targetUserId: action.userId,
-                stepUpProofId: _freshAuthProofId(
-                  scope: scope,
-                  path: path,
-                  requestedAt: clock().toUtc(),
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            if (request.method == 'POST' && path == authMfaTotpBeginPath) {
+              final userEmail = _nonBlankString(body['user_email']);
+              if (userEmail == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_user_email',
+                  'message': 'request body must include user_email',
+                });
+                return;
+              }
+              final setup = await mfaOperationsGateway.beginTotpEnrollment(
+                MfaTotpBeginCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  authorizationIdToken: authorizationIdToken,
+                  userEmail: userEmail,
+                  issuerName:
+                      _nonBlankString(body['issuer_name']) ?? 'Forge & Flow',
                 ),
-              ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'factor_id': setup.factorId,
+                'secret_base32': setup.secretBase32,
+                'otp_auth_url': setup.otpAuthUrl,
+              });
+              return;
+            }
+
+            if (request.method == 'POST' && path == authMfaTotpConfirmPath) {
+              final factorId = _nonBlankString(body['factor_id']);
+              final oneTimeCode = _nonBlankString(body['one_time_code']);
+              if (factorId == null || oneTimeCode == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_totp_confirm_fields',
+                  'message': 'factor_id and one_time_code are required',
+                });
+                return;
+              }
+              // HARD-B - per-challenge retry cap. Counter key is
+              // SHA-256(factor_id + actor) so two users sharing a factor
+              // surface (impossible in practice but cheap to enforce) do
+              // not share a counter slot. 4th attempt within the window
+              // returns 429; success resets the slot via try/finally.
+              final challengeKey = sha256
+                  .convert(utf8.encode('${scope.userId}:$factorId'))
+                  .toString();
+              if (mfaTotpRetryCounter != null) {
+                final priorRetries = mfaTotpRetryCounter.countInWindow(
+                  challengeKey,
+                );
+                if (priorRetries >= kAuthMfaTotpRetryThreshold) {
+                  if (authLockoutAuditSink != null) {
+                    await authLockoutAuditSink.recordMfaRetryExceeded(
+                      operatorId: scope.operatorId,
+                      locationId: scope.locationId,
+                      actorUserId: scope.userId,
+                      challengeIdHash: challengeKey,
+                      retryCount: priorRetries,
+                    );
+                  }
+                  response.headers.add(
+                    HttpHeaders.retryAfterHeader,
+                    kAuthMfaTotpRetryAfter.inSeconds.toString(),
+                  );
+                  _writeJson(response, 429, <String, Object?>{
+                    'error': 'mfa_retry_limit',
+                    'retry_after_seconds': kAuthMfaTotpRetryAfter.inSeconds,
+                  });
+                  return;
+                }
+              }
+              try {
+                final completed = await mfaOperationsGateway
+                    .confirmTotpEnrollment(
+                      MfaTotpConfirmCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        authorizationIdToken: authorizationIdToken,
+                        factorId: factorId,
+                        oneTimeCode: oneTimeCode,
+                        issuerName:
+                            _nonBlankString(body['issuer_name']) ??
+                            'Forge & Flow',
+                      ),
+                    );
+                // Successful confirm resets the retry slot so the next
+                // challenge starts fresh (the contract: "Each new
+                // challenge resets retry counter").
+                mfaTotpRetryCounter?.reset(challengeKey);
+                _writeJson(response, 200, <String, Object?>{
+                  'factor_id': completed.factorId,
+                });
+                return;
+              } on MfaOperationRejected {
+                // Rejected attempts increment the per-challenge counter.
+                // The threshold check above sees the post-increment value
+                // on the next request, so the 4th failure trips the 429.
+                mfaTotpRetryCounter?.incrementAndCount(challengeKey);
+                rethrow;
+              }
+            }
+
+            if (request.method == 'POST' && path == authMfaFactorsListPath) {
+              final listed = await mfaOperationsGateway.listFactors(
+                MfaListFactorsCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  authorizationIdToken: authorizationIdToken,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'factors': <Map<String, Object?>>[
+                  for (final factor in listed.factors)
+                    <String, Object?>{
+                      'factor_id': factor.factorId,
+                      'factor_type': factor.factorType,
+                      'enrolled_at': factor.enrolledAt
+                          .toUtc()
+                          .toIso8601String(),
+                      'last_used_at': factor.lastUsedAt
+                          ?.toUtc()
+                          .toIso8601String(),
+                      'issuer_label': factor.issuerLabel,
+                      'can_revoke': factor.canRevoke,
+                    },
+                ],
+                'removal_requests': <Map<String, Object?>>[
+                  for (final removal in listed.removalRequests)
+                    <String, Object?>{
+                      'request_id': removal.requestId,
+                      'factor_id': removal.factorId,
+                      'status': removal.status,
+                      'execute_after': removal.executeAfter
+                          .toUtc()
+                          .toIso8601String(),
+                      if (removal.completedAt != null)
+                        'completed_at': removal.completedAt!
+                            .toUtc()
+                            .toIso8601String(),
+                    },
+                ],
+              });
+              return;
+            }
+
+            if (request.method == 'POST' && path == authMfaFactorsRevokePath) {
+              final factorId = _nonBlankString(body['factor_id']);
+              if (factorId == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_factor_id',
+                  'message': 'request body must include factor_id',
+                });
+                return;
+              }
+              final completed = await mfaOperationsGateway.revokeFactor(
+                MfaRevokeFactorCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  authorizationIdToken: authorizationIdToken,
+                  factorId: factorId,
+                  stepUpProofId: _freshAuthProofId(
+                    scope: scope,
+                    path: path,
+                    requestedAt: clock().toUtc(),
+                  ),
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'revoked': completed.revoked,
+                if (completed.requestId != null)
+                  'request_id': completed.requestId,
+                if (completed.executeAfter != null)
+                  'execute_after': completed.executeAfter!
+                      .toUtc()
+                      .toIso8601String(),
+              });
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                path == authMfaFactorsRemovalCancelPath) {
+              final requestId = _nonBlankString(body['request_id']);
+              if (requestId == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_removal_request_id',
+                  'message': 'request body must include request_id',
+                });
+                return;
+              }
+              final completed = await mfaOperationsGateway.cancelFactorRemoval(
+                MfaCancelFactorRemovalCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  authorizationIdToken: authorizationIdToken,
+                  requestId: requestId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'cancelled': completed.cancelled,
+              });
+              return;
+            }
+          } on MfaOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+              if (error.retryAfter != null)
+                'retry_after': error.retryAfter!.toUtc().toIso8601String(),
+              if (error.resetsAt != null)
+                'resets_at': error.resetsAt!.toUtc().toIso8601String(),
+            });
+            return;
+          } on IdentityToolkitFirebaseMfaError catch (error) {
+            log(
+              LogSeverity.error,
+              'mfa.identity_toolkit_error',
+              fields: <String, Object?>{
+                'code': error.code,
+                'status_code': error.statusCode,
+              },
             );
-            _writeJson(response, 200, <String, Object?>{
-              'ok': true,
-              'requested_count': queued.requestedCount,
-              'request_ids': queued.requestIds,
-              if (queued.executeAfter != null)
-                'execute_after': queued.executeAfter!.toUtc().toIso8601String(),
+            _writeJson(response, 503, <String, Object?>{
+              'error': error.code,
+              'message': 'MFA operation is unavailable; please retry',
+            });
+            return;
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'mfa',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'mfa_operations_unavailable',
+              'message': 'MFA operation is unavailable; please retry',
             });
             return;
           }
-          if (action.action == 'cancel-mfa-removal') {
-            if (mfaOperationsGateway == null) {
-              _writeJson(response, 503, <String, Object?>{
-                'error': 'mfa_operations_not_configured',
-                'message':
-                    'route requires an MfaOperationsGateway to be installed',
+        }
+
+        final servicePrincipalJwtIssueId = _servicePrincipalJwtIssueId(
+          path,
+          request.method,
+        );
+        if (servicePrincipalJwtIssueId != null) {
+          if (servicePrincipalJwtIssuanceGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'service_principal_issuance_not_configured',
+              'message':
+                  'route requires a ServicePrincipalJwtIssuanceGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          final allowed = await _requireAdminPermissionOrWrite(
+            response: response,
+            guard: adminPermissionGuard,
+            scope: scope,
+            permissionKey: PermissionKeys.adminServicePrincipalIssueToken,
+            requestedAt: clock().toUtc(),
+          );
+          if (!allowed) return;
+
+          final idempotencyKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
+
+          try {
+            final issued = await servicePrincipalJwtIssuanceGateway.issue(
+              ServicePrincipalJwtIssueCommand(
+                servicePrincipalId: servicePrincipalJwtIssueId,
+                operator: scope,
+                idempotencyKey: idempotencyKey,
+                issuedAt: clock().toUtc(),
+              ),
+            );
+            _writeJson(response, 200, issued.toJson());
+          } on ServicePrincipalJwtIssueRejected catch (error) {
+            _writeJson(response, error.statusCode, error.toJson());
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'service_principal_issuance_unavailable',
+              'message':
+                  'service principal JWT issuance is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (_isAdminAuthOperation(path, request.method)) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
+              'message':
+                  'route requires an AuthOperationsGateway to be installed',
+            });
+            return;
+          }
+
+          final scope = await _resolveOperatorContextOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (scope == null) return;
+
+          Future<bool> requirePermission(String permissionKey) {
+            return _requireAdminPermissionOrWrite(
+              response: response,
+              guard: adminPermissionGuard,
+              scope: scope,
+              permissionKey: permissionKey,
+              requestedAt: clock().toUtc(),
+            );
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            if (request.method == 'GET' && path == adminAuthRolesPath) {
+              if (!await requirePermission('team.roles.view')) return;
+              final listed = await authOperationsGateway.listRoles(
+                TeamRoleCatalogListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  scope: request.uri.queryParameters['scope'],
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'roles': listed.roles.map(_teamRoleToJson).toList(),
               });
               return;
             }
-            final requestId = _nonBlankString(body['request_id']);
-            if (requestId == null) {
-              _writeJson(response, 400, <String, Object?>{
-                'error': 'missing_removal_request_id',
-                'message': 'request body must include request_id',
+
+            if (request.method == 'GET' && path == adminAuthUsersPath) {
+              if (!await requirePermission('team.users.view')) return;
+              final listed = await authOperationsGateway.listUsers(
+                TeamUserListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'users': listed.users.map(_teamUserToJson).toList(),
               });
               return;
             }
-            final completed = await mfaOperationsGateway.cancelFactorRemoval(
-              MfaCancelFactorRemovalCommand(
+
+            if (request.method == 'POST' && path == adminAuthRolesPath) {
+              if (!await requirePermission('team.roles.create_custom')) return;
+              final roleKey = _nonBlankString(body['role_key']);
+              final displayName = _nonBlankString(body['display_name']);
+              if (roleKey == null || displayName == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_role_fields',
+                  'message': 'role_key and display_name are required',
+                });
+                return;
+              }
+              final created = await authOperationsGateway.createRole(
+                TeamRoleCreateCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  roleKey: roleKey,
+                  displayName: displayName,
+                  description: _stringValue(body['description']) ?? '',
+                  permissions: _rolePermissionUpdates(body['permissions']),
+                  reason: _nonBlankString(body['reason']),
+                ),
+              );
+              _writeJson(response, 201, <String, Object?>{
+                'role': _teamRoleToJson(created.role),
+              });
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                path.startsWith(adminAuthRolePrefix)) {
+              if (!await requirePermission('team.roles.create_custom')) return;
+              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              if (roleId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final patched = await authOperationsGateway.patchRole(
+                TeamRolePatchCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  roleId: roleId,
+                  displayName: _stringValue(body['display_name']),
+                  description: _stringValue(body['description']),
+                  permissions: _rolePermissionUpdates(body['permissions']),
+                  reason: _nonBlankString(body['reason']),
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'role': _teamRoleToJson(patched.role),
+                'bumped_users': patched.bumpedUsers,
+              });
+              return;
+            }
+
+            if (request.method == 'DELETE' &&
+                path.startsWith(adminAuthRolePrefix)) {
+              if (!await requirePermission('team.roles.create_custom')) return;
+              final roleId = _pathSuffix(path, adminAuthRolePrefix);
+              if (roleId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final deleted = await authOperationsGateway.deleteRole(
+                TeamRoleDeleteCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  roleId: roleId,
+                  reason: _nonBlankString(body['reason']),
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'deleted': deleted.deleted,
+              });
+              return;
+            }
+
+            if (request.method == 'POST' && path == adminAuthInvitesPath) {
+              if (!await requirePermission('team.users.invite')) return;
+              final email = _nonBlankString(body['email']);
+              final roleId = _nonBlankString(body['role_id']);
+              final scopeType = _nonBlankString(body['scope_type']);
+              if (email == null || roleId == null || scopeType == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_invite_fields',
+                  'message': 'email, role_id, and scope_type are required',
+                });
+                return;
+              }
+              final created = await authOperationsGateway.createInvite(
+                TeamInviteCreateCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  email: email,
+                  roleId: roleId,
+                  scopeType: scopeType,
+                  targetLocationId: _nonBlankString(body['location_id']),
+                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                ),
+              );
+              _writeJson(response, 201, <String, Object?>{
+                'invite_id': created.inviteId,
+                'expires_at': created.expiresAt.toUtc().toIso8601String(),
+                if (created.userId != null) 'user_id': created.userId,
+              });
+              return;
+            }
+
+            if (request.method == 'GET' && path == adminAuthInvitesPath) {
+              if (!await requirePermission('team.users.view')) return;
+              final listed = await authOperationsGateway.listInvites(
+                TeamInviteListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'invites': listed.invites.map(_teamInviteToJson).toList(),
+              });
+              return;
+            }
+
+            if (request.method == 'DELETE' &&
+                path.startsWith(adminAuthInvitePrefix)) {
+              if (!await requirePermission('team.users.invite')) return;
+              final inviteId = _pathSuffix(path, adminAuthInvitePrefix);
+              if (inviteId == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final revoked = await authOperationsGateway.revokeInvite(
+                TeamInviteRevokeCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  inviteId: inviteId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'revoked': revoked.revoked,
+              });
+              return;
+            }
+
+            if (request.method == 'POST' &&
+                path.startsWith(adminAuthUsersPrefix)) {
+              final action = _userActionFromPath(path);
+              if (action == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              final permissionKey = switch (action.action) {
+                'suspend' => 'team.users.deactivate',
+                'reactivate' => 'team.users.reactivate',
+                'soft-delete' => 'team.users.soft_delete',
+                'reset-password' => 'team.users.reset_password',
+                'reset-mfa' => PermissionKeys.teamUsersResetMfa,
+                'cancel-mfa-removal' => PermissionKeys.teamUsersResetMfa,
+                _ => null,
+              };
+              if (permissionKey == null) {
+                _writeJson(response, 404, <String, Object?>{
+                  'error': 'not found',
+                  'method': request.method,
+                  'path': path,
+                });
+                return;
+              }
+              if (!await requirePermission(permissionKey)) return;
+              if (action.action == 'reset-password') {
+                await authOperationsGateway.requestPasswordReset(
+                  TeamPasswordResetCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetUserId: action.userId,
+                  ),
+                );
+                _writeJson(response, 200, <String, Object?>{'ok': true});
+                return;
+              }
+              if (action.action == 'reset-mfa') {
+                if (mfaOperationsGateway == null) {
+                  _writeJson(response, 503, <String, Object?>{
+                    'error': 'mfa_operations_not_configured',
+                    'message':
+                        'route requires an MfaOperationsGateway to be installed',
+                  });
+                  return;
+                }
+                final freshEnough = _requireFreshAuthenticationOrWrite(
+                  response: response,
+                  scope: scope,
+                  requestedAt: clock().toUtc(),
+                );
+                if (!freshEnough) return;
+                final queued = await mfaOperationsGateway.revokeUserFactors(
+                  MfaRevokeUserFactorsCommand(
+                    actorUserId: scope.userId,
+                    operatorId: scope.operatorId,
+                    locationId: scope.locationId,
+                    targetUserId: action.userId,
+                    stepUpProofId: _freshAuthProofId(
+                      scope: scope,
+                      path: path,
+                      requestedAt: clock().toUtc(),
+                    ),
+                  ),
+                );
+                _writeJson(response, 200, <String, Object?>{
+                  'ok': true,
+                  'requested_count': queued.requestedCount,
+                  'request_ids': queued.requestIds,
+                  if (queued.executeAfter != null)
+                    'execute_after': queued.executeAfter!
+                        .toUtc()
+                        .toIso8601String(),
+                });
+                return;
+              }
+              if (action.action == 'cancel-mfa-removal') {
+                if (mfaOperationsGateway == null) {
+                  _writeJson(response, 503, <String, Object?>{
+                    'error': 'mfa_operations_not_configured',
+                    'message':
+                        'route requires an MfaOperationsGateway to be installed',
+                  });
+                  return;
+                }
+                final requestId = _nonBlankString(body['request_id']);
+                if (requestId == null) {
+                  _writeJson(response, 400, <String, Object?>{
+                    'error': 'missing_removal_request_id',
+                    'message': 'request body must include request_id',
+                  });
+                  return;
+                }
+                final completed = await mfaOperationsGateway
+                    .cancelFactorRemoval(
+                      MfaCancelFactorRemovalCommand(
+                        actorUserId: scope.userId,
+                        operatorId: scope.operatorId,
+                        locationId: scope.locationId,
+                        targetUserId: action.userId,
+                        requestId: requestId,
+                      ),
+                    );
+                _writeJson(response, 200, <String, Object?>{
+                  'ok': true,
+                  'cancelled': completed.cancelled,
+                });
+                return;
+              }
+
+              final command = TeamUserStatusCommand(
                 actorUserId: scope.userId,
                 operatorId: scope.operatorId,
                 locationId: scope.locationId,
                 targetUserId: action.userId,
-                requestId: requestId,
+                reason: _nonBlankString(body['reason']) ?? action.action,
+              );
+              final updated = switch (action.action) {
+                'suspend' => await authOperationsGateway.suspendUser(command),
+                'reactivate' => await authOperationsGateway.reactivateUser(
+                  command,
+                ),
+                'soft-delete' => await authOperationsGateway.softDeleteUser(
+                  command,
+                ),
+                _ => throw StateError('unreachable action'),
+              };
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'updated': updated.updated,
+              });
+              return;
+            }
+
+            if (request.method == 'POST' && path == adminAuthRoleGrantsPath) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final targetUserId = _nonBlankString(body['user_id']);
+              final roleId = _nonBlankString(body['role_id']);
+              final scopeType = _nonBlankString(body['scope_type']);
+              if (targetUserId == null || roleId == null || scopeType == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_role_grant_fields',
+                  'message': 'user_id, role_id, and scope_type are required',
+                });
+                return;
+              }
+              final created = await authOperationsGateway.createRoleGrant(
+                TeamRoleGrantCreateCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  targetUserId: targetUserId,
+                  roleId: roleId,
+                  scopeType: scopeType,
+                  targetLocationId: _nonBlankString(body['location_id']),
+                  targetOrgUnitId: _nonBlankString(body['org_unit_id']),
+                  reason: _nonBlankString(body['reason']),
+                ),
+              );
+              _writeJson(response, 201, <String, Object?>{
+                'user_role_id': created.userRoleId,
+              });
+              return;
+            }
+
+            if (request.method == 'DELETE' &&
+                path.startsWith(adminAuthRoleGrantPrefix)) {
+              if (!await requirePermission('team.roles.revoke')) return;
+              final userRoleId = _pathSuffix(path, adminAuthRoleGrantPrefix);
+              final targetUserId = _nonBlankString(body['user_id']);
+              if (userRoleId == null || targetUserId == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_role_grant_revoke_fields',
+                  'message':
+                      'role grant id in path and user_id body are required',
+                });
+                return;
+              }
+              final revoked = await authOperationsGateway.revokeRoleGrant(
+                TeamRoleGrantRevokeCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  userRoleId: userRoleId,
+                  targetUserId: targetUserId,
+                  reason: _nonBlankString(body['reason']),
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'revoked': revoked.revoked,
+              });
+              return;
+            }
+
+            if (request.method == 'GET' && path == adminAuthOrgUnitsPath) {
+              if (!await requirePermission('team.users.view')) return;
+              final listed = await authOperationsGateway.listOrgHierarchy(
+                TeamOrgHierarchyListCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'org_units': listed.orgUnits
+                    .map(_teamOrgUnitToJson)
+                    .toList(growable: false),
+                'locations': listed.locations
+                    .map(_teamOrgLocationToJson)
+                    .toList(growable: false),
+              });
+              return;
+            }
+
+            if (request.method == 'POST' && path == adminAuthOrgUnitsPath) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final parentOrgUnitId = _nonBlankString(
+                body['parent_org_unit_id'],
+              );
+              final unitType = _nonBlankString(body['unit_type']);
+              final label = _nonBlankString(body['label']);
+              final name = _nonBlankString(body['name']);
+              if (parentOrgUnitId == null ||
+                  unitType == null ||
+                  label == null ||
+                  name == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_org_unit_fields',
+                  'message':
+                      'parent_org_unit_id, unit_type, label, and name are required',
+                });
+                return;
+              }
+              final created = await authOperationsGateway.createOrgUnit(
+                TeamOrgUnitCreateCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  parentOrgUnitId: parentOrgUnitId,
+                  unitType: unitType,
+                  label: label,
+                  name: name,
+                ),
+              );
+              _writeJson(response, 201, <String, Object?>{
+                'org_unit_id': created.orgUnitId,
+              });
+              return;
+            }
+
+            if (request.method == 'PATCH' &&
+                path.startsWith(adminAuthLocationsPrefix) &&
+                path.endsWith('/org-unit')) {
+              if (!await requirePermission('team.roles.assign')) return;
+              final targetLocationId = _orgUnitLocationIdFromPath(path);
+              final parentOrgUnitId = _nonBlankString(
+                body['parent_org_unit_id'],
+              );
+              if (targetLocationId == null || parentOrgUnitId == null) {
+                _writeJson(response, 400, <String, Object?>{
+                  'error': 'missing_location_org_unit_fields',
+                  'message':
+                      'location id in path and parent_org_unit_id body are required',
+                });
+                return;
+              }
+              final moved = await authOperationsGateway.moveLocationToOrgUnit(
+                TeamLocationOrgUnitMoveCommand(
+                  actorUserId: scope.userId,
+                  operatorId: scope.operatorId,
+                  locationId: scope.locationId,
+                  targetLocationId: targetLocationId,
+                  parentOrgUnitId: parentOrgUnitId,
+                ),
+              );
+              _writeJson(response, 200, <String, Object?>{
+                'ok': true,
+                'moved': moved.moved,
+              });
+              return;
+            }
+          } on MfaOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+              if (error.retryAfter != null)
+                'retry_after': error.retryAfter!.toUtc().toIso8601String(),
+              if (error.resetsAt != null)
+                'resets_at': error.resetsAt!.toUtc().toIso8601String(),
+            });
+            return;
+          } on AuthOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+            return;
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            _logProxyUnhandled(
+              surface: 'auth_operations',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_unavailable',
+              'message': 'auth operation is unavailable; please retry',
+            });
+            return;
+          }
+        }
+
+        if (request.method == 'POST' &&
+            path == authRefreshTokensRevokeAllPath) {
+          if (firebaseAdminAuthClient == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'refresh_token_revoke_not_configured',
+              'message':
+                  'route requires a FirebaseAdminAuthClient to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          try {
+            await firebaseAdminAuthClient.revokeRefreshTokens(
+              uid: scope.firebaseUid ?? scope.userId,
+            );
+          } on FirebaseAdminAuthError catch (error) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': error.code,
+              'message': 'refresh-token revoke is unavailable; please retry',
+            });
+            return;
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'refresh_token_revoke_unavailable',
+              'message': 'refresh-token revoke is unavailable; please retry',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{'ok': true});
+          return;
+        }
+
+        if (request.method == 'GET' && path == authSessionsListPath) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
+              'message':
+                  'route requires an AuthOperationsGateway to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          try {
+            final listed = await authOperationsGateway.listActiveSessions(
+              AuthActiveSessionsListCommand(
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
               ),
             );
             _writeJson(response, 200, <String, Object?>{
-              'ok': true,
-              'cancelled': completed.cancelled,
+              'sessions': listed.sessions
+                  .map(_authSessionSummaryToJson)
+                  .toList(growable: false),
             });
-            return;
-          }
-
-          final command = TeamUserStatusCommand(
-            actorUserId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            targetUserId: action.userId,
-            reason: _nonBlankString(body['reason']) ?? action.action,
-          );
-          final updated = switch (action.action) {
-            'suspend' => await authOperationsGateway.suspendUser(command),
-            'reactivate' => await authOperationsGateway.reactivateUser(command),
-            'soft-delete' => await authOperationsGateway.softDeleteUser(
-              command,
-            ),
-            _ => throw StateError('unreachable action'),
-          };
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'updated': updated.updated,
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path == adminAuthRoleGrantsPath) {
-          if (!await requirePermission('team.roles.assign')) return;
-          final targetUserId = _nonBlankString(body['user_id']);
-          final roleId = _nonBlankString(body['role_id']);
-          final scopeType = _nonBlankString(body['scope_type']);
-          if (targetUserId == null || roleId == null || scopeType == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_role_grant_fields',
-              'message': 'user_id, role_id, and scope_type are required',
+          } on AuthOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
             });
-            return;
-          }
-          final created = await authOperationsGateway.createRoleGrant(
-            TeamRoleGrantCreateCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              targetUserId: targetUserId,
-              roleId: roleId,
-              scopeType: scopeType,
-              targetLocationId: _nonBlankString(body['location_id']),
-              targetOrgUnitId: _nonBlankString(body['org_unit_id']),
-              reason: _nonBlankString(body['reason']),
-            ),
-          );
-          _writeJson(response, 201, <String, Object?>{
-            'user_role_id': created.userRoleId,
-          });
-          return;
-        }
-
-        if (request.method == 'DELETE' &&
-            path.startsWith(adminAuthRoleGrantPrefix)) {
-          if (!await requirePermission('team.roles.revoke')) return;
-          final userRoleId = _pathSuffix(path, adminAuthRoleGrantPrefix);
-          final targetUserId = _nonBlankString(body['user_id']);
-          if (userRoleId == null || targetUserId == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_role_grant_revoke_fields',
-              'message': 'role grant id in path and user_id body are required',
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_sessions_unavailable',
+              'message': 'active sessions are unavailable; please retry',
             });
-            return;
           }
-          final revoked = await authOperationsGateway.revokeRoleGrant(
-            TeamRoleGrantRevokeCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              userRoleId: userRoleId,
-              targetUserId: targetUserId,
-              reason: _nonBlankString(body['reason']),
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'revoked': revoked.revoked,
-          });
           return;
         }
 
-        if (request.method == 'GET' && path == adminAuthOrgUnitsPath) {
-          if (!await requirePermission('team.users.view')) return;
-          final listed = await authOperationsGateway.listOrgHierarchy(
-            TeamOrgHierarchyListCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-            ),
-          );
-          _writeJson(response, 200, <String, Object?>{
-            'org_units': listed.orgUnits
-                .map(_teamOrgUnitToJson)
-                .toList(growable: false),
-            'locations': listed.locations
-                .map(_teamOrgLocationToJson)
-                .toList(growable: false),
-          });
-          return;
-        }
-
-        if (request.method == 'POST' && path == adminAuthOrgUnitsPath) {
-          if (!await requirePermission('team.roles.assign')) return;
-          final parentOrgUnitId = _nonBlankString(body['parent_org_unit_id']);
-          final unitType = _nonBlankString(body['unit_type']);
-          final label = _nonBlankString(body['label']);
-          final name = _nonBlankString(body['name']);
-          if (parentOrgUnitId == null ||
-              unitType == null ||
-              label == null ||
-              name == null) {
-            _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_org_unit_fields',
+        if (request.method == 'GET' && path == authAuditLogPath) {
+          if (authOperationsGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_operations_not_configured',
               'message':
-                  'parent_org_unit_id, unit_type, label, and name are required',
+                  'route requires an AuthOperationsGateway to be installed',
             });
             return;
           }
-          final created = await authOperationsGateway.createOrgUnit(
-            TeamOrgUnitCreateCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              parentOrgUnitId: parentOrgUnitId,
-              unitType: unitType,
-              label: label,
-              name: name,
-            ),
-          );
-          _writeJson(response, 201, <String, Object?>{
-            'org_unit_id': created.orgUnitId,
-          });
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          // Pagination: clamp to a per-request ceiling so a chatty client
+          // can't ask for the whole ledger in one shot. Default 50 rows.
+          final params = request.uri.queryParameters;
+          final rawLimit = int.tryParse(params['limit'] ?? '');
+          final limit = rawLimit == null
+              ? 50
+              : (rawLimit < 1 ? 1 : (rawLimit > 100 ? 100 : rawLimit));
+          final rawOffset = int.tryParse(params['offset'] ?? '');
+          final offset = rawOffset == null || rawOffset < 0 ? 0 : rawOffset;
+          final eventKind = AuthEventLabels.fromWireKey(params['event_kind']);
+          DateTime? parseUtc(String? raw) {
+            if (raw == null || raw.isEmpty) return null;
+            return DateTime.tryParse(raw)?.toUtc();
+          }
+
+          final from = parseUtc(params['from']);
+          final to = parseUtc(params['to']);
+
+          try {
+            final listed = await authOperationsGateway.listAuthEventsForActor(
+              AuthEventListCommand(
+                // RLS-authoritative gate: pin user_id to the verified
+                // bearer-token scope. Any client-supplied user_id query
+                // param is ignored.
+                actorUserId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                limit: limit,
+                offset: offset,
+                eventKind: eventKind,
+                from: from,
+                to: to,
+              ),
+            );
+            _writeJson(response, 200, <String, Object?>{
+              'entries': listed.entries
+                  .map(_authEventEntryToJson)
+                  .toList(growable: false),
+              'has_more': listed.hasMore,
+              'limit': limit,
+              'offset': offset,
+            });
+          } on AuthOperationRejected catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.code,
+              'message': error.message,
+            });
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_audit_log_unavailable',
+              'message': 'audit log is unavailable; please retry',
+            });
+          }
           return;
         }
 
-        if (request.method == 'PATCH' &&
-            path.startsWith(adminAuthLocationsPrefix) &&
-            path.endsWith('/org-unit')) {
-          if (!await requirePermission('team.roles.assign')) return;
-          final targetLocationId = _orgUnitLocationIdFromPath(path);
-          final parentOrgUnitId = _nonBlankString(body['parent_org_unit_id']);
-          if (targetLocationId == null || parentOrgUnitId == null) {
+        if (request.method == 'POST' && path == authSessionLoginPath) {
+          // HARD-B - the login route serves two shapes:
+          //   * Success path: `{token_hash, email?}` plus a verified
+          //     Bearer token. Records the session ledger row + (if
+          //     `email` present + enforcer wired) an `outcome: success`
+          //     attempts row.
+          //   * Failure-report path: `{email, failure_outcome}` with no
+          //     bearer token. Records an `outcome: failure` attempts row,
+          //     emits `auth.login_failed`, and returns 401 -- or 423
+          //     when the count trips the threshold + an
+          //     `auth.account_locked` row.
+          //
+          // Body parse runs first so the failure-report branch can skip
+          // the auth check; the existing success path's writer/auth/
+          // token_hash checks still happen in their original order
+          // afterwards so previously-written tests keep their expected
+          // status codes.
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
             _writeJson(response, 400, <String, Object?>{
-              'error': 'missing_location_org_unit_fields',
-              'message':
-                  'location id in path and parent_org_unit_id body are required',
+              'error': 'malformed_json_body',
+              'message': error.message,
             });
             return;
           }
-          final moved = await authOperationsGateway.moveLocationToOrgUnit(
-            TeamLocationOrgUnitMoveCommand(
-              actorUserId: scope.userId,
-              operatorId: scope.operatorId,
-              locationId: scope.locationId,
-              targetLocationId: targetLocationId,
-              parentOrgUnitId: parentOrgUnitId,
-            ),
+
+          final email = _nonBlankString(body['email']);
+          final failureOutcome = _nonBlankString(body['failure_outcome']);
+          final tokenHash = _nonBlankString(body['token_hash']);
+          final ledgerContext = _resolveLedgerContextFromHeaders(
+            request,
+            trustProxyAuditHeaders: trustProxyAuditHeaders,
           );
-          _writeJson(response, 200, <String, Object?>{
-            'ok': true,
-            'moved': moved.moved,
-          });
-          return;
-        }
-      } on MfaOperationRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-          if (error.retryAfter != null)
-            'retry_after': error.retryAfter!.toUtc().toIso8601String(),
-          if (error.resetsAt != null)
-            'resets_at': error.resetsAt!.toUtc().toIso8601String(),
-        });
-        return;
-      } on AuthOperationRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-        });
-        return;
-      } catch (error, stackTrace) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        _logProxyUnhandled(
-          surface: 'auth_operations',
-          method: request.method,
-          path: path,
-          error: error,
-          stackTrace: stackTrace,
-        );
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_operations_unavailable',
-          'message': 'auth operation is unavailable; please retry',
-        });
-        return;
-      }
-    }
+          final clientIpForLockout = ledgerContext.ip ?? '';
 
-    if (request.method == 'POST' && path == authRefreshTokensRevokeAllPath) {
-      if (firebaseAdminAuthClient == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'refresh_token_revoke_not_configured',
-          'message': 'route requires a FirebaseAdminAuthClient to be installed',
-        });
-        return;
-      }
+          // ---- Failure-report path ----
+          if (failureOutcome != null) {
+            if (!AuthLoginFailureOutcomes.all.contains(failureOutcome)) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'invalid_failure_outcome',
+                'message':
+                    'failure_outcome must be one of: '
+                    '${AuthLoginFailureOutcomes.all.join(', ')}',
+              });
+              return;
+            }
+            if (email == null) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_email',
+                'message':
+                    'failure_outcome requires an email field for lockout '
+                    'attribution',
+              });
+              return;
+            }
+            if (clientIpForLockout.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_client_ip',
+                'message':
+                    'failure-report path requires a resolvable client ip; '
+                    'enable trustProxyAuditHeaders or send the request from '
+                    'a peer the proxy can resolve directly',
+              });
+              return;
+            }
+            if (authLockoutEnforcer != null) {
+              final emailHashHex = hashAuthEmailHex(email);
+              final ipHashHex = hashAuthIpHex(clientIpForLockout);
+              final now = clock().toUtc();
+              final priorEval = await authLockoutEnforcer.evaluate(
+                email: email,
+                ip: clientIpForLockout,
+              );
+              // Already-locked: do not re-record a fresh failure; just
+              // emit the locked outcome + audit row + 423 response.
+              if (priorEval.locked) {
+                await authLockoutEnforcer.recordLocked(
+                  email: email,
+                  ip: clientIpForLockout,
+                );
+                await authLockoutAuditSink?.recordAccountLocked(
+                  emailHashHex: emailHashHex,
+                  ipHashHex: ipHashHex,
+                  attemptCount: priorEval.failureCount,
+                  lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
+                );
+                response.headers.add(
+                  HttpHeaders.retryAfterHeader,
+                  kAuthLoginLockoutRetryAfter.inSeconds.toString(),
+                );
+                _writeJson(response, 423, <String, Object?>{
+                  'error': 'account_locked',
+                  'retry_after_seconds': kAuthLoginLockoutRetryAfter.inSeconds,
+                });
+                return;
+              }
+              // Below threshold: insert the failure row + emit
+              // auth.login_failed. The lockout trip happens at the NEXT
+              // attempt because the contract reads "after 5 failed
+              // attempts ... the next failure inserts an outcome: locked
+              // row" -- the 5th failure is the last regular 401, and
+              // attempt #6 lands in the priorEval.locked branch above.
+              final newCount = await authLockoutEnforcer.recordFailure(
+                email: email,
+                ip: clientIpForLockout,
+              );
+              // `locked: true` here means "this failure brought the count
+              // up to the threshold; the next attempt will trip the
+              // lock." The audit row carries the hint so investigators
+              // see the count progression without joining tables, but
+              // the response stays 401 (the contract's lock trips at the
+              // *next* attempt).
+              final atThreshold = newCount >= kAuthLoginLockoutThreshold;
+              await authLockoutAuditSink?.recordLoginFailed(
+                emailHashHex: emailHashHex,
+                ipHashHex: ipHashHex,
+                outcome: failureOutcome,
+                attemptCountInWindow: newCount,
+                locked: atThreshold,
+              );
+            }
+            _writeJson(response, 401, <String, Object?>{
+              'error': 'login_failed',
+              'outcome': failureOutcome,
+            });
+            return;
+          }
 
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
+          // ---- Success path ----
+          if (authSessionLedgerWriter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_not_configured',
+              'message':
+                  'route requires an AuthSessionLedgerWriter to be installed',
+            });
+            return;
+          }
 
-      try {
-        await firebaseAdminAuthClient.revokeRefreshTokens(
-          uid: scope.firebaseUid ?? scope.userId,
-        );
-      } on FirebaseAdminAuthError catch (error) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': error.code,
-          'message': 'refresh-token revoke is unavailable; please retry',
-        });
-        return;
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'refresh_token_revoke_unavailable',
-          'message': 'refresh-token revoke is unavailable; please retry',
-        });
-        return;
-      }
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
 
-      _writeJson(response, 200, <String, Object?>{'ok': true});
-      return;
-    }
+          if (tokenHash == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_token_hash',
+              'message':
+                  'request body must include a non-empty token_hash field',
+            });
+            return;
+          }
 
-    if (request.method == 'GET' && path == authSessionsListPath) {
-      if (authOperationsGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_operations_not_configured',
-          'message': 'route requires an AuthOperationsGateway to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      try {
-        final listed = await authOperationsGateway.listActiveSessions(
-          AuthActiveSessionsListCommand(
-            actorUserId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-          ),
-        );
-        _writeJson(response, 200, <String, Object?>{
-          'sessions': listed.sessions
-              .map(_authSessionSummaryToJson)
-              .toList(growable: false),
-        });
-      } on AuthOperationRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-        });
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_sessions_unavailable',
-          'message': 'active sessions are unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (request.method == 'GET' && path == authAuditLogPath) {
-      if (authOperationsGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_operations_not_configured',
-          'message': 'route requires an AuthOperationsGateway to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      // Pagination: clamp to a per-request ceiling so a chatty client
-      // can't ask for the whole ledger in one shot. Default 50 rows.
-      final params = request.uri.queryParameters;
-      final rawLimit = int.tryParse(params['limit'] ?? '');
-      final limit = rawLimit == null
-          ? 50
-          : (rawLimit < 1
-                ? 1
-                : (rawLimit > 100 ? 100 : rawLimit));
-      final rawOffset = int.tryParse(params['offset'] ?? '');
-      final offset = rawOffset == null || rawOffset < 0 ? 0 : rawOffset;
-      final eventKind = AuthEventLabels.fromWireKey(params['event_kind']);
-      DateTime? parseUtc(String? raw) {
-        if (raw == null || raw.isEmpty) return null;
-        return DateTime.tryParse(raw)?.toUtc();
-      }
-
-      final from = parseUtc(params['from']);
-      final to = parseUtc(params['to']);
-
-      try {
-        final listed = await authOperationsGateway.listAuthEventsForActor(
-          AuthEventListCommand(
-            // RLS-authoritative gate: pin user_id to the verified
-            // bearer-token scope. Any client-supplied user_id query
-            // param is ignored.
-            actorUserId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            limit: limit,
-            offset: offset,
-            eventKind: eventKind,
-            from: from,
-            to: to,
-          ),
-        );
-        _writeJson(response, 200, <String, Object?>{
-          'entries': listed.entries
-              .map(_authEventEntryToJson)
-              .toList(growable: false),
-          'has_more': listed.hasMore,
-          'limit': limit,
-          'offset': offset,
-        });
-      } on AuthOperationRejected catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.code,
-          'message': error.message,
-        });
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_audit_log_unavailable',
-          'message': 'audit log is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (request.method == 'POST' && path == authSessionLoginPath) {
-      // HARD-B - the login route serves two shapes:
-      //   * Success path: `{token_hash, email?}` plus a verified
-      //     Bearer token. Records the session ledger row + (if
-      //     `email` present + enforcer wired) an `outcome: success`
-      //     attempts row.
-      //   * Failure-report path: `{email, failure_outcome}` with no
-      //     bearer token. Records an `outcome: failure` attempts row,
-      //     emits `auth.login_failed`, and returns 401 -- or 423
-      //     when the count trips the threshold + an
-      //     `auth.account_locked` row.
-      //
-      // Body parse runs first so the failure-report branch can skip
-      // the auth check; the existing success path's writer/auth/
-      // token_hash checks still happen in their original order
-      // afterwards so previously-written tests keep their expected
-      // status codes.
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final email = _nonBlankString(body['email']);
-      final failureOutcome = _nonBlankString(body['failure_outcome']);
-      final tokenHash = _nonBlankString(body['token_hash']);
-      final ledgerContext = _resolveLedgerContextFromHeaders(
-        request,
-        trustProxyAuditHeaders: trustProxyAuditHeaders,
-      );
-      final clientIpForLockout = ledgerContext.ip ?? '';
-
-      // ---- Failure-report path ----
-      if (failureOutcome != null) {
-        if (!AuthLoginFailureOutcomes.all.contains(failureOutcome)) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'invalid_failure_outcome',
-            'message':
-                'failure_outcome must be one of: '
-                '${AuthLoginFailureOutcomes.all.join(', ')}',
-          });
-          return;
-        }
-        if (email == null) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'missing_email',
-            'message':
-                'failure_outcome requires an email field for lockout '
-                'attribution',
-          });
-          return;
-        }
-        if (clientIpForLockout.isEmpty) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'missing_client_ip',
-            'message':
-                'failure-report path requires a resolvable client ip; '
-                'enable trustProxyAuditHeaders or send the request from '
-                'a peer the proxy can resolve directly',
-          });
-          return;
-        }
-        if (authLockoutEnforcer != null) {
-          final emailHashHex = hashAuthEmailHex(email);
-          final ipHashHex = hashAuthIpHex(clientIpForLockout);
-          final now = clock().toUtc();
-          final priorEval = await authLockoutEnforcer.evaluate(
-            email: email,
-            ip: clientIpForLockout,
-          );
-          // Already-locked: do not re-record a fresh failure; just
-          // emit the locked outcome + audit row + 423 response.
-          if (priorEval.locked) {
-            await authLockoutEnforcer.recordLocked(
+          // Pre-success lockout check: if the email is locked, the
+          // success path must be refused even though the bearer token is
+          // valid (e.g., a concurrent attacker trips the threshold while
+          // a legitimate session-ledger write is in flight).
+          if (email != null &&
+              authLockoutEnforcer != null &&
+              clientIpForLockout.isNotEmpty) {
+            final priorEval = await authLockoutEnforcer.evaluate(
               email: email,
               ip: clientIpForLockout,
             );
-            await authLockoutAuditSink?.recordAccountLocked(
-              emailHashHex: emailHashHex,
-              ipHashHex: ipHashHex,
-              attemptCount: priorEval.failureCount,
-              lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
+            if (priorEval.locked) {
+              final emailHashHex = hashAuthEmailHex(email);
+              final ipHashHex = hashAuthIpHex(clientIpForLockout);
+              final now = clock().toUtc();
+              await authLockoutEnforcer.recordLocked(
+                email: email,
+                ip: clientIpForLockout,
+              );
+              await authLockoutAuditSink?.recordAccountLocked(
+                emailHashHex: emailHashHex,
+                ipHashHex: ipHashHex,
+                attemptCount: priorEval.failureCount,
+                lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                // Bearer token already verified -- pass scope.userId so
+                // the production sink can fan the audit row out into the
+                // hash-chained `audit_logs` chain (operator + actor both
+                // resolved is the contract-valid attribution shape).
+                actorUserId: scope.userId,
+              );
+              response.headers.add(
+                HttpHeaders.retryAfterHeader,
+                kAuthLoginLockoutRetryAfter.inSeconds.toString(),
+              );
+              _writeJson(response, 423, <String, Object?>{
+                'error': 'account_locked',
+                'retry_after_seconds': kAuthLoginLockoutRetryAfter.inSeconds,
+              });
+              return;
+            }
+          }
+
+          String sessionId;
+          try {
+            sessionId = await authSessionLedgerWriter.recordLogin(
+              AuthSessionLedgerLogin(
+                userId: scope.userId,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                tokenHash: tokenHash,
+                context: ledgerContext,
+              ),
             );
-            response.headers.add(
-              HttpHeaders.retryAfterHeader,
-              kAuthLoginLockoutRetryAfter.inSeconds.toString(),
-            );
-            _writeJson(response, 423, <String, Object?>{
-              'error': 'account_locked',
-              'retry_after_seconds':
-                  kAuthLoginLockoutRetryAfter.inSeconds,
+          } catch (_) {
+            // Fail closed with a calm message — no error stack leaks past
+            // this boundary. The client surfaces this to the user as a
+            // "try again in a moment" banner via
+            // `AuthLoginFailure(code: 'ledger_unavailable')`.
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_unavailable',
+              'message': 'auth session ledger is unavailable; please retry',
             });
             return;
           }
-          // Below threshold: insert the failure row + emit
-          // auth.login_failed. The lockout trip happens at the NEXT
-          // attempt because the contract reads "after 5 failed
-          // attempts ... the next failure inserts an outcome: locked
-          // row" -- the 5th failure is the last regular 401, and
-          // attempt #6 lands in the priorEval.locked branch above.
-          final newCount = await authLockoutEnforcer.recordFailure(
-            email: email,
-            ip: clientIpForLockout,
+
+          // Record success in the lockout ledger so the per-tenant audit
+          // surface carries the success row alongside any prior failures.
+          // Per the contract, "Successful login within window resets
+          // failure count" - the count query filters on outcome IN
+          // (failure, locked), so a success row does not contribute to
+          // the count at the next read.
+          if (email != null &&
+              authLockoutEnforcer != null &&
+              clientIpForLockout.isNotEmpty) {
+            try {
+              await authLockoutEnforcer.recordSuccess(
+                email: email,
+                ip: clientIpForLockout,
+                operatorId: scope.operatorId,
+                locationId: scope.locationId,
+                actorUserId: scope.userId,
+              );
+            } catch (_) {
+              // Lockout-ledger write failure must not block a successful
+              // login. The session is already recorded; missing the
+              // success row in the lockout ledger only affects the audit
+              // surface and is recoverable from the auth_events_audit
+              // success row.
+            }
+          }
+
+          _writeJson(response, 200, <String, Object?>{
+            'session_id': sessionId,
+            // Echo the resolved scope so the client can sanity-check it
+            // matches the local AuthSession before persisting the envelope.
+            'user_id': scope.userId,
+            'operator_id': scope.operatorId,
+            'location_id': scope.locationId,
+          });
+          return;
+        }
+
+        if (request.method == 'POST' && path == authSessionRefreshPath) {
+          if (authSessionLedgerWriter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_not_configured',
+              'message':
+                  'route requires an AuthSessionLedgerWriter to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final sessionId = _nonBlankString(body['session_id']);
+          if (sessionId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_session_id',
+              'message':
+                  'request body must include a non-empty session_id field',
+            });
+            return;
+          }
+
+          try {
+            await authSessionLedgerWriter.recordRefresh(
+              sessionId: sessionId,
+              userId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_unavailable',
+              'message': 'auth session ledger is unavailable; please retry',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{'ok': true});
+          return;
+        }
+
+        if (request.method == 'POST' && path == authSessionRevokePath) {
+          if (authSessionLedgerWriter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_not_configured',
+              'message':
+                  'route requires an AuthSessionLedgerWriter to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final sessionId = _nonBlankString(body['session_id']);
+          if (sessionId == null) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_session_id',
+              'message':
+                  'request body must include a non-empty session_id field',
+            });
+            return;
+          }
+          // Reason defaults to user_signed_out_this_session so a client
+          // that omits it (e.g. early integration) still produces an
+          // auditable revoke row instead of an empty `revoked_reason`.
+          final reason =
+              _nonBlankString(body['reason']) ?? 'user_signed_out_this_session';
+
+          try {
+            await authSessionLedgerWriter.revokeSession(
+              sessionId: sessionId,
+              userId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              reason: reason,
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_unavailable',
+              'message': 'auth session ledger is unavailable; please retry',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{'ok': true});
+          return;
+        }
+
+        if (request.method == 'POST' && path == authSessionRevokeAllPath) {
+          if (authSessionLedgerWriter == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_not_configured',
+              'message':
+                  'route requires an AuthSessionLedgerWriter to be installed',
+            });
+            return;
+          }
+
+          OperatorContext scope;
+          try {
+            scope = await authGuard.requireOperatorContext(
+              authorizationHeader: request.headers.value(
+                HttpHeaders.authorizationHeader,
+              ),
+            );
+          } on ProxyAuthError catch (error) {
+            _writeJson(response, error.statusCode, <String, Object?>{
+              'error': error.message,
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final reason =
+              _nonBlankString(body['reason']) ?? 'user_signed_out_all_sessions';
+
+          int revoked;
+          try {
+            revoked = await authSessionLedgerWriter.revokeAllSessionsForUser(
+              userId: scope.userId,
+              operatorId: scope.operatorId,
+              locationId: scope.locationId,
+              reason: reason,
+            );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'auth_session_ledger_unavailable',
+              'message': 'auth session ledger is unavailable; please retry',
+            });
+            return;
+          }
+
+          _writeJson(response, 200, <String, Object?>{
+            'ok': true,
+            'revoked_count': revoked,
+          });
+          return;
+        }
+
+        if (_isAdminIntegrationsOperation(path, request.method)) {
+          if (integrationAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'integration_admin_not_configured',
+              'message':
+                  'route requires an IntegrationAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
-          // `locked: true` here means "this failure brought the count
-          // up to the threshold; the next attempt will trip the
-          // lock." The audit row carries the hint so investigators
-          // see the count progression without joining tables, but
-          // the response stays 401 (the contract's lock trips at the
-          // *next* attempt).
-          final atThreshold = newCount >= kAuthLoginLockoutThreshold;
-          await authLockoutAuditSink?.recordLoginFailed(
-            emailHashHex: emailHashHex,
-            ipHashHex: ipHashHex,
-            outcome: failureOutcome,
-            attemptCountInWindow: newCount,
-            locked: atThreshold,
+          if (actor == null) return;
+
+          final integrationsMethod = request.method;
+          final integrationsRoles = integrationsMethod == 'GET'
+              ? kFfIntegrationAdminReadRoles
+              : kFfIntegrationAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, integrationsRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': integrationsRoles.toList(),
+            });
+            return;
+          }
+
+          // The auth permission catalog tags `integration.key_rotate` as
+          // MFA-required (Phase 9 fresh-auth list). The role gate above
+          // is necessary but not sufficient — a stale super_admin token
+          // must NOT be allowed to rotate a production credential. Gate
+          // every write method on `lastFreshAuthAt` falling inside the
+          // 5-minute freshness window. GET reads are catalog-marked
+          // non-MFA, so the gate is write-only.
+          if (integrationsMethod != 'GET') {
+            if (!_requireFreshClaimsOrWrite(
+              response: response,
+              claims: actor,
+              requestedAt: clock().toUtc(),
+              message: 'Sign in again before rotating provider keys.',
+            )) {
+              return;
+            }
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          // Audit attribution gate. `auth_events_audit.actor_user_id`
+          // must be set whenever `actor_kind = 'user'`; the Phase 9
+          // admin Firebase claim shape only guarantees role flags, so
+          // we must explicitly resolve the verified Firebase UID into a
+          // Postgres `users.user_id` (UUID) before any audit row is
+          // written. If no active `users` row matches the Firebase UID
+          // (Firebase admin without a Postgres onboard row), reject
+          // with 403 — no audit row, no provider_credentials write.
+          if (integrationAdminActorResolver == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'integration_admin_actor_resolver_not_configured',
+              'message':
+                  'route requires an IntegrationAdminActorResolver to be installed',
+            });
+            return;
+          }
+          final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
+          String? resolvedActorUserId;
+          try {
+            resolvedActorUserId = await integrationAdminActorResolver
+                .resolveActorUserId(
+                  firebaseUid: firebaseUidLookup,
+                  adminReason:
+                      'admin.integrations.${request.method}:'
+                      '$firebaseUidLookup:resolve_actor',
+                );
+          } catch (_) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'integration_admin_actor_resolve_failed',
+              'message': 'actor resolution is unavailable; please retry',
+            });
+            return;
+          }
+          if (resolvedActorUserId == null) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'actor_user_not_resolvable',
+              'message':
+                  'verified Firebase user has no matching Postgres users row '
+                  '(audit attribution requires a UUID-shaped actor)',
+            });
+            return;
+          }
+
+          // HARD-H — optional Idempotency-Key on rotation POST so retries
+          // collapse to one KMS write + one audit row at the proxy. The
+          // header is OPTIONAL for back-compat with older callers and the
+          // existing test surface; when present and the store is wired,
+          // `_runAdminIdempotent` handles reserve→complete against
+          // `admin_request_idempotency`.
+          final integrationsIdempotencyKey =
+              (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (integrationsIdempotencyKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          try {
+            await _routeIntegrationsAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: integrationAdminGateway,
+              actorUserId: resolvedActorUserId,
+              actorLogId: firebaseUidLookup,
+              body: body,
+              idempotencyKey: integrationsIdempotencyKey,
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is IntegrationAdminGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'integration_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'integration_admin_unavailable',
+              'message':
+                  'integration admin operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        if (_isAdminPricingOperation(path, request.method)) {
+          if (pricingTierAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'pricing_tier_admin_not_configured',
+              'message':
+                  'route requires a PricingTierAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
+          if (actor == null) return;
+
+          // Method-scoped gate: GET admits `super_admin` + `ff_support` so
+          // support users can load the read-only pricing view; PATCH /
+          // PUT / POST stay strictly `super_admin`. The screen renders
+          // mutate affordances based on the same role list, but the proxy
+          // is the source of truth.
+          final pricingMethod = request.method;
+          final pricingRoles = pricingMethod == 'GET'
+              ? kFfPricingAdminReadRoles
+              : kFfPricingAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, pricingRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': pricingRoles.toList(),
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          // HARD-H — optional Idempotency-Key on PATCH/PUT/POST so retries
+          // collapse to one tier mutation + one audit row at the proxy.
+          // Header is OPTIONAL for back-compat (existing tests don't send
+          // it). When present + store is wired, `_runAdminIdempotent`
+          // handles reserve→complete against `admin_request_idempotency`.
+          final pricingIdempotencyKey =
+              (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (pricingIdempotencyKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          try {
+            await _routePricingAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: pricingTierAdminGateway,
+              actorUserId: actor.userId,
+              body: body,
+              idempotencyKey: pricingIdempotencyKey,
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is PricingTierAdminGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'pricing_tier_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'pricing_tier_admin_unavailable',
+              'message':
+                  'pricing tier admin operation is unavailable; please retry',
+            });
+          }
+          return;
         }
-        _writeJson(response, 401, <String, Object?>{
-          'error': 'login_failed',
-          'outcome': failureOutcome,
-        });
-        return;
-      }
 
-      // ---- Success path ----
-      if (authSessionLedgerWriter == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_not_configured',
-          'message':
-              'route requires an AuthSessionLedgerWriter to be installed',
-        });
-        return;
-      }
+        if (_isAdminCorpusOperation(path, request.method)) {
+          if (corpusAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'corpus_admin_not_configured',
+              'message':
+                  'route requires a CorpusAdminProxyGateway to be installed',
+            });
+            return;
+          }
 
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      if (tokenHash == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_token_hash',
-          'message': 'request body must include a non-empty token_hash field',
-        });
-        return;
-      }
-
-      // Pre-success lockout check: if the email is locked, the
-      // success path must be refused even though the bearer token is
-      // valid (e.g., a concurrent attacker trips the threshold while
-      // a legitimate session-ledger write is in flight).
-      if (email != null &&
-          authLockoutEnforcer != null &&
-          clientIpForLockout.isNotEmpty) {
-        final priorEval = await authLockoutEnforcer.evaluate(
-          email: email,
-          ip: clientIpForLockout,
-        );
-        if (priorEval.locked) {
-          final emailHashHex = hashAuthEmailHex(email);
-          final ipHashHex = hashAuthIpHex(clientIpForLockout);
-          final now = clock().toUtc();
-          await authLockoutEnforcer.recordLocked(
-            email: email,
-            ip: clientIpForLockout,
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
-          await authLockoutAuditSink?.recordAccountLocked(
-            emailHashHex: emailHashHex,
-            ipHashHex: ipHashHex,
-            attemptCount: priorEval.failureCount,
-            lockoutUntil: now.add(kAuthLoginLockoutRetryAfter),
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            // Bearer token already verified -- pass scope.userId so
-            // the production sink can fan the audit row out into the
-            // hash-chained `audit_logs` chain (operator + actor both
-            // resolved is the contract-valid attribution shape).
-            actorUserId: scope.userId,
+          if (actor == null) return;
+
+          final corpusMethod = request.method;
+          final corpusRoles = corpusMethod == 'GET'
+              ? kFfCorpusAdminReadRoles
+              : kFfCorpusAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, corpusRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': corpusRoles.toList(),
+            });
+            return;
+          }
+
+          // Mutating routes require an Idempotency-Key header so retries
+          // collapse to one ledger row instead of stamping a duplicate.
+          // GETs are pure reads; the header is optional there.
+          String? idempotencyKey;
+          if (corpusMethod != 'GET') {
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            if (idempotencyKey == null || idempotencyKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_idempotency_key',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            await _routeCorpusAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: corpusAdminGateway,
+              actorUserId: actor.userId,
+              idempotencyKey: idempotencyKey ?? '',
+              body: body,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is CorpusAdminGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'corpus_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'corpus_admin_unavailable',
+              'message': 'corpus admin operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 11A.3b — Graphify candidate review routes. Same role-gate
+        // posture as the corpus admin block above (GET admits read roles,
+        // POST stays super_admin only) and the same Idempotency-Key dance
+        // on writes so retries collapse to a single ledger row.
+        if (_isGraphCandidatesOperation(path, request.method)) {
+          if (graphCandidatesGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'graph_candidates_not_configured',
+              'message':
+                  'route requires a GraphCandidatesProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
-          response.headers.add(
-            HttpHeaders.retryAfterHeader,
-            kAuthLoginLockoutRetryAfter.inSeconds.toString(),
+          if (actor == null) return;
+
+          final graphMethod = request.method;
+          final graphRoles = graphMethod == 'GET'
+              ? kFfCorpusAdminReadRoles
+              : kFfCorpusAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, graphRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': graphRoles.toList(),
+            });
+            return;
+          }
+
+          String? idempotencyKey;
+          if (graphMethod != 'GET') {
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            if (idempotencyKey == null || idempotencyKey.isEmpty) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'missing_idempotency_key',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          try {
+            await _routeGraphCandidates(
+              request: request,
+              response: response,
+              path: path,
+              gateway: graphCandidatesGateway,
+              actorUserId: actor.userId,
+              idempotencyKey: idempotencyKey ?? '',
+              body: body,
+            );
+          } catch (error) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is GraphCandidatesGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'graph_candidates_unavailable',
+              'message':
+                  'graph candidates operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 11A.3b — AGE rebuild route. Role gate + Idempotency-Key
+        // are still enforced so the test contract can verify the gating
+        // is wired even though the actual rebuild infrastructure ships
+        // in 11A.3c. Returns 501 with a typed `not_implemented` error so
+        // the screen surfaces the actionable banner instead of a 5xx.
+        if (_isAgeRebuildOperation(path, request.method)) {
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
-          _writeJson(response, 423, <String, Object?>{
-            'error': 'account_locked',
-            'retry_after_seconds': kAuthLoginLockoutRetryAfter.inSeconds,
-          });
-          return;
-        }
-      }
+          if (actor == null) return;
 
-      String sessionId;
-      try {
-        sessionId = await authSessionLedgerWriter.recordLogin(
-          AuthSessionLedgerLogin(
-            userId: scope.userId,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            tokenHash: tokenHash,
-            context: ledgerContext,
-          ),
-        );
-      } catch (_) {
-        // Fail closed with a calm message — no error stack leaks past
-        // this boundary. The client surfaces this to the user as a
-        // "try again in a moment" banner via
-        // `AuthLoginFailure(code: 'ledger_unavailable')`.
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_unavailable',
-          'message': 'auth session ledger is unavailable; please retry',
-        });
-        return;
-      }
+          if (!_callerHasAnyRole(actor, kFfCorpusAdminWriteRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': kFfCorpusAdminWriteRoles.toList(),
+            });
+            return;
+          }
 
-      // Record success in the lockout ledger so the per-tenant audit
-      // surface carries the success row alongside any prior failures.
-      // Per the contract, "Successful login within window resets
-      // failure count" - the count query filters on outcome IN
-      // (failure, locked), so a success row does not contribute to
-      // the count at the next read.
-      if (email != null &&
-          authLockoutEnforcer != null &&
-          clientIpForLockout.isNotEmpty) {
-        try {
-          await authLockoutEnforcer.recordSuccess(
-            email: email,
-            ip: clientIpForLockout,
-            operatorId: scope.operatorId,
-            locationId: scope.locationId,
-            actorUserId: scope.userId,
-          );
-        } catch (_) {
-          // Lockout-ledger write failure must not block a successful
-          // login. The session is already recorded; missing the
-          // success row in the lockout ledger only affects the audit
-          // surface and is recoverable from the auth_events_audit
-          // success row.
-        }
-      }
+          final idempotencyKey = request.headers
+              .value('Idempotency-Key')
+              ?.trim();
+          if (idempotencyKey == null || idempotencyKey.isEmpty) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'missing_idempotency_key',
+              'message': 'Idempotency-Key header is required',
+            });
+            return;
+          }
 
-      _writeJson(response, 200, <String, Object?>{
-        'session_id': sessionId,
-        // Echo the resolved scope so the client can sanity-check it
-        // matches the local AuthSession before persisting the envelope.
-        'user_id': scope.userId,
-        'operator_id': scope.operatorId,
-        'location_id': scope.locationId,
-      });
-      return;
-    }
-
-    if (request.method == 'POST' && path == authSessionRefreshPath) {
-      if (authSessionLedgerWriter == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_not_configured',
-          'message':
-              'route requires an AuthSessionLedgerWriter to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final sessionId = _nonBlankString(body['session_id']);
-      if (sessionId == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_session_id',
-          'message': 'request body must include a non-empty session_id field',
-        });
-        return;
-      }
-
-      try {
-        await authSessionLedgerWriter.recordRefresh(
-          sessionId: sessionId,
-          userId: scope.userId,
-          operatorId: scope.operatorId,
-          locationId: scope.locationId,
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_unavailable',
-          'message': 'auth session ledger is unavailable; please retry',
-        });
-        return;
-      }
-
-      _writeJson(response, 200, <String, Object?>{'ok': true});
-      return;
-    }
-
-    if (request.method == 'POST' && path == authSessionRevokePath) {
-      if (authSessionLedgerWriter == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_not_configured',
-          'message':
-              'route requires an AuthSessionLedgerWriter to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final sessionId = _nonBlankString(body['session_id']);
-      if (sessionId == null) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_session_id',
-          'message': 'request body must include a non-empty session_id field',
-        });
-        return;
-      }
-      // Reason defaults to user_signed_out_this_session so a client
-      // that omits it (e.g. early integration) still produces an
-      // auditable revoke row instead of an empty `revoked_reason`.
-      final reason =
-          _nonBlankString(body['reason']) ?? 'user_signed_out_this_session';
-
-      try {
-        await authSessionLedgerWriter.revokeSession(
-          sessionId: sessionId,
-          userId: scope.userId,
-          operatorId: scope.operatorId,
-          locationId: scope.locationId,
-          reason: reason,
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_unavailable',
-          'message': 'auth session ledger is unavailable; please retry',
-        });
-        return;
-      }
-
-      _writeJson(response, 200, <String, Object?>{'ok': true});
-      return;
-    }
-
-    if (request.method == 'POST' && path == authSessionRevokeAllPath) {
-      if (authSessionLedgerWriter == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_not_configured',
-          'message':
-              'route requires an AuthSessionLedgerWriter to be installed',
-        });
-        return;
-      }
-
-      OperatorContext scope;
-      try {
-        scope = await authGuard.requireOperatorContext(
-          authorizationHeader: request.headers.value(
-            HttpHeaders.authorizationHeader,
-          ),
-        );
-      } on ProxyAuthError catch (error) {
-        _writeJson(response, error.statusCode, <String, Object?>{
-          'error': error.message,
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      final reason =
-          _nonBlankString(body['reason']) ?? 'user_signed_out_all_sessions';
-
-      int revoked;
-      try {
-        revoked = await authSessionLedgerWriter.revokeAllSessionsForUser(
-          userId: scope.userId,
-          operatorId: scope.operatorId,
-          locationId: scope.locationId,
-          reason: reason,
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'auth_session_ledger_unavailable',
-          'message': 'auth session ledger is unavailable; please retry',
-        });
-        return;
-      }
-
-      _writeJson(response, 200, <String, Object?>{
-        'ok': true,
-        'revoked_count': revoked,
-      });
-      return;
-    }
-
-    if (_isAdminIntegrationsOperation(path, request.method)) {
-      if (integrationAdminGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'integration_admin_not_configured',
-          'message':
-              'route requires an IntegrationAdminProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      final integrationsMethod = request.method;
-      final integrationsRoles = integrationsMethod == 'GET'
-          ? kFfIntegrationAdminReadRoles
-          : kFfIntegrationAdminWriteRoles;
-      if (!_callerHasAnyRole(actor, integrationsRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': integrationsRoles.toList(),
-        });
-        return;
-      }
-
-      // The auth permission catalog tags `integration.key_rotate` as
-      // MFA-required (Phase 9 fresh-auth list). The role gate above
-      // is necessary but not sufficient — a stale super_admin token
-      // must NOT be allowed to rotate a production credential. Gate
-      // every write method on `lastFreshAuthAt` falling inside the
-      // 5-minute freshness window. GET reads are catalog-marked
-      // non-MFA, so the gate is write-only.
-      if (integrationsMethod != 'GET') {
-        if (!_requireFreshClaimsOrWrite(
-          response: response,
-          claims: actor,
-          requestedAt: clock().toUtc(),
-          message:
-              'Sign in again before rotating provider keys.',
-        )) {
-          return;
-        }
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      // Audit attribution gate. `auth_events_audit.actor_user_id`
-      // must be set whenever `actor_kind = 'user'`; the Phase 9
-      // admin Firebase claim shape only guarantees role flags, so
-      // we must explicitly resolve the verified Firebase UID into a
-      // Postgres `users.user_id` (UUID) before any audit row is
-      // written. If no active `users` row matches the Firebase UID
-      // (Firebase admin without a Postgres onboard row), reject
-      // with 403 — no audit row, no provider_credentials write.
-      if (integrationAdminActorResolver == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'integration_admin_actor_resolver_not_configured',
-          'message':
-              'route requires an IntegrationAdminActorResolver to be installed',
-        });
-        return;
-      }
-      final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
-      String? resolvedActorUserId;
-      try {
-        resolvedActorUserId =
-            await integrationAdminActorResolver.resolveActorUserId(
-          firebaseUid: firebaseUidLookup,
-          adminReason: 'admin.integrations.${request.method}:'
-              '$firebaseUidLookup:resolve_actor',
-        );
-      } catch (_) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'integration_admin_actor_resolve_failed',
-          'message':
-              'actor resolution is unavailable; please retry',
-        });
-        return;
-      }
-      if (resolvedActorUserId == null) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'actor_user_not_resolvable',
-          'message':
-              'verified Firebase user has no matching Postgres users row '
-              '(audit attribution requires a UUID-shaped actor)',
-        });
-        return;
-      }
-
-      // HARD-H — optional Idempotency-Key on rotation POST so retries
-      // collapse to one KMS write + one audit row at the proxy. The
-      // header is OPTIONAL for back-compat with older callers and the
-      // existing test surface; when present and the store is wired,
-      // `_runAdminIdempotent` handles reserve→complete against
-      // `admin_request_idempotency`.
-      final integrationsIdempotencyKey =
-          (request.headers.value('Idempotency-Key') ?? '').trim();
-      if (integrationsIdempotencyKey.length > 200) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'idempotency_key_too_long',
-          'message':
-              'Idempotency-Key header must be 200 characters or fewer',
-        });
-        return;
-      }
-      try {
-        await _routeIntegrationsAdmin(
-          request: request,
-          response: response,
-          path: path,
-          gateway: integrationAdminGateway,
-          actorUserId: resolvedActorUserId,
-          actorLogId: firebaseUidLookup,
-          body: body,
-          idempotencyKey: integrationsIdempotencyKey,
-          idempotencyStore: adminRequestIdempotencyStore,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is IntegrationAdminGatewayValidationError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is AdminIdempotencyKeyConflict) {
-          _writeJson(response, 409, <String, Object?>{
-            'error': 'idempotency_key_conflict',
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'integration_admin_unavailable',
-          'message':
-              'integration admin operation is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (_isAdminPricingOperation(path, request.method)) {
-      if (pricingTierAdminGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'pricing_tier_admin_not_configured',
-          'message':
-              'route requires a PricingTierAdminProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      // Method-scoped gate: GET admits `super_admin` + `ff_support` so
-      // support users can load the read-only pricing view; PATCH /
-      // PUT / POST stay strictly `super_admin`. The screen renders
-      // mutate affordances based on the same role list, but the proxy
-      // is the source of truth.
-      final pricingMethod = request.method;
-      final pricingRoles = pricingMethod == 'GET'
-          ? kFfPricingAdminReadRoles
-          : kFfPricingAdminWriteRoles;
-      if (!_callerHasAnyRole(actor, pricingRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': pricingRoles.toList(),
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      // HARD-H — optional Idempotency-Key on PATCH/PUT/POST so retries
-      // collapse to one tier mutation + one audit row at the proxy.
-      // Header is OPTIONAL for back-compat (existing tests don't send
-      // it). When present + store is wired, `_runAdminIdempotent`
-      // handles reserve→complete against `admin_request_idempotency`.
-      final pricingIdempotencyKey =
-          (request.headers.value('Idempotency-Key') ?? '').trim();
-      if (pricingIdempotencyKey.length > 200) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'idempotency_key_too_long',
-          'message':
-              'Idempotency-Key header must be 200 characters or fewer',
-        });
-        return;
-      }
-      try {
-        await _routePricingAdmin(
-          request: request,
-          response: response,
-          path: path,
-          gateway: pricingTierAdminGateway,
-          actorUserId: actor.userId,
-          body: body,
-          idempotencyKey: pricingIdempotencyKey,
-          idempotencyStore: adminRequestIdempotencyStore,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is PricingTierAdminGatewayValidationError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is AdminIdempotencyKeyConflict) {
-          _writeJson(response, 409, <String, Object?>{
-            'error': 'idempotency_key_conflict',
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'pricing_tier_admin_unavailable',
-          'message':
-              'pricing tier admin operation is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    if (_isAdminCorpusOperation(path, request.method)) {
-      if (corpusAdminGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'corpus_admin_not_configured',
-          'message':
-              'route requires a CorpusAdminProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      final corpusMethod = request.method;
-      final corpusRoles = corpusMethod == 'GET'
-          ? kFfCorpusAdminReadRoles
-          : kFfCorpusAdminWriteRoles;
-      if (!_callerHasAnyRole(actor, corpusRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': corpusRoles.toList(),
-        });
-        return;
-      }
-
-      // Mutating routes require an Idempotency-Key header so retries
-      // collapse to one ledger row instead of stamping a duplicate.
-      // GETs are pure reads; the header is optional there.
-      String? idempotencyKey;
-      if (corpusMethod != 'GET') {
-        idempotencyKey =
-            request.headers.value('Idempotency-Key')?.trim();
-        if (idempotencyKey == null || idempotencyKey.isEmpty) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'missing_idempotency_key',
-            'message': 'Idempotency-Key header is required',
-          });
-          return;
-        }
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      try {
-        await _routeCorpusAdmin(
-          request: request,
-          response: response,
-          path: path,
-          gateway: corpusAdminGateway,
-          actorUserId: actor.userId,
-          idempotencyKey: idempotencyKey ?? '',
-          body: body,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is CorpusAdminGatewayValidationError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'corpus_admin_unavailable',
-          'message':
-              'corpus admin operation is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    // Phase 11A.3b — Graphify candidate review routes. Same role-gate
-    // posture as the corpus admin block above (GET admits read roles,
-    // POST stays super_admin only) and the same Idempotency-Key dance
-    // on writes so retries collapse to a single ledger row.
-    if (_isGraphCandidatesOperation(path, request.method)) {
-      if (graphCandidatesGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'graph_candidates_not_configured',
-          'message':
-              'route requires a GraphCandidatesProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      final graphMethod = request.method;
-      final graphRoles = graphMethod == 'GET'
-          ? kFfCorpusAdminReadRoles
-          : kFfCorpusAdminWriteRoles;
-      if (!_callerHasAnyRole(actor, graphRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': graphRoles.toList(),
-        });
-        return;
-      }
-
-      String? idempotencyKey;
-      if (graphMethod != 'GET') {
-        idempotencyKey =
-            request.headers.value('Idempotency-Key')?.trim();
-        if (idempotencyKey == null || idempotencyKey.isEmpty) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'missing_idempotency_key',
-            'message': 'Idempotency-Key header is required',
-          });
-          return;
-        }
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      try {
-        await _routeGraphCandidates(
-          request: request,
-          response: response,
-          path: path,
-          gateway: graphCandidatesGateway,
-          actorUserId: actor.userId,
-          idempotencyKey: idempotencyKey ?? '',
-          body: body,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is GraphCandidatesGatewayValidationError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'graph_candidates_unavailable',
-          'message':
-              'graph candidates operation is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    // Phase 11A.3b — AGE rebuild route. Role gate + Idempotency-Key
-    // are still enforced so the test contract can verify the gating
-    // is wired even though the actual rebuild infrastructure ships
-    // in 11A.3c. Returns 501 with a typed `not_implemented` error so
-    // the screen surfaces the actionable banner instead of a 5xx.
-    if (_isAgeRebuildOperation(path, request.method)) {
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      if (!_callerHasAnyRole(actor, kFfCorpusAdminWriteRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': kFfCorpusAdminWriteRoles.toList(),
-        });
-        return;
-      }
-
-      final idempotencyKey =
-          request.headers.value('Idempotency-Key')?.trim();
-      if (idempotencyKey == null || idempotencyKey.isEmpty) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'missing_idempotency_key',
-          'message': 'Idempotency-Key header is required',
-        });
-        return;
-      }
-
-      _writeJson(response, 501, <String, Object?>{
-        'error': 'not_implemented',
-        'message':
-            'AGE rebuild ships in slice 11A.3c — '
-            'corpus_pipeline_not_configured',
-      });
-      return;
-    }
-
-    // Phase 11A.7 — feature flags admin. Method-scoped role split:
-    // GET admits `super_admin` + `ff_support`; POST is strictly
-    // `super_admin`. Toggle POST requires an Idempotency-Key. Audit
-    // attribution reuses the integrations actor resolver — F&F admins
-    // live outside any operator's tenant scope, so the verified
-    // Firebase UID resolves to a Postgres `users.user_id` UUID before
-    // the gateway is touched.
-    if (_isAdminFeatureFlagsOperation(path, request.method)) {
-      if (featureFlagsAdminGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'feature_flags_admin_not_configured',
-          'message':
-              'route requires a FeatureFlagsAdminProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      final flagsMethod = request.method;
-      final flagsRoles = flagsMethod == 'GET'
-          ? kFfFeatureFlagsAdminReadRoles
-          : kFfFeatureFlagsAdminWriteRoles;
-      if (!_callerHasAnyRole(actor, flagsRoles)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': flagsRoles.toList(),
-        });
-        return;
-      }
-
-      String? idempotencyKey;
-      if (flagsMethod != 'GET') {
-        idempotencyKey =
-            request.headers.value('Idempotency-Key')?.trim();
-        if (idempotencyKey == null || idempotencyKey.isEmpty) {
-          // HARD-D — error code matches
-          // `docs/contracts/hardening_feature_flag_idempotency_contract.md`.
-          // Other admin POST handlers in this file still emit
-          // `missing_idempotency_key` for backward compatibility with
-          // their own tests; aligning them is out of scope here.
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'idempotency_key_missing',
-            'message': 'Idempotency-Key header is required',
-          });
-          return;
-        }
-        if (idempotencyKey.length > 200) {
-          _writeJson(response, 400, <String, Object?>{
-            'error': 'idempotency_key_too_long',
+          _writeJson(response, 501, <String, Object?>{
+            'error': 'not_implemented',
             'message':
-                'Idempotency-Key header must be 200 characters or fewer',
+                'AGE rebuild ships in slice 11A.3c — '
+                'corpus_pipeline_not_configured',
           });
           return;
         }
-      }
 
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
+        // Phase 11A.7 — feature flags admin. Method-scoped role split:
+        // GET admits `super_admin` + `ff_support`; POST is strictly
+        // `super_admin`. Toggle POST requires an Idempotency-Key. Audit
+        // attribution reuses the integrations actor resolver — F&F admins
+        // live outside any operator's tenant scope, so the verified
+        // Firebase UID resolves to a Postgres `users.user_id` UUID before
+        // the gateway is touched.
+        if (_isAdminFeatureFlagsOperation(path, request.method)) {
+          if (featureFlagsAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'feature_flags_admin_not_configured',
+              'message':
+                  'route requires a FeatureFlagsAdminProxyGateway to be installed',
+            });
+            return;
+          }
 
-      // Audit attribution gate. The same Firebase UID → users.user_id
-      // resolver from the 11A.4 integrations dispatch backs the
-      // 11A.7 toggle audit row. Reads (GET) skip resolver lookup —
-      // listing flags is non-mutating.
-      String? resolvedActorUserId;
-      if (flagsMethod != 'GET') {
-        if (integrationAdminActorResolver == null) {
-          _writeJson(response, 503, <String, Object?>{
-            'error': 'feature_flags_actor_resolver_not_configured',
-            'message':
-                'route requires an IntegrationAdminActorResolver to be installed',
-          });
-          return;
-        }
-        final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
-        try {
-          resolvedActorUserId =
-              await integrationAdminActorResolver.resolveActorUserId(
-            firebaseUid: firebaseUidLookup,
-            adminReason: 'admin.feature_flags.${request.method}:'
-                '$firebaseUidLookup:resolve_actor',
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
           );
-        } catch (_) {
-          _writeJson(response, 503, <String, Object?>{
-            'error': 'feature_flags_actor_resolve_failed',
-            'message':
-                'actor resolution is unavailable; please retry',
-          });
-          return;
-        }
-        if (resolvedActorUserId == null) {
-          _writeJson(response, 403, <String, Object?>{
-            'error': 'actor_user_not_resolvable',
-            'message':
-                'verified Firebase user has no matching Postgres users row '
-                '(audit attribution requires a UUID-shaped actor)',
-          });
-          return;
-        }
-      }
+          if (actor == null) return;
 
-      try {
-        await _routeFeatureFlagsAdmin(
-          request: request,
-          response: response,
-          path: path,
-          gateway: featureFlagsAdminGateway,
-          actorUserId: resolvedActorUserId ?? actor.userId,
-          idempotencyKey: idempotencyKey ?? '',
-          body: body,
-          idempotencyStore: adminRequestIdempotencyStore,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
+          final flagsMethod = request.method;
+          final flagsRoles = flagsMethod == 'GET'
+              ? kFfFeatureFlagsAdminReadRoles
+              : kFfFeatureFlagsAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, flagsRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': flagsRoles.toList(),
+            });
+            return;
+          }
+
+          String? idempotencyKey;
+          if (flagsMethod != 'GET') {
+            idempotencyKey = request.headers.value('Idempotency-Key')?.trim();
+            if (idempotencyKey == null || idempotencyKey.isEmpty) {
+              // HARD-D — error code matches
+              // `docs/contracts/hardening_feature_flag_idempotency_contract.md`.
+              // Other admin POST handlers in this file still emit
+              // `missing_idempotency_key` for backward compatibility with
+              // their own tests; aligning them is out of scope here.
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_missing',
+                'message': 'Idempotency-Key header is required',
+              });
+              return;
+            }
+            if (idempotencyKey.length > 200) {
+              _writeJson(response, 400, <String, Object?>{
+                'error': 'idempotency_key_too_long',
+                'message':
+                    'Idempotency-Key header must be 200 characters or fewer',
+              });
+              return;
+            }
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          // Audit attribution gate. The same Firebase UID → users.user_id
+          // resolver from the 11A.4 integrations dispatch backs the
+          // 11A.7 toggle audit row. Reads (GET) skip resolver lookup —
+          // listing flags is non-mutating.
+          String? resolvedActorUserId;
+          if (flagsMethod != 'GET') {
+            if (integrationAdminActorResolver == null) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'feature_flags_actor_resolver_not_configured',
+                'message':
+                    'route requires an IntegrationAdminActorResolver to be installed',
+              });
+              return;
+            }
+            final firebaseUidLookup = actor.firebaseUid ?? actor.userId;
+            try {
+              resolvedActorUserId = await integrationAdminActorResolver
+                  .resolveActorUserId(
+                    firebaseUid: firebaseUidLookup,
+                    adminReason:
+                        'admin.feature_flags.${request.method}:'
+                        '$firebaseUidLookup:resolve_actor',
+                  );
+            } catch (_) {
+              _writeJson(response, 503, <String, Object?>{
+                'error': 'feature_flags_actor_resolve_failed',
+                'message': 'actor resolution is unavailable; please retry',
+              });
+              return;
+            }
+            if (resolvedActorUserId == null) {
+              _writeJson(response, 403, <String, Object?>{
+                'error': 'actor_user_not_resolvable',
+                'message':
+                    'verified Firebase user has no matching Postgres users row '
+                    '(audit attribution requires a UUID-shaped actor)',
+              });
+              return;
+            }
+          }
+
+          try {
+            await _routeFeatureFlagsAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: featureFlagsAdminGateway,
+              actorUserId: resolvedActorUserId ?? actor.userId,
+              idempotencyKey: idempotencyKey ?? '',
+              body: body,
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is FeatureFlagsAdminGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'feature_flags_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'feature_flags_admin_unavailable',
+              'message':
+                  'feature flags admin operation is unavailable; please retry',
+            });
+          }
           return;
         }
-        if (error is FeatureFlagsAdminGatewayValidationError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
+
+        if (_isAdminOperatorOrLocationOperation(path, request.method)) {
+          if (operatorLocationAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_location_admin_not_configured',
+              'message':
+                  'route requires an OperatorLocationAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+
+          if (!_isFfOperatorLocationAdminCaller(actor)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': kFfOperatorLocationAdminRoles.toList(),
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          // HARD-H — optional Idempotency-Key on POST/PATCH/DELETE so
+          // retries collapse to one mutation + one audit row at the proxy.
+          // Header is OPTIONAL for back-compat (existing tests don't send
+          // it). When present + store is wired, `_runAdminIdempotent`
+          // handles reserve→complete against `admin_request_idempotency`.
+          final operatorLocationIdempotencyKey =
+              (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (operatorLocationIdempotencyKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+          try {
+            await _routeOperatorLocationAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: operatorLocationAdminGateway,
+              actorUserId: actor.userId,
+              body: body,
+              idempotencyKey: operatorLocationIdempotencyKey,
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'operator_location_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'operator_location_admin_unavailable',
+              'message':
+                  'operator/location admin operation is unavailable; please retry',
+            });
+          }
           return;
         }
-        if (error is AdminIdempotencyKeyConflict) {
-          _writeJson(response, 409, <String, Object?>{
-            'error': 'idempotency_key_conflict',
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'feature_flags_admin_unavailable',
-          'message':
-              'feature flags admin operation is unavailable; please retry',
+
+        _writeJson(response, 404, <String, Object?>{
+          'error': 'not found',
+          'method': request.method,
+          'path': path,
         });
+      } on DependencyTimeoutException catch (error) {
+        // HARD-G observability: any inner catch that did NOT rewrite
+        // the response with the timeout envelope rethrows so this
+        // outer handler can write the contract-pinned shape.
+        _writeDependencyTimeoutEnvelope(response, error);
       }
-      return;
+    } finally {
+      await response.close();
     }
-
-    if (_isAdminOperatorOrLocationOperation(path, request.method)) {
-      if (operatorLocationAdminGateway == null) {
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'operator_location_admin_not_configured',
-          'message':
-              'route requires an OperatorLocationAdminProxyGateway to be installed',
-        });
-        return;
-      }
-
-      final actor = await _resolveVerifiedClaimsOrWrite(
-        request,
-        response,
-        authGuard,
-      );
-      if (actor == null) return;
-
-      if (!_isFfOperatorLocationAdminCaller(actor)) {
-        _writeJson(response, 403, <String, Object?>{
-          'error': 'permission_denied',
-          'message': 'admin role claim required',
-          'required_roles': kFfOperatorLocationAdminRoles.toList(),
-        });
-        return;
-      }
-
-      Map<String, Object?> body;
-      try {
-        body = await _readJsonBody(request, allowEmpty: true);
-      } on _MalformedJsonBodyError catch (error) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'malformed_json_body',
-          'message': error.message,
-        });
-        return;
-      }
-
-      // HARD-H — optional Idempotency-Key on POST/PATCH/DELETE so
-      // retries collapse to one mutation + one audit row at the proxy.
-      // Header is OPTIONAL for back-compat (existing tests don't send
-      // it). When present + store is wired, `_runAdminIdempotent`
-      // handles reserve→complete against `admin_request_idempotency`.
-      final operatorLocationIdempotencyKey =
-          (request.headers.value('Idempotency-Key') ?? '').trim();
-      if (operatorLocationIdempotencyKey.length > 200) {
-        _writeJson(response, 400, <String, Object?>{
-          'error': 'idempotency_key_too_long',
-          'message':
-              'Idempotency-Key header must be 200 characters or fewer',
-        });
-        return;
-      }
-      try {
-        await _routeOperatorLocationAdmin(
-          request: request,
-          response: response,
-          path: path,
-          gateway: operatorLocationAdminGateway,
-          actorUserId: actor.userId,
-          body: body,
-          idempotencyKey: operatorLocationIdempotencyKey,
-          idempotencyStore: adminRequestIdempotencyStore,
-        );
-      } catch (error) {
-        if (_maybeWriteDependencyTimeout(response, error)) return;
-        if (error is _AdminInputError) {
-          _writeJson(response, error.statusCode, <String, Object?>{
-            'error': error.code,
-            'message': error.message,
-          });
-          return;
-        }
-        if (error is AdminIdempotencyKeyConflict) {
-          _writeJson(response, 409, <String, Object?>{
-            'error': 'idempotency_key_conflict',
-            'message': error.message,
-          });
-          return;
-        }
-        _writeJson(response, 503, <String, Object?>{
-          'error': 'operator_location_admin_unavailable',
-          'message':
-              'operator/location admin operation is unavailable; please retry',
-        });
-      }
-      return;
-    }
-
-    _writeJson(response, 404, <String, Object?>{
-      'error': 'not found',
-      'method': request.method,
-      'path': path,
-    });
-    } on DependencyTimeoutException catch (error) {
-      // HARD-G observability: any inner catch that did NOT rewrite
-      // the response with the timeout envelope rethrows so this
-      // outer handler can write the contract-pinned shape.
-      _writeDependencyTimeoutEnvelope(response, error);
-    }
-  } finally {
-    await response.close();
-  }
-    },
-  );
+  });
 }
 
 bool _isFfOperatorLocationAdminCaller(ProxyJwtClaims actor) {
@@ -9850,10 +10060,13 @@ Future<void> _routeOperatorLocationAdmin({
           adminReason: '$reasonPrefix:patch:$operatorId',
         );
         if (patched == null) {
-          return (statusCode: 404, payload: <String, Object?>{
-            'error': 'unknown_operator',
-            'message': 'operator not found',
-          });
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator',
+              'message': 'operator not found',
+            },
+          );
         }
         return (
           statusCode: 200,
@@ -9898,10 +10111,13 @@ Future<void> _routeOperatorLocationAdmin({
           );
         }
         if (updated == null) {
-          return (statusCode: 404, payload: <String, Object?>{
-            'error': 'unknown_operator',
-            'message': 'operator not found',
-          });
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator',
+              'message': 'operator not found',
+            },
+          );
         }
         return (
           statusCode: 200,
@@ -9982,10 +10198,13 @@ Future<void> _routeOperatorLocationAdmin({
           adminReason: '$reasonPrefix:patch_location:$locationId',
         );
         if (patched == null) {
-          return (statusCode: 404, payload: <String, Object?>{
-            'error': 'unknown_location',
-            'message': 'location not found',
-          });
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_location',
+              'message': 'location not found',
+            },
+          );
         }
         return (
           statusCode: 200,
@@ -10019,21 +10238,27 @@ Future<void> _routeOperatorLocationAdmin({
         );
         switch (result) {
           case AdminLocationRemovalResult.removed:
-            return (statusCode: 200, payload: <String, Object?>{
-              'ok': true,
-              'removed': true,
-            });
+            return (
+              statusCode: 200,
+              payload: <String, Object?>{'ok': true, 'removed': true},
+            );
           case AdminLocationRemovalResult.notFound:
-            return (statusCode: 404, payload: <String, Object?>{
-              'error': 'unknown_location',
-              'message': 'location not found',
-            });
+            return (
+              statusCode: 404,
+              payload: <String, Object?>{
+                'error': 'unknown_location',
+                'message': 'location not found',
+              },
+            );
           case AdminLocationRemovalResult.primaryLocationProtected:
-            return (statusCode: 400, payload: <String, Object?>{
-              'error': 'cannot_remove_primary_location',
-              'message':
-                  "reassign the operator's primary_location_id before removing this location",
-            });
+            return (
+              statusCode: 400,
+              payload: <String, Object?>{
+                'error': 'cannot_remove_primary_location',
+                'message':
+                    "reassign the operator's primary_location_id before removing this location",
+              },
+            );
         }
       },
     );
@@ -10234,10 +10459,13 @@ Future<void> _routePricingAdmin({
           adminReason: '$reasonPrefix:tier:$operatorId',
         );
         if (updated == null) {
-          return (statusCode: 404, payload: <String, Object?>{
-            'error': 'unknown_operator',
-            'message': 'operator not found',
-          });
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator',
+              'message': 'operator not found',
+            },
+          );
         }
         return (statusCode: 200, payload: updated);
       },
@@ -10285,10 +10513,13 @@ Future<void> _routePricingAdmin({
           adminReason: '$reasonPrefix:apply_template:$operatorId:$tierKey',
         );
         if (result == null) {
-          return (statusCode: 404, payload: <String, Object?>{
-            'error': 'unknown_operator',
-            'message': 'operator not found',
-          });
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator',
+              'message': 'operator not found',
+            },
+          );
         }
         return (statusCode: 200, payload: result);
       },
@@ -10324,10 +10555,7 @@ Future<void> _routePricingAdmin({
           adminReason:
               '$reasonPrefix:usage_caps:$operatorId:$locationId:$usageClass',
         );
-        return (
-          statusCode: 200,
-          payload: <String, Object?>{'cap': cap},
-        );
+        return (statusCode: 200, payload: <String, Object?>{'cap': cap});
       },
     );
     return;
@@ -10554,8 +10782,7 @@ Future<void> _routeFeatureFlagsAdmin({
       );
     }
     final reason = reasonRaw is String ? reasonRaw.trim() : null;
-    final reasonForAudit =
-        reason == null || reason.isEmpty ? null : reason;
+    final reasonForAudit = reason == null || reason.isEmpty ? null : reason;
 
     // HARD-H idempotency wrap. When an idempotency store is wired the
     // route reserves the key + body hash, runs the gateway exactly
@@ -10586,11 +10813,7 @@ Future<void> _routeFeatureFlagsAdmin({
           });
           return;
         }
-        _writeJson(
-          response,
-          cached.responseStatus!,
-          cached.responsePayload!,
-        );
+        _writeJson(response, cached.responseStatus!, cached.responsePayload!);
         return;
       }
       final reserved = await idempotencyStore.reserve(
@@ -10706,8 +10929,8 @@ Future<void> _runAdminIdempotent({
   required String requestType,
   required String? actorUserId,
   required Map<String, Object?> requestBody,
-  required Future<({int statusCode, Map<String, Object?> payload})>
-      Function() compute,
+  required Future<({int statusCode, Map<String, Object?> payload})> Function()
+  compute,
 }) async {
   if (store == null || idempotencyKey.isEmpty) {
     final result = await compute();
@@ -10899,7 +11122,8 @@ Future<void> _enforceGraphCandidateSourceScope(
     for (final rawSource in candidateSources) {
       final trimmed = rawSource.trim();
       if (trimmed.isEmpty) continue;
-      scope ??= _graphCandidatesManifestCache ??
+      scope ??=
+          _graphCandidatesManifestCache ??
           await _loadGraphCandidatesManifestScope();
       final normalized = trimmed.replaceAll(r'\', '/');
       if (scope.contains(normalized)) continue;
@@ -11164,7 +11388,6 @@ bool _requireFreshClaimsOrWrite({
   });
   return false;
 }
-
 
 String _freshAuthProofId({
   required OperatorContext scope,
@@ -11616,10 +11839,7 @@ void _writeDependencyTimeoutEnvelope(
 /// [DependencyTimeoutException], writes the standardized timeout
 /// envelope and returns true. Otherwise returns false and the caller
 /// continues with its existing fallback path.
-bool _maybeWriteDependencyTimeout(
-  HttpResponse response,
-  Object error,
-) {
+bool _maybeWriteDependencyTimeout(HttpResponse response, Object error) {
   if (error is! DependencyTimeoutException) return false;
   _writeDependencyTimeoutEnvelope(response, error);
   return true;
@@ -11710,11 +11930,7 @@ const List<String> kAdminPricingCorsMethods = <String>[
   'DELETE',
   'OPTIONS',
 ];
-const List<String> kAdminCorpusCorsMethods = <String>[
-  'GET',
-  'POST',
-  'OPTIONS',
-];
+const List<String> kAdminCorpusCorsMethods = <String>['GET', 'POST', 'OPTIONS'];
 const List<String> kAdminIntegrationsCorsMethods = <String>[
   'GET',
   'POST',
@@ -11725,6 +11941,7 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
   'POST',
   'OPTIONS',
 ];
+const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
 
 /// HARD-C — sole origin-decision site for admin CORS.
 ///
@@ -11744,10 +11961,7 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
 /// Wildcard `*` is intentionally not supported. The HARD-C contract
 /// bans wildcard origin echoes on admin routes because admin JWTs
 /// are sensitive and must not be redeemable from any origin.
-String? _matchAdminCorsOrigin(
-  String? requestOrigin,
-  List<String> allowList,
-) {
+String? _matchAdminCorsOrigin(String? requestOrigin, List<String> allowList) {
   if (requestOrigin == null) return null;
   final origin = requestOrigin.trim();
   if (origin.isEmpty) return null;
@@ -11790,11 +12004,9 @@ void respondAdminCorsPreflight(
   final matched = _matchAdminCorsOrigin(originHeader, allowList);
   request.response.headers.set('Vary', 'Origin');
   if (matched == null) {
-    _writeJson(
-      request.response,
-      HttpStatus.forbidden,
-      const <String, Object?>{'error': 'cors_origin_not_allowed'},
-    );
+    _writeJson(request.response, HttpStatus.forbidden, const <String, Object?>{
+      'error': 'cors_origin_not_allowed',
+    });
     return;
   }
   request.response.statusCode = HttpStatus.noContent;
@@ -11824,10 +12036,7 @@ void respondAdminCorsPreflight(
 /// this is the helper for the regular admin handler responses
 /// (200 / 4xx / 5xx) so the browser receives the echo on every
 /// admin response, not just OPTIONS.
-bool _applyAdminCorsHeaders(
-  HttpRequest request,
-  List<String> allowList,
-) {
+bool _applyAdminCorsHeaders(HttpRequest request, List<String> allowList) {
   request.response.headers.set('Vary', 'Origin');
   final originHeader = request.headers.value('origin');
   final matched = _matchAdminCorsOrigin(originHeader, allowList);

@@ -39,6 +39,7 @@ import 'proxy_password_change_gateway.dart';
 import 'proxy_password_reset_gateway.dart';
 import 'proxy_permission_snapshot_loader.dart';
 import 'proxy_refresh_token_revoker.dart';
+import 'timeout_firebase_auth_client.dart';
 
 class FirebaseAuthRuntimeBindings {
   const FirebaseAuthRuntimeBindings({
@@ -113,8 +114,10 @@ Future<FirebaseAuthRuntimeBindings> createFirebaseAuthRuntimeBindings({
               );
               return revoker.revokeAllRefreshTokens();
             });
-  authClient = FirebaseAuthSdkClient(
-    revokeAllRefreshTokens: effectiveRevokeAllRefreshTokens,
+  authClient = TimeoutFirebaseAuthClient(
+    delegate: FirebaseAuthSdkClient(
+      revokeAllRefreshTokens: effectiveRevokeAllRefreshTokens,
+    ),
   );
   AuthSessionLedgerWriter? ledgerWriter;
   AccountInfoGateway? accountInfoGateway;

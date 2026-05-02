@@ -1,8 +1,8 @@
 // Phase 11A.B42 — central producer registry.
 //
 // One catalog of all 57 deep-health producers. The registry-backed
-// [RegistryProxyHealthCheckStore] runs every producer concurrently,
-// applies each producer's individual budget, and assembles a
+// [RegistryProxyHealthCheckStore] runs producers through a bounded
+// concurrency lane, applies each producer's individual budget, and assembles a
 // [ProxyHealthStatus] with the dependency probes resolved separately
 // so postgres/AGE/pgvector liveness can drive HTTP 503 without forcing
 // tier-2/3 producers to participate in the failure model.
@@ -72,15 +72,12 @@ class _FunctionalProxyHealthQueryRunner implements ProxyHealthQueryRunner {
   Future<List<Map<String, Object?>>> query(
     String sql, {
     Map<String, Object?> parameters = const <String, Object?>{},
-  }) =>
-      _runnerFn(sql, parameters: parameters);
+  }) => _runnerFn(sql, parameters: parameters);
 }
 
 /// Adapt a family-file producer so the registry can call it with a
 /// [ProxyHealthRegistryContext].
-ProxyHealthRegistryProducer adaptFamilyProducer(
-  ProxyHealthProducer producer,
-) {
+ProxyHealthRegistryProducer adaptFamilyProducer(ProxyHealthProducer producer) {
   return (ProxyHealthRegistryContext registryContext) {
     final familyContext = ProxyHealthProducerContext(
       runner: _FunctionalProxyHealthQueryRunner(registryContext.runnerFn),
@@ -100,8 +97,7 @@ ProxyHealthRegistryProducer adaptFamilyProducer(
 /// producer can compute drift against the live registry. When the list
 /// is empty, the drift producer projects to `unknown` rather than
 /// silently green.
-Map<String, ProxyHealthRegistryProducer>
-buildProxyHealthRegistryProducers({
+Map<String, ProxyHealthRegistryProducer> buildProxyHealthRegistryProducers({
   List<String> expectedMigrationFilenames = const <String>[],
 }) {
   final catalog = <String, ProxyHealthProducer>{
@@ -118,8 +114,7 @@ buildProxyHealthRegistryProducers({
 
 /// Sanity helper used in tests: returns the count of distinct producer
 /// keys in the catalog. The B42 contract pins this at exactly 57.
-int proxyHealthRegisteredProducerCount() =>
-    proxyHealthProducerCatalog().length;
+int proxyHealthRegisteredProducerCount() => proxyHealthProducerCatalog().length;
 
 /// Internal: re-export an adapter for unit tests that want to call
 /// `ProxyHealthQueryRunner` against a function-shaped runner.
@@ -129,8 +124,7 @@ ProxyHealthQueryRunner functionalRunnerForTests(
     Map<String, Object?> parameters,
   })
   fn,
-) =>
-    _FunctionalProxyHealthQueryRunner(fn);
+) => _FunctionalProxyHealthQueryRunner(fn);
 
 /// Convenience for tests that want to round-trip a family producer
 /// through the registry adapter without spinning up the registry.

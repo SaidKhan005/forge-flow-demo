@@ -7,11 +7,15 @@
 //
 // HARD-G observability: every per-statement call wraps in
 // `.timeout(kPostgresPerStatementTimeout)`. `beginTransaction` wraps
-// the connection-open + initial `BEGIN` in
-// `.timeout(kPostgresAcquireConnectionTimeout)`. Both constants live
-// in postgres_executor.dart so future tuning lands in one place.
+// the connection-borrow + initial `BEGIN` in
+// `.timeout(kPostgresAcquireConnectionTimeout)`. The production
+// `fromUrl` constructor uses a bounded reusable connection pool; the
+// direct constructor remains close-on-commit by default for focused
+// tests and scaffolds. Tuning constants live in postgres_executor.dart
+// so future changes land in one place.
 
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:postgres/postgres.dart' as pg;
 
@@ -58,27 +62,92 @@ class PackagePostgresPool implements PostgresPool {
     required PackagePostgresConnectionFactory openConnection,
     Duration acquireConnectionTimeout = kPostgresAcquireConnectionTimeout,
     Duration perStatementTimeout = kPostgresPerStatementTimeout,
+    bool reuseConnections = false,
+    int maxConnectionCount = kPostgresDefaultMaxConnectionsPerPool,
   }) : _openConnection = openConnection,
        _acquireConnectionTimeout = acquireConnectionTimeout,
-       _perStatementTimeout = perStatementTimeout;
-
-  PackagePostgresPool.fromUrl(String connectionString)
-    : this(
-        openConnection: () async => _RealPackagePostgresConnection(
-          await pg.Connection.openFromUrl(connectionString),
-        ),
+       _perStatementTimeout = perStatementTimeout,
+       _reusableConnections = reuseConnections
+           ? _ReusablePackagePostgresConnections(
+               openConnection: openConnection,
+               maxConnectionCount: maxConnectionCount,
+             )
+           : null {
+    if (maxConnectionCount < 1) {
+      throw ArgumentError.value(
+        maxConnectionCount,
+        'maxConnectionCount',
+        'must be at least 1',
       );
+    }
+  }
+
+  PackagePostgresPool.fromUrl(
+    String connectionString, {
+    Duration acquireConnectionTimeout = kPostgresAcquireConnectionTimeout,
+    Duration perStatementTimeout = kPostgresPerStatementTimeout,
+    int maxConnectionCount = kPostgresDefaultMaxConnectionsPerPool,
+  }) : this(
+         openConnection: () async => _RealPackagePostgresConnection(
+           await pg.Connection.openFromUrl(connectionString),
+         ),
+         acquireConnectionTimeout: acquireConnectionTimeout,
+         perStatementTimeout: perStatementTimeout,
+         reuseConnections: true,
+         maxConnectionCount: maxConnectionCount,
+       );
 
   final PackagePostgresConnectionFactory _openConnection;
   final Duration _acquireConnectionTimeout;
   final Duration _perStatementTimeout;
+  final _ReusablePackagePostgresConnections? _reusableConnections;
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
-    final PackagePostgresConnection connection;
+    final lease = await _borrowConnection();
     try {
-      connection = await _openConnection().timeout(
-        _acquireConnectionTimeout,
+      await lease.connection
+          .execute('begin', ignoreRows: true)
+          .timeout(_perStatementTimeout);
+      return _PackagePostgresTransaction(lease, _perStatementTimeout);
+    } on TimeoutException {
+      await lease.discard();
+      throw _emitPostgresTimeout(
+        operation: 'begin',
+        timeout: _perStatementTimeout,
+      );
+    } catch (_) {
+      await lease.discard();
+      rethrow;
+    }
+  }
+
+  Future<void> closeIdleConnections() async {
+    await _reusableConnections?.closeIdleConnections();
+  }
+
+  Future<_PackagePostgresLease> _borrowConnection() async {
+    try {
+      final reusableConnections = _reusableConnections;
+      if (reusableConnections == null) {
+        final connectionFuture = _openConnection();
+        try {
+          return _PackagePostgresLease.unpooled(
+            await connectionFuture.timeout(_acquireConnectionTimeout),
+          );
+        } on TimeoutException {
+          unawaited(
+            connectionFuture.then(
+              (connection) => connection.close(force: true),
+              onError: (_) {},
+            ),
+          );
+          rethrow;
+        }
+      }
+      return _PackagePostgresLease.pooled(
+        await reusableConnections.acquire(_acquireConnectionTimeout),
+        reusableConnections,
       );
     } on TimeoutException {
       throw _emitPostgresTimeout(
@@ -86,20 +155,160 @@ class PackagePostgresPool implements PostgresPool {
         timeout: _acquireConnectionTimeout,
       );
     }
+  }
+}
+
+class _PackagePostgresLease {
+  _PackagePostgresLease.unpooled(this.connection) : _pool = null;
+
+  _PackagePostgresLease.pooled(this.connection, this._pool);
+
+  final PackagePostgresConnection connection;
+  final _ReusablePackagePostgresConnections? _pool;
+
+  Future<void> release() async {
+    final pool = _pool;
+    if (pool == null) {
+      await connection.close();
+      return;
+    }
+    pool.release(connection);
+  }
+
+  Future<void> discard() async {
+    final pool = _pool;
+    if (pool == null) {
+      await connection.close(force: true);
+      return;
+    }
+    await pool.discard(connection);
+  }
+}
+
+class _PackagePostgresWaiter {
+  _PackagePostgresWaiter(this.timeout);
+
+  final Duration timeout;
+  final completer = Completer<PackagePostgresConnection>();
+  var canceled = false;
+}
+
+class _ReusablePackagePostgresConnections {
+  _ReusablePackagePostgresConnections({
+    required PackagePostgresConnectionFactory openConnection,
+    required int maxConnectionCount,
+  }) : _openConnection = openConnection,
+       _maxConnectionCount = maxConnectionCount;
+
+  final PackagePostgresConnectionFactory _openConnection;
+  final int _maxConnectionCount;
+  final _idle = Queue<PackagePostgresConnection>();
+  final _waiters = Queue<_PackagePostgresWaiter>();
+  var _openConnectionCount = 0;
+
+  Future<PackagePostgresConnection> acquire(Duration timeout) async {
+    if (_idle.isNotEmpty) return _idle.removeFirst();
+
+    if (_openConnectionCount < _maxConnectionCount) {
+      return _openNewConnection(timeout);
+    }
+
+    final waiter = _PackagePostgresWaiter(timeout);
+    _waiters.addLast(waiter);
     try {
-      await connection
-          .execute('begin', ignoreRows: true)
-          .timeout(_perStatementTimeout);
-      return _PackagePostgresTransaction(connection, _perStatementTimeout);
+      return await waiter.completer.future.timeout(timeout);
     } on TimeoutException {
-      await connection.close(force: true);
-      throw _emitPostgresTimeout(
-        operation: 'begin',
-        timeout: _perStatementTimeout,
-      );
-    } catch (_) {
-      await connection.close(force: true);
+      waiter.canceled = true;
+      _waiters.remove(waiter);
       rethrow;
+    }
+  }
+
+  void release(PackagePostgresConnection connection) {
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (waiter.canceled) continue;
+      waiter.completer.complete(connection);
+      return;
+    }
+    _idle.addLast(connection);
+  }
+
+  Future<void> discard(PackagePostgresConnection connection) async {
+    if (_openConnectionCount > 0) _openConnectionCount -= 1;
+    try {
+      await connection.close(force: true);
+    } finally {
+      _openForNextWaiter();
+    }
+  }
+
+  Future<void> closeIdleConnections() async {
+    while (_idle.isNotEmpty) {
+      final connection = _idle.removeFirst();
+      if (_openConnectionCount > 0) _openConnectionCount -= 1;
+      await connection.close();
+    }
+  }
+
+  Future<PackagePostgresConnection> _openNewConnection(Duration timeout) async {
+    _openConnectionCount += 1;
+    final connectionFuture = _openConnection();
+    try {
+      return await connectionFuture.timeout(timeout);
+    } on TimeoutException {
+      _openConnectionCount -= 1;
+      unawaited(
+        connectionFuture.then(
+          (connection) => connection.close(force: true),
+          onError: (_) {},
+        ),
+      );
+      _openForNextWaiter();
+      rethrow;
+    } catch (_) {
+      _openConnectionCount -= 1;
+      _openForNextWaiter();
+      rethrow;
+    }
+  }
+
+  void _openForNextWaiter() {
+    if (_openConnectionCount >= _maxConnectionCount) return;
+    while (_waiters.isNotEmpty) {
+      final waiter = _waiters.removeFirst();
+      if (waiter.canceled) continue;
+      _openConnectionCount += 1;
+      final connectionFuture = _openConnection();
+      unawaited(
+        connectionFuture
+            .timeout(waiter.timeout)
+            .then(
+              (connection) {
+                if (waiter.canceled) {
+                  release(connection);
+                  return;
+                }
+                waiter.completer.complete(connection);
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                _openConnectionCount -= 1;
+                if (error is TimeoutException) {
+                  unawaited(
+                    connectionFuture.then(
+                      (connection) => connection.close(force: true),
+                      onError: (_) {},
+                    ),
+                  );
+                }
+                if (!waiter.canceled) {
+                  waiter.completer.completeError(error, stackTrace);
+                }
+                _openForNextWaiter();
+              },
+            ),
+      );
+      return;
     }
   }
 }
@@ -129,11 +338,13 @@ class _RealPackagePostgresConnection implements PackagePostgresConnection {
 }
 
 class _PackagePostgresTransaction implements PostgresTransaction {
-  _PackagePostgresTransaction(this._connection, this._perStatementTimeout);
+  _PackagePostgresTransaction(this._lease, this._perStatementTimeout);
 
-  final PackagePostgresConnection _connection;
+  final _PackagePostgresLease _lease;
   final Duration _perStatementTimeout;
   var _finalized = false;
+
+  PackagePostgresConnection get _connection => _lease.connection;
 
   @override
   Future<List<PostgresRow>> query(
@@ -164,11 +375,7 @@ class _PackagePostgresTransaction implements PostgresTransaction {
     _ensureOpen();
     try {
       final result = await _connection
-          .execute(
-            pg.Sql.named(sql),
-            parameters: parameters,
-            ignoreRows: true,
-          )
+          .execute(pg.Sql.named(sql), parameters: parameters, ignoreRows: true)
           .timeout(_perStatementTimeout);
       return result.affectedRows;
     } on TimeoutException {
@@ -183,21 +390,25 @@ class _PackagePostgresTransaction implements PostgresTransaction {
   Future<void> commit() async {
     if (_finalized) return;
     _finalized = true;
-    var timedOut = false;
+    var shouldRelease = true;
     try {
       await _connection
           .execute('commit', ignoreRows: true)
           .timeout(_perStatementTimeout);
     } on TimeoutException {
-      timedOut = true;
-      await _connection.close(force: true);
+      shouldRelease = false;
+      await _lease.discard();
       throw _emitPostgresTimeout(
         operation: 'commit',
         timeout: _perStatementTimeout,
       );
+    } catch (_) {
+      shouldRelease = false;
+      await _lease.discard();
+      rethrow;
     } finally {
-      if (!timedOut) {
-        await _connection.close();
+      if (shouldRelease) {
+        await _lease.release();
       }
     }
   }
@@ -211,13 +422,12 @@ class _PackagePostgresTransaction implements PostgresTransaction {
           .execute('rollback', ignoreRows: true)
           .timeout(_perStatementTimeout);
     } on TimeoutException {
-      await _connection.close(force: true);
       throw _emitPostgresTimeout(
         operation: 'rollback',
         timeout: _perStatementTimeout,
       );
     } finally {
-      await _connection.close(force: true);
+      await _lease.discard();
     }
   }
 

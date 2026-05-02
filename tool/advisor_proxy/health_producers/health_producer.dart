@@ -19,8 +19,10 @@
 import 'dart:async';
 
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
+import 'package:forge_and_flow/services/observability/dependency_timeout_exception.dart';
 
 import '../advisor_proxy.dart' show ProxyHealthMetric;
+import '../health_operation_budget.dart';
 
 /// Read-only execution surface for producers. The default production
 /// implementation wraps a Postgres pool; tests inject a fake.
@@ -74,25 +76,15 @@ Future<ProxyHealthMetric> runProducer(
   Future<ProxyHealthMetric> Function() body,
 ) async {
   try {
-    final result = await body().timeout(context.budget);
+    final result = await awaitHealthOperationWithBudget(
+      body(),
+      budget: context.budget,
+    );
     return result;
   } on TimeoutException {
-    final base = unknownTemplate();
-    return ProxyHealthMetric(
-      status: 'unknown',
-      value: null,
-      unit: base.unit,
-      description: base.description,
-      source: base.source,
-      owner: base.owner,
-      observedAt: context.now,
-      thresholds: base.thresholds,
-      metadata: <String, Object?>{
-        ...base.metadata,
-        'warning': 'producer_timeout',
-        'budget_ms': context.budget.inMilliseconds,
-      },
-    );
+    return _timeoutProjection(context, unknownTemplate);
+  } on DependencyTimeoutException {
+    return _timeoutProjection(context, unknownTemplate);
   } catch (_) {
     final base = unknownTemplate();
     return ProxyHealthMetric(
@@ -110,6 +102,28 @@ Future<ProxyHealthMetric> runProducer(
       },
     );
   }
+}
+
+ProxyHealthMetric _timeoutProjection(
+  ProxyHealthProducerContext context,
+  ProxyHealthMetric Function() unknownTemplate,
+) {
+  final base = unknownTemplate();
+  return ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: base.unit,
+    description: base.description,
+    source: base.source,
+    owner: base.owner,
+    observedAt: context.now,
+    thresholds: base.thresholds,
+    metadata: <String, Object?>{
+      ...base.metadata,
+      'warning': 'producer_timeout',
+      'budget_ms': context.budget.inMilliseconds,
+    },
+  );
 }
 
 /// Test fake for [ProxyHealthQueryRunner]. Maps SQL prefixes (or full

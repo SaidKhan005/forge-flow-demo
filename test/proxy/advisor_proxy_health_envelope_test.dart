@@ -275,252 +275,247 @@ void main() {
   });
 
   group('proxy_health envelope — registry-driven check', () {
-    test(
-      'RegistryProxyHealthCheckStore runs producers, projects timeouts to '
-      'unknown, and renders all 57 slots',
-      () async {
-        // Fake runner: every producer query gets an empty/clean response.
-        Future<List<Map<String, Object?>>> runnerFn(
-          String sql, {
-          Map<String, Object?> parameters = const <String, Object?>{},
-        }) async {
-          if (sql.contains('proxy_migration_apply_drift')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0, 'missing': const <String>[]},
-            ];
-          }
-          if (sql.contains('cron.job_run_details') &&
-              sql.contains("status = 'succeeded'")) {
-            return <Map<String, Object?>>[
-              {'last_end': DateTime.utc(2026, 5, 1, 11, 59).toIso8601String()},
-            ];
-          }
-          if (sql.contains('cron.job_run_details')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('pg_extension')) {
-            return <Map<String, Object?>>[
-              {'extname': 'age'},
-              {'extname': 'vector'},
-              {'extname': 'pg_diskann'},
-              {'extname': 'pg_cron'},
-              {'extname': 'pg_partman'},
-              {'extname': 'pg_stat_statements'},
-              {'extname': 'pgcrypto'},
-            ];
-          }
-          if (sql.contains('audit_chain_anchors') && sql.contains('lag')) {
-            return <Map<String, Object?>>[
-              {'lag': 60},
-            ];
-          }
-          if (sql.contains('audit_chain_anchors') && sql.contains('age')) {
-            return <Map<String, Object?>>[
-              {'age': 100},
-            ];
-          }
-          if (sql.contains('firebase_jwks_cache_status')) {
-            return <Map<String, Object?>>[
-              {'alive': true, 'age_seconds': 60},
-            ];
-          }
-          if (sql.contains('service_principals_signer_status')) {
-            return <Map<String, Object?>>[
-              {'signer_loaded': true, 'recent_verify_ok': true},
-            ];
-          }
-          if (sql.contains('circuit_breaker_state') && sql.contains('cnt')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('circuit_breaker_state')) {
-            return <Map<String, Object?>>[
-              {'state': 'closed', 'opened_at': null},
-            ];
-          }
-          if (sql.contains('graph_health_metrics') &&
-              sql.contains('high_degree_node_count')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('graph_health_metrics') &&
-              sql.contains('active_edge_count')) {
-            return <Map<String, Object?>>[
-              {'cnt': 100},
-            ];
-          }
-          if (sql.contains('graph_health_metrics')) {
-            return <Map<String, Object?>>[
-              {'cnt': 100},
-            ];
-          }
-          if (sql.contains('graph_benchmark_runs')) {
-            return <Map<String, Object?>>[
-              {'p50_ms': 50, 'p95_ms': 100, 'p99_ms': 150},
-            ];
-          }
-          if (sql.contains('graph_traversal_metrics')) {
-            return <Map<String, Object?>>[
-              {'t': 0, 'a': 100, 'failure_count': 0},
-            ];
-          }
-          if (sql.contains('graph_projection_runs')) {
-            return <Map<String, Object?>>[
-              {'age': 1000},
-            ];
-          }
-          if (sql.contains('graph_growth_projection')) {
-            return <Map<String, Object?>>[
-              {'projected': 1000},
-            ];
-          }
-          if (sql.contains('vector_index_health')) {
-            return <Map<String, Object?>>[
-              {'corpus_id': 'a', 'cnt': 100, 'active_count': 100},
-            ];
-          }
-          if (sql.contains('vector_benchmark_runs')) {
-            return <Map<String, Object?>>[
-              {'p50_ms': 50, 'p99_ms': 100, 'recall_at_10': 0.95},
-            ];
-          }
-          if (sql.contains('vector_query_metrics')) {
-            return <Map<String, Object?>>[
-              {'t': 0, 'a': 100},
-            ];
-          }
-          if (sql.contains('vector_growth_projection')) {
-            return <Map<String, Object?>>[
-              {'projected': 100},
-            ];
-          }
-          if (sql.contains('aggregation_state') && sql.contains('grain')) {
-            return <Map<String, Object?>>[
-              {'grain': 'daily', 'lag': 100},
-            ];
-          }
-          if (sql.contains('aggregation_state')) {
-            return <Map<String, Object?>>[
-              {'lag': 100},
-            ];
-          }
-          if (sql.contains('pg_stat_activity')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('event_outbox_publish_metrics')) {
-            return <Map<String, Object?>>[
-              {'failed': 0, 'attempted': 100},
-            ];
-          }
-          if (sql.contains('event_outbox') && sql.contains('lag')) {
-            return <Map<String, Object?>>[
-              {'lag': 5},
-            ];
-          }
-          if (sql.contains('event_outbox')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('pg_notification_queue_usage')) {
-            return <Map<String, Object?>>[
-              {'usage': 0.05},
-            ];
-          }
-          if (sql.contains('partman.part_config')) {
-            return <Map<String, Object?>>[
-              {'cnt': 5},
-            ];
-          }
-          if (sql.contains('usage_logs_default')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('proxy_requests')) {
-            return <Map<String, Object?>>[
-              {'ok': 1},
-            ];
-          }
-          if (sql.contains('cloud_run_instance_metrics')) {
-            return <Map<String, Object?>>[
-              {'instance_count': 3},
-            ];
-          }
-          if (sql.contains('provider_request_metrics')) {
-            return <Map<String, Object?>>[
-              {'e': 0, 'a': 100},
-            ];
-          }
-          if (sql.contains('proxy_request_metrics')) {
-            return <Map<String, Object?>>[
-              {'e': 0, 'a': 100, 'p99': 100},
-            ];
-          }
-          if (sql.contains('cache_metrics')) {
-            return <Map<String, Object?>>[
-              {'h': 60, 'a': 100},
-            ];
-          }
-          if (sql.contains('usage_logs') &&
-              (sql.contains('cap_reached') || sql.contains('outcome'))) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('usage_logs') && sql.contains('avg_cost')) {
-            return <Map<String, Object?>>[
-              {'avg_cost': 0.005, 'baseline': 0.005},
-            ];
-          }
-          if (sql.contains('usage_logs')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          if (sql.contains('workflow_runs')) {
-            return <Map<String, Object?>>[
-              {'cnt': 0},
-            ];
-          }
-          return const <Map<String, Object?>>[];
+    test('RegistryProxyHealthCheckStore runs producers, projects timeouts to '
+        'unknown, and renders all 57 slots', () async {
+      // Fake runner: every producer query gets an empty/clean response.
+      Future<List<Map<String, Object?>>> runnerFn(
+        String sql, {
+        Map<String, Object?> parameters = const <String, Object?>{},
+      }) async {
+        if (sql.contains('proxy_migration_apply_drift')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0, 'missing': const <String>[]},
+          ];
         }
+        if (sql.contains('cron.job_run_details') &&
+            sql.contains("status = 'succeeded'")) {
+          return <Map<String, Object?>>[
+            {'last_end': DateTime.utc(2026, 5, 1, 11, 59).toIso8601String()},
+          ];
+        }
+        if (sql.contains('cron.job_run_details')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('pg_extension')) {
+          return <Map<String, Object?>>[
+            {'extname': 'age'},
+            {'extname': 'vector'},
+            {'extname': 'pg_diskann'},
+            {'extname': 'pg_partman'},
+            {'extname': 'pg_stat_statements'},
+            {'extname': 'pgcrypto'},
+          ];
+        }
+        if (sql.contains('audit_chain_anchors') && sql.contains('lag')) {
+          return <Map<String, Object?>>[
+            {'lag': 60},
+          ];
+        }
+        if (sql.contains('audit_chain_anchors') && sql.contains('age')) {
+          return <Map<String, Object?>>[
+            {'age': 100},
+          ];
+        }
+        if (sql.contains('firebase_jwks_cache_status')) {
+          return <Map<String, Object?>>[
+            {'alive': true, 'age_seconds': 60},
+          ];
+        }
+        if (sql.contains('service_principals_signer_status')) {
+          return <Map<String, Object?>>[
+            {'signer_loaded': true, 'recent_verify_ok': true},
+          ];
+        }
+        if (sql.contains('circuit_breaker_state') && sql.contains('cnt')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('circuit_breaker_state')) {
+          return <Map<String, Object?>>[
+            {'state': 'closed', 'opened_at': null},
+          ];
+        }
+        if (sql.contains('graph_health_metrics') &&
+            sql.contains('high_degree_node_count')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('graph_health_metrics') &&
+            sql.contains('active_edge_count')) {
+          return <Map<String, Object?>>[
+            {'cnt': 100},
+          ];
+        }
+        if (sql.contains('graph_health_metrics')) {
+          return <Map<String, Object?>>[
+            {'cnt': 100},
+          ];
+        }
+        if (sql.contains('graph_benchmark_runs')) {
+          return <Map<String, Object?>>[
+            {'p50_ms': 50, 'p95_ms': 100, 'p99_ms': 150},
+          ];
+        }
+        if (sql.contains('graph_traversal_metrics')) {
+          return <Map<String, Object?>>[
+            {'t': 0, 'a': 100, 'failure_count': 0},
+          ];
+        }
+        if (sql.contains('graph_projection_runs')) {
+          return <Map<String, Object?>>[
+            {'age': 1000},
+          ];
+        }
+        if (sql.contains('graph_growth_projection')) {
+          return <Map<String, Object?>>[
+            {'projected': 1000},
+          ];
+        }
+        if (sql.contains('vector_index_health')) {
+          return <Map<String, Object?>>[
+            {'corpus_id': 'a', 'cnt': 100, 'active_count': 100},
+          ];
+        }
+        if (sql.contains('vector_benchmark_runs')) {
+          return <Map<String, Object?>>[
+            {'p50_ms': 50, 'p99_ms': 100, 'recall_at_10': 0.95},
+          ];
+        }
+        if (sql.contains('vector_query_metrics')) {
+          return <Map<String, Object?>>[
+            {'t': 0, 'a': 100},
+          ];
+        }
+        if (sql.contains('vector_growth_projection')) {
+          return <Map<String, Object?>>[
+            {'projected': 100},
+          ];
+        }
+        if (sql.contains('aggregation_state') && sql.contains('grain')) {
+          return <Map<String, Object?>>[
+            {'grain': 'daily', 'lag': 100},
+          ];
+        }
+        if (sql.contains('aggregation_state')) {
+          return <Map<String, Object?>>[
+            {'lag': 100},
+          ];
+        }
+        if (sql.contains('pg_stat_activity')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('event_outbox_publish_metrics')) {
+          return <Map<String, Object?>>[
+            {'failed': 0, 'attempted': 100},
+          ];
+        }
+        if (sql.contains('event_outbox') && sql.contains('lag')) {
+          return <Map<String, Object?>>[
+            {'lag': 5},
+          ];
+        }
+        if (sql.contains('event_outbox')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('pg_notification_queue_usage')) {
+          return <Map<String, Object?>>[
+            {'usage': 0.05},
+          ];
+        }
+        if (sql.contains('partman.part_config')) {
+          return <Map<String, Object?>>[
+            {'cnt': 5},
+          ];
+        }
+        if (sql.contains('usage_logs_default')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('proxy_requests')) {
+          return <Map<String, Object?>>[
+            {'ok': 1},
+          ];
+        }
+        if (sql.contains('cloud_run_instance_metrics')) {
+          return <Map<String, Object?>>[
+            {'instance_count': 3},
+          ];
+        }
+        if (sql.contains('provider_request_metrics')) {
+          return <Map<String, Object?>>[
+            {'e': 0, 'a': 100},
+          ];
+        }
+        if (sql.contains('proxy_request_metrics')) {
+          return <Map<String, Object?>>[
+            {'e': 0, 'a': 100, 'p99': 100},
+          ];
+        }
+        if (sql.contains('cache_metrics')) {
+          return <Map<String, Object?>>[
+            {'h': 60, 'a': 100},
+          ];
+        }
+        if (sql.contains('usage_logs') &&
+            (sql.contains('cap_reached') || sql.contains('outcome'))) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('usage_logs') && sql.contains('avg_cost')) {
+          return <Map<String, Object?>>[
+            {'avg_cost': 0.005, 'baseline': 0.005},
+          ];
+        }
+        if (sql.contains('usage_logs')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        if (sql.contains('workflow_runs')) {
+          return <Map<String, Object?>>[
+            {'cnt': 0},
+          ];
+        }
+        return const <Map<String, Object?>>[];
+      }
 
-        final store = RegistryProxyHealthCheckStore(
-          runnerFn: runnerFn,
-          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
-            postgresOk: true,
-            ageOk: true,
-            pgvectorOk: true,
-          ),
-          producers: buildProxyHealthRegistryProducers(
-            expectedMigrationFilenames: const <String>['202605020000_x.sql'],
-          ),
-          now: () => DateTime.utc(2026, 5, 1, 12),
-        );
+      final store = RegistryProxyHealthCheckStore(
+        runnerFn: runnerFn,
+        dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+          postgresOk: true,
+          ageOk: true,
+          pgvectorOk: true,
+        ),
+        producers: buildProxyHealthRegistryProducers(
+          expectedMigrationFilenames: const <String>['202605020000_x.sql'],
+        ),
+        now: () => DateTime.utc(2026, 5, 1, 12),
+      );
 
-        final result = await store.check();
-        final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
-        final metrics = json['metrics']! as Map<String, Object?>;
-        expect(metrics.length, equals(57));
-        // Tier-1 azure_extensions_present should be green when full set
-        // is installed.
-        final ext =
-            metrics['azure_extensions_present']! as Map<String, Object?>;
-        expect(ext['status'], equals('green'));
-        // Drift threaded an expected list into the registry; the fake
-        // returns drift=0 for it → green.
-        final drift =
-            metrics['migration_apply_drift_count']! as Map<String, Object?>;
-        expect(drift['status'], equals('green'));
-      },
-    );
+      final result = await store.check();
+      final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
+      final metrics = json['metrics']! as Map<String, Object?>;
+      expect(metrics.length, equals(57));
+      // Tier-1 azure_extensions_present should be green when full set
+      // is installed.
+      final ext = metrics['azure_extensions_present']! as Map<String, Object?>;
+      expect(ext['status'], equals('green'));
+      // Drift threaded an expected list into the registry; the fake
+      // returns drift=0 for it → green.
+      final drift =
+          metrics['migration_apply_drift_count']! as Map<String, Object?>;
+      expect(drift['status'], equals('green'));
+    });
 
     test(
       'registry without expected_migration_filenames flags drift unknown',
@@ -528,13 +523,11 @@ void main() {
         Future<List<Map<String, Object?>>> runnerFn(
           String sql, {
           Map<String, Object?> parameters = const <String, Object?>{},
-        }) async =>
-            const <Map<String, Object?>>[];
+        }) async => const <Map<String, Object?>>[];
 
         final store = RegistryProxyHealthCheckStore(
           runnerFn: runnerFn,
-          dependencyProbe: (fn, now) async =>
-              const ProxyHealthDependencyProbe(
+          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
             postgresOk: true,
             ageOk: true,
             pgvectorOk: true,
@@ -544,46 +537,48 @@ void main() {
         );
 
         final result = await store.check();
-        final json =
-            result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
+        final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
         final metrics = json['metrics']! as Map<String, Object?>;
-        final drift = metrics['migration_apply_drift_count']!
-            as Map<String, Object?>;
+        final drift =
+            metrics['migration_apply_drift_count']! as Map<String, Object?>;
         expect(drift['status'], equals('unknown'));
       },
     );
 
-    test('feature-flag rollback shrinks the registry to the legacy 11', () async {
-      Future<List<Map<String, Object?>>> runnerFn(
-        String sql, {
-        Map<String, Object?> parameters = const <String, Object?>{},
-      }) async =>
-          const <Map<String, Object?>>[];
+    test(
+      'feature-flag rollback shrinks the registry to the legacy 11',
+      () async {
+        Future<List<Map<String, Object?>>> runnerFn(
+          String sql, {
+          Map<String, Object?> parameters = const <String, Object?>{},
+        }) async => const <Map<String, Object?>>[];
 
-      final store = RegistryProxyHealthCheckStore(
-        runnerFn: runnerFn,
-        dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
-          postgresOk: true,
-          ageOk: true,
-          pgvectorOk: true,
-        ),
-        producers: buildProxyHealthRegistryProducers(),
-        featureFlags: const ProxyHealthFeatureFlags(healthEnvelopeFullV1: false),
-        now: () => DateTime.utc(2026, 5, 1, 12),
-      );
+        final store = RegistryProxyHealthCheckStore(
+          runnerFn: runnerFn,
+          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+            postgresOk: true,
+            ageOk: true,
+            pgvectorOk: true,
+          ),
+          producers: buildProxyHealthRegistryProducers(),
+          featureFlags: const ProxyHealthFeatureFlags(
+            healthEnvelopeFullV1: false,
+          ),
+          now: () => DateTime.utc(2026, 5, 1, 12),
+        );
 
-      final result = await store.check();
-      final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
-      expect(json['envelope_variant'], equals('legacy_b42'));
-      expect((json['metrics']! as Map<String, Object?>).length, equals(11));
-    });
+        final result = await store.check();
+        final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
+        expect(json['envelope_variant'], equals('legacy_b42'));
+        expect((json['metrics']! as Map<String, Object?>).length, equals(11));
+      },
+    );
 
     test('dependency probe failure flips response to 503-shape', () async {
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
         Map<String, Object?> parameters = const <String, Object?>{},
-      }) async =>
-          const <Map<String, Object?>>[];
+      }) async => const <Map<String, Object?>>[];
 
       final store = RegistryProxyHealthCheckStore(
         runnerFn: runnerFn,
@@ -602,52 +597,192 @@ void main() {
       expect(json['status'], equals('unavailable'));
       expect(json['severity'], equals('red'));
     });
-  });
 
-  group('defaultProxyHealthDependencyProbe — liveness vs data presence', () {
-    test('AGE/pgvector probes are green even with no graph/embedding rows', () async {
-      // Both probes assert extension presence + a syntactic round-trip;
-      // they must not depend on data rows existing.
+    test('red Postgres probe skips producer fan-out', () async {
+      var producerCalls = 0;
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
         Map<String, Object?> parameters = const <String, Object?>{},
-      }) async {
-        if (sql.contains('select 1 as ok') &&
-            !sql.contains('pg_extension')) {
-          return <Map<String, Object?>>[
-            {'ok': 1},
-          ];
-        }
-        if (sql.contains("extname = 'age'")) {
-          return <Map<String, Object?>>[
-            {'ok': 1},
-          ];
-        }
-        if (sql.contains("extname = 'vector'") &&
-            sql.contains('::vector')) {
-          return <Map<String, Object?>>[
-            {'ok': 1},
-          ];
-        }
-        return const <Map<String, Object?>>[];
+      }) async => const <Map<String, Object?>>[];
+
+      final store = RegistryProxyHealthCheckStore(
+        runnerFn: runnerFn,
+        dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+          postgresOk: false,
+          ageOk: true,
+          pgvectorOk: true,
+        ),
+        producers: <String, ProxyHealthRegistryProducer>{
+          'audit_chain_lag_seconds': (context) async {
+            producerCalls += 1;
+            return ProxyHealthMetric(
+              status: 'green',
+              value: 0,
+              unit: 'seconds',
+              description: 'test',
+              owner: 'test',
+              observedAt: context.now,
+              thresholds: const <String, Object?>{},
+            );
+          },
+        },
+        now: () => DateTime.utc(2026, 5, 1, 12),
+      );
+
+      final result = await store.check();
+      expect(result.ok, isFalse);
+      expect(producerCalls, equals(0));
+    });
+
+    test('producer fan-out is bounded by configured concurrency', () async {
+      var active = 0;
+      var maxActive = 0;
+      Future<List<Map<String, Object?>>> runnerFn(
+        String sql, {
+        Map<String, Object?> parameters = const <String, Object?>{},
+      }) async => const <Map<String, Object?>>[];
+
+      ProxyHealthRegistryProducer producerFor(String unit) {
+        return (context) async {
+          active += 1;
+          if (active > maxActive) maxActive = active;
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+          active -= 1;
+          return ProxyHealthMetric(
+            status: 'green',
+            value: 1,
+            unit: unit,
+            description: 'test',
+            owner: 'test',
+            observedAt: context.now,
+            thresholds: const <String, Object?>{},
+          );
+        };
       }
 
-      final probe = await defaultProxyHealthDependencyProbe(
-        runnerFn,
-        DateTime.utc(2026, 5, 1, 12),
+      final store = RegistryProxyHealthCheckStore(
+        runnerFn: runnerFn,
+        dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+          postgresOk: true,
+          ageOk: true,
+          pgvectorOk: true,
+        ),
+        producers: <String, ProxyHealthRegistryProducer>{
+          'audit_chain_lag_seconds': producerFor('seconds'),
+          'audit_chain_anchor_age_seconds': producerFor('seconds'),
+          'migration_apply_drift_count': producerFor('count'),
+          'firebase_jwks_fetch_alive': producerFor('boolean'),
+          'service_principal_jwt_alive': producerFor('boolean'),
+        },
+        producerConcurrency: 2,
+        now: () => DateTime.utc(2026, 5, 1, 12),
       );
-      expect(probe.postgresOk, isTrue);
-      expect(probe.ageOk, isTrue);
-      expect(probe.pgvectorOk, isTrue);
+
+      final result = await store.check();
+      expect(result.ok, isTrue);
+      expect(maxActive, lessThanOrEqualTo(2));
     });
+
+    test(
+      'timed-out producer settles before worker schedules another',
+      () async {
+        var firstSettled = false;
+        var secondStartedBeforeFirstSettled = false;
+
+        ProxyHealthMetric metricFor(
+          String unit,
+          ProxyHealthRegistryContext ctx,
+        ) {
+          return ProxyHealthMetric(
+            status: 'green',
+            value: 1,
+            unit: unit,
+            description: 'test',
+            owner: 'test',
+            observedAt: ctx.now,
+            thresholds: const <String, Object?>{},
+          );
+        }
+
+        final store = RegistryProxyHealthCheckStore(
+          runnerFn:
+              (
+                String sql, {
+                Map<String, Object?> parameters = const <String, Object?>{},
+              }) async => const <Map<String, Object?>>[],
+          dependencyProbe: (fn, now) async => const ProxyHealthDependencyProbe(
+            postgresOk: true,
+            ageOk: true,
+            pgvectorOk: true,
+          ),
+          producers: <String, ProxyHealthRegistryProducer>{
+            'audit_chain_lag_seconds': (context) async {
+              await Future<void>.delayed(const Duration(milliseconds: 30));
+              firstSettled = true;
+              return metricFor('seconds', context);
+            },
+            'audit_chain_anchor_age_seconds': (context) async {
+              secondStartedBeforeFirstSettled = !firstSettled;
+              return metricFor('seconds', context);
+            },
+          },
+          producerConcurrency: 1,
+          outerProducerBudget: const Duration(milliseconds: 5),
+          now: () => DateTime.utc(2026, 5, 1, 12),
+        );
+
+        await store.check();
+
+        expect(firstSettled, isTrue);
+        expect(secondStartedBeforeFirstSettled, isFalse);
+      },
+    );
+  });
+
+  group('defaultProxyHealthDependencyProbe — liveness vs data presence', () {
+    test(
+      'AGE/pgvector probes are green even with no graph/embedding rows',
+      () async {
+        // Both probes assert extension presence + a syntactic round-trip;
+        // they must not depend on data rows existing.
+        Future<List<Map<String, Object?>>> runnerFn(
+          String sql, {
+          Map<String, Object?> parameters = const <String, Object?>{},
+        }) async {
+          if (sql.contains('select 1 as ok') && !sql.contains('pg_extension')) {
+            return <Map<String, Object?>>[
+              {'ok': 1},
+            ];
+          }
+          if (sql.contains("extname = 'age'")) {
+            return <Map<String, Object?>>[
+              {'ok': 1},
+            ];
+          }
+          if (sql.contains("extname = 'vector'") && sql.contains('::vector')) {
+            return <Map<String, Object?>>[
+              {'ok': 1},
+            ];
+          }
+          return const <Map<String, Object?>>[];
+        }
+
+        final probe = await defaultProxyHealthDependencyProbe(
+          runnerFn,
+          DateTime.utc(2026, 5, 1, 12),
+        );
+        expect(probe.postgresOk, isTrue);
+        expect(probe.ageOk, isTrue);
+        expect(probe.pgvectorOk, isTrue);
+      },
+    );
 
     test('AGE probe red only when extension is missing', () async {
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
         Map<String, Object?> parameters = const <String, Object?>{},
       }) async {
-        if (sql.contains('select 1 as ok') &&
-            !sql.contains('pg_extension')) {
+        if (sql.contains('select 1 as ok') && !sql.contains('pg_extension')) {
           return <Map<String, Object?>>[
             {'ok': 1},
           ];
@@ -662,6 +797,7 @@ void main() {
         }
         return const <Map<String, Object?>>[];
       }
+
       final probe = await defaultProxyHealthDependencyProbe(
         runnerFn,
         DateTime.utc(2026, 5, 1, 12),
