@@ -1,43 +1,53 @@
 # Phase 9 Production1 Migration Apply Runbook
 
-Updated: 2026-04-29.
+Updated: 2026-05-02.
 
-Purpose: govern the live Production1 apply for the new Phase 9 `9.0 Sigma`
-foundation migrations and hotfix slots. This runbook must be reviewed before
-any Production1 mutation.
+Purpose: govern the live Production1 apply of the second migration batch —
+22 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and the
+HARD-B/HARD-F/HARD-H hardening pack — through cutoff
+`202605021500_phase_9_0sigma_l_rls_depth.sql`. This runbook must be reviewed
+before any Production1 mutation. The first batch (Phase 9.0 Sigma slices b–k
+plus auth/recovery patches) was applied 2026-04-29; see the Apply History
+section below for the prior result.
 
 ## Scope
 
 Production1 target: `forge-flow-production1-pg`.
 
-In scope:
+In scope (22 pending migrations, lex order):
 
-- `db/migrations/202604280000_phase_9_0sigma_b_rls_wrappers.sql`
-- `db/migrations/202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql`
-- `db/migrations/202604280002_phase_9_0sigma_c_org_units.sql`
-- `db/migrations/202604280003_phase_9_0sigma_e_event_outbox.sql`
-- `db/migrations/202604280004_phase_9_0sigma_d_service_principals.sql`
-- `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`
-- `db/migrations/202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql`
-- `db/migrations/202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql`
-- `db/migrations/202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql`
-- `db/migrations/202604280007_phase_9_0sigma_h_advisor_conversation_log.sql`
-- `db/migrations/202604280008_phase_9_0sigma_i_graph_canonical.sql`
-- `db/migrations/202604280009_phase_9_0sigma_j_diskann_install.sql`
-- `db/migrations/202604280010_a_phase_9_0sigma_k_aggregation_state.sql`
-- `db/migrations/202604280010_b_phase_9_0sigma_k_rollup_tables.sql`
-- `db/migrations/202604280010_c_phase_9_0sigma_k_pg_cron_jobs.sql`
-- `db/migrations/202604280011_phase_9_recovery_code_attempts.sql`
-- `db/migrations/202604280012_phase_9_auth_ops_cloud_foundation_grants.sql`
-- `db/migrations/202604280013_phase_9_audit_actor_kind_live_repair.sql`
+- `db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`
+- `db/migrations/202604290000_phase_9_b41_service_principal_issue_permission.sql`
+- `db/migrations/202604290100_phase_11A_1_operators_suspended_at.sql`
+- `db/migrations/202604290101_phase_9_hierarchy_access_wiring.sql`
+- `db/migrations/202604300000_phase_9_mfa_factor_removal_requests.sql`
+- `db/migrations/202604300001_phase_9_mfa_recovery_request_attempts.sql`
+- `db/migrations/202604300002_phase_9_mfa_hardening_launch_roles.sql`
+- `db/migrations/202605010000_phase_11A_3a_corpus_versions_ledger.sql`
+- `db/migrations/202605010000_phase_11A_4_provider_credentials.sql`
+- `db/migrations/202605010001_phase_9_b4_role_audit_log_operator_id.sql`
+- `db/migrations/202605010100_phase_9_0sigma_f_audit_logs_cutover_flag.sql`
+- `db/migrations/202605020000_phase_11A_b42_proxy_migrations_applied.sql`
+- `db/migrations/202605020001_phase_11A_3b_graphify_review_audit.sql`
+- `db/migrations/202605020001_phase_11A_4b_gemini_provider_kind.sql`
+- `db/migrations/202605020100_phase_11A_b43_cache_telemetry_v2.sql`
+- `db/migrations/202605020200_phase_11A_4c_kms_rollout_flags.sql`
+- `db/migrations/202605020300_phase_9_firebase_uid_text.sql`
+- `db/migrations/202605020400_phase_11A_7_feature_flags_admin_columns.sql`
+- `db/migrations/202605020452_hardening_auth_login_attempts.sql`
+- `db/migrations/202605020500_hardening_auth_rls_to_wrappers.sql`
+- `db/migrations/202605021000_phase_hardh_admin_idempotency.sql`
+- `db/migrations/202605021500_phase_9_0sigma_l_rls_depth.sql`
 
 Out of scope:
 
 - Cloud Armor enforcement mutation.
 - Production proxy deploy.
 - Operator data import.
-- Any migration outside the `202604280000` through `202604280013` files listed
-  above.
+- Any migration outside the cutoff range above (anything with a lex prefix
+  earlier than `202604280014` is already in production from the first batch;
+  anything later than `202605021500_phase_9_0sigma_l_rls_depth.sql` belongs to
+  a future apply event and is gated by `tool/migration_cutoff_lint.dart`).
 
 ## Live-Mutation Gate
 
@@ -57,45 +67,61 @@ Stop with `BLOCKED` if any item is missing.
 
 ## Apply Order
 
-Run in this exact order:
+Run in this exact lex order:
 
-1. `202604280000_phase_9_0sigma_b_rls_wrappers.sql`
-2. `202604280001_phase_9_0sigma_b_rewrite_existing_policies.sql`
-3. `202604280002_phase_9_0sigma_c_org_units.sql`
-4. `202604280003_phase_9_0sigma_e_event_outbox.sql`
-5. `202604280004_phase_9_0sigma_d_service_principals.sql`
-6. `202604280005_phase_9_0sigma_f_audit_logs.sql`
-7. `202604280006_a_phase_9_0sigma_g_usage_caps_two_slot_add.sql`
-8. `202604280006_b_phase_9_0sigma_g_usage_caps_two_slot_backfill.sql`
-9. `202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql`
-10. `202604280007_phase_9_0sigma_h_advisor_conversation_log.sql`
-11. `202604280008_phase_9_0sigma_i_graph_canonical.sql`
-12. `202604280009_phase_9_0sigma_j_diskann_install.sql`
-13. `202604280010_a_phase_9_0sigma_k_aggregation_state.sql`
-14. `202604280010_b_phase_9_0sigma_k_rollup_tables.sql`
-15. `202604280010_c_phase_9_0sigma_k_pg_cron_jobs.sql`
-16. `202604280011_phase_9_recovery_code_attempts.sql`
-17. `202604280012_phase_9_auth_ops_cloud_foundation_grants.sql`
-18. `202604280013_phase_9_audit_actor_kind_live_repair.sql`
+1. `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`
+2. `202604290000_phase_9_b41_service_principal_issue_permission.sql`
+3. `202604290100_phase_11A_1_operators_suspended_at.sql`
+4. `202604290101_phase_9_hierarchy_access_wiring.sql`
+5. `202604300000_phase_9_mfa_factor_removal_requests.sql`
+6. `202604300001_phase_9_mfa_recovery_request_attempts.sql`
+7. `202604300002_phase_9_mfa_hardening_launch_roles.sql`
+8. `202605010000_phase_11A_3a_corpus_versions_ledger.sql`
+9. `202605010000_phase_11A_4_provider_credentials.sql`
+10. `202605010001_phase_9_b4_role_audit_log_operator_id.sql`
+11. `202605010100_phase_9_0sigma_f_audit_logs_cutover_flag.sql`
+12. `202605020000_phase_11A_b42_proxy_migrations_applied.sql`
+13. `202605020001_phase_11A_3b_graphify_review_audit.sql`
+14. `202605020001_phase_11A_4b_gemini_provider_kind.sql`
+15. `202605020100_phase_11A_b43_cache_telemetry_v2.sql`
+16. `202605020200_phase_11A_4c_kms_rollout_flags.sql`
+17. `202605020300_phase_9_firebase_uid_text.sql`
+18. `202605020400_phase_11A_7_feature_flags_admin_columns.sql`
+19. `202605020452_hardening_auth_login_attempts.sql`
+20. `202605020500_hardening_auth_rls_to_wrappers.sql`
+21. `202605021000_phase_hardh_admin_idempotency.sql`
+22. `202605021500_phase_9_0sigma_l_rls_depth.sql`
 
 Dependency notes:
 
-- `...0004` must run before `...0013`; `0013` is a live-repair hotfix that is
-  idempotent after `0004`.
-- `...0000` through `...0003` are prerequisites for `...0004` through
-  `...0013`; fresh Production1 did not have the wrapper, org-unit, or
-  event-outbox foundation yet.
-- `...0006_a`, `...0006_b`, `...0006_c` must run in strict A/B/C order.
-- `...0010_a`, `...0010_b`, `...0010_c` must run in strict A/B/C order.
-- Do not skip `...0012`; it owns cloud-foundation grants for auth operations.
-- Azure Flexible Server must allow-list `ltree` in `azure.extensions` before
-  `...0002` can create the extension. This is dynamic on the current staging
-  and Production1 servers and did not require a restart during the live apply.
-- Azure keeps `pg_cron` metadata in the `postgres` maintenance database because
-  `cron.database_name=postgres`. Apply `...0010_c` to `forgeflow`, then schedule
-  the rollup jobs from `postgres` with `cron.schedule_in_database(...,
-  'forgeflow')` using `* * * * *` for the hot path and `*/5 * * * *` for the
-  cold path.
+- All 22 files are additive on the prior baseline (slices b–k plus auth /
+  recovery patches). Re-running any file after a partial failure is safe;
+  every `create table` / `create index` uses `if not exists`, every
+  `alter table` is idempotent on the second pass.
+- Two same-timestamp pairs need strict lex ordering: `...010000_…3a_corpus`
+  must run before `...010000_…4_provider`, and `...020001_…3b_graphify`
+  must run before `...020001_…4b_gemini`.
+- `…4_provider_credentials` must run before `…4b_gemini_provider_kind` and
+  `…4c_kms_rollout_flags`; both later files alter the `provider_credentials`
+  table created by the first.
+- `…0500_hardening_auth_rls_to_wrappers` depends on the wrapper functions
+  installed by the first batch (`forge_*_uuid()` family) — Production1
+  already has them from the 2026-04-29 apply.
+- `…1500_phase_9_0sigma_l_rls_depth` re-asserts RLS on `proxy_requests` and
+  `feature_flags` (created by `202604250005_advisor_cloud_foundation.sql`,
+  already in production). It drops the permissive `*_service_role_all` stubs
+  and adds wrapper-based per-tenant policies; the tenant-leading PK and the
+  `(operator_id, location_id, idempotency_key)` UNIQUE on `proxy_requests`
+  are unchanged from `202604250007_advisor_rls_index_hardening.sql`.
+- `…0300_phase_9_firebase_uid_text` widens the auth `firebase_uid` column
+  type; verify no in-flight writes from a stale schema cache before running.
+- `…1000_phase_hardh_admin_idempotency` creates `admin_request_idempotency`
+  (HARD-H). The L4 admin gateways already mint and forward
+  `Idempotency-Key` headers; the proxy dedup helper engages once this table
+  is in place.
+- No `pg_cron` schedule changes in this batch; the existing
+  `forge_rollup_hot_path` / `forge_rollup_cold_path` jobs from the prior
+  batch continue unchanged.
 
 ## Pre-Apply Snapshot
 
@@ -296,12 +322,17 @@ SQLi signatures opted out. Post-tuning B17 CRUD had zero preview hits, while a
 controlled SQLi probe still logged a preview signal. Do not flip enforcement
 until the post-tuning monitor window is clean.
 
-## 2026-04-29 Apply Result
+## Apply History
 
-- Staging and Production1 applied `202604280000` through `202604280013`.
+### 2026-04-29 — first batch (Phase 9.0 Sigma slices b–k + auth/recovery)
+
+- Staging and Production1 applied the Phase 9.0 Sigma b-through-k slice set
+  plus the recovery / auth-ops grants and the audit actor-kind live repair
+  hotfix.
 - Both servers were updated to allow-list `ltree` in `azure.extensions`.
-- `202604280010_c` creates the rollup functions in `forgeflow`; rollup cron
-  jobs are scheduled from the `postgres` maintenance database.
+- The 9.0 Sigma k pg_cron slice creates the rollup functions in
+  `forgeflow`; rollup cron jobs are scheduled from the `postgres`
+  maintenance database.
 - Verified app-database objects: `org_units`, `event_outbox`,
   `service_principals`, `audit_logs`, `audit_chain_anchors`,
   `advisor_conversation_log`, graph tables, aggregation state, all seven rollup
@@ -315,10 +346,15 @@ until the post-tuning monitor window is clean.
 - No backout was needed. Local logs are under
   `build/phase_9_production1_apply/` and intentionally stay uncommitted.
 
+### Next batch — pending (cutoff `202605021500_phase_9_0sigma_l_rls_depth.sql`)
+
+The 22 files inventoried under "Scope" above are queued for the next
+Production1 apply event. Append the result here once the apply is run.
+
 ## Apply Report Template
 
 ```text
-## Production1 Apply Report - Phase 9 9.0 Sigma slots
+## Production1 Apply Report - second batch (Phase 9 + 11A + Hardening)
 
 Target:
 - Database: [name only]
