@@ -165,11 +165,18 @@ if (-not $SkipApiEnable) {
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-& $gcloud artifacts repositories describe $ArtifactRepository `
-  --project $Project `
-  --location $Region `
-  --quiet *> $null
-if ($LASTEXITCODE -ne 0) {
+$previousErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = 'Continue'
+try {
+  & $gcloud artifacts repositories describe $ArtifactRepository `
+    --project $Project `
+    --location $Region `
+    --quiet *> $null
+  $artifactRepositoryDescribeExitCode = $LASTEXITCODE
+} finally {
+  $ErrorActionPreference = $previousErrorActionPreference
+}
+if ($artifactRepositoryDescribeExitCode -ne 0) {
   & $gcloud artifacts repositories create $ArtifactRepository `
     --project $Project `
     --location $Region `

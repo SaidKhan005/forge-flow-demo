@@ -34,3 +34,8 @@ test/
 *.jpeg
 *.gif
 *.mp4
+
+!assets/
+!assets/**
+!web/
+!web/**

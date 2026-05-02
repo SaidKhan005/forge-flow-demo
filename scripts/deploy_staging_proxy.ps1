@@ -37,6 +37,14 @@ param(
   # 'android\app\src\forgeflow\google-services.json'. Production deploys
   # should pass the matching per-flavor file (e.g. 'forgeflow_prod1').
   [string] $FirebaseGoogleServicesPath = '',
+  # Declared proxy environment. Staging must pass this explicitly so
+  # HARD-C admin CORS startup checks do not treat an unset value as
+  # production-equivalent.
+  [string] $ProxyEnvironment = 'staging',
+  # Optional comma-separated admin origins. Values may include entries
+  # that end in :* (for example http://127.0.0.1:*) because the proxy
+  # matcher supports exact origins plus dev/staging port wildcards.
+  [string] $AdminCorsAllowedOrigins = $env:ADMIN_CORS_ALLOWED_ORIGINS,
   [int] $MinInstances = 1,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
@@ -229,10 +237,36 @@ $secretAssignments = (
   $secretEnv.GetEnumerator() |
     ForEach-Object { "$($_.Key)=$($_.Value):latest" }
 ) -join ','
-$envAssignments = "FIREBASE_PROJECT_ID=$env:FIREBASE_PROJECT_ID"
+$envAssignments = [ordered] @{
+  'FIREBASE_PROJECT_ID' = $env:FIREBASE_PROJECT_ID
+  'PROXY_ENVIRONMENT' = $ProxyEnvironment
+  'GCP_PROJECT_ID' = $Project
+  'CLOUD_RUN_REGION' = $Region
+  'CLOUD_RUN_SERVICE_NAME' = $Service
+}
+if (-not [string]::IsNullOrWhiteSpace($AdminCorsAllowedOrigins)) {
+  $envAssignments['ADMIN_CORS_ALLOWED_ORIGINS'] = $AdminCorsAllowedOrigins
+}
+
+function ConvertTo-YamlSingleQuotedValue {
+  param([string] $Value)
+
+  return "'" + ($Value -replace "'", "''") + "'"
+}
+
+$envVarsFile = Join-Path ([System.IO.Path]::GetTempPath()) (
+  "forge-flow-proxy-env-{0}.yaml" -f ([Guid]::NewGuid())
+)
+$envVarsContent = (
+  $envAssignments.GetEnumerator() |
+    ForEach-Object {
+      "$($_.Key): $(ConvertTo-YamlSingleQuotedValue ([string] $_.Value))"
+    }
+) -join "`n"
 
 Push-Location $repoRoot
 try {
+  [System.IO.File]::WriteAllText($envVarsFile, $envVarsContent)
   & $gcloud run deploy $Service `
     --project $Project `
     --region $Region `
@@ -240,13 +274,16 @@ try {
     --service-account $ServiceAccount `
     --allow-unauthenticated `
     --no-invoker-iam-check `
-    --set-env-vars $envAssignments `
+    --env-vars-file $envVarsFile `
     --set-secrets $secretAssignments `
     --min-instances $MinInstances `
     --max-instances 2 `
     --quiet
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
+  if (Test-Path -LiteralPath $envVarsFile) {
+    Remove-Item -LiteralPath $envVarsFile -Force
+  }
   Pop-Location
 }
 
