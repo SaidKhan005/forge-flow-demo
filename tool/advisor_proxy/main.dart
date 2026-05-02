@@ -99,6 +99,21 @@ Future<void> main(List<String> args) async {
     },
   );
 
+  final migrationFilenames = loadProxyMigrationFilenames();
+  if (migrationFilenames.isEmpty) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'migration_catalog',
+        'message': 'db/migrations catalog is missing from proxy runtime',
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+
   // 9.1 live-closeout: FIREBASE_PROJECT_ID selects the local Firebase
   // ID-token verifier with a pointycastle-backed RS256 validator.
   // Phase 9 production route bindings below also require it; missing
@@ -131,6 +146,7 @@ Future<void> main(List<String> args) async {
       // scaffold-failing client so the proxy still binds and unauth
       // probes (`/health`, `/healthz`, `/readyz`) keep working.
       requireFirebase: isProductionEnvironment,
+      expectedMigrationFilenames: migrationFilenames,
     );
     // HARD-C — read supplemental CORS origins from the
     // `admin_cors_origins_extra` row in `public.feature_flags` once
@@ -189,6 +205,35 @@ Future<void> main(List<String> args) async {
       'startup.failed',
       fields: <String, Object?>{
         'phase': 'postgres_probe',
+        'error_type': error.runtimeType.toString(),
+        'error_message': error.toString(),
+        'stack_first_frame': firstStackFrame(stack),
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+
+  try {
+    final insertedMigrationRows = await recordProxyStartupMigrations(
+      productionBindings,
+      migrationFilenames,
+    );
+    log(
+      LogSeverity.info,
+      'startup.migrations_recorded',
+      fields: <String, Object?>{
+        'migration_catalog_count': migrationFilenames.length,
+        'inserted_migration_rows': insertedMigrationRows,
+      },
+    );
+  } catch (error, stack) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'migration_registry',
         'error_type': error.runtimeType.toString(),
         'error_message': error.toString(),
         'stack_first_frame': firstStackFrame(stack),
@@ -274,6 +319,7 @@ Future<void> main(List<String> args) async {
       // HARD-C surfaces the admin CORS allow-list size so a deploy
       // grep can confirm the value without dumping origins to the log.
       'admin_cors_allow_list_count': adminCorsAllowList.length,
+      'migration_catalog_count': migrationFilenames.length,
       'advisor_pipeline':
           'lock7_v1_per_instance_breaker_alwaysmiss_cache'
           '${productionBindings.geminiSlotEnabled ? '_with_gemini_secondary' : ''}',
@@ -342,4 +388,20 @@ Future<void> main(List<String> args) async {
       );
     }
   }
+}
+
+List<String> loadProxyMigrationFilenames({Directory? directory}) {
+  final migrationsDirectory = directory ?? Directory('db/migrations');
+  if (!migrationsDirectory.existsSync()) {
+    return const <String>[];
+  }
+  final filenames =
+      migrationsDirectory
+          .listSync()
+          .whereType<File>()
+          .map((file) => file.uri.pathSegments.last)
+          .where((filename) => filename.endsWith('.sql'))
+          .toList()
+        ..sort();
+  return List<String>.unmodifiable(filenames);
 }

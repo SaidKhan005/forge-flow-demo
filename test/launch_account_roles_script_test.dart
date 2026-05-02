@@ -40,14 +40,21 @@ void main() {
         final body = script.readAsStringSync();
 
         expect(body, contains('RefreshFirebaseClaims'));
-        expect(body, contains('auth application-default print-access-token'));
-        expect(body, contains(r'$customClaims.is_super_admin = $true'));
         expect(
           body,
           contains(
-            r'Set-FirebaseCustomClaims -Account $claims.regular '
-            r'-IsSuperAdmin $false',
+            'Apply db/migrations/202605020300_phase_9_firebase_uid_text.sql',
           ),
+        );
+        expect(body, contains('accounts:lookup'));
+        expect(body, contains('auth application-default print-access-token'));
+        expect(body, contains(r'$customClaims.is_super_admin = $true'));
+        expect(body, contains(r'$customClaims.is_ff_support = $true'));
+        expect(body, contains('launch Firebase UID links reconciled'));
+        expect(body, contains(r'$Account.is_super_admin'));
+        expect(
+          body,
+          contains('regular account projection still contains an admin claim'),
         );
       },
     );

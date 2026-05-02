@@ -36,6 +36,12 @@ Apply the database write and refresh Firebase custom claims:
 scripts/set_launch_account_roles.ps1 -RefreshFirebaseClaims
 ```
 
+`-RefreshFirebaseClaims` requires
+`db/migrations/202605020300_phase_9_firebase_uid_text.sql` to be applied first.
+That migration makes `public.users.firebase_uid` a `text` link to the real
+Firebase Identity Platform UID. The script blocks if the column is still the
+old UUID type.
+
 After the script completes, sign both accounts out and back in so the app uses
 fresh Firebase ID tokens.
 
@@ -52,5 +58,8 @@ fresh Firebase ID tokens.
   `operator_supervisor`.
 - Ensures Newfoundland has an active `operator_staff` grant.
 - Bumps `users.roles_version` only when the effective DB state changes.
-- With `-RefreshFirebaseClaims`, sets Said's Firebase custom claims with
-  `is_super_admin: true` and clears admin claims from Newfoundland.
+- With `-RefreshFirebaseClaims`, looks up both Firebase accounts by email,
+  reconciles `public.users.firebase_uid` to those live Firebase UIDs, then
+  projects Firebase custom claims from the database role/admin rows.
+- Blocks if Said's projection lacks an admin claim or if Newfoundland still
+  projects an admin claim.

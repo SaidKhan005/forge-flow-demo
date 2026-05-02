@@ -36,6 +36,12 @@ create unique index if not exists proxy_migrations_applied_filename_uidx
 create index if not exists proxy_migrations_applied_applied_at_idx
   on public.proxy_migrations_applied (applied_at desc);
 
+grant insert, select on public.proxy_migrations_applied
+  to service_role, forge_admin;
+
+grant usage, select on sequence public.proxy_migrations_applied_id_seq
+  to service_role, forge_admin;
+
 -- Drift detection: the proxy passes the on-disk migration filename list
 -- via a temporary table or a single-call array argument; production
 -- bootstrap uses the array overload. The function returns 0 drift when
@@ -86,5 +92,8 @@ begin
     select coalesce(array_length(missing, 1), 0)::int, missing;
 end;
 $$;
+
+grant execute on function public.proxy_migration_apply_drift(text[])
+  to service_role, forge_admin;
 
 commit;

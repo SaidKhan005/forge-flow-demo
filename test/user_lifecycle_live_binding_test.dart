@@ -250,6 +250,89 @@ void main() {
         );
       },
     );
+
+    test(
+      'firebaseCustomClaimsForUser projects admin flags from DB grants',
+      () async {
+        final pool = _LifecyclePool(
+          firebaseClaimRows: <PostgresRow>[
+            <String, Object?>{
+              'firebase_uid': 'firebase-admin-uid',
+              'postgres_user_id': _validUserId,
+              'roles_version': 12,
+              'is_super_admin': true,
+              'is_ff_support': true,
+            },
+          ],
+        );
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        final projection = await repo.firebaseCustomClaimsForUser(
+          userId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          adminReason: 'team.role_claims_refresh',
+        );
+
+        expect(projection.firebaseUid, equals('firebase-admin-uid'));
+        expect(
+          projection.toCustomClaims(),
+          equals(<String, Object?>{
+            'postgres_user_id': _validUserId,
+            'operator_id': _validOpId,
+            'location_id': _validLocId,
+            'roles_version': 12,
+            'is_super_admin': true,
+            'is_ff_support': true,
+          }),
+        );
+        final tx = pool.transactions.single;
+        final sql = tx.executedSql.last;
+        expect(
+          tx.parameters.first['value'],
+          equals('system:team.role_claims_refresh'),
+        );
+        expect(sql, contains("r.role_key = 'super_admin'"));
+        expect(sql, contains("r.role_key = 'ff_support'"));
+        expect(sql, contains('from operator_admins oa'));
+        expect(sql, contains('oa.valid_from <= now()'));
+        expect(
+          sql,
+          contains('oa.valid_until is null or oa.valid_until > now()'),
+        );
+        expect(sql, isNot(contains('u.operator_id = @operator_id::uuid')));
+      },
+    );
+
+    test(
+      'firebaseCustomClaimsForUser omits false admin flags to clear claims',
+      () async {
+        final pool = _LifecyclePool(
+          firebaseClaimRows: <PostgresRow>[
+            <String, Object?>{
+              'firebase_uid': 'firebase-user-uid',
+              'postgres_user_id': _validUserId,
+              'roles_version': 13,
+              'is_super_admin': false,
+              'is_ff_support': false,
+            },
+          ],
+        );
+        final repo = UsersRepository(TenantTransactionWrapper(pool));
+
+        final projection = await repo.firebaseCustomClaimsForUser(
+          userId: _validUserId,
+          operatorId: _validOpId,
+          locationId: _validLocId,
+          adminReason: 'team.role_claims_refresh',
+        );
+
+        final claims = projection.toCustomClaims();
+        expect(claims['roles_version'], equals(13));
+        expect(claims.containsKey('is_super_admin'), isFalse);
+        expect(claims.containsKey('is_ff_support'), isFalse);
+      },
+    );
   });
 
   group('AuthInvitesRepository (B20 — fake Postgres)', () {
@@ -529,6 +612,7 @@ class _LifecyclePool implements PostgresPool {
     this.teamUserRows = const <PostgresRow>[],
     this.mfaRecoveryTargetRows = const <PostgresRow>[],
     this.mfaRecoveryAdminRows = const <PostgresRow>[],
+    this.firebaseClaimRows = const <PostgresRow>[],
     this.throwMissingMfaRemovalTableOnTeamList = false,
   });
 
@@ -538,6 +622,7 @@ class _LifecyclePool implements PostgresPool {
   final List<PostgresRow> teamUserRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
+  final List<PostgresRow> firebaseClaimRows;
   final bool throwMissingMfaRemovalTableOnTeamList;
 
   final List<_LifecycleTransaction> transactions = <_LifecycleTransaction>[];
@@ -551,6 +636,7 @@ class _LifecyclePool implements PostgresPool {
       teamUserRows: teamUserRows,
       mfaRecoveryTargetRows: mfaRecoveryTargetRows,
       mfaRecoveryAdminRows: mfaRecoveryAdminRows,
+      firebaseClaimRows: firebaseClaimRows,
       throwMissingMfaRemovalTableOnTeamList:
           throwMissingMfaRemovalTableOnTeamList,
     );
@@ -567,6 +653,7 @@ class _LifecycleTransaction extends PostgresTransaction {
     required this.teamUserRows,
     required this.mfaRecoveryTargetRows,
     required this.mfaRecoveryAdminRows,
+    required this.firebaseClaimRows,
     required this.throwMissingMfaRemovalTableOnTeamList,
   });
 
@@ -576,6 +663,7 @@ class _LifecycleTransaction extends PostgresTransaction {
   final List<PostgresRow> teamUserRows;
   final List<PostgresRow> mfaRecoveryTargetRows;
   final List<PostgresRow> mfaRecoveryAdminRows;
+  final List<PostgresRow> firebaseClaimRows;
   final bool throwMissingMfaRemovalTableOnTeamList;
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
@@ -606,6 +694,11 @@ class _LifecycleTransaction extends PostgresTransaction {
       return <PostgresRow>[
         <String, Object?>{'event_id': id},
       ];
+    }
+    if (sql.contains('u.firebase_uid::text as firebase_uid') &&
+        sql.contains('as is_super_admin') &&
+        sql.contains('as is_ff_support')) {
+      return firebaseClaimRows;
     }
     if (sql.contains('from users u') &&
         sql.contains('where u.user_id = @user_id::uuid')) {

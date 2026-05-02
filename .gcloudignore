@@ -37,3 +37,8 @@ windows/
 *.png
 .graphify_*
 flutter_*.log
+
+!assets/
+!assets/**
+!web/
+!web/**

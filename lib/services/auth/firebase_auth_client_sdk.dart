@@ -71,7 +71,7 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     required String factorId,
     required String oneTimeCode,
   }) async {
-    final resolver = _mfaResolvers.remove(mfaSessionToken);
+    final resolver = _mfaResolvers[mfaSessionToken];
     if (resolver == null) {
       return const FirebaseAuthSignInFailed(
         code: 'mfa_session_expired',
@@ -81,10 +81,11 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     try {
       final assertion =
           await firebase_auth.TotpMultiFactorGenerator.getAssertionForSignIn(
-        factorId,
-        oneTimeCode,
-      );
+            factorId,
+            oneTimeCode,
+          );
       final credential = await resolver.resolveSignIn(assertion);
+      _mfaResolvers.remove(mfaSessionToken);
       return FirebaseAuthSignInSucceeded(
         await _credentialFromUserCredential(credential),
       );
@@ -140,6 +141,7 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
 
   @override
   Future<void> signOut() {
+    _mfaResolvers.clear();
     return _auth.signOut();
   }
 
@@ -162,9 +164,9 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     return FirebaseAuthSignInRequiresMfa(
       mfaSessionToken: handle,
       factorIds: List<String>.unmodifiable(
-        resolver.hints
-            .whereType<firebase_auth.TotpMultiFactorInfo>()
-            .map((hint) => hint.uid),
+        resolver.hints.whereType<firebase_auth.TotpMultiFactorInfo>().map(
+          (hint) => hint.uid,
+        ),
       ),
     );
   }
@@ -176,7 +178,7 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     if (user == null) {
       throw StateError('Firebase sign-in returned no user');
     }
-    return _credentialFromUser(user);
+    return _credentialFromUser(user, forceRefresh: true);
   }
 
   Future<FirebaseAuthCredential> _credentialFromUser(
@@ -193,11 +195,14 @@ class FirebaseAuthSdkClient implements FirebaseAuthClient {
     return FirebaseAuthCredential(
       userId: user.uid,
       idToken: token,
-      idTokenIssuedAt: tokenResult.issuedAtTime?.toUtc() ?? DateTime.now().toUtc(),
+      idTokenIssuedAt:
+          tokenResult.issuedAtTime?.toUtc() ?? DateTime.now().toUtc(),
       idTokenExpiresAt:
           tokenResult.expirationTime?.toUtc() ??
           DateTime.now().toUtc().add(const Duration(hours: 1)),
       lastFreshAuthAt: tokenResult.authTime?.toUtc() ?? DateTime.now().toUtc(),
+      email: user.email,
+      displayName: user.displayName,
       customClaims: claims,
     );
   }

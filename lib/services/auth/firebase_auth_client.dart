@@ -67,6 +67,8 @@ class FirebaseAuthCredential {
     required this.idTokenIssuedAt,
     required this.idTokenExpiresAt,
     required this.lastFreshAuthAt,
+    this.email,
+    this.displayName,
     this.customClaims = const <String, Object?>{},
   });
 
@@ -89,6 +91,14 @@ class FirebaseAuthCredential {
   /// JWT `auth_time`. Drives the 5-minute step-up freshness gate
   /// for sensitive operations (locked decision: 5 minutes).
   final DateTime lastFreshAuthAt;
+
+  /// Email returned by Firebase when available. Admin console session
+  /// projection uses this for display, while operator sessions continue
+  /// to source tenant identity from custom claims.
+  final String? email;
+
+  /// Display name returned by Firebase when available.
+  final String? displayName;
 
   /// Decoded JWT custom claims. The production `AuthLoginService`
   /// reads `operator_id`, `is_super_admin`, `is_ff_support`, and

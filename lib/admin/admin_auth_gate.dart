@@ -7,20 +7,20 @@
 //
 // Two auth sources ship with this slice:
 //
-//   * [FirebaseAdminAuthSource] — production. Wraps
-//     `firebase_auth.FirebaseAuth.instance.userChanges()` and reads
-//     custom claims via `User.getIdTokenResult()`. Phase 11A.x slices
-//     wire the Firebase web init step against the production admin
-//     project; the source is a thin adapter so that wiring is
-//     additive rather than restructuring this gate.
+//   * [FirebaseAdminAuthSource] — production. Wraps the shared
+//     `FirebaseAuthClient` adapter and reads custom claims from the
+//     returned credential. Phase 11A.x slices wire the Firebase web
+//     init step against the production admin project; the source is a
+//     thin adapter so that wiring is additive rather than
+//     restructuring this gate.
 //   * [DemoAdminAuthSource] — tests + the kDemoMode walkthrough. Lets
 //     a widget exercise both the admit path (super_admin / ff_support)
 //     and the fail-closed path (any other role list, or signed-out)
 //     without touching live Firebase Authentication.
 //
 // The gate widget itself is auth-source agnostic — it watches a
-// [Stream] of [AdminAuthState] and renders one of three surfaces
-// (loading / unauthenticated / forbidden / admin shell). The same
+// [Stream] of [AdminAuthState] and renders one of the auth surfaces
+// (loading / unauthenticated / MFA challenge / forbidden / admin shell). The same
 // shape works for both production and demo.
 //
 // Operator-app auth (`lib/state/auth_session_notifier.dart`,
@@ -32,9 +32,11 @@
 
 import 'dart:async';
 
-import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:flutter/material.dart';
 
+import '../screens/auth/totp_challenge_view.dart';
+import '../services/auth/firebase_auth_client.dart';
+import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
@@ -43,10 +45,7 @@ import '../theme/app_theme.dart';
 /// (`operator_owner` / `operator_manager`) are explicitly NOT
 /// admitted here — the admin console is F&F-internal, not operator
 /// self-service.
-const Set<String> kAdminConsoleRoles = <String>{
-  'super_admin',
-  'ff_support',
-};
+const Set<String> kAdminConsoleRoles = <String>{'super_admin', 'ff_support'};
 
 /// Identity payload an admit decision was made against. Carries only
 /// what the gate / shell need to render the admin surface; it does
@@ -101,6 +100,29 @@ class AdminAuthForbidden extends AdminAuthState {
   final AdminAuthSession session;
 }
 
+class AdminAuthMfaChallenge extends AdminAuthState {
+  const AdminAuthMfaChallenge({
+    required this.email,
+    required this.mfaSessionToken,
+    required this.factorIds,
+    this.lastErrorMessage,
+  });
+
+  final String email;
+  final String mfaSessionToken;
+  final List<String> factorIds;
+  final String? lastErrorMessage;
+
+  AdminAuthMfaChallenge copyWith({String? lastErrorMessage}) {
+    return AdminAuthMfaChallenge(
+      email: email,
+      mfaSessionToken: mfaSessionToken,
+      factorIds: factorIds,
+      lastErrorMessage: lastErrorMessage,
+    );
+  }
+}
+
 class AdminAuthAuthenticated extends AdminAuthState {
   const AdminAuthAuthenticated(this.session);
 
@@ -120,6 +142,11 @@ abstract class AdminAuthSource {
     required String password,
   });
 
+  Future<void> completeTotpChallenge({
+    required String factorId,
+    required String oneTimeCode,
+  });
+
   Future<void> signOut();
 
   void dispose();
@@ -130,41 +157,40 @@ abstract class AdminAuthSource {
 /// live Firebase Authentication.
 class DemoAdminAuthSource implements AdminAuthSource {
   DemoAdminAuthSource({AdminAuthState? initial})
-      : _state = initial ?? const AdminAuthLoading() {
+    : _state = initial ?? const AdminAuthLoading() {
     _controller.add(_state);
   }
 
   /// Convenience factory: starts signed-out so the walkthrough drives
   /// the sign-in card explicitly.
-  factory DemoAdminAuthSource.signedOut() => DemoAdminAuthSource(
-        initial: const AdminAuthUnauthenticated(),
-      );
+  factory DemoAdminAuthSource.signedOut() =>
+      DemoAdminAuthSource(initial: const AdminAuthUnauthenticated());
 
   /// Convenience factory: starts already signed in as a super-admin.
   /// Useful for widget tests that just need the shell rendered.
   factory DemoAdminAuthSource.signedInAsSuperAdmin() => DemoAdminAuthSource(
-        initial: const AdminAuthAuthenticated(
-          AdminAuthSession(
-            uid: 'demo-super-admin',
-            email: 'demo.super.admin@forgeflow.test',
-            displayName: 'Demo Super Admin',
-            roles: <String>['super_admin'],
-          ),
-        ),
-      );
+    initial: const AdminAuthAuthenticated(
+      AdminAuthSession(
+        uid: 'demo-super-admin',
+        email: 'demo.super.admin@forgeflow.test',
+        displayName: 'Demo Super Admin',
+        roles: <String>['super_admin'],
+      ),
+    ),
+  );
 
   /// Convenience factory: starts signed in as a non-admin so the
   /// fail-closed path renders.
   factory DemoAdminAuthSource.signedInAsNonAdmin() => DemoAdminAuthSource(
-        initial: const AdminAuthForbidden(
-          AdminAuthSession(
-            uid: 'demo-non-admin',
-            email: 'demo.operator@forgeflow.test',
-            displayName: 'Demo Operator',
-            roles: <String>['operator_owner'],
-          ),
-        ),
-      );
+    initial: const AdminAuthForbidden(
+      AdminAuthSession(
+        uid: 'demo-non-admin',
+        email: 'demo.operator@forgeflow.test',
+        displayName: 'Demo Operator',
+        roles: <String>['operator_owner'],
+      ),
+    ),
+  );
 
   final StreamController<AdminAuthState> _controller =
       StreamController<AdminAuthState>.broadcast();
@@ -175,25 +201,25 @@ class DemoAdminAuthSource implements AdminAuthSource {
   /// shipping live credentials.
   static const Map<String, AdminAuthSession> _demoUsers =
       <String, AdminAuthSession>{
-    'super.admin@forgeflow.test': AdminAuthSession(
-      uid: 'demo-super-admin',
-      email: 'super.admin@forgeflow.test',
-      displayName: 'Demo Super Admin',
-      roles: <String>['super_admin'],
-    ),
-    'support@forgeflow.test': AdminAuthSession(
-      uid: 'demo-ff-support',
-      email: 'support@forgeflow.test',
-      displayName: 'Demo F&F Support',
-      roles: <String>['ff_support'],
-    ),
-    'operator@forgeflow.test': AdminAuthSession(
-      uid: 'demo-operator',
-      email: 'operator@forgeflow.test',
-      displayName: 'Demo Operator',
-      roles: <String>['operator_owner'],
-    ),
-  };
+        'super.admin@forgeflow.test': AdminAuthSession(
+          uid: 'demo-super-admin',
+          email: 'super.admin@forgeflow.test',
+          displayName: 'Demo Super Admin',
+          roles: <String>['super_admin'],
+        ),
+        'support@forgeflow.test': AdminAuthSession(
+          uid: 'demo-ff-support',
+          email: 'support@forgeflow.test',
+          displayName: 'Demo F&F Support',
+          roles: <String>['ff_support'],
+        ),
+        'operator@forgeflow.test': AdminAuthSession(
+          uid: 'demo-operator',
+          email: 'operator@forgeflow.test',
+          displayName: 'Demo Operator',
+          roles: <String>['operator_owner'],
+        ),
+      };
 
   @override
   Stream<AdminAuthState> get stream => _controller.stream;
@@ -226,6 +252,35 @@ class DemoAdminAuthSource implements AdminAuthSource {
   }
 
   @override
+  Future<void> completeTotpChallenge({
+    required String factorId,
+    required String oneTimeCode,
+  }) async {
+    final current = _state;
+    if (current is! AdminAuthMfaChallenge) {
+      throw StateError('completeTotpChallenge requires admin MFA state');
+    }
+    if (oneTimeCode == '123456') {
+      _emit(
+        const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-super-admin',
+            email: 'super.admin@forgeflow.test',
+            displayName: 'Demo Super Admin',
+            roles: <String>['super_admin'],
+          ),
+        ),
+      );
+      return;
+    }
+    _emit(
+      current.copyWith(
+        lastErrorMessage: 'Verification failed. Check the code and try again.',
+      ),
+    );
+  }
+
+  @override
   Future<void> signOut() async {
     _emit(const AdminAuthUnauthenticated());
   }
@@ -247,25 +302,20 @@ class DemoAdminAuthSource implements AdminAuthSource {
 }
 
 /// Live Firebase Authentication source. Reads custom claims from the
-/// ID token result and emits the matching admit / forbidden state.
+/// shared Firebase auth adapter and emits the matching admin gate state.
 class FirebaseAdminAuthSource implements AdminAuthSource {
-  FirebaseAdminAuthSource({fb.FirebaseAuth? firebaseAuth})
-      : _auth = firebaseAuth ?? fb.FirebaseAuth.instance,
-        _state = const AdminAuthLoading() {
+  FirebaseAdminAuthSource({FirebaseAuthClient? client})
+    : _client = client ?? FirebaseAuthSdkClient(),
+      _state = const AdminAuthLoading() {
     _controller.add(_state);
-    _subscription = _auth.userChanges().listen(
-      _handleUserChange,
-      onError: (Object error, StackTrace stack) {
-        _emit(AdminAuthUnauthenticated(lastErrorMessage: error.toString()));
-      },
-    );
+    unawaited(_bootstrapCurrentUser());
   }
 
-  final fb.FirebaseAuth _auth;
+  final FirebaseAuthClient _client;
   final StreamController<AdminAuthState> _controller =
       StreamController<AdminAuthState>.broadcast();
-  StreamSubscription<fb.User?>? _subscription;
   AdminAuthState _state;
+  bool _disposed = false;
 
   @override
   Stream<AdminAuthState> get stream => _controller.stream;
@@ -278,56 +328,102 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
     required String email,
     required String password,
   }) async {
-    try {
-      await _auth.signInWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-      // The userChanges stream takes the next emit from here.
-    } on fb.FirebaseAuthException catch (error) {
-      _emit(
-        AdminAuthUnauthenticated(
-          lastErrorMessage: error.message ?? error.code,
-        ),
-      );
-      rethrow;
+    final outcome = await _client.signInWithEmailPassword(
+      email: email.trim(),
+      password: password,
+    );
+    _applyOutcome(outcome, emailForMfa: email.trim());
+  }
+
+  @override
+  Future<void> completeTotpChallenge({
+    required String factorId,
+    required String oneTimeCode,
+  }) async {
+    final current = _state;
+    if (current is! AdminAuthMfaChallenge) {
+      throw StateError('completeTotpChallenge requires admin MFA state');
     }
+    final outcome = await _client.completeTotpChallenge(
+      mfaSessionToken: current.mfaSessionToken,
+      factorId: factorId,
+      oneTimeCode: oneTimeCode,
+    );
+    _applyOutcome(
+      outcome,
+      emailForMfa: current.email,
+      previousChallenge: current,
+    );
   }
 
   @override
   Future<void> signOut() async {
-    await _auth.signOut();
+    await _client.signOut();
+    _emit(const AdminAuthUnauthenticated());
   }
 
-  Future<void> _handleUserChange(fb.User? user) async {
-    if (user == null) {
-      _emit(const AdminAuthUnauthenticated());
-      return;
-    }
+  Future<void> _bootstrapCurrentUser() async {
     try {
-      // Force-refresh to pick up role-claim rotations issued by the
-      // admin proxy without waiting on the default 1h cache window.
-      final tokenResult = await user.getIdTokenResult(true);
-      final claims = tokenResult.claims ?? const <String, Object?>{};
-      final roles = _extractRoles(claims);
-      final session = AdminAuthSession(
-        uid: user.uid,
-        email: user.email ?? '',
-        displayName: user.displayName ?? _localPartOrUid(user),
-        roles: roles,
-      );
-      _emit(
-        session.isAdmin
-            ? AdminAuthAuthenticated(session)
-            : AdminAuthForbidden(session),
-      );
+      final credential = await _client.refreshIdToken();
+      if (credential == null) {
+        _emit(const AdminAuthUnauthenticated());
+        return;
+      }
+      _emit(_stateForCredential(credential));
     } catch (error) {
       _emit(
         AdminAuthUnauthenticated(
-          lastErrorMessage: 'Could not read admin claims: $error',
+          lastErrorMessage: 'Could not initialize admin auth: $error',
         ),
       );
     }
+  }
+
+  void _applyOutcome(
+    FirebaseAuthSignInOutcome outcome, {
+    required String emailForMfa,
+    AdminAuthMfaChallenge? previousChallenge,
+  }) {
+    switch (outcome) {
+      case FirebaseAuthSignInSucceeded(:final credential):
+        _emit(_stateForCredential(credential, emailFallback: emailForMfa));
+      case FirebaseAuthSignInRequiresMfa(
+        :final mfaSessionToken,
+        :final factorIds,
+      ):
+        _emit(
+          AdminAuthMfaChallenge(
+            email: emailForMfa,
+            mfaSessionToken: mfaSessionToken,
+            factorIds: factorIds,
+          ),
+        );
+      case FirebaseAuthSignInFailed(:final message):
+        if (previousChallenge != null) {
+          _emit(previousChallenge.copyWith(lastErrorMessage: message));
+        } else {
+          _emit(AdminAuthUnauthenticated(lastErrorMessage: message));
+        }
+    }
+  }
+
+  AdminAuthState _stateForCredential(
+    FirebaseAuthCredential credential, {
+    String? emailFallback,
+  }) {
+    final roles = _extractRoles(credential.customClaims);
+    final email = credential.email ?? emailFallback ?? '';
+    final session = AdminAuthSession(
+      uid: credential.userId,
+      email: email,
+      displayName:
+          credential.displayName ??
+          _localPartOrUid(email: email, uid: credential.userId),
+      roles: roles,
+    );
+    return session.isAdmin
+        ? AdminAuthAuthenticated(session)
+        : AdminAuthForbidden(session);
   }
 
   /// Projects Phase 9's locked admin claim shape onto the gate's
@@ -351,20 +447,20 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
   static List<String> _extractRoles(Map<String, Object?> claims) =>
       extractRolesFromClaims(claims);
 
-  static String _localPartOrUid(fb.User user) {
-    final email = user.email;
-    if (email == null || !email.contains('@')) return user.uid;
+  static String _localPartOrUid({required String email, required String uid}) {
+    if (!email.contains('@')) return uid;
     return email.split('@').first;
   }
 
   void _emit(AdminAuthState next) {
+    if (_disposed) return;
     _state = next;
     _controller.add(next);
   }
 
   @override
   void dispose() {
-    _subscription?.cancel();
+    _disposed = true;
     _controller.close();
   }
 }
@@ -372,6 +468,7 @@ class FirebaseAdminAuthSource implements AdminAuthSource {
 /// The gate widget. Subscribes to [source] and renders one of:
 ///
 ///   * branded sign-in card (unauthenticated)
+///   * branded TOTP challenge card (MFA challenge)
 ///   * branded "forbidden" card with sign-out (forbidden)
 ///   * [adminShellBuilder] result (authenticated)
 ///   * default loading splash (loading)
@@ -389,7 +486,7 @@ class AdminAuthGate extends StatefulWidget {
 
   final AdminAuthSource source;
   final Widget Function(BuildContext context, AdminAuthSession session)
-      adminShellBuilder;
+  adminShellBuilder;
   final WidgetBuilder? loadingBuilder;
 
   @override
@@ -436,15 +533,21 @@ class _AdminAuthGateState extends State<AdminAuthGate> {
       AdminAuthLoading() =>
         widget.loadingBuilder?.call(context) ?? const _AdminLoading(),
       AdminAuthUnauthenticated() => _AdminSignInScreen(
-          source: widget.source,
-          errorMessage: state.lastErrorMessage,
-        ),
+        source: widget.source,
+        errorMessage: state.lastErrorMessage,
+      ),
       AdminAuthForbidden() => _AdminForbiddenScreen(
-          source: widget.source,
-          session: state.session,
-        ),
-      AdminAuthAuthenticated() =>
-        widget.adminShellBuilder(context, state.session),
+        source: widget.source,
+        session: state.session,
+      ),
+      AdminAuthMfaChallenge() => _AdminMfaChallengeScreen(
+        source: widget.source,
+        challenge: state,
+      ),
+      AdminAuthAuthenticated() => widget.adminShellBuilder(
+        context,
+        state.session,
+      ),
     };
   }
 }
@@ -466,6 +569,55 @@ class _AdminLoading extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _AdminMfaChallengeScreen extends StatefulWidget {
+  const _AdminMfaChallengeScreen({
+    required this.source,
+    required this.challenge,
+  });
+
+  final AdminAuthSource source;
+  final AdminAuthMfaChallenge challenge;
+
+  @override
+  State<_AdminMfaChallengeScreen> createState() =>
+      _AdminMfaChallengeScreenState();
+}
+
+class _AdminMfaChallengeScreenState extends State<_AdminMfaChallengeScreen> {
+  String? _helpMessage;
+
+  Future<void> _submit(String code) async {
+    final factorId = widget.challenge.factorIds.isNotEmpty
+        ? widget.challenge.factorIds.first
+        : 'totp';
+    await widget.source.completeTotpChallenge(
+      factorId: factorId,
+      oneTimeCode: code,
+    );
+  }
+
+  Future<void> _requestHelp() async {
+    setState(() {
+      _helpMessage =
+          'Contact the F&F platform admin for a factor reset or recovery review.';
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TotpChallengeView(
+      email: widget.challenge.email,
+      errorMessage: widget.challenge.lastErrorMessage,
+      helpMessage: _helpMessage,
+      helpButtonLabel: 'Contact F&F support',
+      helpButtonLoadingLabel: 'Sending...',
+      onSubmit: _submit,
+      onRequestHelp: _requestHelp,
+      onCancel: widget.source.signOut,
     );
   }
 }
@@ -544,8 +696,7 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
                 child: Column(
@@ -566,9 +717,7 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
                     Text(
                       'F&F internal access only.',
                       textAlign: TextAlign.center,
-                      style: AppTextStyles.mono11(
-                        color: AppColors.textMuted,
-                      ),
+                      style: AppTextStyles.mono11(color: AppColors.textMuted),
                     ),
                   ],
                 ),
@@ -767,8 +916,10 @@ class _BrandedField extends StatelessWidget {
         floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 14,
+        ),
         border: border,
         enabledBorder: border,
         focusedBorder: OutlineInputBorder(
@@ -803,13 +954,11 @@ class _SignInButton extends StatelessWidget {
         style: FilledButton.styleFrom(
           backgroundColor: AppColors.sunset,
           foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor:
-              AppColors.sunset.withValues(alpha: 0.55),
-          disabledForegroundColor:
-              AppColors.backgroundSurface.withValues(alpha: 0.85),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
+          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.55),
+          disabledForegroundColor: AppColors.backgroundSurface.withValues(
+            alpha: 0.85,
           ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           textStyle: AppTextStyles.mono14(
             color: AppColors.backgroundSurface,
             weight: FontWeight.w600,
@@ -851,11 +1000,7 @@ class _ErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 16,
-            color: AppColors.negative,
-          ),
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -870,10 +1015,7 @@ class _ErrorBanner extends StatelessWidget {
 }
 
 class _AdminForbiddenScreen extends StatelessWidget {
-  const _AdminForbiddenScreen({
-    required this.source,
-    required this.session,
-  });
+  const _AdminForbiddenScreen({required this.source, required this.session});
 
   final AdminAuthSource source;
   final AdminAuthSession session;
@@ -887,18 +1029,14 @@ class _AdminForbiddenScreen extends StatelessWidget {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 420),
             child: Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Container(
                   key: const Key('admin_forbidden_card'),
                   decoration: BoxDecoration(
                     color: AppColors.backgroundSurface,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                   ),
                   padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
                   child: Column(

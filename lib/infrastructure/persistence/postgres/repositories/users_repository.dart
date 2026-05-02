@@ -174,6 +174,37 @@ class UserAuthLookupRow {
   final String? firebaseUid;
 }
 
+class FirebaseCustomClaimsProjection {
+  const FirebaseCustomClaimsProjection({
+    required this.firebaseUid,
+    required this.userId,
+    required this.operatorId,
+    required this.locationId,
+    required this.rolesVersion,
+    required this.isSuperAdmin,
+    required this.isFfSupport,
+  });
+
+  final String firebaseUid;
+  final String userId;
+  final String operatorId;
+  final String locationId;
+  final int rolesVersion;
+  final bool isSuperAdmin;
+  final bool isFfSupport;
+
+  Map<String, Object?> toCustomClaims() {
+    return <String, Object?>{
+      'postgres_user_id': userId,
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'roles_version': rolesVersion,
+      if (isSuperAdmin) 'is_super_admin': true,
+      if (isFfSupport) 'is_ff_support': true,
+    };
+  }
+}
+
 class UsersRepository extends OperatorScopedRepository {
   UsersRepository(super.tenantWrapper);
 
@@ -721,6 +752,92 @@ class UsersRepository extends OperatorScopedRepository {
     });
   }
 
+  /// Builds the tiny Firebase custom-claims payload for a user from the
+  /// authoritative Postgres role state.
+  ///
+  /// This runs as system because F&F support/admin users can be attached to an
+  /// operator through `operator_admins` while their `users.operator_id` belongs
+  /// to a different home operator. The returned claim scope is always the
+  /// caller-supplied operator/location pair.
+  Future<FirebaseCustomClaimsProjection> firebaseCustomClaimsForUser({
+    required String userId,
+    required String operatorId,
+    required String locationId,
+    required String adminReason,
+  }) {
+    return withSystem<FirebaseCustomClaimsProjection>((exec) async {
+      final rows = await exec.query(
+        'select u.firebase_uid::text as firebase_uid, '
+        'u.user_id::text as postgres_user_id, '
+        'u.roles_version, '
+        '('
+        '  exists ('
+        '    select 1 '
+        '    from user_roles ur '
+        '    join roles r on r.role_id = ur.role_id '
+        '    where ur.user_id = u.user_id '
+        '    and ur.operator_id = @operator_id::uuid '
+        '    and ur.revoked_at is null '
+        '    and (ur.valid_until is null or ur.valid_until > now()) '
+        '    and ur.valid_from <= now() '
+        '    and r.operator_id is null '
+        "    and r.role_key = 'super_admin' "
+        '    and r.deleted_at is null'
+        '  ) '
+        '  or exists ('
+        '    select 1 '
+        '    from operator_admins oa '
+        '    where oa.user_id = u.user_id '
+        '    and oa.operator_id = @operator_id::uuid '
+        '    and oa.valid_from <= now() '
+        '    and (oa.valid_until is null or oa.valid_until > now()) '
+        "    and (oa.is_super_admin is true or oa.scope_type = 'super_admin')"
+        '  )'
+        ') as is_super_admin, '
+        '('
+        '  exists ('
+        '    select 1 '
+        '    from user_roles ur '
+        '    join roles r on r.role_id = ur.role_id '
+        '    where ur.user_id = u.user_id '
+        '    and ur.operator_id = @operator_id::uuid '
+        '    and ur.revoked_at is null '
+        '    and (ur.valid_until is null or ur.valid_until > now()) '
+        '    and ur.valid_from <= now() '
+        '    and r.operator_id is null '
+        "    and r.role_key = 'ff_support' "
+        '    and r.deleted_at is null'
+        '  ) '
+        '  or exists ('
+        '    select 1 '
+        '    from operator_admins oa '
+        '    where oa.user_id = u.user_id '
+        '    and oa.operator_id = @operator_id::uuid '
+        '    and oa.valid_from <= now() '
+        '    and (oa.valid_until is null or oa.valid_until > now()) '
+        "    and oa.scope_type = 'ff_support'"
+        '  )'
+        ') as is_ff_support '
+        'from users u '
+        'where u.user_id = @user_id::uuid '
+        'and u.deleted_at is null '
+        'limit 1',
+        parameters: <String, Object?>{
+          'user_id': userId,
+          'operator_id': operatorId,
+        },
+      );
+      if (rows.isEmpty) {
+        throw StateError('users lookup returned no Firebase claim projection');
+      }
+      return _projectFirebaseCustomClaims(
+        rows.single,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+    }, reason: adminReason);
+  }
+
   /// SET `password_set_at = now()` after a successful Firebase password
   /// change.
   Future<int> markPasswordChanged({
@@ -1020,6 +1137,36 @@ class UsersRepository extends OperatorScopedRepository {
       passwordUpdatedAt: passwordUpdatedAt is DateTime
           ? passwordUpdatedAt
           : null,
+    );
+  }
+
+  static FirebaseCustomClaimsProjection _projectFirebaseCustomClaims(
+    Map<String, Object?> row, {
+    required String operatorId,
+    required String locationId,
+  }) {
+    final firebaseUid = row['firebase_uid'];
+    final userId = row['postgres_user_id'];
+    final rolesVersion = row['roles_version'];
+    final isSuperAdmin = row['is_super_admin'];
+    final isFfSupport = row['is_ff_support'];
+    if (firebaseUid is! String ||
+        firebaseUid.isEmpty ||
+        userId is! String ||
+        userId.isEmpty ||
+        rolesVersion is! int ||
+        isSuperAdmin is! bool ||
+        isFfSupport is! bool) {
+      throw StateError('users lookup returned malformed Firebase claims row');
+    }
+    return FirebaseCustomClaimsProjection(
+      firebaseUid: firebaseUid,
+      userId: userId,
+      operatorId: operatorId,
+      locationId: locationId,
+      rolesVersion: rolesVersion,
+      isSuperAdmin: isSuperAdmin,
+      isFfSupport: isFfSupport,
     );
   }
 }

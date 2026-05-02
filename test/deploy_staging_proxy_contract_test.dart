@@ -17,6 +17,25 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  group('proxy Dockerfile', () {
+    late String dockerfile;
+
+    setUpAll(() {
+      dockerfile = File('Dockerfile').readAsStringSync();
+    });
+
+    test('copies db/migrations into the build and runtime images', () {
+      expect(dockerfile, contains('COPY db/migrations ./db/migrations'));
+      expect(
+        dockerfile,
+        contains(
+          'COPY --from=build --chown=app:app '
+          '/workspace/db/migrations /app/db/migrations',
+        ),
+      );
+    });
+  });
+
   group('deploy_staging_proxy.ps1', () {
     late String script;
 
@@ -106,7 +125,9 @@ void main() {
       expect(script, contains('gcloud secrets versions add'));
       expect(script, contains('roles/secretmanager.secretAccessor'));
       expect(script, contains('--set-secrets \$secretAssignments'));
-      expect(script, contains('--set-env-vars \$envAssignments'));
+      expect(script, contains('--env-vars-file \$envVarsFile'));
+      expect(script, contains("'PROXY_ENVIRONMENT' = \$ProxyEnvironment"));
+      expect(script, contains("'ADMIN_CORS_ALLOWED_ORIGINS'"));
       expect(
         script,
         contains(
@@ -114,7 +135,7 @@ void main() {
           "Manager'",
         ),
       );
-      expect(script, isNot(contains('--env-vars-file')));
+      expect(script, isNot(contains('--set-env-vars \$envAssignments')));
     });
 
     test('derives FIREBASE_WEB_API_KEY from forgeflow google-services when '

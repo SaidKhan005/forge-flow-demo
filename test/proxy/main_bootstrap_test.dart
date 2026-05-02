@@ -25,6 +25,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 
 import '../../tool/advisor_proxy/advisor_proxy.dart';
+import '../../tool/advisor_proxy/main.dart' as proxy_main;
 import '../../tool/advisor_proxy/proxy_bootstrap.dart';
 
 ProxyConfig _configFromEnv({
@@ -179,6 +180,25 @@ void main() {
       expect(source, contains('healthCheckStore: healthCheckStore'));
     });
 
+    test('loads migration catalog before production binding construction', () {
+      final source = readMainSource();
+      expect(source, contains('final migrationFilenames ='));
+      expect(source, contains('loadProxyMigrationFilenames()'));
+      expect(source, contains("'phase': 'migration_catalog'"));
+      expect(
+        source,
+        contains('expectedMigrationFilenames: migrationFilenames'),
+      );
+    });
+
+    test('records migration catalog before binding request routes', () {
+      final source = readMainSource();
+      expect(source, contains('recordProxyStartupMigrations'));
+      expect(source, contains("'startup.migrations_recorded'"));
+      expect(source, contains("'phase': 'migration_registry'"));
+      expect(source, contains("'migration_catalog_count'"));
+    });
+
     test(
       'no longer references the scaffold-failing usage / health stores',
       () {
@@ -226,6 +246,74 @@ void main() {
         );
       },
     );
+  });
+
+  group('proxy_bootstrap migration registry wiring', () {
+    String readBootstrapSource() =>
+        File('tool/advisor_proxy/proxy_bootstrap.dart').readAsStringSync();
+
+    test('threads expected migration filenames into the health producers', () {
+      final source = readBootstrapSource();
+      expect(
+        source,
+        contains('List<String> expectedMigrationFilenames = const <String>[]'),
+      );
+      expect(
+        source,
+        contains('expectedMigrationFilenames: expectedMigrationFilenames'),
+      );
+      expect(source, contains('buildProxyHealthRegistryProducers('));
+    });
+
+    test('records startup migrations through the admin system wrapper', () {
+      final source = readBootstrapSource();
+      expect(source, contains('Future<int> recordProxyStartupMigrations'));
+      expect(source, contains('TenantTransactionWrapper(bindings.adminPool)'));
+      expect(source, contains("reason: 'proxy_migration_registry'"));
+      expect(source, contains('ProxyMigrationApplyRegistryWriter'));
+      expect(source, contains('.recordAppliedMigrations(migrationFilenames)'));
+    });
+  });
+
+  group('loadProxyMigrationFilenames', () {
+    test('returns sorted SQL basenames and ignores non-SQL files', () {
+      final directory = Directory.systemTemp.createTempSync(
+        'proxy_migrations_catalog_test_',
+      );
+      try {
+        File(
+          '${directory.path}${Platform.pathSeparator}002_second.sql',
+        ).writeAsStringSync('-- second');
+        File(
+          '${directory.path}${Platform.pathSeparator}001_first.sql',
+        ).writeAsStringSync('-- first');
+        File(
+          '${directory.path}${Platform.pathSeparator}README.md',
+        ).writeAsStringSync('# ignored');
+
+        expect(
+          proxy_main.loadProxyMigrationFilenames(directory: directory),
+          equals(<String>['001_first.sql', '002_second.sql']),
+        );
+      } finally {
+        directory.deleteSync(recursive: true);
+      }
+    });
+
+    test('returns an empty catalog when the directory is absent', () {
+      final directory = Directory(
+        '${Directory.systemTemp.path}${Platform.pathSeparator}'
+        'proxy_migrations_catalog_missing',
+      );
+      if (directory.existsSync()) {
+        directory.deleteSync(recursive: true);
+      }
+
+      expect(
+        proxy_main.loadProxyMigrationFilenames(directory: directory),
+        isEmpty,
+      );
+    });
   });
 
   group('startup KMS fail-closed (HARD-G observability)', () {
