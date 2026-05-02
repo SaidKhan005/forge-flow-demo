@@ -83,11 +83,24 @@ class FeatureFlagsRepository extends OperatorScopedRepository {
   /// Firebase UID into a Postgres `users.user_id` (UUID-shaped string)
   /// before this method runs and rejects with 403
   /// `actor_user_not_resolvable` when no active row matches.
+  ///
+  /// [onCommit], when supplied, runs after the UPDATE returns its row
+  /// but BEFORE the `withSystem` transaction commits. Both the
+  /// UPDATE and the [onCommit] callback share the same Postgres
+  /// executor, so any writes the callback issues commit atomically
+  /// with the flag mutation. HARD-D's audit-row write rides this
+  /// seam so the `feature_flags` row update and the
+  /// `auth_events_audit` (+ hash-chained `audit_logs`) write either
+  /// both commit or both roll back. If [onCommit] throws, the
+  /// transaction rolls back and no flag mutation lands. The
+  /// callback is not invoked when the UPDATE matches no rows
+  /// (returns null).
   Future<FeatureFlagRow?> toggleFlag({
     required String flagId,
     required bool enabled,
     required String actorUserId,
     required String adminReason,
+    Future<void> Function(PostgresExecutor exec, FeatureFlagRow row)? onCommit,
   }) {
     return withSystem<FeatureFlagRow?>((exec) async {
       final rows = await exec.query(
@@ -103,7 +116,9 @@ class FeatureFlagsRepository extends OperatorScopedRepository {
         },
       );
       if (rows.isEmpty) return null;
-      return _rowFromMap(rows.single);
+      final row = _rowFromMap(rows.single);
+      if (onCommit != null) await onCommit(exec, row);
+      return row;
     }, reason: adminReason);
   }
 }
