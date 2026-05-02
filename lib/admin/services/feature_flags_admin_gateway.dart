@@ -20,7 +20,8 @@
 //     result.
 
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:http/http.dart' as http;
 
 import '../models/feature_flags_admin_models.dart';
 
@@ -64,14 +65,14 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
   HttpFeatureFlagsAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/feature-flags/*` against this.
   final Uri baseUri;
   final FeatureFlagsAdminBearerTokenProvider bearerTokenProvider;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String listPath = '/v1/admin/feature-flags';
   static const String togglePath = '/v1/admin/feature-flags/toggle';
@@ -109,18 +110,20 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
-    final request = await _httpClient.openUrl(method, uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
     if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
-      request.headers.set('Idempotency-Key', idempotencyKey);
+      request.headers['Idempotency-Key'] = idempotencyKey;
     }
     if (jsonBody != null) {
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(jsonBody)));
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -134,7 +137,8 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
     throw FeatureFlagsAdminGatewayError(
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
-      message: (parsed['message'] as String?) ??
+      message:
+          (parsed['message'] as String?) ??
           'admin feature flags proxy returned an error',
     );
   }
@@ -152,11 +156,11 @@ class InMemoryFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
     Iterable<FeatureFlagAdminRow> seed = const <FeatureFlagAdminRow>[],
     DateTime Function()? now,
     String? actorUserId,
-  })  : _now = now ?? DateTime.now,
-        _actorUserId = actorUserId,
-        _flags = <String, FeatureFlagAdminRow>{
-          for (final row in seed) row.flagId: row,
-        };
+  }) : _now = now ?? DateTime.now,
+       _actorUserId = actorUserId,
+       _flags = <String, FeatureFlagAdminRow>{
+         for (final row in seed) row.flagId: row,
+       };
 
   final DateTime Function() _now;
   final String? _actorUserId;

@@ -2,7 +2,7 @@
 
 Updated: 2026-05-02
 Owner: HARD-B (auth hardening sprint)
-Status: Active authority
+Status: Closed (shipped commit `50c42f4`, PR #47) — retained as historical authority.
 
 ## Why This Exists
 

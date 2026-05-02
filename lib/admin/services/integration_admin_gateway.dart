@@ -18,7 +18,8 @@
 //     end-to-end in `kDemoMode` without a backend or live KMS.
 
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:http/http.dart' as http;
 
 import '../models/integration_admin_models.dart';
 import '../../infrastructure/kms/kms_stub_provider.dart';
@@ -54,23 +55,21 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   HttpIntegrationAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
   final IntegrationAdminBearerTokenProvider bearerTokenProvider;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String listPath = '/v1/admin/integrations';
   static const String rotateAnthropicPath =
       '/v1/admin/integrations/rotate-anthropic';
-  static const String rotateVoyagePath =
-      '/v1/admin/integrations/rotate-voyage';
+  static const String rotateVoyagePath = '/v1/admin/integrations/rotate-voyage';
   static const String rotateAzureDbPath =
       '/v1/admin/integrations/rotate-azure-db';
-  static const String rotateGeminiPath =
-      '/v1/admin/integrations/rotate-gemini';
+  static const String rotateGeminiPath = '/v1/admin/integrations/rotate-gemini';
   static const String statusPath = '/v1/admin/integrations/status';
 
   static String rotatePathFor(ProviderKeyKind kind) {
@@ -110,15 +109,17 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
-    final request = await _httpClient.openUrl(method, uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
     if (jsonBody != null) {
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(jsonBody)));
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -133,7 +134,8 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
       message:
-          (parsed['message'] as String?) ?? 'admin integrations proxy returned an error',
+          (parsed['message'] as String?) ??
+          'admin integrations proxy returned an error',
     );
   }
 }

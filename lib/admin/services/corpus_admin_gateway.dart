@@ -19,10 +19,11 @@
 // `tool/advisor_proxy/advisor_proxy.dart` 11A.3a route handlers.
 
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/corpus_admin_models.dart';
 
@@ -93,10 +94,7 @@ abstract class CorpusAdminGateway {
 /// stub from the proxy projects through with [implemented] = false.
 @immutable
 class AgeRebuildResult {
-  const AgeRebuildResult({
-    required this.implemented,
-    required this.message,
-  });
+  const AgeRebuildResult({required this.implemented, required this.message});
 
   final bool implemented;
   final String message;
@@ -106,13 +104,13 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   HttpCorpusAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
   final CorpusAdminBearerTokenProvider bearerTokenProvider;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String versionsPath = '/v1/admin/corpus/versions';
   static const String versionsPrefix = '$versionsPath/';
@@ -121,8 +119,7 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   static const String commitPath = '/v1/admin/corpus/commit';
   static const String rollbackPath = '/v1/admin/corpus/rollback';
   // Phase 11A.3b — Graphify candidate review routes.
-  static const String graphCandidatesPath =
-      '/v1/admin/corpus/graph-candidates';
+  static const String graphCandidatesPath = '/v1/admin/corpus/graph-candidates';
   static const String graphCandidatesCommitPath =
       '/v1/admin/corpus/graph-candidates/commit-batch';
   static const String ageRebuildPath = '/v1/admin/age/rebuild';
@@ -212,14 +209,16 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(ageRebuildPath);
-    final request = await _httpClient.openUrl('POST', uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    request.headers.set('Idempotency-Key', idempotencyKey);
-    request.headers.contentType = ContentType.json;
-    request.add(utf8.encode(jsonEncode(<String, Object?>{})));
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final request = http.Request('POST', uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json'
+      ..headers['Idempotency-Key'] = idempotencyKey
+      ..headers['content-type'] = 'application/json'
+      ..bodyBytes = utf8.encode(jsonEncode(<String, Object?>{}));
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -228,7 +227,8 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
     if (response.statusCode == 501) {
       return AgeRebuildResult(
         implemented: false,
-        message: (parsed['message'] as String?) ??
+        message:
+            (parsed['message'] as String?) ??
             'AGE rebuild infrastructure is not yet enabled',
       );
     }
@@ -241,7 +241,8 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
     throw CorpusAdminGatewayError(
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
-      message: (parsed['message'] as String?) ??
+      message:
+          (parsed['message'] as String?) ??
           'admin AGE rebuild proxy returned an error',
     );
   }
@@ -254,18 +255,20 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
-    final request = await _httpClient.openUrl(method, uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
     if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
-      request.headers.set('Idempotency-Key', idempotencyKey);
+      request.headers['Idempotency-Key'] = idempotencyKey;
     }
     if (jsonBody != null) {
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(jsonBody)));
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -277,7 +280,8 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
     throw CorpusAdminGatewayError(
       statusCode: response.statusCode,
       errorCode: (parsed['error'] as String?) ?? 'unknown_error',
-      message: (parsed['message'] as String?) ??
+      message:
+          (parsed['message'] as String?) ??
           'admin corpus proxy returned an error',
     );
   }
@@ -302,15 +306,14 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
     DateTime Function()? now,
     String Function()? idGenerator,
     String? actorUserId,
-  })  : _now = now ?? DateTime.now,
-        _idGenerator = idGenerator ?? _randomId,
-        _actorUserId = actorUserId,
-        _bundles = <String, _MutableBundle>{
-          for (final bundle in seed)
-            bundle.version.versionId: _MutableBundle.from(bundle),
-        },
-        _graphCandidates =
-            graphCandidateSeed ?? _defaultDemoGraphCandidates();
+  }) : _now = now ?? DateTime.now,
+       _idGenerator = idGenerator ?? _randomId,
+       _actorUserId = actorUserId,
+       _bundles = <String, _MutableBundle>{
+         for (final bundle in seed)
+           bundle.version.versionId: _MutableBundle.from(bundle),
+       },
+       _graphCandidates = graphCandidateSeed ?? _defaultDemoGraphCandidates();
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
@@ -343,23 +346,24 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
 
   @override
   Future<List<CorpusVersionRef>> listVersions() async {
-    final versions = _bundles.values
-        .map(
-          (b) => CorpusVersionRef(
-            versionId: b.versionId,
-            createdBy: b.createdBy,
-            createdAt: b.createdAt,
-            summary: b.summary,
-            rollbackOf: b.rollbackOf,
-            supersededAt: b.supersededAt,
-            chunkCount: b.chunks.length,
-          ),
-        )
-        .toList()
-      ..sort((a, b) {
-        if (a.isCurrent != b.isCurrent) return a.isCurrent ? -1 : 1;
-        return b.createdAt.compareTo(a.createdAt);
-      });
+    final versions =
+        _bundles.values
+            .map(
+              (b) => CorpusVersionRef(
+                versionId: b.versionId,
+                createdBy: b.createdBy,
+                createdAt: b.createdAt,
+                summary: b.summary,
+                rollbackOf: b.rollbackOf,
+                supersededAt: b.supersededAt,
+                chunkCount: b.chunks.length,
+              ),
+            )
+            .toList()
+          ..sort((a, b) {
+            if (a.isCurrent != b.isCurrent) return a.isCurrent ? -1 : 1;
+            return b.createdAt.compareTo(a.createdAt);
+          });
     return versions;
   }
 
@@ -597,8 +601,8 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
           if (candidate.kind == GraphCandidateKind.node) {
             _approvedNodes.add(<String, Object?>{
               'node_key': candidate.candidateKey,
-              'node_type': decision.editedCandidateType ??
-                  candidate.candidateType,
+              'node_type':
+                  decision.editedCandidateType ?? candidate.candidateType,
               'properties': decision.editedPayload ?? candidate.payload,
               'graphify_version': _graphCandidates.graphifyVersion,
             });
@@ -606,8 +610,8 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
           } else {
             _approvedEdges.add(<String, Object?>{
               'edge_key': candidate.candidateKey,
-              'edge_type': decision.editedCandidateType ??
-                  candidate.candidateType,
+              'edge_type':
+                  decision.editedCandidateType ?? candidate.candidateType,
               'from_node_key': candidate.fromNodeKey,
               'to_node_key': candidate.toNodeKey,
               'properties': decision.editedPayload ?? candidate.payload,
@@ -733,7 +737,12 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
     return null;
   }
 
-  static String _autoSummary(String fileName, int added, int modified, int inactivated) {
+  static String _autoSummary(
+    String fileName,
+    int added,
+    int modified,
+    int inactivated,
+  ) {
     final parts = <String>[
       if (added > 0) '+$added new',
       if (modified > 0) '~$modified modified',
@@ -833,24 +842,10 @@ List<ChunkPreview> _chunkMarkdown({
   return chunks;
 }
 
-/// Stable, dependency-free hash for the demo gateway. Production runs
-/// SHA-256 server-side; the demo's diff only needs deterministic
-/// fingerprints across test runs, not cryptographic strength.
-String _stableHash(String text) {
-  final bytes = utf8.encode(text);
-  // FNV-1a 64-bit. Output formatted as 16 hex chars left-padded to 64
-  // so the schema's `^[a-f0-9]{64}$` constraint shape mirrors the
-  // production sha256 column even in demo data.
-  const offset = 0xcbf29ce484222325;
-  const prime = 0x100000001b3;
-  var hash = offset;
-  for (final byte in bytes) {
-    hash = (hash ^ byte) & 0xffffffffffffffff;
-    hash = (hash * prime) & 0xffffffffffffffff;
-  }
-  final hex = hash.toRadixString(16).padLeft(16, '0');
-  return (hex * 4).substring(0, 64);
-}
+// Web targets (dart2js) cannot represent 64-bit integer literals exactly,
+// so we use SHA-256 from package:crypto. Output shape matches the proxy's
+// `^[a-f0-9]{64}$` constraint even in demo data.
+String _stableHash(String text) => sha256.convert(utf8.encode(text)).toString();
 
 class _MutableBundle {
   _MutableBundle({
@@ -884,19 +879,19 @@ class _MutableBundle {
   final List<ChunkPreview> chunks;
 
   CorpusBundle toBundle() => CorpusBundle(
-        version: toRef(),
-        chunks: List<ChunkPreview>.unmodifiable(chunks),
-      );
+    version: toRef(),
+    chunks: List<ChunkPreview>.unmodifiable(chunks),
+  );
 
   CorpusVersionRef toRef() => CorpusVersionRef(
-        versionId: versionId,
-        createdBy: createdBy,
-        createdAt: createdAt,
-        summary: summary,
-        rollbackOf: rollbackOf,
-        supersededAt: supersededAt,
-        chunkCount: chunks.length,
-      );
+    versionId: versionId,
+    createdBy: createdBy,
+    createdAt: createdAt,
+    summary: summary,
+    rollbackOf: rollbackOf,
+    supersededAt: supersededAt,
+    chunkCount: chunks.length,
+  );
 }
 
 class _PendingUpload {
@@ -942,7 +937,8 @@ GraphCandidateDiff _defaultDemoGraphCandidates() {
         },
       ),
       GraphCandidate(
-        candidateId: 'edge:graphify:edge:methodology_seed_doc:cycles_section:contains',
+        candidateId:
+            'edge:graphify:edge:methodology_seed_doc:cycles_section:contains',
         kind: GraphCandidateKind.edge,
         candidateKey:
             'graphify:edge:methodology_seed_doc:cycles_section:contains',
@@ -961,7 +957,8 @@ GraphCandidateDiff _defaultDemoGraphCandidates() {
     ],
     inferred: <GraphCandidate>[
       GraphCandidate(
-        candidateId: 'edge:graphify:edge:cycles_section:weekly_plan_concept:informs',
+        candidateId:
+            'edge:graphify:edge:cycles_section:weekly_plan_concept:informs',
         kind: GraphCandidateKind.edge,
         candidateKey:
             'graphify:edge:cycles_section:weekly_plan_concept:informs',
@@ -980,10 +977,10 @@ GraphCandidateDiff _defaultDemoGraphCandidates() {
     ],
     ambiguous: <GraphCandidate>[
       GraphCandidate(
-        candidateId: 'edge:graphify:edge:daypart_section:cycles_section:relates_to',
+        candidateId:
+            'edge:graphify:edge:daypart_section:cycles_section:relates_to',
         kind: GraphCandidateKind.edge,
-        candidateKey:
-            'graphify:edge:daypart_section:cycles_section:relates_to',
+        candidateKey: 'graphify:edge:daypart_section:cycles_section:relates_to',
         candidateType: 'RELATES_TO',
         label: GraphCandidateLabel.ambiguous,
         confidenceScore: 0.41,

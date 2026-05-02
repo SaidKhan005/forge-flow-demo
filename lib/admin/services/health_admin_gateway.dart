@@ -11,7 +11,8 @@
 // tipped the response.
 
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:http/http.dart' as http;
 
 import '../models/health_admin_models.dart';
 
@@ -38,22 +39,24 @@ abstract class HealthAdminGateway {
 /// 503 simply indicates a failed dependency probe). Any other status
 /// throws.
 class HttpHealthAdminGateway implements HealthAdminGateway {
-  HttpHealthAdminGateway({required this.baseUri, HttpClient? httpClient})
-      : _httpClient = httpClient ?? HttpClient();
+  HttpHealthAdminGateway({required this.baseUri, http.Client? httpClient})
+    : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://advisor-proxy.forgeflow.app`).
   final Uri baseUri;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String healthPath = '/health';
 
   @override
   Future<HealthEnvelope> fetch() async {
     final uri = baseUri.resolve(healthPath);
-    final request = await _httpClient.openUrl('GET', uri);
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final request = http.Request('GET', uri)
+      ..headers['accept'] = 'application/json';
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
 
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
@@ -89,9 +92,9 @@ class InMemoryHealthAdminGateway implements HealthAdminGateway {
     required Map<String, Object?> envelope,
     bool dependenciesUnavailable = false,
     Exception? errorOnFetch,
-  })  : _envelope = envelope,
-        _dependenciesUnavailable = dependenciesUnavailable,
-        _errorOnFetch = errorOnFetch;
+  }) : _envelope = envelope,
+       _dependenciesUnavailable = dependenciesUnavailable,
+       _errorOnFetch = errorOnFetch;
 
   Map<String, Object?> _envelope;
   bool _dependenciesUnavailable;
@@ -205,7 +208,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'count',
       'description':
           'Required Azure extensions installed (AGE, pgvector, pg_diskann, '
-              'pg_cron, pg_partman, pg_stat_statements, pgcrypto).',
+          'pg_cron, pg_partman, pg_stat_statements, pgcrypto).',
       'source': 'pg_extension',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -228,7 +231,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'state',
       'description':
           'Lock 7 circuit breaker state for the Anthropic provider '
-              '(closed/half_open/open).',
+          '(closed/half_open/open).',
       'source': 'in_memory_breaker',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -240,7 +243,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'state',
       'description':
           'Lock 7 circuit breaker state for the Voyage provider '
-              '(closed/half_open/open).',
+          '(closed/half_open/open).',
       'source': 'in_memory_breaker',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -252,7 +255,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'boolean',
       'description':
           'service-principal HMAC signer secret loaded and a recent sp: '
-              'token verified successfully.',
+          'token verified successfully.',
       'source': 'service_principals_signer_status',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -425,8 +428,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'status': 'green',
       'value': 1820,
       'unit': 'seconds',
-      'description':
-          'Age of the last successful pg_partman run_maintenance().',
+      'description': 'Age of the last successful pg_partman run_maintenance().',
       'source': 'cron.job_run_details',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -495,8 +497,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'status': 'green',
       'value': 0.0008,
       'unit': 'usd',
-      'description':
-          'Rolling 1-hour mean cost per Haiku-routed request (USD).',
+      'description': 'Rolling 1-hour mean cost per Haiku-routed request (USD).',
       'source': 'usage_logs',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -530,7 +531,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'count',
       'description':
           'Requests in last 5 minutes that traversed the Anthropic '
-              'fallback chain.',
+          'fallback chain.',
       'source': 'usage_logs',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',
@@ -542,7 +543,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'unit': 'count',
       'description':
           'Requests in last 5 minutes that traversed the Voyage '
-              'fallback chain.',
+          'fallback chain.',
       'source': 'usage_logs',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',

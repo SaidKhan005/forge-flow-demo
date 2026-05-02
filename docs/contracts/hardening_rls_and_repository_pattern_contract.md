@@ -1,5 +1,13 @@
 # Hardening — RLS & Repository Pattern Contract
 
+> **Status (2026-05-02):** Closed. Shipped commit `c4db50d` (PR #46) plus
+> earlier repository-extraction commits that landed before HARD-F (the
+> 13 service files were already free of `package:postgres` imports by
+> the time HARD-F merged; HARD-F finished the wrapper-policy migration).
+> Contract is retained as historical authority; no further implementation
+> work owed.
+
+
 Updated: 2026-05-02
 Owner: HARD-F (data + RLS sprint)
 Status: Active authority

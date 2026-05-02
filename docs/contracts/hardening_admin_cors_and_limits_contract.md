@@ -2,7 +2,7 @@
 
 Updated: 2026-05-02
 Owner: HARD-C (security headers sprint)
-Status: Active authority
+Status: Closed (shipped commit `122dfa5` + test relax `3ef685b`, PR #44) — retained as historical authority.
 
 ## Why This Exists
 

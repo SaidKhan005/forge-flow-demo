@@ -1,30 +1,28 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-04-26
-Status: Active next (opens after accepted `11a.11c-e` close, including the
-`11a.11c.4-6` Postgres host migration to Azure)
+Updated: 2026-05-02
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3b`/`4b`/`4c`/`7`/`UX.health` accepted.
+Remaining: `11A.3a`, `11A.5`, `11A.6` (latter two pending B44/B45/B47 producers).
 Owner: F&F admin / operations lane
 
-## 2026-04-28 - Phase 9 Foundation Dependencies
+## Phase 9 Foundation Dependencies (status as of 2026-05-02)
 
-Active B42 contract: `docs/contracts/proxy_health_contract.md`.
+Active contract: `docs/contracts/proxy_health_contract.md` (live; consumed by
+`11A.UX.health`).
 
-`11A.5` Graph/Vector Health and `11A.6` observability dashboard depend on
-the proxy `/health` contract expansion in `phase_9_execution_backlog.md`
-B42. The expansion exposes per-surface metrics from the 9.0Σ
-foundation series:
+`11A.5` Graph/Vector Health and `11A.6` observability dashboard read
+proxy `/health` per-surface metrics. Producers from the 9.0Σ foundation series:
 
-- `audit_chain_lag_seconds` (B27 audit_logs hash chain).
-- `vector_index_size_per_corpus`, latency, recall (B47 vector index Health).
-- `graph_node_count`, `graph_edge_count`, traversal latency (B44 graph
-  tripwires).
-- `rollup_freshness_per_grain` (B45 rollup worker leasing + freshness UI).
-- `event_outbox_undelivered_count`, lag (B26 / Phase 10a).
-- `usage_caps_breach_count`.
+- `audit_chain_lag_seconds` — **delivered** by B27 (`audit_logs` hash chain).
+- `vector_index_size_per_corpus`, latency, recall — **B47 producer wiring still owed**.
+- `graph_node_count`, `graph_edge_count`, traversal latency — **B44 producer wiring still owed**.
+- `rollup_freshness_per_grain` — **B45 producer wiring still owed**.
+- `event_outbox_undelivered_count`, lag — delivered by B26 (Phase 10a bridge consumes).
+- `usage_caps_breach_count` — delivered.
 
-`11A.7-10` audit log review depends on B27 (audit_logs hash chain
-foundation) plus B37 (verifier E2E test) and B43 (Cloud Run anchor
-deploy).
+`11A.7-10` audit log review depends on B27 (delivered) + B37 (verifier E2E
+test, delivered) + B43 (Cloud Run anchor deploy, **operational gate pending
+Production1 GCP provisioning**).
 
 **2026-04-26 — Postgres host re-locked to Azure DB Flexible Server (Canada Central, PG 16).** Throughout this plan, "Supabase database" reads as "Azure Database for PostgreSQL Flexible Server". `11A.4` Integration management now manages Azure DB connection strings (in addition to Anthropic / Voyage keys) instead of Supabase project keys. `11A.6` Observability dashboard reads health + metrics from Azure Monitor (Postgres metrics) + Cloud Run + Anthropic / Voyage usage instead of Supabase + Cloud Run. Trigger: see `phase_9_auth_plan.md` 2026-04-26 banner.
 
@@ -284,7 +282,7 @@ Acceptance:
   API; never displays plaintext after creation). Vendor
   connector status placeholder (lights up when Phase 8 lands).
   FX-rate source status. Email provider status (when 9.8 lands).
-- `11A.5` **Debug console.** Per-operator request log viewer.
+- `11A.5` **Debug console.** *Status (2026-05-02): not started — placeholder route only at `lib/admin/admin_routes.dart` line 167-174.* Per-operator request log viewer.
   Filter by operator / location / usage_class / time-window /
   status. View request meta by default; toggle full content per
   operator (per `feature_flags` opt-in row). Search by
@@ -300,7 +298,7 @@ Acceptance:
   requests, notification/outbox status, and Firebase/local drift
   flags. Full repair actions consume Phase 9 safe backend routes;
   the admin client must not perform direct DB/Firebase writes.
-- `11A.6` **Observability dashboard.** System health
+- `11A.6` **Observability dashboard.** *Status (2026-05-02): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; placeholder route only at `lib/admin/admin_routes.dart` line 175-183. Blocked on B44/B45/B47 metric producers.* System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
   Cap-event stream (incoming alerts when operators hit cap).
@@ -328,20 +326,20 @@ Acceptance:
 
 ### Polish (post-launch; can interleave with 11b.2 / 10b)
 
-- `11A.7` **Feature flag admin.** Edit `feature_flags` rows from
+- `11A.7` **Feature flag admin.** *Status (2026-05-02): ✅ accepted (PR #41).* Edit `feature_flags` rows from
   the UX (toggle Q12 retrieval-mode, toggle streaming when it
   lands, gate Phase 12 workflows per pilot operator, etc.).
-- `11A.8` **API version management.** See what % of operator
+- `11A.8` **API version management.** *Status (2026-05-02): not started.* See what % of operator
   clients are on `/v1/` vs `/v2/`. Schedule deprecation
   announcements. View force-update conditions when needed.
-- `11A.9` **Audit log review.** Who changed what when across
+- `11A.9` **Audit log review.** *Status (2026-05-02): not started; depends on B43 Production1 anchor deploy.* Who changed what when across
   `usage_caps`, `feature_flags`, `operators`, key rotations.
   MFA revocation initiated/pending/completed and recovery-requested
   events are included. Powered by `created_by` / `updated_by` columns;
   the UX makes the audit queryable.
-- `11A.10` **Status page management.** Create incidents, write
+- `11A.10` **Status page management.** *Status (2026-05-02): not started.* Create incidents, write
   post-mortems, sync to public `status.forgeflow.app` page.
-- `11A.11` (optional) **Replay tool.** Pick a past request,
+- `11A.11` (optional) **Replay tool.** *Status (2026-05-02): not started.* Pick a past request,
   re-run it against current corpus + model, compare to original
   answer. Lights up if a real customer dispute ever surfaces.
 

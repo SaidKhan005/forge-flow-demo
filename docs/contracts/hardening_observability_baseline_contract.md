@@ -1,5 +1,12 @@
 # Hardening — Observability Baseline Contract
 
+> **Status (2026-05-02):** Closed. Shipped commit `6a955b0` (PR #48).
+> Contract is retained as historical authority. Voyage and Secret Manager
+> per-call timeouts were not landed as explicit constants in this slice;
+> Postgres acquire fail-closed at boot covers the DB blast radius. Any
+> future tightening is a delta against this contract, not an open item.
+
+
 Updated: 2026-05-02
 Owner: HARD-G (observability sprint)
 Status: Active authority

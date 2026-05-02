@@ -349,9 +349,9 @@ This phase is built against real vendor capability data, not synthesis.
 
 Vendor capability audit (official-documentation-backed, 7.55n.12):
 
-- [vendor_live_data_capability_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_live_data_capability_matrix.md)
-- [vendor_capability_profile_pos.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_capability_profile_pos.md)
-- [vendor_capability_profile_labor.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8_gate/vendor_capability_profile_labor.md)
+- [vendor_live_data_capability_matrix.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_live_data_capability_matrix.md)
+- [vendor_capability_profile_pos.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_capability_profile_pos.md)
+- [vendor_capability_profile_labor.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_8_gate/vendor_capability_profile_labor.md)
 
 Architectural source:
 

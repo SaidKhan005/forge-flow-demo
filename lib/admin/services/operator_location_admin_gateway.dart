@@ -21,7 +21,8 @@
 // `tool/advisor_proxy/advisor_proxy.dart` 11A.1 route handlers.
 
 import 'dart:convert';
-import 'dart:io';
+
+import 'package:http/http.dart' as http;
 
 import '../models/operator_location_admin_models.dart';
 
@@ -68,15 +69,15 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   HttpOperatorLocationAdminGateway({
     required this.baseUri,
     required this.bearerTokenProvider,
-    HttpClient? httpClient,
-  }) : _httpClient = httpClient ?? HttpClient();
+    http.Client? httpClient,
+  }) : _httpClient = httpClient ?? http.Client();
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/operators` and `/v1/admin/locations`
   /// against this.
   final Uri baseUri;
   final AdminBearerTokenProvider bearerTokenProvider;
-  final HttpClient _httpClient;
+  final http.Client _httpClient;
 
   static const String operatorsPath = '/v1/admin/operators';
   static const String locationsPath = '/v1/admin/locations';
@@ -154,7 +155,9 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   }
 
   @override
-  Future<LocationAdminRecord> patchLocation(LocationPatchCommand command) async {
+  Future<LocationAdminRecord> patchLocation(
+    LocationPatchCommand command,
+  ) async {
     final body = await _send(
       method: 'PATCH',
       path: '$locationsPath/${Uri.encodeComponent(command.locationId)}',
@@ -184,15 +187,17 @@ class HttpOperatorLocationAdminGateway implements OperatorLocationAdminGateway {
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
-    final request = await _httpClient.openUrl(method, uri);
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $token');
-    request.headers.set(HttpHeaders.acceptHeader, 'application/json');
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
     if (jsonBody != null) {
-      request.headers.contentType = ContentType.json;
-      request.add(utf8.encode(jsonEncode(jsonBody)));
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await request.close();
-    final raw = await response.transform(utf8.decoder).join();
+    final response = await http.Response.fromStream(
+      await _httpClient.send(request),
+    );
+    final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
       final decoded = jsonDecode(raw);
@@ -227,12 +232,12 @@ class InMemoryOperatorLocationAdminGateway
     Iterable<OperatorAdminBundle> seed = const <OperatorAdminBundle>[],
     DateTime Function()? now,
     String Function()? idGenerator,
-  })  : _now = now ?? DateTime.now,
-        _idGenerator = idGenerator ?? _randomId,
-        _bundles = <String, _MutableBundle>{
-          for (final bundle in seed)
-            bundle.operator.operatorId: _MutableBundle.from(bundle),
-        };
+  }) : _now = now ?? DateTime.now,
+       _idGenerator = idGenerator ?? _randomId,
+       _bundles = <String, _MutableBundle>{
+         for (final bundle in seed)
+           bundle.operator.operatorId: _MutableBundle.from(bundle),
+       };
 
   final DateTime Function() _now;
   final String Function() _idGenerator;
@@ -241,9 +246,11 @@ class InMemoryOperatorLocationAdminGateway
   @override
   Future<List<OperatorAdminBundle>> listOperators() async {
     final list = _bundles.values.map((b) => b.toBundle()).toList()
-      ..sort((a, b) => a.operator.businessName
-          .toLowerCase()
-          .compareTo(b.operator.businessName.toLowerCase()));
+      ..sort(
+        (a, b) => a.operator.businessName.toLowerCase().compareTo(
+          b.operator.businessName.toLowerCase(),
+        ),
+      );
     return list;
   }
 
@@ -257,7 +264,10 @@ class InMemoryOperatorLocationAdminGateway
     _validateNonBlank(command.businessName, field: 'business_name');
     _validateNonBlank(command.ownerEmail, field: 'owner_email');
     _validateNonBlank(command.adminUserEmail, field: 'admin_user_email');
-    _validateNonBlank(command.primaryLocationName, field: 'primary_location.name');
+    _validateNonBlank(
+      command.primaryLocationName,
+      field: 'primary_location.name',
+    );
 
     final operatorId = _idGenerator();
     final locationId = _idGenerator();
@@ -301,11 +311,13 @@ class InMemoryOperatorLocationAdminGateway
     }
     final updated = OperatorAdminRecord(
       operatorId: bundle.operator.operatorId,
-      businessName: command.businessName?.trim() ?? bundle.operator.businessName,
+      businessName:
+          command.businessName?.trim() ?? bundle.operator.businessName,
       ownerEmail: command.ownerEmail?.trim() ?? bundle.operator.ownerEmail,
       subscriptionTier:
           command.subscriptionTier ?? bundle.operator.subscriptionTier,
-      preferredCurrency: command.preferredCurrency?.toUpperCase() ??
+      preferredCurrency:
+          command.preferredCurrency?.toUpperCase() ??
           bundle.operator.preferredCurrency,
       primaryLocationId:
           command.primaryLocationId ?? bundle.operator.primaryLocationId,
@@ -314,7 +326,9 @@ class InMemoryOperatorLocationAdminGateway
       updatedAt: _now().toUtc(),
     );
     if (updated.primaryLocationId != null &&
-        bundle.locations.every((l) => l.locationId != updated.primaryLocationId)) {
+        bundle.locations.every(
+          (l) => l.locationId != updated.primaryLocationId,
+        )) {
       throw const OperatorLocationAdminGatewayError(
         statusCode: 400,
         errorCode: 'unknown_primary_location',
@@ -380,8 +394,9 @@ class InMemoryOperatorLocationAdminGateway
       _validateRolloverHour(command.businessDayRolloverHour!);
     }
     final bundle = _findLocationBundleOrThrow(command.locationId);
-    final index = bundle.locations
-        .indexWhere((l) => l.locationId == command.locationId);
+    final index = bundle.locations.indexWhere(
+      (l) => l.locationId == command.locationId,
+    );
     final existing = bundle.locations[index];
     final updated = LocationAdminRecord(
       locationId: existing.locationId,
@@ -411,8 +426,9 @@ class InMemoryOperatorLocationAdminGateway
         message: 'reassign primary_location_id before removing this location',
       );
     }
-    final removed =
-        bundle.locations.where((l) => l.locationId != locationId).toList();
+    final removed = bundle.locations
+        .where((l) => l.locationId != locationId)
+        .toList();
     if (removed.length == bundle.locations.length) {
       throw const OperatorLocationAdminGatewayError(
         statusCode: 404,
@@ -519,8 +535,10 @@ class InMemoryOperatorLocationAdminGateway
 }
 
 class _MutableBundle {
-  _MutableBundle({required this.operator, required List<LocationAdminRecord> locations})
-      : locations = List<LocationAdminRecord>.from(locations);
+  _MutableBundle({
+    required this.operator,
+    required List<LocationAdminRecord> locations,
+  }) : locations = List<LocationAdminRecord>.from(locations);
 
   factory _MutableBundle.from(OperatorAdminBundle bundle) {
     return _MutableBundle(
@@ -533,7 +551,7 @@ class _MutableBundle {
   final List<LocationAdminRecord> locations;
 
   OperatorAdminBundle toBundle() => OperatorAdminBundle(
-        operator: operator,
-        locations: List<LocationAdminRecord>.unmodifiable(locations),
-      );
+    operator: operator,
+    locations: List<LocationAdminRecord>.unmodifiable(locations),
+  );
 }
