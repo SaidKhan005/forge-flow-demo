@@ -282,6 +282,15 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
   }
 
   Future<void> _onRevoke(MfaFactorSummary factor) async {
+    final pendingRemoval = _pendingRemovalForFactor(factor.factorId);
+    if (pendingRemoval != null) {
+      setState(() {
+        _errorCode = null;
+        _errorMessage = null;
+        _infoMessage = _scheduledRemovalMessage(pendingRemoval.executeAfter);
+      });
+      return;
+    }
     setState(() {
       _busyRevoke = true;
       _errorCode = null;
@@ -321,6 +330,16 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
       if (completed.revoked) await _refreshFactors();
     } on MfaOperationRejected catch (rejected) {
       if (!mounted) return;
+      if (rejected.code == 'mfa_removal_already_pending') {
+        setState(() {
+          _busyRevoke = false;
+          _errorCode = null;
+          _errorMessage = null;
+          _infoMessage = _scheduledRemovalMessage(rejected.retryAfter);
+        });
+        await _refreshFactors(clearMessages: false);
+        return;
+      }
       setState(() {
         _busyRevoke = false;
         _errorCode = rejected.code;
@@ -465,6 +484,15 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
         next,
       ],
     );
+  }
+
+  MfaRemovalRequestSummary? _pendingRemovalForFactor(String factorId) {
+    for (final removal in _removalRequests) {
+      if (removal.factorId == factorId && removal.status == 'pending') {
+        return removal;
+      }
+    }
+    return null;
   }
 
   Future<void> _signInAgain(BuildContext context) async {

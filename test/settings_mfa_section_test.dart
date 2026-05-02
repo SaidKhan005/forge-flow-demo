@@ -240,6 +240,10 @@ void main() {
       findsOneWidget,
     );
     expect(find.textContaining('Removal pending'), findsWidgets);
+    expect(
+      find.byKey(const Key('mfa_revoke_button_totp-db-factor')),
+      findsNothing,
+    );
     expect(find.widgetWithText(TextButton, 'Cancel removal'), findsOneWidget);
   });
 

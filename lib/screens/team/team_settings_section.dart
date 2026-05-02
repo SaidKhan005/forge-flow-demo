@@ -705,6 +705,9 @@ class _TeamSettingsSectionState extends State<TeamSettingsSection> {
     if (code.contains('mfa_freshness_required')) {
       return 'Sign in again before removing two-factor authentication.';
     }
+    if (code.contains('mfa_removal_already_pending')) {
+      return 'Two-factor removal is already scheduled.';
+    }
     if (action == TeamUserAction.resetMfa) {
       return 'Two-factor removal could not be started.';
     }

@@ -206,6 +206,133 @@ void main() {
     );
 
     test(
+      'revokeFactor rejects a duplicate pending removal without another audit',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final existingExecuteAfter = DateTime.utc(2026, 5, 1, 12);
+        final removalRepo = _RecordingRemovalRequestsRepository(
+          records: <MfaFactorRemovalRequestRecord>[
+            MfaFactorRemovalRequestRecord(
+              requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              operatorId: _operatorId,
+              locationId: _locationId,
+              userId: _userId,
+              factorId: 'totp-db-factor',
+              requestedByUserId: _userId,
+              stepUpProofId: 'fresh-proof',
+              requestedAt: DateTime.utc(2026, 4, 30, 12),
+              executeAfter: existingExecuteAfter,
+            ),
+          ],
+        );
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: _RecordingMfaFactorsRepository(
+            activeTotpFactors: <MfaFactorRecord>[
+              MfaFactorRecord(
+                factorId: 'totp-db-factor',
+                userId: _userId,
+                factorType: 'totp',
+                factorMetadata: const <String, Object?>{},
+                enrolledAt: DateTime.utc(2026, 4, 30, 12),
+              ),
+            ],
+          ),
+          auditRepository: auditRepo,
+          removalRequestsRepository: removalRepo,
+          now: () => DateTime.utc(2026, 4, 30, 13),
+        );
+
+        final error = await _captureError(
+          gateway.revokeFactor(
+            const MfaRevokeFactorCommand(
+              actorUserId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              factorId: 'totp-db-factor',
+              stepUpProofId: 'fresh-proof',
+            ),
+          ),
+        );
+
+        expect(error, isA<MfaOperationRejected>());
+        final rejected = error! as MfaOperationRejected;
+        expect(rejected.code, equals('mfa_removal_already_pending'));
+        expect(rejected.statusCode, equals(409));
+        expect(rejected.retryAfter, equals(existingExecuteAfter));
+        expect(auditRepo.events, isEmpty);
+        expect(removalRepo.records, hasLength(1));
+      },
+    );
+
+    test(
+      'revokeUserFactors rejects pending removal before partial reset work',
+      () async {
+        final auditRepo = _RecordingAuditRepository();
+        final existingExecuteAfter = DateTime.utc(2026, 5, 1, 12);
+        final removalRepo = _RecordingRemovalRequestsRepository(
+          records: <MfaFactorRemovalRequestRecord>[
+            MfaFactorRemovalRequestRecord(
+              requestId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+              operatorId: _operatorId,
+              locationId: _locationId,
+              userId: _userId,
+              factorId: 'totp-db-factor-pending',
+              requestedByUserId: _userId,
+              stepUpProofId: 'fresh-proof',
+              requestedAt: DateTime.utc(2026, 4, 30, 12),
+              executeAfter: existingExecuteAfter,
+            ),
+          ],
+        );
+        final gateway = RepositoryMfaOperationsGateway(
+          enrollmentService: const _SuccessfulEnrollmentService(),
+          mfaFactorsRepository: _RecordingMfaFactorsRepository(
+            activeTotpFactors: <MfaFactorRecord>[
+              MfaFactorRecord(
+                factorId: 'totp-db-factor-new',
+                userId: _userId,
+                factorType: 'totp',
+                factorMetadata: const <String, Object?>{},
+                enrolledAt: DateTime.utc(2026, 4, 30, 13),
+              ),
+              MfaFactorRecord(
+                factorId: 'totp-db-factor-pending',
+                userId: _userId,
+                factorType: 'totp',
+                factorMetadata: const <String, Object?>{},
+                enrolledAt: DateTime.utc(2026, 4, 30, 12),
+              ),
+            ],
+          ),
+          auditRepository: auditRepo,
+          removalRequestsRepository: removalRepo,
+          now: () => DateTime.utc(2026, 4, 30, 13),
+        );
+
+        final error = await _captureError(
+          gateway.revokeUserFactors(
+            const MfaRevokeUserFactorsCommand(
+              actorUserId: _userId,
+              operatorId: _operatorId,
+              locationId: _locationId,
+              targetUserId: _userId,
+              stepUpProofId: 'fresh-proof',
+            ),
+          ),
+        );
+
+        expect(error, isA<MfaOperationRejected>());
+        final rejected = error! as MfaOperationRejected;
+        expect(rejected.code, equals('mfa_removal_already_pending'));
+        expect(rejected.statusCode, equals(409));
+        expect(rejected.retryAfter, equals(existingExecuteAfter));
+        expect(auditRepo.events, isEmpty);
+        expect(removalRepo.records, hasLength(1));
+      },
+    );
+
+    test(
       'revokeFactor repairs Firebase-only inventory before removal',
       () async {
         final auditRepo = _RecordingAuditRepository();

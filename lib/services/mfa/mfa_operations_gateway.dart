@@ -493,6 +493,12 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
         requestIds: <String>[],
       );
     }
+    await _rejectIfRemovalAlreadyPending(
+      operatorId: command.operatorId,
+      locationId: command.locationId,
+      userId: command.targetUserId,
+      factorIds: factors.map((factor) => factor.factorId).toSet(),
+    );
     final requests = <MfaRemovalRequest>[];
     for (final factor in factors) {
       requests.add(
@@ -567,6 +573,33 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
     return const MfaCancelFactorRemovalCompleted(cancelled: true);
   }
 
+  Future<void> _rejectIfRemovalAlreadyPending({
+    required String operatorId,
+    required String locationId,
+    required String userId,
+    required Set<String> factorIds,
+  }) async {
+    final repository = _removalRequestsRepository;
+    if (repository == null || factorIds.isEmpty) return;
+    final existing = await repository.listRecentForUser(
+      operatorId: operatorId,
+      locationId: locationId,
+      userId: userId,
+      limit: 50,
+    );
+    for (final request in existing) {
+      if (!factorIds.contains(request.factorId) || !request.isPending) {
+        continue;
+      }
+      throw MfaOperationRejected(
+        code: 'mfa_removal_already_pending',
+        message: 'Authenticator app removal is already scheduled.',
+        statusCode: 409,
+        retryAfter: request.executeAfter,
+      );
+    }
+  }
+
   String _requireStepUpProof(String stepUpProofId) {
     final trimmed = stepUpProofId.trim();
     if (trimmed.isEmpty) {
@@ -609,6 +642,14 @@ class RepositoryMfaOperationsGateway implements MfaOperationsGateway {
       requestedAt: request.requestedAt,
       executeAfter: request.executeAfter,
     );
+    if (persisted != null && persisted.requestId != request.requestId) {
+      throw MfaOperationRejected(
+        code: 'mfa_removal_already_pending',
+        message: 'Authenticator app removal is already scheduled.',
+        statusCode: 409,
+        retryAfter: persisted.executeAfter,
+      );
+    }
     final effectiveRequest = persisted == null
         ? request
         : MfaRemovalRequest(
