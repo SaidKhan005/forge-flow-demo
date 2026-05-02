@@ -48,6 +48,8 @@ class CorpusAdminScreen extends StatefulWidget {
     this.editingEnabled = true,
     this.uploadPicker,
     this.idempotencyKeyGenerator,
+    this.targetOperatorId,
+    this.targetLocationId,
   });
 
   final CorpusAdminGateway gateway;
@@ -64,6 +66,19 @@ class CorpusAdminScreen extends StatefulWidget {
   /// generator; widget tests pin this to keep replay tests
   /// deterministic.
   final String Function()? idempotencyKeyGenerator;
+
+  /// Phase 11A.3b — destination (operator, location) for approved
+  /// graph candidates. Super_admin is cross-tenant, so the Graph
+  /// candidates commit must name an operator explicitly. The screen
+  /// itself does NOT default these — the host wiring in
+  /// [lib/admin/admin_routes.dart] picks the targets explicitly:
+  /// the demo path passes the kDemoMode tenant seed; the live path
+  /// leaves them null until the operator-picker slice ships, and
+  /// the Graph candidates commit button is disabled with a banner
+  /// in that case so the operator cannot accidentally write
+  /// against a wrong tenant.
+  final String? targetOperatorId;
+  final String? targetLocationId;
 
   @override
   State<CorpusAdminScreen> createState() => _CorpusAdminScreenState();
@@ -271,34 +286,127 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      key: const Key('admin_corpus_screen'),
-      color: AppColors.backgroundDeep,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const _Header(),
-            const SizedBox(height: 14),
-            if (!widget.editingEnabled)
-              const _ReadOnlyBanner(
-                key: Key('admin_corpus_readonly_banner'),
+    return DefaultTabController(
+      length: 2,
+      child: Container(
+        key: const Key('admin_corpus_screen'),
+        color: AppColors.backgroundDeep,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const _Header(),
+              const SizedBox(height: 14),
+              if (!widget.editingEnabled)
+                const _ReadOnlyBanner(
+                  key: Key('admin_corpus_readonly_banner'),
+                ),
+              if (_actionError != null)
+                _ErrorBanner(
+                  key: const Key('admin_corpus_action_error'),
+                  message: _actionError!,
+                ),
+              const TabBar(
+                key: Key('admin_corpus_tab_bar'),
+                isScrollable: true,
+                indicatorColor: AppColors.sunset,
+                labelColor: AppColors.textPrimary,
+                unselectedLabelColor: AppColors.textSecondary,
+                tabs: <Widget>[
+                  Tab(
+                    key: Key('admin_corpus_versions_tab'),
+                    text: 'Versions',
+                  ),
+                  Tab(
+                    key: Key('admin_corpus_graph_candidates_tab'),
+                    text: 'Graph candidates',
+                  ),
+                ],
               ),
-            if (_actionError != null)
-              _ErrorBanner(
-                key: const Key('admin_corpus_action_error'),
-                message: _actionError!,
+              const SizedBox(height: 12),
+              Expanded(
+                child: TabBarView(
+                  children: <Widget>[
+                    _VersionsTab(
+                      loading: _loading,
+                      loadError: _loadError,
+                      versions: _versions,
+                      selectedVersionId: _selectedVersionId,
+                      selectedBundle: _selectedBundle,
+                      stagedDiff: _stagedDiff,
+                      stagedFileName: _stagedFileName,
+                      editingEnabled: widget.editingEnabled,
+                      busy: _busy,
+                      selected: _selected,
+                      onSelect: (id) {
+                        setState(() => _selectedVersionId = id);
+                        _loadSelectedBundle();
+                      },
+                      onUploadPressed: _onUploadPressed,
+                      onRollbackPressed: _onRollbackPressed,
+                      onCommitPressed: _onCommitPressed,
+                      onDiscardStaged: () => setState(() {
+                        _stagedDiff = null;
+                        _stagedFileName = null;
+                      }),
+                    ),
+                    _GraphCandidatesTab(
+                      gateway: widget.gateway,
+                      editingEnabled: widget.editingEnabled,
+                      newIdempotencyKey: _newIdempotencyKey,
+                      targetOperatorId: widget.targetOperatorId,
+                      targetLocationId: widget.targetLocationId,
+                    ),
+                  ],
+                ),
               ),
-            Expanded(child: _buildBody()),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
+}
 
-  Widget _buildBody() {
-    if (_loading) {
+class _VersionsTab extends StatelessWidget {
+  const _VersionsTab({
+    required this.loading,
+    required this.loadError,
+    required this.versions,
+    required this.selectedVersionId,
+    required this.selectedBundle,
+    required this.stagedDiff,
+    required this.stagedFileName,
+    required this.editingEnabled,
+    required this.busy,
+    required this.selected,
+    required this.onSelect,
+    required this.onUploadPressed,
+    required this.onRollbackPressed,
+    required this.onCommitPressed,
+    required this.onDiscardStaged,
+  });
+
+  final bool loading;
+  final String? loadError;
+  final List<CorpusVersionRef> versions;
+  final String? selectedVersionId;
+  final CorpusBundle? selectedBundle;
+  final CorpusDiff? stagedDiff;
+  final String? stagedFileName;
+  final bool editingEnabled;
+  final bool busy;
+  final CorpusVersionRef? selected;
+  final ValueChanged<String> onSelect;
+  final VoidCallback onUploadPressed;
+  final void Function(CorpusVersionRef target) onRollbackPressed;
+  final VoidCallback onCommitPressed;
+  final VoidCallback onDiscardStaged;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
       return const Center(
         key: Key('admin_corpus_loading'),
         child: SizedBox(
@@ -311,13 +419,13 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
         ),
       );
     }
-    if (_loadError != null) {
+    if (loadError != null) {
       return _ErrorBanner(
         key: const Key('admin_corpus_load_error'),
-        message: _loadError!,
+        message: loadError!,
       );
     }
-    if (_versions.isEmpty) {
+    if (versions.isEmpty) {
       return Center(
         key: const Key('admin_corpus_empty'),
         child: ConstrainedBox(
@@ -342,11 +450,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                     color: AppColors.textSecondary,
                   ),
                 ),
-                if (widget.editingEnabled) ...[
+                if (editingEnabled) ...[
                   const SizedBox(height: 16),
                   FilledButton.icon(
                     key: const Key('admin_corpus_first_upload_button'),
-                    onPressed: _busy ? null : _onUploadPressed,
+                    onPressed: busy ? null : onUploadPressed,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunset,
                       foregroundColor: AppColors.backgroundSurface,
@@ -367,37 +475,1109 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
         SizedBox(
           width: 320,
           child: _VersionList(
-            versions: _versions,
-            selectedVersionId: _selectedVersionId,
-            editingEnabled: widget.editingEnabled,
-            busy: _busy,
-            onSelect: (id) {
-              setState(() => _selectedVersionId = id);
-              _loadSelectedBundle();
-            },
-            onUploadPressed: _onUploadPressed,
-            onRollbackPressed: _onRollbackPressed,
+            versions: versions,
+            selectedVersionId: selectedVersionId,
+            editingEnabled: editingEnabled,
+            busy: busy,
+            onSelect: onSelect,
+            onUploadPressed: onUploadPressed,
+            onRollbackPressed: onRollbackPressed,
           ),
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: _selected == null
+          child: selected == null
               ? const SizedBox.shrink()
               : _VersionDetail(
-                  version: _selected!,
-                  bundle: _selectedBundle,
-                  stagedDiff: _stagedDiff,
-                  stagedFileName: _stagedFileName,
-                  editingEnabled: widget.editingEnabled,
-                  busy: _busy,
-                  onCommitPressed: _onCommitPressed,
-                  onDiscardStaged: () => setState(() {
-                    _stagedDiff = null;
-                    _stagedFileName = null;
-                  }),
+                  version: selected!,
+                  bundle: selectedBundle,
+                  stagedDiff: stagedDiff,
+                  stagedFileName: stagedFileName,
+                  editingEnabled: editingEnabled,
+                  busy: busy,
+                  onCommitPressed: onCommitPressed,
+                  onDiscardStaged: onDiscardStaged,
                 ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Phase 11A.3b — Graphify candidate review tab ────────────────────
+
+class _GraphCandidatesTab extends StatefulWidget {
+  const _GraphCandidatesTab({
+    required this.gateway,
+    required this.editingEnabled,
+    required this.newIdempotencyKey,
+    required this.targetOperatorId,
+    required this.targetLocationId,
+  });
+
+  final CorpusAdminGateway gateway;
+  final bool editingEnabled;
+  final String Function() newIdempotencyKey;
+
+  /// When either is null the tab still renders the diff but disables
+  /// the commit button + shows a "select operator" banner. The host
+  /// in [admin_routes.dart] passes the demo tenant in demo mode and
+  /// leaves both null in live mode (until the operator picker ships).
+  final String? targetOperatorId;
+  final String? targetLocationId;
+
+  bool get hasTarget =>
+      (targetOperatorId?.isNotEmpty ?? false) &&
+      (targetLocationId?.isNotEmpty ?? false);
+
+  @override
+  State<_GraphCandidatesTab> createState() => _GraphCandidatesTabState();
+}
+
+class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
+  bool _loading = true;
+  String? _loadError;
+  GraphCandidateDiff? _diff;
+  final Set<String> _approveQueue = <String>{};
+  final Set<String> _rejectQueue = <String>{};
+  final Map<String, ApprovalDecision> _editQueue =
+      <String, ApprovalDecision>{};
+  String? _actionError;
+  AgeRebuildResult? _ageRebuildBanner;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _refresh();
+  }
+
+  Future<void> _refresh() async {
+    setState(() {
+      _loading = true;
+      _loadError = null;
+    });
+    try {
+      final diff = await widget.gateway.listGraphCandidates();
+      if (!mounted) return;
+      setState(() {
+        _diff = diff;
+        _loading = false;
+      });
+    } on CorpusAdminGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = error.message;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = 'Could not load graph candidates: $error';
+        _loading = false;
+      });
+    }
+  }
+
+  bool get _hasQueuedDecisions =>
+      _approveQueue.isNotEmpty ||
+      _rejectQueue.isNotEmpty ||
+      _editQueue.isNotEmpty;
+
+  bool _isQueued(String candidateId) {
+    return _approveQueue.contains(candidateId) ||
+        _rejectQueue.contains(candidateId) ||
+        _editQueue.containsKey(candidateId);
+  }
+
+  void _toggleApprove(GraphCandidate candidate) {
+    // Spec contract: AMBIGUOUS relationships are debug-only until
+    // edited into a clear approved relationship (plan line 249).
+    // The row UI hides the Approve button on AMBIGUOUS candidates;
+    // this guard is defense-in-depth so a future code path that
+    // calls _toggleApprove programmatically (or a bulk handler)
+    // cannot accidentally route an unedited ambiguous candidate
+    // into canonical storage.
+    if (candidate.label == GraphCandidateLabel.ambiguous) return;
+    setState(() {
+      if (_approveQueue.contains(candidate.candidateId)) {
+        _approveQueue.remove(candidate.candidateId);
+      } else {
+        _approveQueue.add(candidate.candidateId);
+        _rejectQueue.remove(candidate.candidateId);
+        _editQueue.remove(candidate.candidateId);
+      }
+    });
+  }
+
+  void _toggleReject(GraphCandidate candidate) {
+    setState(() {
+      if (_rejectQueue.contains(candidate.candidateId)) {
+        _rejectQueue.remove(candidate.candidateId);
+      } else {
+        _rejectQueue.add(candidate.candidateId);
+        _approveQueue.remove(candidate.candidateId);
+        _editQueue.remove(candidate.candidateId);
+      }
+    });
+  }
+
+  void _bulkApproveExtracted() {
+    final diff = _diff;
+    if (diff == null) return;
+    setState(() {
+      for (final c in diff.extracted) {
+        _approveQueue.add(c.candidateId);
+        _rejectQueue.remove(c.candidateId);
+        _editQueue.remove(c.candidateId);
+      }
+    });
+  }
+
+  void _discardQueue() {
+    setState(() {
+      _approveQueue.clear();
+      _rejectQueue.clear();
+      _editQueue.clear();
+    });
+  }
+
+  Future<void> _onEditPressed(GraphCandidate candidate) async {
+    final existing = _editQueue[candidate.candidateId];
+    final result = await showDialog<ApprovalDecision>(
+      context: context,
+      builder: (dialogContext) => _GraphCandidateEditDialog(
+        candidate: candidate,
+        initialDecision: existing,
+      ),
+    );
+    if (result == null) return;
+    setState(() {
+      _editQueue[candidate.candidateId] = result;
+      _approveQueue.remove(candidate.candidateId);
+      _rejectQueue.remove(candidate.candidateId);
+    });
+  }
+
+  Future<void> _onCommitBatch() async {
+    if (!_hasQueuedDecisions) return;
+    final targetOperator = widget.targetOperatorId;
+    final targetLocation = widget.targetLocationId;
+    if (targetOperator == null ||
+        targetOperator.isEmpty ||
+        targetLocation == null ||
+        targetLocation.isEmpty) {
+      // Defense-in-depth: the commit button is already disabled when
+      // targets are missing (see the build() guard) and the live
+      // route in admin_routes.dart leaves the targets null until the
+      // operator picker ships. This catch is the last-line guard so
+      // any future code path that bypasses the button (programmatic
+      // call, hot-reload state mismatch) cannot accidentally commit
+      // against a wrong tenant.
+      setState(() {
+        _actionError =
+            'Select an operator before committing graph decisions; the '
+            'commit destination is not configured.';
+      });
+      return;
+    }
+    setState(() {
+      _actionError = null;
+      _busy = true;
+    });
+    try {
+      final decisions = <ApprovalDecision>[
+        for (final id in _approveQueue)
+          ApprovalDecision(
+            candidateId: id,
+            kind: GraphDecisionKind.approve,
+          ),
+        for (final id in _rejectQueue)
+          ApprovalDecision(
+            candidateId: id,
+            kind: GraphDecisionKind.reject,
+          ),
+        ..._editQueue.values,
+      ];
+      final result = await widget.gateway.commitGraphCandidatesBatch(
+        BatchCommitCommand(
+          idempotencyKey: widget.newIdempotencyKey(),
+          targetOperatorId: targetOperator,
+          targetLocationId: targetLocation,
+          decisions: decisions,
+        ),
+      );
+      if (!mounted) return;
+      final approved =
+          result.approvedNodeCount + result.approvedEdgeCount;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '$approved approved, ${result.rejectedCount} rejected',
+          ),
+        ),
+      );
+      setState(() {
+        _approveQueue.clear();
+        _rejectQueue.clear();
+        _editQueue.clear();
+      });
+      await _refresh();
+    } on CorpusAdminGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _onAgeRebuild() async {
+    setState(() {
+      _actionError = null;
+      _busy = true;
+    });
+    try {
+      final result = await widget.gateway.requestAgeRebuild(
+        idempotencyKey: widget.newIdempotencyKey(),
+      );
+      if (!mounted) return;
+      setState(() {
+        _ageRebuildBanner = result;
+      });
+    } on CorpusAdminGatewayError catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.message);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _actionError = error.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_corpus_graph_tab_body'),
+      child: _buildContent(),
+    );
+  }
+
+  Widget _buildContent() {
+    if (_loading) {
+      return const Center(
+        key: Key('admin_corpus_graph_candidates_loading'),
+        child: SizedBox(
+          width: 28,
+          height: 28,
+          child: CircularProgressIndicator(
+            strokeWidth: 2,
+            color: AppColors.sunsetDark,
+          ),
+        ),
+      );
+    }
+    if (_loadError != null) {
+      return _ErrorBanner(
+        key: const Key('admin_corpus_graph_candidates_error'),
+        message: _loadError!,
+      );
+    }
+    final diff = _diff;
+    if (diff == null) return const SizedBox.shrink();
+    return SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!widget.editingEnabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'View-only',
+                style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+          if (_actionError != null)
+            _ErrorBanner(
+              key: const Key('admin_corpus_graph_candidates_action_error'),
+              message: _actionError!,
+            ),
+          if (_ageRebuildBanner != null)
+            _AgeRebuildBanner(
+              key: const Key('admin_corpus_age_rebuild_banner'),
+              result: _ageRebuildBanner!,
+            ),
+          _GraphCandidateMetaCard(diff: diff),
+          const SizedBox(height: 16),
+          _GraphCandidateSection(
+            sectionKey: const Key(
+              'admin_corpus_graph_extracted_section',
+            ),
+            label: 'Extracted',
+            description:
+                'Producer-emitted EXTRACTED edges. Bulk-approve safe.',
+            candidates: diff.extracted,
+            isQueuedForApprove: _approveQueue.contains,
+            isQueuedForReject: _rejectQueue.contains,
+            isQueuedForEdit: _editQueue.containsKey,
+            isQueued: _isQueued,
+            editingEnabled: widget.editingEnabled,
+            busy: _busy,
+            onApprove: _toggleApprove,
+            onReject: _toggleReject,
+            onEdit: _onEditPressed,
+            trailing: widget.editingEnabled && diff.extracted.isNotEmpty
+                ? FilledButton.icon(
+                    key: const Key(
+                      'admin_corpus_graph_bulk_approve_extracted',
+                    ),
+                    onPressed: _busy ? null : _bulkApproveExtracted,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.sunset,
+                      foregroundColor: AppColors.backgroundSurface,
+                    ),
+                    icon: const Icon(Icons.done_all, size: 16),
+                    label: const Text('Bulk approve all'),
+                  )
+                : null,
+          ),
+          const SizedBox(height: 16),
+          _GraphCandidateSection(
+            sectionKey: const Key(
+              'admin_corpus_graph_inferred_section',
+            ),
+            label: 'Inferred',
+            description:
+                'Producer flagged INFERRED. Per-edge approve / reject required.',
+            candidates: diff.inferred,
+            isQueuedForApprove: _approveQueue.contains,
+            isQueuedForReject: _rejectQueue.contains,
+            isQueuedForEdit: _editQueue.containsKey,
+            isQueued: _isQueued,
+            editingEnabled: widget.editingEnabled,
+            busy: _busy,
+            onApprove: _toggleApprove,
+            onReject: _toggleReject,
+            onEdit: _onEditPressed,
+          ),
+          const SizedBox(height: 16),
+          _GraphCandidateSection(
+            sectionKey: const Key(
+              'admin_corpus_graph_ambiguous_section',
+            ),
+            label: 'Ambiguous',
+            description:
+                'Producer flagged AMBIGUOUS. Edit into a clear approved '
+                'relation or reject — bare Approve is intentionally '
+                'unavailable so unedited candidates cannot reach AGE.',
+            candidates: diff.ambiguous,
+            isQueuedForApprove: _approveQueue.contains,
+            isQueuedForReject: _rejectQueue.contains,
+            isQueuedForEdit: _editQueue.containsKey,
+            isQueued: _isQueued,
+            editingEnabled: widget.editingEnabled,
+            // Spec line 249: AMBIGUOUS is debug-only until edited.
+            // The Approve button is hidden on every row in this
+            // section; only Edit + Reject are available.
+            allowApprove: false,
+            busy: _busy,
+            onApprove: _toggleApprove,
+            onReject: _toggleReject,
+            onEdit: _onEditPressed,
+          ),
+          const SizedBox(height: 24),
+          if (widget.editingEnabled && !widget.hasTarget)
+            Container(
+              key: const Key('admin_corpus_graph_no_target_banner'),
+              margin: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 10,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.warningBadgeBg,
+                border: Border.all(
+                  color: AppColors.warning.withValues(alpha: 0.6),
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.info_outline,
+                    size: 16,
+                    color: AppColors.warning,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Operator selection is required to commit graph '
+                      'decisions in live mode. The operator picker '
+                      'lands in a follow-up slice; Graph candidates '
+                      'commits stay disabled here until then so a '
+                      'super_admin cannot accidentally write '
+                      'against the wrong tenant.',
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (widget.editingEnabled)
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: <Widget>[
+                FilledButton.icon(
+                  key: const Key(
+                    'admin_corpus_graph_commit_button',
+                  ),
+                  // Disabled when no decisions are queued, when a
+                  // commit is already in flight, OR when the host
+                  // (admin_routes.dart) has not picked a target
+                  // operator/location for this surface (live mode
+                  // pre-operator-picker).
+                  onPressed:
+                      (!_hasQueuedDecisions || _busy || !widget.hasTarget)
+                          ? null
+                          : _onCommitBatch,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.sunset,
+                    foregroundColor: AppColors.backgroundSurface,
+                  ),
+                  icon: const Icon(Icons.check_circle_outline, size: 16),
+                  label: Text(
+                    'Commit batch (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
+                    'decision'
+                    '${(_approveQueue.length + _rejectQueue.length + _editQueue.length) == 1 ? '' : 's'})',
+                  ),
+                ),
+                OutlinedButton.icon(
+                  key: const Key(
+                    'admin_corpus_graph_candidates_discard_queue',
+                  ),
+                  onPressed: (!_hasQueuedDecisions || _busy)
+                      ? null
+                      : _discardQueue,
+                  icon: const Icon(Icons.clear, size: 16),
+                  label: const Text('Discard queue'),
+                ),
+                OutlinedButton.icon(
+                  key: const Key(
+                    'admin_corpus_age_rebuild_button',
+                  ),
+                  onPressed: _busy ? null : _onAgeRebuild,
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Run AGE rebuild'),
+                ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphCandidateMetaCard extends StatelessWidget {
+  const _GraphCandidateMetaCard({required this.diff});
+
+  final GraphCandidateDiff diff;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Graphify candidate diff',
+            style: AppTextStyles.mono15(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 6),
+          _DetailRow(label: 'Graph scope', value: diff.graphScope),
+          _DetailRow(label: 'Graph version', value: diff.graphVersion),
+          _DetailRow(label: 'Graphify version', value: diff.graphifyVersion),
+          if (diff.graphifySourceCommit != null)
+            _DetailRow(
+              label: 'Source commit',
+              value: diff.graphifySourceCommit!,
+            ),
+          _DetailRow(
+            label: 'Total candidates',
+            value: '${diff.totalCount}',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphCandidateSection extends StatelessWidget {
+  const _GraphCandidateSection({
+    required this.sectionKey,
+    required this.label,
+    required this.description,
+    required this.candidates,
+    required this.isQueuedForApprove,
+    required this.isQueuedForReject,
+    required this.isQueuedForEdit,
+    required this.isQueued,
+    required this.editingEnabled,
+    required this.busy,
+    required this.onApprove,
+    required this.onReject,
+    required this.onEdit,
+    this.allowApprove = true,
+    this.trailing,
+  });
+
+  final Key sectionKey;
+  final String label;
+  final String description;
+  final List<GraphCandidate> candidates;
+  final bool Function(String candidateId) isQueuedForApprove;
+  final bool Function(String candidateId) isQueuedForReject;
+  final bool Function(String candidateId) isQueuedForEdit;
+  final bool Function(String candidateId) isQueued;
+  final bool editingEnabled;
+  final bool busy;
+  final void Function(GraphCandidate candidate) onApprove;
+  final void Function(GraphCandidate candidate) onReject;
+  final void Function(GraphCandidate candidate) onEdit;
+
+  /// Spec line 249: AMBIGUOUS relationships are debug-only until
+  /// edited. The AMBIGUOUS section passes `allowApprove: false` so
+  /// the row never renders an Approve button — only Edit + Reject.
+  /// EXTRACTED + INFERRED keep `allowApprove: true`.
+  final bool allowApprove;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(
+      key: sectionKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '$label (${candidates.length})',
+                      style: AppTextStyles.mono15(
+                        color: AppColors.textPrimary,
+                        weight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      description,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (candidates.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                '— none —',
+                style: AppTextStyles.mono11(color: AppColors.textMuted),
+              ),
+            )
+          else
+            ...candidates.map(
+              (c) => _GraphCandidateRow(
+                key: Key(
+                  'admin_corpus_graph_tile_${c.candidateId}',
+                ),
+                candidate: c,
+                queuedForApprove: isQueuedForApprove(c.candidateId),
+                queuedForReject: isQueuedForReject(c.candidateId),
+                queuedForEdit: isQueuedForEdit(c.candidateId),
+                queued: isQueued(c.candidateId),
+                editingEnabled: editingEnabled,
+                allowApprove: allowApprove,
+                busy: busy,
+                onApprove: () => onApprove(c),
+                onReject: () => onReject(c),
+                onEdit: () => onEdit(c),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GraphCandidateRow extends StatelessWidget {
+  const _GraphCandidateRow({
+    super.key,
+    required this.candidate,
+    required this.queuedForApprove,
+    required this.queuedForReject,
+    required this.queuedForEdit,
+    required this.queued,
+    required this.editingEnabled,
+    required this.busy,
+    required this.onApprove,
+    required this.onReject,
+    required this.onEdit,
+    this.allowApprove = true,
+  });
+
+  final GraphCandidate candidate;
+  final bool queuedForApprove;
+  final bool queuedForReject;
+  final bool queuedForEdit;
+  final bool queued;
+  final bool editingEnabled;
+  final bool busy;
+  final VoidCallback onApprove;
+  final VoidCallback onReject;
+  final VoidCallback onEdit;
+
+  /// Spec line 249: AMBIGUOUS rows hide the Approve button. The
+  /// admin must Edit (re-classify into a clear approved relation)
+  /// or Reject; bare Approve would leak an unedited ambiguous
+  /// candidate into canonical storage and then AGE.
+  final bool allowApprove;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: queued
+            ? AppColors.sunset.withValues(alpha: 0.10)
+            : AppColors.backgroundSurface,
+        border: Border.all(
+          color: queued
+              ? AppColors.sunset
+              : AppColors.borderSubtle.withValues(alpha: 0.6),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  candidate.displayLabel,
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              _TypeChip(label: candidate.candidateType),
+              const SizedBox(width: 6),
+              _ConfidenceChip(candidate: candidate),
+            ],
+          ),
+          const SizedBox(height: 6),
+          if (candidate.kind == GraphCandidateKind.edge)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                '${candidate.fromNodeKey ?? '?'} → '
+                '${candidate.toNodeKey ?? '?'}',
+                style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Text(
+                'node_type ${candidate.candidateType}',
+                style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              ),
+            ),
+          if (candidate.sourceFile != null)
+            Text(
+              'source ${candidate.sourceFile}'
+              '${candidate.sourceRef != null ? ' (${candidate.sourceRef})' : ''}',
+              style: AppTextStyles.mono8(color: AppColors.textMuted),
+            ),
+          if (queued) ...[
+            const SizedBox(height: 6),
+            _StagedDecisionChip(
+              key: Key(
+                'admin_corpus_graph_staged_${candidate.candidateId}',
+              ),
+              label: queuedForApprove
+                  ? 'approve'
+                  : queuedForReject
+                      ? 'reject'
+                      : 'edit',
+            ),
+          ],
+          if (editingEnabled) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: <Widget>[
+                if (allowApprove)
+                  FilledButton.icon(
+                    key: Key(
+                      'admin_corpus_graph_candidate_approve_'
+                      '${candidate.candidateId}',
+                    ),
+                    onPressed: busy ? null : onApprove,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: queuedForApprove
+                          ? AppColors.positive
+                          : AppColors.positive.withValues(alpha: 0.85),
+                      foregroundColor: AppColors.backgroundSurface,
+                    ),
+                    icon: Icon(
+                      queuedForApprove ? Icons.check : Icons.check_outlined,
+                      size: 14,
+                    ),
+                    label: Text(queuedForApprove ? 'Queued ✓' : 'Approve'),
+                  ),
+                OutlinedButton.icon(
+                  key: Key(
+                    'admin_corpus_graph_candidate_reject_'
+                    '${candidate.candidateId}',
+                  ),
+                  onPressed: busy ? null : onReject,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.negative,
+                    side: BorderSide(
+                      color: queuedForReject
+                          ? AppColors.negative
+                          : AppColors.negative.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  icon: Icon(
+                    queuedForReject ? Icons.close : Icons.close_outlined,
+                    size: 14,
+                  ),
+                  label: Text(queuedForReject ? 'Queued ✗' : 'Reject'),
+                ),
+                OutlinedButton.icon(
+                  key: Key(
+                    'admin_corpus_graph_candidate_edit_'
+                    '${candidate.candidateId}',
+                  ),
+                  onPressed: busy ? null : onEdit,
+                  icon: const Icon(Icons.edit_outlined, size: 14),
+                  label: Text(queuedForEdit ? 'Edit queued' : 'Edit'),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _TypeChip extends StatelessWidget {
+  const _TypeChip({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono8(color: AppColors.peacockDark),
+      ),
+    );
+  }
+}
+
+class _StagedDecisionChip extends StatelessWidget {
+  const _StagedDecisionChip({super.key, required this.label});
+
+  /// One of `approve`, `reject`, `edit`.
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    Color bg;
+    Color fg;
+    switch (label) {
+      case 'approve':
+        bg = AppColors.positive.withValues(alpha: 0.15);
+        fg = AppColors.positive;
+        break;
+      case 'reject':
+        bg = AppColors.negative.withValues(alpha: 0.15);
+        fg = AppColors.negative;
+        break;
+      case 'edit':
+      default:
+        bg = AppColors.warningBadgeBg;
+        fg = AppColors.warning;
+        break;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        'Staged: $label',
+        style: AppTextStyles.mono11(color: fg),
+      ),
+    );
+  }
+}
+
+class _ConfidenceChip extends StatelessWidget {
+  const _ConfidenceChip({required this.candidate});
+
+  final GraphCandidate candidate;
+
+  @override
+  Widget build(BuildContext context) {
+    final score = candidate.confidenceScore;
+    if (score == null) {
+      return const SizedBox.shrink();
+    }
+    final low = candidate.hasLowConfidence;
+    final scoreText = score.toStringAsFixed(2);
+    return Container(
+      key: low
+          ? Key(
+              'admin_corpus_graph_candidate_warning_${candidate.candidateId}',
+            )
+          : Key(
+              'admin_corpus_graph_candidate_confidence_${candidate.candidateId}',
+            ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: low
+            ? AppColors.warningBadgeBg
+            : AppColors.positive.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        low ? '$scoreText ⚠ low confidence' : '$scoreText confidence',
+        style: AppTextStyles.mono8(
+          color: low ? AppColors.warning : AppColors.positive,
+        ),
+      ),
+    );
+  }
+}
+
+class _GraphCandidateEditDialog extends StatefulWidget {
+  const _GraphCandidateEditDialog({
+    required this.candidate,
+    this.initialDecision,
+  });
+
+  final GraphCandidate candidate;
+  final ApprovalDecision? initialDecision;
+
+  @override
+  State<_GraphCandidateEditDialog> createState() =>
+      _GraphCandidateEditDialogState();
+}
+
+class _GraphCandidateEditDialogState
+    extends State<_GraphCandidateEditDialog> {
+  late final TextEditingController _typeController;
+  late final TextEditingController _reasonController;
+
+  @override
+  void initState() {
+    super.initState();
+    _typeController = TextEditingController(
+      text: widget.initialDecision?.editedCandidateType ??
+          widget.candidate.candidateType,
+    );
+    _reasonController = TextEditingController(
+      text: widget.initialDecision?.reason ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _typeController.dispose();
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_corpus_graph_candidates_edit_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Edit candidate',
+        style: AppTextStyles.display20(color: AppColors.textPrimary),
+      ),
+      content: SizedBox(
+        width: 480,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.candidate.displayLabel,
+              style: AppTextStyles.mono14(
+                color: AppColors.textPrimary,
+                weight: FontWeight.w600,
+              ),
+            ),
+            if (widget.candidate.kind == GraphCandidateKind.edge)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  '${widget.candidate.fromNodeKey ?? '?'} → '
+                  '${widget.candidate.toNodeKey ?? '?'}',
+                  style: AppTextStyles.mono11(
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key(
+                'admin_corpus_graph_candidates_edit_dialog_type_field',
+              ),
+              controller: _typeController,
+              decoration: InputDecoration(
+                labelText: widget.candidate.kind == GraphCandidateKind.node
+                    ? 'node_type'
+                    : 'edge_type',
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              key: const Key(
+                'admin_corpus_graph_candidates_edit_dialog_reason_field',
+              ),
+              controller: _reasonController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Reason (optional)',
+                alignLabelWithHint: true,
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key(
+            'admin_corpus_graph_candidates_edit_dialog_submit',
+          ),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          onPressed: () {
+            final editedType = _typeController.text.trim();
+            final reason = _reasonController.text.trim();
+            // The proxy's commit-batch validation rejects an edit
+            // decision that arrives without an `edited_payload`
+            // (`missing_edited_payload` 400). The launch slice does
+            // not yet expose a per-property edit form, so we forward
+            // the original candidate payload verbatim — the
+            // structural change the admin made is only the
+            // `edited_candidate_type`. This keeps the wire contract
+            // satisfied and lets a follow-up slice add full payload
+            // editing without changing the proxy contract.
+            Navigator.of(context).pop(
+              ApprovalDecision(
+                candidateId: widget.candidate.candidateId,
+                kind: GraphDecisionKind.edit,
+                editedCandidateType: editedType.isEmpty ? null : editedType,
+                editedPayload: Map<String, Object?>.from(
+                  widget.candidate.payload,
+                ),
+                reason: reason.isEmpty ? null : reason,
+              ),
+            );
+          },
+          child: const Text('Queue edit'),
+        ),
+      ],
+    );
+  }
+}
+
+class _AgeRebuildBanner extends StatelessWidget {
+  const _AgeRebuildBanner({super.key, required this.result});
+
+  final AgeRebuildResult result;
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = !result.implemented;
+    final accent = pending ? AppColors.warning : AppColors.positive;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: pending
+            ? AppColors.warningBadgeBg
+            : AppColors.positive.withValues(alpha: 0.10),
+        border: Border.all(color: accent.withValues(alpha: 0.6), width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            pending ? Icons.info_outline : Icons.check_circle_outline,
+            size: 16,
+            color: accent,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              result.message,
+              style: AppTextStyles.body13(color: accent),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

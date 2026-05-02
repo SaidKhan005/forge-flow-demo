@@ -1,0 +1,59 @@
+manifest_version: 1
+updated: "2026-05-01"
+corpus_root: "docs/Knowledge_graph_docs"
+default_scope: "global_shared_methodology"
+default_restaurant_id: null
+authorship_policy: "founder_authored_or_founder_synthesized_only"
+markdown_only: true
+
+excluded_sources:
+  - file_name: "The Empty Apron - 2026.md"
+    status: "excluded"
+    reason: "owner_removed_from_active_knowledge_graph_corpus_before_11a_0"
+
+documents:
+  - doc_id: "methodology_seed"
+    file_name: "methodology_seed.md"
+    source_path: "docs/Knowledge_graph_docs/methodology_seed.md"
+    title: "Methodology Seed"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "fixture"
+    content_role: "operating_handbook"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "medium"
+    audience:
+      - "managers"
+    chunk_profile: "heading_aware_policy_handbook"
+    graph_profiles:
+      - "Concept"
+    tags:
+      - "fixture"
+    word_count_estimate: 10
+    heading_count: 1
+    line_count: 1
+    sha256: "1111111111111111111111111111111111111111111111111111111111111111"
+
+  - doc_id: "daypart_handbook"
+    file_name: "daypart_handbook.md"
+    source_path: "docs/Knowledge_graph_docs/daypart_handbook.md"
+    title: "Daypart Handbook"
+    status: "included"
+    scope: "global_shared_methodology"
+    restaurant_id: null
+    brand_context: "fixture"
+    content_role: "operating_handbook"
+    authority_tier: "primary_founder_operating_material"
+    risk_level: "medium"
+    audience:
+      - "managers"
+    chunk_profile: "heading_aware_policy_handbook"
+    graph_profiles:
+      - "Concept"
+    tags:
+      - "fixture"
+    word_count_estimate: 10
+    heading_count: 1
+    line_count: 1
+    sha256: "2222222222222222222222222222222222222222222222222222222222222222"

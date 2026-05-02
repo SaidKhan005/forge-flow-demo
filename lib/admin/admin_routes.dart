@@ -186,12 +186,42 @@ Widget _buildPricing(BuildContext context) {
   );
 }
 
+/// Phase 11A.3b — demo-mode tenant the Graph candidates tab targets
+/// when the in-memory demo gateway is mounted. The IDs match the
+/// kDemoMode tenant seed in [_defaultDemoGateway] below so the
+/// 11A.3b walkthrough writes against the same demo operator the
+/// rest of the admin shell reads.
+///
+/// Live mode (HTTP gateway) deliberately leaves both null until the
+/// operator-picker slice ships — the screen disables the Graph
+/// candidates commit button with a banner in that case so a
+/// super_admin cannot accidentally write graph approvals against
+/// the demo IDs (which do not exist as real tenants in production).
+const String kCorpusAdminDemoTargetOperatorId =
+    '00000000-0000-4000-8000-000000000001';
+const String kCorpusAdminDemoTargetLocationId =
+    '00000000-0000-4000-8000-0000000000a1';
+
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  // Demo mode (in-memory gateway) targets the seeded demo tenant.
+  // Live mode (HTTP gateway, or any non-in-memory binding) leaves
+  // the targets null so the Graph candidates commit button is
+  // disabled with a banner — the operator picker that resolves the
+  // live target ships in a follow-up slice.
+  final isDemoGateway = gateway is InMemoryCorpusAdminGateway;
+  final demoTargetOperatorId =
+      isDemoGateway ? kCorpusAdminDemoTargetOperatorId : null;
+  final demoTargetLocationId =
+      isDemoGateway ? kCorpusAdminDemoTargetLocationId : null;
   if (source == null) {
     // No source wired (test path) — default to live edit affordances.
-    return CorpusAdminScreen(gateway: gateway);
+    return CorpusAdminScreen(
+      gateway: gateway,
+      targetOperatorId: demoTargetOperatorId,
+      targetLocationId: demoTargetLocationId,
+    );
   }
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
@@ -203,6 +233,8 @@ Widget _buildCorpus(BuildContext context) {
       return CorpusAdminScreen(
         gateway: gateway,
         editingEnabled: canEdit,
+        targetOperatorId: demoTargetOperatorId,
+        targetLocationId: demoTargetLocationId,
       );
     },
   );

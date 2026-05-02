@@ -1981,6 +1981,587 @@ class AgeProjectionPreparationResult {
   final int expectedEdgeHintCount;
 }
 
+// ─── 11A.3b Graphify candidate importer ──────────────────────────────────────
+//
+// Adapted from Graphify v5 (https://github.com/safishamsi/graphify/tree/v5)
+// Original work licensed under MIT:
+//   https://raw.githubusercontent.com/safishamsi/graphify/v5/LICENSE
+// SPDX-License-Identifier: MIT
+//
+// We do NOT vendor Graphify itself. The importer reads Graphify's
+// `graph.json` artifact and projects each node / edge / hyperedge into
+// the F&F graph vocabulary documented at
+// `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`
+// lines 225-242. Three deterministic JSONL artifacts land under
+// `graphify-out/candidates/`:
+//
+//   * graphify_node_candidates.jsonl — one record per node candidate
+//     classified EXTRACTED / INFERRED / AMBIGUOUS by the Graphify-
+//     emitted `confidence` string.
+//   * graphify_edge_candidates.jsonl — one record per pairwise edge
+//     candidate. Hyperedges with arity ≥ 3 are fanned out into all
+//     unordered pairs with a shared `hyperedge_id` carried in the
+//     candidate payload so the F&F admin can spot the multi-arity
+//     origin and the AGE rebuild can re-aggregate later.
+//   * graphify_candidate_manifest.json — top-level summary the F&F
+//     proxy reads to drive the Corpus Admin "Graph candidates" tab.
+//
+// `corpus_manifest.yaml` is the authoritative scope filter (per spec
+// line 194-196): any candidate whose `source_file` is not listed in
+// `documents[*].source_path` is dropped from the JSONL entirely. The
+// proxy applies the same filter again on commit-batch as defense in
+// depth.
+//
+// graph.json is NOT shipped as production truth (per spec line 264);
+// the importer's output is the only sanctioned input to the Corpus
+// Admin review surface.
+
+const String defaultGraphifyOutputDirectory = 'graphify-out';
+const String defaultGraphifyCandidatesOutputDirectory =
+    'graphify-out/candidates';
+
+/// Filename written by Graphify v5 inside `graphify-out/`.
+const String graphifyGraphJsonFileName = 'graph.json';
+
+/// Output filenames emitted by [GraphifyCandidateImporter].
+const String graphifyNodeCandidatesFileName =
+    'graphify_node_candidates.jsonl';
+const String graphifyEdgeCandidatesFileName =
+    'graphify_edge_candidates.jsonl';
+const String graphifyCandidateManifestFileName =
+    'graphify_candidate_manifest.json';
+
+/// F&F vocabulary for the launch slice. Spec line 231-236 says the
+/// importer must normalize Graphify's free-form node/edge types to
+/// the F&F approved list before commit. Anything outside the approved
+/// list lands under `Concept` for nodes / `RELATES_TO` for edges and
+/// is bucketed AMBIGUOUS so the admin re-classifies it explicitly.
+const Set<String> kGraphifyApprovedNodeTypes = <String>{
+  'Concept',
+  'Procedure',
+  'Policy',
+  'Role',
+  'Risk',
+  'Workflow',
+  'Document',
+  'Chunk',
+};
+
+const Set<String> kGraphifyApprovedEdgeTypes = <String>{
+  'CONTAINS',
+  'CAUSES',
+  'DEPENDS_ON',
+  'INFORMS',
+  'GOVERNS',
+  'MITIGATES',
+  'RELATES_TO',
+};
+
+/// Map a Graphify-emitted `relation` string to the F&F approved
+/// edge_type vocabulary. Unknown relations fall through to
+/// `RELATES_TO` and the candidate is bucketed AMBIGUOUS so the
+/// admin explicitly re-classifies before approval.
+String graphifyEdgeTypeFor(String relation) {
+  final upper = relation.trim().toUpperCase();
+  if (kGraphifyApprovedEdgeTypes.contains(upper)) return upper;
+  // Common Graphify forms.
+  switch (upper) {
+    case 'FORMS':
+    case 'COMPOSED_OF':
+    case 'PART_OF':
+      return 'CONTAINS';
+    case 'CAUSE':
+    case 'CAUSED_BY':
+      return 'CAUSES';
+    case 'REQUIRES':
+    case 'PRECEDES':
+      return 'DEPENDS_ON';
+    case 'TEACHES':
+    case 'EXPLAINS':
+      return 'INFORMS';
+    case 'OWNS':
+    case 'MANAGES':
+      return 'GOVERNS';
+    case 'PREVENTS':
+    case 'REDUCES':
+      return 'MITIGATES';
+    default:
+      return 'RELATES_TO';
+  }
+}
+
+class GraphifyCandidateImporter {
+  GraphifyCandidateImporter({
+    required Directory repoRoot,
+    String graphifyVersion = 'v5',
+    String? graphifySourceCommit,
+  })  : _repoRoot = repoRoot,
+        _graphifyVersion = graphifyVersion,
+        _graphifySourceCommit = graphifySourceCommit;
+
+  final Directory _repoRoot;
+  final String _graphifyVersion;
+  final String? _graphifySourceCommit;
+
+  Future<GraphifyCandidatePreparationResult> prepare({
+    required CorpusManifest manifest,
+    String graphifyDirectory = defaultGraphifyOutputDirectory,
+    String outputDirectory = defaultGraphifyCandidatesOutputDirectory,
+    String graphScope = 'methodology',
+    String graphVersion = '1',
+  }) async {
+    final graphJsonFile = File(
+      p.join(_repoRoot.path, graphifyDirectory, graphifyGraphJsonFileName),
+    );
+    if (!graphJsonFile.existsSync()) {
+      throw CorpusManifestException(
+        'Graphify artifact not found: ${graphJsonFile.path}. '
+        'Run Graphify against the corpus first; this command consumes '
+        'graph.json, it does not generate it.',
+      );
+    }
+    final raw = jsonDecode(await graphJsonFile.readAsString());
+    if (raw is! Map<String, Object?>) {
+      throw CorpusManifestException(
+        'graph.json must decode to a JSON object at the top level.',
+      );
+    }
+
+    final manifestSourcePaths = manifest.documents
+        .where((d) => d.isIncluded)
+        .map((d) => d.sourcePath.replaceAll(r'\', '/'))
+        .toSet();
+    final manifestFileNames = manifest.documents
+        .where((d) => d.isIncluded)
+        .map((d) => d.fileName)
+        .toSet();
+
+    bool isInScope(String? rawPath) {
+      if (rawPath == null) return false;
+      // Graphify writes paths with mixed slashes (Windows + Unix);
+      // normalize to forward slashes before comparing.
+      final normalized = rawPath.replaceAll(r'\', '/');
+      if (manifestSourcePaths.contains(normalized)) return true;
+      // Also accept a bare filename or a path that ends in a manifest
+      // file name (covers the "lib/foo.dart-style" Graphify shorthand
+      // that drops the corpus_root prefix).
+      final base = p.basename(normalized);
+      return manifestFileNames.contains(base);
+    }
+
+    final rawNodes = (raw['nodes'] as List?) ?? const <Object?>[];
+    final rawEdges = (raw['links'] as List?) ?? const <Object?>[];
+    final rawHyper = (() {
+      final graphSection = raw['graph'];
+      if (graphSection is Map<String, Object?>) {
+        final hyper = graphSection['hyperedges'];
+        if (hyper is List) return hyper;
+      }
+      return const <Object?>[];
+    })();
+
+    final nodeCandidates = <_GraphifyNodeCandidate>[];
+    final edgeCandidates = <_GraphifyEdgeCandidate>[];
+    var droppedOutOfScope = 0;
+
+    // ── Nodes ──────────────────────────────────────────────────────
+    for (final entry in rawNodes) {
+      if (entry is! Map<String, Object?>) continue;
+      final sourceFile = entry['source_file'] as String?;
+      if (!isInScope(sourceFile)) {
+        droppedOutOfScope += 1;
+        continue;
+      }
+      nodeCandidates.add(_GraphifyNodeCandidate.fromGraphJson(
+        entry,
+        defaultNodeType: _normalizeNodeType(entry['file_type']),
+      ));
+    }
+
+    // ── Pairwise edges ─────────────────────────────────────────────
+    for (final entry in rawEdges) {
+      if (entry is! Map<String, Object?>) continue;
+      final sourceFile = entry['source_file'] as String?;
+      if (!isInScope(sourceFile)) {
+        droppedOutOfScope += 1;
+        continue;
+      }
+      edgeCandidates.add(_GraphifyEdgeCandidate.fromPairwiseGraphJson(entry));
+    }
+
+    // ── Hyperedges fanned out into pairwise edges ──────────────────
+    //
+    // Graphify hyperedges have a `nodes` array of arity ≥ 2. We
+    // emit one pairwise edge per unordered pair; the shared
+    // `hyperedge_id` lives in the candidate payload so the F&F
+    // admin can spot the multi-arity origin in the diff card.
+    for (final entry in rawHyper) {
+      if (entry is! Map<String, Object?>) continue;
+      final sourceFile = entry['source_file'] as String?;
+      if (!isInScope(sourceFile)) {
+        droppedOutOfScope += 1;
+        continue;
+      }
+      final fanouts = _GraphifyEdgeCandidate.fromHyperedgeGraphJson(entry);
+      edgeCandidates.addAll(fanouts);
+    }
+
+    // Dedupe by candidate_id so a re-run produces the same set.
+    final dedupedNodes = <String, _GraphifyNodeCandidate>{};
+    for (final node in nodeCandidates) {
+      dedupedNodes[node.candidateId] = node;
+    }
+    final dedupedEdges = <String, _GraphifyEdgeCandidate>{};
+    for (final edge in edgeCandidates) {
+      dedupedEdges[edge.candidateId] = edge;
+    }
+
+    final orderedNodes = dedupedNodes.values.toList()
+      ..sort((a, b) => a.candidateId.compareTo(b.candidateId));
+    final orderedEdges = dedupedEdges.values.toList()
+      ..sort((a, b) => a.candidateId.compareTo(b.candidateId));
+
+    // ── Write outputs ──────────────────────────────────────────────
+    final output = Directory(p.join(_repoRoot.path, outputDirectory));
+    output.createSync(recursive: true);
+
+    await _writeJsonl(
+      File(p.join(output.path, graphifyNodeCandidatesFileName)),
+      <Map<String, Object?>>[
+        for (final node in orderedNodes) node.toJson(),
+      ],
+    );
+    await _writeJsonl(
+      File(p.join(output.path, graphifyEdgeCandidatesFileName)),
+      <Map<String, Object?>>[
+        for (final edge in orderedEdges) edge.toJson(),
+      ],
+    );
+
+    final manifestSummary = <String, Object?>{
+      'graphify_version': _graphifyVersion,
+      if (_graphifySourceCommit != null)
+        'graphify_source_commit': _graphifySourceCommit,
+      'graph_scope': graphScope,
+      'graph_version': graphVersion,
+      'corpus_manifest_path': manifest.path,
+      'in_scope_document_count': manifestSourcePaths.length,
+      'node_candidate_count': orderedNodes.length,
+      'edge_candidate_count': orderedEdges.length,
+      'dropped_out_of_scope_count': droppedOutOfScope,
+      'classification_counts': <String, Object?>{
+        'extracted_nodes':
+            orderedNodes.where((n) => n.label == 'EXTRACTED').length,
+        'inferred_nodes':
+            orderedNodes.where((n) => n.label == 'INFERRED').length,
+        'ambiguous_nodes':
+            orderedNodes.where((n) => n.label == 'AMBIGUOUS').length,
+        'extracted_edges':
+            orderedEdges.where((e) => e.label == 'EXTRACTED').length,
+        'inferred_edges':
+            orderedEdges.where((e) => e.label == 'INFERRED').length,
+        'ambiguous_edges':
+            orderedEdges.where((e) => e.label == 'AMBIGUOUS').length,
+      },
+      'output_files': <String>[
+        graphifyNodeCandidatesFileName,
+        graphifyEdgeCandidatesFileName,
+      ],
+    };
+    await File(p.join(output.path, graphifyCandidateManifestFileName))
+        .writeAsString('${jsonEncode(manifestSummary)}\n');
+
+    return GraphifyCandidatePreparationResult(
+      outputDirectory: output.path,
+      nodeCandidateCount: orderedNodes.length,
+      edgeCandidateCount: orderedEdges.length,
+      droppedOutOfScopeCount: droppedOutOfScope,
+      manifest: manifestSummary,
+    );
+  }
+
+  String _normalizeNodeType(Object? rawFileType) {
+    final raw = rawFileType?.toString().trim() ?? '';
+    if (raw.isEmpty) return 'Concept';
+    final cap = raw[0].toUpperCase() + raw.substring(1).toLowerCase();
+    if (kGraphifyApprovedNodeTypes.contains(cap)) return cap;
+    // Common Graphify shapes.
+    switch (raw.toLowerCase()) {
+      case 'document':
+      case 'doc':
+      case 'markdown':
+        return 'Document';
+      case 'code':
+      case 'function':
+      case 'class':
+        return 'Concept';
+      default:
+        return 'Concept';
+    }
+  }
+
+  Future<void> _writeJsonl(
+    File file,
+    List<Map<String, Object?>> records,
+  ) async {
+    final buffer = StringBuffer();
+    for (final record in records) {
+      buffer.writeln(jsonEncode(record));
+    }
+    await file.writeAsString(buffer.toString());
+  }
+}
+
+class GraphifyCandidatePreparationResult {
+  GraphifyCandidatePreparationResult({
+    required this.outputDirectory,
+    required this.nodeCandidateCount,
+    required this.edgeCandidateCount,
+    required this.droppedOutOfScopeCount,
+    required this.manifest,
+  });
+
+  final String outputDirectory;
+  final int nodeCandidateCount;
+  final int edgeCandidateCount;
+  final int droppedOutOfScopeCount;
+  final Map<String, Object?> manifest;
+}
+
+class _GraphifyNodeCandidate {
+  _GraphifyNodeCandidate({
+    required this.candidateId,
+    required this.candidateKey,
+    required this.candidateType,
+    required this.label,
+    required this.confidenceScore,
+    required this.sourceFile,
+    required this.sourceRef,
+    required this.payload,
+  });
+
+  final String candidateId;
+  final String candidateKey;
+  final String candidateType;
+  final String label;
+  final double? confidenceScore;
+  final String? sourceFile;
+  final String? sourceRef;
+  final Map<String, Object?> payload;
+
+  factory _GraphifyNodeCandidate.fromGraphJson(
+    Map<String, Object?> entry, {
+    required String defaultNodeType,
+  }) {
+    final rawId = (entry['id'] ?? entry['norm_label'] ?? entry['label'])
+        ?.toString();
+    if (rawId == null || rawId.trim().isEmpty) {
+      throw CorpusManifestException(
+        'Graphify node entry missing id/norm_label/label: $entry',
+      );
+    }
+    final candidateKey = 'graphify:$rawId';
+    final label = _classifyByConfidenceLabel(
+      entry['confidence']?.toString(),
+      defaultLabel: 'EXTRACTED',
+    );
+    final confidenceScore = (entry['confidence_score'] as num?)?.toDouble();
+    final sourceFile = entry['source_file']?.toString();
+    final sourceRef = entry['source_location']?.toString();
+    final displayLabel = entry['label']?.toString() ?? rawId;
+    return _GraphifyNodeCandidate(
+      candidateId: 'node:$candidateKey',
+      candidateKey: candidateKey,
+      candidateType: defaultNodeType,
+      label: label,
+      confidenceScore: confidenceScore,
+      sourceFile: sourceFile,
+      sourceRef: sourceRef,
+      payload: <String, Object?>{
+        'label': displayLabel,
+        if (entry['community'] != null) 'community': entry['community'],
+        if (entry['file_type'] != null) 'graphify_file_type': entry['file_type'],
+        if (entry['norm_label'] != null) 'norm_label': entry['norm_label'],
+      },
+    );
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'candidate_id': candidateId,
+        'kind': 'node',
+        'candidate_key': candidateKey,
+        'candidate_type': candidateType,
+        'label': label,
+        if (confidenceScore != null) 'confidence_score': confidenceScore,
+        if (sourceFile != null) 'source_file': sourceFile,
+        if (sourceRef != null) 'source_ref': sourceRef,
+        'payload': payload,
+      };
+}
+
+class _GraphifyEdgeCandidate {
+  _GraphifyEdgeCandidate({
+    required this.candidateId,
+    required this.candidateKey,
+    required this.candidateType,
+    required this.label,
+    required this.confidenceScore,
+    required this.sourceFile,
+    required this.sourceRef,
+    required this.fromNodeKey,
+    required this.toNodeKey,
+    required this.payload,
+  });
+
+  final String candidateId;
+  final String candidateKey;
+  final String candidateType;
+  final String label;
+  final double? confidenceScore;
+  final String? sourceFile;
+  final String? sourceRef;
+  final String fromNodeKey;
+  final String toNodeKey;
+  final Map<String, Object?> payload;
+
+  factory _GraphifyEdgeCandidate.fromPairwiseGraphJson(
+    Map<String, Object?> entry,
+  ) {
+    final source = entry['source']?.toString();
+    final target = entry['target']?.toString();
+    if (source == null || target == null) {
+      throw CorpusManifestException(
+        'Graphify pairwise edge missing source/target: $entry',
+      );
+    }
+    final relation = entry['relation']?.toString() ?? 'RELATES_TO';
+    final edgeType = graphifyEdgeTypeFor(relation);
+    final providedLabel = _classifyByConfidenceLabel(
+      entry['confidence']?.toString(),
+      defaultLabel: 'EXTRACTED',
+    );
+    // If we had to fall back to RELATES_TO, the relation is
+    // unknown — bucket as AMBIGUOUS so the admin re-classifies.
+    final classifiedLabel =
+        edgeType == 'RELATES_TO' && relation.toUpperCase() != 'RELATES_TO'
+            ? 'AMBIGUOUS'
+            : providedLabel;
+    final confidenceScore = (entry['confidence_score'] as num?)?.toDouble();
+    final fromKey = 'graphify:$source';
+    final toKey = 'graphify:$target';
+    final candidateKey =
+        'graphify:edge:$source:$target:${relation.toLowerCase()}';
+    return _GraphifyEdgeCandidate(
+      candidateId: 'edge:$candidateKey',
+      candidateKey: candidateKey,
+      candidateType: edgeType,
+      label: classifiedLabel,
+      confidenceScore: confidenceScore,
+      sourceFile: entry['source_file']?.toString(),
+      sourceRef: entry['source_location']?.toString(),
+      fromNodeKey: fromKey,
+      toNodeKey: toKey,
+      payload: <String, Object?>{
+        'graphify_relation': relation,
+        if (entry['label'] != null) 'label': entry['label'],
+      },
+    );
+  }
+
+  static List<_GraphifyEdgeCandidate> fromHyperedgeGraphJson(
+    Map<String, Object?> entry,
+  ) {
+    final hyperId = entry['id']?.toString() ?? '';
+    final relation = entry['relation']?.toString() ?? 'RELATES_TO';
+    final edgeType = graphifyEdgeTypeFor(relation);
+    final providedLabel = _classifyByConfidenceLabel(
+      entry['confidence']?.toString(),
+      defaultLabel: 'EXTRACTED',
+    );
+    final classifiedLabel =
+        edgeType == 'RELATES_TO' && relation.toUpperCase() != 'RELATES_TO'
+            ? 'AMBIGUOUS'
+            : providedLabel;
+    final confidenceScore = (entry['confidence_score'] as num?)?.toDouble();
+    final sourceFile = entry['source_file']?.toString();
+    final sourceRef = entry['source_location']?.toString();
+    final displayLabel = entry['label']?.toString();
+    final rawNodes = (entry['nodes'] as List?) ?? const <Object?>[];
+    final nodeIds = <String>[
+      for (final n in rawNodes) n.toString(),
+    ];
+    if (nodeIds.length < 2) return const <_GraphifyEdgeCandidate>[];
+    final result = <_GraphifyEdgeCandidate>[];
+    for (var i = 0; i < nodeIds.length; i++) {
+      for (var j = i + 1; j < nodeIds.length; j++) {
+        final source = nodeIds[i];
+        final target = nodeIds[j];
+        final fromKey = 'graphify:$source';
+        final toKey = 'graphify:$target';
+        final candidateKey =
+            'graphify:edge:$source:$target:${relation.toLowerCase()}'
+            ':$hyperId';
+        result.add(
+          _GraphifyEdgeCandidate(
+            candidateId: 'edge:$candidateKey',
+            candidateKey: candidateKey,
+            candidateType: edgeType,
+            label: classifiedLabel,
+            confidenceScore: confidenceScore,
+            sourceFile: sourceFile,
+            sourceRef: sourceRef,
+            fromNodeKey: fromKey,
+            toNodeKey: toKey,
+            payload: <String, Object?>{
+              'graphify_relation': relation,
+              'hyperedge_id': hyperId,
+              'hyperedge_arity': nodeIds.length,
+              if (displayLabel != null) 'label': displayLabel,
+            },
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
+  Map<String, Object?> toJson() => <String, Object?>{
+        'candidate_id': candidateId,
+        'kind': 'edge',
+        'candidate_key': candidateKey,
+        'candidate_type': candidateType,
+        'label': label,
+        if (confidenceScore != null) 'confidence_score': confidenceScore,
+        if (sourceFile != null) 'source_file': sourceFile,
+        if (sourceRef != null) 'source_ref': sourceRef,
+        'from_node_key': fromNodeKey,
+        'to_node_key': toNodeKey,
+        'payload': payload,
+      };
+}
+
+String _classifyByConfidenceLabel(
+  String? rawLabel, {
+  required String defaultLabel,
+}) {
+  if (rawLabel == null) return defaultLabel;
+  final upper = rawLabel.toUpperCase();
+  if (upper == 'EXTRACTED' ||
+      upper == 'INFERRED' ||
+      upper == 'AMBIGUOUS') {
+    return upper;
+  }
+  // Numeric confidence sometimes lands in the same field; treat as
+  // EXTRACTED if explicitly high, INFERRED if mid, AMBIGUOUS if low.
+  final asNum = double.tryParse(upper);
+  if (asNum != null) {
+    if (asNum >= 0.8) return 'EXTRACTED';
+    if (asNum >= 0.5) return 'INFERRED';
+    return 'AMBIGUOUS';
+  }
+  return defaultLabel;
+}
+
 // ─── 11a.9 Rerank smoke ──────────────────────────────────────────────────────
 //
 // CorpusRerankSmokeRunner takes vector-search-style candidate rows (the shape

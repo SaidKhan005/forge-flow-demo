@@ -152,6 +152,7 @@ Future<void> main(List<String> args) async {
             productionBindings.operatorLocationAdminGateway,
         pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
         corpusAdminGateway: productionBindings.corpusAdminGateway,
+        graphCandidatesGateway: productionBindings.graphCandidatesGateway,
         integrationAdminGateway: productionBindings.integrationAdminGateway,
         integrationAdminActorResolver:
             productionBindings.integrationAdminActorResolver,

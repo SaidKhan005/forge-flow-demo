@@ -1,0 +1,99 @@
+{
+  "nodes": [
+    {
+      "id": "methodology_seed_doc",
+      "label": "Methodology Seed",
+      "norm_label": "methodology_seed_doc",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+      "source_location": "L1",
+      "file_type": "document",
+      "community": 0
+    },
+    {
+      "id": "cycles_section",
+      "label": "Cycles Section",
+      "norm_label": "cycles_section",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.91,
+      "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+      "source_location": "L7",
+      "file_type": "concept",
+      "community": 0
+    },
+    {
+      "id": "weekly_plan_concept",
+      "label": "Weekly Plan",
+      "norm_label": "weekly_plan_concept",
+      "confidence": "INFERRED",
+      "confidence_score": 0.62,
+      "source_file": "docs/Knowledge_graph_docs/daypart_handbook.md",
+      "source_location": "L42",
+      "file_type": "concept",
+      "community": 1
+    },
+    {
+      "id": "cycles_section",
+      "label": "Cycles Section (duplicate)",
+      "norm_label": "cycles_section",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.91,
+      "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+      "source_location": "L7",
+      "file_type": "concept",
+      "community": 0
+    },
+    {
+      "id": "out_of_scope_node",
+      "label": "Out Of Scope Node",
+      "norm_label": "out_of_scope_node",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.99,
+      "source_file": "docs/Knowledge_graph_docs/unmanifested_doc.md",
+      "source_location": "L1",
+      "file_type": "document",
+      "community": 99
+    }
+  ],
+  "links": [
+    {
+      "source": "methodology_seed_doc",
+      "target": "cycles_section",
+      "relation": "CONTAINS",
+      "confidence": "EXTRACTED",
+      "confidence_score": 0.95,
+      "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+      "source_location": "L7",
+      "label": "doc CONTAINS cycles section"
+    },
+    {
+      "source": "cycles_section",
+      "target": "weekly_plan_concept",
+      "relation": "INFORMS",
+      "confidence": "INFERRED",
+      "confidence_score": 0.62,
+      "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+      "source_location": "L18",
+      "label": "cycles INFORMS weekly plan"
+    }
+  ],
+  "graph": {
+    "hyperedges": [
+      {
+        "id": "hyper_cycles_planning_triangle",
+        "nodes": [
+          "methodology_seed_doc",
+          "cycles_section",
+          "weekly_plan_concept"
+        ],
+        "relation": "INFORMS",
+        "confidence": "EXTRACTED",
+        "confidence_score": 0.88,
+        "source_file": "docs/Knowledge_graph_docs/methodology_seed.md",
+        "source_location": "L24",
+        "label": "Cycles + planning triangle"
+      }
+    ]
+  }
+}
