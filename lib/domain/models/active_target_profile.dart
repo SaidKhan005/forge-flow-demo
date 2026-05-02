@@ -75,7 +75,7 @@ class ActiveTargetProfile {
       theoreticalFohLaborPct: fohPct,
       theoreticalBohLaborPct: bohPct,
       theoreticalLaborPct: fohPct + bohPct,
-      builtAt: builtAt ?? DateTime.now().toIso8601String(),
+      builtAt: builtAt ?? DateTime.now().toUtc().toIso8601String(),
     );
   }
 
