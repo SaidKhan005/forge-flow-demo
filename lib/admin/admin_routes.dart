@@ -23,10 +23,12 @@ import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_home_screen.dart';
 import 'screens/corpus_admin_screen.dart';
+import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
+import 'services/health_admin_gateway.dart';
 import 'services/integration_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
@@ -90,6 +92,9 @@ const String kAdminCorpusRouteId = 'corpus';
 /// Canonical Integrations route ID (11A.4).
 const String kAdminIntegrationsRouteId = 'integrations';
 
+/// Canonical Health route ID (Phase 11A.UX.health / F.1).
+const String kAdminHealthRouteId = 'health';
+
 /// The admin route table. Order is the side-nav order. 11A.1 promotes
 /// `operators` from placeholder to live; the rest are deliberately
 /// marked `placeholder` so the surface area is visible to operators
@@ -134,6 +139,15 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.extension_outlined,
     subtitle: 'Provider key rotation + connector status.',
     builder: _buildIntegrations,
+  ),
+  AdminRoute(
+    id: kAdminHealthRouteId,
+    title: 'Health',
+    path: '/health',
+    icon: Icons.monitor_heart_outlined,
+    subtitle:
+        'Read-only view of the proxy /health envelope (Retrieval / Proxy / Infra).',
+    builder: _buildHealth,
   ),
   AdminRoute(
     id: 'debug',
@@ -261,6 +275,14 @@ Widget _buildIntegrations(BuildContext context) {
   );
 }
 
+Widget _buildHealth(BuildContext context) {
+  // F.1 — read-only for both `super_admin` and `ff_support`. The
+  // gateway is the only injection point; there is no editingEnabled
+  // flag because the surface has no mutate affordances.
+  final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
+  return HealthAdminScreen(gateway: gateway);
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
@@ -280,6 +302,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.pricingTierGateway,
     this.corpusAdminGateway,
     this.integrationGateway,
+    this.healthGateway,
     this.adminAuthSource,
   });
 
@@ -305,6 +328,11 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// the default fallback is a seeded in-memory gateway sharing the
   /// `kDemoMode` walkthrough fixtures.
   final IntegrationAdminGateway? integrationGateway;
+
+  /// Phase 11A.UX.health (F.1) — proxy `/health` envelope gateway.
+  /// Optional; the default fallback is the seeded in-memory demo
+  /// envelope shared with the F.1 walkthrough.
+  final HealthAdminGateway? healthGateway;
 
   /// Phase 11A.2 — admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
@@ -340,6 +368,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.integrationGateway ?? _defaultIntegrationDemoGateway;
   }
 
+  static HealthAdminGateway healthGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.healthGateway ?? _defaultHealthDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -352,6 +386,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       pricingTierGateway != oldWidget.pricingTierGateway ||
       corpusAdminGateway != oldWidget.corpusAdminGateway ||
       integrationGateway != oldWidget.integrationGateway ||
+      healthGateway != oldWidget.healthGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -604,3 +639,10 @@ final IntegrationAdminGateway _defaultIntegrationDemoGateway =
         ),
       ],
     );
+
+/// F.1 fallback health gateway. Seeded with the demo envelope from
+/// `health_admin_gateway.dart` so the walkthrough renders all three
+/// tabs with realistic green/yellow signals and exercises the
+/// dependencies strip without a live proxy.
+final HealthAdminGateway _defaultHealthDemoGateway =
+    InMemoryHealthAdminGateway(envelope: kHealthAdminDemoEnvelope);
