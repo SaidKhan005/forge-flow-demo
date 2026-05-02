@@ -7,13 +7,21 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 
 ## Now
 
-- **Active**: `10.5.0` daypart toggle scaffold on Shift dashboard
-  (worktree `.claude/worktrees/trusting-greider-0f6f9d`, branch
-  `claude/trusting-greider-0f6f9d`). Surface-only seam: segmented
-  Whole Day | Daypart pills above SHIFT OUTPUTS, daypart lens
-  renders SERVICE PERIODS scaffold (Lunch/Dinner/Late Night cards
-  from `demoDefinitions`) with live ACTIVE NOW chip. Whole-day stays
-  default + authoritative. Walkthrough at `docs/_walkthroughs/10.5.0.md`.
+- **Active**: `10.5.0` daypart toggle scaffold + `10.5.1` bucketing
+  engine accepted (worktree `.claude/worktrees/gracious-rosalind-19b985`,
+  branch `claude/gracious-rosalind-19b985`). 10.5.0 surface-only seam:
+  segmented Whole Day | Daypart pills above SHIFT OUTPUTS, daypart lens
+  renders SERVICE PERIODS scaffold (Lunch/Dinner/Late Night cards from
+  `demoDefinitions`) with live ACTIVE NOW chip; whole-day stays default
+  + authoritative. 10.5.1 pure-function `DaypartBucketer`
+  (POS / labor punch with split / reservation) consumes
+  `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; 16
+  domain tests cover the punch-split worked example with a
+  non-service gap, the 15:00 inclusive-end tie-break, the Late Night
+  02:00 Sun-calendar → Sat business-date roll-over, and the
+  missing-IANA-tz `MissingTimezoneError` posture. Per-period read
+  service + primary-driver teaching queued. Walkthroughs at
+  `docs/_walkthroughs/10.5.0.md` + `docs/_walkthroughs/10.5.1.md`.
 - 11A Operations Console foundation now spans `11A.0`–`4c`/`7`/`UX.health`
   accepted; `11A.5`/`11A.6` blocked on B45/B47 producers (B44 graph producers
   delivered — see `docs/_walkthroughs/B44.md`).
@@ -92,8 +100,9 @@ candidates by readiness:
    Operator-driven; no code change needed.
 2. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
 3. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
-4. **`10.5` follow-on slices** — daypart bucketing engine + per-period read
-   service + primary-driver teaching (sequence per phase doc).
+4. **`10.5` follow-on slices** — `10.5.1` bucketing engine accepted; per-period
+   read service (`10.5.2`) + primary-driver teaching (`10.5.3+`) next
+   per phase doc.
 5. **`7.61` pre-Phase-8 cleanup** — driver-key audit; gated before Phase 8.
 
 **Then queued (rough order):** `11A.5`/`11A.6` (after B45/B47 producer
@@ -110,7 +119,7 @@ Live board lists active + queued only.
 | `11A` foundation | active; `0`–`4c`/`7`/`UX.health` accepted; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
-| `10.5` | active; `10.5.0` daypart toggle scaffold accepted; bucketing engine + per-period read service + driver teaching queued | `phase_10_5/*` |
+| `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted; per-period read service + driver teaching queued | `phase_10_5/*` |
 | `7.61` | active; `7.61.0` audit pinned (contract + 21-active + 1-skipped-F-2-holdout test, zero catalog DRIFT); `.1`/`.2`/`.3` queued per findings F-1/F-2/F-3; `.4` deferred to `cutover.0b` (F-A); F-B (`shifts.primary_lever` lowercase migration) deferred post-`cutover.5` | `phase_7_61/*` |
 | `10a`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on `11A.5`/`11A.6` + B43 prod anchor) | `phase_11b/*` |
