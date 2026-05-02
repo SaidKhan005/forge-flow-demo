@@ -121,7 +121,8 @@ Live board lists active + queued only.
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
 | `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted; per-period read service + driver teaching queued | `phase_10_5/*` |
 | `7.61` | active; `7.61.0` audit pinned (contract + 21-active + 1-skipped-F-2-holdout test, zero catalog DRIFT); `.1`/`.2`/`.3` queued per findings F-1/F-2/F-3; `.4` deferred to `cutover.0b` (F-A); F-B (`shifts.primary_lever` lowercase migration) deferred post-`cutover.5` | `phase_7_61/*` |
-| `10a`, `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
+| `10a` | active; `10a.0` realtime push channel scaffold (NOTIFY → claim → in-process publisher → WebSocket) — Pub/Sub adapter + dead-letter + retention sweep + tripwires + UX surfaces queued | `phase_10a/*` |
+| `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on `11A.5`/`11A.6` + B43 prod anchor) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
 | `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |

@@ -29,10 +29,15 @@ import 'dart:io';
 
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
 import 'advisor_proxy.dart';
 import 'log.dart';
 import 'proxy_bootstrap.dart';
+import 'realtime_bridge.dart';
 
 Future<void> main(List<String> args) async {
   // Startup banner — plain text only, before the log module owns
@@ -315,6 +320,52 @@ Future<void> main(List<String> args) async {
     secondaryLlmProvider: productionBindings.secondaryLlmProvider,
   );
 
+  // Phase 10a.0 — realtime push channel scaffold. Single-instance
+  // fan-out via in-process publisher; multi-instance Cloud Pub/Sub
+  // bridge is the documented Phase 10a follow-up. Bridge worker
+  // claims durable rows from `event_outbox` (NEVER bypasses the
+  // table; see `docs/contracts/event_outbox_contract.md`) and hands
+  // them to the publisher for the WebSocket route to fan out.
+  final realtimePublisher = InProcessRealtimePublisher();
+  final realtimeOutboxListener = PackagePostgresOutboxListener.fromUrl(
+    config.secretFor(ProxySecretNames.postgresUrl),
+  );
+  final realtimeOutboxRepository = EventOutboxRepository(
+    TenantTransactionWrapper(productionBindings.tenantPool),
+  );
+  final realtimeAdminWrapper = TenantTransactionWrapper(
+    productionBindings.adminPool,
+  );
+  final realtimeBridge = RealtimeBridgeWorker(
+    listener: realtimeOutboxListener,
+    outboxRepository: realtimeOutboxRepository,
+    publisher: realtimePublisher,
+    locationResolver: _BootstrapLocationResolver(
+      adminWrapper: realtimeAdminWrapper,
+    ).resolve,
+    operatorDiscoverer: _PostgresOperatorDiscoverer(
+      adminWrapper: realtimeAdminWrapper,
+    ).discover,
+    logger: _logRealtimeBridgeEvent,
+  );
+  try {
+    await realtimeBridge.start();
+  } catch (error, stack) {
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'realtime_bridge_start',
+        'error_type': error.runtimeType.toString(),
+        'error_message': error.toString(),
+        'stack_first_frame': firstStackFrame(stack),
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // HARD-A: own line for gemini_slot_enabled so deploy verification
@@ -417,6 +468,9 @@ Future<void> main(List<String> args) async {
         // response instead of re-running the gateway.
         adminRequestIdempotencyStore:
             productionBindings.adminRequestIdempotencyStore,
+        // Phase 10a.0 — WebSocket route subscribes to this publisher
+        // for the connected operator's events.
+        realtimePublisher: realtimePublisher,
       );
     } catch (error, stack) {
       log(
@@ -429,6 +483,120 @@ Future<void> main(List<String> args) async {
         },
       );
     }
+  }
+}
+
+/// Phase 10a.0 — operator → location lookup the realtime bridge uses
+/// when constructing a `TenantContext` for `claimBatch`. The claim
+/// itself filters only on `operator_id` (the per-tenant index leads
+/// with `operator_id`), but `TenantContext` requires both ids for the
+/// SET LOCAL bookkeeping. Per-operator default location is the first
+/// row in `public.locations`. Cached in-process so the bridge does
+/// not query Postgres on every drain cycle.
+class _BootstrapLocationResolver {
+  _BootstrapLocationResolver({required TenantTransactionWrapper adminWrapper})
+    : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final Map<String, String> _cache = <String, String>{};
+
+  Future<String> resolve(String operatorId) async {
+    final cached = _cache[operatorId];
+    if (cached != null) return cached;
+    final rows = await _adminWrapper.runAsSystem<List<Map<String, Object?>>>(
+      (exec) => exec.query(
+        'select location_id::text as location_id '
+        'from public.locations '
+        'where operator_id = @operator_id::uuid '
+        'order by created_at asc '
+        'limit 1',
+        parameters: <String, Object?>{'operator_id': operatorId},
+      ),
+      reason: 'realtime_bridge_resolve_default_location',
+    );
+    if (rows.isEmpty) {
+      throw StateError(
+        'realtime bridge: operator $operatorId has no rows in public.locations',
+      );
+    }
+    final id = rows.single['location_id'];
+    if (id is! String || id.isEmpty) {
+      throw StateError(
+        'realtime bridge: locations row returned a malformed location_id',
+      );
+    }
+    _cache[operatorId] = id;
+    return id;
+  }
+}
+
+/// Phase 10a.0 — operator discoverer for the bridge poll cycle.
+/// Returns the distinct set of operator ids that have undelivered
+/// `event_outbox` rows, capped so a runaway producer cannot make the
+/// discovery query expensive. Production goes through the admin pool
+/// + `runAsSystem` because cross-operator visibility is the whole
+/// point of the discovery query — RLS would block it.
+class _PostgresOperatorDiscoverer {
+  _PostgresOperatorDiscoverer({
+    required TenantTransactionWrapper adminWrapper,
+    int limit = 1000,
+  }) : _adminWrapper = adminWrapper,
+       _limit = limit;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final int _limit;
+
+  Future<Set<String>> discover() async {
+    final rows = await _adminWrapper.runAsSystem<List<Map<String, Object?>>>(
+      (exec) => exec.query(
+        'select distinct operator_id::text as operator_id '
+        'from public.event_outbox '
+        'where delivered_at is null '
+        'limit @limit',
+        parameters: <String, Object?>{'limit': _limit},
+      ),
+      reason: 'realtime_bridge_discover_operators_with_undelivered_rows',
+    );
+    final result = <String>{};
+    for (final row in rows) {
+      final id = row['operator_id'];
+      if (id is String && id.isNotEmpty) {
+        result.add(id);
+      }
+    }
+    return result;
+  }
+}
+
+/// Phase 10a.0 — funnel bridge worker log events into the structured
+/// log() helper. Names only — the operator id is fine to log
+/// (already in the request log context elsewhere); errors are
+/// stringified.
+void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
+  final fields = <String, Object?>{
+    if (event.operatorId != null) 'operator_id': event.operatorId,
+    if (event.outboxId != null) 'outbox_id': event.outboxId,
+    if (event.topic != null) 'topic': event.topic,
+    if (event.error != null) 'error_type': event.error.runtimeType.toString(),
+    if (event.error != null) 'error_message': event.error.toString(),
+    if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
+  };
+  switch (event.kind) {
+    case RealtimeBridgeLogKind.listenerError:
+      log(LogSeverity.warning, 'realtime.bridge.listener_error', fields: fields);
+    case RealtimeBridgeLogKind.discoveryFailed:
+      log(LogSeverity.warning, 'realtime.bridge.discovery_failed',
+          fields: fields);
+    case RealtimeBridgeLogKind.locationResolveFailed:
+      log(LogSeverity.warning, 'realtime.bridge.location_resolve_failed',
+          fields: fields);
+    case RealtimeBridgeLogKind.claimFailed:
+      log(LogSeverity.warning, 'realtime.bridge.claim_failed', fields: fields);
+    case RealtimeBridgeLogKind.publishFailed:
+      log(LogSeverity.warning, 'realtime.bridge.publish_failed', fields: fields);
+    case RealtimeBridgeLogKind.markDeliveredFailed:
+      log(LogSeverity.warning, 'realtime.bridge.mark_delivered_failed',
+          fields: fields);
   }
 }
 

@@ -63,10 +63,21 @@ dependencies:
   # Promoted from transitive to direct so the proxy bootstrap can
   # take a stable dependency on it.
   http: ^1.6.0
+  # Phase 10a.0 — realtime push channel client. Cross-platform
+  # WebSocket abstraction so the realtime subscription works on
+  # native (mobile/desktop) and web targets through a single API.
+  # Used by `lib/services/realtime/realtime_subscription.dart`; the
+  # proxy server-side WebSocket uses dart:io directly.
+  web_socket_channel: ^3.0.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+
+  # Phase 10a.0 — virtualized clock for the realtime back-off /
+  # poll-tick tests. Bundled transitively by flutter_test; promoted to
+  # a direct dev dep so depend_on_referenced_packages stays clean.
+  fake_async: ^1.3.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
