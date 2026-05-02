@@ -104,23 +104,53 @@ Password-reset request (`/v1/auth/password/reset/request`):
 
 ## Audit Events Required
 
-All audit events emit through `audit_logs` (hash-chained) and follow
-[audit_attribution_contract.md](audit_attribution_contract.md). Required
-event types added or extended:
+All audit events land in `auth_events_audit` (the auth-only audit
+surface). Events that arrive with a resolvable operator scope **also**
+fan out into the hash-chained per-tenant `audit_logs` chain via the
+existing `AuthEventsAuditRepository._fanOutToAuditLogs` path — see
+[audit_attribution_contract.md](audit_attribution_contract.md) for the
+attribution shape. Required event types added or extended:
 
-| Event type | Trigger | Required payload fields |
-|------------|---------|-------------------------|
-| `auth.login_failed` | Each failed login (incl. wrong password, unknown email, MFA missing) | `outcome` ∈ {`bad_password`,`unknown_user`,`mfa_required`,`mfa_failed`}, `attempt_count_in_window`, `locked: bool` |
-| `auth.account_locked` | Threshold breach | `lockout_until`, `attempt_count`, `email_hash` |
-| `auth.mfa_retry_exceeded` | TOTP retry cap | `challenge_id_hash`, `retry_count` |
-| `auth.password_reset_throttled` | 24h reset cap | `attempt_count_24h` |
-| `auth.service_principal_issued` (extended) | SP JWT issuance | `claims_hash` (sha256 of canonical JWT payload) — added field |
-| `admin.feature_flag_toggled` (extended) | Feature flag toggle | `reason` (optional, ≤500 chars) — added field |
+| Event type | Trigger | Required payload fields | Per-tenant `audit_logs` fan-out |
+|------------|---------|-------------------------|---------------------------------|
+| `auth.login_failed` | Each failed login (incl. wrong password, unknown email, MFA missing) | `outcome` ∈ {`bad_password`,`unknown_user`,`mfa_required`,`mfa_failed`}, `attempt_count_in_window`, `locked: bool` | **No** — anonymous (operator not yet resolved). |
+| `auth.account_locked` | Threshold breach | `lockout_until`, `attempt_count`, `email_hash` | **Conditional** — fans out when triggered from the success-path pre-check (verified bearer token resolves operator + actor); skipped on the anonymous failure-report path. |
+| `auth.mfa_retry_exceeded` | TOTP retry cap | `challenge_id_hash`, `retry_count` | **Yes** — operator + actor resolved by bearer token. |
+| `auth.password_reset_throttled` | 24h reset cap | `attempt_count_24h` | **No** — anonymous (operator not resolved per the privacy contract that prohibits leaking email presence). |
+| `auth.service_principal_issued` (extended) | SP JWT issuance | `claims_hash` (sha256 of canonical JWT payload) — added field | **Yes** — operator + service principal resolved. |
+| `admin.feature_flag_toggled` (extended) | Feature flag toggle | `reason` (optional, ≤500 chars) — added field | **Yes** — operator + actor resolved (existing 11A.7 fan-out). |
 
 Sensitive fields **never** emitted: raw password, raw email, JWT body,
 TOTP secret, recovery codes.
 
 `auth.login_succeeded` already exists; no change.
+
+### Why anonymous events stay in `auth_events_audit` only
+
+The hash-chained `audit_logs` table from
+`db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql` requires
+`operator_id NOT NULL` and bounds each chain to
+`(operator_id, chain_date)`. Three of the new events fire BEFORE the
+proxy can resolve a tenant from the inbound credentials:
+
+* `auth.login_failed` — the failure-report path receives `email +
+  failure_outcome` but the email may not match a known user; resolving
+  `email → operator` would either require a DB lookup that leaks email
+  presence or admit anonymous attempts to a synthetic "platform"
+  operator chain that has no SOC 2 ownership.
+* `auth.account_locked` (failure-report path) — same constraint. The
+  success-path lock has a verified bearer token and DOES fan out.
+* `auth.password_reset_throttled` — the password-reset request route
+  is contractually privacy-preserving (uniform response regardless of
+  whether the email matches an account); attributing the throttle
+  event to a real operator would move the presence oracle from the
+  response body into the audit log.
+
+`auth_events_audit` is the auth-only audit surface and is itself
+append-only at the grant shape (UPDATE + DELETE revoked from
+`service_role` and `forge_admin`); the absence of the per-tenant
+chain row does not weaken append-only retention. Cross-table forensic
+review uses `auth_events_audit` directly for these events.
 
 ## Compile-Time Gate Documentation (L-2)
 

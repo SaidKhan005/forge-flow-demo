@@ -17,6 +17,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_events_audit_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_invites_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_login_attempts_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
@@ -150,6 +151,10 @@ class ProxyProductionBindings {
     required this.healthCheckStore,
     required this.tenantPool,
     required this.adminPool,
+    required this.authLockoutEnforcer,
+    required this.authLockoutAuditSink,
+    required this.mfaTotpRetryCounter,
+    required this.passwordResetThrottleCounter,
   });
 
   /// HARD-G observability: tenant-scope pool exposed for the startup
@@ -228,6 +233,28 @@ class ProxyProductionBindings {
   /// landed yet (B43 / B44 / B45 / B47) project to `status: unknown`
   /// without making the response degraded.
   final ProxyHealthCheckStore healthCheckStore;
+
+  /// HARD-B - lockout enforcer backed by `auth_login_attempts` (admin
+  /// pool, system + tenant scopes). The proxy login route consults
+  /// this on every credential attempt to enforce the 5/15min lockout.
+  final AuthLockoutEnforcer authLockoutEnforcer;
+
+  /// HARD-B - audit sink for the four new auth lockout events
+  /// (`auth.login_failed`, `auth.account_locked`,
+  /// `auth.mfa_retry_exceeded`, `auth.password_reset_throttled`).
+  /// Production fans these into the hash-chained `audit_logs` table.
+  final AuthLockoutAuditSink authLockoutAuditSink;
+
+  /// HARD-B - in-memory rolling-window counter for the per-challenge
+  /// MFA TOTP retry cap (3 / per-challenge). Volatile across proxy
+  /// restarts; the in-memory shape matches the HARD-D feature-flag
+  /// idempotency cache discipline.
+  final RollingWindowAttemptCounter mfaTotpRetryCounter;
+
+  /// HARD-B - in-memory rolling-window counter for the per-account
+  /// password-reset 24h cap (10 / 24h). Volatile across proxy
+  /// restarts.
+  final RollingWindowAttemptCounter passwordResetThrottleCounter;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -649,7 +676,244 @@ ProxyProductionBindings buildProxyProductionBindings(
     // instead of binding the listener and degrading every request.
     tenantPool: tenantPool,
     adminPool: adminPool,
+    // HARD-B - lockout enforcer + audit sink. Both ride the admin
+    // pool because the anonymous-lookup path (pre-tenant resolution)
+    // needs forge_admin BYPASSRLS to read/write rows whose
+    // `operator_id` is intentionally null. The sink fans out into
+    // the same `audit_logs` chain as every other auth event via the
+    // existing AuthEventsAuditRepository fan-out.
+    authLockoutEnforcer: PostgresAuthLockoutEnforcer(
+      repository: AuthLoginAttemptsRepository(adminWrapper),
+    ),
+    authLockoutAuditSink: AuthEventsAuditAuthLockoutAuditSink(
+      auditRepository: adminAudit,
+    ),
+    mfaTotpRetryCounter: RollingWindowAttemptCounter(
+      window: kAuthMfaTotpRetryAfter * 10,
+    ),
+    passwordResetThrottleCounter: RollingWindowAttemptCounter(
+      window: kAuthPasswordResetWindow,
+    ),
   );
+}
+
+/// HARD-B - production [AuthLockoutEnforcer] backed by the
+/// admin-pool [AuthLoginAttemptsRepository]. Anonymous attempts (no
+/// resolved operator) ride the system path; tenant-bound writes ride
+/// the per-operator path so the per-tenant RLS policy admits them.
+class PostgresAuthLockoutEnforcer implements AuthLockoutEnforcer {
+  PostgresAuthLockoutEnforcer({required AuthLoginAttemptsRepository repository})
+    : _repository = repository;
+
+  final AuthLoginAttemptsRepository _repository;
+
+  @override
+  Future<AuthLockoutEvaluation> evaluate({
+    required String email,
+    required String ip,
+  }) async {
+    final count = await _repository.countFailuresIn(
+      userEmailHash: AuthLoginAttemptsRepository.hashEmail(email),
+      ipHash: AuthLoginAttemptsRepository.hashIp(ip),
+      window: kAuthLoginLockoutWindow,
+      adminReason: 'auth.lockout_evaluate',
+    );
+    final locked =
+        count.locked || count.failureCount >= kAuthLoginLockoutThreshold;
+    return AuthLockoutEvaluation(
+      locked: locked,
+      failureCount: count.failureCount,
+    );
+  }
+
+  @override
+  Future<int> recordFailure({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    final emailHash = AuthLoginAttemptsRepository.hashEmail(email);
+    final ipHash = AuthLoginAttemptsRepository.hashIp(ip);
+    if (operatorId != null && locationId != null) {
+      await _repository.writeForTenant(
+        operatorId: operatorId,
+        locationId: locationId,
+        actorUserId: actorUserId,
+        userEmailHash: emailHash,
+        ipHash: ipHash,
+        outcome: AuthLoginAttemptOutcome.failure,
+        userAgentClass: userAgentClass,
+      );
+    } else {
+      await _repository.writeAnonymous(
+        userEmailHash: emailHash,
+        ipHash: ipHash,
+        outcome: AuthLoginAttemptOutcome.failure,
+        userAgentClass: userAgentClass,
+        adminReason: 'auth.lockout_record_failure',
+      );
+    }
+    final post = await _repository.countFailuresIn(
+      userEmailHash: emailHash,
+      ipHash: ipHash,
+      window: kAuthLoginLockoutWindow,
+      adminReason: 'auth.lockout_post_failure_count',
+    );
+    return post.failureCount;
+  }
+
+  @override
+  Future<void> recordLocked({
+    required String email,
+    required String ip,
+    String? userAgentClass,
+  }) async {
+    await _repository.writeAnonymous(
+      userEmailHash: AuthLoginAttemptsRepository.hashEmail(email),
+      ipHash: AuthLoginAttemptsRepository.hashIp(ip),
+      outcome: AuthLoginAttemptOutcome.locked,
+      userAgentClass: userAgentClass,
+      adminReason: 'auth.lockout_record_locked',
+    );
+  }
+
+  @override
+  Future<void> recordSuccess({
+    required String email,
+    required String ip,
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    String? userAgentClass,
+  }) async {
+    await _repository.writeForTenant(
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      userEmailHash: AuthLoginAttemptsRepository.hashEmail(email),
+      ipHash: AuthLoginAttemptsRepository.hashIp(ip),
+      outcome: AuthLoginAttemptOutcome.success,
+      userAgentClass: userAgentClass,
+    );
+  }
+}
+
+/// HARD-B - production [AuthLockoutAuditSink] that writes through
+/// the admin-pool [AuthEventsAuditRepository.insertSystemEvent]. The
+/// existing fan-out into `audit_logs` (via the cutover flag) lights
+/// up automatically when the row passes the actor-shape check.
+///
+/// Sensitive-field discipline: the contract pins that no raw email,
+/// raw IP, password, or TOTP secret may appear in any audit row. This
+/// sink only forwards the SHA-256 hex digests + non-sensitive
+/// metadata that the route handler computed.
+class AuthEventsAuditAuthLockoutAuditSink implements AuthLockoutAuditSink {
+  AuthEventsAuditAuthLockoutAuditSink({
+    required AuthEventsAuditRepository auditRepository,
+  }) : _auditRepository = auditRepository;
+
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<void> recordLoginFailed({
+    required String emailHashHex,
+    required String ipHashHex,
+    required String outcome,
+    required int attemptCountInWindow,
+    required bool locked,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    await _auditRepository.insertSystemEvent(
+      eventType: 'auth.login_failed',
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      payload: <String, Object?>{
+        'email_hash': emailHashHex,
+        'ip_hash': ipHashHex,
+        'outcome': outcome,
+        'attempt_count_in_window': attemptCountInWindow,
+        'locked': locked,
+      },
+      adminReason: 'auth.login_failed:$outcome',
+    );
+  }
+
+  @override
+  Future<void> recordAccountLocked({
+    required String emailHashHex,
+    required String ipHashHex,
+    required int attemptCount,
+    required DateTime lockoutUntil,
+    String? operatorId,
+    String? locationId,
+    String? actorUserId,
+  }) async {
+    // Plumb actorUserId through so the success-path lock (where the
+    // bearer token already verified the user) lights up the
+    // hash-chained `audit_logs` fan-out. The failure-report
+    // anonymous path passes actorUserId=null and lands in
+    // auth_events_audit only -- the contract documents that anonymous
+    // events skip the per-tenant chain because audit_logs is per-
+    // (operator_id, chain_date) and these events have no resolvable
+    // operator at attempt time.
+    await _auditRepository.insertSystemEvent(
+      eventType: 'auth.account_locked',
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      payload: <String, Object?>{
+        'email_hash': emailHashHex,
+        'ip_hash': ipHashHex,
+        'attempt_count': attemptCount,
+        'lockout_until': lockoutUntil.toUtc().toIso8601String(),
+      },
+      adminReason: 'auth.account_locked',
+    );
+  }
+
+  @override
+  Future<void> recordMfaRetryExceeded({
+    required String operatorId,
+    required String locationId,
+    required String actorUserId,
+    required String challengeIdHash,
+    required int retryCount,
+  }) async {
+    await _auditRepository.insertSystemEvent(
+      eventType: 'auth.mfa_retry_exceeded',
+      operatorId: operatorId,
+      locationId: locationId,
+      actorUserId: actorUserId,
+      payload: <String, Object?>{
+        'challenge_id_hash': challengeIdHash,
+        'retry_count': retryCount,
+      },
+      adminReason: 'auth.mfa_retry_exceeded',
+    );
+  }
+
+  @override
+  Future<void> recordPasswordResetThrottled({
+    required String emailHashHex,
+    required int attemptCountIn24h,
+    required Duration retryAfter,
+  }) async {
+    await _auditRepository.insertSystemEvent(
+      eventType: 'auth.password_reset_throttled',
+      payload: <String, Object?>{
+        'email_hash': emailHashHex,
+        'attempt_count_24h': attemptCountIn24h,
+        'retry_after_seconds': retryAfter.inSeconds,
+      },
+      adminReason: 'auth.password_reset_throttled',
+    );
+  }
 }
 
 /// HARD-A — bridges the lib-side [AdvisorProxyUsageCounterStore]
@@ -2663,6 +2927,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required bool enabled,
     required String idempotencyKey,
     required String adminReason,
+    String? reason,
   }) {
     // SYNC prefix — no `await` before `runOrReplay` returns. Two
     // concurrent calls with the same key cannot both observe a cache
@@ -2673,6 +2938,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
       enabled: enabled,
       adminReason: adminReason,
       actorUserId: actorUserId,
+      reason: reason,
     );
     try {
       return _idempotencyCache.runOrReplay(
@@ -2685,6 +2951,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
           enabled: enabled,
           idempotencyKey: idempotencyKey,
           adminReason: adminReason,
+          reason: reason,
         ),
       );
     } on _IdempotencyRequestTypeMismatch {
@@ -2712,6 +2979,7 @@ class RepositoryFeatureFlagsAdminProxyGateway
     required bool enabled,
     required String idempotencyKey,
     required String adminReason,
+    String? reason,
   }) async {
     // Toggle + audit + audit_logs fan-out commit together. The audit
     // write rides the same `withSystem` transaction the UPDATE opens
@@ -2739,6 +3007,11 @@ class RepositoryFeatureFlagsAdminProxyGateway
             'enabled': row.enabled,
             'kind': row.kind,
             'idempotency_key': idempotencyKey,
+            // HARD-B - optional operator-supplied rationale. Omitted
+            // entirely from the payload when null/empty so the
+            // audit_logs canonical-encoding hash chain stays stable
+            // for callers that did not opt in to the field.
+            if (reason != null && reason.isNotEmpty) 'reason': reason,
           },
         );
       },
@@ -2752,17 +3025,23 @@ class RepositoryFeatureFlagsAdminProxyGateway
   /// payload retries (the 422 `idempotency_payload_mismatch` case).
   /// Hand-built so a future change to `dart:convert`'s map-iteration
   /// order cannot silently shift the hash.
+  ///
+  /// HARD-B - `reason` participates in the hash so a retry that
+  /// changes the rationale 422-conflicts (e.g. a typo correction
+  /// midway through the retry).
   static String _computePayloadHash({
     required String flagId,
     required bool enabled,
     required String adminReason,
     required String actorUserId,
+    String? reason,
   }) {
     final canonical = '{'
         '"actor_user_id":${jsonEncode(actorUserId)},'
         '"admin_reason":${jsonEncode(adminReason)},'
         '"enabled":$enabled,'
-        '"flag_id":${jsonEncode(flagId)}'
+        '"flag_id":${jsonEncode(flagId)},'
+        '"reason":${jsonEncode(reason ?? '')}'
         '}';
     return sha256.convert(utf8.encode(canonical)).toString();
   }
