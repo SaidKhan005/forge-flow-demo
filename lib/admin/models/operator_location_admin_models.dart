@@ -161,6 +161,7 @@ class OperatorOnboardCommand {
     required this.primaryLocationTimezone,
     required this.primaryLocationRolloverHour,
     required this.adminUserEmail,
+    required this.idempotencyKey,
   });
 
   final String businessName;
@@ -171,6 +172,11 @@ class OperatorOnboardCommand {
   final String primaryLocationTimezone;
   final int primaryLocationRolloverHour;
   final String adminUserEmail;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried POST collapses to one
+  /// onboard + one audit row instead of stamping a duplicate.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'business_name': businessName,
@@ -190,6 +196,7 @@ class OperatorOnboardCommand {
 class OperatorPatchCommand {
   const OperatorPatchCommand({
     required this.operatorId,
+    required this.idempotencyKey,
     this.businessName,
     this.ownerEmail,
     this.subscriptionTier,
@@ -203,6 +210,11 @@ class OperatorPatchCommand {
   final String? subscriptionTier;
   final String? preferredCurrency;
   final String? primaryLocationId;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PATCH collapses to one
+  /// mutation + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() {
     final body = <String, Object?>{};
@@ -226,6 +238,7 @@ class LocationCreateCommand {
     required this.name,
     required this.timezone,
     required this.businessDayRolloverHour,
+    required this.idempotencyKey,
     this.address = '',
   });
 
@@ -234,6 +247,11 @@ class LocationCreateCommand {
   final String address;
   final String timezone;
   final int businessDayRolloverHour;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried POST collapses to one
+  /// location create + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() => <String, Object?>{
     'operator_id': operatorId,
@@ -248,6 +266,7 @@ class LocationCreateCommand {
 class LocationPatchCommand {
   const LocationPatchCommand({
     required this.locationId,
+    required this.idempotencyKey,
     this.name,
     this.address,
     this.timezone,
@@ -259,6 +278,11 @@ class LocationPatchCommand {
   final String? address;
   final String? timezone;
   final int? businessDayRolloverHour;
+
+  /// Per-action idempotency key. The proxy stores it in
+  /// `admin_request_idempotency` so a retried PATCH collapses to one
+  /// mutation + one audit row.
+  final String idempotencyKey;
 
   Map<String, Object?> toJson() {
     final body = <String, Object?>{};

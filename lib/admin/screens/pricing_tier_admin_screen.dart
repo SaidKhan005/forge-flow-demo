@@ -34,6 +34,7 @@ class PricingTierAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.editingEnabled = true,
+    this.idempotencyKeyFactory,
   });
 
   final PricingTierAdminGateway gateway;
@@ -42,6 +43,12 @@ class PricingTierAdminScreen extends StatefulWidget {
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
+
+  /// Factory for the idempotency key the gateway attaches to each
+  /// mutating call. Production binds this to a UUID-shaped generator;
+  /// widget tests inject a deterministic counter so retries can be
+  /// asserted.
+  final String Function()? idempotencyKeyFactory;
 
   @override
   State<PricingTierAdminScreen> createState() =>
@@ -54,6 +61,18 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
   List<PricingOperatorBundle> _bundles = const <PricingOperatorBundle>[];
   String? _selectedOperatorId;
   String? _actionError;
+  int _idempotencyCounter = 0;
+
+  /// Mints a fresh idempotency key per user action so a retried PATCH,
+  /// PUT, or POST at the proxy collapses to one ledger row + one audit
+  /// row in `admin_request_idempotency`.
+  String _nextIdempotencyKey() {
+    final factory = widget.idempotencyKeyFactory;
+    if (factory != null) return factory();
+    _idempotencyCounter += 1;
+    return 'pricing-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+        '$_idempotencyCounter';
+  }
 
   @override
   void initState() {
@@ -250,12 +269,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       ),
     );
     if (confirmed != true) return;
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
         await widget.gateway.applyTierTemplate(
           ApplyTierTemplateCommand(
             operatorId: bundle.operatorId,
             tierKey: template.tierKey,
+            idempotencyKey: key,
           ),
         );
       },
@@ -268,12 +289,14 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
     String newTier,
   ) async {
     if (newTier == bundle.subscriptionTier) return;
+    final key = _nextIdempotencyKey();
     await _runAndRefresh(
       () async {
         await widget.gateway.updateOperatorTier(
           OperatorTierPatchCommand(
             operatorId: bundle.operatorId,
             subscriptionTier: newTier,
+            idempotencyKey: key,
           ),
         );
       },
@@ -291,6 +314,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
         operatorId: bundle.operatorId,
         primaryLocationId: bundle.primaryLocationId,
         existing: row,
+        idempotencyKey: _nextIdempotencyKey(),
       ),
     );
     if (command == null) return;
@@ -308,6 +332,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       builder: (_) => _UsageCapDialog(
         operatorId: bundle.operatorId,
         primaryLocationId: bundle.primaryLocationId,
+        idempotencyKey: _nextIdempotencyKey(),
       ),
     );
     if (command == null) return;
@@ -675,12 +700,16 @@ class _UsageCapDialog extends StatefulWidget {
   const _UsageCapDialog({
     required this.operatorId,
     required this.primaryLocationId,
+    required this.idempotencyKey,
     this.existing,
   });
 
   final String operatorId;
   final String? primaryLocationId;
   final UsageCapRow? existing;
+
+  /// Per-action idempotency key minted by the screen.
+  final String idempotencyKey;
 
   @override
   State<_UsageCapDialog> createState() => _UsageCapDialogState();
@@ -834,6 +863,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                 workflowId: _workflowId.text.trim().isEmpty
                     ? null
                     : _workflowId.text.trim(),
+                idempotencyKey: widget.idempotencyKey,
               ),
             );
           },

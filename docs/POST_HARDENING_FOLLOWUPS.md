@@ -107,19 +107,26 @@ real `(operator_id, location_id)` pair before commit.
 screen + wire `targetOperatorId`/`targetLocationId` into corpus gateway
 calls. After this, the corpus admin is launch-grade.
 
-## P2 — Admin idempotency-key gap on three gateways
+## P2 — Admin idempotency-key gap on three gateways — RESOLVED (L4, 2026-05-02)
 
 `operator_location_admin_gateway.dart`, `pricing_tier_admin_gateway.dart`,
-`integration_admin_gateway.dart` `_send` methods don't send
-`Idempotency-Key` headers. `corpus_admin_gateway.dart` and
-`feature_flags_admin_gateway.dart` do. Network retries on the first three
-risk duplicate rows.
+`integration_admin_gateway.dart` now thread an `idempotencyKey` field
+through every mutating command shape (POST/PATCH/PUT/DELETE) and forward
+it as the `Idempotency-Key` request header. The screens mint a fresh key
+per user action (UUID-shaped via the screen state, with a
+`idempotencyKeyFactory` injection point for widget tests). Proxy side,
+`_routeOperatorLocationAdmin`, `_routePricingAdmin`, and
+`_routeIntegrationsAdmin` now wrap each mutating arm in a shared
+`_runAdminIdempotent` helper that reserves → runs → completes against
+`public.admin_request_idempotency` (HARD-H table). The shared helper
+mirrors the inlined toggle handler envelope at
+`tool/advisor_proxy/advisor_proxy.dart:_routeFeatureFlagsAdmin`.
 
-**Action:** add a `_newIdempotencyKey()` helper to each gateway and pass
-through `_send`. Then add proxy-side dedup against
-`admin_request_idempotency` (HARD-H schema already supports it; the routes
-just don't consume it yet). Slice-shaped: ~half a day client + half a day
-proxy.
+The header is OPTIONAL on the wire for back-compat with the existing
+test surface; when present + the store is wired, dedup engages. Empty
+keys bypass dedup. Keys longer than 200 characters get a 400
+`idempotency_key_too_long` envelope at the dispatch site (matches the
+toggle contract).
 
 ## P2 — Test coverage gaps
 

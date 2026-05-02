@@ -81,6 +81,12 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
   static const String operatorsPrefix = '$operatorsPath/';
   static const String usageCapsPath = '/v1/admin/pricing/usage-caps';
 
+  // Idempotency key generation lives in the screen layer
+  // (`_PricingTierAdminScreenState._nextIdempotencyKey`) so a single
+  // minted key flows through both the dialog → command → gateway path
+  // and the action handler. Keeping the minter here too would double-
+  // mint keys for the same user action.
+
   @override
   Future<List<PricingOperatorBundle>> listOperators() async {
     final body = await _send(method: 'GET', path: operatorsPath);
@@ -98,6 +104,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     final body = await _send(
       method: 'PATCH',
       path: '$operatorsPrefix${Uri.encodeComponent(command.operatorId)}',
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return PricingOperatorBundle.fromJson(body);
@@ -108,6 +115,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     final body = await _send(
       method: 'PUT',
       path: usageCapsPath,
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return UsageCapRow.fromJson((body['cap'] as Map).cast<String, Object?>());
@@ -121,6 +129,7 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       method: 'POST',
       path:
           '$operatorsPrefix${Uri.encodeComponent(command.operatorId)}/apply-template',
+      idempotencyKey: command.idempotencyKey,
       jsonBody: command.toJson(),
     );
     return PricingOperatorBundle.fromJson(body);
@@ -130,12 +139,16 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     required String method,
     required String path,
     Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
   }) async {
     final token = await bearerTokenProvider();
     final uri = baseUri.resolve(path);
     final request = http.Request(method, uri)
       ..headers['authorization'] = 'Bearer $token'
       ..headers['accept'] = 'application/json';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      request.headers['Idempotency-Key'] = idempotencyKey;
+    }
     if (jsonBody != null) {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
@@ -191,6 +204,11 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   final String? _actorUserId;
   final Map<String, _MutableBundle> _bundles;
 
+  /// Per-key cache so a retried mutation on the in-memory gateway
+  /// returns the prior result instead of mutating again — mirrors the
+  /// proxy's `admin_request_idempotency` backstop.
+  final Map<String, Object> _idempotentResults = <String, Object>{};
+
   @override
   Future<List<PricingOperatorBundle>> listOperators() async {
     final list = _bundles.values.map((b) => b.toBundle()).toList()
@@ -206,14 +224,20 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   Future<PricingOperatorBundle> updateOperatorTier(
     OperatorTierPatchCommand command,
   ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is PricingOperatorBundle) return cached;
     _validateTierKey(command.subscriptionTier);
     final bundle = _bundleOrThrow(command.operatorId);
     bundle.subscriptionTier = command.subscriptionTier;
-    return bundle.toBundle();
+    final result = bundle.toBundle();
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
   }
 
   @override
   Future<UsageCapRow> upsertUsageCap(UsageCapUpsertCommand command) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is UsageCapRow) return cached;
     _validateUsageClass(command.usageClass);
     _validateNonNegative(command.monthlyCapUsd, field: 'monthly_cap_usd');
     _validateNonNegative(
@@ -264,6 +288,7 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
       );
       bundle.caps.add(row);
     }
+    _idempotentResults[command.idempotencyKey] = row;
     return row;
   }
 
@@ -271,6 +296,8 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
   Future<PricingOperatorBundle> applyTierTemplate(
     ApplyTierTemplateCommand command,
   ) async {
+    final cached = _idempotentResults[command.idempotencyKey];
+    if (cached is PricingOperatorBundle) return cached;
     final template = findPricingTierTemplate(command.tierKey);
     if (template == null) {
       throw PricingTierAdminGatewayError(
@@ -293,6 +320,9 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
     }
     final ts = _now().toUtc();
     for (final cap in template.caps) {
+      // Each cap upsert gets a derived idempotency key so re-running
+      // the apply doesn't re-cache as a cap. The outer apply key is
+      // the primary cache slot.
       await upsertUsageCap(
         UsageCapUpsertCommand(
           operatorId: bundle.operatorId,
@@ -302,6 +332,9 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
           perInvocationCapUsd: cap.perInvocationCapUsd,
           staffId: cap.staffId,
           workflowId: cap.workflowId,
+          idempotencyKey:
+              '${command.idempotencyKey}:cap:${cap.usageClass}:'
+              '${cap.staffId ?? "_"}:${cap.workflowId ?? "_"}',
         ),
       );
     }
@@ -312,7 +345,9 @@ class InMemoryPricingTierAdminGateway implements PricingTierAdminGateway {
       // visible audit timestamp on the operator bundle.
       bundle.updatedAt = ts;
     }
-    return bundle.toBundle();
+    final result = bundle.toBundle();
+    _idempotentResults[command.idempotencyKey] = result;
+    return result;
   }
 
   _MutableBundle _bundleOrThrow(String operatorId) {

@@ -32,6 +32,7 @@ class IntegrationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.editingEnabled = true,
+    this.idempotencyKeyFactory,
   });
 
   final IntegrationAdminGateway gateway;
@@ -40,6 +41,12 @@ class IntegrationAdminScreen extends StatefulWidget {
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
+
+  /// Factory for the idempotency key the gateway attaches to each
+  /// rotation POST. Production binds this to a UUID-shaped generator;
+  /// widget tests inject a deterministic counter so retries can be
+  /// asserted.
+  final String Function()? idempotencyKeyFactory;
 
   @override
   State<IntegrationAdminScreen> createState() =>
@@ -52,6 +59,18 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
   IntegrationBundle? _bundle;
   String? _actionError;
   ProviderKeyKind? _rotatingKind;
+  int _idempotencyCounter = 0;
+
+  /// Mints a fresh idempotency key per rotation submit so the proxy
+  /// dedups in `admin_request_idempotency` — a network-timeout retry
+  /// collapses to one KMS write + one audit row.
+  String _nextIdempotencyKey() {
+    final factory = widget.idempotencyKeyFactory;
+    if (factory != null) return factory();
+    _idempotencyCounter += 1;
+    return 'integration-${DateTime.now().toUtc().microsecondsSinceEpoch}-'
+        '$_idempotencyCounter';
+  }
 
   @override
   void initState() {
@@ -104,7 +123,10 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
 
     final command = await showDialog<RotateKeyCommand>(
       context: context,
-      builder: (_) => _RotatePlaintextDialog(keyKind: kind),
+      builder: (_) => _RotatePlaintextDialog(
+        keyKind: kind,
+        idempotencyKey: _nextIdempotencyKey(),
+      ),
     );
     if (command == null) return;
 
@@ -512,9 +534,15 @@ class _StatusRowTile extends StatelessWidget {
 }
 
 class _RotatePlaintextDialog extends StatefulWidget {
-  const _RotatePlaintextDialog({required this.keyKind});
+  const _RotatePlaintextDialog({
+    required this.keyKind,
+    required this.idempotencyKey,
+  });
 
   final ProviderKeyKind keyKind;
+
+  /// Per-action idempotency key minted by the screen.
+  final String idempotencyKey;
 
   @override
   State<_RotatePlaintextDialog> createState() =>
@@ -613,6 +641,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
               RotateKeyCommand(
                 keyKind: widget.keyKind,
                 plaintextValue: _controller.text.trim(),
+                idempotencyKey: widget.idempotencyKey,
               ),
             );
           },
