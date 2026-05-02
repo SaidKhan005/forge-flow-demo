@@ -151,7 +151,7 @@ toggle contract).
 | `lib/admin/services/operator_location_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/pricing_tier_admin_gateway.dart` | 311 | 0 | 0% |
 | `lib/admin/services/integration_admin_gateway.dart` | 311 | 0 | 0% |
-| 10 of 29 postgres repositories | ~7,734 | 5 (`test/infrastructure/persistence/postgres/repositories/`, L2, 2026-05-02) + scattered phase-prefix / live-binding | partial |
+| 5 of 29 postgres repositories | ~7,734 | 10 (`test/infrastructure/persistence/postgres/repositories/`, L2 + L4 batch 2, 2026-05-02) + scattered phase-prefix / live-binding | partial |
 
 **Action:** chip away during routine slices; not a launch blocker because
 the proxy-level live-binding tests (`mfa_live_binding_test.dart`,
@@ -206,11 +206,16 @@ covered by `mfa_live_binding_test.dart` / `auth_live_binding_test.dart`.
 Identity Toolkit / proxy contract drift is owned by the live-binding
 suites above. No production code changed; no bugs surfaced.
 
-**Postgres repositories — partially resolved 2026-05-02 (L2).** New
-`test/infrastructure/persistence/postgres/repositories/` parcel adds
-canonical-path unit tests for 5 high-priority surfaces (chosen by
-tenant-isolation / audit-chain criticality). 70 tests across 5 new
-files; `flutter analyze` clean. No production code changed.
+**Postgres repositories — partially resolved 2026-05-02 (L2 + L4
+batch 2).** Two parcels under
+`test/infrastructure/persistence/postgres/repositories/` now cover
+10 high-priority surfaces (chosen by tenant-isolation / audit-chain
+criticality). L2 (PR #57) shipped the first 5; L4 batch 2 ships the
+next 5 (locations, roles, role_permissions, mfa_factors,
+mfa_factor_removal_requests — 79 tests across 5 new files,
+`flutter analyze` clean, no production code changed). 149 tests
+across 11 files in the directory total; previous parcels regression-
+free.
 
 - `audit_logs_repository_test.dart` (341 lines) — SHA-256 chain
   inputs (no client-side `prev_row_hash` / `row_hash` — the BEFORE
@@ -267,7 +272,79 @@ files; `flutter analyze` clean. No production code changed.
   coercion that would defeat the constraint dedup); `withSystem`
   audit-marker pinning. First canonical-path coverage for this repo.
 
-**Remaining postgres-repository gaps:** 23 of 29 surfaces still
+L4 batch 2 (2026-05-02) added 5 more surfaces; all run through
+`OperatorScopedRepository` so the SET LOCAL ordering / withSystem
+posture is pinned per file:
+
+- `locations_repository_test.dart` (620 lines) — IANA `business_timezone`
+  round-trip parametric on INSERT + UPDATE (no concatenation, no
+  normalization); `business_day_rollover_hour` 0/23 boundary
+  preserved through coalesce; cross-operator isolation via
+  `withSystem` + `set local role forge_admin` + canonical
+  `system:<reason>` audit marker; `listForOperator` filters
+  `operator_id`, `listAllLocations` carries no predicate;
+  `deleteLocation` requires BOTH location_id + operator_id so a
+  stale id cannot land on the wrong tenant. First canonical-path
+  coverage for this repo.
+- `roles_repository_test.dart` (687 lines) — per-row monotonicity
+  (`updated_at = now()` + `updated_by` rewrite on every UPDATE);
+  tenant SET LOCAL ordering precedes every read/write (no admin
+  BYPASSRLS path); visibility split (`listVisibleRoles` orders
+  globals first, operator-scoped second); operator-scoped role-key
+  precedence over global on `roleIdForVisibleKey`; `is_seeded` SQL
+  literal in `insertOperatorRole` so the bind cannot lift a custom
+  role to seeded posture; `updateOperatorRole` guards
+  (`is_seeded=false AND is_editable=true AND deleted_at is null`);
+  `softDeleteOperatorRole` active-grants probe in the SAME
+  transaction (race with concurrent grant insert rolls back
+  cleanly). First canonical-path coverage for this repo.
+- `role_permissions_repository_test.dart` (581 lines) — `effect`
+  allowlist (synchronous ArgumentError on
+  `'neutral'` / empty / mixed-case `'Allow'` before tx open);
+  permission_key catalog round-trip parametric for representative
+  keys from each category (product/forgeflow/admin/team) plus a
+  catalog-count smoke test (96 keys today — drift from
+  `auth_permission_key_catalog.md` surfaces here);
+  cross-tenant denial via tenant SET LOCAL (no forge_admin
+  escalation path); INSERT ON CONFLICT (role_id, permission_key)
+  DO UPDATE preserves `created_by` while rewriting effect /
+  updated_by / updated_at. First canonical-path coverage for this
+  repo.
+- `mfa_factors_repository_test.dart` (785 lines) — factor_type
+  allowlist (`'totp'` / `'recovery_code'` bound as SQL literals so
+  the schema CHECK admits exactly the supported values);
+  operator + user double-scope SET LOCAL ordering on every method;
+  `insertTotpEnrollment` metadata `firebase_factor_uid` + `issuer`
+  jsonEncode round-trip; `ensureTotpFactorForFirebaseUid` repair
+  path (idempotent reuse + `firebase_inventory_repair` source
+  marker); `markRecoveryCodeUsed` single-use seal (BOTH
+  `last_used_at` AND `revoked_at` advance under the
+  `factor_type='recovery_code'` guard); `revokeTotpFactor` does
+  NOT advance `last_used_at` (revoke is removal, not verify);
+  `revokeActiveRecoveryCodeFactorsForUser` idempotent via
+  `coalesce(revoked_at, now())`; metadata projection handles
+  String / Map / malformed-JSON inputs. First canonical-path
+  coverage for this repo.
+- `mfa_factor_removal_requests_repository_test.dart` (864 lines)
+  — state transitions (pending → completed / cancelled /
+  pending-with-last_error retryable); `insertPending` upsert
+  idempotency on `(operator_id, user_id, factor_id)` partial
+  unique while pending; expiry contract on TWO axes
+  (`execute_after <= @now` for the 24h delay window;
+  `staleAfter` lease for stuck workers, bound as
+  `@stale_seconds * interval '1 second'`);
+  `claimDuePending` CTE uses `for update skip locked` under
+  `withSystem` with the canonical
+  `system:system.mfa_factor_removal_worker_claim` audit marker
+  (Cloud Tasks-equivalent locking pattern, since pgmq is not
+  available on Azure DB Flexible Server); `markCompleted`
+  clears last_error + processing_*; `markFailed` clears
+  processing_* but never advances completed_at / cancelled_at
+  (failures stay in pending so the worker re-claims); workerOwner
+  ArgumentError on blank/whitespace; limit ArgumentError on
+  non-positive. First canonical-path coverage for this repo.
+
+**Remaining postgres-repository gaps:** 18 of 29 surfaces still
 without canonical-path unit tests when counted strictly by
 `test/infrastructure/persistence/postgres/repositories/` location.
 Most have non-canonical unit tests at `test/repositories/` or
@@ -276,16 +353,15 @@ Most have non-canonical unit tests at `test/repositories/` or
 `service_principals`, `users`, `auth_login_attempts`) or
 phase-prefix tests (`auth_events_audit` via cutover test); a smaller
 set (`auth_invites`, `auth_sessions`, `invited_user_activation`,
-`locations`, `password_history`, `advisor_conversation_log`,
-`mfa_factor_removal_requests`, `mfa_factors`,
-`mfa_recovery_request_attempts`, `operator_admins`, `org_units`,
-`roles`, `role_permissions`) appears only inside larger live-binding
-/ gateway test files as fixtures, not under direct unit-test
-coverage. `user_scoped_repository.dart` is a base class covered
-indirectly by `test/operator_scoped_repository_test.dart`. Chip away
-the canonical-path migration during routine slices that touch each
-repo; treat the indirect-only group as the highest priority for
-direct unit-test coverage.
+`password_history`, `advisor_conversation_log`,
+`mfa_recovery_request_attempts`, `operator_admins`, `org_units`)
+appears only inside larger live-binding / gateway test files as
+fixtures, not under direct unit-test coverage.
+`user_scoped_repository.dart` is a base class covered indirectly by
+`test/operator_scoped_repository_test.dart`. Chip away the
+canonical-path migration during routine slices that touch each repo;
+treat the indirect-only group as the highest priority for direct
+unit-test coverage.
 
 ## P3 — Unused public classes (4)
 
