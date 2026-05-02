@@ -17,6 +17,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/auth_sessions_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/corpus_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/feature_flags_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/graph_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/locations_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/mfa_factor_removal_requests_repository.dart';
@@ -98,6 +99,7 @@ class ProxyProductionBindings {
     required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
+    required this.featureFlagsAdminGateway,
     required this.llmProvider,
     required this.secondaryLlmProvider,
     required this.geminiSlotEnabled,
@@ -123,6 +125,13 @@ class ProxyProductionBindings {
   final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
   final IntegrationAdminActorResolver integrationAdminActorResolver;
+
+  /// Phase 11A.7 — feature flags admin gateway. Backed by
+  /// [FeatureFlagsRepository] (admin pool, system scope) plus the
+  /// admin-pool [AuthEventsAuditRepository] for the toggle audit row
+  /// (which fans out to `audit_logs` per the `audit_logs_cutover_enabled`
+  /// flag).
+  final FeatureFlagsAdminProxyGateway featureFlagsAdminGateway;
 
   /// Phase 11A.4b — primary LLM provider feeding the
   /// `AdvisorRequestPipeline`. Real Anthropic Messages API HTTP
@@ -507,6 +516,16 @@ ProxyProductionBindings buildProxyProductionBindings(
         RepositoryIntegrationAdminActorResolver(
           usersRepository: UsersRepository(adminWrapper),
         ),
+    // Phase 11A.7 — feature flags admin gateway. Reads + writes go
+    // through the admin pool; toggles emit a `admin.feature_flags.toggle`
+    // event via the same `AuthEventsAuditRepository` the integrations
+    // surface uses, so the cutover fan-out into hash-chained
+    // `audit_logs` lights up automatically when the
+    // `audit_logs_cutover_enabled` flag is on.
+    featureFlagsAdminGateway: RepositoryFeatureFlagsAdminProxyGateway(
+      featureFlagsRepository: FeatureFlagsRepository(adminWrapper),
+      auditRepository: adminAudit,
+    ),
     // Phase 11A.4b — LLM providers feeding the AdvisorRequestPipeline.
     llmProvider: llmProviders.primary,
     secondaryLlmProvider: llmProviders.secondary,
@@ -2314,6 +2333,69 @@ class RepositoryIntegrationAdminProxyGateway
       adminReason: adminReason,
       payload: <String, Object?>{'admin_reason': adminReason, ...payload},
     );
+  }
+}
+
+/// Phase 11A.7 — production [FeatureFlagsAdminProxyGateway] backed by
+/// [FeatureFlagsRepository] + admin-pool [AuthEventsAuditRepository].
+/// The audit row writes through `insertSystemEvent`; the
+/// `audit_logs_cutover_enabled` fan-out (B.2) carries it into the
+/// hash-chained `audit_logs` table when the cutover flag is on.
+///
+/// Plaintext flag values are not secrets — the table holds gating
+/// bits and operator-facing copy only — so the response payload
+/// returns the row JSON as-is.
+class RepositoryFeatureFlagsAdminProxyGateway
+    implements FeatureFlagsAdminProxyGateway {
+  RepositoryFeatureFlagsAdminProxyGateway({
+    required FeatureFlagsRepository featureFlagsRepository,
+    required AuthEventsAuditRepository auditRepository,
+  })  : _flags = featureFlagsRepository,
+        _auditRepository = auditRepository;
+
+  final FeatureFlagsRepository _flags;
+  final AuthEventsAuditRepository _auditRepository;
+
+  @override
+  Future<List<Map<String, Object?>>> listFlags({
+    required String actorUserId,
+    required String adminReason,
+  }) async {
+    final rows = await _flags.listFlags(adminReason: adminReason);
+    return <Map<String, Object?>>[
+      for (final row in rows) row.toJson(),
+    ];
+  }
+
+  @override
+  Future<Map<String, Object?>?> toggleFlag({
+    required String actorUserId,
+    required String flagId,
+    required bool enabled,
+    required String idempotencyKey,
+    required String adminReason,
+  }) async {
+    final row = await _flags.toggleFlag(
+      flagId: flagId,
+      enabled: enabled,
+      actorUserId: actorUserId,
+      adminReason: adminReason,
+    );
+    if (row == null) return null;
+    await _auditRepository.insertSystemEvent(
+      actorUserId: actorUserId,
+      eventType: 'admin.feature_flags.toggle',
+      adminReason: adminReason,
+      payload: <String, Object?>{
+        'admin_reason': adminReason,
+        'flag_id': row.flagId,
+        'flag_name': row.flagName,
+        'enabled': row.enabled,
+        'kind': row.kind,
+        'idempotency_key': idempotencyKey,
+      },
+    );
+    return row.toJson();
   }
 }
 

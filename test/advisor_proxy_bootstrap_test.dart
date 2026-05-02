@@ -168,6 +168,13 @@ void main() {
         bindings.pricingTierAdminGateway,
         isA<RepositoryPricingTierAdminProxyGateway>(),
       );
+      // Phase 11A.7 — feature flags admin gateway is bound to the
+      // admin pool (cross-operator reads/writes). Construction must
+      // not open a database connection.
+      expect(
+        bindings.featureFlagsAdminGateway,
+        isA<RepositoryFeatureFlagsAdminProxyGateway>(),
+      );
       expect(
         capturedConnectionStrings,
         equals(<String>[
@@ -244,6 +251,20 @@ void main() {
         ),
       );
       expect(source, contains('corpus_admin: postgres'));
+    });
+
+    test('passes feature flags admin binding into routeRequest', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'featureFlagsAdminGateway:\s*productionBindings\.featureFlagsAdminGateway',
+          ),
+        ),
+      );
+      expect(source, contains('feature_flags_admin: postgres'));
     });
   });
 }
