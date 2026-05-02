@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:google_generative_ai/google_generative_ai.dart' as gemini;
 import 'package:path/path.dart' as p;
 
+import 'package:forge_and_flow/infrastructure/persistence/postgres/advisor_proxy_usage_counter_store.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/audit_logs_repository.dart';
@@ -74,8 +75,46 @@ import '../advisor_corpus/advisor_corpus.dart'
         graphifyNodeCandidatesFileName;
 import 'advisor_proxy.dart';
 import 'anthropic_http_complete_fn.dart';
+import 'health_producers/producer_registry.dart';
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
+
+/// HARD-A — early-exit decision for the proxy entrypoint.
+///
+/// When non-null, the entrypoint should write [message] to stderr and
+/// exit with [exitCode]. The wrapper exists so the prod-required-
+/// Firebase check is testable without binding a socket or invoking
+/// `dart run` in a subprocess.
+class ProxyStartupFailure {
+  const ProxyStartupFailure({required this.message, required this.exitCode});
+
+  final String message;
+  final int exitCode;
+}
+
+/// HARD-A — `PROXY_ENVIRONMENT=prod` requires `FIREBASE_PROJECT_ID`.
+///
+/// Falling back to `ScaffoldRejectingJwtVerifier` in production would
+/// mean every authenticated route returns 401 with the proxy still
+/// bound and serving traffic — a worse failure mode than refusing to
+/// start. Returns a [ProxyStartupFailure] with EX_CONFIG (78) so the
+/// deploy surfaces the misconfiguration loudly. Returns `null` in
+/// `staging` / `dev` (or any other value, including unset / blank) so
+/// local boots still work without the Firebase project ID.
+ProxyStartupFailure? evaluateProxyStartup({
+  required ProxyConfig config,
+  required Map<String, String> environment,
+}) {
+  final proxyEnvironment =
+      (environment['PROXY_ENVIRONMENT'] ?? '').trim().toLowerCase();
+  if (proxyEnvironment == 'prod' && config.firebaseProjectId == null) {
+    return const ProxyStartupFailure(
+      message: 'startup_failure: firebase_project_id_required_in_prod',
+      exitCode: 78,
+    );
+  }
+  return null;
+}
 
 class ProxyProductionBindings {
   const ProxyProductionBindings({
@@ -103,6 +142,8 @@ class ProxyProductionBindings {
     required this.llmProvider,
     required this.secondaryLlmProvider,
     required this.geminiSlotEnabled,
+    required this.usageCounterStore,
+    required this.healthCheckStore,
   });
 
   final ProxyAccountingStore accountingStore;
@@ -149,6 +190,20 @@ class ProxyProductionBindings {
   /// diagnostics line in main.dart so a startup grep can confirm
   /// which fallback slots are armed without echoing the key.
   final bool geminiSlotEnabled;
+
+  /// HARD-A — Postgres-backed usage counter store reading + writing
+  /// `public.advisor_proxy_usage_counters`. The launch tier's per-minute
+  /// request and monthly cost caps fail closed against this store; a
+  /// store-side failure surfaces as `usage_store_unavailable` (HTTP 503)
+  /// from [ProxyUsageGuard].
+  final ProxyUsageCounterStore usageCounterStore;
+
+  /// HARD-A — registry-backed health check store driving `/health`.
+  /// Producers run concurrently against the admin pool; reserved
+  /// metrics from `proxy_health_contract.md` whose producers have not
+  /// landed yet (B43 / B44 / B45 / B47) project to `status: unknown`
+  /// without making the response degraded.
+  final ProxyHealthCheckStore healthCheckStore;
 }
 
 // ─── Phase 11A.4b — Production proxy LLM providers ──────────────────────────
@@ -241,11 +296,23 @@ buildProxyLlmProviders(ProxyConfig config) {
 /// Builds all Phase 9 production route bindings without opening network or
 /// database connections. Live I/O begins only when a request invokes one of the
 /// returned gateways.
+///
+/// HARD-A: [requireFirebase] gates whether the Firebase Identity Platform
+/// admin client is mandatory. Default `true` matches the historical
+/// production posture — every auth-required route surfaces 503 / cap-
+/// reached without a real client. Pass `false` from the entrypoint when
+/// running in `staging` / `dev` so the proxy still binds in degraded
+/// mode (auth routes will refuse with `firebase_admin_not_configured`,
+/// but unauthenticated probes like `/health` keep working).
 ProxyProductionBindings buildProxyProductionBindings(
   ProxyConfig config, {
   PostgresPoolFactory postgresPoolFactory = PackagePostgresPool.fromUrl,
+  bool requireFirebase = true,
 }) {
-  final firebaseAdmin = _buildFirebaseAdminAuthClient(config);
+  final firebaseAdmin = _buildFirebaseAdminAuthClient(
+    config,
+    requireFirebase: requireFirebase,
+  );
   final tenantPool = postgresPoolFactory(
     config.secretFor(ProxySecretNames.postgresUrl),
   );
@@ -530,6 +597,100 @@ ProxyProductionBindings buildProxyProductionBindings(
     llmProvider: llmProviders.primary,
     secondaryLlmProvider: llmProviders.secondary,
     geminiSlotEnabled: llmProviders.geminiSlotEnabled,
+    // HARD-A — usage counter store backed by `public.advisor_proxy_usage_counters`.
+    // The lib-side data-access class lives in
+    // `advisor_proxy_usage_counter_store.dart`; the adapter below
+    // bridges it to the proxy's `ProxyUsageCounterStore` interface so
+    // the lib/tool boundary stays one-way (tool/ depends on lib/, never
+    // the reverse).
+    usageCounterStore: _AdvisorProxyUsageCounterStoreAdapter(
+      AdvisorProxyUsageCounterStore(tenantWrapper),
+    ),
+    // HARD-A — registry-backed `/health`. Runs all 57 producers
+    // concurrently against the admin pool with `set local role
+    // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
+    // event_outbox, audit_logs, vector indexes, etc.) succeed.
+    healthCheckStore: _buildRegistryProxyHealthCheckStore(adminWrapper),
+  );
+}
+
+/// HARD-A — bridges the lib-side [AdvisorProxyUsageCounterStore]
+/// (data-access class) to the proxy's [ProxyUsageCounterStore]
+/// runtime interface. The adapter owns nothing beyond translation —
+/// the SQL, the bucket math, and the concurrency guarantees all live
+/// inside [AdvisorProxyUsageCounterStore].
+class _AdvisorProxyUsageCounterStoreAdapter implements ProxyUsageCounterStore {
+  _AdvisorProxyUsageCounterStoreAdapter(this._inner);
+
+  final AdvisorProxyUsageCounterStore _inner;
+
+  @override
+  Future<UsageSnapshot> currentUsage({
+    required String operatorId,
+    required String locationId,
+    required String tierId,
+    required DateTime now,
+  }) async {
+    final s = await _inner.readSnapshot(
+      operatorId: operatorId,
+      locationId: locationId,
+      tierId: tierId,
+      now: now,
+    );
+    return UsageSnapshot(
+      requestsThisMinute: s.requestsThisMinute,
+      costCentsThisMonth: s.costCentsThisMonth,
+      minuteBucketStart: s.minuteBucketStart,
+      monthBucketStart: s.monthBucketStart,
+    );
+  }
+
+  @override
+  Future<void> incrementOnAllow({
+    required String operatorId,
+    required String locationId,
+    required String tierId,
+    required DateTime now,
+    required int costCentsToAdd,
+  }) {
+    return _inner.upsertIncrement(
+      operatorId: operatorId,
+      locationId: locationId,
+      tierId: tierId,
+      now: now,
+      costCentsToAdd: costCentsToAdd,
+    );
+  }
+}
+
+/// Constructs the [RegistryProxyHealthCheckStore] used in production.
+///
+/// The runner uses [TenantTransactionWrapper.runAsSystem] against the
+/// admin pool so each producer query elevates to `forge_admin` for
+/// the duration of one transaction. Producers do read-only system
+/// queries; tenant SET LOCAL is intentionally bypassed because
+/// reserved metrics aggregate platform-wide signals (event_outbox,
+/// graph_health_metrics, audit chain anchors) that span operators.
+RegistryProxyHealthCheckStore _buildRegistryProxyHealthCheckStore(
+  TenantTransactionWrapper adminWrapper,
+) {
+  Future<List<Map<String, Object?>>> runnerFn(
+    String sql, {
+    Map<String, Object?> parameters = const <String, Object?>{},
+  }) {
+    return adminWrapper.runAsSystem<List<Map<String, Object?>>>(
+      (exec) => exec.query(sql, parameters: parameters),
+      reason: 'proxy_health',
+    );
+  }
+
+  return RegistryProxyHealthCheckStore(
+    runnerFn: runnerFn,
+    // HARD-A: strict probe exercises cypher MATCH + vector distance,
+    // not just extension presence, so a regressed AGE path or vector
+    // operator surfaces as `red` instead of green.
+    dependencyProbe: (fn, now) => strictProxyHealthDependencyProbe(fn, now),
+    producers: buildProxyHealthRegistryProducers(),
   );
 }
 
@@ -2442,9 +2603,19 @@ AuthSessionLedgerWriter buildAuthSessionLedgerWriter(
   );
 }
 
-FirebaseAdminAuthClient _buildFirebaseAdminAuthClient(ProxyConfig config) {
+FirebaseAdminAuthClient _buildFirebaseAdminAuthClient(
+  ProxyConfig config, {
+  required bool requireFirebase,
+}) {
   final projectId = config.firebaseProjectId;
   if (projectId == null || projectId.isEmpty) {
+    if (!requireFirebase) {
+      // HARD-A staging/dev: scaffold the client so the proxy still
+      // binds. Auth-required routes will refuse with
+      // `firebase_admin_not_configured` at request time, matching the
+      // pre-9.1 scaffold-fallback posture.
+      return const ScaffoldFailingFirebaseAdminAuthClient();
+    }
     throw ProxyConfigError(
       'advisor proxy missing required non-secret config by name: '
       '${ProxyConfigNames.firebaseProjectId}. Set it before exposing '
