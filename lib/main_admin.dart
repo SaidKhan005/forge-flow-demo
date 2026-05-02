@@ -34,6 +34,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/corpus_admin_gateway.dart';
+import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
@@ -79,6 +80,8 @@ Future<void> main() async {
         gateway == null ? null : _resolveCorpusAdminGateway();
     final integrationGateway =
         gateway == null ? null : _resolveIntegrationAdminGateway();
+    final healthGateway =
+        gateway == null ? null : _resolveHealthAdminGateway();
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations routes can read `adminAuthSource` and
@@ -91,6 +94,7 @@ Future<void> main() async {
         pricingTierGateway: pricingGateway,
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
+        healthGateway: healthGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -180,6 +184,21 @@ IntegrationAdminGateway? _resolveIntegrationAdminGateway() {
     baseUri: baseUri,
     bearerTokenProvider: _firebaseIdTokenProvider,
   );
+}
+
+/// Phase 11A.UX.health (F.1) — proxy `/health` envelope gateway. The
+/// advisor proxy binary serves both `/v1/admin/*` (admin-gated) and
+/// `/health` (public unauthenticated) on the same Cloud Run service,
+/// so the health gateway reuses the admin proxy base URI. Demo mode
+/// returns null and the route falls back to the seeded in-memory
+/// envelope in `admin_routes.dart`.
+HealthAdminGateway? _resolveHealthAdminGateway() {
+  if (_kAdminDemoAuth) return null;
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpHealthAdminGateway(baseUri: baseUri);
 }
 
 Future<String> _firebaseIdTokenProvider() async {
