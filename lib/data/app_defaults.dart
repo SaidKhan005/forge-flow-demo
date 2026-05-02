@@ -452,6 +452,31 @@ class LeverCards {
 
   // Primary lever for demo scenario
   static const LeverCardData primaryDemoLever = coversDown;
+
+  /// User-facing label for rows whose lever id is the `on_model` sentinel
+  /// or anything outside the 16 known ids. Renderers MUST surface this
+  /// state explicitly instead of falling through to a real lever card.
+  /// See `docs/contracts/phase_7_58_primary_driver_contract.md` Finding F-1.
+  static const String notYetOnModelLabel = 'Not yet on-model';
+
+  /// Returns the [LeverCardData] for [id], or `null` for the `on_model`
+  /// sentinel, an unknown id, or empty/null input. Lookup is
+  /// case-insensitive: storage form `'COVERS_DOWN'` and engine form
+  /// `'covers_down'` both match `coversDown`.
+  ///
+  /// Renderers MUST handle the null return as a degraded "Not yet
+  /// on-model" state — the silent fall-through to [coversDown] that
+  /// existed before phase 7.58.UX.5 overclaimed a real driver that the
+  /// engine had not detected.
+  static LeverCardData? lookup(String? id) {
+    if (id == null || id.isEmpty) return null;
+    final normalized = id.toLowerCase();
+    if (normalized == 'on_model') return null;
+    for (final card in all) {
+      if (card.id == normalized) return card;
+    }
+    return null;
+  }
 }
 
 // ─── Input metric card model ──────────────────────────────────────────────────

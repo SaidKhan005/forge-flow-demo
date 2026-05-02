@@ -233,10 +233,12 @@ class ShiftDashboardReadModel {
       scheduledBohHours: totalBoh,
       modelBohHours: planBohHours,
     );
-    final leverCard = LeverCards.all.firstWhere(
-      (l) => l.id == leverId,
-      orElse: () => LeverCards.coversDown,
-    );
+    // 7.58.UX.5 (F-1): explicit lookup. The engine guarantees one of the
+    // 16 known ids per R6 (`determineLever` never returns `on_model`), so
+    // `lookup` is non-null in practice; the bang asserts that contract.
+    // The previous silent `orElse: coversDown` would have hidden a
+    // hypothetical R6 violation rather than surfacing it.
+    final leverCard = LeverCards.lookup(leverId)!;
 
     // OPZ status
     final opzStatus = _computeOpzStatus(

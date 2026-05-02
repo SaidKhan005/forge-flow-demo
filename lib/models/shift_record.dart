@@ -19,7 +19,9 @@ class ShiftRecord {
   final int fohHours;
   final int bohHours;
   final double theoreticalLaborPct; // locked at close — snapshot of target at time of shift
-  final String primaryLever;        // "COVERS_DOWN", "CPLH_DOWN", …, "ON_MODEL"
+  final String primaryLever;        // upper-snake form: "COVERS_DOWN", "CPLH_DOWN", …, plus
+                                    // the "ON_MODEL" sentinel for non-closed rows
+                                    // (phase_7_58 contract Output Cardinality).
 
   // ── Close-shift source facts (Phase 3 addition) ───────────────────────────
   // All nullable so existing seed/demo constructors compile without changes.

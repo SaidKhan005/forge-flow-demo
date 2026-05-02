@@ -135,11 +135,11 @@ class WeekDetailScreen extends StatelessWidget {
               ),
               SliverToBoxAdapter(
                 child: Builder(builder: (context) {
-                  final lever = LeverCards.all.firstWhere(
-                    (l) => l.id == week.primaryLeverId,
-                    orElse: () => LeverCards.coversDown,
-                  );
-                  return LeverCardWidget(data: lever);
+                  // 7.58.UX.5 (F-1): explicit lookup; null → degraded card.
+                  final lever = LeverCards.lookup(week.primaryLeverId);
+                  return lever == null
+                      ? const LeverCardNotYetAvailable()
+                      : LeverCardWidget(data: lever);
                 }),
               ),
             ],

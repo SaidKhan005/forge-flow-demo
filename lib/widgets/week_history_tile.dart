@@ -25,13 +25,12 @@ class WeekHistoryTile extends StatelessWidget {
     final varSign = isOver ? '−' : '+';
     final varAbs = week.laborPctVariance.abs().toStringAsFixed(1);
 
-    final leverCard = LeverCards.all.firstWhere(
-      (l) => l.id == week.primaryLeverId,
-      orElse: () => LeverCards.coversDown,
-    );
-    final lever = leverCard.shortLabel;
-    final leverColor =
-        leverCard.isFavorable ? AppColors.positive : AppColors.negative;
+    // 7.58.UX.5 (F-1): explicit lookup; null → degraded "—" badge.
+    final leverCard = LeverCards.lookup(week.primaryLeverId);
+    final lever = leverCard?.shortLabel ?? '—';
+    final leverColor = leverCard == null
+        ? AppColors.textMuted
+        : (leverCard.isFavorable ? AppColors.positive : AppColors.negative);
 
     return InkWell(
       onTap: onTap,

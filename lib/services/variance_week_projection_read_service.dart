@@ -133,9 +133,22 @@ class VarianceWeekProjectionReadService {
   // longer inherit a closed daypart's lever via carry-forward. See
   // docs/contracts/phase_7_58_primary_driver_contract.md "Row-Status
   // Honesty Rules".
+  //
+  // 7.58.UX.5 (F-7): closed rows render the lowercase canonical id form
+  // ('covers down') via `normalizedLeverId`. The previous `primaryLever`
+  // path leaked the upper-snake storage form ('COVERS DOWN') and was
+  // visually inconsistent with the engine's lowercase output.
+  //
+  // 7.58.UX.5 (F-1): for closed rows the engine guarantees a known id
+  // (R6 — never `on_model`), but a defensive `LeverCards.lookup` keeps
+  // a hypothetically-corrupt storage form from rendering as a real
+  // lever via the legacy silent fall-through.
   static String _driverLabel(ShiftRecord s, RowStatus status) {
     if (status == RowStatus.closed) {
-      return s.primaryLever.replaceAll('_', ' ');
+      if (LeverCards.lookup(s.normalizedLeverId) == null) {
+        return LeverCards.notYetOnModelLabel;
+      }
+      return s.normalizedLeverId.replaceAll('_', ' ');
     }
     return 'Not yet available';
   }
