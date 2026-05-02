@@ -12,7 +12,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_exec
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/users_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 
-const String _firebaseUidUuid = '99999999-9999-4999-8999-999999999999';
+const String _firebaseUid = 'firebase-auth-uid-abc123';
 const String _resolvedUserId = '11111111-1111-4111-8111-111111111111';
 
 void main() {
@@ -27,7 +27,7 @@ void main() {
           ]);
           final repo = UsersRepository(TenantTransactionWrapper(pool));
           final resolved = await repo.findActiveUserIdByFirebaseUidSystem(
-            firebaseUid: _firebaseUidUuid,
+            firebaseUid: _firebaseUid,
             adminReason: 'admin.integrations.POST:tester:resolve_actor',
           );
           expect(resolved, equals(_resolvedUserId));
@@ -47,7 +47,7 @@ void main() {
           expect(selectStatement, contains('deleted_at is null'));
           expect(
             selectStatement,
-            contains('firebase_uid = @firebase_uid::uuid'),
+            contains('firebase_uid = @firebase_uid'),
           );
         },
       );
@@ -59,7 +59,7 @@ void main() {
           final pool = _ResolverPool(rows: const <PostgresRow>[]);
           final repo = UsersRepository(TenantTransactionWrapper(pool));
           final resolved = await repo.findActiveUserIdByFirebaseUidSystem(
-            firebaseUid: _firebaseUidUuid,
+            firebaseUid: _firebaseUid,
             adminReason: 'admin.integrations.POST:tester:resolve_actor',
           );
           expect(resolved, isNull);
@@ -67,7 +67,7 @@ void main() {
       );
 
       test(
-        'short-circuits to null without hitting the DB when firebaseUid is not UUID-shaped',
+        'queries arbitrary Firebase UID strings instead of UUID-casting them',
         () async {
           final pool = _ResolverPool(rows: const <PostgresRow>[]);
           final repo = UsersRepository(TenantTransactionWrapper(pool));
@@ -76,9 +76,13 @@ void main() {
             adminReason: 'admin.integrations.POST:tester:resolve_actor',
           );
           expect(resolved, isNull);
-          // No transaction is opened — the cast to uuid would have
-          // thrown server-side and we want a clean 4xx, not a 5xx.
-          expect(pool.transactions, isEmpty);
+          expect(pool.transactions, hasLength(1));
+          final firebaseUidParameters = pool.transactions.single.parameters
+              .firstWhere((params) => params.containsKey('firebase_uid'));
+          expect(
+            firebaseUidParameters['firebase_uid'],
+            equals('firebase-not-a-uuid-abc123'),
+          );
         },
       );
     },

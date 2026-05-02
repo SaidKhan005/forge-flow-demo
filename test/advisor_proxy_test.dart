@@ -1781,7 +1781,7 @@ void main() {
 
     test('users table is extended with the 9.0 auth + identity columns', () {
       const expectedColumns = <String>[
-        'firebase_uid uuid not null default gen_random_uuid()',
+        'firebase_uid text not null default gen_random_uuid()::text',
         'external_id text null',
         "status text not null default 'invited'",
         'deleted_at timestamptz null',

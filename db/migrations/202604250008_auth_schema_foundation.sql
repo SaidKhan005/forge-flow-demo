@@ -464,16 +464,14 @@ create index if not exists external_identity_links_operator_user_idx
 
 -- ─── Extend public.users ─────────────────────────────────────────────
 --
--- firebase_uid carries a NOT NULL DEFAULT gen_random_uuid() so existing
+-- firebase_uid carries a NOT NULL DEFAULT gen_random_uuid()::text so existing
 -- (test-seed) rows get distinct placeholder values and the UNIQUE
 -- constraint can be added immediately. Phase 9.1 overwrites firebase_uid
--- with the real Firebase Identity Platform uid as users link in. The
--- column type is `uuid` because F&F creates Firebase users with a
--- pre-generated UUID passed as the Firebase `uid` field; Firebase
--- Identity Platform accepts arbitrary string uids.
+-- with the real Firebase Identity Platform uid as users link in. Firebase
+-- Identity Platform accepts arbitrary string uids, so this is text.
 
 alter table public.users
-  add column if not exists firebase_uid uuid not null default gen_random_uuid();
+  add column if not exists firebase_uid text not null default gen_random_uuid()::text;
 
 alter table public.users
   drop constraint if exists users_firebase_uid_key;
@@ -1157,7 +1155,7 @@ comment on table public.external_identity_links is
   '9.0 Phase 8 vendor-employee bridge. NOT the auth source-of-truth. Vendor APIs do not become identity authority; this table maps app users to vendor employee records for downstream attribution.';
 
 comment on column public.users.firebase_uid is
-  '9.0 Firebase Identity Platform uid. Defaulted to gen_random_uuid() at column-add time; Phase 9.1 overwrites with the real Firebase uid when users link in. Stored as UUID because F&F creates Firebase users with a pre-generated UUID passed as the Firebase uid field.';
+  '9.0 Firebase Identity Platform uid. Defaulted to gen_random_uuid()::text at column-add time; Phase 9.1 overwrites with the real Firebase uid when users link in. Stored as text because Firebase Identity Platform accepts arbitrary string uids.';
 comment on column public.users.external_id is
   '9.0 SSO/SAML/SCIM external identifier (future, 9-future-1). Distinct from external_identity_links which is the Phase 8 vendor-employee bridge.';
 comment on column public.users.status is

@@ -4,7 +4,7 @@
 // not the auth_invites / auth_sessions tables). The 9.0 schema
 // extends `users` with:
 //
-//   firebase_uid uuid unique not null
+//   firebase_uid text unique not null
 //   external_id text unique null
 //   status text default 'invited' check in (
 //     invited / active / suspended /
@@ -389,7 +389,7 @@ class UsersRepository extends OperatorScopedRepository {
         'user_id, firebase_uid, operator_id, email, status, '
         'primary_role_id, primary_location_id, roles_version'
         ') values ('
-        '@user_id::uuid, @firebase_uid::uuid, @operator_id::uuid, '
+        '@user_id::uuid, @firebase_uid, @operator_id::uuid, '
         '@email, '
         "'invited', "
         '@primary_role_id::uuid, @primary_location_id::uuid, 0'
@@ -605,9 +605,9 @@ class UsersRepository extends OperatorScopedRepository {
     );
   }
 
-  /// SELECT the Firebase UID for a user. F&F creates Firebase users with the
-  /// same UUID-shaped value as `users.user_id`, but this read keeps the
-  /// choreography honest if that ever changes.
+  /// SELECT the Firebase UID for a user. Firebase Identity Platform UIDs are
+  /// arbitrary strings, so callers must resolve through this column rather
+  /// than assuming the app user_id is also the Firebase uid.
   Future<String> firebaseUidForUser({
     required String operatorId,
     required String locationId,
@@ -657,31 +657,25 @@ class UsersRepository extends OperatorScopedRepository {
   ///   * no row matches the supplied Firebase UID,
   ///   * a row matches but `status != 'active'` (invited / suspended /
   ///     dormant_* / deleted), or
-  ///   * the row has `deleted_at` set, or
-  ///   * [firebaseUid] is not UUID-shaped (the `users.firebase_uid`
-  ///     column is a uuid type in F&F's design, so non-UUID input
-  ///     cannot match anyway — we short-circuit before the cast to
-  ///     keep the route handler 4xx-pure).
+  ///   * the row has `deleted_at` set.
   ///
   /// Used by the integration management proxy path to resolve the
   /// caller's Firebase UID into a UUID-shaped actor before any
-  /// `auth_events_audit` row is written. The Phase 9 auth contract
-  /// requires admin Firebase UID resolution to reject non-active
-  /// statuses; an invited / suspended / dormant user with a still-
-  /// valid Firebase claim must NOT be allowed to act on shared
+  /// `auth_events_audit` row is written. Firebase UID is an arbitrary
+  /// string; app audit attribution remains UUID-backed through `user_id`.
+  /// The Phase 9 auth contract requires admin Firebase UID resolution to
+  /// reject non-active statuses; an invited / suspended / dormant user
+  /// with a still-valid Firebase claim must NOT be allowed to act on shared
   /// integration credentials.
   Future<String?> findActiveUserIdByFirebaseUidSystem({
     required String firebaseUid,
     required String adminReason,
   }) {
-    if (!_uuidPattern.hasMatch(firebaseUid)) {
-      return Future<String?>.value(null);
-    }
     return withSystem<String?>((exec) async {
       final rows = await exec.query(
         'select user_id::text as user_id '
         'from users '
-        'where firebase_uid = @firebase_uid::uuid '
+        'where firebase_uid = @firebase_uid '
         'and deleted_at is null '
         "and status = 'active' "
         'limit 1',
@@ -693,10 +687,6 @@ class UsersRepository extends OperatorScopedRepository {
       return null;
     }, reason: adminReason);
   }
-
-  static final RegExp _uuidPattern = RegExp(
-    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
-  );
 
   /// SELECT `roles_version` so Firebase custom claims can be refreshed after
   /// grant/revoke operations.
