@@ -7,7 +7,7 @@ Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
 
-Migration count: **35**
+Migration count: **59**
 
 ## `202604250000_advisor_roles.sql`
 
@@ -506,8 +506,10 @@ Migration count: **35**
   BYPASSRLS` in 202604260000).
   * `PARALLEL SAFE`   — readonly GUC reads are parallel-safe.
 
-  This migration is local framework only — no live database mutation.
-  The matching policy rewrite lands in 202604280001 (next file).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
+  * The matching policy rewrite lands in 202604280001 (next file).
 
   ─── app_current_operator ──────────────────────────────────────────
 
@@ -549,7 +551,9 @@ Migration count: **35**
   the Phase 9 execution backlog and will land its policies through
   the wrappers from creation, not via a second rewrite.
 
-  This migration is local framework only — no live mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
   ─── Drop the bare-current_setting auth policies ───────────────────
 
@@ -604,9 +608,9 @@ Migration count: **35**
   DDL uses `if not exists` / `create or replace`; the backfill is
   guarded by `not exists` so re-runs are no-ops.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280003_phase_9_0sigma_e_event_outbox.sql`
 
@@ -630,7 +634,9 @@ Migration count: **35**
   truth, since notifications are dropped under Postgres connection
   failures and queue-pressure conditions.
 
-  This migration is local framework only — no live mutation. The
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set. The
   bridge worker, the WebSocket leg, and dead-letter handling all
   land in Phase 10a per the backlog gate. The repository in
   `lib/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart`
@@ -723,9 +729,9 @@ Migration count: **35**
   that 9.0Σ.f then has to reconcile with — both worse than letting
   9.0Σ.f land it in one place.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280005_phase_9_0sigma_f_audit_logs.sql`
 
@@ -751,9 +757,9 @@ Migration count: **35**
   recomputes every row hash, and compares the terminal hash to the
   anchor row + the Blob evidence.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate (subject to user approval per Phase 9 lock).
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
   The pg_partman registration call is wrapped in a re-runnable DO
   block so the same migration is safe to apply repeatedly.
 
@@ -919,7 +925,9 @@ Migration count: **35**
   or proxy hot-zone changes.
   * No `forge_admin` RLS policy added.
 
-  This migration is local framework only — no live database mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280006_c_phase_9_0sigma_g_usage_caps_two_slot_constraint_flip.sql`
 
@@ -1085,9 +1093,9 @@ Migration count: **35**
   * `forge_admin` keeps full DML as the BYPASSRLS escape hatch for
   paired-super-admin GDPR redaction / break-glass paths.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280008_phase_9_0sigma_i_graph_canonical.sql`
 
@@ -1137,9 +1145,9 @@ Migration count: **35**
   * Filters out soft-deleted / archived rows so the count tracks
   "active" rows the AGE projection rebuild would replay.
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280009_phase_9_0sigma_j_diskann_install.sql`
 
@@ -1261,9 +1269,9 @@ Migration count: **35**
   each (rollup_table, grain) it owns, with `last_processed_seq
   = 0`).
 
-  This migration is local framework only — no live database mutation.
-  Live apply on staging + Production1 is queued under the Phase 9
-  live-mutation gate and runs together with 202604280010_b/c.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280010_b_phase_9_0sigma_k_rollup_tables.sql`
 
@@ -1386,7 +1394,9 @@ Migration count: **35**
   pure overhead. This migration deliberately stops at the hook;
   the Phase 9 partition-policy slice locks the windowing rules.
 
-  This migration is local framework only â€” no live database mutation.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
 
 ## `202604280010_c_phase_9_0sigma_k_pg_cron_jobs.sql`
 
@@ -1448,9 +1458,10 @@ Migration count: **35**
   or leased_until < now()` so two simultaneous cron firings on
   a misconfigured host do not both win the lease.
 
-  This migration is local framework only — no live database
-  mutation. Live apply is queued behind 202604280010_a/b under the
-  Phase 9 live-mutation gate.
+  Live apply status:
+  * Applied and verified on staging + Production1 on 2026-04-29 as part of
+  the Phase 9 `202604280000` through `202604280013` migration set.
+  * First observed hot/cold rollup cron runs succeeded on both environments.
 
 ## `202604280011_phase_9_recovery_code_attempts.sql`
 
@@ -1572,153 +1583,817 @@ Migration count: **35**
   already-applied staging/Production1 databases in sync without
   replaying the foundation migration.
 
+  Live apply note:
+  * Phase 9 closeout evidence only covers staging + Production1 through
+  `202604280013`. Apply this additive seed under a fresh live-mutation
+  gate before Phase 12 depends on service-principal JWT issuance in live
+  environments.
+
+## `202604290100_phase_11A_1_operators_suspended_at.sql`
+
+- **Applied:** 2026-04-29 01:00
+- **Title:** phase 11A 1 operators suspended at
+- **Description:**
+
+  Phase 11A.1 - Add `operators.suspended_at` column.
+
+  The F&F admin console Operators surface needs to suspend and
+  reactivate operators without dropping rows. The cloud-foundation
+  migration (`202604250005_advisor_cloud_foundation.sql`) declared
+  the `operators` table without a suspension marker; this slice
+  adds it as a nullable `timestamptz` so existing rows pass without
+  backfill.
+
+  The `OperatorsRepository.suspendOperator` / `reactivateOperator`
+  methods read and write this column directly; the admin console
+  renders a `suspended` pill when it is non-null. Tenant-wide runtime
+  enforcement, if desired, belongs to a future access-control slice
+  that can read the same marker.
+
+  Forward-only: no DROP COLUMN escape hatch on rollback. If a
+  rollback is ever needed the column can be left in place; nullable
+  columns do not constrain inserts.
+
 ## `202604290101_phase_9_hierarchy_access_wiring.sql`
 
-- **Applied:** 2026-04-29 00:01 (local; live apply pending)
+- **Applied:** 2026-04-29 01:01
 - **Title:** phase 9 hierarchy access wiring
 - **Description:**
 
-  Phase 9 hierarchy access wiring. Bridges the gap between
-  `9.0Σ.c` (`org_units` ltree foundation) and the auth/team grant
-  path, which was previously wired only for operator-wide and
-  direct-location scopes.
+  Phase 9 hierarchy access wiring.
 
-  1. `locations` attaches to an `org_units` parent
-     (`parent_org_unit_id`) and carries a denormalized ltree path
-     (`org_unit_path`). A `before insert/update` trigger
-     (`set_location_org_unit_path`) keeps the denormalized path in
-     sync from the parent's `org_units.path`. A GIST index on
-     `org_unit_path` supports subtree access checks.
+  The Phase 9 scalability decision lock added `org_units` as the operator
+  hierarchy foundation, but the auth/team grant path was still wired only for
+  operator-wide and direct-location scopes. This migration bridges that gap:
 
-  2. `user_roles` and `auth_invites` gain `scope_type` of
-     `'operator_wide' | 'org_unit' | 'location'` plus a paired
-     `org_unit_id` column. CHECK constraints enforce the payload
-     shape per scope type. Active-grant and org-unit-scoped indexes
-     lead with `operator_id` per the locked tenant-leading-index
-     discipline.
+  * locations attach to an org unit and carry a denormalized ltree path
+  * user_roles/auth_invites can target an org unit scope
+  * user_effective_locations materializes which locations each active grant
+  reaches, including org-unit inheritance
 
-  3. New table `public.user_effective_locations` materializes which
-     locations each active grant reaches, including org-unit
-     inheritance via the `loc.org_unit_path <@ ou.path` predicate.
-     RLS uses `app_current_operator()` per the 9.0Σ.b wrapper lock.
-     Triggers on `user_roles`, `locations`, and `org_units` keep
-     the cache fresh.
-
-  Operational shape:
-
-  * The `user_roles` change path uses a narrow per-user refresh
-    (`refresh_user_effective_locations(user_id, operator_id)`).
-    This is the high-frequency path (hires, role changes,
-    revocations).
-  * The `locations` and `org_units` change paths use an operator-
-    wide refresh. These are onboarding-rare admin operations
-    (additive: new restaurant, new department) — re-parents are
-    not part of normal operation.
-
-  Idempotent and additive. Existing single-location/operator-wide
-  rows are backfilled to the operator root org unit and continue to
-  behave exactly as they did before this migration.
-
-  Live apply note:
-
-  * Phase 9 closeout evidence covers staging + Production1 through
-    `202604280013`. Apply this migration alongside `202604280014`
-    (B46 audit-privacy) and `202604290000` (B41 service-principal
-    permission) under a fresh live-mutation gate before live
-    consumers depend on `user_effective_locations` or org-unit
-    scoped grants.
+  Idempotent and additive. Existing single-location/operator-wide rows are
+  backfilled to the operator root org unit and continue to behave exactly as
+  they did before this migration.
 
 ## `202604300000_phase_9_mfa_factor_removal_requests.sql`
 
-- **Applied:** 2026-04-30 00:00 (local; live apply pending)
+- **Applied:** 2026-04-30 00:00
 - **Title:** phase 9 mfa factor removal requests
 - **Description:**
 
-  Phase 9.UX.1a delayed MFA factor removal ledger.
+  Phase 9.UX.1 - delayed MFA factor removal requests.
 
-  Creates `public.mfa_factor_removal_requests`, the durable 24-hour queue
-  between a self/admin MFA removal request and backend completion. The table
-  records operator/location/user scope, the target `mfa_factors.factor_id`,
-  requester, opaque step-up proof id, requested/executable timestamps,
-  processing lease metadata, completion timestamp, optional cancellation
-  timestamp, and last error.
-
-  Indexes cover active-request de-duplication, due worker scans, stale
-  processing leases, and recent per-user Settings/Team status reads. RLS is
-  tenant/user-scoped for `service_role`; `forge_admin` receives DML for the
-  scheduled worker path.
+  Removing MFA is delayed for 24 hours. This table is the durable request
+  ledger between the user/admin action and the server-side completion pass.
 
 ## `202604300001_phase_9_mfa_recovery_request_attempts.sql`
 
-- **Applied:** 2026-04-30 00:01 (local; live apply pending)
+- **Applied:** 2026-04-30 00:01
 - **Title:** phase 9 mfa recovery request attempts
 - **Description:**
 
-  Phase 9.UX.1a public MFA recovery-request abuse ledger.
+  Phase 9.UX.1a - public MFA recovery-request abuse ledger.
 
-  Creates `public.mfa_recovery_request_attempts` for the public "contact
-  restaurant admin" endpoint. It stores hashed email and IP identifiers with
-  attempt timestamps, supporting a per-email cooldown and per-IP rolling
-  window without retaining raw email or address values in the limiter table.
-
-  Grants `service_role` and `forge_admin` read/insert/delete access plus
-  sequence usage. The table is intentionally system-scoped; callers still
-  receive generic responses so the endpoint cannot enumerate accounts.
+  This table backs the public "contact restaurant admin" recovery endpoint
+  with a durable per-email cooldown and per-IP rolling window. Values are
+  SHA-256 hashes so the limiter does not store raw email addresses or IPs.
 
 ## `202604300002_phase_9_mfa_hardening_launch_roles.sql`
 
-- **Applied:** 2026-04-30 00:02 (local; live apply pending)
+- **Applied:** 2026-04-30 00:02
 - **Title:** phase 9 mfa hardening launch roles
 - **Description:**
 
-  Phase 9.UX.1a MFA hardening and launch account role enforcement.
+  Phase 9 MFA hardening and launch account role enforcement.
 
-  Adds the dedicated `team.users.reset_mfa` permission key for delayed
-  authenticator-app removal/reset actions and grants it only to
-  `super_admin` and `operator_owner` by default. Reset-MFA stays outside
-  the catalog-level mandatory-MFA set, but the proxy route still enforces
-  fresh sign-in before starting admin removal.
+  Goals:
+  * Add a dedicated team.users.reset_mfa permission for delayed 2FA
+  removal/reset actions instead of piggybacking on password reset.
+  * Grant that permission to super_admin and operator_owner only.
+  * Make the launch smoke-account roles durable in database migrations:
+  - saidumarkhan005@gmail.com is the highest admin account.
+  - newoundlandlimited@gmail.com is a regular operator staff user.
 
-  The migration also makes launch smoke-account roles durable: when the
-  accounts exist in the target database, `saidumarkhan005@gmail.com` is
-  granted the global `super_admin` role and operator-admin assignment for
-  the regular account's operator, while `newoundlandlimited@gmail.com`
-  has elevated/admin grants revoked and receives the seeded
-  `operator_staff` role. If either account is absent in a non-production
-  database, the role block emits a NOTICE and skips without failing the
-  permission catalog seed.
+  This migration is idempotent. If either launch account is absent in a
+  non-production database, it emits a NOTICE and skips only the account
+  repair block; the permission catalog change still applies.
+
+## `202605010000_phase_11A_3a_corpus_versions_ledger.sql`
+
+- **Applied:** 2026-05-01 00:00
+- **Title:** phase 11A 3a corpus versions ledger
+- **Description:**
+
+  Phase 11A.3a — Corpus admin ledger.
+
+  Adds a `corpus_versions` ledger plus a many-to-many membership
+  table so the F&F admin Corpus screen can:
+
+  * list every corpus version with its actor + summary,
+  * fetch the chunks that belong to one version (membership is
+  resolved through the join table, not by overwriting per-chunk
+  pointers — the same chunk row may legitimately be a member of
+  several versions when its content is unchanged),
+  * stamp prior chunks `superseded_at` when a new version commits,
+  * roll back to a prior version by writing a new row whose
+  `rollback_of` points at the target.
+
+  Per CLAUDE.md (Postgres host = Azure DB Flexible Server PG 16) and
+  the cloud foundation migration `202604250001`, the corpus tables
+  live in `public` and use UUIDs from `pgcrypto`.
 
 ## `202605010000_phase_11A_4_provider_credentials.sql`
 
-- **Applied:** 2026-05-01 00:00 (local; live apply pending)
-- **Title:** phase 11A.4 provider credentials
+- **Applied:** 2026-05-01 00:00
+- **Title:** phase 11A 4 provider credentials
 - **Description:**
 
-  Phase 11A.4 — masked-display ledger for the F&F Operations Console
-  Integrations surface.
+  Phase 11A.4 — Provider credential ledger.
 
-  Creates `public.provider_credentials` (NOT operator-scoped — provider
-  keys are platform-wide) with:
+  The F&F Operations Console rotates server-side keys (Anthropic,
+  Voyage, Azure DB) without ever exposing plaintext to the operator
+  app. Plaintext lives in Cloud Run env / KMS; this table is the
+  masked-display ledger that backs the admin Integrations surface.
+  Every rotation appends a new row and flips the prior row's
+  `is_active` to false in one transaction so a rotation failure can
+  never leave two active rows for the same `key_kind` and the
+  previous key stays in service until KMS confirms the new write.
 
-    * `key_kind` (CHECK constraint admits `anthropic`, `voyage`,
-      `azure_db`),
-    * `masked_value` (display string the admin console renders, e.g.
-      `sk-a***Q9aB`; never the full key),
-    * `kms_secret_name` (opaque KMS pointer the proxy hands to the KMS
-      provider; pre-launch the stub returns `kms://stub/<uuid>`),
-    * `created_by` / `updated_by` actor user id stamps,
-    * `is_active` + `rotated_at` so the rotate path can append a new
-      row and flip the prior row's `is_active` to false in one
-      transaction.
+  Row shape:
+  * `key_kind`         — stable lane name (`anthropic`, `voyage`,
+  `azure_db`). The proxy accepts only the
+  locked set; UI surfaces match.
+  * `masked_value`     — display string the admin console renders
+  (e.g. `sk-ant-***Q9aB`). Never the full key.
+  * `kms_secret_name`  — opaque pointer the proxy hands to the
+  KMS provider (`kms://stub/<uuid>` for the
+  stub provider; production swaps in the
+  real Cloud Run / KMS scheme post-launch).
+  * `created_by`,      — actor user id stamps for audit-on-rotate.
+  `updated_by`         The full chain lives in
+  `auth_events_audit` via the existing
+  system-event writer.
+  * `rotated_at`       — explicit rotation timestamp. Distinct
+  from `created_at` so future migrations can
+  backfill historical rotation moments
+  without rewriting `created_at`.
+  * `is_active`        — exactly one TRUE row per `key_kind` at
+  rest. Enforced by the partial unique
+  index below; the rotation path inserts
+  the new row and updates the prior in one
+  transaction so the constraint is never
+  violated.
 
-  Rotation contract: `provider_credentials_active_uq` is a partial
-  unique index on `(key_kind) where is_active`, so exactly one TRUE
-  row per kind exists at rest. The repository's rotate path runs
-  UPDATE-prior-then-INSERT-new inside the same transaction; if the
-  insert fails the transaction rolls back and the prior key stays
-  active. Plaintext is NEVER persisted in this table.
+  This table is NOT operator-scoped. Provider credentials are F&F
+  platform-wide (we hold one Anthropic key for the whole product).
+  No `operator_id` column, no RLS policy. Reads/writes run through
+  the admin pool only; the route handler enforces the
+  `super_admin` role gate.
 
-  Grants `forge_admin` SELECT/INSERT/UPDATE plus sequence usage. Audit
-  rows for rotate-success and rotate-failure land on the existing
-  `auth_events_audit` chain via the system-event writer; this
-  migration adds no audit columns of its own.
+## `202605010001_phase_9_b4_role_audit_log_operator_id.sql`
+
+- **Applied:** 2026-05-01 00:01
+- **Title:** phase 9 b4 role audit log operator id
+- **Description:**
+
+  Phase 9 slice B.4 - role_audit_log gains operator_id; indexes
+  re-keyed to lead with operator_id; RLS simplified.
+
+  Background. `role_audit_log` was created in
+  `202604250008_auth_schema_foundation.sql` without an operator_id
+  column. The 9.0Σ.b RLS policy filtered tenant access via subqueries
+  against `roles` / `user_roles`. CLAUDE.md "RLS performance discipline"
+  locks the rule that every B-tree index on an operator-scoped fact
+  table must lead with operator_id (or `(operator_id, location_id)`);
+  the subquery-style policy also planned poorly under RLS.
+
+  The simplified SELECT policy reads `operator_id IS NULL OR
+  operator_id = public.app_current_operator()`. That is safe ONLY if
+  a NULL operator_id genuinely means "global role mutation"
+  (`roles.operator_id IS NULL`) — never "we couldn't resolve the
+  source row". `role_audit_log.role_id` and `user_role_id` are not
+  FK-constrained, so a row with a non-null but dangling source id
+  would have been hidden from every tenant by the legacy subquery
+  policy and would otherwise become globally visible after the swap.
+  This slice closes that regression with a write gate (BEFORE
+  INSERT trigger), a shape gate (CHECK + VALIDATE), and a pre-swap
+  verification of all rows that pre-date the gates.
+
+  ─── ORDERING is load-bearing ────────────────────────────────────
+  Each block runs in an implicit per-statement transaction; the
+  migration MUST be applied without an enclosing `BEGIN; … COMMIT;`
+  wrapper because CONCURRENTLY index ops cannot run inside a
+  transaction. Live writers are not blocked between statements.
+  That means a step ordering that does backfill → verify → trigger
+  has a window during which a legacy writer (one that doesn't set
+  operator_id) can land a row with a dangling source id, slip past
+  both backfill and verify, and only become a problem after the
+  policy swap.
+
+  The order below installs the BEFORE INSERT trigger BEFORE the
+  backfill/verify window. From the moment CREATE TRIGGER returns,
+  every new INSERT is either auto-resolved (trigger sets
+  operator_id from roles / user_roles) or rejected (trigger raises
+  23514). Backfill + verify then operate on a frozen set of
+  pre-trigger rows; nothing can sneak in behind them.
+
+  1. ADD COLUMN operator_id (nullable, instant metadata-only).
+  2. Trigger function + BEFORE INSERT trigger.
+  Closes the write gate. From this point on, no INSERT can
+  land with a NULL or unresolved operator_id.
+  3. CHECK constraint role_audit_log_source_not_null
+  (ADD … NOT VALID). Shape gate for future writes; pre-existing
+  rows are not yet validated. The trigger above already raises
+  on both-NULL inserts, so this CHECK is redundant for INSERTs
+  but matters for any future UPDATE path.
+  4. Backfill operator_id from the source mutation. user_roles
+  wins when set (its operator_id is NOT NULL); falls back to
+  roles. Idempotent via `where operator_id is null`. Resolves
+  every pre-trigger row whose source row exists.
+  5. VERIFY no regression-bearing pre-trigger rows remain.
+  Two classes: both-NULL (role_id AND user_role_id both NULL)
+  and unresolved-source (non-null source id with no matching
+  roles / user_roles row). Both were hidden by the legacy
+  subquery policy and would become globally visible under the
+  new operator_id-NULL-is-global policy. Raises EXCEPTION with
+  a diagnostic query for whichever class is detected first.
+  6. VALIDATE CONSTRAINT role_audit_log_source_not_null.
+  Re-checks the CHECK against every pre-existing row. By this
+  point the verify in step 5 has already raised on any
+  both-NULL row; this is belt-and-suspenders.
+  7. RLS policy swap. By now the write gate has been live since
+  step 2, the shape gate has been live since step 3, the
+  backfill has resolved every pre-trigger row that could be
+  resolved, and the verify + validate have refused to proceed
+  on any pre-trigger row that couldn't. The simplified
+  direct-operator_id SELECT policy can take effect without
+  regressing tenant isolation.
+  8. Replace indexes (CONCURRENTLY). Drop the three legacy
+  non-operator-leading indexes; create five operator-leading
+  replacements (tenant + global partials, mirroring
+  auth_events_audit). Out-of-band relative to the policy swap
+  because CONCURRENTLY can't run inside a transaction.
+
+  Re-applying is a no-op: every IF EXISTS / IF NOT EXISTS / WHERE
+  operator_id IS NULL guard is set up so subsequent runs neither
+  error nor duplicate work.
+
+  Hard rules carried into this slice:
+
+  * `public.app_current_operator()` wrapper (item 4); bare
+  `current_setting()` is forbidden.
+  * Repository pattern is the primary defense; RLS is the backup.
+  This migration only changes RLS, never bypasses it.
+  * Append-only grant shape preserved; INSERT policy unchanged;
+  UPDATE / DELETE remain revoked from service_role.
+
+  ─── 1. Add operator_id column ─────────────────────────────────────
+
+## `202605010100_phase_9_0sigma_f_audit_logs_cutover_flag.sql`
+
+- **Applied:** 2026-05-01 01:00
+- **Title:** phase 9 0sigma f audit logs cutover flag
+- **Description:**
+
+  Phase 9.0Σ.f B.2 — feature flag: audit_logs cutover gate.
+
+  Seeds a global-scope `feature_flags` row that gates the auth-event
+  fan-out into the hash-chained `public.audit_logs` table from the B.2
+  writer boundaries (the AuthEventsAuditRepository repository seam, the
+  B41 `PostgresServicePrincipalJwtIssuanceGateway` raw-SQL seam, and
+  the `InvitedUserActivationRepository` raw-SQL seam).
+
+  Default `enabled = true`. Toggle to `false` for a one-shot rollback
+  if a deploy surfaces an unexpected fan-out incident; the legacy
+  `auth_events_audit` writes continue unchanged on either side of the
+  flag, so the audit posture never has a gap.
+
+  Idempotent: a `not exists` guard skips the seed on re-apply so a
+  manual operator override (already-applied `false` for rollback)
+  survives the migration replay. Plain `on conflict` would not work
+  here — `feature_flags` enforces global-scope uniqueness through a
+  partial index (`feature_flags_global_scope_idx`), not a named
+  constraint, so `on conflict on constraint <name>` is unavailable.
+
+## `202605020000_phase_11A_b42_proxy_migrations_applied.sql`
+
+- **Applied:** 2026-05-02 00:00
+- **Title:** phase 11A b42 proxy migrations applied
+- **Description:**
+
+  Phase 11A.B42 — proxy_migrations_applied registry + drift detection.
+
+  The `migration_apply_drift_count` Tier-1 health producer needs a
+  live source of truth for which migrations have been applied to the
+  target database. Without a registry, drift detection has nothing to
+  compare `db/migrations/` against and the producer renders unknown.
+
+  This migration creates two artefacts:
+  1. `public.proxy_migrations_applied` — append-only registry rows
+  (`migration_filename`, `applied_at`). The proxy startup writes
+  one row per file in `db/migrations/` it has observed since boot.
+  2. `public.proxy_migration_apply_drift()` — set-returning function
+  returning `(drift_count int, missing_migrations text[])`.
+  `drift_count` = number of files the producer was told about at
+  startup that the registry does not yet record. The producer maps
+  `drift_count >= 1` → red.
+
+  Hard rules:
+  * Append-only — no rows are ever updated or deleted.
+  * Operator-agnostic — this is a platform-wide registry, not
+  operator-scoped, so RLS is intentionally disabled here.
+  * No tenant identifiers stored.
+
+## `202605020001_phase_11A_3b_graphify_review_audit.sql`
+
+- **Applied:** 2026-05-02 00:01
+- **Title:** phase 11A 3b graphify review audit
+- **Description:**
+
+  Phase 11A.3b — graphify_review_audit append-only audit table.
+
+  Slice scope: when the F&F super_admin reviews Graphify-derived
+  graph candidates in the Corpus Admin "Graph candidates" tab, every
+  *rejected* (or edited-then-rejected) decision lands here. Approved
+  candidates are written to the canonical `public.graph_nodes` /
+  `public.graph_edges` tables (created in 9.0Σ.i, migration
+  `202604280008`); rejected candidates are NEVER written to those
+  canonical tables, so the AGE projection rebuild — which reads
+  canonical rows only — physically cannot surface a rejected
+  candidate to the advisor runtime.
+
+  Why a NEW table instead of reusing audit_logs:
+  * audit_logs (9.0Σ.f) is the global hash-chained system audit
+  trail. It carries one row per business action; that row's
+  `payload` is opaque to schema-level queries.
+  * graphify_review_audit captures the candidate payload itself
+  (node_key / edge_key shape, source provenance, confidence,
+  classification) so the F&F admin can re-render the rejected
+  candidate later for review or appeal without round-tripping
+  to the original graphify-out artifact (which is NOT shipped
+  as production truth, per the slice's hard constraint).
+  * The proxy still fans the rejection out to audit_logs via the
+  existing AuditLogsRepository so the global hash-chain stays
+  intact (the audit_logs payload references the audit_id from
+  this table for cross-walk).
+
+  Hard rules carried from CLAUDE.md and the 4-27 lock:
+
+  1. **Operator-scoped from creation.** Every row carries
+  `operator_id`; the tenant-leading B-tree index on
+  `(operator_id, decided_at desc)` folds the RLS policy probe
+  into the index lookup (CLAUDE.md "RLS performance discipline").
+
+  2. **RLS via wrapper functions.** The policy uses
+  `public.app_current_operator()` (9.0Σ.b); bare
+  `current_setting()` is forbidden by the lint at
+  `tool/rls_policy_lint.dart`.
+
+  3. **TIMESTAMPTZ for every datetime column.** Naive (non-tz)
+  types are banned in operator-scoped tables per CLAUDE.md
+  storage rule.
+
+  4. **Composite FK to `public.locations(operator_id, location_id)`.**
+  Same-operator location pointer; cross-operator location
+  reference is a database error.
+
+  5. **Append-only by grant shape.** service_role and forge_admin
+  both get INSERT and SELECT only; UPDATE and DELETE are
+  explicitly REVOKEd. Mirrors the auth_events_audit pattern
+  from 202604260001 (lines 42-50). A future grant change
+  cannot accidentally weaken the posture without an explicit
+  reviewer's notice.
+
+  6. **Zero foreign keys into `graph_nodes` / `graph_edges`.** The
+  audit table holds the rejection payload as JSONB — it does
+  NOT reference any canonical-graph row. This is the schema-
+  level guarantee that AGE traversal cannot reach audit data:
+  AGE projects from canonical FKs only. The
+  `age_unapproved_isolation_test` contract test asserts this
+  shape post-migration.
+
+  Live apply status:
+  * Will land on staging + Production1 alongside the rest of the
+  11A.3b slice. The migration is guarded by `create table if not
+  exists` + idempotent GRANT/REVOKE so a re-run is a no-op.
+
+## `202605020001_phase_11A_4b_gemini_provider_kind.sql`
+
+- **Applied:** 2026-05-02 00:01
+- **Title:** phase 11A 4b gemini provider kind
+- **Description:**
+
+  Phase 11A.4b — widen provider_credentials.key_kind to admit 'gemini'.
+
+  11A.4 (202605010000_phase_11A_4_provider_credentials.sql) locked the
+  key_kind set to ('anthropic', 'voyage', 'azure_db'). Block 2 adds
+  Gemini as a server-side LLM fallback (see Hard Promise #7 in
+  CLAUDE.md), which adds a fourth rotatable lane to the masked-display
+  ledger that backs the F&F Operations Console. The row shape, the
+  partial unique index, and the rotation transaction shape are all
+  unchanged — only the CHECK constraint widens.
+
+  The constraint is dropped and recreated under the same name so future
+  audits / dumps see a single named constraint per kind set, not a
+  chain of historical aliases.
+
+## `202605020100_phase_11A_b43_cache_telemetry_v2.sql`
+
+- **Applied:** 2026-05-02 01:00
+- **Title:** phase 11A b43 cache telemetry v2
+- **Description:**
+
+  Phase 11A.B43 — cache_telemetry_v2 / corpus_invalidation_events.
+
+  One append-only row per corpus commit so the F&F operations dashboard
+  can correlate prompt-cache hit-rate drops with corpus material changes.
+  Lever 1 (Anthropic prompt caching) keys cache entries on
+  `corpus_version`; when `OperatorScopedCorpusRepository.commitVersion`
+  supersedes the prior version, every dependent prompt-cache entry is
+  invalidated. Recording the event here lets dashboards answer
+  "did cache hit-rate just drop because we shipped a corpus update?"
+  without scraping repository commits.
+
+  Hard rules:
+  * Append-only — no rows are ever updated or deleted.
+  * Fleet-scope — `corpus_versions` has no `operator_id` (the corpus is
+  shared across the fleet), so this audit table also has no
+  operator_id. RLS is intentionally NOT enabled; the table stores no
+  tenant identifiers and is admin-only by GRANT posture.
+  * Behind feature flag — repository writes only fire when the proxy's
+  `cache_telemetry_v2` flag is true. The migration is unconditional
+  so the table exists ahead of the flag flip.
+
+## `202605020200_phase_11A_4c_kms_rollout_flags.sql`
+
+- **Applied:** 2026-05-02 02:00
+- **Title:** phase 11A 4c kms rollout flags
+- **Description:**
+
+  Phase 11A.4c — Per-lane feature flags for the GCP Secret Manager
+  rollout. Every flag starts OFF; production rollout flips one lane
+  at a time in this order: azure_db -> voyage -> gemini -> anthropic
+  (lowest-risk first, primary lane last).
+
+  When the flag for a given key_kind is OFF, [KmsLaneRouter] dispatches
+  rotation writes to [KmsStubProvider] (the existing 11A.4 behavior —
+  audit-only, kms://stub/<uuid> pointer). When ON, rotation writes
+  land in [GcpSecretManagerKmsProvider] which:
+  1. Adds a new version under projects/<P>/secrets/forge-flow-<kind>-api-key
+  2. (For runtime-read lanes only) deploys a new Cloud Run revision so
+  every instance picks up the new Secret Manager version.
+
+  Rollback: flip the flag back to false. The `kms_stub_provider` is
+  still wired and ready to serve. Already-rotated rows in
+  provider_credentials with `kms://gcp-secret-manager/...` pointers
+  stay valid — they're audit history, not active runtime references.
+
+## `202605020300_phase_9_firebase_uid_text.sql`
+
+- **Applied:** 2026-05-02 03:00
+- **Title:** phase 9 firebase uid text
+- **Description:**
+
+  Phase 9 MFA production hardening - Firebase UID text repair.
+
+  Earlier Phase 9 schema work assumed Firebase Identity Platform UIDs would
+  always be pre-generated UUID strings. Live Firebase users can have arbitrary
+  UID strings, and MFA removal workers must target that real Firebase UID, not
+  the local app user_id. Convert the link column to text while preserving
+  existing UUID-shaped placeholder values.
+
+## `202605020400_phase_11A_7_feature_flags_admin_columns.sql`
+
+- **Applied:** 2026-05-02 04:00
+- **Title:** phase 11A 7 feature flags admin columns
+- **Description:**
+
+  Phase 11A.7 — feature_flags admin columns.
+
+  The 11A.7 admin Feature Flags screen needs three additional columns
+  on `public.feature_flags` that the launch schema in
+  `db/migrations/202604250005_advisor_cloud_foundation.sql` did not
+  carry:
+
+  * `kind` text not null default 'standard'
+  Marks a flag as `standard` (default) or `destructive`. The admin
+  UX renders a DANGER chip for destructive flags and forces a
+  confirm-by-typing-flag-name dialog before letting a super_admin
+  toggle one. Examples: `circuit_breaker_open`, future Phase 12
+  workflow kill switches. The classification lives on the row so
+  the screen does not need a hard-coded allowlist that drifts.
+
+  * `description` text null
+  One-line operator-facing description for the flag list. Optional
+  so the existing seeded rows (which were created without a
+  description) keep working.
+
+  * `updated_by` text null
+  Stores the `user_id` (UUID-shaped string) of the actor who last
+  toggled the flag. Used by the screen to render the "last toggle"
+  metadata column. Plain `text` (not `uuid`) so service-principal
+  toggles can carry the `sp:<id>` shape used by item 14, and so
+  migration-only seeds can leave it null without a CHECK violation.
+  Full-fidelity attribution still flows through `audit_logs` /
+  `auth_events_audit` — this column is the cheap denormalized
+  read for the admin grid.
+
+  Idempotent: every column add uses `if not exists`, every column
+  comment uses `comment on column`, and the destructive-flag seed
+  update uses `where kind <> 'destructive'` so re-applies don't
+  bounce the column for an operator override (a super_admin who
+  intentionally re-classified a flag through the 11A.7 admin UX).
+
+## `202605020452_hardening_auth_login_attempts.sql`
+
+- **Applied:** 2026-05-02 04:52
+- **Title:** hardening auth login attempts
+- **Description:**
+
+  HARD-B - public.auth_login_attempts table for the auth lockout
+  ledger. Authority: docs/contracts/hardening_auth_protection_contract.md
+  "Lockout Schema".
+
+  Records every credential attempt against the proxy login surface so
+  the lockout enforcer can count failures in the rolling 15-minute
+  window per (user_email_hash, ip_hash) and trip the 5-failure /
+  423-Locked threshold without leaking which arm of the window the
+  failure landed in. The table also carries the per-tenant rows the
+  post-resolution success/failure path writes once the email maps to
+  a known operator.
+
+  Hard rules (CLAUDE.md + 9.0Sigma.b RLS wrappers):
+
+  1. **Tz-naive timestamp columns are banned.** Every timestamp
+  column is `timestamptz`. The partition driver (pg_partman) is
+  registered on a derived `attempted_date date` so daily
+  partition pruning works without a `timestamp` column.
+
+  2. **RLS performance discipline (CLAUDE.md).** Every B-tree index
+  that carries `operator_id` leads with it; the anonymous-lookup
+  index leads with `(user_email_hash, attempted_at desc)` so the
+  pre-tenant lookup the proxy runs (no scope resolved yet) hits
+  the same probe shape. RLS policies call the 9.0Sigma.b wrapper
+  functions; bare `current_setting()` is forbidden.
+
+  3. **Append-only by grant shape.** service_role and forge_admin
+  get INSERT and SELECT only. UPDATE and DELETE require partition
+  drop via the DBA cadence (audit retention discipline).
+
+  4. **Retention via pg_partman.** Daily range partitioning aligned
+  with audit_logs (202604280005_phase_9_0sigma_f_audit_logs.sql).
+  Anonymous-scope rows (operator_id IS NULL) age out at 30 days
+  via partition drop; tenant-bound rows ride the audit_logs
+  retention window. The retention sweep is documented next to
+  the audit_logs partition runbook.
+
+  5. **Sensitive fields are never stored in plaintext.** Email is
+  stored as `bytea` SHA-256 (the proxy hashes the normalized
+  email before insert). IP is stored as `bytea` SHA-256 (the
+  proxy hashes the inbound client IP before insert). The
+  `user_agent_class` column stores a coarse classifier
+  ("desktop", "mobile", "bot", "unknown") - never the raw
+  User-Agent string.
+
+  6. **operator_id nullable on purpose.** The login route hits this
+  table BEFORE Firebase scope is resolved (anonymous lookups by
+  `(user_email_hash, ip_hash)`). Once a successful login resolves
+  a tenant, the success row carries `operator_id` and the per-
+  tenant RLS policy admits it. Mixed nullability is the locked
+  shape per the contract.
+
+## `202605020500_hardening_auth_rls_to_wrappers.sql`
+
+- **Applied:** 2026-05-02 05:00
+- **Title:** hardening auth rls to wrappers
+- **Description:**
+
+  HARD-F — defense-in-depth re-assert of wrapper-based auth RLS policies.
+
+  Re-applies the wrapper-function rewrite that 202604280001 already
+  landed for the 12 auth tables originally defined in 202604260000.
+  The rewrite drops + recreates each per-tenant / per-user policy so
+  bare `current_setting('app.<name>', true)::uuid` reads cannot creep
+  back onto these tables — for example after a hand-edit on staging
+  or after an out-of-band restore that resurrected the 9.2 shape.
+
+  All four wrapper functions
+  (`app_current_operator`, `app_current_location`, `app_current_actor_user`,
+  `app_acting_as_operator`) live in 202604280000_phase_9_0sigma_b_rls_wrappers.sql
+  and are frozen — this migration depends on them but never redefines
+  them.
+
+  Behavioral parity: every policy below matches the predicate shape the
+  202604280001 rewrite uses. Append-only audit grants on
+  `auth_events_audit` and `role_audit_log` keep `with check (true)` on
+  INSERT so failed-tenant logins still write an audit row.
+
+  Idempotency posture (HARD-F hard constraint): every DROP uses `if
+  exists` and the migration runs in `psql --single-transaction` so the
+  tables are never policy-less between statements. Re-running this
+  migration is a no-op when 202604280001 has already been applied.
+  Running it on a database that somehow lost the 202604280001 rewrite
+  restores the wrapper-based policies in one atomic transaction.
+
+  Lint coverage: `tool/rls_policy_lint.dart` rejects any new migration
+  whose policy body reads `current_setting` directly against an `app.`
+  GUC. The two files that historically held the bare reads
+  (202604260000 and a hypothetical out-of-band rewrite) are listed in
+  `tool/rls_policy_lint_allowlist.txt`. Every policy below uses the
+  wrappers and therefore needs no allowlist entry.
+
+  Tables touched (16 policies across 12 tables, matching 202604280001):
+
+  public.permission_keys           — permission_keys_authenticated_select
+  public.roles                     — roles_per_tenant_select / _modify
+  public.role_permissions          — role_permissions_per_tenant_select / _modify
+  public.user_roles                — user_roles_per_tenant
+  public.auth_sessions             — auth_sessions_per_user
+  public.mfa_factors               — mfa_factors_per_user
+  public.tncs_acceptances          — tncs_acceptances_per_tenant
+  public.password_history          — password_history_per_user
+  public.auth_invites              — auth_invites_per_tenant
+  public.auth_events_audit         — auth_events_audit_per_tenant_select / _append_insert
+  public.role_audit_log            — role_audit_log_per_tenant_select / _append_insert
+  public.external_identity_links   — external_identity_links_per_tenant
+
+  ─── Drop existing policies ────────────────────────────────────────
+
+  Ordered by table for readability; the runner applies the whole
+  migration as one transaction so order does not matter for atomicity.
+
+## `202605021000_phase_hardh_admin_idempotency.sql`
+
+- **Applied:** 2026-05-02 10:00
+- **Title:** phase hardh admin idempotency
+- **Description:**
+
+  HARD-H — admin request idempotency (cross-tenant admin operations).
+
+  The Phase 9 `proxy_requests` table provides idempotency for tenant-
+  scoped routes (operator_id + location_id NOT NULL with composite FK
+  to `public.locations`). F&F admin operations driven by super_admin /
+  ff_support actors are cross-tenant — the actor JWT carries no
+  operator_id, and the route may legitimately mutate global rows
+  (e.g. `feature_flags` with operator_id IS NULL). proxy_requests
+  cannot host these because:
+
+  1. operator_id is NOT NULL (no value to write for cross-tenant
+  admin actions);
+  2. (operator_id, location_id) composite FK requires a real
+  locations row — admin actions don't have one.
+
+  This table provides idempotency for those routes. Scope axis is
+  (idempotency_key) — admin actors are global and the route is the
+  only producer, so a single-key UNIQUE is sufficient. `request_type`
+  is recorded so a key reused across different admin operations
+  surfaces as a `idempotency_key_conflict` 409 (matching the
+  service-principal idempotency contract).
+
+  Live target: HARD-H feature flags admin route. Other admin routes
+  (operators, locations, pricing tiers, integrations) can adopt the
+  same store as their idempotency posture is rolled out.
+
+## `202605021500_phase_9_0sigma_l_rls_depth.sql`
+
+- **Applied:** 2026-05-02 15:00
+- **Title:** phase 9 0sigma l rls depth
+- **Description:**
+
+  Phase 9.0Σ.l — RLS defense-in-depth on proxy_requests + feature_flags.
+
+  Closes the P1 gap from `docs/POST_HARDENING_FOLLOWUPS.md`: both tables
+  were created in `202604250005_advisor_cloud_foundation.sql` with RLS
+  ENABLED but only carried the permissive `*_service_role_all using
+  (true) with check (true)` stub policies the cloud-foundation drop
+  shipped. Today's posture is therefore application-layer only —
+  `OperatorScopedRepository` injects the tenant predicate, and the
+  service-role-only policies do not assert anything else. This slice
+  adds the database-side second layer.
+
+  Authority order:
+  1. CLAUDE.md "RLS-Ready Schema" — two-layer defense; repository is
+  primary, RLS is the backup.
+  2. `phase_9_scalability_decisions_2026-04-27.md` item 4 — RLS UUID
+  wrappers (every operator-scoped policy reads tenant context
+  through `app_current_operator()` + `app_current_location()` so
+  the planner can fold the predicate into the tenant-leading
+  index).
+  3. `phase_9_scalability_decisions_2026-04-27.md` RLS performance
+  discipline — every B-tree index leads with `operator_id`. The
+  `proxy_requests` indexes from `202604250007_advisor_rls_index_
+  hardening.sql` already comply (PK + the
+  `proxy_requests_operator_location_idempotency_key_key` UNIQUE
+  lead with `operator_id, location_id`); this migration does not
+  add or rewrite any index.
+  4. `202604280000_phase_9_0sigma_b_rls_wrappers.sql` — the wrapper
+  functions this migration calls.
+
+  Behavioral parity:
+
+  * proxy_requests: location-scoped — proxy writes carry both
+  operator_id and location_id (tenant transactions inject both
+  GUCs). Policy filters on `(operator_id, location_id)` so a
+  stray request whose location belongs to a different operator
+  cannot be read or written even if the application-layer scope
+  check is bypassed.
+
+  * feature_flags: three logical scopes (global / operator-wide /
+  location-scoped), enforced today by partial unique indexes from
+  202604250005. The policy mirrors that shape — global rows
+  (operator_id IS NULL) are visible to every tenant, operator/
+  location-scoped rows are visible only to their owning operator.
+  WITH CHECK is the asymmetric half: a tenant CANNOT insert or
+  update a global-scope row through this policy. Migration-side
+  seeds (the `audit_logs_cutover_enabled` and KMS rollout flags
+  in 202605010100 and 202605020200) run as the deployment role,
+  which owns the table and is therefore RLS-exempt; super-admin
+  mutations from the 11A.7 admin Feature Flags screen elevate to
+  `forge_admin BYPASSRLS` via `runAsSystem`. Net effect: tenants
+  read their own + global flags but can only mutate their own.
+
+  Idempotency: every DROP uses `if exists`; the file applies in one
+  transaction (`psql --single-transaction`), so the tables are never
+  policy-less between statements. Re-runs are no-ops.
+
+  Lint coverage: every CREATE POLICY body below reads tenant context
+  through wrapper functions, so `tool/rls_policy_lint.dart` does not
+  need an allowlist entry for this file.
+
+  ─── proxy_requests: drop permissive stub, add per-tenant policy ────
+
+## `202605021600_phase_11A_7_feature_flags_forge_admin_grants.sql`
+
+- **Applied:** 2026-05-02 16:00
+- **Title:** phase 11A 7 feature flags forge admin grants
+- **Description:**
+
+  Phase 11A.7 follow-up -- feature_flags runtime grants.
+
+  The admin Feature Flags repository and the proxy startup/runtime flag
+  checks run through TenantTransactionWrapper.withSystem, which sets the
+  transaction role to forge_admin. BYPASSRLS skips row policies, but it does
+  not grant table privileges, so forge_admin still needs explicit
+  SELECT/UPDATE on public.feature_flags.
+
+## `202605021700_phase_11A_health_age_graph_bootstrap.sql`
+
+- **Applied:** 2026-05-02 17:00
+- **Title:** phase 11A health age graph bootstrap
+- **Description:**
+
+  Phase 11A health AGE graph bootstrap.
+
+  The strict /health AGE probe executes a real cypher MATCH against the
+  canonical graph name. An empty graph is healthy, but a missing graph is
+  schema/config drift. Keep the graph namespace present even before corpus
+  projection has materialized vertices or edges.
+
+## `202605021710_phase_11A_health_age_runtime_grants.sql`
+
+- **Applied:** 2026-05-02 17:10
+- **Title:** phase 11A health age runtime grants
+- **Description:**
+
+  Phase 11A health AGE runtime grants.
+
+  The proxy health runner executes dependency probes through
+  TenantTransactionWrapper.runAsSystem, which assumes the runtime
+  Postgres role `forge_admin`. Apache AGE keeps its functions/types in
+  ag_catalog and graph label tables in the graph-named schema. Creating the
+  extension/graph as the database owner is not enough for that runtime role:
+  it still needs explicit schema/function/table privileges before a strict
+  cypher MATCH can prove the graph path is healthy.
+
+## `202605021800_hardening_auth_login_attempts_index_rekey.sql`
+
+- **Applied:** 2026-05-02 18:00
+- **Title:** hardening auth login attempts index rekey
+- **Description:**
+
+  HARD-B follow-up: re-key auth_login_attempts indexes now that the
+  repo-wide operator-leading lint covers this table.
+
+  The email-hash lockout index remains intentionally cross-tenant:
+  the login lockout enforcer evaluates `(email_hash, ip_hash)` before
+  Firebase/operator scope exists and runs through the forge_admin
+  BYPASSRLS path. The IP-failure triage index, however, supports
+  operator-side review and must lead with operator_id.
+
+## `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
+
+- **Applied:** 2026-05-02 19:00
+- **Title:** phase 11A 3a corpus versions seed existing chunks
+- **Description:**
+
+  Phase 11A.3a follow-up: seed the corpus version ledger from any
+  active corpus chunks that were loaded before the admin ledger
+  existed.
+
+  11A.3a intentionally made advisor_source_chunks.version_id
+  nullable so pre-existing staging loads would keep working. The
+  live admin screen, however, reads corpus_versions plus the
+  corpus_version_chunks membership table. If staging already has
+  active chunks but an empty ledger, the screen truthfully says
+  "No corpus versions yet" even though retrieval data exists. This
+  one-time seed creates a baseline ledger row only for that state.

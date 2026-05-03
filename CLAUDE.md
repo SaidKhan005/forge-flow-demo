@@ -46,20 +46,19 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 ## Workflow
 
-- **Phase loop**: post-commit hook refreshes graph → Claude plans next slices
-  off the graph → Codex reviews + drafts prompts → parallel worktrees ship →
-  audit → loop.
+- **Phase loop**: graph refresh → Claude proposes prompts → parallel worktrees
+  implement → Codex reviews against contracts/phase docs → Claude fixes until
+  approved → Codex updates docs → Claude handles requested git actions.
 - **Parallel lanes**: Codex on master; Claude in `.claude/worktrees/<lane>`.
   Multiple phases may run simultaneously. Rules:
-  `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
+  `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
 - **Between batches**: Claude on master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md`
   to audit the merged batch, lean trackers/phase docs, archive, and emit next prompts.
-- **Migration drift scanner**: after any slice adds `db/migrations/*.sql`, run
-  `dart run tool/migration_drift_scanner.dart --fix --strict-docs`. It updates
-  the staging setup cutoff, writes `build/reports/migration_drift_report.md`,
-  and flags tracker/runbook authority docs that still need manual queue/count
-  wording updates. Keep `dart run tool/migration_cutoff_lint.dart` as the hard
-  CI-style gate.
+- **Migration drift**: after `db/migrations/*.sql` changes, run
+  `dart run tool/migration_drift_scanner.dart --fix --strict-docs`, then
+  `dart run tool/migration_cutoff_lint.dart`.
+- **Runtime acceptance**: runtime-exposed slices follow
+  `docs/contracts/slice_runtime_acceptance_contract.md`.
 - **Main chat is read-only across worktrees** when worktrees are running
   (observe/diff/review only). Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked.

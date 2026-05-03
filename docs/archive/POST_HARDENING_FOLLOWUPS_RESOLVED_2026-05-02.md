@@ -21,6 +21,20 @@ The current live tracker is at `docs/POST_HARDENING_FOLLOWUPS.md`.
 
 ---
 
+## 2026-05-03 Follow-up Cleanup
+
+These resolved items were removed from the live follow-up file during the
+2026-05-03 docs/code audit so the next execution sees only open work.
+
+| Item | Resolved by | Evidence |
+|---|---|---|
+| P1 - Corpus graph candidates 503 | Sanitized candidate artifacts packaged into the advisor proxy runtime path | `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md` |
+| P1 - Staging `audit_chain_lag_seconds` red | Action-approved staging audit-anchor run `forge-flow-audit-anchor-zmsvj` anchored the 2026-05-02 chain | `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md` |
+| P2 - MFA test coverage row | MFA test parcels had already closed and were archived in the 2026-05-02 batch | this archive, P2 MFA sections |
+| P3 - HARD-D `admin_idempotency_cache` name drift | `docs/contracts/hardening_feature_flag_idempotency_contract.md` now names HARD-H `admin_request_idempotency` as the shipped durable backstop | `db/migrations/202605021000_phase_hardh_admin_idempotency.sql` |
+
+---
+
 ## P1 — `proxy_requests` and `feature_flags` lack RLS enable — RESOLVED 2026-05-02 (slice 9.0Σ.l)
 
 Both tables (created in `202604250005_advisor_cloud_foundation.sql`) carry

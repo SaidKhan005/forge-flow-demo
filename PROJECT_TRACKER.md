@@ -8,95 +8,25 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 ## Now
 
 - **Active**: `10.5.0` daypart toggle scaffold + `10.5.1` bucketing
-  engine accepted (worktree `.claude/worktrees/gracious-rosalind-19b985`,
-  branch `claude/gracious-rosalind-19b985`). 10.5.0 surface-only seam:
-  segmented Whole Day | Daypart pills above SHIFT OUTPUTS, daypart lens
-  renders SERVICE PERIODS scaffold (Lunch/Dinner/Late Night cards from
-  `demoDefinitions`) with live ACTIVE NOW chip; whole-day stays default
-  + authoritative. 10.5.1 pure-function `DaypartBucketer`
-  (POS / labor punch with split / reservation) consumes
-  `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; 16
-  domain tests cover the punch-split worked example with a
-  non-service gap, the 15:00 inclusive-end tie-break, the Late Night
-  02:00 Sun-calendar → Sat business-date roll-over, and the
-  missing-IANA-tz `MissingTimezoneError` posture. Per-period read
-  service + primary-driver teaching queued. Walkthroughs at
-  `docs/_walkthroughs/10.5.0.md` + `docs/_walkthroughs/10.5.1.md`.
+  engine accepted; `10.5.2` per-period read service and `10.5.3+`
+  primary-driver teaching are next. Evidence:
+  `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`.
 - 11A Operations Console foundation now spans `11A.0`–`4c`/`7`/`UX.health`
-  accepted; `11A.5`/`11A.6` blocked on B45/B47 producers (B44 graph producers
-  delivered — see `docs/_walkthroughs/B44.md`).
-- **Live staging console remediation (2026-05-03 branch)**: Corpus -> Graph
-  candidates 503 is fixed in branch by shipping sanitized candidate artifacts
-  with the advisor proxy image at `/app/graphify-out/candidates`.
-  `audit_chain_lag_seconds` was not future UI/backend wiring; after
-  action-time approval, staging Cloud Run execution
-  `forge-flow-audit-anchor-zmsvj` anchored the 2026-05-02 chain and `/health`
-  now reports that metric green. Overall staging health remains yellow due to
-  other producer/ops-data signals outside this branch's two requested fixes.
-- **Staging console performance guardrail (2026-05-03, PR #68)**:
-  branch `codex/staging-perf-audit` measured the real staging console and
-  proxy, not a mock replacement. Tested admin URL:
-  `https://forge-flow-admin-console-rf7nosnoka-pd.a.run.app`
-  (latest redeploy `forge-flow-admin-console-00004-6xw`, image tag
-  `20260503033441`; prior measured baseline deploy was
-  `forge-flow-admin-console-00003-shn`, image tag `20260503025703`);
-  local browser-served audit URL: `http://127.0.0.1:7362/?audit=after`;
-  proxy URL: `https://forge-flow-staging-proxy-rf7nosnoka-pd.a.run.app`
-  (`forge-flow-staging-proxy-00051-7x5`, digest
-  `sha256:f4dbd6c7a95c1efeb74322c8ae65655341e762dabb96244d1b037de02cecc668`).
-  Baseline -> after deferred the Graph candidates fetch until that tab is
-  visited and first prevented overlapping `/health` polls.
-  Follow-up `2026-05-03`: Health is now a manual confirmed diagnostic only;
-  opening the Health screen does not call `/health`, and the operator must
-  confirm a read-only check after seeing the 15-30+ second staging dependency
-  warning.
-  Live browser-served smoke after the redeploy loaded the staging sign-in
-  screen from `00004-6xw` with HTTP 200, no console errors, no failed
-  requests, and zero `/health` requests before sign-in.
-  Safe staging load results: admin index c4 p95 `330.4ms`; gzip
-  `main.dart.js` c4 p95 `978.9ms` (995,111 byte gzip transfer by `curl`);
-  proxy `/readyz` c4 p95 `171.3ms`; proxy `/health` was intentionally not
-  escalated after c1/c2 showed real instability/timeouts
-  (c1 p50 `14575.6ms`, 60% non-green; c2 p50 `20479.4ms`, 83.3%
-  non-green). New repeatable script:
-  `dart run tool/perf_gate/staging_console_probe.dart --run --admin-url=<url> --proxy-url=<url>`;
-  add `--enforce-budgets` in release checks to fail on current starting
-  guardrails (admin index p95 <= 750ms, `main.dart.js` gzip p95 <= 1500ms
-  and <= 1.25MB transfer, proxy `/readyz` p95 <= 500ms). Post-manual-health
-  redeploy verification at `2026-05-03T03:41:29Z` passed those budgets:
-  admin index c4 p95 `184.1ms`, `main.dart.js` gzip c4 p95 `1191.1ms` /
-  `995566` bytes, proxy `/readyz` c4 p95 `238.8ms`, 0% error rate on
-  default probes.
-  Authenticated screen/action timing remains pending explicit credential-send
-  approval in the in-app browser.
-- **Recently accepted (2026-05-02 sprint, PRs #50–54)**: `7.58.0` Primary
-  Driver contract pin (test-only, 22 assertions / 12 fixtures, 31 of 32 rules
-  MET, F-1 deferred to 7.58.UX.5); `11A.3a` operator-picker (Graph candidates
-  commit unblocked); `9.0Σ.l` RLS depth on `proxy_requests` + `feature_flags`
-  (wrapper-based policies, migration `202605021500`); admin gateway
-  idempotency-key parcel (operator/pricing/integration + proxy
-  `_runAdminIdempotent`); MFA test parcel (4 files, 45 tests,
-  `lib/services/mfa/` 87.3% coverage).
-- **Recently accepted (2026-05-02 follow-up)**: `7.58.UX.5` Variance day-row
-  renderer honesty (F-1 / F-6 / F-7 closed). `LeverCards.lookup` helper +
-  `LeverCardNotYetAvailable` widget; 8 renderer sites migrated off the silent
-  `coversDown` fall-through; closed-row `_driverLabel` lowercased; inline
-  `_LeverBadge` switched to `LeverCardData.metric` copy. Contract test stays
-  green (22/22); regression suite 181/181. Phase 7.58 has zero DRIFT.
-- **Recently accepted (2026-05-02 evening, PRs #60-66)**: `10.5.1`
-  bucketing engine, `7.61.0` driver-key audit, `10a.0` realtime scaffold,
-  B44 graph health producer family, postgres repository test batch 2, admin
-  MFA challenge parity, and staging admin console stabilization. Follow-up
-  migration queue now extends through `202605021900`.
-- **Earlier 2026-05-02 batch**: `HARD-A`–`HARD-H` hardening (PRs #41–49);
-  `11A.3b`, `11A.4`/`4b`/`4c`, `11A.7`, `11A.UX.health`; `G.2` boundary
-  monitor; `7.58.5` variance row purity. Hardening contracts `Status: Closed`
-  in `docs/contracts/hardening_*.md`.
+  accepted; B44/B45/B47 health producers are code-delivered, so
+  `11A.5`/`11A.6` are ready for UX/observability implementation.
+- **2026-05-03 staging runtime/perf remediation**: graph candidates packaging,
+  staging audit-anchor recovery, manual Health diagnostics, and perf guardrails
+  are captured in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
+  Durable future-slice rules live in
+  `docs/contracts/slice_runtime_acceptance_contract.md`. Authenticated
+  screen/action timing still needs explicit credential-send approval.
+- **Recent accepted batches**: PRs #41-66 closed HARD-A-H, 7.58/7.61,
+  10a.0, 10.5.0/1, 11A foundation/B44, admin MFA/staging stabilization,
+  and postgres/MFA test parcels. Details live in phase docs, walkthroughs, and
+  `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
-  Postgres on CMK (`forge-flow-production1-pg-cmk`). 32 baseline migrations
-  applied (`202604250000`–`202604280013`); **27 newer pending Production1
-  apply** (`202604280014`–`202605021900`) — see runbook +
-  `docs/POST_HARDENING_FOLLOWUPS.md` P0.
+  Postgres on CMK (`forge-flow-production1-pg-cmk`); post-baseline migration
+  apply remains the top operational gate.
 - **Cloud Armor**: preview-only at sensitivity 2; awaits ≥3 clean post-tuning
   days + approval before enforcement.
 - **iOS physical device matrix**: deferred until Apple device/signing lane
@@ -138,7 +68,7 @@ WeeklyPlanSnapshot → Shift → Variance → History → Learn.
 
 Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run
 in parallel. File ownership, walkthrough, merge sequencing:
-`docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
 
 Sprints PRs #50–66 closed (incl. `7.58.UX.5`, `10.5.0`, `10.5.1`,
 `7.61.0`, `10a.0`, B44 graph producers, postgres repo + MFA adapter test
@@ -155,8 +85,8 @@ runbook companion). Phase 7.58 is zero-DRIFT. Next candidates by readiness:
    per phase doc.
 5. **`7.61` pre-Phase-8 cleanup** — driver-key audit; gated before Phase 8.
 
-**Then queued (rough order):** `11A.5`/`11A.6` (after B45/B47 producer
-wiring; B44 graph producers already delivered), `9.5`, `9.75`, `8`/`8R`/`8.5`,
+**Then queued (rough order):** `11A.5`/`11A.6` (health producers delivered;
+surface work next), `9.5`, `9.75`, `8`/`8R`/`8.5`,
 `11b`/`11b.1`/`11b.2`, `12.*`, `9.8`, `cutover.0b`–`0-5`.
 
 ## Phase Board
@@ -166,7 +96,7 @@ Live board lists active + queued only.
 
 | Phase | Status | Plan |
 | --- | --- | --- |
-| `11A` foundation | active; `0`–`4c`/`7`/`UX.health` accepted; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
+| `11A` foundation | active; `0`–`4c`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `5`/`6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
 | `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted; per-period read service + driver teaching queued | `phase_10_5/*` |
@@ -190,17 +120,15 @@ Live board lists active + queued only.
 - `cutover.0b` Tier-M perf gate is the launch blocker.
 - Production migrations use online-migration patterns once real operator data
   exists; transition point is `cutover.4` accepting.
-- After any slice adds `db/migrations/*.sql`, run
-  `dart run tool/migration_drift_scanner.dart --fix --strict-docs` before
-  tracker/runbook closeout. It updates the staging setup cutoff, emits
-  `build/reports/migration_drift_report.md`, and flags authority docs that
-  still need manual migration queue/count wording. `tool/migration_cutoff_lint.dart`
-  remains the hard cutoff gate.
+- Migration changes require
+  `dart run tool/migration_drift_scanner.dart --fix --strict-docs`, then
+  `dart run tool/migration_cutoff_lint.dart`.
+- Runtime-exposed slices must satisfy
+  `docs/contracts/slice_runtime_acceptance_contract.md`.
 - Before future staging console performance claims, run
   `dart run tool/perf_gate/staging_console_probe.dart --run --admin-url=<url> --proxy-url=<url>`
-  and attach the JSON output; use `--enforce-budgets` for PR/release gates.
-  Use `--include-health` only for a deliberate, bounded health probe; do not
-  mask red/yellow `/health` producer state as a frontend performance fix.
+  and attach the JSON output. Use `--enforce-budgets` for PR/release gates;
+  use `--include-health` only for a deliberate, bounded health probe.
 - 35 scalability locks (`phase_9_scalability_decisions_2026-04-27.md`) are
   authoritative; the 10 Hard Promises in `CLAUDE.md` are durable.
 
