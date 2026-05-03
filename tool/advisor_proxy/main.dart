@@ -31,6 +31,7 @@ import 'dart:io';
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
 import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
@@ -346,6 +347,15 @@ Future<void> main(List<String> args) async {
   final realtimeOutboxRepository = EventOutboxRepository(
     TenantTransactionWrapper(productionBindings.tenantPool),
   );
+  // Phase 10a.2 — dead-letter repository shares the tenant pool so
+  // the MOVE CTE inherits the same `withTenant` boundary as the
+  // claimBatch read; the per-tenant RLS policy admits both writes
+  // inside the single transaction. Defaults to nullable on the
+  // bridge worker so demo / scaffold callers without a dead-letter
+  // table keep working.
+  final realtimeDeadLetterRepository = EventOutboxDeadLetterRepository(
+    TenantTransactionWrapper(productionBindings.tenantPool),
+  );
   final realtimeAdminWrapper = TenantTransactionWrapper(
     productionBindings.adminPool,
   );
@@ -383,9 +393,16 @@ Future<void> main(List<String> args) async {
     exitCode = 78;
     return;
   }
+  // Phase 10a.2 — resolve EVENT_OUTBOX_DLQ_CAP from env (default 5).
+  // Operators raise this when triaging vendor-side outages and lower
+  // it when the live queue is filling with poison-pill rows. The
+  // bridge logs every dead-letter MOVE with attempt_count + cap so
+  // log search can correlate cap changes with DLQ-rate changes.
+  final realtimeDlqCap = resolveEventOutboxDlqCap(Platform.environment);
   final realtimeBridge = RealtimeBridgeWorker(
     listener: realtimeOutboxListener,
     outboxRepository: realtimeOutboxRepository,
+    deadLetterRepository: realtimeDeadLetterRepository,
     publisher: realtimeBridgePublisher,
     locationResolver: _BootstrapLocationResolver(
       adminWrapper: realtimeAdminWrapper,
@@ -393,6 +410,7 @@ Future<void> main(List<String> args) async {
     operatorDiscoverer: _PostgresOperatorDiscoverer(
       adminWrapper: realtimeAdminWrapper,
     ).discover,
+    dlqCap: realtimeDlqCap,
     logger: _logRealtimeBridgeEvent,
   );
   try {
@@ -698,11 +716,17 @@ class _PostgresOperatorDiscoverer {
 /// log() helper. Names only — the operator id is fine to log
 /// (already in the request log context elsewhere); errors are
 /// stringified.
+///
+/// Phase 10a.2 — `deadLettered` + `deadLetterMoveFailed` carry
+/// attempt_count + cap so log search can spot rows that crossed the
+/// cap and rows whose MOVE failed transiently.
 void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
   final fields = <String, Object?>{
     if (event.operatorId != null) 'operator_id': event.operatorId,
     if (event.outboxId != null) 'outbox_id': event.outboxId,
     if (event.topic != null) 'topic': event.topic,
+    if (event.attemptCount != null) 'attempt_count': event.attemptCount,
+    if (event.cap != null) 'dlq_cap': event.cap,
     if (event.error != null) 'error_type': event.error.runtimeType.toString(),
     if (event.error != null) 'error_message': event.error.toString(),
     if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
@@ -738,6 +762,18 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
       log(
         LogSeverity.warning,
         'realtime.bridge.mark_delivered_failed',
+        fields: fields,
+      );
+    case RealtimeBridgeLogKind.deadLettered:
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.dead_lettered',
+        fields: fields,
+      );
+    case RealtimeBridgeLogKind.deadLetterMoveFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.dead_letter_move_failed',
         fields: fields,
       );
   }

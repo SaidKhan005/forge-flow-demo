@@ -184,7 +184,11 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
     },
     'event_outbox': <String, Object?>{
       'status': 'green',
-      'metrics': <String>['event_outbox_undelivered_count'],
+      'metrics': <String>[
+        'event_outbox_undelivered_count',
+        // Phase 10a.2 — DLQ depth alongside the live undelivered metric.
+        'event_outbox_dlq_depth',
+      ],
       'owner': 'Phase 10a',
     },
     'audit_chain': <String, Object?>{
@@ -430,6 +434,21 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
       'owner': 'Phase 10a',
       'observed_at': '2026-05-01T12:00:00.000Z',
       'thresholds': <String, Object?>{'yellow': 60, 'red': 300},
+      'metadata': <String, Object?>{'tier': 2},
+    },
+    // Phase 10a.2 — DLQ depth metric (F&F-internal /health surface;
+    // no operator-facing tile per lean cut 2).
+    'event_outbox_dlq_depth': <String, Object?>{
+      'status': 'green',
+      'value': 0,
+      'unit': 'count',
+      'description':
+          'Rows sitting in event_outbox_dead_letter awaiting operator '
+          'triage.',
+      'source': 'event_outbox_dead_letter',
+      'owner': 'Phase 10a',
+      'observed_at': '2026-05-01T12:00:00.000Z',
+      'thresholds': <String, Object?>{'yellow': 1, 'red': 100},
       'metadata': <String, Object?>{'tier': 2},
     },
     'partition_count_active': <String, Object?>{

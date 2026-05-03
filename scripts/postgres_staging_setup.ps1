@@ -46,6 +46,7 @@ Write-Host '7. Apply migrations in order with `psql -v ON_ERROR_STOP=1` against'
 Write-Host '   $env:POSTGRES_ADMIN_URL, starting with'
 Write-Host '   db/migrations/202604250000_advisor_roles.sql and continuing'
 # MIGRATION_CUTOFF_BEGIN
+Write-Host '   through 202605040300_phase_10a_2_dead_letter.sql.'
 Write-Host '   through 202605040200_phase_9_8_email_provider.sql.'
 # MIGRATION_CUTOFF_END
 Write-Host ''
