@@ -129,9 +129,12 @@ tools, exports, and workflow monitors as performance-sensitive by default.
 Production1 is current through
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` as of
 2026-05-03. Before corpus load or runtime deploy, re-run drift/schema
-verification and confirm no later migrations are pending. Audit health is not
-complete until production anchor lag is green or explicitly deferred with an
-owner and recovery path.
+verification and confirm no later migrations are pending. Current exception:
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
+applied and Browser Use verified on staging only, and remains the pending
+Production1 follow-up batch until it is applied or superseded by newer staging
+migrations. Audit health is not complete until production anchor lag is green
+or explicitly deferred with an owner and recovery path.
 
 ### 11A Operations Console
 

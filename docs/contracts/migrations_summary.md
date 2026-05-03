@@ -7,7 +7,7 @@ Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
 
-Migration count: **59**
+Migration count: **60**
 
 ## `202604250000_advisor_roles.sql`
 
@@ -2396,3 +2396,24 @@ Migration count: **59**
   active chunks but an empty ledger, the screen truthfully says
   "No corpus versions yet" even though retrieval data exists. This
   one-time seed creates a baseline ledger row only for that state.
+
+## `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+
+- **Applied:** 2026-05-03 14:30
+- **Title:** phase 11A 5 debug proxy requests forge admin grant
+- **Description:**
+
+  Phase 11A.5 follow-up -- debug console proxy_requests grant.
+
+  The Debug Console request-log gateway runs through
+  TenantTransactionWrapper.runAsSystem, which sets the transaction role to
+  forge_admin. BYPASSRLS skips tenant row policies, but it does not grant table
+  privileges. The live staging route was returning 503 because forge_admin
+  could not SELECT from public.proxy_requests after the Phase 9.0Sigma.l RLS
+  hardening policy flip.
+
+  Live apply status:
+  * Applied and Browser Use verified on staging on 2026-05-03.
+  * Not applied to Production1 in the 2026-05-03 second batch; this is the
+  current one-file pending Production1 migration batch unless superseded by
+  later staging additions.

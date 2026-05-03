@@ -61,8 +61,10 @@ Out of scope:
 - Operator data import.
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
-  anything later than `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` belongs to
-  a future apply event and is gated by `tool/migration_cutoff_lint.dart`).
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+  belongs to the next follow-up batch; anything later than `202605031430`
+  belongs to a future apply event and is gated by
+  `tool/migration_cutoff_lint.dart`).
 
 Current known post-cutoff staging addition:
 
@@ -86,7 +88,9 @@ Before running any apply:
 
 - [ ] Confirm this runbook was reviewed in the current session.
 - [ ] Confirm the exact Production1 hostname/database target by name only.
-- [ ] Confirm the operator approving the apply.
+- [ ] Confirm the operator approving the apply; while production setup is
+      paused, do not run the apply unless the operator explicitly says
+      "begin execution".
 - [ ] Confirm a fresh backup or restore point exists.
 - [ ] Confirm staging has already applied the same file set successfully.
 - [ ] Confirm `flutter analyze --fatal-infos`, focused auth/proxy tests, and
@@ -298,10 +302,30 @@ where table_schema = 'public'
   and table_name in (
     'auth_events_audit',
     'feature_flags',
+    'proxy_requests',
     'recovery_code_attempts',
     'service_principals'
   )
 order by table_name, grantee, privilege_type;
+```
+
+Debug Console request-log grant:
+
+```sql
+select to_regclass('public.proxy_requests') as proxy_requests;
+
+select has_table_privilege(
+  'forge_admin',
+  'public.proxy_requests',
+  'SELECT'
+) as forge_admin_can_select_proxy_requests;
+
+select grantee, privilege_type
+from information_schema.role_table_grants
+where table_schema = 'public'
+  and table_name = 'proxy_requests'
+  and grantee = 'forge_admin'
+order by privilege_type;
 ```
 
 AGE graph health bootstrap:
@@ -469,11 +493,17 @@ until the post-tuning monitor window is clean.
   applied and Browser Use verified on staging. Apply it to Production1 under
   the Live-Mutation Gate before calling Debug Console request-log inspection
   production-ready.
+- One-shot apply plan once approved: confirm staging parity for the same file,
+  confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
+  the one file to Production1, verify the `forge_admin` `proxy_requests`
+  `SELECT` privilege directly, run RLS lint, update this history and the
+  production cutoff docs. Do not perform production runtime setup as part of
+  this database apply.
 
 ## Apply Report Template
 
 ```text
-## Production1 Apply Report - second batch (Phase 9 + 11A + Hardening)
+## Production1 Apply Report - [batch name]
 
 Target:
 - Database: [name only]
@@ -492,6 +522,7 @@ Verification:
 - RLS policies:
 - Tenant-leading indexes:
 - Column/table presence:
+- Debug Console proxy_requests grant:
 - Negative-tenant smoke:
 - forge_admin smoke:
 - RLS lint:

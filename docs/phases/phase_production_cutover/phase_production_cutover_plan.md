@@ -196,6 +196,11 @@ mirror before setup restarts. As of that snapshot:
 New staging additions after 2026-05-03 must be added to that baseline and this
 plan before the production setup lane resumes.
 
+Current delta: `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+is applied and Browser Use verified on staging only. It must be applied and
+directly verified on Production1 before Debug Console request-log inspection or
+the production runtime buildout is called ready.
+
 After this phase closes, every subsequent schema change must follow the
 locked online-migration discipline. Before this phase opens, all schema
 discovery from `11A`, `9.8`, `9`, `10a`, `10.5`, `9.5`, `7.58`, `11b`,
@@ -290,8 +295,10 @@ Live, billable. Mirror of staging load with explicit approval gates.
 
 - Re-verify Production1 remains current through
   `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
-  using `runbooks/phase_9_production1_migration_apply_runbook.md`, then
-  verify no later `db/migrations/*` files are pending.
+  using `runbooks/phase_9_production1_migration_apply_runbook.md`, then apply
+  or explicitly account for every later staging migration. As of 2026-05-03,
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
+  the one pending Production1 migration batch.
 - Verify `11A.3.x` Graphify-assisted corpus graph review is closed for
   the corpus version being loaded:
   - candidate manifest exists

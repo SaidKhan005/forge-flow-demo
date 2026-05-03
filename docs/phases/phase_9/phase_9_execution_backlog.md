@@ -66,7 +66,9 @@ Do not re-open stale findings unless the repo regresses:
   queued. Production1 is current through `202605021900`. The
   `202605031430` Debug Console request-log grant is applied/verified on
   staging and is the only migration currently pending Production1; use the
-  same runbook/drift scanner pattern for that follow-up.
+  same runbook/drift scanner pattern for that follow-up, and do not mark the
+  Production1 Debug Console request-log path ready until the grant is directly
+  verified there.
 
 ## Remaining Live-Closeout Gates
 

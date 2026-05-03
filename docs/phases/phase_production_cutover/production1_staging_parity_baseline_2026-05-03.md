@@ -104,6 +104,18 @@ Staging static egress:
 | Static egress IP | `34.130.85.86` |
 | Azure staging firewall rule | `AllowGcpCloudRunStaticEgress` on `forge-flow-staging-pg` |
 
+## Known Staging Delta After Baseline
+
+The first post-cutoff delta is a database migration, not a new runtime
+resource:
+
+- `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+  grants `forge_admin` read-only access to `public.proxy_requests` so the
+  11A.5 Debug Console request-log viewer can inspect request metadata through
+  the admin path. It is applied and Browser Use verified on staging, but it is
+  not yet applied to Production1. Treat it as the current next Production1
+  migration batch unless later staging migrations join the batch before apply.
+
 ## Production1 Mirror Checklist
 
 Before any production deployment, mirror staging with production-specific names:
