@@ -1,7 +1,7 @@
 # Phase 10.5 - Shift Daypart-Aware Service Period View + Primary Driver
 
 Updated: 2026-05-03
-Status: Active. `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted 2026-05-02. `10.5.2` per-period read service + Shift cards + Variance lens accepted 2026-05-03. `10.5.0` opens the Shift dashboard segmented control (whole-day stays default + authoritative). `10.5.1` ships the pure-function `DaypartBucketer` (POS / labor punch with split / reservation) sitting on `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; engine is stateless, segments include `non_service` slivers, and missing IANA tz throws `MissingTimezoneError`. `10.5.2` ships `ShiftServicePeriodReadService`, `ShiftServicePeriodNotifier`, live daypart cards, active-period time-in-service, and the additive Variance daypart lens. Daypart-live primary-driver teaching remains queued. Walkthroughs: `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`, `docs/_walkthroughs/10.5.2.md`.
+Status: **CLOSED 2026-05-03; phase doc archived.** `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted 2026-05-02. `10.5.2` per-period read service + Shift cards + Variance lens accepted 2026-05-03. `10.5.3` daypart-live primary-driver chip accepted 2026-05-03 (`lib/services/shift_service_period_read_service.dart` extension, `lib/state/shift_service_period_notifier.dart` per-period driver field, daypart card chip + Variance daypart-lens chip; walkthrough `docs/_walkthroughs/10.5.3.md`). All four slices accepted; no further `10.5.x` slice planned. Walkthroughs: `docs/_walkthroughs/10.5.0.md` / `10.5.1.md` / `10.5.2.md` / `10.5.3.md`.
 Owner: Shift / daypart lane
 
 ## Slice History

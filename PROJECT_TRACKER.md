@@ -48,6 +48,11 @@ Routing map only. Slice scopes live in their phase docs.
   post-tuning days + approval before enforcement.
 - **iOS physical device matrix** deferred until Apple device/signing
   lane returns. Automated GitHub Actions iOS sim builds green on master.
+- **Barrio paused (2026-05-03 operator direction)**: only Forge & Flow
+  flavor (`lib/main_forgeflow.dart`) is in scope for current and upcoming
+  sprints. Skip lanes touching `lib/internal/barrio/**`,
+  `lib/main_barrio.dart`, Phase 9.75, and `9.5.UX.*`. Phase 9.5 backend
+  (Postgres schema, RLS, repository) is general-purpose and stays in scope.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
@@ -100,9 +105,10 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `7.61` (closed) | all 4 non-deferred slices accepted; F-A → `cutover.0b`, F-B post-`cutover.5` no owner | `docs/archive/phases/phase_7_61/` |
 | `10.5` (closed) | all 4 slices (`.0`/`.1`/`.2`/`.3`) accepted | `docs/archive/phases/phase_10_5/` |
 | `10a` | `.0`/`.1` + `UX.0`/`UX.1` accepted; `.2` dead-letter, `.3` retention sweep, `.4` tripwires, `.5` last_event_id replay queued | `phase_10a/*` |
-| `9.5` | `.0` accepted; `.UX.*` queued (Barrio identity surfaces); Recognition/Operations El Podio later | `phase_9_5/*` |
+| `9.5` | `.0` backend (schema + RLS) accepted; `.UX.*` **paused (Barrio)** per 2026-05-03 operator direction; Recognition/Operations El Podio later | `phase_9_5/*` |
 | `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started | `phase_11A_operations_console/*` |
-| `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
+| `9.75` | **paused (Barrio)** per 2026-05-03 operator direction (Barrio Staff Daily Companion frozen until unfreeze) | `phase_9_75/*` |
+| `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on B43 prod anchor) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
 | `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |
@@ -133,15 +139,14 @@ Next candidates by readiness:
    inheritance in `variance_week_projection_read_service.dart` so
    open/projected rows return `'on_model'` rather than the prior closed
    daypart's id.
-6. **`9.5.UX.0` El Podio identity surface** — replaces demo-data
-   leaderboard in `el_podio_screen.dart` with real-user identity;
-   weekly/monthly/all-time tabs; rank chip on Barrio Home.
-7. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate satisfied;
+6. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate satisfied;
    stub adapter + Settings → Integrations card tractable now; vendor
    (Toast) sandbox creds blocker only for live transport.
 
-Then queued: `10a.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`, `9.75`, `8R`,
-`8.5`, `11b`/`.1`/`.2`, `12.*`, `9.8`, `cutover.0b`–`5`.
+**Barrio-paused (skip until unfreeze):** `9.5.UX.*`, `9.75`.
+
+Then queued: `10a.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`, `8R`, `8.5`,
+`11b`/`.1`/`.2`, `12.*`, `9.8`, `cutover.0b`–`5`.
 
 ## Hard Gates
 

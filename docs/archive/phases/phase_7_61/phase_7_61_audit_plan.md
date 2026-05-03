@@ -1,12 +1,17 @@
 # Phase 7.61 - Driver Key Audit + Sub-Slice Plan
 
 Updated: 2026-05-03
-Status: Active. `7.61.0` contract pin accepted 2026-05-02; `7.61.1`
-accepted 2026-05-03 (F-1: analyzer fallthrough removal); `7.61.2`
-accepted 2026-05-03 (F-2: empty-leak default flipped to `''`);
-`7.61.3` accepted 2026-05-03 (F-3: dev-fixture lookup honesty).
-`.4` deferred to `cutover.0b`; F-B deferred post-`cutover.5` (no
-slice owner). Phase-8 hard gate now satisfied.
+Status: **CLOSED 2026-05-03; phase doc archived.** `7.61.0` contract
+pin accepted 2026-05-02; `.1`/`.2`/`.3` accepted 2026-05-03 (F-1:
+analyzer fallthrough removal; F-2: empty-leak default flipped to
+`''`; F-3: dev-fixture lookup honesty). `.4` (F-A: Postgres CHECK
+constraint) carried into `cutover.0b` per
+`docs/phases/phase_production_cutover/phase_production_cutover_plan.md`
+"Carry-forward from archived `phase_7_61` driver-key audit". F-B
+(`shifts.primary_lever` lowercase migration) deferred post-`cutover.5`
+with no slice owner; the cutover plan tracks it. Phase-8 hard gate
+satisfied. Authority for the catalog/storage rules carries forward
+in `docs/contracts/phase_7_61_driver_key_contract.md` (still active).
 Owner: Variance / Vendor-connector lane
 Companion contract: `docs/contracts/phase_7_61_driver_key_contract.md`
 
