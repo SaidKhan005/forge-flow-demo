@@ -25,6 +25,7 @@
 // the secondary slot is null and the pipeline reduces to anthropic →
 // cache → graceful refusal.
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:forge_and_flow/domain/services/advisor_response_cache.dart';
@@ -467,74 +468,79 @@ Future<void> main(List<String> args) async {
   );
 
   await for (final request in server) {
-    // Each request is independent — failures in one must not crash
-    // the listener loop.
-    try {
-      await routeRequest(
-        request,
-        authGuard,
-        usageGuard: usageGuard,
-        accountingStore: productionBindings.accountingStore,
-        healthCheckStore: healthCheckStore,
-        llmProvider: llmProvider,
-        advisorRequestPipeline: advisorRequestPipeline,
-        authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
-        firebaseAdminAuthClient: productionBindings.firebaseAdminAuthClient,
-        accountInfoGateway: productionBindings.accountInfoGateway,
-        permissionSnapshotResolver:
-            productionBindings.permissionSnapshotResolver,
-        adminPermissionGuard: productionBindings.adminPermissionGuard,
-        authOperationsGateway: productionBindings.authOperationsGateway,
-        servicePrincipalJwtIssuanceGateway:
-            productionBindings.servicePrincipalJwtIssuanceGateway,
-        passwordChangeGateway: productionBindings.passwordChangeGateway,
-        passwordResetConfirmGateway:
-            productionBindings.passwordResetConfirmGateway,
-        passwordResetRequestGateway:
-            productionBindings.passwordResetRequestGateway,
-        mfaOperationsGateway: productionBindings.mfaOperationsGateway,
-        mfaRecoveryRequestGateway: productionBindings.mfaRecoveryRequestGateway,
-        operatorLocationAdminGateway:
-            productionBindings.operatorLocationAdminGateway,
-        pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
-        corpusAdminGateway: productionBindings.corpusAdminGateway,
-        graphCandidatesGateway: productionBindings.graphCandidatesGateway,
-        integrationAdminGateway: productionBindings.integrationAdminGateway,
-        integrationAdminActorResolver:
-            productionBindings.integrationAdminActorResolver,
-        featureFlagsAdminGateway: productionBindings.featureFlagsAdminGateway,
-        debugConsoleAdminGateway: productionBindings.debugConsoleAdminGateway,
-        observabilityAdminGateway: productionBindings.observabilityAdminGateway,
-        // HARD-B - auth lockout / retry enforcement.
-        authLockoutEnforcer: productionBindings.authLockoutEnforcer,
-        authLockoutAuditSink: productionBindings.authLockoutAuditSink,
-        mfaTotpRetryCounter: productionBindings.mfaTotpRetryCounter,
-        passwordResetThrottleCounter:
-            productionBindings.passwordResetThrottleCounter,
-        adminCorsAllowList: adminCorsAllowList,
-        // HARD-H — admin idempotency cache wired in so duplicate
-        // POSTs (today: feature flags toggle) return the cached
-        // response instead of re-running the gateway.
-        adminRequestIdempotencyStore:
-            productionBindings.adminRequestIdempotencyStore,
-        // Phase 10a.0 — WebSocket route subscribes to this publisher
-        // for the connected operator's events. The route always sees
-        // the in-process publisher; when the Phase 10a.1 Pub/Sub
-        // adapter is enabled, the multi-instance fan-out leg layers
-        // a Pub/Sub → in-process consumer on top in a downstream slice.
-        realtimePublisher: realtimeInProcessPublisher,
-      );
-    } catch (error, stack) {
-      log(
-        LogSeverity.error,
-        'proxy.listener_loop_error',
-        fields: <String, Object?>{
-          'error_type': error.runtimeType.toString(),
-          'error_message': error.toString(),
-          'stack_first_frame': firstStackFrame(stack),
-        },
-      );
-    }
+    // Each request is independent: failures in one must not crash
+    // the listener loop, and long-lived WebSockets must not queue probes.
+    unawaited(
+      (() async {
+        try {
+          await routeRequest(
+            request,
+            authGuard,
+            usageGuard: usageGuard,
+            accountingStore: productionBindings.accountingStore,
+            healthCheckStore: healthCheckStore,
+            llmProvider: llmProvider,
+            advisorRequestPipeline: advisorRequestPipeline,
+            authSessionLedgerWriter: productionBindings.authSessionLedgerWriter,
+            firebaseAdminAuthClient: productionBindings.firebaseAdminAuthClient,
+            accountInfoGateway: productionBindings.accountInfoGateway,
+            permissionSnapshotResolver:
+                productionBindings.permissionSnapshotResolver,
+            adminPermissionGuard: productionBindings.adminPermissionGuard,
+            authOperationsGateway: productionBindings.authOperationsGateway,
+            servicePrincipalJwtIssuanceGateway:
+                productionBindings.servicePrincipalJwtIssuanceGateway,
+            passwordChangeGateway: productionBindings.passwordChangeGateway,
+            passwordResetConfirmGateway:
+                productionBindings.passwordResetConfirmGateway,
+            passwordResetRequestGateway:
+                productionBindings.passwordResetRequestGateway,
+            mfaOperationsGateway: productionBindings.mfaOperationsGateway,
+            mfaRecoveryRequestGateway:
+                productionBindings.mfaRecoveryRequestGateway,
+            operatorLocationAdminGateway:
+                productionBindings.operatorLocationAdminGateway,
+            pricingTierAdminGateway: productionBindings.pricingTierAdminGateway,
+            corpusAdminGateway: productionBindings.corpusAdminGateway,
+            graphCandidatesGateway: productionBindings.graphCandidatesGateway,
+            integrationAdminGateway: productionBindings.integrationAdminGateway,
+            integrationAdminActorResolver:
+                productionBindings.integrationAdminActorResolver,
+            featureFlagsAdminGateway:
+                productionBindings.featureFlagsAdminGateway,
+            debugConsoleAdminGateway:
+                productionBindings.debugConsoleAdminGateway,
+            observabilityAdminGateway:
+                productionBindings.observabilityAdminGateway,
+            // HARD-B - auth lockout / retry enforcement.
+            authLockoutEnforcer: productionBindings.authLockoutEnforcer,
+            authLockoutAuditSink: productionBindings.authLockoutAuditSink,
+            mfaTotpRetryCounter: productionBindings.mfaTotpRetryCounter,
+            passwordResetThrottleCounter:
+                productionBindings.passwordResetThrottleCounter,
+            adminCorsAllowList: adminCorsAllowList,
+            // HARD-H — admin idempotency cache wired in so duplicate
+            // POSTs (today: feature flags toggle) return the cached
+            // response instead of re-running the gateway.
+            adminRequestIdempotencyStore:
+                productionBindings.adminRequestIdempotencyStore,
+            // Phase 10a.0 — WebSocket route subscribes to this publisher
+            // for the connected operator's events.
+            realtimePublisher: realtimeInProcessPublisher,
+          );
+        } catch (error, stack) {
+          log(
+            LogSeverity.error,
+            'proxy.listener_loop_error',
+            fields: <String, Object?>{
+              'error_type': error.runtimeType.toString(),
+              'error_message': error.toString(),
+              'stack_first_frame': firstStackFrame(stack),
+            },
+          );
+        }
+      })(),
+    );
   }
 }
 
@@ -635,20 +641,37 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
   };
   switch (event.kind) {
     case RealtimeBridgeLogKind.listenerError:
-      log(LogSeverity.warning, 'realtime.bridge.listener_error', fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.listener_error',
+        fields: fields,
+      );
     case RealtimeBridgeLogKind.discoveryFailed:
-      log(LogSeverity.warning, 'realtime.bridge.discovery_failed',
-          fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.discovery_failed',
+        fields: fields,
+      );
     case RealtimeBridgeLogKind.locationResolveFailed:
-      log(LogSeverity.warning, 'realtime.bridge.location_resolve_failed',
-          fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.location_resolve_failed',
+        fields: fields,
+      );
     case RealtimeBridgeLogKind.claimFailed:
       log(LogSeverity.warning, 'realtime.bridge.claim_failed', fields: fields);
     case RealtimeBridgeLogKind.publishFailed:
-      log(LogSeverity.warning, 'realtime.bridge.publish_failed', fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.publish_failed',
+        fields: fields,
+      );
     case RealtimeBridgeLogKind.markDeliveredFailed:
-      log(LogSeverity.warning, 'realtime.bridge.mark_delivered_failed',
-          fields: fields);
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.mark_delivered_failed',
+        fields: fields,
+      );
   }
 }
 
@@ -656,9 +679,7 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
 /// canonical `log()` helper. Mirrors `_logRealtimeBridgeEvent` so the
 /// existing realtime metric path absorbs the Pub/Sub publisher's
 /// envelope without a new log shape (no new health producer).
-void _logPubsubRealtimePublisherEvent(
-  PubsubRealtimePublisherLogEvent event,
-) {
+void _logPubsubRealtimePublisherEvent(PubsubRealtimePublisherLogEvent event) {
   final fields = <String, Object?>{
     if (event.operatorId != null) 'operator_id': event.operatorId,
     if (event.eventId != null) 'event_id': event.eventId,
@@ -666,16 +687,11 @@ void _logPubsubRealtimePublisherEvent(
     if (event.topicName != null) 'pubsub_topic_name': event.topicName,
     if (event.error != null) 'error_type': event.error.runtimeType.toString(),
     if (event.error != null) 'error_message': event.error.toString(),
-    if (event.stack != null)
-      'stack_first_frame': firstStackFrame(event.stack!),
+    if (event.stack != null) 'stack_first_frame': firstStackFrame(event.stack!),
   };
   switch (event.kind) {
     case PubsubRealtimePublisherLogKind.published:
-      log(
-        LogSeverity.info,
-        'realtime.publisher.published',
-        fields: fields,
-      );
+      log(LogSeverity.info, 'realtime.publisher.published', fields: fields);
     case PubsubRealtimePublisherLogKind.publishFailed:
       log(
         LogSeverity.warning,
