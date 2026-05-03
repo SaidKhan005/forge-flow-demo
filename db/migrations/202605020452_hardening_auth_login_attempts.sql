@@ -170,6 +170,11 @@ create index if not exists auth_login_attempts_idx_ip_hash_failures
 
 alter table public.auth_login_attempts enable row level security;
 
+drop policy if exists "auth_login_attempts_per_tenant_select"
+  on public.auth_login_attempts;
+drop policy if exists "auth_login_attempts_per_tenant_insert"
+  on public.auth_login_attempts;
+
 create policy "auth_login_attempts_per_tenant_select"
   on public.auth_login_attempts for select to service_role
   using (

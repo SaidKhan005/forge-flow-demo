@@ -208,6 +208,11 @@ create index if not exists graphify_review_audit_target_idx
 
 alter table public.graphify_review_audit enable row level security;
 
+drop policy if exists "graphify_review_audit_per_tenant_select"
+  on public.graphify_review_audit;
+drop policy if exists "graphify_review_audit_per_tenant_insert"
+  on public.graphify_review_audit;
+
 create policy "graphify_review_audit_per_tenant_select"
   on public.graphify_review_audit for select to service_role
   using (operator_id = public.app_current_operator());
