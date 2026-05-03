@@ -369,6 +369,13 @@ void main() {
     final dockerfile = File(p.join(repoRoot, 'Dockerfile')).readAsStringSync();
     expect(
       dockerfile,
+      contains('docs/Knowledge_graph_docs/corpus_manifest.yaml'),
+      reason:
+          'Cloud Run image must also carry the manifest used by the '
+          'graph-candidate defense-in-depth scope filter',
+    );
+    expect(
+      dockerfile,
       contains('/workspace/tool/advisor_proxy/graphify_candidates'),
       reason: 'Cloud Run image must copy sanitized candidate artifacts',
     );

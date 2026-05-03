@@ -26,6 +26,7 @@ RUN flutter pub get
 COPY lib ./lib
 COPY tool ./tool
 COPY db/migrations ./db/migrations
+COPY docs/Knowledge_graph_docs/corpus_manifest.yaml ./docs/Knowledge_graph_docs/corpus_manifest.yaml
 
 RUN mkdir -p /workspace/build \
     && dart compile exe tool/advisor_proxy/main.dart -o /workspace/build/advisor_proxy
@@ -48,6 +49,7 @@ WORKDIR /app
 
 COPY --from=build --chown=app:app /workspace/build/advisor_proxy /app/advisor_proxy
 COPY --from=build --chown=app:app /workspace/db/migrations /app/db/migrations
+COPY --from=build --chown=app:app /workspace/docs/Knowledge_graph_docs/corpus_manifest.yaml /app/docs/Knowledge_graph_docs/corpus_manifest.yaml
 COPY --from=build --chown=app:app /workspace/tool/advisor_proxy/graphify_candidates /app/graphify-out
 
 USER app
