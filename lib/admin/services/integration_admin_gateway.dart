@@ -74,6 +74,10 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   static const String rotateAzureDbPath =
       '/v1/admin/integrations/rotate-azure-db';
   static const String rotateGeminiPath = '/v1/admin/integrations/rotate-gemini';
+  // Phase 9.8 — SendGrid rotation route. Mirrors the existing
+  // rotate-* path family.
+  static const String rotateSendgridPath =
+      '/v1/admin/integrations/rotate-sendgrid';
   static const String statusPath = '/v1/admin/integrations/status';
 
   // Idempotency key generation lives in the screen layer
@@ -92,6 +96,8 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
         return rotateAzureDbPath;
       case ProviderKeyKind.gemini:
         return rotateGeminiPath;
+      case ProviderKeyKind.sendgrid:
+        return rotateSendgridPath;
     }
   }
 
