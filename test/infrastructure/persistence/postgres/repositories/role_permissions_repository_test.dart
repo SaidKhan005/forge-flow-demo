@@ -217,7 +217,7 @@ void main() {
     );
 
     test(
-      'all 96 catalog keys round-trip — the repo never rejects a '
+      'all 97 catalog keys round-trip — the repo never rejects a '
       'syntactically-valid key (catalog membership is enforced by the '
       'DB FK, not the repo)',
       () async {
@@ -228,13 +228,14 @@ void main() {
         // Smoke-check that PermissionKeys.all has the documented count
         // so the prompt's "mirrors auth_permission_key_catalog" tie-in
         // breaks loudly if the catalog drifts. The contract doc names
-        // 96 keys; the repo never gates on this — it only round-trips.
+        // 97 keys; the repo never gates on this — it only round-trips.
         expect(
           PermissionKeys.all.length,
-          equals(96),
-          reason: 'auth_permission_key_catalog.md contract calls out 96 '
-              'keys total (81 baseline + 13 team.* + 2 admin); a count '
-              'drift here is a doc-vs-code drift to investigate',
+          equals(97),
+          reason: 'auth_permission_key_catalog.md contract calls out 97 '
+              'keys total (81 baseline + 13 team.* + 2 admin + 1 '
+              'integrations.configure); a count drift here is a '
+              'doc-vs-code drift to investigate',
         );
         // Spot-check a few keys flow through without a Dart-side throw —
         // fast loop is fine since each takes a fresh pool.

@@ -38,6 +38,7 @@ import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart'
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
 import 'admin_email_routes.dart';
+import 'admin_integrations_routes.dart';
 import 'advisor_proxy.dart';
 import 'log.dart';
 import 'proxy_bootstrap.dart';
@@ -556,6 +557,23 @@ Future<void> main(List<String> args) async {
           // of routeRequest does not fire on the same request.
           if (adminEmailRouter != null &&
               await adminEmailRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
+          // region: phase_8_0_integration_routes
+          // Phase 8.0 — Inbound integration framework router. Handles
+          // /v1/admin/operators/:opid/locations/:locid/integrations,
+          // /v1/admin/integrations/oauth|connect-key|test-connection|
+          // disconnect|logs/{vendor}, and /v1/webhooks/{vendor}/...
+          // paths. Returns true when the path matched and was handled;
+          // returns false on non-Phase-8.0 paths so we fall through to
+          // the existing dispatcher. The router lives outside
+          // `routeRequest` so the existing dispatcher stays untouched
+          // per the slice scope rule. The bindings holder is set
+          // by a follow-up slice (real Postgres-backed gateway +
+          // adapter map); until then `tryHandleStatic` is a noop
+          // pass-through that returns false.
+          if (await Phase80IntegrationRoutes.tryHandleStatic(request)) {
             return;
           }
           // endregion

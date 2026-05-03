@@ -216,17 +216,19 @@ void main() {
       }
     });
 
-    test('PermissionKeys.all has 96 entries (81 baseline + 13 team.* + '
-        '2 later admin keys)', () {
+    test('PermissionKeys.all has 97 entries (81 baseline + 13 team.* + '
+        '2 later admin keys + 1 integrations.* key)', () {
       // The 9.0a slice landed at 93 keys; the 9.0Σ.h2 slice
       // (2026-04-28) added admin.audit_privacy.read for the
       // advisor-conversation audit-privacy gate. B41 then added
       // admin.service_principal.issue_token, bringing the catalog to
       // 95. The MFA hardening slice added team.users.reset_mfa,
-      // bringing the catalog to 96. This test tracks the running total
-      // so a future catalog addition that forgets to grow the count is
-      // caught here.
-      expect(PermissionKeys.all.length, equals(96));
+      // bringing the catalog to 96. Phase 8.0 added
+      // integrations.configure for the Vendor Connections admin
+      // surface, bringing the catalog to 97. This test tracks the
+      // running total so a future catalog addition that forgets to
+      // grow the count is caught here.
+      expect(PermissionKeys.all.length, equals(97));
     });
 
     test('team.* keys are NOT in requiresMfa (locked decision: no MFA gate '

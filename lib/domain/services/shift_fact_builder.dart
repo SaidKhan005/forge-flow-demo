@@ -23,6 +23,16 @@ class ShiftFactBuilder {
     TargetSnapshot targetSnapshot,
   ) {
     // ── Resolve labor dollars ─────────────────────────────────────────────
+    //
+    // Phase 8.0 (V1 lean cut 2): when the labor system did not
+    // supply dollars directly, we still fall back to wage*hours so
+    // the existing demo paths and historical fixtures keep producing
+    // numeric ShiftFact rows, but we mark `laborDollarsFromVendor =
+    // false` so the renderer can resolve cplhProvenance /
+    // blendedWageProvenance as `fallback` per the contract — never
+    // a phantom-live number.
+    final laborDollarsFromVendor = input.actualFohLaborDollars != null &&
+        input.actualBohLaborDollars != null;
     final resolvedFohLaborDollars = input.actualFohLaborDollars ??
         input.actualFohHours * targetSnapshot.fohWage;
 
@@ -88,6 +98,7 @@ class ShiftFactBuilder {
       primaryLeverId: primaryLeverId,
       sourceSystem: input.sourceSystem,
       sourceShiftId: input.sourceShiftId,
+      laborDollarsFromVendor: laborDollarsFromVendor,
     );
   }
 }

@@ -228,8 +228,9 @@ void main() {
       expect(PermissionKeys.requiresMfa, contains('admin.audit_privacy.read'));
     });
 
-    test('PermissionKeys.all has 96 entries after MFA reset permission', () {
-      expect(PermissionKeys.all.length, equals(96));
+    test('PermissionKeys.all has 97 entries after Phase 8.0 '
+        'integrations.configure permission', () {
+      expect(PermissionKeys.all.length, equals(97));
     });
 
     test('the new key is NOT in the 9.0 foundation seed (it lives in '
