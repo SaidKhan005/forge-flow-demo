@@ -477,6 +477,30 @@ class LeverCards {
     }
     return null;
   }
+
+  /// Metric-direction glyph for [id], derived from the catalog id
+  /// suffix (`_up` / `_over` → `↑`; `_down` / `_under` → `↓`). This
+  /// is the *raw metric movement*, distinct from
+  /// [LeverCardData.direction] (favorable/unfavorable). For example,
+  /// `foh_wage_down` is favorable but the metric movement is down.
+  ///
+  /// Returns `null` for unknown / sentinel / null / empty input —
+  /// renderers must handle that as a degraded state alongside the
+  /// matching [lookup] call. Catalog membership is gated by
+  /// [lookup] first, so an unknown id with a coincidental suffix
+  /// (e.g. `not_catalog_up`) cannot leak an arrow that would imply
+  /// a real catalog id.
+  static String? metricDirectionGlyph(String? id) {
+    if (lookup(id) == null) return null;
+    final normalized = id!.toLowerCase();
+    if (normalized.endsWith('_up') || normalized.endsWith('_over')) {
+      return '↑';
+    }
+    if (normalized.endsWith('_down') || normalized.endsWith('_under')) {
+      return '↓';
+    }
+    return null; // unreachable: every catalog id ends in a known suffix.
+  }
 }
 
 // ─── Input metric card model ──────────────────────────────────────────────────

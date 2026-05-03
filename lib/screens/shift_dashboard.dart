@@ -846,6 +846,7 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
               definition: def,
               isActive: def.id == activeId,
               bucket: buckets?[def.id],
+              primaryLeverCard: periodNotifier?.primaryLeverCardFor(def.id),
               missingTimezone: missingTimezone,
             ),
             const SizedBox(height: 8),
@@ -860,12 +861,14 @@ class _DaypartScaffoldCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final bool isActive;
   final ServicePeriodAccumulator? bucket;
+  final LeverCardData? primaryLeverCard;
   final bool missingTimezone;
 
   const _DaypartScaffoldCard({
     required this.definition,
     required this.isActive,
     required this.bucket,
+    this.primaryLeverCard,
     this.missingTimezone = false,
   });
 
@@ -938,9 +941,15 @@ class _DaypartScaffoldCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          if (hasData)
-            _DaypartMetricGrid(bucket: bucket!)
-          else
+          if (hasData) ...[
+            _DaypartMetricGrid(bucket: bucket!),
+            const SizedBox(height: 10),
+            // Phase 10.5.3 — per-period primary driver chip. Resolves
+            // through `LeverCards.lookup`; null surfaces as the
+            // "No pattern yet" degraded state per 7.58 F-1 / F-6
+            // (no silent fall-through to a real lever).
+            _DaypartDriverChip(card: primaryLeverCard),
+          ] else
             Text(
               missingTimezone
                   ? 'Timezone not configured — metrics unavailable.'
@@ -948,6 +957,51 @@ class _DaypartScaffoldCard extends StatelessWidget {
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Phase 10.5.3 — per-period primary driver chip rendered alongside
+/// the daypart metric grid. Mirrors the Variance daypart lens chip so
+/// the two surfaces present the same driver shape.
+///
+/// Null [card] degrades to "No pattern yet" — never silently falls
+/// through to a real lever (`LeverCards.coversDown` overclaim is
+/// banned at the daypart scope per 7.58 F-1 / F-6 / F-2).
+class _DaypartDriverChip extends StatelessWidget {
+  final LeverCardData? card;
+  const _DaypartDriverChip({required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = card;
+    final hasDriver = c != null;
+    // Color is favorability (green / red); the arrow is the raw
+    // metric direction derived from the lever id suffix
+    // (`_up` / `_over` → ↑; `_down` / `_under` → ↓). These are
+    // independent: e.g. `foh_wage_down` is favorable (green) but
+    // points down (the metric moved down).
+    final accent = hasDriver
+        ? (c.isFavorable ? AppColors.positive : AppColors.negative)
+        : AppColors.textMuted;
+    final arrow = hasDriver
+        ? (LeverCards.metricDirectionGlyph(c.id) ?? '')
+        : '';
+    final label = hasDriver
+        ? 'PRIMARY DRIVER · ${c.shortLabel} $arrow'
+        : 'PRIMARY DRIVER · NO PATTERN YET';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: accent)
+            .copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }

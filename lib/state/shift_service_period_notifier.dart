@@ -23,6 +23,8 @@ library;
 
 import 'package:flutter/foundation.dart';
 
+import '../data/app_defaults.dart';
+import '../domain/models/active_target_profile.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../domain/models/restaurant_timing_config.dart';
 import '../domain/models/service_period_definition.dart';
@@ -33,6 +35,7 @@ import '../infrastructure/persistence/sqlite/repositories/sqlite_open_shift_snap
 import '../infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import '../services/restaurant_timing_config_read_service.dart';
 import '../services/shift_service_period_read_service.dart';
+import '../services/wage_standard_context_service.dart';
 
 /// Default business-day cutoff used when no persisted timing config is
 /// available. Matches the seeded
@@ -43,6 +46,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   final ShiftServicePeriodReadService _readService;
 
   Map<String, ServicePeriodAccumulator>? _buckets;
+  Map<String, String?> _primaryLeverIds = const {};
   List<ServicePeriodDefinition> _definitions =
       ServicePeriodDefinitionResolver.demoDefinitions;
   String? _businessDate;
@@ -75,6 +79,27 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
   bool get isLoading => _isLoading;
   bool get missingTimezone => _missingTimezone;
 
+  /// Phase 10.5.3 — per-period primary driver id (lowercase canonical
+  /// form per `7.61` R-STOR-1) for [periodId], or `null` when:
+  ///   * the bucket has no in-period evidence yet,
+  ///   * required denominators are missing (no forecast covers,
+  ///     no active target profile, etc.),
+  ///   * OR the engine returned only the legacy `'covers_down'`
+  ///     empty-candidate fallback (banned at the daypart scope per
+  ///     `7.58` Finding F-2 until `7.58.0a` lands).
+  ///
+  /// Renderers MUST resolve the result through `LeverCards.lookup`
+  /// (case-insensitive) and surface a null lookup as the
+  /// `LeverCards.notYetOnModelLabel` degraded state — never fall
+  /// through to a real lever card.
+  String? primaryLeverIdFor(String periodId) => _primaryLeverIds[periodId];
+
+  /// Phase 10.5.3 — resolved [LeverCardData] for [periodId], or null
+  /// when no driver is available for this period (see
+  /// [primaryLeverIdFor]).
+  LeverCardData? primaryLeverCardFor(String periodId) =>
+      LeverCards.lookup(_primaryLeverIds[periodId]);
+
   ShiftServicePeriodNotifier({
     ShiftServicePeriodReadService readService =
         const ShiftServicePeriodReadService(),
@@ -90,8 +115,10 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     String? businessDate,
     String? iana,
     String businessDayStartLocalTime = _defaultBusinessDayStartLocalTime,
+    Map<String, String?> primaryLeverIds = const {},
   })  : _readService = const ShiftServicePeriodReadService(),
         _buckets = buckets,
+        _primaryLeverIds = primaryLeverIds,
         _definitions = definitions ??
             ServicePeriodDefinitionResolver.demoDefinitions,
         _businessDate = businessDate,
@@ -126,6 +153,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         for (final d in _definitions)
           d.id: ServicePeriodAccumulator(servicePeriodId: d.id),
       };
+      _primaryLeverIds = const {};
       _businessDate = null;
       _isLoading = false;
       notifyListeners();
@@ -141,6 +169,7 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         for (final d in _definitions)
           d.id: ServicePeriodAccumulator(servicePeriodId: d.id),
       };
+      _primaryLeverIds = const {};
       _isLoading = false;
       notifyListeners();
       return;
@@ -175,10 +204,36 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
         for (final d in _definitions)
           d.id: ServicePeriodAccumulator(servicePeriodId: d.id),
       };
+      _primaryLeverIds = const {};
+      _isLoading = false;
+      notifyListeners();
+      return;
     }
+
+    // Phase 10.5.3 — mint per-period primary drivers off the accumulator.
+    final profile = await _safeLoadActiveTargetProfile(restaurantId);
+    final forecastCoversByPeriod = forecastCoversByPeriodFromSnapshots(
+      snapshots: relevant,
+      definitions: _definitions,
+    );
+    _primaryLeverIds = _readService.computePrimaryLevers(
+      buckets: _buckets!,
+      forecastCoversByPeriod: forecastCoversByPeriod,
+      profile: profile,
+    );
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<ActiveTargetProfile?> _safeLoadActiveTargetProfile(
+      String restaurantId) async {
+    try {
+      return await WageStandardContextService.instance
+          .loadOrBootstrapProfile(restaurantId);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<RestaurantTimingConfig?> _safeReadTiming() async {
@@ -233,6 +288,25 @@ class ShiftServicePeriodNotifier extends ChangeNotifier {
     );
     notifyListeners();
   }
+}
+
+/// Phase 10.5.3 — sums per-period forecast covers from the day's
+/// open/closed snapshots. Pre-Phase-8, the snapshot's `daypart` field
+/// matches the service-period definition id directly. Snapshots whose
+/// `daypart` doesn't match a defined period are dropped (defensive,
+/// not expected in normal operation).
+@visibleForTesting
+Map<String, int> forecastCoversByPeriodFromSnapshots({
+  required List<OpenShiftSnapshot> snapshots,
+  required List<ServicePeriodDefinition> definitions,
+}) {
+  final defIds = {for (final d in definitions) d.id};
+  final byPeriod = <String, int>{for (final d in definitions) d.id: 0};
+  for (final s in snapshots) {
+    if (!defIds.contains(s.daypart)) continue;
+    byPeriod[s.daypart] = (byPeriod[s.daypart] ?? 0) + s.forecastCovers;
+  }
+  return byPeriod;
 }
 
 /// Synthesized canonical facts. Pure-data return for

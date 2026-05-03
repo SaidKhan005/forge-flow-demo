@@ -21,10 +21,24 @@
 //     `sourceId` (latest wins) before calling `build`; the helper
 //     methods exist for incremental updates that don't want to walk
 //     the full fact list again.
+//
+// Phase 10.5.3 — Per-period primary driver:
+//   * `computePrimaryLeverId` mints the per-period driver via
+//     `LaborModel.determineLever` (the 7.58 single source of truth).
+//   * Returns `null` when inputs are insufficient OR when the engine
+//     would fall through to the legacy `'covers_down'` empty-candidate
+//     default (per 7.58 F-2 — `'covers_down'` overclaim is banned at
+//     the daypart scope before `7.58.0a` lands the `'on_model'`
+//     replacement). The notifier surfaces null as the
+//     `LeverCards.notYetOnModelLabel` degraded state.
+//   * Lowercase canonical id form per `7.61` R-STOR-1 / R-PROD-5; no
+//     upper-snake leak.
 library;
 
+import '../domain/models/active_target_profile.dart';
 import '../domain/models/service_period_definition.dart';
 import '../domain/services/daypart_bucketer.dart';
+import 'labor_model.dart';
 
 /// One canonical POS line for bucketing. `eventLocalTimestamp` must
 /// already be in restaurant-local time (per the canonical-fact
@@ -110,6 +124,22 @@ class ServicePeriodAccumulator {
   double get blendedWage => totalMinutes > 0
       ? (fohWageDollars + bohWageDollars) * 60.0 / totalMinutes
       : 0.0;
+
+  /// FOH-side blended wage. 0 when no FOH minutes recorded.
+  double get fohBlendedWage =>
+      fohMinutes > 0 ? fohWageDollars * 60.0 / fohMinutes : 0.0;
+
+  /// BOH-side blended wage. 0 when no BOH minutes recorded.
+  double get bohBlendedWage =>
+      bohMinutes > 0 ? bohWageDollars * 60.0 / bohMinutes : 0.0;
+
+  /// Sales per BOH labor hour. The 7.58 contract defines SPLH as the
+  /// BOH productivity axis (`splh_up` / `splh_down` are BOH-only
+  /// levers); the engine input must match that convention. Distinct
+  /// from [splh], which is sales over FOH+BOH minutes for the
+  /// per-period metric grid.
+  double get bohSplh =>
+      bohMinutes > 0 ? sales * 60.0 / bohMinutes : 0.0;
 
   /// Whether this bucket has any covers, sales, or labor minutes
   /// recorded. Empty buckets render as "no data yet".
@@ -330,6 +360,122 @@ class ShiftServicePeriodReadService {
 
     return {
       for (final entry in mutable.entries) entry.key: entry.value.snapshot(),
+    };
+  }
+
+  /// Phase 10.5.3 — per-period primary driver.
+  ///
+  /// Mints the driver id for one service period via
+  /// `LaborModel.determineLever` (the 7.58 single source of truth). The
+  /// engine consumes the per-period actuals on [bucket], the per-period
+  /// [forecastCovers] (summed from the day's open / closed snapshots
+  /// matching this period), and the whole-day [profile] standards
+  /// (CPLH, SPLH, PPA, FOH/BOH wage). Per-period plan targets are not
+  /// yet shipped — `ActiveTargetProfile` carries restaurant-level
+  /// standards only, and the same standards apply across periods today.
+  ///
+  /// Returns `null` when:
+  ///   * [profile] is null or the bucket has no in-period evidence
+  ///     (`!bucket.hasAnyData`),
+  ///   * required denominators are absent ([forecastCovers] ≤ 0,
+  ///     `targetCPLH` ≤ 0, or `targetPPA` ≤ 0),
+  ///   * OR the engine would fall through to the legacy
+  ///     `'covers_down'` empty-candidate default (no axis exceeds its
+  ///     threshold). Per Block 2 / 7.58 F-2, the daypart scope refuses
+  ///     to overclaim `'covers_down'` until `7.58.0a` ships the
+  ///     `'on_model'` replacement.
+  ///
+  /// When non-null, the returned id is one of the 16 lowercase
+  /// canonical lever ids per `7.61` R-STOR-1 — never `'on_model'`,
+  /// never upper-snake.
+  ///
+  /// Hours-flex levers (`foh_hours_*` / `boh_hours_*`) are not
+  /// considered: per-period scheduled hours are not tracked yet.
+  String? computePrimaryLeverId({
+    required ServicePeriodAccumulator bucket,
+    required int forecastCovers,
+    required ActiveTargetProfile? profile,
+  }) {
+    if (profile == null) return null;
+    if (!bucket.hasAnyData) return null;
+    if (forecastCovers <= 0) return null;
+    if (profile.targetCPLH <= 0 || profile.targetPPA <= 0) return null;
+
+    // Mirror `LaborModel.determineLever`'s threshold checks to detect
+    // the empty-candidate state up-front. We do NOT mint an id from
+    // these deltas — that responsibility stays with the engine per
+    // 7.58 Single Source of Truth + 7.61 R-PROD-1. We only gate the
+    // engine call so its legacy `'covers_down'` fallback (F-2) cannot
+    // surface as a real driver at the daypart scope.
+    final coversDelta = (bucket.covers - forecastCovers) / forecastCovers;
+    final cplhDelta = (bucket.cplh - profile.targetCPLH) / profile.targetCPLH;
+    final ppaDelta = (bucket.ppa - profile.targetPPA) / profile.targetPPA;
+
+    var anyCandidate = coversDelta.abs() > 0.02 ||
+        cplhDelta.abs() > 0.05 ||
+        ppaDelta.abs() > 0.03;
+
+    // SPLH is the BOH productivity axis per 7.58. Use BOH-only sales-
+    // per-labor-hour and skip the axis when no BOH minutes were
+    // recorded — otherwise a FOH-only period would mint splh_up /
+    // splh_down off `bucket.splh` (sales / total minutes), which is
+    // not the BOH productivity the engine documents. Mirrors the
+    // whole-day path's `avgSPLH = totalSales / actBoh`.
+    final hasSplhInputs = profile.targetSPLH > 0 && bucket.bohMinutes > 0;
+    if (hasSplhInputs) {
+      final splhDelta =
+          (bucket.bohSplh - profile.targetSPLH) / profile.targetSPLH;
+      anyCandidate = anyCandidate || splhDelta.abs() > 0.05;
+    }
+
+    final hasFohWageInputs = profile.fohWage > 0 && bucket.fohMinutes > 0;
+    if (hasFohWageInputs) {
+      final fohWageDelta =
+          (bucket.fohBlendedWage - profile.fohWage) / profile.fohWage;
+      anyCandidate = anyCandidate || fohWageDelta.abs() > 0.03;
+    }
+
+    final hasBohWageInputs = profile.bohWage > 0 && bucket.bohMinutes > 0;
+    if (hasBohWageInputs) {
+      final bohWageDelta =
+          (bucket.bohBlendedWage - profile.bohWage) / profile.bohWage;
+      anyCandidate = anyCandidate || bohWageDelta.abs() > 0.03;
+    }
+
+    if (!anyCandidate) return null;
+
+    return LaborModel.determineLever(
+      actualCovers: bucket.covers,
+      forecastCovers: forecastCovers,
+      avgCPLH: bucket.cplh,
+      avgPPA: bucket.ppa,
+      targetCPLH: profile.targetCPLH,
+      targetPPA: profile.targetPPA,
+      avgSPLH: hasSplhInputs ? bucket.bohSplh : null,
+      targetSPLH: hasSplhInputs ? profile.targetSPLH : null,
+      avgFohBlendedWage: hasFohWageInputs ? bucket.fohBlendedWage : null,
+      targetFohWage: hasFohWageInputs ? profile.fohWage : null,
+      avgBohBlendedWage: hasBohWageInputs ? bucket.bohBlendedWage : null,
+      targetBohWage: hasBohWageInputs ? profile.bohWage : null,
+    );
+  }
+
+  /// Convenience: mint per-period drivers for every period in [buckets]
+  /// using a per-period [forecastCoversByPeriod] map. Periods missing a
+  /// forecast covers entry default to 0 (degrades to null per
+  /// [computePrimaryLeverId]).
+  Map<String, String?> computePrimaryLevers({
+    required Map<String, ServicePeriodAccumulator> buckets,
+    required Map<String, int> forecastCoversByPeriod,
+    required ActiveTargetProfile? profile,
+  }) {
+    return {
+      for (final entry in buckets.entries)
+        entry.key: computePrimaryLeverId(
+          bucket: entry.value,
+          forecastCovers: forecastCoversByPeriod[entry.key] ?? 0,
+          profile: profile,
+        ),
     };
   }
 }
