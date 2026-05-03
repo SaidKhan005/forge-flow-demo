@@ -1,9 +1,10 @@
 # Phase 7.58 - Primary Driver Contract
 
-Updated: 2026-05-01
+Updated: 2026-05-03
 Owner: Codex architecture
 Status: Active authority for `7.58` sub-slice family
-Companion: `docs/phases/phase_7_58/phase_7_58_primary_driver_audit_plan.md`
+Companion plan: `docs/phases/phase_7_58/phase_7_58_primary_driver_audit_plan.md`
+Companion contract: `docs/contracts/metric_card_honesty_contract.md` — extends this doctrine from lever ids to load-bearing metric cards (CPLH / SPLH / PPA / wage). Disjoint scope; same honesty pattern.
 
 ## Why This Exists
 

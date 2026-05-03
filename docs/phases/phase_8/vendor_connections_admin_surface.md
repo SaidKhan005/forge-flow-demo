@@ -187,7 +187,7 @@ The first-time connect for an empty section:
 Two tiers:
 
 - **Light auth-check on page load** (5-min cached). Hits vendor's `/me` or auth-validation endpoint to confirm credentials are still valid. Updates status badge.
-- **Heavy sample-pull on button press**. Operator clicks "Test connection" → adapter pulls a real sample order/reservation/punch from yesterday → displays in a modal:
+- **Heavy sample-pull on button press**. Operator clicks "Test connection" → adapter pulls a real sample order/reservation/punch from yesterday → displays in a modal. **No fixed response-time SLA at V1** — surfaces within the client's 30s default timeout. Vendor APIs are not consistently fast enough to honor a 5-second hard SLA; tightening the SLA later is purely additive.
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -434,13 +434,14 @@ This surface ships as part of `8.0` framework slice. Acceptance:
 
 - All routes functional against staging proxy.
 - Pick-then-show flow works for at least the 3 reference vendors (Lightspeed, Libro, QuickBooks Time).
-- Heavy test-connection returns sample data within 5s.
+- Heavy test-connection returns sample data within client default timeout (~30s); no fixed sub-30s SLA at V1.
 - Module disambiguation flow rejects ADP RUN with the correct refusal message.
 - Multi-location apply-to-all flow works for an operator with 2+ test locations.
 - Webhook URL display + Copy button works for both auto-register and manual-paste vendor classes.
-- Disconnect preserves historical facts; reconnect resumes from preserved watermark.
+- Disconnect preserves historical facts; reconnect resumes from preserved watermark. After disconnect, operator-app dashboard metric cards flip to `MetricCardNotYetAvailable` (per `docs/contracts/metric_card_honesty_contract.md`); no phantom zeroes. Top-left dashboard pill summarizes the disconnect state.
 - Permission gate: `location_manager` role gets a 403; `operator_admin` and `forge_admin` succeed.
 - Demo-mode banner renders correctly in operator app when no vendor is connected at any (operator, location).
+- Walkthrough at acceptance is a click-path per `docs/CODEX_PROMPT_GENERATION_STANDARD.md` Walkthrough Specificity section — numbered steps, named widgets, named values.
 
 ## Cross-references
 

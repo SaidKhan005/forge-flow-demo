@@ -90,6 +90,28 @@ Report using the standard execution report.
 Use repo-root-relative paths. For files over 500 lines, name the region,
 method, or class. Do not paste phase-doc weight into prompts.
 
+## Walkthrough Specificity (operator-facing slices)
+
+A walkthrough is **not** "demo-mode walkthrough green." A walkthrough is a
+numbered click-path with expected visual states at each step, named widgets,
+and named values. If your slice ships an operator-facing surface, your
+walkthrough must be a click-path Codex (or you) can follow without reading
+the code. Bar set by `docs/_walkthroughs/7.58.UX.5.md`.
+
+Required elements per walkthrough:
+
+- Demo-mode start condition (date, week, business state).
+- Numbered steps, each naming the user action ("tap X", "long-press Y").
+- Expected visual state per step ("card flips green", "badge reads 'live'",
+  "MetricCardNotYetAvailable widget renders").
+- Named widget references when behavior depends on a specific widget.
+- Named value expectations when behavior depends on a specific number, label,
+  or state ("CPLH state = `live`, provenance = `vendor_lightspeed_lsk`").
+
+Codex returns `FOLLOW-UP NEEDED` if the walkthrough is vague (e.g., references
+the standard without giving the click-path), missing expected states, or skips
+a non-trivial UX surface introduced by the slice.
+
 ## Runtime Work
 
 If a slice exposes runtime behavior, browser/admin/operator UX, migrations,

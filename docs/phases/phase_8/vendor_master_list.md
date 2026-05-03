@@ -146,9 +146,15 @@ When the operator connects QuickBooks, the connect flow MUST disambiguate:
 
 If a target operator runs **only** vendors from these two lists, they cannot be onboarded via the standard inbound integration framework. The product would need to fall back to operator-supplied CSV / fixture mode (existing demo-mode-style transport) — that decision is launch-strategy, not engineering, and should be raised explicitly with the operator before contracting.
 
-## Wave Plan (Reference-First, share-weighted)
+## Wave Plan (API-readiness first, share-weighted; partnership reframe locked 2026-05-03)
 
-Wave 1 ships the framework + three "cleanest API" reference adapters that prove the architecture end-to-end. Wave 3's high-share partnership-gated vendors require partnership applications kicked off **at the start of Wave 1**, in parallel with engineering, so they land roughly when the framework is mature. **Wave 1 + 2 + 3 = MVP launch state.**
+**Partnership programs unlock production credentials. They never block adapter shipping.** Build all 17 adapters against documented APIs and sandboxes now. Operators on a partnership-gated vendor stay in demo mode for that category until production credentials land via the parallel commercial lane. The engineering work and the partnership work proceed independently and rendezvous at production cutover for that vendor.
+
+This reframe was applied 2026-05-03 after the prior posture (partnership approval gates the slice) was identified as a months-long delay risk for engineering work that doesn't actually depend on partnership status. See `memory/project_v1_lean_cut_2_2026_05_03.md` for the durable decision.
+
+Wave 1 ships the framework + three "cleanest API" reference adapters that prove the architecture end-to-end. Subsequent waves are sequenced by API readiness (sandbox availability + doc completeness + vendor responsiveness), not partnership status.
+
+**Wave 1 + 2 + 3 = MVP launch state** — the engineering work is complete and operators on those vendors connect via sandbox or production credentials depending on whether the partnership has cleared. Demo-mode banner on the operator app correctly reflects which (operator, location, category) tuples are live vs sandbox vs demo.
 
 ### Wave 1 — Framework + reference adapters (start now, ~6-10 weeks)
 
@@ -166,13 +172,15 @@ Wave 1 ships the framework + three "cleanest API" reference adapters that prove 
 | `8.SQ` | Square (POS) | 20% share, self-serve OAuth, no gate. Covers degrades to forecast fallback. |
 | `8.S.7S` | 7shifts (Scheduling) | 35% share, already audited, easy onboarding. |
 
-### Wave 3 — Partnership-gated high-share (lands ~10-16 weeks from start; applications kicked off at Wave 1 start)
+### Wave 3 — High-share, sandbox-or-doc available, partnership-unlocking-production (engineering ships now)
 
-| Slice | Vendor | Lead time |
-|---|---|---|
-| `8.TS` | Toast (POS) | Partnership review + compliance/security/legal — ~6-12 weeks. **Highest POS share at 35%.** |
-| `8R.OT` | OpenTable (Reservations) | Partnership review — ~6-12 weeks. **Highest reservation share at 55%.** |
-| `8.S.ADP` | ADP Workforce Now/Manager (Scheduling) | ADP Marketplace DPA — ~12-24 weeks. 15% share. |
+These vendors require partnership for **production data access**. Their **sandbox or developer docs** are accessible enough to build the adapter against now. Engineering ships the adapter; operators on the vendor stay in sandbox/demo mode until the parallel commercial lane unlocks production credentials.
+
+| Slice | Vendor | Engineering ready | Production access |
+|---|---|---|---|
+| `8.TS` | Toast (POS) | Public dev docs + Standard API tier sandbox | Partnership review (~6-12 weeks) — parallel commercial lane |
+| `8R.OT` | OpenTable (Reservations) | Partnership-only docs; build against published reservation-data field shape | Partnership review (~6-12 weeks) — parallel commercial lane. Until cleared, OpenTable operators stay in demo mode for reservations. |
+| `8.S.ADP` | ADP Workforce Now/Manager (Scheduling) | ADP Marketplace dev portal + sandbox | ADP Marketplace DPA (~12-24 weeks) — parallel commercial lane |
 
 ### Wave 4 — Mid-share self-serve / quick approval
 
