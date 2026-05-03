@@ -482,6 +482,17 @@ class AuthSessionNotifier extends ChangeNotifier {
         );
       }
     }
+    // Flip local app auth state before the network revoke so protected
+    // routes collapse immediately on mobile even when the proxy/Firebase
+    // call takes the full timeout window.
+    _activeSessionId = null;
+    _setState(const AuthSessionUnauthenticated());
+    try {
+      await _storage.clear();
+    } catch (_) {
+      /* ignore */
+    }
+
     var signedOutLocally = false;
     try {
       await _loginService.signOutAllSessions();
@@ -498,13 +509,6 @@ class AuthSessionNotifier extends ChangeNotifier {
         );
       }
     }
-    _activeSessionId = null;
-    try {
-      await _storage.clear();
-    } catch (_) {
-      /* ignore */
-    }
-    _setState(const AuthSessionUnauthenticated());
   }
 
   void _logSignOutBackgroundError(Future<void> operation, String label) {
