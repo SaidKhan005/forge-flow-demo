@@ -52,9 +52,9 @@ class _AdminShellState extends State<AdminShell> {
   }
 
   AdminRoute get _currentRoute => widget.routes.firstWhere(
-        (r) => r.id == _selectedRouteId,
-        orElse: () => widget.routes.first,
-      );
+    (r) => r.id == _selectedRouteId,
+    orElse: () => widget.routes.first,
+  );
 
   void _select(String id) {
     if (id == _selectedRouteId) return;
@@ -146,9 +146,7 @@ class _AdminHeaderBar extends StatelessWidget {
                 Text(
                   'Forge & Flow',
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 Text(
                   'Operations Console',
@@ -190,6 +188,12 @@ class _RolePill extends StatelessWidget {
       kAdminConsoleRoles.contains,
       orElse: () => roles.isEmpty ? 'unknown' : roles.first,
     );
+    final roleLabel = switch (adminRole) {
+      'super_admin' => 'Platform admin',
+      'ff_support' => 'Support access',
+      'unknown' => 'Unknown role',
+      _ => adminRole.replaceAll('_', ' '),
+    };
     return Container(
       key: const Key('admin_header_role_pill'),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -202,7 +206,7 @@ class _RolePill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        adminRole,
+        roleLabel,
         style: AppTextStyles.mono8(color: AppColors.peacockDark),
       ),
     );
@@ -326,7 +330,7 @@ class _NavItem extends StatelessWidget {
                 ),
                 if (route.placeholder)
                   Text(
-                    'soon',
+                    'Coming soon',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
               ],
@@ -371,11 +375,7 @@ class _PlaceholderBody extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(
-                    route.icon,
-                    size: 22,
-                    color: AppColors.sunsetDark,
-                  ),
+                  Icon(route.icon, size: 22, color: AppColors.sunsetDark),
                   const SizedBox(width: 10),
                   Text(
                     route.title,
@@ -387,10 +387,8 @@ class _PlaceholderBody extends StatelessWidget {
               ),
               const SizedBox(height: 10),
               Text(
-                route.subtitle ?? 'This admin surface is not online yet.',
-                style: AppTextStyles.body13(
-                  color: AppColors.textSecondary,
-                ),
+                route.subtitle ?? 'This page is not ready yet.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
             ],
           ),

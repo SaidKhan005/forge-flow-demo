@@ -75,10 +75,7 @@ class _SettingsAdvisorCorpusSectionState
         const SettingsRowDivider(),
         _MarkdownField(controller: _markdownController),
         const SettingsRowDivider(),
-        _ActionsRow(
-          previewing: _previewing,
-          onPreview: _onPreview,
-        ),
+        _ActionsRow(previewing: _previewing, onPreview: _onPreview),
         if (_lastPreview != null) ...[
           const SettingsRowDivider(),
           _PreviewResultRow(result: _lastPreview!),
@@ -104,7 +101,7 @@ class _CorpusHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'CORPUS DOC PREVIEW (LOCAL-ONLY)',
+            'Content preview',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           SizedBox(height: 4),
@@ -131,7 +128,7 @@ class _FileNameField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'FILE NAME',
+            'File name',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           const SizedBox(height: 4),
@@ -165,7 +162,7 @@ class _MarkdownField extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'MARKDOWN',
+            'Markdown content',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           const SizedBox(height: 4),
@@ -193,10 +190,7 @@ class _ActionsRow extends StatelessWidget {
   final bool previewing;
   final VoidCallback onPreview;
 
-  const _ActionsRow({
-    required this.previewing,
-    required this.onPreview,
-  });
+  const _ActionsRow({required this.previewing, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
@@ -222,7 +216,7 @@ class _ActionsRow extends StatelessWidget {
             child: TextButton(
               key: const Key('advisor_corpus_cloud_load_button'),
               onPressed: null,
-              child: const Text('Load to cloud (blocked)'),
+              child: const Text('Cloud load unavailable'),
             ),
           ),
         ],
@@ -245,7 +239,7 @@ class _PreviewResultRow extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'PREVIEW REJECTED',
+              'Preview rejected',
               style: TextStyle(color: AppColors.negative, fontSize: 11),
             ),
             const SizedBox(height: 4),
@@ -264,61 +258,61 @@ class _PreviewResultRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'PREVIEW LOCAL ONLY',
+            'Local preview',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           const SizedBox(height: 4),
           Text(
-            'file · ${result.normalizedFileName}',
+            'File: ${result.normalizedFileName}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'source · ${result.sourcePathPreview}',
+            'Source: ${result.sourcePathPreview}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'title · ${result.titlePreview}',
+            'Title: ${result.titlePreview}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'headings · ${result.headingCount}',
+            'Headings: ${result.headingCount}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'lines · ${result.lineCount}',
+            'Lines: ${result.lineCount}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'est tokens · ${result.estimatedTokens}',
+            'Estimated tokens: ${result.estimatedTokens}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'est chunks · ${result.estimatedChunkCount}',
+            'Estimated content pieces: ${result.estimatedChunkCount}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
             ),
           ),
           Text(
-            'status · ${result.localStatus}',
+            'Status: ${result.localStatus}',
             style: const TextStyle(
               color: AppColors.textPrimary,
               fontFamily: 'monospace',
@@ -342,14 +336,12 @@ class _CloudBlockedRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'CLOUD LOAD · BLOCKED',
+            'Cloud load unavailable',
             style: TextStyle(color: AppColors.sunset, fontSize: 11),
           ),
           SizedBox(height: 4),
           Text(
-            'Cloud load is blocked: 11a.11b apply prerequisites missing. '
-            'See docs/phases/phase_11a/'
-            'phase_11a_11b_cloud_db_apply_readiness.md.',
+            'Cloud loading is not available in this build. Preview content locally before sharing it with the admin console.',
             style: TextStyle(color: AppColors.textPrimary),
           ),
         ],

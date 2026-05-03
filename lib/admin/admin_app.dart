@@ -37,7 +37,7 @@ class _AdminConsoleAppState extends State<AdminConsoleApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Forge & Flow — Operations Console',
+      title: 'Forge & Flow Admin Console',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.themeData,
       home: AdminAuthGate(

@@ -51,8 +51,8 @@ class TimingAuthoritySection extends StatelessWidget {
       7: 'Sun',
     };
     if (days.length == 7) return 'Daily';
-    if (_sameDays(days, const [1, 2, 3, 4, 5])) return 'Mon–Fri';
-    if (_sameDays(days, const [5, 6])) return 'Fri–Sat';
+    if (_sameDays(days, const [1, 2, 3, 4, 5])) return 'Mon-Fri';
+    if (_sameDays(days, const [5, 6])) return 'Fri-Sat';
     return days.map((d) => shortNames[d] ?? '$d').join(', ');
   }
 
@@ -78,17 +78,20 @@ class TimingAuthoritySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<RestaurantTimingConfig?>(
-      future:
-          RestaurantTimingConfigReadService.instance.getTimingConfig(restaurantId),
+      future: RestaurantTimingConfigReadService.instance.getTimingConfig(
+        restaurantId,
+      ),
       builder: (context, snapshot) {
         if (snapshot.connectionState != ConnectionState.done) {
           return SettingsCard(
             children: [
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 16,
+                ),
                 child: Text(
-                  'Loading timing settings…',
+                  'Loading timing settings...',
                   style: AppTextStyles.body13(color: AppColors.textMuted),
                 ),
               ),
@@ -101,8 +104,10 @@ class TimingAuthoritySection extends StatelessWidget {
           return SettingsCard(
             children: [
               Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 16,
+                ),
                 child: Text(
                   'Timing settings are not available yet for this restaurant.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
@@ -124,7 +129,9 @@ class TimingAuthoritySection extends StatelessWidget {
                     children: [
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 5),
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.sunset.withValues(alpha: 0.12),
                           border: Border.all(
@@ -134,18 +141,18 @@ class TimingAuthoritySection extends StatelessWidget {
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Text(
-                          'ACTIVE TIMING',
-                          style:
-                              AppTextStyles.mono10(color: AppColors.sunsetDark),
+                          'Current timing',
+                          style: AppTextStyles.mono10(
+                            color: AppColors.sunsetDark,
+                          ),
                         ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    'Restaurant-local timing controls the business date, week start, and service buckets. Timezone is visible here now; full timezone editing stays in the deeper time-boundary lane.',
-                    style: AppTextStyles.body13(
-                        color: AppColors.textSecondary),
+                    'Restaurant-local timing controls the business date, week start, and service periods.',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                   const SizedBox(height: 12),
                   _TimingValueRow(
@@ -154,23 +161,23 @@ class TimingAuthoritySection extends StatelessWidget {
                   ),
                   const SettingsRowDivider(),
                   _TimingValueRow(
-                    label: 'Business Day Starts',
+                    label: 'Business day starts',
                     value: _formatTime(config.businessDayStartLocalTime),
                   ),
                   const SettingsRowDivider(),
                   _TimingValueRow(
-                    label: 'Week Starts',
+                    label: 'Week starts',
                     value: _formatWeekStart(config.weekStartDay),
                   ),
                   const SettingsRowDivider(),
                   _TimingValueRow(
-                    label: 'Shift Close Rule',
+                    label: 'Shift close rule',
                     value: _formatShiftCloseRule(config),
                   ),
                   if (periods.isNotEmpty) ...[
                     const SizedBox(height: 12),
                     Text(
-                      'SERVICE PERIODS',
+                      'Service periods',
                       style: AppTextStyles.mono10(color: AppColors.textMuted),
                     ),
                     const SizedBox(height: 8),
@@ -179,7 +186,7 @@ class TimingAuthoritySection extends StatelessWidget {
                       _TimingValueRow(
                         label: periods[i].label,
                         value:
-                            '${_formatApplicableDays(periods[i].applicableDays)} · ${_formatTime(periods[i].startLocalTime)}–${_formatTime(periods[i].endLocalTime)}',
+                            '${_formatApplicableDays(periods[i].applicableDays)} - ${_formatTime(periods[i].startLocalTime)} to ${_formatTime(periods[i].endLocalTime)}',
                       ),
                     ],
                   ],

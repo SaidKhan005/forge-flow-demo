@@ -139,7 +139,7 @@ void main() {
 
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Graph candidates'),
+      matching: find.text('Graph review'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();
@@ -184,7 +184,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_corpus_empty')), findsOneWidget);
-    expect(find.text('No corpus versions yet'), findsOneWidget);
+    expect(find.text('No advisor content yet'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_corpus_first_upload_button')),
       findsOneWidget,

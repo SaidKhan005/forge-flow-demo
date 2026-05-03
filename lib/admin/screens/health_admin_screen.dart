@@ -69,18 +69,18 @@ class _TabSpec {
 /// ordering.
 const List<_TabSpec> _kTabs = <_TabSpec>[
   _TabSpec(
-    label: 'Retrieval',
+    label: 'Advisor data',
     keySuffix: 'retrieval',
     sections: <_SectionSpec>[
       _SectionSpec(
-        title: 'Corpus / rollup freshness',
+        title: 'Advisor content freshness',
         tiles: <_TileSpec>[
           _TileSpec('rollup_freshness_per_grain'),
           _TileSpec('rollup_refresh_lag_seconds'),
         ],
       ),
       _SectionSpec(
-        title: 'AGE graph traversal',
+        title: 'Relationship graph',
         tiles: <_TileSpec>[
           _TileSpec('graph_traversal_latency_ms', shortLabel: 'AGE p95'),
           _TileSpec('graph_traversal_p99_latency_ms', shortLabel: 'AGE p99'),
@@ -91,7 +91,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Vector search',
+        title: 'Search index',
         tiles: <_TileSpec>[
           _TileSpec('vector_query_latency_ms', shortLabel: 'Vector p50'),
           _TileSpec('vector_query_p99_latency_ms', shortLabel: 'Vector p99'),
@@ -104,11 +104,11 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     ],
   ),
   _TabSpec(
-    label: 'Proxy',
+    label: 'API service',
     keySuffix: 'proxy',
     sections: <_SectionSpec>[
       _SectionSpec(
-        title: 'Circuit breakers',
+        title: 'Provider protection',
         tiles: <_TileSpec>[
           _TileSpec('circuit_breaker_anthropic_state'),
           _TileSpec('circuit_breaker_voyage_state'),
@@ -116,7 +116,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Cache hit ratios',
+        title: 'Saved response reuse',
         tiles: <_TileSpec>[
           _TileSpec('prompt_cache_hit_rate'),
           _TileSpec('response_cache_hit_rate'),
@@ -124,7 +124,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Tier routing & cost levers',
+        title: 'Model routing and cost controls',
         tiles: <_TileSpec>[
           _TileSpec('cost_per_query_class_haiku'),
           _TileSpec('cost_per_query_class_sonnet'),
@@ -135,7 +135,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Idempotency & caps',
+        title: 'Retries and usage limits',
         tiles: <_TileSpec>[
           _TileSpec('proxy_idempotency_cache_alive'),
           _TileSpec('usage_caps_breach_count'),
@@ -146,11 +146,11 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     ],
   ),
   _TabSpec(
-    label: 'Infra',
+    label: 'Platform',
     keySuffix: 'infra',
     sections: <_SectionSpec>[
       _SectionSpec(
-        title: 'Database extensions & jobs',
+        title: 'Database jobs',
         tiles: <_TileSpec>[
           _TileSpec('azure_extensions_present'),
           _TileSpec('pg_cron_scheduler_alive'),
@@ -162,7 +162,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Audit chain & event outbox',
+        title: 'Audit trail and event queue',
         tiles: <_TileSpec>[
           _TileSpec('audit_chain_lag_seconds'),
           _TileSpec('audit_chain_anchor_age_seconds'),
@@ -173,7 +173,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Identity & runtime',
+        title: 'Sign-in and hosting',
         tiles: <_TileSpec>[
           _TileSpec('firebase_jwks_fetch_alive'),
           _TileSpec('service_principal_jwt_alive'),
@@ -396,10 +396,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminPageHeader(
-      title: 'Health',
+      title: 'System health',
       subtitle:
-          'Manual, read-only diagnostic for the proxy /health envelope. '
-          'Three tabs mirror the D.1 contract tiers after a check runs.',
+          'Run a read-only check of advisor data, the API service, and platform dependencies before investigating live issues.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -417,7 +416,7 @@ class _Header extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.health_and_safety_outlined, size: 16),
-              label: Text(loading ? 'Running...' : 'Run health check'),
+              label: Text(loading ? 'Running...' : 'Run system check'),
             ),
             const SizedBox(height: 6),
             Text(
@@ -446,15 +445,11 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
       key: const Key('admin_health_confirm_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Run health check?',
+        'Run system check?',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: Text(
-        'This can take 15-30+ seconds because staging checks real '
-        'dependencies and producer freshness, including Postgres, AGE, '
-        'pgvector, audit chain, event outbox, and proxy metrics. It is '
-        'read-only, and red or yellow results may reflect real backend '
-        'state rather than a console issue.',
+        'This can take 15-30+ seconds because staging checks real backend dependencies, advisor freshness, the audit trail, the event queue, and API metrics. It is read-only, and red or yellow results may reflect real backend state rather than a console issue.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
       actions: [
@@ -501,14 +496,12 @@ class _ManualHealthPrompt extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'No health check run in this session',
+                'No system check run in this session',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               Text(
-                'Run a live diagnostic when you need the current staging '
-                'state. The request is read-only and may take 15-30+ '
-                'seconds because it checks real backend dependencies.',
+                'Run a live diagnostic when you need the current staging state. The request is read-only and may take 15-30+ seconds because it checks real backend dependencies.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
@@ -520,7 +513,7 @@ class _ManualHealthPrompt extends StatelessWidget {
                   foregroundColor: AppColors.backgroundSurface,
                 ),
                 icon: const Icon(Icons.health_and_safety_outlined, size: 16),
-                label: const Text('Run health check'),
+                label: const Text('Run system check'),
               ),
             ],
           ),
@@ -549,9 +542,7 @@ class _DependenciesUnavailableBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Dependencies unavailable — proxy /health returned HTTP 503. '
-              'A required dependency probe (postgres, AGE, or pgvector) '
-              'is failing. The metrics below may be stale.',
+              'Dependencies unavailable. A required backend check is failing, so the metrics below may be stale.',
               style: AppTextStyles.mono11(color: AppColors.negative),
             ),
           ),
@@ -599,8 +590,7 @@ class _Tier1FailureBanner extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Tier-1 health signals failing — investigate before '
-                  'shipping.',
+                  'Critical system checks are failing. Investigate before shipping.',
                   style: AppTextStyles.mono11(color: AppColors.negative),
                 ),
                 if (failingDeps.isNotEmpty)
@@ -678,7 +668,7 @@ class _DependencyChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        '${dep.name} · ${dep.check} · ${_severityLabel(dep.status)}',
+        '${dep.name} - ${dep.check} - ${_severityLabel(dep.status)}',
         style: AppTextStyles.mono10(
           color: color,
         ).copyWith(fontWeight: FontWeight.w600),
@@ -715,7 +705,7 @@ class _OverallSeverityChip extends StatelessWidget {
           Expanded(
             child: Text(
               'Overall severity: ${_severityLabel(severity)}'
-              '${envelope.status.isEmpty ? '' : ' · status ${envelope.status}'}',
+              '${envelope.status.isEmpty ? '' : ' - status ${envelope.status}'}',
               overflow: TextOverflow.ellipsis,
               style: AppTextStyles.mono11(
                 color: AppColors.textPrimary,
@@ -815,7 +805,7 @@ class _MetricTile extends StatelessWidget {
     final severity = m?.status ?? HealthSeverity.unknown;
     final tier = m?.tier ?? 3;
     final chipColor = _tierChipColor(tier, severity);
-    final value = m?.displayValue ?? '—';
+    final value = m?.displayValue ?? 'No data';
     final unit = m?.unit ?? '';
     final threshold = m?.thresholdCaption;
     final observed = m?.observedAt;
@@ -873,8 +863,8 @@ class _MetricTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               observed == null
-                  ? 'observed: —'
-                  : 'observed: ${observed.toUtc().toIso8601String()}',
+                  ? 'Observed: no data'
+                  : 'Observed: ${observed.toUtc().toIso8601String()}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
             ),
           ],
@@ -898,7 +888,7 @@ class _TierChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = 'T$tier · ${_severityLabel(severity)}';
+    final label = 'Tier $tier - ${_severityLabel(severity)}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(

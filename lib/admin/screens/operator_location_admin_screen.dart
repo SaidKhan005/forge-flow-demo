@@ -145,10 +145,9 @@ class _OperatorLocationAdminScreenState
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             AdminPageHeader(
-              title: 'Operators',
+              title: 'Customers',
               subtitle:
-                  'Onboard, edit, suspend, and manage locations for '
-                  'every F&F-managed operator.',
+                  'Create customer accounts, manage locations, and pause or restore access when needed.',
               trailing: FilledButton.icon(
                 key: const Key('admin_operators_new_button'),
                 onPressed: _openOnboardingDialog,
@@ -160,7 +159,7 @@ class _OperatorLocationAdminScreenState
                   ),
                 ),
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('New operator'),
+                label: const Text('New customer'),
               ),
             ),
             const SizedBox(height: 14),
@@ -208,13 +207,12 @@ class _OperatorLocationAdminScreenState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No operators onboarded yet',
+                  'No customers yet',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Click "New operator" to create the first operator, '
-                  'their primary location, and the initial admin assignment.',
+                  'Select "New customer" to create the first account, primary location, and admin assignment.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -433,7 +431,7 @@ class _OperatorList extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       '${bundle.operator.subscriptionTier} '
-                      '· ${bundle.locations.length} location'
+                      '- ${bundle.locations.length} location'
                       '${bundle.locations.length == 1 ? '' : 's'}',
                       style: AppTextStyles.mono8(color: AppColors.textMuted),
                     ),
@@ -505,17 +503,14 @@ class _OperatorDetail extends StatelessWidget {
                   label: 'Owner email',
                   value: operator.ownerEmail,
                 ),
+                AdminDetailRow(label: 'Plan', value: operator.subscriptionTier),
                 AdminDetailRow(
-                  label: 'Subscription tier',
-                  value: operator.subscriptionTier,
-                ),
-                AdminDetailRow(
-                  label: 'Preferred currency',
+                  label: 'Currency',
                   value: operator.preferredCurrency,
                 ),
                 AdminDetailRow(
-                  label: 'Primary location',
-                  value: bundle.primaryLocation?.name ?? '—',
+                  label: 'Main location',
+                  value: bundle.primaryLocation?.name ?? 'No main location',
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -526,7 +521,7 @@ class _OperatorDetail extends StatelessWidget {
                       key: const Key('admin_operator_edit_button'),
                       onPressed: () => onEditOperator(bundle),
                       icon: const Icon(Icons.edit_outlined, size: 14),
-                      label: const Text('Edit operator'),
+                      label: const Text('Edit customer'),
                     ),
                     if (operator.isSuspended)
                       OutlinedButton.icon(
@@ -567,7 +562,7 @@ class _OperatorDetail extends StatelessWidget {
                   runSpacing: 8,
                   children: [
                     Text(
-                      'Locations',
+                      'Restaurant locations',
                       style: AppTextStyles.mono15(
                         color: AppColors.textPrimary,
                         weight: FontWeight.w700,
@@ -645,12 +640,12 @@ class _LocationRow extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                     ),
                     if (isPrimary)
-                      _StatusPill(label: 'primary', color: AppColors.peacock),
+                      _StatusPill(label: 'main', color: AppColors.peacock),
                   ],
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${location.timezone} · rollover ${rolloverHour.toString().padLeft(2, '0')}:00',
+                  '${location.timezone} - business day starts ${rolloverHour.toString().padLeft(2, '0')}:00',
                   style: AppTextStyles.mono11(color: AppColors.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -660,7 +655,7 @@ class _LocationRow extends StatelessWidget {
           if (!isPrimary)
             IconButton(
               key: Key('admin_location_make_primary_${location.locationId}'),
-              tooltip: 'Make primary',
+              tooltip: 'Make main location',
               onPressed: onMakePrimary,
               icon: const Icon(Icons.star_outline, size: 16),
             ),

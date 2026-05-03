@@ -536,7 +536,7 @@ class _RoleTile extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.only(left: 8, top: 2),
                   child: Text(
-                    'Saving…',
+                    'Saving...',
                     style: AppTextStyles.body12(color: AppColors.textMuted),
                   ),
                 ),

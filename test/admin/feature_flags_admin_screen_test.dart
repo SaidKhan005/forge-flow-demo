@@ -23,10 +23,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   FeatureFlagAdminRow row({
     required String id,
@@ -49,87 +49,83 @@ void main() {
     );
   }
 
-  testWidgets(
-    'renders one tile per seeded flag with kind + scope chips',
-    (tester) async {
-      final gateway = InMemoryFeatureFlagsAdminGateway(
-        seed: <FeatureFlagAdminRow>[
-          row(
-            id: 'f-std',
-            name: 'advisor_enabled',
-            enabled: true,
-            description: 'Advisor surface kill switch',
-          ),
-          row(
-            id: 'f-dest',
-            name: 'circuit_breaker_open',
-            enabled: false,
-            kind: kFeatureFlagKindDestructive,
-            description: 'Circuit breaker for production traffic.',
-          ),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(FeatureFlagsAdminScreen(gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('renders one tile per seeded flag with kind + scope chips', (
+    tester,
+  ) async {
+    final gateway = InMemoryFeatureFlagsAdminGateway(
+      seed: <FeatureFlagAdminRow>[
+        row(
+          id: 'f-std',
+          name: 'advisor_enabled',
+          enabled: true,
+          description: 'Advisor surface kill switch',
+        ),
+        row(
+          id: 'f-dest',
+          name: 'circuit_breaker_open',
+          enabled: false,
+          kind: kFeatureFlagKindDestructive,
+          description: 'Circuit breaker for production traffic.',
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(FeatureFlagsAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
 
-      expect(find.text('advisor_enabled'), findsOneWidget);
-      expect(find.text('circuit_breaker_open'), findsOneWidget);
-      // Destructive chip is on the destructive flag.
-      expect(
-        find.byKey(const Key('admin_feature_flag_danger_f-dest')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_feature_flag_danger_f-std')),
-        findsNothing,
-      );
-      // Scope chips are present on both.
-      expect(
-        find.byKey(const Key('admin_feature_flag_scope_f-dest')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key('admin_feature_flag_scope_f-std')),
-        findsOneWidget,
-      );
-      // Value chips read the seeded enabled bit.
-      expect(find.text('value: ENABLED'), findsOneWidget);
-      expect(find.text('value: DISABLED'), findsOneWidget);
-    },
-  );
+    expect(find.text('Advisor access'), findsOneWidget);
+    expect(find.text('Circuit Breaker Open'), findsOneWidget);
+    // Destructive chip is on the destructive flag.
+    expect(
+      find.byKey(const Key('admin_feature_flag_danger_f-dest')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_feature_flag_danger_f-std')),
+      findsNothing,
+    );
+    // Scope chips are present on both.
+    expect(
+      find.byKey(const Key('admin_feature_flag_scope_f-dest')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_feature_flag_scope_f-std')),
+      findsOneWidget,
+    );
+    // Value chips read the seeded enabled bit.
+    expect(find.text('Status: On'), findsOneWidget);
+    expect(find.text('Status: Off'), findsOneWidget);
+  });
 
-  testWidgets(
-    'standard flag toggle flips the value and shows the SnackBar',
-    (tester) async {
-      var keyCounter = 0;
-      final gateway = InMemoryFeatureFlagsAdminGateway(
-        actorUserId: 'super-admin-uuid',
-        seed: <FeatureFlagAdminRow>[
-          row(id: 'f-std', name: 'advisor_enabled', enabled: false),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(FeatureFlagsAdminScreen(
+  testWidgets('standard flag toggle flips the value and shows the SnackBar', (
+    tester,
+  ) async {
+    var keyCounter = 0;
+    final gateway = InMemoryFeatureFlagsAdminGateway(
+      actorUserId: 'super-admin-uuid',
+      seed: <FeatureFlagAdminRow>[
+        row(id: 'f-std', name: 'advisor_enabled', enabled: false),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        FeatureFlagsAdminScreen(
           gateway: gateway,
           idempotencyKeyFactory: () => 'idem-${keyCounter++}',
-        )),
-      );
-      await tester.pumpAndSettle();
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      expect(find.text('value: DISABLED'), findsOneWidget);
+    expect(find.text('Status: Off'), findsOneWidget);
 
-      await tester.tap(
-        find.byKey(const Key('admin_feature_flag_toggle_f-std')),
-      );
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_feature_flag_toggle_f-std')));
+    await tester.pumpAndSettle();
 
-      expect(find.text('Flag updated'), findsOneWidget);
-      expect(find.text('value: ENABLED'), findsOneWidget);
-      expect(find.textContaining('super-admin-uuid'), findsOneWidget);
-    },
-  );
+    expect(find.text('Launch control updated'), findsOneWidget);
+    expect(find.text('Status: On'), findsOneWidget);
+    expect(find.textContaining('super-admin-uuid'), findsOneWidget);
+  });
 
   testWidgets(
     'destructive flag toggle requires confirm-by-typing the flag name',
@@ -145,9 +141,7 @@ void main() {
           ),
         ],
       );
-      await tester.pumpWidget(
-        wrap(FeatureFlagsAdminScreen(gateway: gateway)),
-      );
+      await tester.pumpWidget(wrap(FeatureFlagsAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
       await tester.tap(
@@ -161,12 +155,10 @@ void main() {
         find.byKey(const Key('admin_feature_flag_danger_dialog')),
         findsOneWidget,
       );
-      final confirmFinder =
-          find.byKey(const Key('admin_feature_flag_danger_confirm'));
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNull,
+      final confirmFinder = find.byKey(
+        const Key('admin_feature_flag_danger_confirm'),
       );
+      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNull);
 
       // Wrong text leaves the button disabled.
       await tester.enterText(
@@ -174,10 +166,7 @@ void main() {
         'wrong_name',
       );
       await tester.pump();
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNull,
-      );
+      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNull);
 
       // Exact match enables the button.
       await tester.enterText(
@@ -185,82 +174,69 @@ void main() {
         'audit_logs_cutover_enabled',
       );
       await tester.pump();
-      expect(
-        tester.widget<FilledButton>(confirmFinder).onPressed,
-        isNotNull,
-      );
+      expect(tester.widget<FilledButton>(confirmFinder).onPressed, isNotNull);
 
       await tester.tap(confirmFinder);
       await tester.pumpAndSettle();
 
       // Toggle landed; flag flipped off.
-      expect(find.text('Flag updated'), findsOneWidget);
-      expect(find.text('value: DISABLED'), findsOneWidget);
+      expect(find.text('Launch control updated'), findsOneWidget);
+      expect(find.text('Status: Off'), findsOneWidget);
     },
   );
 
-  testWidgets(
-    'destructive cancel keeps the prior value (no toggle fires)',
-    (tester) async {
-      final gateway = InMemoryFeatureFlagsAdminGateway(
-        seed: <FeatureFlagAdminRow>[
-          row(
-            id: 'f-dest',
-            name: 'audit_logs_cutover_enabled',
-            enabled: true,
-            kind: kFeatureFlagKindDestructive,
-          ),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(FeatureFlagsAdminScreen(gateway: gateway)),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('destructive cancel keeps the prior value (no toggle fires)', (
+    tester,
+  ) async {
+    final gateway = InMemoryFeatureFlagsAdminGateway(
+      seed: <FeatureFlagAdminRow>[
+        row(
+          id: 'f-dest',
+          name: 'audit_logs_cutover_enabled',
+          enabled: true,
+          kind: kFeatureFlagKindDestructive,
+        ),
+      ],
+    );
+    await tester.pumpWidget(wrap(FeatureFlagsAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byKey(const Key('admin_feature_flag_toggle_f-dest')),
-      );
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_feature_flag_toggle_f-dest')));
+    await tester.pumpAndSettle();
 
-      await tester
-          .tap(find.byKey(const Key('admin_feature_flag_danger_cancel')));
-      await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_feature_flag_danger_cancel')));
+    await tester.pumpAndSettle();
 
-      expect(find.text('value: ENABLED'), findsOneWidget);
-      expect(find.text('Flag updated'), findsNothing);
-    },
-  );
+    expect(find.text('Status: On'), findsOneWidget);
+    expect(find.text('Launch control updated'), findsNothing);
+  });
 
-  testWidgets(
-    'editingEnabled = false hides toggle affordance + shows banner',
-    (tester) async {
-      final gateway = InMemoryFeatureFlagsAdminGateway(
-        seed: <FeatureFlagAdminRow>[
-          row(id: 'f-std', name: 'advisor_enabled', enabled: true),
-        ],
-      );
-      await tester.pumpWidget(
-        wrap(FeatureFlagsAdminScreen(
-          gateway: gateway,
-          editingEnabled: false,
-        )),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('editingEnabled = false hides toggle affordance + shows banner', (
+    tester,
+  ) async {
+    final gateway = InMemoryFeatureFlagsAdminGateway(
+      seed: <FeatureFlagAdminRow>[
+        row(id: 'f-std', name: 'advisor_enabled', enabled: true),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(FeatureFlagsAdminScreen(gateway: gateway, editingEnabled: false)),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('admin_feature_flags_readonly_banner')),
-        findsOneWidget,
-      );
-      // Active toggle button is absent; the disabled placeholder is
-      // present so the screen still shows the prospective action label.
-      expect(
-        find.byKey(const Key('admin_feature_flag_toggle_f-std')),
-        findsNothing,
-      );
-      final disabledButton = tester.widget<FilledButton>(
-        find.byKey(const Key('admin_feature_flag_toggle_disabled_f-std')),
-      );
-      expect(disabledButton.onPressed, isNull);
-    },
-  );
+    expect(
+      find.byKey(const Key('admin_feature_flags_readonly_banner')),
+      findsOneWidget,
+    );
+    // Active toggle button is absent; the disabled placeholder is
+    // present so the screen still shows the prospective action label.
+    expect(
+      find.byKey(const Key('admin_feature_flag_toggle_f-std')),
+      findsNothing,
+    );
+    final disabledButton = tester.widget<FilledButton>(
+      find.byKey(const Key('admin_feature_flag_toggle_disabled_f-std')),
+    );
+    expect(disabledButton.onPressed, isNull);
+  });
 }

@@ -26,7 +26,7 @@ class AdminHomeScreen extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            'Forge & Flow internal admin surface.',
+            'A private workspace for managing customers, plans, advisor content, connected services, and support checks.',
             style: AppTextStyles.body15(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
@@ -40,15 +40,9 @@ class AdminHomeScreen extends StatelessWidget {
                   gradient: const LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [
-                      AppColors.backgroundSurface,
-                      AppColors.cardGlow,
-                    ],
+                    colors: [AppColors.backgroundSurface, AppColors.cardGlow],
                   ),
-                  border: Border.all(
-                    color: AppColors.borderSubtle,
-                    width: 1,
-                  ),
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
                 ),
                 padding: const EdgeInsets.fromLTRB(22, 20, 22, 22),
                 child: Column(
@@ -66,7 +60,7 @@ class AdminHomeScreen extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          'Phase 11A.0 — shell online',
+                          'Admin workspace ready',
                           style: AppTextStyles.mono11(
                             color: AppColors.textSecondary,
                           ),
@@ -75,19 +69,14 @@ class AdminHomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 14),
                     Text(
-                      'Welcome to the F&F Operations Console.',
+                      'Welcome to the Forge & Flow admin workspace.',
                       style: AppTextStyles.display20(
                         color: AppColors.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      'This shell is the launch-blocking foundation for '
-                      'operator + location management (11A.1), pricing tier '
-                      'admin (11A.2), corpus admin (11A.3), integration key '
-                      'rotation (11A.4), and the per-operator debug + '
-                      'observability surfaces (11A.5–6). Each of those '
-                      'surfaces lights up here as its slice lands.',
+                      'Use the left navigation to set up customers and locations, manage plans and limits, publish advisor knowledge, rotate service keys, inspect support logs, and run system checks.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),

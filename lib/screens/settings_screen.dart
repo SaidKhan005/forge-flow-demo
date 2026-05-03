@@ -347,6 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 slivers: [
                   _settingsSection(
                     title: 'Two-factor security',
+                    description:
+                        'Add an authenticator app to better protect your account.',
                     child: SettingsMfaSection(
                       gateway: widget.mfaOperationsGateway,
                       actor:
@@ -360,6 +362,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _settingsSection(
                     title: 'Account',
+                    description: 'Review your sign-in details and password.',
                     child: SettingsAccountSection(
                       accountInfoGateway: widget.accountInfoGateway,
                       passwordChangeGateway: widget.passwordChangeGateway,
@@ -368,6 +371,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _settingsSection(
                     title: 'Active sessions',
+                    description:
+                        'See where your account is signed in and sign out devices you do not recognize.',
                     child: SettingsActiveSessionsSection(
                       gateway: widget.authOperationsGateway,
                       actor:
@@ -386,6 +391,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   _settingsSection(
                     title: 'Audit log',
+                    description: 'Review recent account and security activity.',
                     child: SettingsAuditLogSection(
                       gateway: widget.authOperationsGateway,
                       actor:
@@ -460,7 +466,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   _settingsSection(
-                    title: 'Org Hierarchy',
+                    title: 'Business structure',
+                    description:
+                        'Group locations into regions or districts for team access.',
                     child: _OrgHierarchyListenableScope(
                       seedOrgUnits: widget.teamOrgUnits,
                       seedLocations: widget.teamOrgLocations,
@@ -481,7 +489,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   ),
                   _settingsSection(
-                    title: 'Roles',
+                    title: 'Team roles',
+                    description:
+                        'Create and review the access roles your team can receive.',
                     child: _RoleCatalogLoadStateScope(
                       seed: widget.teamRoleCatalogLoadState,
                       listenable: widget.teamRoleCatalogLoadStateListenable,
@@ -518,19 +528,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           icon: Icons.storefront_outlined,
                           title: 'No restaurant selected',
                           description:
-                              'Pick a restaurant to configure timing and wage authority.',
+                              'Pick a restaurant before editing business timing and wage settings.',
                         ),
                       ),
                     ),
                   if (restaurant != null)
                     _settingsSection(
-                      title: 'Timing authority',
+                      title: 'Business timing',
+                      description:
+                          'Review when business days, weeks, shifts, and service periods start.',
                       child: TimingAuthoritySection(
                         restaurantId: restaurant.restaurantId,
                       ),
                     ),
                   _settingsSection(
-                    title: 'Wage authority',
+                    title: 'Wage setup',
+                    description:
+                        'Review the wage mix used for labor targets and cost estimates.',
                     child: WageAuthoritySection(onChanged: _refreshAppState),
                   ),
                 ],
@@ -541,7 +555,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onRefresh: _handlePullToRefresh,
                 slivers: [
                   _settingsSection(
-                    title: 'Data status',
+                    title: 'Sync status',
+                    description:
+                        'See whether this device has the local data it needs.',
                     child: SettingsDataStatusSection(status: _status),
                   ),
                   // Phase 10a.UX.1 — per-table last-sync timestamps
@@ -550,18 +566,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // shell-mounted RealtimeSubscription delivers a
                   // shared-state frame for the table.
                   _settingsSection(
-                    title: 'Data freshness',
+                    title: 'Latest updates',
+                    description:
+                        'Shows when shared restaurant data last updated on this device.',
                     child: const SettingsDataFreshnessSection(),
                   ),
                   _settingsSection(
-                    title: 'Data management',
+                    title: 'Data reset',
+                    description:
+                        'Use carefully when clearing local demo or operational data.',
                     child: SettingsDataManagementSection(
                       onAfterWrite: _refreshAfterWrite,
                     ),
                   ),
                   if (kDebugMode)
                     _settingsSection(
-                      title: 'Mock replay',
+                      title: 'Demo date',
+                      description:
+                          'Move the demo restaurant through sample business days.',
                       child: SettingsMockReplaySection(
                         mockReplayDate: () => _mockReplayDate,
                         onAfterWrite: _refreshAfterWrite,
@@ -575,12 +597,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onRefresh: _handlePullToRefresh,
                 slivers: [
                   _settingsSection(
-                    title: 'Audit',
+                    title: 'Internal diagnostics',
+                    description:
+                        'Check whether core data sources line up before testing.',
                     child: const SettingsAuditSection(),
                   ),
                   if (showAdvisorModels)
                     _settingsSection(
-                      title: 'Advisor models',
+                      title: 'Advisor routing',
+                      description:
+                          'Review which models answer quick and detailed advisor requests.',
                       child: SettingsAdvisorModelSection(
                         service:
                             widget.advisorModelConfigService ??
@@ -589,7 +615,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ),
                   if (showAdvisorCorpus)
                     _settingsSection(
-                      title: 'Advisor corpus',
+                      title: 'Advisor content',
+                      description:
+                          'Inspect the content bundle the advisor can search.',
                       child: SettingsAdvisorCorpusSection(
                         service:
                             widget.advisorCorpusAdminService ??
@@ -687,7 +715,7 @@ const _SettingsTabSpec _teamSettingsTab = _SettingsTabSpec(
 
 const _SettingsTabSpec _authoritySettingsTab = _SettingsTabSpec(
   id: 'authority',
-  label: 'Authority',
+  label: 'Setup',
   icon: Icons.tune_rounded,
 );
 
@@ -699,7 +727,7 @@ const _SettingsTabSpec _dataSettingsTab = _SettingsTabSpec(
 
 const _SettingsTabSpec _developerSettingsTab = _SettingsTabSpec(
   id: 'developer',
-  label: 'Dev',
+  label: 'Diagnostics',
   icon: Icons.terminal_rounded,
 );
 
@@ -1069,7 +1097,11 @@ class _SettingsTabScrollView extends StatelessWidget {
   }
 }
 
-Widget _settingsSection({required String title, required Widget child}) {
+Widget _settingsSection({
+  required String title,
+  String? description,
+  required Widget child,
+}) {
   return SliverMainAxisGroup(
     slivers: [
       SliverPersistentHeader(
@@ -1079,7 +1111,21 @@ Widget _settingsSection({required String title, required Widget child}) {
       SliverToBoxAdapter(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: child,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (description != null && description.trim().isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    description,
+                    style: AppTextStyles.body12(color: AppColors.textMuted),
+                  ),
+                ),
+              ],
+              child,
+            ],
+          ),
         ),
       ),
     ],

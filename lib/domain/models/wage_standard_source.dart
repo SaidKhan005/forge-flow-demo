@@ -14,10 +14,10 @@ enum WageStandardSource {
   unavailable;
 
   String get displayLabel => switch (this) {
-        laborDerivedFromActualDollars => 'Labor (Actual \$/Hrs)',
-        laborDerivedFromRatesAndHours => 'Labor (Rates/Hrs)',
-        appConfiguredGenerator => 'App Configured',
-        configFallback => 'Config Default',
-        unavailable => 'Unavailable',
-      };
+    laborDerivedFromActualDollars => 'Labor dollars and hours',
+    laborDerivedFromRatesAndHours => 'Labor rates and hours',
+    appConfiguredGenerator => 'Custom wage mix',
+    configFallback => 'Default wages',
+    unavailable => 'Not available',
+  };
 }

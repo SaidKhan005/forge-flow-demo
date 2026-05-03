@@ -147,7 +147,7 @@ void main() {
     await runHealthCheck(tester);
 
     expect(tester.takeException(), isNull);
-    expect(find.text('Health'), findsOneWidget);
+    expect(find.text('System health'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_health_refresh_button')),
       findsOneWidget,

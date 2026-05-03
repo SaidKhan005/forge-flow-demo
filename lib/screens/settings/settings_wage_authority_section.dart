@@ -42,10 +42,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
     try {
       final restaurantId = await SqliteRestaurantScopeRepository.instance
           .getActiveRestaurantId();
-      _wageCtx =
-          await WageStandardContextService.instance.resolve(restaurantId);
-      _rows =
-          await SqliteWageRoleRowRepository.instance.getRows(restaurantId);
+      _wageCtx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
+      _rows = await SqliteWageRoleRowRepository.instance.getRows(restaurantId);
     } catch (_) {}
     if (mounted) setState(() => _isLoading = false);
   }
@@ -96,8 +96,10 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
       return Container(
         padding: const EdgeInsets.all(16),
         color: AppColors.backgroundMid,
-        child: Text('Loading...',
-            style: AppTextStyles.mono11(color: AppColors.textMuted)),
+        child: Text(
+          'Loading...',
+          style: AppTextStyles.mono11(color: AppColors.textMuted),
+        ),
       );
     }
 
@@ -113,34 +115,34 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           _WageMixSectionCard(
             children: [
               _WageMixStatRow(
-                label: 'SOURCE',
-                value: w?.source.displayLabel ?? '—',
+                label: 'Source',
+                value: w?.source.displayLabel ?? 'Not set',
               ),
               const _WageMixDivider(),
               Row(
                 children: [
                   Expanded(
                     child: _WageMixStat(
-                      label: 'FOH WAGE',
+                      label: 'Front wage',
                       value: w?.fohWage != null
                           ? '\$${w!.fohWage!.toStringAsFixed(2)}'
-                          : '—',
+                          : 'Not set',
                     ),
                   ),
                   Expanded(
                     child: _WageMixStat(
-                      label: 'BOH WAGE',
+                      label: 'Back wage',
                       value: w?.bohWage != null
                           ? '\$${w!.bohWage!.toStringAsFixed(2)}'
-                          : '—',
+                          : 'Not set',
                     ),
                   ),
                   Expanded(
                     child: _WageMixStat(
-                      label: 'BLENDED',
+                      label: 'Average wage',
                       value: w?.referenceBlendedWage != null
                           ? '\$${w!.referenceBlendedWage!.toStringAsFixed(2)}'
-                          : '—',
+                          : 'Not set',
                     ),
                   ),
                 ],
@@ -152,20 +154,20 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
 
           // ── Mix summary card — totals ────────────────────────────────
           _WageMixSectionCard(
-            title: 'MIX SUMMARY',
+            title: 'Mix summary',
             children: [
               Row(
                 children: [
                   Expanded(
                     child: _WageMixStat(
-                      label: 'TOTAL HOURS/WK',
+                      label: 'Hours per week',
                       value:
                           '${summary.totalWeightedHours.toStringAsFixed(0)} h',
                     ),
                   ),
                   Expanded(
                     child: _WageMixStat(
-                      label: 'WEEKLY COST',
+                      label: 'Weekly cost',
                       value: '\$${summary.totalHourlyCost.toStringAsFixed(0)}',
                     ),
                   ),
@@ -174,16 +176,15 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
               if (!summary.hasCompleteFohBoh && !summary.isEmpty) ...[
                 const SizedBox(height: 8),
                 _WageMixWarningBand(
-                  text: 'Needs at least one FOH role AND one BOH role to '
-                      'resolve as App Configured. Currently using Config '
-                      'Default.',
+                  text:
+                      'Add at least one front role and one back role to use the custom wage mix.',
                 ),
               ],
               if (summary.isEmpty) ...[
                 const SizedBox(height: 8),
                 _WageMixWarningBand(
                   text:
-                      'No roles configured — wages resolve from Config Default.',
+                      'No roles are configured. Default wages are being used.',
                 ),
               ],
             ],
@@ -192,20 +193,15 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           const SizedBox(height: 12),
 
           // ── Read-only grouped display of the current mix ──────────────
-          _WageMixBucketCard(
-            header: 'FRONT OF HOUSE',
-            rows: summary.fohRows,
-          ),
+          _WageMixBucketCard(header: 'Front of house', rows: summary.fohRows),
+          const SizedBox(height: 10),
+          _WageMixBucketCard(header: 'Back of house', rows: summary.bohRows),
           const SizedBox(height: 10),
           _WageMixBucketCard(
-            header: 'BACK OF HOUSE',
-            rows: summary.bohRows,
-          ),
-          const SizedBox(height: 10),
-          _WageMixBucketCard(
-            header: 'MANAGEMENT',
+            header: 'Management',
             rows: summary.managerRows,
-            helper: 'Management rows contribute to reference blended only.',
+            helper:
+                'Management roles help estimate the average wage, but do not change front or back staffing.',
           ),
 
           const SizedBox(height: 16),
@@ -213,7 +209,7 @@ class _WageAuthoritySectionState extends State<WageAuthoritySection> {
           // ── Single whole-mix edit action (primary button) ────────────
           _WageMixPrimaryButton(
             icon: Icons.edit_outlined,
-            label: 'Edit Wage Mix',
+            label: 'Edit wage mix',
             onTap: _openMixEditor,
           ),
         ],
@@ -308,10 +304,7 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
         .where((r) => r.id != null && !keptIds.contains(r.id))
         .map((r) => r.id!)
         .toList();
-    return _WageMixEditResult(
-      rowsToPersist: persist,
-      idsToDelete: deletes,
-    );
+    return _WageMixEditResult(rowsToPersist: persist, idsToDelete: deletes);
   }
 
   List<_EditorRow> _forBucket(String b) =>
@@ -328,15 +321,14 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary =
-        WageStandardContextService.summarizeMix(_liveRows());
+    final summary = WageStandardContextService.summarizeMix(_liveRows());
     return Scaffold(
       backgroundColor: AppColors.backgroundDeep,
       appBar: AppBar(
         backgroundColor: AppColors.backgroundDeep,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
-        title: Text('Edit Wage Mix', style: AppTextStyles.display20()),
+        title: Text('Edit wage mix', style: AppTextStyles.display20()),
         leading: IconButton(
           icon: const Icon(Icons.close, size: 20),
           onPressed: () => Navigator.of(context).pop(),
@@ -355,7 +347,7 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
           ),
           child: _WageMixPrimaryButton(
             icon: Icons.check_rounded,
-            label: 'Save Wage Mix',
+            label: 'Save wage mix',
             onTap: () => Navigator.of(context).pop(_buildResult()),
           ),
         ),
@@ -365,76 +357,76 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-          // Hint so users understand the flow before they see the fields
-          Padding(
-            padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
-            child: Text(
-              'Add every role you staff. Rate is per hour, Hours is per week.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            // Hint so users understand the flow before they see the fields
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 4, 4, 12),
+              child: Text(
+                'Add every role you staff. Rate is per hour, Hours is per week.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
             ),
-          ),
 
-          _editorBucket(
-            header: 'FRONT OF HOUSE',
-            bucket: 'foh',
-            addLabel: 'Add FOH role',
-          ),
-          const SizedBox(height: 12),
-          _editorBucket(
-            header: 'BACK OF HOUSE',
-            bucket: 'boh',
-            addLabel: 'Add BOH role',
-          ),
-          const SizedBox(height: 12),
-          _editorBucket(
-            header: 'MANAGEMENT',
-            bucket: 'manager',
-            addLabel: 'Add Management role',
-            helper: 'Management rows contribute to reference blended only.',
-          ),
+            _editorBucket(
+              header: 'Front of house',
+              bucket: 'foh',
+              addLabel: 'Add front role',
+            ),
+            const SizedBox(height: 12),
+            _editorBucket(
+              header: 'Back of house',
+              bucket: 'boh',
+              addLabel: 'Add back role',
+            ),
+            const SizedBox(height: 12),
+            _editorBucket(
+              header: 'Management',
+              bucket: 'manager',
+              addLabel: 'Add management role',
+              helper:
+                  'Management roles help estimate the average wage, but do not change front or back staffing.',
+            ),
 
-          const SizedBox(height: 16),
+            const SizedBox(height: 16),
 
-          // Live mix summary inside the editor so the user can see the
-          // consequence of their in-flight edits before saving.
-          _WageMixSectionCard(
-            title: 'MIX SUMMARY',
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'TOTAL HOURS/WK',
-                      value:
-                          '${summary.totalWeightedHours.toStringAsFixed(0)} h',
+            // Live mix summary inside the editor so the user can see the
+            // consequence of their in-flight edits before saving.
+            _WageMixSectionCard(
+              title: 'Mix summary',
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _WageMixStat(
+                        label: 'Hours per week',
+                        value:
+                            '${summary.totalWeightedHours.toStringAsFixed(0)} h',
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: _WageMixStat(
-                      label: 'WEEKLY COST',
-                      value: '\$${summary.totalHourlyCost.toStringAsFixed(0)}',
+                    Expanded(
+                      child: _WageMixStat(
+                        label: 'Weekly cost',
+                        value:
+                            '\$${summary.totalHourlyCost.toStringAsFixed(0)}',
+                      ),
                     ),
+                  ],
+                ),
+                if (!summary.hasCompleteFohBoh && !summary.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  _WageMixWarningBand(
+                    text:
+                        'Add at least one front role and one back role before saving to use the custom wage mix.',
                   ),
                 ],
-              ),
-              if (!summary.hasCompleteFohBoh && !summary.isEmpty) ...[
-                const SizedBox(height: 8),
-                _WageMixWarningBand(
-                  text: 'Will fall back to Config Default on save. Add at '
-                      'least one FOH row AND one BOH row for App Configured.',
-                ),
+                if (summary.isEmpty) ...[
+                  const SizedBox(height: 8),
+                  _WageMixWarningBand(
+                    text:
+                        'No roles yet. Default wages will stay in place until you add a front role and a back role.',
+                  ),
+                ],
               ],
-              if (summary.isEmpty) ...[
-                const SizedBox(height: 8),
-                _WageMixWarningBand(
-                  text:
-                      'No rows — wages will stay on Config Default until you '
-                      'add at least one FOH row and one BOH row.',
-                ),
-              ],
-            ],
-          ),
-
+            ),
           ],
         ),
       ),
@@ -472,24 +464,24 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 3,
-                  height: 14,
-                  color: AppColors.sunset,
-                ),
+                Container(width: 3, height: 14, color: AppColors.sunset),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(header,
-                      style: AppTextStyles.mono12(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w700)),
+                  child: Text(
+                    header,
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    border: Border.all(
-                        color: AppColors.borderSubtle, width: 1),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -503,14 +495,18 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
           if (helper != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-              child: Text(helper,
-                  style: AppTextStyles.body13(color: AppColors.textMuted)),
+              child: Text(
+                helper,
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
             ),
           if (rows.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 14, 14, 4),
-              child: Text('No roles yet.',
-                  style: AppTextStyles.body13(color: AppColors.textMuted)),
+              child: Text(
+                'No roles yet.',
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
             ),
           for (int i = 0; i < rows.length; i++) ...[
             Padding(
@@ -548,16 +544,16 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
             children: [
               Expanded(
                 child: _labeledField(
-                  label: 'ROLE',
+                  label: 'Role',
                   child: TextField(
                     key: row.nameKey,
                     controller: row.nameCtrl,
-                    style:
-                        AppTextStyles.mono12(color: AppColors.textPrimary),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                     decoration: InputDecoration(
                       hintText: 'e.g. Server',
-                      hintStyle:
-                          AppTextStyles.mono11(color: AppColors.textMuted),
+                      hintStyle: AppTextStyles.mono11(
+                        color: AppColors.textMuted,
+                      ),
                       isDense: true,
                       border: InputBorder.none,
                     ),
@@ -568,8 +564,11 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
               IconButton(
                 key: row.removeKey,
                 tooltip: 'Remove role',
-                icon: Icon(Icons.delete_outline,
-                    size: 18, color: AppColors.textMuted),
+                icon: Icon(
+                  Icons.delete_outline,
+                  size: 18,
+                  color: AppColors.textMuted,
+                ),
                 onPressed: () => _removeRow(row),
               ),
             ],
@@ -582,22 +581,24 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
             children: [
               Expanded(
                 child: _labeledField(
-                  label: 'RATE \$/HR',
+                  label: 'Rate per hour',
                   child: TextField(
                     key: row.rateKey,
                     controller: row.rateCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    style:
-                        AppTextStyles.mono12(color: AppColors.textPrimary),
+                      decimal: true,
+                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                     decoration: InputDecoration(
                       hintText: '0.00',
-                      hintStyle:
-                          AppTextStyles.mono11(color: AppColors.textMuted),
+                      hintStyle: AppTextStyles.mono11(
+                        color: AppColors.textMuted,
+                      ),
                       isDense: true,
                       prefixText: '\$',
                       prefixStyle: AppTextStyles.mono12(
-                          color: AppColors.textSecondary),
+                        color: AppColors.textSecondary,
+                      ),
                       border: InputBorder.none,
                     ),
                     onChanged: (_) => setState(() {}),
@@ -607,22 +608,24 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: _labeledField(
-                  label: 'HOURS/WK',
+                  label: 'Hours per week',
                   child: TextField(
                     key: row.hoursKey,
                     controller: row.hoursCtrl,
                     keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true),
-                    style:
-                        AppTextStyles.mono12(color: AppColors.textPrimary),
+                      decimal: true,
+                    ),
+                    style: AppTextStyles.mono12(color: AppColors.textPrimary),
                     decoration: InputDecoration(
                       hintText: '0',
-                      hintStyle:
-                          AppTextStyles.mono11(color: AppColors.textMuted),
+                      hintStyle: AppTextStyles.mono11(
+                        color: AppColors.textMuted,
+                      ),
                       isDense: true,
                       suffixText: 'h',
                       suffixStyle: AppTextStyles.mono12(
-                          color: AppColors.textSecondary),
+                        color: AppColors.textSecondary,
+                      ),
                       border: InputBorder.none,
                     ),
                     onChanged: (_) => setState(() {}),
@@ -640,8 +643,7 @@ class _WageMixEditorScreenState extends State<_WageMixEditorScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
         const SizedBox(height: 2),
         child,
       ],
@@ -671,10 +673,10 @@ class _EditorRow {
     required this.nameCtrl,
     required this.rateCtrl,
     required this.hoursCtrl,
-  })  : nameKey = UniqueKey(),
-        rateKey = UniqueKey(),
-        hoursKey = UniqueKey(),
-        removeKey = UniqueKey();
+  }) : nameKey = UniqueKey(),
+       rateKey = UniqueKey(),
+       hoursKey = UniqueKey(),
+       removeKey = UniqueKey();
 
   factory _EditorRow.blank(String bucket) {
     return _EditorRow._(
@@ -692,8 +694,9 @@ class _EditorRow {
       bucket: r.laborBucket,
       nameCtrl: TextEditingController(text: r.roleName),
       rateCtrl: TextEditingController(text: r.hourlyRate.toStringAsFixed(2)),
-      hoursCtrl:
-          TextEditingController(text: r.weightedHours.toStringAsFixed(0)),
+      hoursCtrl: TextEditingController(
+        text: r.weightedHours.toStringAsFixed(0),
+      ),
     );
   }
 
@@ -750,8 +753,10 @@ class _WageMixSectionCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (title != null) ...[
-            Text(title!,
-                style: AppTextStyles.mono10(color: AppColors.textMuted)),
+            Text(
+              title!,
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 10),
           ],
           ...children,
@@ -771,11 +776,9 @@ class _WageMixStat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: AppTextStyles.mono8(color: AppColors.textMuted)),
+        Text(label, style: AppTextStyles.mono8(color: AppColors.textMuted)),
         const SizedBox(height: 3),
-        Text(value,
-            style: AppTextStyles.mono14(color: AppColors.textPrimary)),
+        Text(value, style: AppTextStyles.mono14(color: AppColors.textPrimary)),
       ],
     );
   }
@@ -791,11 +794,12 @@ class _WageMixStatRow extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Text(label,
-              style: AppTextStyles.mono8(color: AppColors.textMuted)),
+          child: Text(
+            label,
+            style: AppTextStyles.mono8(color: AppColors.textMuted),
+          ),
         ),
-        Text(value,
-            style: AppTextStyles.mono12(color: AppColors.textPrimary)),
+        Text(value, style: AppTextStyles.mono12(color: AppColors.textPrimary)),
       ],
     );
   }
@@ -829,12 +833,13 @@ class _WageMixWarningBand extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.warning_amber_rounded,
-              size: 14, color: AppColors.warning),
+          Icon(Icons.warning_amber_rounded, size: 14, color: AppColors.warning),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(text,
-                style: AppTextStyles.body13(color: AppColors.warning)),
+            child: Text(
+              text,
+              style: AppTextStyles.body13(color: AppColors.warning),
+            ),
           ),
         ],
       ),
@@ -881,21 +886,27 @@ class _WageMixBucketCard extends StatelessWidget {
                 Container(width: 3, height: 14, color: AppColors.sunset),
                 const SizedBox(width: 10),
                 Expanded(
-                  child: Text(header,
-                      style: AppTextStyles.mono12(
-                          color: AppColors.textPrimary,
-                          weight: FontWeight.w700)),
+                  child: Text(
+                    header,
+                    style: AppTextStyles.mono12(
+                      color: AppColors.textPrimary,
+                      weight: FontWeight.w700,
+                    ),
+                  ),
                 ),
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
-                    border: Border.all(
-                        color: AppColors.borderSubtle, width: 1),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text('${rows.length}',
-                      style: AppTextStyles.mono10(color: AppColors.textMuted)),
+                  child: Text(
+                    '${rows.length}',
+                    style: AppTextStyles.mono10(color: AppColors.textMuted),
+                  ),
                 ),
               ],
             ),
@@ -903,14 +914,18 @@ class _WageMixBucketCard extends StatelessWidget {
           if (helper != null)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 14, 0),
-              child: Text(helper!,
-                  style: AppTextStyles.body13(color: AppColors.textMuted)),
+              child: Text(
+                helper!,
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
             ),
           if (rows.isEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-              child: Text('No roles yet.',
-                  style: AppTextStyles.body13(color: AppColors.textMuted)),
+              child: Text(
+                'No roles yet.',
+                style: AppTextStyles.body13(color: AppColors.textMuted),
+              ),
             )
           else
             Padding(
@@ -929,16 +944,20 @@ class _WageMixBucketCard extends StatelessWidget {
                         children: [
                           Expanded(
                             flex: 4,
-                            child: Text(rows[i].roleName,
-                                style: AppTextStyles.mono12(
-                                    color: AppColors.textPrimary)),
+                            child: Text(
+                              rows[i].roleName,
+                              style: AppTextStyles.mono12(
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
                           ),
                           Expanded(
                             flex: 2,
                             child: Text(
                               '\$${rows[i].hourlyRate.toStringAsFixed(2)}',
                               style: AppTextStyles.mono12(
-                                  color: AppColors.textPrimary),
+                                color: AppColors.textPrimary,
+                              ),
                               textAlign: TextAlign.right,
                             ),
                           ),
@@ -948,7 +967,8 @@ class _WageMixBucketCard extends StatelessWidget {
                             child: Text(
                               '${rows[i].weightedHours.toStringAsFixed(0)} h',
                               style: AppTextStyles.mono11(
-                                  color: AppColors.textSecondary),
+                                color: AppColors.textSecondary,
+                              ),
                               textAlign: TextAlign.right,
                             ),
                           ),
@@ -994,10 +1014,13 @@ class _WageMixPrimaryButton extends StatelessWidget {
           children: [
             Icon(icon, size: 18, color: AppColors.backgroundDeep),
             const SizedBox(width: 10),
-            Text(label,
-                style: AppTextStyles.mono14(
-                    color: AppColors.backgroundDeep,
-                    weight: FontWeight.w700)),
+            Text(
+              label,
+              style: AppTextStyles.mono14(
+                color: AppColors.backgroundDeep,
+                weight: FontWeight.w700,
+              ),
+            ),
           ],
         ),
       ),
@@ -1024,7 +1047,9 @@ class _WageMixSecondaryButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           border: Border.all(
-              color: AppColors.sunset.withValues(alpha: 0.6), width: 1),
+            color: AppColors.sunset.withValues(alpha: 0.6),
+            width: 1,
+          ),
           borderRadius: BorderRadius.circular(3),
         ),
         child: Row(
@@ -1032,8 +1057,7 @@ class _WageMixSecondaryButton extends StatelessWidget {
           children: [
             Icon(icon, size: 16, color: AppColors.sunset),
             const SizedBox(width: 8),
-            Text(label,
-                style: AppTextStyles.mono12(color: AppColors.sunset)),
+            Text(label, style: AppTextStyles.mono12(color: AppColors.sunset)),
           ],
         ),
       ),

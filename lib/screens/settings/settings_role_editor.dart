@@ -270,7 +270,7 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
                       enabled: !_busy,
                       decoration: const InputDecoration(
                         labelText: 'Role key (a-z, 0-9, underscore)',
-                        helperText: 'kitchen_lead, prep_supervisor, …',
+                        helperText: 'kitchen_lead, prep_supervisor, ...',
                         border: OutlineInputBorder(),
                         isDense: true,
                       ),
@@ -348,7 +348,7 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
           FilledButton(
             key: const Key('settings_role_editor_save'),
             onPressed: _canSubmit && !_busy ? _submit : null,
-            child: Text(_busy ? 'Saving…' : 'Save'),
+            child: Text(_busy ? 'Saving...' : 'Save'),
           ),
       ],
     );
@@ -365,9 +365,9 @@ class _SettingsRoleEditorDialogState extends State<SettingsRoleEditorDialog> {
       list.sort();
     }
     return Map<String, List<String>>.fromEntries(
-      groups.entries.toList()..sort((a, b) => _categoryOrder(a.key).compareTo(
-            _categoryOrder(b.key),
-          )),
+      groups.entries.toList()..sort(
+        (a, b) => _categoryOrder(a.key).compareTo(_categoryOrder(b.key)),
+      ),
     );
   }
 
@@ -572,10 +572,7 @@ class _CountBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.5)),
         borderRadius: BorderRadius.circular(2),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono7(color: color),
-      ),
+      child: Text(label, style: AppTextStyles.mono7(color: color)),
     );
   }
 }

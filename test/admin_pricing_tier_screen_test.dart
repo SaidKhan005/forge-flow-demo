@@ -134,7 +134,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_pricing_empty')), findsOneWidget);
-    expect(find.text('No operators on file'), findsOneWidget);
+    expect(find.text('No customers on file'), findsOneWidget);
   });
 
   testWidgets('apply Premium template seeds advisor_qa cap row', (

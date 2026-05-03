@@ -123,7 +123,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_operators_empty')), findsOneWidget);
-    expect(find.text('No operators onboarded yet'), findsOneWidget);
+    expect(find.text('No customers yet'), findsOneWidget);
   });
 
   testWidgets('onboarding dialog creates a new operator end-to-end', (

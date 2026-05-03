@@ -130,9 +130,9 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
       );
       if (!mounted) return;
       setState(() => _togglingFlagId = null);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Flag updated')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Launch control updated')));
       await _refresh();
     } on FeatureFlagsAdminGatewayError catch (error) {
       if (!mounted) return;
@@ -209,18 +209,13 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No feature flags',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  'No launch controls',
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'The feature_flags table is empty. Seed the launch '
-                  'flags via a migration before exposing this screen.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  'No staged feature controls are available yet. Add them during the release setup before using this page.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -256,14 +251,12 @@ class _Header extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Feature Flags',
+          'Launch controls',
           style: AppTextStyles.display28(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
-          'Toggle launch flags without redeploying. Destructive flags '
-          'require confirm-by-typing; every toggle writes an audit '
-          'row.',
+          'Turn staged features on or off without a deploy. Sensitive changes require typed confirmation and are always audited.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -286,16 +279,11 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 16,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: feature flag toggles require the super_admin '
-              'role.',
+              'View-only: changing launch controls requires platform admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -343,6 +331,8 @@ class _FeatureFlagTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final displayName = _friendlyFlagName(row.flagName);
+
     return Container(
       key: Key('admin_feature_flag_row_${row.flagId}'),
       decoration: BoxDecoration(
@@ -367,11 +357,10 @@ class _FeatureFlagTile extends StatelessWidget {
                   children: [
                     Flexible(
                       child: Text(
-                        row.flagName,
-                        style: AppTextStyles.mono15(
+                        displayName,
+                        style: AppTextStyles.body14(
                           color: AppColors.textPrimary,
-                          weight: FontWeight.w700,
-                        ),
+                        ).copyWith(fontWeight: FontWeight.w700),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -379,27 +368,32 @@ class _FeatureFlagTile extends StatelessWidget {
                     if (row.isDestructive)
                       _Chip(
                         key: Key('admin_feature_flag_danger_${row.flagId}'),
-                        label: 'DANGER',
+                        label: 'High impact',
                         background: AppColors.negative.withValues(alpha: 0.15),
                         foreground: AppColors.negative,
                       )
                     else
                       _Chip(
                         key: Key('admin_feature_flag_kind_${row.flagId}'),
-                        label: row.kind.toUpperCase(),
+                        label: _friendlyFlagKind(row.kind),
                         background: AppColors.backgroundDeep,
                         foreground: AppColors.textSecondary,
                       ),
                     const SizedBox(width: 6),
                     _Chip(
                       key: Key('admin_feature_flag_scope_${row.flagId}'),
-                      label: row.scopeLabel.toUpperCase(),
+                      label: _friendlyScope(row.scopeLabel),
                       background: AppColors.backgroundDeep,
                       foreground: AppColors.textMuted,
                     ),
                   ],
                 ),
                 const SizedBox(height: 6),
+                Text(
+                  'Key: ${row.flagName}',
+                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 4),
                 if (row.description != null && row.description!.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 4),
@@ -411,7 +405,7 @@ class _FeatureFlagTile extends StatelessWidget {
                     ),
                   ),
                 Text(
-                  'value: ${row.enabled ? 'ENABLED' : 'DISABLED'}',
+                  'Status: ${row.enabled ? 'On' : 'Off'}',
                   key: Key('admin_feature_flag_value_${row.flagId}'),
                   style: AppTextStyles.mono12(
                     color: row.enabled
@@ -422,7 +416,7 @@ class _FeatureFlagTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  'updated by ${row.updatedBy ?? '—'} · '
+                  'Last changed by ${row.updatedBy ?? 'unknown'} on '
                   '${row.updatedAt.toUtc().toIso8601String()}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                 ),
@@ -484,9 +478,9 @@ class _Chip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: AppTextStyles.mono10(color: foreground).copyWith(
-          fontWeight: FontWeight.w700,
-        ),
+        style: AppTextStyles.mono10(
+          color: foreground,
+        ).copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -530,7 +524,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
       key: const Key('admin_feature_flag_danger_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Toggle destructive flag?',
+        'Change high-impact control?',
         style: AppTextStyles.display20(color: AppColors.negative),
       ),
       content: SizedBox(
@@ -540,10 +534,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This flag is marked destructive. Toggling it can change '
-              'production runtime behaviour (audit fan-out, KMS '
-              'rollout, kill switches). Type the exact flag name to '
-              'continue:',
+              'This control can affect production behavior, audit routing, secret rollout, or emergency shutoff. Type the exact key to continue:',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -586,11 +577,45 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
             backgroundColor: AppColors.negative,
             foregroundColor: AppColors.backgroundSurface,
           ),
-          onPressed:
-              _matches ? () => Navigator.of(context).pop(true) : null,
-          child: const Text('Toggle'),
+          onPressed: _matches ? () => Navigator.of(context).pop(true) : null,
+          child: const Text('Update'),
         ),
       ],
     );
   }
+}
+
+String _friendlyFlagName(String flagName) {
+  return switch (flagName) {
+    'audit_logs_cutover_enabled' => 'Audit log routing',
+    'kms_real_provider_anthropic_enabled' => 'Anthropic secret manager rollout',
+    'kms_real_provider_voyage_enabled' => 'Voyage secret manager rollout',
+    'advisor_enabled' => 'Advisor access',
+    _ =>
+      flagName
+          .replaceAll('_enabled', '')
+          .replaceAll('_', ' ')
+          .trim()
+          .split(' ')
+          .where((part) => part.isNotEmpty)
+          .map((part) => part[0].toUpperCase() + part.substring(1))
+          .join(' '),
+  };
+}
+
+String _friendlyFlagKind(String kind) {
+  return switch (kind) {
+    kFeatureFlagKindDestructive => 'Sensitive',
+    kFeatureFlagKindStandard => 'Standard',
+    _ => kind.replaceAll('_', ' '),
+  };
+}
+
+String _friendlyScope(String scope) {
+  return switch (scope.toLowerCase()) {
+    'global' => 'All customers',
+    'operator' => 'Customer',
+    'location' => 'Location',
+    _ => scope.replaceAll('_', ' '),
+  };
 }

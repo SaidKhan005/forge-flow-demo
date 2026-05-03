@@ -48,11 +48,7 @@ class OperatorPickerResult {
 /// Modal picker host. Returns an [OperatorPickerResult] via
 /// Navigator.pop on confirm, null on cancel.
 class OperatorPickerScreen extends StatelessWidget {
-  const OperatorPickerScreen({
-    super.key,
-    required this.gateway,
-    this.adminUid,
-  });
+  const OperatorPickerScreen({super.key, required this.gateway, this.adminUid});
 
   final OperatorLocationAdminGateway gateway;
 
@@ -181,7 +177,8 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
     if (hasLoc) {
       _selectedLocationId = cached.locationId;
     } else {
-      _selectedLocationId = hit.operator.primaryLocationId ??
+      _selectedLocationId =
+          hit.operator.primaryLocationId ??
           (hit.locations.isNotEmpty ? hit.locations.first.locationId : null);
     }
   }
@@ -204,8 +201,11 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
         _selectedLocationId = null;
         return;
       }
-      _selectedLocationId = bundle.operator.primaryLocationId ??
-          (bundle.locations.isNotEmpty ? bundle.locations.first.locationId : null);
+      _selectedLocationId =
+          bundle.operator.primaryLocationId ??
+          (bundle.locations.isNotEmpty
+              ? bundle.locations.first.locationId
+              : null);
     });
   }
 
@@ -261,10 +261,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
     if (_loadError != null) {
       return Padding(
         padding: const EdgeInsets.all(20),
-        child: _PickerErrorBanner(
-          message: _loadError!,
-          onRetry: _refresh,
-        ),
+        child: _PickerErrorBanner(message: _loadError!, onRetry: _refresh),
       );
     }
     if (_operators.isEmpty) {
@@ -279,18 +276,13 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No operators yet',
-                  style: AppTextStyles.display20(
-                    color: AppColors.textPrimary,
-                  ),
+                  'No customers yet',
+                  style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Onboard an operator under the Operators tab before '
-                  'committing graph candidates.',
-                  style: AppTextStyles.body13(
-                    color: AppColors.textSecondary,
-                  ),
+                  'Add a customer before applying relationship decisions.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 const SizedBox(height: 16),
                 OutlinedButton(
@@ -327,8 +319,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Pick the operator + location the Graph candidates tab '
-              'should commit approvals against. Selection is remembered '
+              'Pick the customer and location for approved relationship decisions. Selection is remembered '
               'for the rest of this admin session.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
@@ -338,17 +329,15 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Operator',
+                    'Customer',
                     style: AppTextStyles.mono11(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 6),
                   DropdownButton<String>(
-                    key: const Key(
-                      'admin_operator_picker_operator_dropdown',
-                    ),
+                    key: const Key('admin_operator_picker_operator_dropdown'),
                     value: _selectedOperatorId,
                     isExpanded: true,
-                    hint: const Text('Select operator'),
+                    hint: const Text('Select customer'),
                     items: <DropdownMenuItem<String>>[
                       for (final b in _operators)
                         DropdownMenuItem<String>(
@@ -369,9 +358,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                   ),
                   const SizedBox(height: 6),
                   DropdownButton<String>(
-                    key: const Key(
-                      'admin_operator_picker_location_dropdown',
-                    ),
+                    key: const Key('admin_operator_picker_location_dropdown'),
                     value: _selectedLocationId,
                     isExpanded: true,
                     hint: const Text('Select location'),
@@ -404,7 +391,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                     foregroundColor: AppColors.backgroundSurface,
                   ),
                   icon: const Icon(Icons.check, size: 16),
-                  label: const Text('Confirm'),
+                  label: const Text('Use selection'),
                 ),
                 OutlinedButton(
                   key: const Key('admin_operator_picker_cancel'),
@@ -440,10 +427,7 @@ class _Card extends StatelessWidget {
 }
 
 class _PickerErrorBanner extends StatelessWidget {
-  const _PickerErrorBanner({
-    required this.message,
-    required this.onRetry,
-  });
+  const _PickerErrorBanner({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -461,11 +445,7 @@ class _PickerErrorBanner extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(
-            Icons.error_outline,
-            size: 16,
-            color: AppColors.negative,
-          ),
+          const Icon(Icons.error_outline, size: 16, color: AppColors.negative),
           const SizedBox(width: 8),
           Expanded(
             child: Text(

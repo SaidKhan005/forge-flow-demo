@@ -397,8 +397,8 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
     final visibleFactors = _visibleFactors;
     final needsFreshSignIn = _errorCode == 'mfa_freshness_required';
     final statusLabel = needsFreshSignIn
-        ? 'SECURITY CHECK REQUIRED'
-        : 'MFA ERROR';
+        ? 'Security check required'
+        : 'Two-factor issue';
     final statusMessage = needsFreshSignIn
         ? 'Please sign in again before removing your authenticator app. This protects your account settings.'
         : _errorMessage;
@@ -455,7 +455,7 @@ class _SettingsMfaSectionState extends State<SettingsMfaSection> {
           const SettingsRowDivider(),
           _MfaStatusRow(
             key: const Key('mfa_info_row'),
-            label: 'MFA UPDATE',
+            label: 'Two-factor update',
             message: _infoMessage!,
             color: AppColors.positive,
           ),
@@ -595,7 +595,7 @@ class _MfaHeader extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'TWO-FACTOR AUTHENTICATION',
+            'Two-factor authentication',
             style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
           ),
           SizedBox(height: 4),
@@ -784,7 +784,9 @@ class _MfaFactorRow extends StatelessWidget {
                 : onCancelRemoval == null
                 ? null
                 : () => onCancelRemoval!(removal),
-            child: Text(removal == null ? 'Remove / reset' : 'Cancel removal'),
+            child: Text(
+              removal == null ? 'Remove authenticator app' : 'Cancel removal',
+            ),
           ),
         ],
       ),
@@ -861,14 +863,14 @@ class _MfaScanRow extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           _CopyValueRow(
-            label: 'Setup URL',
+            label: 'Manual setup link',
             value: setup.otpAuthUrl,
             textKey: const Key('mfa_otpauth_url'),
             copyButtonKey: const Key('mfa_copy_otpauth_url_button'),
           ),
           const SizedBox(height: 8),
           _CopyValueRow(
-            label: 'Secret',
+            label: 'Manual setup key',
             value: setup.secretBase32,
             textKey: const Key('mfa_secret_base32'),
             copyButtonKey: const Key('mfa_copy_secret_button'),

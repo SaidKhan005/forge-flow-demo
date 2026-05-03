@@ -29,10 +29,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
   /// Demo target the widget tests pass to [CorpusAdminScreen]. The
   /// screen no longer defaults a target operator (the live route
@@ -41,10 +41,8 @@ void main() {
   /// route production commits to a non-existent tenant). Tests
   /// pass a stable demo pair so the commit button stays enabled
   /// and the routes that depend on a target can run.
-  const String demoTargetOperatorId =
-      '00000000-0000-4000-8000-000000000001';
-  const String demoTargetLocationId =
-      '00000000-0000-4000-8000-0000000000a1';
+  const String demoTargetOperatorId = '00000000-0000-4000-8000-000000000001';
+  const String demoTargetLocationId = '00000000-0000-4000-8000-0000000000a1';
 
   CorpusAdminScreen buildScreen({
     required CorpusAdminGateway gateway,
@@ -79,9 +77,7 @@ void main() {
           confidenceScore: 0.95,
           sourceFile: 'methodology_seed.md',
           sourceRef: null,
-          payload: const <String, Object?>{
-            'label': 'Fixture Doc',
-          },
+          payload: const <String, Object?>{'label': 'Fixture Doc'},
         ),
         GraphCandidate(
           candidateId: 'edge:fixture:doc:section:contains',
@@ -104,8 +100,7 @@ void main() {
         GraphCandidate(
           candidateId: 'edge:fixture:section:concept:informs',
           kind: GraphCandidateKind.edge,
-          candidateKey:
-              'graphify:edge:fixture_section:fixture_concept:informs',
+          candidateKey: 'graphify:edge:fixture_section:fixture_concept:informs',
           candidateType: 'INFORMS',
           // Score 0.62 is below the 0.7 warning threshold so the
           // chip flips to its low-confidence variant.
@@ -151,17 +146,16 @@ void main() {
   Future<void> openGraphCandidatesTab(WidgetTester tester) async {
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Graph candidates'),
+      matching: find.text('Graph review'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();
   }
 
-  testWidgets('tab bar renders both Versions and Graph candidates tabs',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+  testWidgets('tab bar renders both Versions and Graph candidates tabs', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
@@ -175,25 +169,22 @@ void main() {
     expect(
       find.descendant(
         of: find.byKey(const Key('admin_corpus_tab_bar')),
-        matching: find.text('Versions'),
+        matching: find.text('Content versions'),
       ),
       findsOneWidget,
     );
     expect(
       find.descendant(
         of: find.byKey(const Key('admin_corpus_tab_bar')),
-        matching: find.text('Graph candidates'),
+        matching: find.text('Graph review'),
       ),
       findsOneWidget,
     );
   });
 
-  testWidgets(
-      'switching to Graph candidates tab loads the seed and renders '
+  testWidgets('switching to Graph candidates tab loads the seed and renders '
       'all three classification sections', (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
     await openGraphCandidatesTab(tester);
@@ -216,11 +207,10 @@ void main() {
     );
   });
 
-  testWidgets('low-confidence candidate (< 0.7) renders the warning chip',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+  testWidgets('low-confidence candidate (< 0.7) renders the warning chip', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
     await openGraphCandidatesTab(tester);
@@ -239,11 +229,10 @@ void main() {
     );
   });
 
-  testWidgets('bulk-approve EXTRACTED queues every candidate in that bucket',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+  testWidgets('bulk-approve EXTRACTED queues every candidate in that bucket', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
     await openGraphCandidatesTab(tester);
@@ -273,11 +262,10 @@ void main() {
     );
   });
 
-  testWidgets('per-row approve on the INFERRED candidate queues that one',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+  testWidgets('per-row approve on the INFERRED candidate queues that one', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
     await openGraphCandidatesTab(tester);
@@ -308,121 +296,133 @@ void main() {
   });
 
   testWidgets(
-      'per-row edit on the AMBIGUOUS candidate opens the type-field dialog',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
-    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
-    await tester.pumpAndSettle();
-    await openGraphCandidatesTab(tester);
+    'per-row edit on the AMBIGUOUS candidate opens the type-field dialog',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        graphCandidateSeed: buildDiff(),
+      );
+      await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+      await openGraphCandidatesTab(tester);
 
-    final editButton = find.byKey(
-      const Key(
-        'admin_corpus_graph_candidate_edit_'
-        'edge:fixture:concept:other:relates',
-      ),
-    );
-    await tester.ensureVisible(editButton);
-    await tester.pumpAndSettle();
-    await tester.tap(editButton);
-    await tester.pumpAndSettle();
+      final editButton = find.byKey(
+        const Key(
+          'admin_corpus_graph_candidate_edit_'
+          'edge:fixture:concept:other:relates',
+        ),
+      );
+      await tester.ensureVisible(editButton);
+      await tester.pumpAndSettle();
+      await tester.tap(editButton);
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_corpus_graph_candidates_edit_dialog')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(
-        const Key('admin_corpus_graph_candidates_edit_dialog_type_field'),
-      ),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_corpus_graph_candidates_edit_dialog')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(
+          const Key('admin_corpus_graph_candidates_edit_dialog_type_field'),
+        ),
+        findsOneWidget,
+      );
+    },
+  );
 
   testWidgets(
-      'commit batch routes approves to canonical and rejects to audit only',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
+    'commit batch routes approves to canonical and rejects to audit only',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        graphCandidateSeed: buildDiff(),
+      );
+      await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+      await tester.pumpAndSettle();
+      await openGraphCandidatesTab(tester);
+
+      // Approve both EXTRACTED via bulk; reject the INFERRED. Each
+      // affordance is scrolled into view before the tap because the
+      // default test surface (800x600) cannot fit the whole diff.
+      final bulkApprove = find.byKey(
+        const Key('admin_corpus_graph_bulk_approve_extracted'),
+      );
+      await tester.ensureVisible(bulkApprove);
+      await tester.pumpAndSettle();
+      await tester.tap(bulkApprove);
+      await tester.pumpAndSettle();
+
+      final rejectButton = find.byKey(
+        const Key(
+          'admin_corpus_graph_candidate_reject_'
+          'edge:fixture:section:concept:informs',
+        ),
+      );
+      await tester.ensureVisible(rejectButton);
+      await tester.pumpAndSettle();
+      await tester.tap(rejectButton);
+      await tester.pumpAndSettle();
+
+      final commitButton = find.byKey(
+        const Key('admin_corpus_graph_commit_button'),
+      );
+      await tester.ensureVisible(commitButton);
+      await tester.pumpAndSettle();
+      await tester.tap(commitButton);
+      await tester.pumpAndSettle();
+
+      // One node + one edge approved → canonical-bucket inserts.
+      expect(
+        gateway.debugApprovedNodes,
+        hasLength(1),
+        reason:
+            'extracted bucket has one node candidate that was '
+            'bulk-approved',
+      );
+      expect(
+        gateway.debugApprovedEdges,
+        hasLength(1),
+        reason:
+            'extracted bucket has one edge candidate that was '
+            'bulk-approved',
+      );
+
+      // The rejected candidate must land in audit only — never in the
+      // canonical buckets. This is the data-flow assertion the slice
+      // promises operator-side: a rejected candidate is unreachable
+      // through the canonical-graph tables AGE projects from.
+      expect(gateway.debugRejectedAudit, hasLength(1));
+      final rejected = gateway.debugRejectedAudit.single;
+      expect(
+        rejected['candidate_id'],
+        equals('edge:fixture:section:concept:informs'),
+      );
+      final approvedKeys = <String>[
+        ...gateway.debugApprovedNodes.map((m) => m['node_key'] as String),
+        ...gateway.debugApprovedEdges.map((m) => m['edge_key'] as String),
+      ];
+      expect(
+        approvedKeys,
+        isNot(
+          contains('graphify:edge:fixture_section:fixture_concept:informs'),
+        ),
+        reason:
+            'the rejected candidate must NEVER appear in the '
+            'approved-canonical buckets — this is the schema-level '
+            'guarantee the operator relies on',
+      );
+    },
+  );
+
+  testWidgets('AGE rebuild button surfaces the 501 not-implemented banner', (
+    tester,
+  ) async {
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
     await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
     await tester.pumpAndSettle();
     await openGraphCandidatesTab(tester);
 
-    // Approve both EXTRACTED via bulk; reject the INFERRED. Each
-    // affordance is scrolled into view before the tap because the
-    // default test surface (800x600) cannot fit the whole diff.
-    final bulkApprove = find.byKey(
-      const Key('admin_corpus_graph_bulk_approve_extracted'),
+    final rebuildButton = find.byKey(
+      const Key('admin_corpus_age_rebuild_button'),
     );
-    await tester.ensureVisible(bulkApprove);
-    await tester.pumpAndSettle();
-    await tester.tap(bulkApprove);
-    await tester.pumpAndSettle();
-
-    final rejectButton = find.byKey(
-      const Key(
-        'admin_corpus_graph_candidate_reject_'
-        'edge:fixture:section:concept:informs',
-      ),
-    );
-    await tester.ensureVisible(rejectButton);
-    await tester.pumpAndSettle();
-    await tester.tap(rejectButton);
-    await tester.pumpAndSettle();
-
-    final commitButton =
-        find.byKey(const Key('admin_corpus_graph_commit_button'));
-    await tester.ensureVisible(commitButton);
-    await tester.pumpAndSettle();
-    await tester.tap(commitButton);
-    await tester.pumpAndSettle();
-
-    // One node + one edge approved → canonical-bucket inserts.
-    expect(gateway.debugApprovedNodes, hasLength(1),
-        reason: 'extracted bucket has one node candidate that was '
-            'bulk-approved');
-    expect(gateway.debugApprovedEdges, hasLength(1),
-        reason: 'extracted bucket has one edge candidate that was '
-            'bulk-approved');
-
-    // The rejected candidate must land in audit only — never in the
-    // canonical buckets. This is the data-flow assertion the slice
-    // promises operator-side: a rejected candidate is unreachable
-    // through the canonical-graph tables AGE projects from.
-    expect(gateway.debugRejectedAudit, hasLength(1));
-    final rejected = gateway.debugRejectedAudit.single;
-    expect(
-      rejected['candidate_id'],
-      equals('edge:fixture:section:concept:informs'),
-    );
-    final approvedKeys = <String>[
-      ...gateway.debugApprovedNodes.map((m) => m['node_key'] as String),
-      ...gateway.debugApprovedEdges.map((m) => m['edge_key'] as String),
-    ];
-    expect(
-      approvedKeys,
-      isNot(contains(
-        'graphify:edge:fixture_section:fixture_concept:informs',
-      )),
-      reason: 'the rejected candidate must NEVER appear in the '
-          'approved-canonical buckets — this is the schema-level '
-          'guarantee the operator relies on',
-    );
-  });
-
-  testWidgets('AGE rebuild button surfaces the 501 not-implemented banner',
-      (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
-    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
-    await tester.pumpAndSettle();
-    await openGraphCandidatesTab(tester);
-
-    final rebuildButton =
-        find.byKey(const Key('admin_corpus_age_rebuild_button'));
     await tester.ensureVisible(rebuildButton);
     await tester.pumpAndSettle();
     await tester.tap(rebuildButton);
@@ -431,88 +431,83 @@ void main() {
     expect(
       find.byKey(const Key('admin_corpus_age_rebuild_banner')),
       findsOneWidget,
-      reason: 'launch slice ships AGE rebuild as a 501 stub; the '
+      reason:
+          'launch slice ships AGE rebuild as a 501 stub; the '
           'banner tells the operator the rebuild infra is not yet '
           'enabled, so the click did not silently fail',
     );
-    expect(
-      find.textContaining('not yet enabled'),
-      findsOneWidget,
-    );
+    expect(find.textContaining('not yet enabled'), findsOneWidget);
   });
 
   testWidgets(
-      'editingEnabled: false (ff_support) hides every mutate affordance '
-      'but still renders the diff', (tester) async {
-    final gateway = InMemoryCorpusAdminGateway(
-      graphCandidateSeed: buildDiff(),
-    );
-    await tester.pumpWidget(
-      wrap(
-        buildScreen(
-          gateway: gateway,
-          editingEnabled: false,
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await openGraphCandidatesTab(tester);
+    'editingEnabled: false (ff_support) hides every mutate affordance '
+    'but still renders the diff',
+    (tester) async {
+      final gateway = InMemoryCorpusAdminGateway(
+        graphCandidateSeed: buildDiff(),
+      );
+      await tester.pumpWidget(
+        wrap(buildScreen(gateway: gateway, editingEnabled: false)),
+      );
+      await tester.pumpAndSettle();
+      await openGraphCandidatesTab(tester);
 
-    // The diff still renders — three sections present.
-    expect(
-      find.byKey(const Key('admin_corpus_graph_extracted_section')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_graph_inferred_section')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_graph_ambiguous_section')),
-      findsOneWidget,
-    );
+      // The diff still renders — three sections present.
+      expect(
+        find.byKey(const Key('admin_corpus_graph_extracted_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_graph_inferred_section')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_graph_ambiguous_section')),
+        findsOneWidget,
+      );
 
-    // Every mutate affordance is gone.
-    expect(
-      find.byKey(const Key('admin_corpus_graph_bulk_approve_extracted')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_graph_commit_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_corpus_age_rebuild_button')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_corpus_graph_candidate_approve_'
-          'edge:fixture:section:concept:informs',
+      // Every mutate affordance is gone.
+      expect(
+        find.byKey(const Key('admin_corpus_graph_bulk_approve_extracted')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_graph_commit_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_corpus_age_rebuild_button')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'admin_corpus_graph_candidate_approve_'
+            'edge:fixture:section:concept:informs',
+          ),
         ),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_corpus_graph_candidate_reject_'
-          'edge:fixture:section:concept:informs',
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'admin_corpus_graph_candidate_reject_'
+            'edge:fixture:section:concept:informs',
+          ),
         ),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const Key(
-          'admin_corpus_graph_candidate_edit_'
-          'edge:fixture:concept:other:relates',
+        findsNothing,
+      );
+      expect(
+        find.byKey(
+          const Key(
+            'admin_corpus_graph_candidate_edit_'
+            'edge:fixture:concept:other:relates',
+          ),
         ),
-      ),
-      findsNothing,
-    );
-  });
+        findsNothing,
+      );
+    },
+  );
 
   // ─── Code-review follow-ups ──────────────────────────────────────────
   //
@@ -521,66 +516,71 @@ void main() {
   // future reader can scan the original walkthrough coverage first
   // and the regression guards second.
 
-  testWidgets(
-    'AMBIGUOUS rows hide the Approve button (debug-only until edited)',
-    (tester) async {
-      // Spec line 249: "AMBIGUOUS relationships are debug-only until
-      // edited into a clear approved relationship". Bare Approve on
-      // an unedited AMBIGUOUS candidate would route it into canonical
-      // storage and then AGE — the slice's whole reason for existing
-      // forbids that. The screen renders Edit + Reject only on
-      // AMBIGUOUS rows; Approve is intentionally absent.
-      final gateway = InMemoryCorpusAdminGateway(
-        graphCandidateSeed: buildDiff(),
-      );
-      await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
-      await tester.pumpAndSettle();
-      await openGraphCandidatesTab(tester);
+  testWidgets('AMBIGUOUS rows hide the Approve button (debug-only until edited)', (
+    tester,
+  ) async {
+    // Spec line 249: "AMBIGUOUS relationships are debug-only until
+    // edited into a clear approved relationship". Bare Approve on
+    // an unedited AMBIGUOUS candidate would route it into canonical
+    // storage and then AGE — the slice's whole reason for existing
+    // forbids that. The screen renders Edit + Reject only on
+    // AMBIGUOUS rows; Approve is intentionally absent.
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(wrap(buildScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+    await openGraphCandidatesTab(tester);
 
-      // Sanity check: the AMBIGUOUS candidate row exists.
-      expect(
-        find.byKey(const Key(
-          'admin_corpus_graph_tile_edge:fixture:concept:other:relates',
-        )),
-        findsOneWidget,
-      );
-      // The Edit + Reject buttons render.
-      expect(
-        find.byKey(const Key(
+    // Sanity check: the AMBIGUOUS candidate row exists.
+    expect(
+      find.byKey(
+        const Key('admin_corpus_graph_tile_edge:fixture:concept:other:relates'),
+      ),
+      findsOneWidget,
+    );
+    // The Edit + Reject buttons render.
+    expect(
+      find.byKey(
+        const Key(
           'admin_corpus_graph_candidate_edit_edge:fixture:concept:other:relates',
-        )),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key(
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
           'admin_corpus_graph_candidate_reject_edge:fixture:concept:other:relates',
-        )),
-        findsOneWidget,
-      );
-      // But the Approve button is hidden — this is the slice's
-      // forbidden-by-construction guarantee for AMBIGUOUS rows.
-      expect(
-        find.byKey(const Key(
+        ),
+      ),
+      findsOneWidget,
+    );
+    // But the Approve button is hidden — this is the slice's
+    // forbidden-by-construction guarantee for AMBIGUOUS rows.
+    expect(
+      find.byKey(
+        const Key(
           'admin_corpus_graph_candidate_approve_edge:fixture:concept:other:relates',
-        )),
-        findsNothing,
-      );
+        ),
+      ),
+      findsNothing,
+    );
 
-      // EXTRACTED + INFERRED rows still expose Approve.
-      expect(
-        find.byKey(const Key(
-          'admin_corpus_graph_candidate_approve_node:fixture:doc',
-        )),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const Key(
+    // EXTRACTED + INFERRED rows still expose Approve.
+    expect(
+      find.byKey(
+        const Key('admin_corpus_graph_candidate_approve_node:fixture:doc'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
           'admin_corpus_graph_candidate_approve_edge:fixture:section:concept:informs',
-        )),
-        findsOneWidget,
-      );
-    },
-  );
+        ),
+      ),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'edit dialog queues an ApprovalDecision that carries editedPayload',
@@ -598,9 +598,11 @@ void main() {
       await tester.pumpAndSettle();
       await openGraphCandidatesTab(tester);
 
-      final editButton = find.byKey(const Key(
-        'admin_corpus_graph_candidate_edit_edge:fixture:concept:other:relates',
-      ));
+      final editButton = find.byKey(
+        const Key(
+          'admin_corpus_graph_candidate_edit_edge:fixture:concept:other:relates',
+        ),
+      );
       await tester.ensureVisible(editButton);
       await tester.pumpAndSettle();
       await tester.tap(editButton);
@@ -614,15 +616,18 @@ void main() {
         ),
         'INFORMS',
       );
-      await tester.tap(find.byKey(
-        const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
-      ));
+      await tester.tap(
+        find.byKey(
+          const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
+        ),
+      );
       await tester.pumpAndSettle();
 
       // Commit the queued batch so the gateway captures the
       // serialized decision and we can inspect what landed.
-      final commitButton =
-          find.byKey(const Key('admin_corpus_graph_commit_button'));
+      final commitButton = find.byKey(
+        const Key('admin_corpus_graph_commit_button'),
+      );
       await tester.ensureVisible(commitButton);
       await tester.pumpAndSettle();
       await tester.tap(commitButton);
@@ -638,111 +643,103 @@ void main() {
       expect(gateway.debugApprovedEdges, hasLength(1));
       final approved = gateway.debugApprovedEdges.single;
       expect(approved['edge_type'], equals('INFORMS'));
-      final properties =
-          (approved['properties'] as Map?)?.cast<String, Object?>();
+      final properties = (approved['properties'] as Map?)
+          ?.cast<String, Object?>();
       expect(properties, isNotNull);
       expect(properties!['graphify_relation'], equals('NEAR'));
       expect(properties['label'], equals('concept near other concept'));
     },
   );
 
-  test(
-    'BatchCommitCommand.toJson() includes target_operator_id and '
-    'target_location_id (proxy 400s on a body without them)',
-    () {
-      // P1 review finding: HttpCorpusAdminGateway POSTs
-      // `command.toJson()` verbatim. The proxy commit-batch route
-      // requires `target_operator_id` + `target_location_id` to
-      // build the TenantContext for the GraphRepository write. The
-      // model now carries both fields; this test pins the wire
-      // contract so a regression in toJson() (e.g. dropping the
-      // fields back to `{decisions: [...]}`) breaks here instead of
-      // silently 400-ing every Flutter client.
-      const command = BatchCommitCommand(
-        idempotencyKey: 'test-key',
-        targetOperatorId: '00000000-0000-4000-8000-000000000001',
-        targetLocationId: '00000000-0000-4000-8000-0000000000a1',
-        decisions: <ApprovalDecision>[],
-      );
-      final json = command.toJson();
-      expect(
-        json['target_operator_id'],
-        equals('00000000-0000-4000-8000-000000000001'),
-      );
-      expect(
-        json['target_location_id'],
-        equals('00000000-0000-4000-8000-0000000000a1'),
-      );
-      expect(json['decisions'], isA<List<Map<String, Object?>>>());
-    },
-  );
+  test('BatchCommitCommand.toJson() includes target_operator_id and '
+      'target_location_id (proxy 400s on a body without them)', () {
+    // P1 review finding: HttpCorpusAdminGateway POSTs
+    // `command.toJson()` verbatim. The proxy commit-batch route
+    // requires `target_operator_id` + `target_location_id` to
+    // build the TenantContext for the GraphRepository write. The
+    // model now carries both fields; this test pins the wire
+    // contract so a regression in toJson() (e.g. dropping the
+    // fields back to `{decisions: [...]}`) breaks here instead of
+    // silently 400-ing every Flutter client.
+    const command = BatchCommitCommand(
+      idempotencyKey: 'test-key',
+      targetOperatorId: '00000000-0000-4000-8000-000000000001',
+      targetLocationId: '00000000-0000-4000-8000-0000000000a1',
+      decisions: <ApprovalDecision>[],
+    );
+    final json = command.toJson();
+    expect(
+      json['target_operator_id'],
+      equals('00000000-0000-4000-8000-000000000001'),
+    );
+    expect(
+      json['target_location_id'],
+      equals('00000000-0000-4000-8000-0000000000a1'),
+    );
+    expect(json['decisions'], isA<List<Map<String, Object?>>>());
+  });
 
-  testWidgets(
-    'no target operator/location: commit button is disabled and the '
-    '"select operator" banner renders (P1 follow-up — live route '
-    'must not silently fall back to demo IDs)',
-    (tester) async {
-      // Live mode in admin_routes.dart leaves both targets null
-      // until the operator-picker slice ships. The screen must
-      // refuse to commit in that case so a super_admin cannot
-      // accidentally write graph decisions against the wrong tenant
-      // (or the demo IDs, which do not exist in production).
-      final gateway = InMemoryCorpusAdminGateway(
-        graphCandidateSeed: buildDiff(),
-      );
-      await tester.pumpWidget(
-        wrap(
-          buildScreen(
-            gateway: gateway,
-            // Both targets explicitly null = live-mode-pre-picker
-            // wiring.
-            targetOperatorId: null,
-            targetLocationId: null,
-          ),
+  testWidgets('no target operator/location: commit button is disabled and the '
+      '"select operator" banner renders (P1 follow-up — live route '
+      'must not silently fall back to demo IDs)', (tester) async {
+    // Live mode in admin_routes.dart leaves both targets null
+    // until the operator-picker slice ships. The screen must
+    // refuse to commit in that case so a super_admin cannot
+    // accidentally write graph decisions against the wrong tenant
+    // (or the demo IDs, which do not exist in production).
+    final gateway = InMemoryCorpusAdminGateway(graphCandidateSeed: buildDiff());
+    await tester.pumpWidget(
+      wrap(
+        buildScreen(
+          gateway: gateway,
+          // Both targets explicitly null = live-mode-pre-picker
+          // wiring.
+          targetOperatorId: null,
+          targetLocationId: null,
         ),
-      );
-      await tester.pumpAndSettle();
-      await openGraphCandidatesTab(tester);
+      ),
+    );
+    await tester.pumpAndSettle();
+    await openGraphCandidatesTab(tester);
 
-      // Banner is visible and points at the operator-picker
-      // follow-up.
-      expect(
-        find.byKey(const Key('admin_corpus_graph_no_target_banner')),
-        findsOneWidget,
-      );
+    // Banner is visible and points at the operator-picker
+    // follow-up.
+    expect(
+      find.byKey(const Key('admin_corpus_graph_no_target_banner')),
+      findsOneWidget,
+    );
 
-      // Even after queuing a decision, the commit button stays
-      // disabled because the destination is unknown.
-      final bulkApprove = find.byKey(
-        const Key('admin_corpus_graph_bulk_approve_extracted'),
-      );
-      await tester.ensureVisible(bulkApprove);
-      await tester.pumpAndSettle();
-      await tester.tap(bulkApprove);
-      await tester.pumpAndSettle();
+    // Even after queuing a decision, the commit button stays
+    // disabled because the destination is unknown.
+    final bulkApprove = find.byKey(
+      const Key('admin_corpus_graph_bulk_approve_extracted'),
+    );
+    await tester.ensureVisible(bulkApprove);
+    await tester.pumpAndSettle();
+    await tester.tap(bulkApprove);
+    await tester.pumpAndSettle();
 
-      final commitButton = find.byKey(
-        const Key('admin_corpus_graph_commit_button'),
-      );
-      await tester.ensureVisible(commitButton);
-      await tester.pumpAndSettle();
-      // The button widget exists but is disabled (onPressed: null).
-      final FilledButton commitWidget =
-          tester.widget<FilledButton>(commitButton);
-      expect(
-        commitWidget.onPressed,
-        isNull,
-        reason: 'commit button must stay disabled when no target '
-            'is configured, even when decisions are queued — the '
-            'destination is unknown so a click would otherwise commit '
-            'against the wrong tenant',
-      );
+    final commitButton = find.byKey(
+      const Key('admin_corpus_graph_commit_button'),
+    );
+    await tester.ensureVisible(commitButton);
+    await tester.pumpAndSettle();
+    // The button widget exists but is disabled (onPressed: null).
+    final FilledButton commitWidget = tester.widget<FilledButton>(commitButton);
+    expect(
+      commitWidget.onPressed,
+      isNull,
+      reason:
+          'commit button must stay disabled when no target '
+          'is configured, even when decisions are queued — the '
+          'destination is unknown so a click would otherwise commit '
+          'against the wrong tenant',
+    );
 
-      // Nothing landed in the demo gateway's canonical buckets
-      // because no commit fired.
-      expect(gateway.debugApprovedNodes, isEmpty);
-      expect(gateway.debugApprovedEdges, isEmpty);
-      expect(gateway.debugRejectedAudit, isEmpty);
-    },
-  );
+    // Nothing landed in the demo gateway's canonical buckets
+    // because no commit fired.
+    expect(gateway.debugApprovedNodes, isEmpty);
+    expect(gateway.debugApprovedEdges, isEmpty);
+    expect(gateway.debugRejectedAudit, isEmpty);
+  });
 }

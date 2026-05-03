@@ -60,39 +60,35 @@ class SettingsDataFreshnessSection extends StatelessWidget {
   static const List<_FreshnessRowSpec> _rowSpecs = <_FreshnessRowSpec>[
     _FreshnessRowSpec(
       tableKeys: <String>['restaurants'],
-      label: 'restaurants',
+      label: 'Restaurant profile',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['benchmark_overrides'],
-      label: 'benchmark_overrides',
+      label: 'Benchmarks and targets',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['weekly_plan_snapshots'],
-      label: 'weekly_plan_snapshots',
+      label: 'Weekly plans',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['target_cycle_provenance'],
-      label: 'target_cycle_provenance',
+      label: 'Target change history',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['app_notifications'],
-      label: 'app_notifications',
+      label: 'Notifications',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['audit_trail'],
-      label: 'audit_trail',
+      label: 'Audit history',
     ),
     _FreshnessRowSpec(
       tableKeys: <String>['connector_configs'],
-      label: 'connector_configs',
+      label: 'Connector setup',
     ),
     _FreshnessRowSpec(
-      tableKeys: <String>[
-        'restaurant_users',
-        'roles',
-        'role_permissions',
-      ],
-      label: 'restaurant_users + roles + role_permissions',
+      tableKeys: <String>['restaurant_users', 'roles', 'role_permissions'],
+      label: 'Team members and roles',
     ),
   ];
 
@@ -105,8 +101,7 @@ class SettingsDataFreshnessSection extends StatelessWidget {
         builder: (_, _) => _build(injected.timestamps),
       );
     }
-    final fromProvider = context
-        .watch<LastSyncedTimestampsNotifier?>();
+    final fromProvider = context.watch<LastSyncedTimestampsNotifier?>();
     return _build(fromProvider?.timestamps ?? const <String, DateTime>{});
   }
 
@@ -154,10 +149,10 @@ class _DataFreshnessRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final newest = _newestTimestamp();
     final relative = newest == null
-        ? 'Never'
+        ? 'No updates yet'
         : _formatRelative(now.difference(newest));
     final tooltip = newest == null
-        ? 'No realtime frame received in this app session.'
+        ? 'No update received since you opened the app.'
         : newest.toIso8601String();
     return Padding(
       key: Key('settings_data_freshness_row_${spec.label}'),
@@ -238,9 +233,9 @@ class SettingsMockReplaySection extends StatelessWidget {
           children: [
             SettingsActionRow(
               icon: Icons.replay_rounded,
-              label: 'Reset Mock Scenario',
+              label: 'Reset demo data',
               description:
-                  'Reset to default scenario date (${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)})',
+                  'Return the demo restaurant to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
               onTap: () async {
                 await ShiftService.instance.reseedDemo();
                 await onAfterWrite();
@@ -248,7 +243,7 @@ class SettingsMockReplaySection extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Mock scenario reset to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
+                        'Demo data reset to ${_formatDate(MockIntegrationReplaySeed.defaultBusinessDate)}.',
                         style: AppTextStyles.mono11(
                           color: AppColors.textPrimary,
                         ),
@@ -263,8 +258,8 @@ class SettingsMockReplaySection extends StatelessWidget {
             const SettingsRowDivider(),
             SettingsActionRow(
               icon: Icons.skip_next_rounded,
-              label: 'Advance Mock Day',
-              description: 'Move mock business date forward one day',
+              label: 'Move demo date forward',
+              description: 'Move the demo business date forward one day.',
               onTap: () async {
                 await ShiftService.instance.advanceMockReplayDay();
                 await onAfterWrite();
@@ -273,7 +268,7 @@ class SettingsMockReplaySection extends StatelessWidget {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
                       content: Text(
-                        'Mock scenario advanced to ${current != null ? _formatDate(current) : "next day"}.',
+                        'Demo date moved to ${current != null ? _formatDate(current) : "next day"}.',
                         style: AppTextStyles.mono11(
                           color: AppColors.textPrimary,
                         ),
@@ -306,7 +301,7 @@ class SettingsDataManagementSection extends StatelessWidget {
       children: [
         SettingsActionRow(
           icon: Icons.delete_outline_rounded,
-          label: 'Clear All Data',
+          label: 'Clear saved data',
           description:
               'Remove all operational data while keeping restaurant scope and connector settings.',
           tone: SettingsRowTone.danger,
@@ -316,11 +311,11 @@ class SettingsDataManagementSection extends StatelessWidget {
               builder: (ctx) => AlertDialog(
                 backgroundColor: AppColors.backgroundMid,
                 title: Text(
-                  'Clear all data?',
+                  'Clear saved data?',
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 content: Text(
-                  'This removes all operational data while keeping restaurant scope and connector settings. Cannot be undone.',
+                  'This removes operational data while keeping restaurant scope and connector settings. This cannot be undone.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 actions: [
@@ -350,7 +345,7 @@ class SettingsDataManagementSection extends StatelessWidget {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      'All operational data cleared.',
+                      'Saved data cleared.',
                       style: AppTextStyles.mono11(color: AppColors.textPrimary),
                     ),
                     backgroundColor: AppColors.backgroundMid,
@@ -368,13 +363,11 @@ class SettingsDataManagementSection extends StatelessWidget {
         // repeatedly without a real 60-day rollover.
         SettingsActionRow(
           icon: Icons.refresh_rounded,
-          label: 'Reset Target Cycle (Admin)',
+          label: 'Reset target recommendations',
           description:
-              'Clears manager override + rebuilds the active 60-day '
-              'cycle from the current recommendation. For testing — '
-              'skips the once-per-cycle rule.',
+              'Clears the current manager override and rebuilds the active recommendation cycle for testing.',
           tone: SettingsRowTone.admin,
-          trailingBadge: 'ADMIN',
+          trailingBadge: 'Admin',
           onTap: () async {
             final confirmed = await showDialog<bool>(
               context: context,
@@ -385,11 +378,7 @@ class SettingsDataManagementSection extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 content: Text(
-                  'Clears the persisted manager override and the '
-                  'active 60-day TargetCycle, then creates a fresh '
-                  'recommended cycle. Use this to test the '
-                  'once-per-cycle override rule repeatedly. '
-                  'Closed shifts and week history are NOT affected.',
+                  'Clears the current manager override and creates a fresh recommended target cycle. Closed shifts and week history are not affected.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 actions: [
@@ -677,14 +666,14 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
       children: [
         SettingsActionRow(
           icon: Icons.lock_reset_rounded,
-          label: _changingPassword ? 'Updating Password' : 'Change Password',
+          label: _changingPassword ? 'Updating password' : 'Change password',
           description: 'Update your signed-in account password.',
           onTap: _changingPassword ? () {} : _changePassword,
         ),
         const SettingsRowDivider(),
         SettingsActionRow(
           icon: Icons.logout_rounded,
-          label: _signingOut ? 'Signing Out' : 'Sign Out',
+          label: _signingOut ? 'Signing out' : 'Sign out',
           description: 'Sign out on this device.',
           onTap: _signingOut ? () {} : _signOutThisSession,
         ),
@@ -695,18 +684,18 @@ class _SettingsAccountSectionState extends State<SettingsAccountSection> {
           label: _signingOutEverywhere
               ? 'Signing out of all devices'
               : 'Sign out of all devices',
-          description: 'Revoke other active sessions for this account.',
+          description: 'Sign out other active sessions for this account.',
           tone: SettingsRowTone.danger,
           onTap: _signingOut ? () {} : _signOutAllSessions,
         ),
         if (_signingOutEverywhere)
           const _AccountProgressNotice(
-            message: 'Chit times rising, Signing you off Captain',
+            message: 'Signing you out of all devices.',
           ),
         const SettingsRowDivider(),
         _AccountInfoRow(
           icon: Icons.policy_outlined,
-          label: 'Terms & Conditions',
+          label: 'Terms and conditions',
           value:
               'Legal copy is in review for Phase 9.8. Existing operator agreements remain in effect until the official version is published.',
         ),
@@ -1553,7 +1542,7 @@ class _DataStatusTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'Loading…',
+                  'Loading...',
                   style: AppTextStyles.mono11(color: AppColors.textMuted),
                 ),
               ],

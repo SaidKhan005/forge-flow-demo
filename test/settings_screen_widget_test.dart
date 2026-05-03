@@ -95,7 +95,7 @@ void main() {
   GoogleFonts.config.allowRuntimeFetching = false;
 
   group('Settings screen smoke', () {
-    testWidgets('current status renders in the DATA STATUS section', (
+    testWidgets('current status renders in the Sync status section', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -115,7 +115,7 @@ void main() {
       expect(find.byKey(const Key('settings_tab_developer')), findsOneWidget);
       await tester.tap(find.byKey(const Key('settings_tab_data')));
       await tester.pumpAndSettle();
-      expect(find.text('Data status'), findsOneWidget);
+      expect(find.text('Sync status'), findsOneWidget);
       expect(find.text('CURRENT'), findsOneWidget);
     });
 
@@ -150,16 +150,13 @@ void main() {
       await _pumpForAsync(tester);
       await tester.tap(find.byKey(const Key('settings_tab_data')));
       await _pumpForAsync(tester);
-      expect(find.text('Mock replay', skipOffstage: false), findsOneWidget);
-      expect(find.text('Data management', skipOffstage: false), findsOneWidget);
+      expect(find.text('Demo date', skipOffstage: false), findsOneWidget);
+      expect(find.text('Data reset', skipOffstage: false), findsOneWidget);
       await tester.tap(find.byKey(const Key('settings_tab_authority')));
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Timing authority');
+      await _scrollToText(tester, 'Business timing');
 
-      expect(
-        find.text('Timing authority', skipOffstage: false),
-        findsOneWidget,
-      );
+      expect(find.text('Business timing', skipOffstage: false), findsOneWidget);
       expect(find.text('America/St_Johns'), findsOneWidget);
     });
 
@@ -205,14 +202,14 @@ void main() {
         find.text('Account', skipOffstage: false),
         findsAtLeastNWidgets(1),
       );
-      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
-      expect(find.text('Sign Out', skipOffstage: false), findsOneWidget);
+      expect(find.text('Change password', skipOffstage: false), findsOneWidget);
+      expect(find.text('Sign out', skipOffstage: false), findsOneWidget);
       expect(
         find.text('Sign out of all devices', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.text('Terms & Conditions', skipOffstage: false),
+        find.text('Terms and conditions', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -470,7 +467,7 @@ void main() {
       expect(find.text('Downtown', skipOffstage: false), findsOneWidget);
       expect(find.text('Kitchen Lead', skipOffstage: false), findsOneWidget);
       expect(find.text('Enabled', skipOffstage: false), findsOneWidget);
-      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
+      expect(find.text('Change password', skipOffstage: false), findsOneWidget);
       expect(gateway.requests.single.actorUserId, equals('user-1'));
       expect(
         tester
@@ -483,7 +480,7 @@ void main() {
             .dy,
         lessThan(
           tester
-              .getTopLeft(find.text('Change Password', skipOffstage: false))
+              .getTopLeft(find.text('Change password', skipOffstage: false))
               .dy,
         ),
       );
@@ -649,7 +646,7 @@ void main() {
         ),
         findsNothing,
       );
-      expect(find.text('Change Password', skipOffstage: false), findsOneWidget);
+      expect(find.text('Change password', skipOffstage: false), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -772,7 +769,7 @@ void main() {
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'account tab render');
-      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.tap(find.text('Change password', skipOffstage: false));
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'password dialog render');
 
@@ -827,7 +824,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.tap(find.text('Change password', skipOffstage: false));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -884,7 +881,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Change Password', skipOffstage: false));
+      await tester.tap(find.text('Change password', skipOffstage: false));
       await tester.pumpAndSettle();
 
       await tester.enterText(
@@ -948,7 +945,14 @@ void main() {
       await tester.ensureVisible(
         find.byKey(const Key('account_sign_out_everywhere_action')),
       );
-      await tester.pump();
+      await Scrollable.ensureVisible(
+        tester.element(
+          find.byKey(const Key('account_sign_out_everywhere_action')),
+        ),
+        alignment: 0.55,
+        duration: Duration.zero,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(const Key('account_sign_out_everywhere_action')),
       );
@@ -956,10 +960,7 @@ void main() {
       await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
       await tester.pump();
 
-      expect(
-        find.text('Chit times rising, Signing you off Captain'),
-        findsOneWidget,
-      );
+      expect(find.text('Signing you out of all devices.'), findsOneWidget);
       expect(
         find.byKey(const Key('account_sign_out_everywhere_progress')),
         findsOneWidget,
@@ -1665,6 +1666,12 @@ void main() {
         skipOffstage: false,
       );
       await tester.ensureVisible(retryButton);
+      await Scrollable.ensureVisible(
+        tester.element(retryButton),
+        alignment: 0.5,
+        duration: Duration.zero,
+      );
+      await tester.pumpAndSettle();
       await tester.tap(retryButton);
       await tester.pumpAndSettle();
 
@@ -1878,7 +1885,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('Data status'), findsOneWidget);
+        expect(find.text('Sync status'), findsOneWidget);
         expect(find.text('CURRENT'), findsOneWidget);
       });
 
@@ -1939,14 +1946,16 @@ void main() {
         expect(find.text('STALE'), findsOneWidget);
       });
 
-      testWidgets('Clear All Data description text is correct', (tester) async {
+      testWidgets('Clear saved data description text is correct', (
+        tester,
+      ) async {
         await tester.pumpWidget(
           MaterialApp(
             home: SettingsScreen(initialStatus: AppDataStatus.current()),
           ),
         );
         await tester.pump();
-        await _scrollToText(tester, 'Clear All Data');
+        await _scrollToText(tester, 'Clear saved data');
 
         expect(
           find.textContaining(
@@ -1972,10 +1981,10 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('Mock replay'), findsOneWidget);
+        expect(find.text('Demo date'), findsOneWidget);
       });
 
-      testWidgets('shows DATA MANAGEMENT section label', (tester) async {
+      testWidgets('shows Data reset section label', (tester) async {
         await tester.pumpWidget(
           MaterialApp(
             home: SettingsScreen(
@@ -1986,7 +1995,7 @@ void main() {
         );
         await tester.pump();
 
-        expect(find.text('Data management'), findsOneWidget);
+        expect(find.text('Data reset'), findsOneWidget);
       });
     });
 
@@ -2019,19 +2028,19 @@ void main() {
           ),
         );
         await _pumpForAsync(tester);
-        await _scrollToText(tester, 'Timing authority');
+        await _scrollToText(tester, 'Business timing');
 
-        expect(find.text('Timing authority'), findsOneWidget);
+        expect(find.text('Business timing'), findsOneWidget);
         expect(find.text('America/St_Johns'), findsOneWidget);
-        expect(find.text('Business Day Starts'), findsOneWidget);
-        expect(find.text('Week Starts'), findsOneWidget);
+        expect(find.text('Business day starts'), findsOneWidget);
+        expect(find.text('Week starts'), findsOneWidget);
         expect(find.text('Lunch'), findsOneWidget);
         expect(find.text('Dinner'), findsOneWidget);
         expect(find.text('Late Night'), findsOneWidget);
       });
     });
 
-  // ── Mock replay controls ──────────────────────────────────────────────
+  // ── Demo date controls ──────────────────────────────────────────────
 
   if (_includePrunedLabelGroups())
     group('Settings mock replay controls', () {
@@ -2329,7 +2338,7 @@ void main() {
   });
 
   group('Settings wage mix panel (7.55p.5f1a)', () {
-    testWidgets('panel is a read-only summary + single Edit Wage Mix action', (
+    testWidgets('panel is a read-only summary + single Edit wage mix action', (
       tester,
     ) async {
       await _reseedDemoForWidgetTest(tester);
@@ -2345,33 +2354,33 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
 
       // Wage panel content is now in view.
-      expect(find.text('MIX SUMMARY'), findsWidgets);
+      expect(find.text('Mix summary'), findsWidgets);
 
       // Grouped read-only bucket headers are rendered as their own row;
       // role count lives in a count pill beside each header.
-      expect(find.text('FRONT OF HOUSE'), findsOneWidget);
-      expect(find.text('BACK OF HOUSE'), findsOneWidget);
-      expect(find.text('MANAGEMENT'), findsOneWidget);
+      expect(find.text('Front of house'), findsOneWidget);
+      expect(find.text('Back of house'), findsOneWidget);
+      expect(find.text('Management'), findsOneWidget);
 
       // The panel exposes exactly one whole-mix edit action.
-      expect(find.text('Edit Wage Mix'), findsOneWidget);
+      expect(find.text('Edit wage mix'), findsOneWidget);
 
       // The per-bucket add buttons from the intermediate 7.55p.5f1
       // implementation are gone from the Settings panel. Editing now
       // happens only inside the editor.
-      expect(find.text('Add FOH role'), findsNothing);
-      expect(find.text('Add BOH role'), findsNothing);
-      expect(find.text('Add Management role'), findsNothing);
+      expect(find.text('Add front role'), findsNothing);
+      expect(find.text('Add back role'), findsNothing);
+      expect(find.text('Add management role'), findsNothing);
 
       // Older flat-list affordances from before 7.55p.5f1 remain absent.
       expect(find.text('Add Role'), findsNothing);
       expect(find.text('FALLBACK ROLES'), findsNothing);
     });
 
-    testWidgets('empty mix shows Config Default warning on the panel', (
+    testWidgets('empty mix shows default wages warning on the panel', (
       tester,
     ) async {
       await _reseedDemoForWidgetTest(tester);
@@ -2387,16 +2396,16 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
 
-      expect(find.textContaining('No roles configured'), findsOneWidget);
-      expect(find.text('Config Default'), findsOneWidget);
+      expect(find.textContaining('No roles are configured'), findsOneWidget);
+      expect(find.text('Default wages'), findsOneWidget);
     });
   });
 
   // ── Whole-mix editor real save path (7.55p.5f1a) ─────────────────────
   //
-  // These tests drive the actual UI: tap `Edit Wage Mix`, fill inline
+  // These tests drive the actual UI: tap `Edit wage mix`, fill inline
   // rows, tap Save, and assert persistence + profile sync. They
   // replace the earlier repo-seeded shape tests.
 
@@ -2418,19 +2427,19 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
 
       // Open the whole-mix editor.
-      await tester.tap(find.text('Edit Wage Mix'));
-      await _pumpUntilFound(tester, find.text('Add FOH role'));
+      await tester.tap(find.text('Edit wage mix'));
+      await _pumpUntilFound(tester, find.text('Add front role'));
 
       // Editor route is live.
-      expect(find.text('Edit Wage Mix'), findsWidgets);
-      expect(find.text('Add FOH role'), findsOneWidget);
-      expect(find.text('Add BOH role'), findsOneWidget);
+      expect(find.text('Edit wage mix'), findsWidgets);
+      expect(find.text('Add front role'), findsOneWidget);
+      expect(find.text('Add back role'), findsOneWidget);
 
       // Add one FOH row inline.
-      await tester.tap(find.text('Add FOH role'));
+      await tester.tap(find.text('Add front role'));
       await _pumpForAsync(tester);
 
       // The newly added FOH row exposes three fields (role, rate,
@@ -2443,7 +2452,7 @@ void main() {
       await _pumpForAsync(tester);
 
       // Add one BOH row inline.
-      await tester.tap(find.text('Add BOH role'));
+      await tester.tap(find.text('Add back role'));
       await _pumpForAsync(tester);
 
       fields = find.byType(TextField);
@@ -2454,7 +2463,7 @@ void main() {
       await _pumpForAsync(tester);
 
       // Save the whole mix in one pass.
-      await tester.tap(find.text('Save Wage Mix'));
+      await tester.tap(find.text('Save wage mix'));
       await _pumpForDbAsync(tester);
 
       // Persistence proof: two rows are in SQLite.
@@ -2496,7 +2505,7 @@ void main() {
     });
 
     testWidgets('manager-only mix entered through the editor stays honest: '
-        'saves the row but authority remains Config Default', (tester) async {
+        'saves the row but authority remains default wages', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       final restaurantId = await _getActiveRestaurantId(tester);
       await _deleteAllWageRows(tester, restaurantId);
@@ -2511,20 +2520,20 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
 
       // Open editor.
-      await tester.tap(find.text('Edit Wage Mix'));
-      await _pumpUntilFound(tester, find.text('Add Management role'));
+      await tester.tap(find.text('Edit wage mix'));
+      await _pumpUntilFound(tester, find.text('Add management role'));
 
       // The Management bucket sits at the bottom of the editor — scroll
       // its add button into view before tapping so it isn't blocked by
-      // the pinned Save Wage Mix bar.
-      await tester.ensureVisible(find.text('Add Management role'));
+      // the pinned Save wage mix bar.
+      await tester.ensureVisible(find.text('Add management role'));
       await _pumpForAsync(tester);
 
       // Add one Management row only — deliberately incomplete.
-      await tester.tap(find.text('Add Management role'));
+      await tester.tap(find.text('Add management role'));
       await _pumpForAsync(tester);
 
       final fields = find.byType(TextField);
@@ -2536,11 +2545,11 @@ void main() {
 
       // Editor shows the honest "will fall back" warning.
       expect(
-        find.textContaining('Will fall back to Config Default'),
+        find.textContaining('Add at least one front role'),
         findsOneWidget,
       );
 
-      await tester.tap(find.text('Save Wage Mix'));
+      await tester.tap(find.text('Save wage mix'));
       await _pumpForDbAsync(tester);
 
       // Persistence proof: manager row is saved.
@@ -2549,7 +2558,7 @@ void main() {
       expect(rows.first.laborBucket, 'manager');
       expect(rows.first.hourlyRate, closeTo(30, 0.01));
 
-      // Honesty proof: authority still resolves as Config Default,
+      // Honesty proof: authority still resolves as default wages,
       // and the profile does NOT carry the $30 manager rate as FOH or
       // BOH wages.
       final ctx = await _resolveWageContext(tester, restaurantId);
@@ -2561,13 +2570,13 @@ void main() {
       expect(profile.bohWage, lessThan(30.0));
 
       // Settings panel shows the incomplete warning band.
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
       expect(
-        find.textContaining('one FOH role AND one BOH role'),
+        find.textContaining('one front role and one back role'),
         findsOneWidget,
       );
-      expect(find.text('Config Default'), findsOneWidget);
-      expect(find.text('App Configured'), findsNothing);
+      expect(find.text('Default wages'), findsOneWidget);
+      expect(find.text('Custom wage mix'), findsNothing);
     });
 
     testWidgets('removing an existing row in the editor deletes it on save '
@@ -2607,10 +2616,10 @@ void main() {
         ),
       );
       await _pumpForAsync(tester);
-      await _scrollToText(tester, 'Edit Wage Mix');
+      await _scrollToText(tester, 'Edit wage mix');
 
-      await tester.tap(find.text('Edit Wage Mix'));
-      await _pumpUntilFound(tester, find.text('Add FOH role'));
+      await tester.tap(find.text('Edit wage mix'));
+      await _pumpUntilFound(tester, find.text('Add front role'));
 
       // Editor should show both seeded rows (6 TextFields — 3 per row).
       expect(find.byType(TextField), findsNWidgets(6));
@@ -2624,7 +2633,7 @@ void main() {
       // Only the FOH row's fields remain.
       expect(find.byType(TextField), findsNWidgets(3));
 
-      await tester.tap(find.text('Save Wage Mix'));
+      await tester.tap(find.text('Save wage mix'));
       await _pumpForDbAsync(tester);
 
       // Persistence proof: the removed BOH row is gone.
@@ -2674,10 +2683,10 @@ void main() {
           ),
         );
         await _pumpForAsync(tester);
-        await _scrollToText(tester, 'Edit Wage Mix');
+        await _scrollToText(tester, 'Edit wage mix');
 
-        await tester.tap(find.text('Edit Wage Mix'));
-        await _pumpUntilFound(tester, find.text('Add FOH role'));
+        await tester.tap(find.text('Edit wage mix'));
+        await _pumpUntilFound(tester, find.text('Add front role'));
 
         final fields = find.byType(TextField);
         expect(fields, findsNWidgets(6));
@@ -2686,7 +2695,7 @@ void main() {
         await tester.enterText(fields.at(3), '');
         await _pumpForAsync(tester);
 
-        await tester.tap(find.text('Save Wage Mix'));
+        await tester.tap(find.text('Save wage mix'));
         await _pumpForDbAsync(tester);
 
         // The stale BOH row should be deleted instead of silently preserved.
@@ -2701,11 +2710,11 @@ void main() {
     );
   });
 
-  // ── 7.55q.9 — Reset Target Cycle (Admin) tile renders + opens dialog ──
+  // ── 7.55q.9 — Reset target recommendations tile renders + opens dialog ──
 
   group('Settings 7.55q.9 admin reset tile', () {
     if (_includePrunedLabelGroups())
-      testWidgets('Reset Target Cycle (Admin) tile renders with admin '
+      testWidgets('Reset target recommendations tile renders with admin '
           'description', (tester) async {
         await _reseedDemoForWidgetTest(tester);
         await tester.pumpWidget(
@@ -2722,19 +2731,19 @@ void main() {
         // established scroll helper so suite ordering doesn't make the
         // assertion flaky.
         expect(
-          find.text('Reset Target Cycle (Admin)', skipOffstage: false),
+          find.text('Reset target recommendations', skipOffstage: false),
           findsOneWidget,
         );
         expect(
           find.textContaining(
-            'Clears manager override + rebuilds the active 60-day',
+            'Clears the current manager override',
             skipOffstage: false,
           ),
           findsOneWidget,
         );
       });
 
-    testWidgets('tapping Reset Target Cycle (Admin) opens a confirm '
+    testWidgets('tapping Reset target recommendations opens a confirm '
         'dialog with Cancel + Reset actions', (tester) async {
       await _reseedDemoForWidgetTest(tester);
       await tester.pumpWidget(
@@ -2750,9 +2759,9 @@ void main() {
       // Use the file's established scroll helper to bring the tile
       // on-stage before tapping (Settings is taller than the test
       // viewport).
-      await _scrollToText(tester, 'Reset Target Cycle (Admin)');
+      await _scrollToText(tester, 'Reset target recommendations');
       final resetRow = find.ancestor(
-        of: find.text('Reset Target Cycle (Admin)'),
+        of: find.text('Reset target recommendations'),
         matching: find.byType(InkWell),
       );
       await tester.ensureVisible(resetRow.first);
@@ -2762,9 +2771,7 @@ void main() {
 
       expect(find.text('Reset target cycle?'), findsOneWidget);
       expect(
-        find.textContaining(
-          'Clears the persisted manager override and the active',
-        ),
+        find.textContaining('creates a fresh recommended target cycle'),
         findsOneWidget,
       );
       expect(find.text('Cancel'), findsAtLeastNWidgets(1));
@@ -2846,15 +2853,11 @@ Finder _settingsScrollable(String tabId) {
 }
 
 String _settingsTabIdForText(String text) {
-  const authorityTargets = {
-    'Timing authority',
-    'Wage authority',
-    'Edit Wage Mix',
-  };
+  const authorityTargets = {'Business timing', 'Wage setup', 'Edit wage mix'};
   const developerTargets = {
     'Data Alignment Audit',
-    'Advisor models',
-    'Advisor corpus',
+    'Advisor routing',
+    'Advisor content',
   };
   if (authorityTargets.contains(text)) return 'authority';
   if (developerTargets.contains(text)) return 'developer';
@@ -2967,9 +2970,9 @@ void _advisorSectionTests() {
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
-      await _scrollToText(tester, 'Advisor models');
+      await _scrollToText(tester, 'Advisor routing');
 
-      expect(find.text('Advisor models', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor routing', skipOffstage: false), findsOneWidget);
       expect(
         find.textContaining('claude-haiku-4-5', skipOffstage: false),
         findsWidgets,
@@ -3005,7 +3008,7 @@ void _advisorSectionTests() {
       );
 
       await _pumpAdvisorSettings(tester, service: svc);
-      await _scrollToText(tester, 'Advisor models');
+      await _scrollToText(tester, 'Advisor routing');
 
       expect(
         find.byKey(const Key('advisor_reset_button'), skipOffstage: false),
@@ -3058,11 +3061,11 @@ void _advisorSectionTests() {
         findsOneWidget,
       );
       // Up-to-date branch (status=available + updateAvailable=false).
-      expect(find.text('UP TO DATE', skipOffstage: false), findsOneWidget);
+      expect(find.text('Up to date', skipOffstage: false), findsOneWidget);
     });
 
     testWidgets(
-      'UPDATE AVAILABLE label and candidate rows render when fake reports update',
+      'Update available label and candidate rows render when fake reports update',
       (tester) async {
         final svc = AdvisorModelConfigService(
           onlineCheckFn:
@@ -3090,7 +3093,7 @@ void _advisorSectionTests() {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(
-          find.text('UPDATE AVAILABLE', skipOffstage: false),
+          find.text('Update available', skipOffstage: false),
           findsOneWidget,
         );
         expect(
@@ -3136,10 +3139,10 @@ void _advisorSectionTests() {
         );
         await tester.pump();
         await tester.pumpAndSettle();
-        await _scrollToText(tester, 'Advisor models');
+        await _scrollToText(tester, 'Advisor routing');
 
         expect(
-          find.text('Advisor models', skipOffstage: false),
+          find.text('Advisor routing', skipOffstage: false),
           findsOneWidget,
         );
       },
@@ -3191,9 +3194,9 @@ void _advisorCorpusSectionTests() {
         tester,
         service: AdvisorCorpusAdminService(),
       );
-      await _scrollToText(tester, 'Advisor corpus');
+      await _scrollToText(tester, 'Advisor content');
 
-      expect(find.text('Advisor corpus', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor content', skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(const Key('advisor_corpus_header'), skipOffstage: false),
         findsOneWidget,
@@ -3286,35 +3289,35 @@ void _advisorCorpusSectionTests() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('PREVIEW LOCAL ONLY', skipOffstage: false),
+        find.textContaining('Local preview', skipOffstage: false),
         findsOneWidget,
       );
       // Ingestion-shaped fields rendered in the result row.
       expect(
-        find.textContaining('file · sample.md', skipOffstage: false),
+        find.textContaining('File: sample.md', skipOffstage: false),
         findsOneWidget,
       );
       expect(
         find.textContaining(
-          'source · docs/Knowledge_graph_docs/sample.md',
+          'Source: docs/Knowledge_graph_docs/sample.md',
           skipOffstage: false,
         ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('title · Heading', skipOffstage: false),
+        find.textContaining('Title: Heading', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.textContaining('headings · 1', skipOffstage: false),
+        find.textContaining('Headings: 1', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.textContaining('lines · 5', skipOffstage: false),
+        find.textContaining('Lines: 5', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.textContaining('est chunks · 1', skipOffstage: false),
+        find.textContaining('Estimated content pieces: 1', skipOffstage: false),
         findsOneWidget,
       );
       expect(
@@ -3365,11 +3368,11 @@ void _advisorCorpusSectionTests() {
       // Title falls back to the file-name stem (no `.md`); the H2
       // line is counted in `headings` but does not become the title.
       expect(
-        find.textContaining('title · Wage_Standards', skipOffstage: false),
+        find.textContaining('Title: Wage_Standards', skipOffstage: false),
         findsOneWidget,
       );
       expect(
-        find.textContaining('headings · 1', skipOffstage: false),
+        find.textContaining('Headings: 1', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -3416,12 +3419,12 @@ void _advisorCorpusSectionTests() {
         await tester.pump(const Duration(milliseconds: 50));
 
         expect(
-          find.textContaining('file · Wage_Standards.md', skipOffstage: false),
+          find.textContaining('File: Wage_Standards.md', skipOffstage: false),
           findsOneWidget,
         );
         expect(
           find.textContaining(
-            'source · docs/Knowledge_graph_docs/Wage_Standards.md',
+            'Source: docs/Knowledge_graph_docs/Wage_Standards.md',
             skipOffstage: false,
           ),
           findsOneWidget,
@@ -3476,7 +3479,7 @@ void _advisorCorpusSectionTests() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+        find.textContaining('Preview rejected', skipOffstage: false),
         findsOneWidget,
       );
       expect(find.textContaining('.md', skipOffstage: false), findsWidgets);
@@ -3529,7 +3532,7 @@ void _advisorCorpusSectionTests() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('PREVIEW REJECTED', skipOffstage: false),
+        find.textContaining('Preview rejected', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -3565,11 +3568,20 @@ void _advisorCorpusSectionTests() {
         findsOneWidget,
       );
       expect(
-        find.textContaining('CLOUD LOAD · BLOCKED', skipOffstage: false),
+        find.descendant(
+          of: find.byKey(
+            const Key('advisor_corpus_cloud_blocked'),
+            skipOffstage: false,
+          ),
+          matching: find.textContaining(
+            'Cloud load unavailable',
+            skipOffstage: false,
+          ),
+        ),
         findsOneWidget,
       );
       expect(
-        find.textContaining('11a.11b', skipOffstage: false),
+        find.textContaining('not available in this build', skipOffstage: false),
         findsOneWidget,
       );
     });
@@ -3592,9 +3604,9 @@ void _advisorCorpusSectionTests() {
       );
       await tester.pump();
       await tester.pumpAndSettle();
-      await _scrollToText(tester, 'Advisor corpus');
+      await _scrollToText(tester, 'Advisor content');
 
-      expect(find.text('Advisor corpus', skipOffstage: false), findsOneWidget);
+      expect(find.text('Advisor content', skipOffstage: false), findsOneWidget);
       expect(
         find.byKey(
           const Key('advisor_corpus_cloud_blocked'),
@@ -3620,7 +3632,7 @@ void _advisorCorpusSectionTests() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      expect(find.text('Advisor corpus', skipOffstage: false), findsNothing);
+      expect(find.text('Advisor content', skipOffstage: false), findsNothing);
     });
   });
 }

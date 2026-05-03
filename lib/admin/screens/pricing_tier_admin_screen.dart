@@ -156,11 +156,9 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const AdminPageHeader(
-              title: 'Pricing',
+              title: 'Plans and limits',
               subtitle:
-                  'Subscription tier + per-(operator, location, '
-                  'usage_class) usage caps. Apply a tier template to seed '
-                  'defaults, or edit individual cap rows inline.',
+                  'Set each customer plan and the spending limits that keep advisor usage predictable.',
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -209,13 +207,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No operators on file',
+                  'No customers on file',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Onboard an operator from the Operators tab before '
-                  'configuring pricing tiers.',
+                  'Create a customer first, then return here to choose a plan and usage limits.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -341,7 +338,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: pricing edits require the super_admin role.',
+              'View only: pricing edits require platform admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -406,14 +403,14 @@ class _OperatorList extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'tier: ${bundle.subscriptionTier}',
+                      'Plan: ${bundle.subscriptionTier}',
                       style: AppTextStyles.mono11(
                         color: AppColors.textSecondary,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${bundle.caps.length} cap row'
+                      '${bundle.caps.length} usage limit'
                       '${bundle.caps.length == 1 ? '' : 's'}',
                       style: AppTextStyles.mono8(color: AppColors.textMuted),
                     ),
@@ -463,17 +460,14 @@ class _OperatorPricingDetail extends StatelessWidget {
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
+                AdminDetailRow(label: 'Plan', value: bundle.subscriptionTier),
                 AdminDetailRow(
-                  label: 'Subscription tier',
-                  value: bundle.subscriptionTier,
-                ),
-                AdminDetailRow(
-                  label: 'Preferred currency',
+                  label: 'Currency',
                   value: bundle.preferredCurrency,
                 ),
                 AdminDetailRow(
-                  label: 'Primary location',
-                  value: bundle.primaryLocationId ?? '—',
+                  label: 'Main location',
+                  value: bundle.primaryLocationId ?? 'No main location',
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
@@ -515,7 +509,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                   runSpacing: 8,
                   children: <Widget>[
                     Text(
-                      'Usage caps',
+                      'Usage limits',
                       style: AppTextStyles.mono15(
                         color: AppColors.textPrimary,
                         weight: FontWeight.w700,
@@ -526,7 +520,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                         key: const Key('admin_pricing_add_cap_button'),
                         onPressed: () => onAddCap(bundle),
                         icon: const Icon(Icons.add, size: 14),
-                        label: const Text('Add cap row'),
+                        label: const Text('Add usage limit'),
                       ),
                   ],
                 ),
@@ -535,8 +529,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'No cap rows yet. Apply a tier template to seed '
-                      'defaults, or add cap rows individually.',
+                      'No usage limits yet. Apply a plan template or add a limit individually.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -606,7 +599,7 @@ class _UsageCapRowTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '\$${row.monthlyCapUsd.toStringAsFixed(2)} monthly · '
+                  '\$${row.monthlyCapUsd.toStringAsFixed(2)} monthly - '
                   '\$${row.perInvocationCapUsd.toStringAsFixed(2)} per call',
                   style: AppTextStyles.mono11(color: AppColors.textSecondary),
                   overflow: TextOverflow.ellipsis,
@@ -617,14 +610,14 @@ class _UsageCapRowTile extends StatelessWidget {
                     [
                       if (row.staffId != null) 'staff: ${row.staffId}',
                       if (row.workflowId != null) 'workflow: ${row.workflowId}',
-                    ].join(' · '),
+                    ].join(' - '),
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
                 const SizedBox(height: 2),
                 Text(
-                  'updated by ${row.updatedBy ?? '—'} · '
+                  'Updated by ${row.updatedBy ?? 'Unknown'} - '
                   '${row.updatedAt.toUtc().toIso8601String()}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                   overflow: TextOverflow.ellipsis,
@@ -636,7 +629,7 @@ class _UsageCapRowTile extends StatelessWidget {
             IconButton(
               key: Key('admin_pricing_cap_edit_$keySuffix'),
               icon: const Icon(Icons.edit_outlined, size: 16),
-              tooltip: 'Edit cap row',
+              tooltip: 'Edit usage limit',
               onPressed: () => onEdit(bundle, row),
             ),
         ],
@@ -706,7 +699,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
       key: const Key('admin_pricing_cap_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        editing ? 'Edit cap row' : 'Add cap row',
+        editing ? 'Edit usage limit' : 'Add usage limit',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -722,21 +715,20 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Text(
-                      'This operator has no primary_location_id; '
-                      'set one on the Operators tab before editing caps.',
+                      'This customer needs a main location before you can edit usage limits.',
                       style: AppTextStyles.mono11(color: AppColors.negative),
                     ),
                   ),
                 _LabelledField(
-                  label: 'Usage class',
+                  label: 'Use case key',
                   controller: _usageClass,
                   fieldKey: const Key('admin_pricing_cap_usage_class'),
                   validator: _requiredValidator,
                   enabled: !editing,
-                  hintText: 'advisor_qa, coach_qa, workflow_pl, …',
+                  hintText: 'Example: advisor_qa',
                 ),
                 _LabelledField(
-                  label: 'Monthly cap (USD)',
+                  label: 'Monthly limit (USD)',
                   controller: _monthly,
                   fieldKey: const Key('admin_pricing_cap_monthly'),
                   keyboardType: const TextInputType.numberWithOptions(
@@ -750,7 +742,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   validator: _decimalValidator,
                 ),
                 _LabelledField(
-                  label: 'Per-invocation cap (USD)',
+                  label: 'Per request limit (USD)',
                   controller: _perInvocation,
                   fieldKey: const Key('admin_pricing_cap_per_invocation'),
                   keyboardType: const TextInputType.numberWithOptions(
@@ -764,17 +756,17 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   validator: _decimalValidator,
                 ),
                 _LabelledField(
-                  label: 'Staff ID (optional)',
+                  label: 'Staff member ID (optional)',
                   controller: _staffId,
                   fieldKey: const Key('admin_pricing_cap_staff_id'),
-                  hintText: 'leave blank for all staff',
+                  hintText: 'Leave blank for all staff',
                   enabled: !editing,
                 ),
                 _LabelledField(
                   label: 'Workflow ID (optional)',
                   controller: _workflowId,
                   fieldKey: const Key('admin_pricing_cap_workflow_id'),
-                  hintText: 'leave blank for all workflows',
+                  hintText: 'Leave blank for all workflows',
                   enabled: !editing,
                 ),
               ],

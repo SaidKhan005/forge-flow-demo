@@ -65,7 +65,7 @@ class DemoAuthSessionsFixtures {
     return <AuthSessionSummary>[
       AuthSessionSummary(
         sessionId: currentSessionId,
-        deviceLabel: 'Forge & Flow app · iOS',
+        deviceLabel: 'Forge & Flow app - iOS',
         userAgent: 'Forge&Flow/1.0 (iPhone; iOS 18.1)',
         ip: '203.0.113.42',
         geoCountry: 'CA',
@@ -74,7 +74,7 @@ class DemoAuthSessionsFixtures {
       ),
       AuthSessionSummary(
         sessionId: tabletSessionId,
-        deviceLabel: 'Safari · iPad',
+        deviceLabel: 'Safari - iPad',
         userAgent: 'Mozilla/5.0 (iPad; CPU OS 18_1) Safari/605.1.15',
         ip: '203.0.113.7',
         geoCountry: 'CA',
@@ -83,7 +83,7 @@ class DemoAuthSessionsFixtures {
       ),
       AuthSessionSummary(
         sessionId: backOfHouseSessionId,
-        deviceLabel: 'Chrome · Windows',
+        deviceLabel: 'Chrome - Windows',
         userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/124.0',
         ip: '198.51.100.18',
         geoCountry: 'CA',
@@ -438,7 +438,7 @@ class _SettingsActiveSessionsSectionState
                   ? 'Signing out of all devices'
                   : 'Sign out of all devices',
               description:
-                  'Revokes every active session for your account. You will need '
+                  'Signs out every active session for your account. You will need '
                   'to sign in again on every device.',
               tone: SettingsRowTone.danger,
               onTap: _signingOutAll ? () {} : _signOutAllDevices,
@@ -478,7 +478,7 @@ class _SettingsActiveSessionsSectionState
 
   String _describeRow(AuthSessionSummary summary) {
     final label = summary.deviceLabel ?? summary.userAgent ?? 'this device';
-    return label.length > 36 ? '${label.substring(0, 36)}…' : label;
+    return label.length > 36 ? '${label.substring(0, 36)}...' : label;
   }
 }
 
@@ -606,7 +606,7 @@ class _ActiveSessionRow extends StatelessWidget {
                           borderRadius: BorderRadius.circular(2),
                         ),
                         child: Text(
-                          'THIS DEVICE',
+                          'This device',
                           style: AppTextStyles.mono7(color: AppColors.positive),
                         ),
                       ),
@@ -660,7 +660,7 @@ class _ActiveSessionRow extends StatelessWidget {
                 visualDensity: VisualDensity.compact,
               ),
               child: Text(
-                'Revoke',
+                'Sign out',
                 style: AppTextStyles.mono11(color: AppColors.negative),
               ),
             ),
@@ -693,7 +693,7 @@ class _ActiveSessionRow extends StatelessWidget {
     final approx = _approximateLocation(summary);
     if (approx != null) segments.add(approx);
     segments.add('Last active ${_relative(summary.lastSeenAt)}');
-    return segments.join(' · ');
+    return segments.join(' - ');
   }
 
   static String? _approximateLocation(AuthSessionSummary summary) {
@@ -704,7 +704,7 @@ class _ActiveSessionRow extends StatelessWidget {
     if (summary.ip != null && summary.ip!.isNotEmpty) {
       parts.add(summary.ip!);
     }
-    return parts.isEmpty ? null : parts.join(' · ');
+    return parts.isEmpty ? null : parts.join(' - ');
   }
 
   static String _relative(DateTime when) {
@@ -727,10 +727,10 @@ String _activeSessionsLoadMessage(Object error) {
     return 'You do not have access to view active sessions.';
   }
   if (text.contains('status: 404') || text.contains('not found')) {
-    return 'Active sessions route not found. Rebuild with the staging proxy.';
+    return 'Active sessions are unavailable in this build.';
   }
   if (text.contains('transport_error') || text.contains('status: null')) {
-    return 'Could not reach the proxy. Check connection and retry.';
+    return 'Could not reach the service. Check your connection and retry.';
   }
   return "We couldn't load your active sessions. Please try again.";
 }

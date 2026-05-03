@@ -131,79 +131,80 @@ const String kAdminOperatorPickerRouteId = 'operator-picker';
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
     id: kAdminHomeRouteId,
-    title: 'Home',
+    title: 'Overview',
     path: '/',
     icon: Icons.home_outlined,
-    subtitle: 'Operations console - landing surface.',
+    subtitle:
+        'Start here for customer setup, pricing, content, support, and system checks.',
     builder: _buildHome,
   ),
   AdminRoute(
     id: kAdminOperatorsRouteId,
-    title: 'Operators',
+    title: 'Customers',
     path: '/operators',
     icon: Icons.business_outlined,
-    subtitle: 'Operator + location CRUD.',
+    subtitle:
+        'Create customer accounts, manage locations, and pause or restore access.',
     builder: _buildOperators,
   ),
   AdminRoute(
     id: kAdminPricingRouteId,
-    title: 'Pricing',
+    title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
-    subtitle: 'Tier templates and per-(operator, location, usage_class) caps.',
+    subtitle:
+        'Set plan templates and spending limits for each customer and location.',
     builder: _buildPricing,
   ),
   AdminRoute(
     id: kAdminCorpusRouteId,
-    title: 'Corpus',
+    title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
-    subtitle: 'Markdown corpus upload, preview, commit, rollback.',
+    subtitle: 'Review and publish the knowledge content the advisor uses.',
     builder: _buildCorpus,
   ),
   AdminRoute(
     id: kAdminIntegrationsRouteId,
-    title: 'Integrations',
+    title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    subtitle: 'Provider key rotation + connector status.',
+    subtitle: 'Check connected services and rotate provider keys safely.',
     builder: _buildIntegrations,
   ),
   AdminRoute(
     id: kAdminHealthRouteId,
-    title: 'Health',
+    title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
     subtitle:
-        'Read-only view of the proxy /health envelope (Retrieval / Proxy / Infra).',
+        'Run a manual backend health check before investigating live issues.',
     builder: _buildHealth,
   ),
   AdminRoute(
     id: kAdminFeatureFlagsRouteId,
-    title: 'Feature Flags',
+    title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    subtitle: 'Toggle launch flags without redeploying.',
+    subtitle: 'Turn staged features on or off without a new deploy.',
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
     id: kAdminDebugConsoleRouteId,
-    title: 'Debug',
+    title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
     subtitle:
-        'Per-operator request log. Filter, search by request_id or '
-        'idempotency_key, optional live-tail.',
+        'Search recent customer requests and inspect support-safe details.',
     builder: _buildDebugConsole,
   ),
   AdminRoute(
     id: kAdminObservabilityRouteId,
-    title: 'Observability',
+    title: 'System metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
     subtitle:
-        'Cost telemetry, dormancy, margin, cap events, graph, and '
-        'Cloud Run signals.',
+        'Review costs, usage limits, customer activity, graph health, and hosting signals.',
     builder: _buildObservability,
   ),
 ];
@@ -231,10 +232,7 @@ Widget _buildPricing(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return PricingTierAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-      );
+      return PricingTierAdminScreen(gateway: gateway, editingEnabled: canEdit);
     },
   );
 }
@@ -257,8 +255,9 @@ const String kCorpusAdminDemoTargetLocationId =
 
 Widget _buildCorpus(BuildContext context) {
   final gateway = AdminConsoleServicesScope.corpusAdminGatewayOf(context);
-  final operatorGateway =
-      AdminConsoleServicesScope.operatorLocationGatewayOf(context);
+  final operatorGateway = AdminConsoleServicesScope.operatorLocationGatewayOf(
+    context,
+  );
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   // Demo mode (in-memory gateway) targets the seeded demo tenant.
   // Live mode (HTTP gateway, or any non-in-memory binding) leaves
@@ -268,21 +267,20 @@ Widget _buildCorpus(BuildContext context) {
   // the admin confirms a pair, the corpus screen state takes over
   // and the commit button enables.
   final isDemoGateway = gateway is InMemoryCorpusAdminGateway;
-  final demoTargetOperatorId =
-      isDemoGateway ? kCorpusAdminDemoTargetOperatorId : null;
-  final demoTargetLocationId =
-      isDemoGateway ? kCorpusAdminDemoTargetLocationId : null;
+  final demoTargetOperatorId = isDemoGateway
+      ? kCorpusAdminDemoTargetOperatorId
+      : null;
+  final demoTargetLocationId = isDemoGateway
+      ? kCorpusAdminDemoTargetLocationId
+      : null;
   Future<OperatorPickerResult?> openPicker(BuildContext routeContext) {
     final state = source?.current;
-    final adminUid =
-        state is AdminAuthAuthenticated ? state.session.uid : null;
+    final adminUid = state is AdminAuthAuthenticated ? state.session.uid : null;
     return Navigator.of(routeContext).push<OperatorPickerResult?>(
       MaterialPageRoute<OperatorPickerResult?>(
         settings: const RouteSettings(name: '/operator-picker'),
-        builder: (_) => OperatorPickerScreen(
-          gateway: operatorGateway,
-          adminUid: adminUid,
-        ),
+        builder: (_) =>
+            OperatorPickerScreen(gateway: operatorGateway, adminUid: adminUid),
       ),
     );
   }
@@ -327,10 +325,7 @@ Widget _buildIntegrations(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return IntegrationAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-      );
+      return IntegrationAdminScreen(gateway: gateway, editingEnabled: canEdit);
     },
   );
 }
@@ -365,10 +360,7 @@ Widget _buildFeatureFlags(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return FeatureFlagsAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-      );
+      return FeatureFlagsAdminScreen(gateway: gateway, editingEnabled: canEdit);
     },
   );
 }
@@ -390,10 +382,7 @@ Widget _buildDebugConsole(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return DebugConsoleAdminScreen(
-        gateway: gateway,
-        editingEnabled: canEdit,
-      );
+      return DebugConsoleAdminScreen(gateway: gateway, editingEnabled: canEdit);
     },
   );
 }
@@ -528,9 +517,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.observabilityGateway ?? _defaultObservabilityDemoGateway;
   }
 
-  static FeatureFlagsAdminGateway featureFlagsGatewayOf(
-    BuildContext context,
-  ) {
+  static FeatureFlagsAdminGateway featureFlagsGatewayOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
     return scope?.featureFlagsGateway ?? _defaultFeatureFlagsDemoGateway;
@@ -679,108 +666,107 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
 /// versions so the walkthrough has both a "current" and a "prior"
 /// row to render. Demo chunks live entirely in memory; the seed
 /// summary text doubles as the 11A.3a click-path script.
-final CorpusAdminGateway _defaultCorpusDemoGateway =
-    InMemoryCorpusAdminGateway(
-      seed: <CorpusBundle>[
-        CorpusBundle(
-          version: CorpusVersionRef(
-            versionId: '00000000-0000-4000-9000-000000000001',
-            createdBy: 'demo-super-admin',
-            createdAt: DateTime.utc(2026, 1, 14, 9, 0),
-            summary: 'Initial methodology seed',
-            rollbackOf: null,
-            supersededAt: DateTime.utc(2026, 3, 1, 10, 0),
-            chunkCount: 2,
-          ),
-          chunks: <ChunkPreview>[
-            ChunkPreview(
-              chunkId: 'methodology_seed.md#000',
-              docId: 'methodology_seed.md',
-              sourcePath: 'methodology_seed.md',
-              headingPath: <String>['Forge & Flow Methodology'],
-              snippet:
-                  'Forge & Flow advisor methodology. Source-truth, '
-                  'derived metrics, teaching summaries.',
-              estimatedTokens: 64,
-              riskLevel: 'standard',
-              contentSha256: 'a' * 64,
-              versionId: '00000000-0000-4000-9000-000000000001',
-              active: false,
-            ),
-            ChunkPreview(
-              chunkId: 'methodology_seed.md#001',
-              docId: 'methodology_seed.md',
-              sourcePath: 'methodology_seed.md',
-              headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
-              snippet:
-                  'Sixty-day target cycles lock standards. Weekly plan '
-                  'snapshots compare actuals against the locked target.',
-              estimatedTokens: 80,
-              riskLevel: 'standard',
-              contentSha256: 'b' * 64,
-              versionId: '00000000-0000-4000-9000-000000000001',
-              active: false,
-            ),
-          ],
+final CorpusAdminGateway _defaultCorpusDemoGateway = InMemoryCorpusAdminGateway(
+  seed: <CorpusBundle>[
+    CorpusBundle(
+      version: CorpusVersionRef(
+        versionId: '00000000-0000-4000-9000-000000000001',
+        createdBy: 'demo-super-admin',
+        createdAt: DateTime.utc(2026, 1, 14, 9, 0),
+        summary: 'Initial methodology seed',
+        rollbackOf: null,
+        supersededAt: DateTime.utc(2026, 3, 1, 10, 0),
+        chunkCount: 2,
+      ),
+      chunks: <ChunkPreview>[
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#000',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology'],
+          snippet:
+              'Forge & Flow advisor methodology. Source-truth, '
+              'derived metrics, teaching summaries.',
+          estimatedTokens: 64,
+          riskLevel: 'standard',
+          contentSha256: 'a' * 64,
+          versionId: '00000000-0000-4000-9000-000000000001',
+          active: false,
         ),
-        CorpusBundle(
-          version: CorpusVersionRef(
-            versionId: '00000000-0000-4000-9000-000000000002',
-            createdBy: 'demo-super-admin',
-            createdAt: DateTime.utc(2026, 3, 1, 10, 0),
-            summary: 'Added daypart guidance',
-            rollbackOf: null,
-            supersededAt: null,
-            chunkCount: 3,
-          ),
-          chunks: <ChunkPreview>[
-            ChunkPreview(
-              chunkId: 'methodology_seed.md#000',
-              docId: 'methodology_seed.md',
-              sourcePath: 'methodology_seed.md',
-              headingPath: <String>['Forge & Flow Methodology'],
-              snippet:
-                  'Forge & Flow advisor methodology. Source-truth, '
-                  'derived metrics, teaching summaries.',
-              estimatedTokens: 64,
-              riskLevel: 'standard',
-              contentSha256: 'a' * 64,
-              versionId: '00000000-0000-4000-9000-000000000002',
-              active: true,
-            ),
-            ChunkPreview(
-              chunkId: 'methodology_seed.md#001',
-              docId: 'methodology_seed.md',
-              sourcePath: 'methodology_seed.md',
-              headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
-              snippet:
-                  'Sixty-day target cycles lock standards. Weekly plan '
-                  'snapshots compare actuals against the locked target.',
-              estimatedTokens: 80,
-              riskLevel: 'standard',
-              contentSha256: 'b' * 64,
-              versionId: '00000000-0000-4000-9000-000000000002',
-              active: true,
-            ),
-            ChunkPreview(
-              chunkId: 'methodology_seed.md#002',
-              docId: 'methodology_seed.md',
-              sourcePath: 'methodology_seed.md',
-              headingPath: <String>['Forge & Flow Methodology', 'Daypart'],
-              snippet:
-                  'Daypart guidance lives alongside whole-day truth, '
-                  'never replacing it. 10.5 introduces the daypart split.',
-              estimatedTokens: 72,
-              riskLevel: 'standard',
-              contentSha256: 'c' * 64,
-              versionId: '00000000-0000-4000-9000-000000000002',
-              active: true,
-            ),
-          ],
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#001',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+          snippet:
+              'Sixty-day target cycles lock standards. Weekly plan '
+              'snapshots compare actuals against the locked target.',
+          estimatedTokens: 80,
+          riskLevel: 'standard',
+          contentSha256: 'b' * 64,
+          versionId: '00000000-0000-4000-9000-000000000001',
+          active: false,
         ),
       ],
-      actorUserId: 'demo-super-admin',
-    );
+    ),
+    CorpusBundle(
+      version: CorpusVersionRef(
+        versionId: '00000000-0000-4000-9000-000000000002',
+        createdBy: 'demo-super-admin',
+        createdAt: DateTime.utc(2026, 3, 1, 10, 0),
+        summary: 'Added daypart guidance',
+        rollbackOf: null,
+        supersededAt: null,
+        chunkCount: 3,
+      ),
+      chunks: <ChunkPreview>[
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#000',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology'],
+          snippet:
+              'Forge & Flow advisor methodology. Source-truth, '
+              'derived metrics, teaching summaries.',
+          estimatedTokens: 64,
+          riskLevel: 'standard',
+          contentSha256: 'a' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#001',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Cycles'],
+          snippet:
+              'Sixty-day target cycles lock standards. Weekly plan '
+              'snapshots compare actuals against the locked target.',
+          estimatedTokens: 80,
+          riskLevel: 'standard',
+          contentSha256: 'b' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+        ChunkPreview(
+          chunkId: 'methodology_seed.md#002',
+          docId: 'methodology_seed.md',
+          sourcePath: 'methodology_seed.md',
+          headingPath: <String>['Forge & Flow Methodology', 'Daypart'],
+          snippet:
+              'Daypart guidance lives alongside whole-day truth, '
+              'never replacing it. 10.5 introduces the daypart split.',
+          estimatedTokens: 72,
+          riskLevel: 'standard',
+          contentSha256: 'c' * 64,
+          versionId: '00000000-0000-4000-9000-000000000002',
+          active: true,
+        ),
+      ],
+    ),
+  ],
+  actorUserId: 'demo-super-admin',
+);
 
 /// 11A.4 fallback integration gateway. Seeds Anthropic + Voyage with
 /// pre-rotated masked rows; Azure DB starts empty so the walkthrough
@@ -815,8 +801,9 @@ final IntegrationAdminGateway _defaultIntegrationDemoGateway =
 /// `health_admin_gateway.dart` so the walkthrough renders all three
 /// tabs with realistic green/yellow signals and exercises the
 /// dependencies strip without a live proxy.
-final HealthAdminGateway _defaultHealthDemoGateway =
-    InMemoryHealthAdminGateway(envelope: kHealthAdminDemoEnvelope);
+final HealthAdminGateway _defaultHealthDemoGateway = InMemoryHealthAdminGateway(
+  envelope: kHealthAdminDemoEnvelope,
+);
 
 /// 11A.6 fallback observability gateway. Seeded with the demo
 /// envelope from `observability_admin_gateway.dart`; the click path
@@ -877,8 +864,7 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           locationId: null,
           enabled: false,
           kind: kFeatureFlagKindDestructive,
-          description:
-              '11A.4c per-lane KMS rollout gate (Voyage embeddings).',
+          description: '11A.4c per-lane KMS rollout gate (Voyage embeddings).',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 2, 2, 0),
           updatedAt: DateTime.utc(2026, 5, 2, 2, 0),

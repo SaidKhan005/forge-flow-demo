@@ -191,8 +191,9 @@ class _SettingsPermissionExplainerState
               selectedLocationId: _selectedLocationId,
               operatorWideId: _operatorWideScopeId,
               onChanged: (value) => setState(() {
-                _selectedLocationId =
-                    value == _operatorWideScopeId ? null : value;
+                _selectedLocationId = value == _operatorWideScopeId
+                    ? null
+                    : value;
               }),
             ),
             const SizedBox(height: 20),
@@ -223,10 +224,12 @@ class _SettingsPermissionExplainerState
     if (!PermissionKeys.all.contains(_selectedKey)) {
       return PermissionEffect.deny;
     }
-    final grants = _explainerGrants().map((eg) => eg.toResolverGrant(
-          userId: widget.target.userId,
-          operatorId: widget.actor.actorOperatorId,
-        ));
+    final grants = _explainerGrants().map(
+      (eg) => eg.toResolverGrant(
+        userId: widget.target.userId,
+        operatorId: widget.actor.actorOperatorId,
+      ),
+    );
     final rules = _convertedRules();
     return PermissionResolver.resolve(
       permissionKey: _selectedKey,
@@ -596,9 +599,7 @@ class _ResolutionChainHeader extends StatelessWidget {
       children: [
         Text('Resolution chain', style: AppTextStyles.mono11()),
         const SizedBox(width: 8),
-        Expanded(
-          child: Container(height: 1, color: AppColors.borderSubtle),
-        ),
+        Expanded(child: Container(height: 1, color: AppColors.borderSubtle)),
         const SizedBox(width: 8),
         Text(
           permissionKey,
@@ -660,7 +661,7 @@ class _ResolutionChain extends StatelessWidget {
     if (grants.isEmpty) {
       return _ChainEmptyNotice(
         key: const Key('settings_permission_explainer_no_grants'),
-        message: 'No matching grant — this user has no role grants.',
+        message: 'No matching access grant. This user has no role grants.',
       );
     }
     if (!PermissionKeys.all.contains(permissionKey)) {
@@ -785,11 +786,7 @@ class _ChainEmptyNotice extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline,
-            size: 18,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.info_outline, size: 18, color: AppColors.textMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(
@@ -839,9 +836,7 @@ class _ChainRow extends StatelessWidget {
         children: [
           Row(
             children: [
-              Expanded(
-                child: Text(roleLabel, style: AppTextStyles.body14()),
-              ),
+              Expanded(child: Text(roleLabel, style: AppTextStyles.body14())),
               _Chip(
                 label: _ruleLabelFor(ruleEffect),
                 tone: ruleTone,
@@ -859,9 +854,10 @@ class _ChainRow extends StatelessWidget {
           ),
           _ChainAttribute(
             label: 'Scope applies at selected location',
-            value: scopeApplies ? 'Yes' : 'No — grant excluded at this scope',
-            valueColor:
-                scopeApplies ? AppColors.textPrimary : AppColors.textMuted,
+            value: scopeApplies ? 'Yes' : 'No. Grant excluded at this scope',
+            valueColor: scopeApplies
+                ? AppColors.textPrimary
+                : AppColors.textMuted,
           ),
           _ChainAttribute(
             label: 'Rule effect for $permissionKey',
@@ -899,9 +895,9 @@ class _ChainRow extends StatelessWidget {
     if (role == null) return 'No matching role rule (role not in catalog)';
     switch (effect) {
       case 'allow':
-        return 'Allow — the role grants this permission';
+        return 'Allowed because the role grants this permission';
       case 'deny':
-        return 'Deny — the role explicitly blocks this permission and wins '
+        return 'Blocked because the role explicitly denies this permission and wins '
             'over allow rules';
       default:
         return 'No rule on this role (inherits from defaults)';
@@ -958,10 +954,7 @@ class _ChainAttribute extends StatelessWidget {
             ),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: AppTextStyles.body13(color: valueColor),
-            ),
+            child: Text(value, style: AppTextStyles.body13(color: valueColor)),
           ),
         ],
       ),
@@ -988,15 +981,11 @@ class _SynthesizedGrantHint extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.info_outline,
-            size: 14,
-            color: AppColors.warning,
-          ),
+          const Icon(Icons.info_outline, size: 14, color: AppColors.warning),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
-              'Scope inferred from primary grant — full grant set is not '
+              'Scope inferred from primary grant. Full grant set is not '
               'yet projected onto this user.',
               style: AppTextStyles.body12(color: AppColors.textSecondary),
             ),
@@ -1008,7 +997,10 @@ class _SynthesizedGrantHint extends StatelessWidget {
 }
 
 class _FinalEffectPill extends StatelessWidget {
-  const _FinalEffectPill({required this.effect, required this.hasMatchingGrant});
+  const _FinalEffectPill({
+    required this.effect,
+    required this.hasMatchingGrant,
+  });
 
   final PermissionEffect effect;
   final bool hasMatchingGrant;
@@ -1020,13 +1012,13 @@ class _FinalEffectPill extends StatelessWidget {
     final label = isAllow
         ? 'Allow'
         : isNotGranted
-            ? 'Not granted'
-            : 'Deny';
+        ? 'Not granted'
+        : 'Deny';
     final tone = isAllow
         ? _ChipTone.allow
         : isNotGranted
-            ? _ChipTone.neutral
-            : _ChipTone.deny;
+        ? _ChipTone.neutral
+        : _ChipTone.deny;
     return Container(
       key: const Key('settings_permission_explainer_final_effect'),
       padding: const EdgeInsets.all(14),
@@ -1081,10 +1073,7 @@ class _Chip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: fg.withValues(alpha: 0.4)),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono10(color: fg),
-      ),
+      child: Text(label, style: AppTextStyles.mono10(color: fg)),
     );
   }
 }

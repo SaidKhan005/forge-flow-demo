@@ -274,15 +274,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
               tabs: const <Widget>[
                 Tab(
                   key: Key('admin_debug_console_tab_$_kRequestLogTab'),
-                  text: 'Request log',
+                  text: 'Requests',
                 ),
                 Tab(
                   key: Key('admin_debug_console_tab_$_kGraphDebugTab'),
-                  text: 'Graph debug',
+                  text: 'Graph help',
                 ),
                 Tab(
                   key: Key('admin_debug_console_tab_$_kMfaDiagnosticsTab'),
-                  text: 'MFA diagnostics',
+                  text: 'Sign-in help',
                 ),
               ],
             ),
@@ -316,28 +316,15 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                   ),
                   const _StubTab(
                     key: Key('admin_debug_console_stub_$_kGraphDebugTab'),
-                    title: 'Graph debug',
+                    title: 'Graph help',
                     body:
-                        'Per-edge graph debugging lands with 11A.3.x — '
-                        'inspect a node, inspect neighbours, inspect the '
-                        'shortest approved path between two approved '
-                        'nodes, and audit whether a relationship was '
-                        'EXTRACTED, INFERRED-and-approved, edited, or '
-                        'rejected. The launch slice mounts the empty tab '
-                        'so the future surface plugs in without re-'
-                        'architecting the screen.',
+                        'Relationship troubleshooting will let support inspect an approved item, nearby relationships, the shortest approved path, and whether a relationship was found directly, suggested by the system, edited, or rejected.',
                   ),
                   const _StubTab(
                     key: Key('admin_debug_console_stub_$_kMfaDiagnosticsTab'),
-                    title: 'MFA diagnostics',
+                    title: 'Sign-in help',
                     body:
-                        'Auth/MFA support diagnostics land with 9.UX.1a — '
-                        'view a user MFA factor inventory, pending or '
-                        'cancelled removal requests, notification/outbox '
-                        'status, and Firebase/local drift flags. Repair '
-                        'actions consume Phase 9 backend routes; the '
-                        'admin client never performs direct DB or '
-                        'Firebase writes.',
+                        'Sign-in support will show authenticator apps, pending removal requests, notification status, and account drift checks. Repair actions will use safe backend routes.',
                   ),
                 ],
               ),
@@ -365,11 +352,9 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AdminPageHeader(
-      title: 'Debug console',
+      title: 'Support logs',
       subtitle:
-          'Per-operator request log. Filter, search, optional '
-          'live-tail; expand a row to inspect meta and (with opt-in) '
-          'full content.',
+          'Search recent customer requests, filter by outcome, and inspect support-safe details. Full message content stays protected unless the customer has opted in.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -392,7 +377,7 @@ class _Header extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    'View-only · ff_support',
+                    'Support view only',
                     style: AppTextStyles.mono10(
                       color: AppColors.warning,
                     ).copyWith(fontWeight: FontWeight.w600),
@@ -562,7 +547,7 @@ class _FilterBar extends StatelessWidget {
             decoration: const InputDecoration(
               isDense: true,
               prefixIcon: Icon(Icons.search, size: 18),
-              hintText: 'Search by request_id or idempotency_key',
+              hintText: 'Search by request ID or retry key',
               border: OutlineInputBorder(),
             ),
           ),
@@ -573,42 +558,37 @@ class _FilterBar extends StatelessWidget {
             children: <Widget>[
               _StatusFilterChip(
                 value: filter.status,
-                onChanged: (next) => onFilterChanged(
-                  filter.copyWith(status: next),
-                ),
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(status: next)),
               ),
               _TimeWindowFilterChip(
                 value: filter.timeWindow,
-                onChanged: (next) => onFilterChanged(
-                  filter.copyWith(timeWindow: next),
-                ),
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(timeWindow: next)),
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_operator'),
                 label: 'Operator',
                 value: filter.operatorId,
-                hint: 'operator_id',
-                onChanged: (next) => onFilterChanged(
-                  filter.copyWith(operatorId: next),
-                ),
+                hint: 'Customer ID',
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(operatorId: next)),
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_location'),
                 label: 'Location',
                 value: filter.locationId,
-                hint: 'location_id',
-                onChanged: (next) => onFilterChanged(
-                  filter.copyWith(locationId: next),
-                ),
+                hint: 'Location ID',
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(locationId: next)),
               ),
               _StringFilterChip(
                 keyName: const Key('admin_debug_console_filter_usage_class'),
-                label: 'Usage class',
+                label: 'Use case',
                 value: filter.usageClass,
                 hint: 'advisor_qa, coach_qa, ...',
-                onChanged: (next) => onFilterChanged(
-                  filter.copyWith(usageClass: next),
-                ),
+                onChanged: (next) =>
+                    onFilterChanged(filter.copyWith(usageClass: next)),
               ),
             ],
           ),
@@ -634,10 +614,7 @@ class _StatusFilterChip extends StatelessWidget {
       tooltip: 'Filter by status',
       onSelected: onChanged,
       itemBuilder: (_) => <PopupMenuEntry<RequestLogStatus?>>[
-        const PopupMenuItem<RequestLogStatus?>(
-          value: null,
-          child: Text('Any'),
-        ),
+        const PopupMenuItem<RequestLogStatus?>(value: null, child: Text('Any')),
         const PopupMenuItem<RequestLogStatus?>(
           value: RequestLogStatus.success,
           child: Text('success'),
@@ -779,8 +756,7 @@ class _StringFilterDialogState extends State<_StringFilterDialog> {
         ),
         FilledButton(
           key: const Key('admin_debug_console_filter_apply'),
-          onPressed: () =>
-              Navigator.of(context).pop(_controller.text.trim()),
+          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
           child: const Text('Apply'),
         ),
       ],
@@ -817,7 +793,10 @@ class _ChipShell extends StatelessWidget {
 }
 
 class _LiveTailRow extends StatelessWidget {
-  const _LiveTailRow({required this.liveTailOn, required this.onToggleLiveTail});
+  const _LiveTailRow({
+    required this.liveTailOn,
+    required this.onToggleLiveTail,
+  });
 
   final bool liveTailOn;
   final ValueChanged<bool> onToggleLiveTail;
@@ -845,7 +824,7 @@ class _LiveTailRow extends StatelessWidget {
           Expanded(
             child: Text(
               liveTailOn
-                  ? 'Live-tail on — polling latest requests every 5s.'
+                  ? 'Live polling on. Checking latest requests every 5s.'
                   : 'Live-tail off (default). Toggle on to poll the '
                         'latest requests every 5s.',
               style: AppTextStyles.mono11(color: AppColors.textPrimary),
@@ -898,10 +877,7 @@ class _RequestRow extends StatelessWidget {
           InkWell(
             onTap: onToggle,
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               child: Row(
                 children: <Widget>[
                   Icon(
@@ -924,7 +900,9 @@ class _RequestRow extends StatelessWidget {
                     flex: 3,
                     child: Text(
                       entry.idempotencyKey,
-                      style: AppTextStyles.mono10(color: AppColors.textSecondary),
+                      style: AppTextStyles.mono10(
+                        color: AppColors.textSecondary,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -932,7 +910,9 @@ class _RequestRow extends StatelessWidget {
                     flex: 2,
                     child: Text(
                       entry.usageClass,
-                      style: AppTextStyles.mono10(color: AppColors.textSecondary),
+                      style: AppTextStyles.mono10(
+                        color: AppColors.textSecondary,
+                      ),
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
@@ -972,21 +952,18 @@ class _RequestRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
+                  _MetaRow(label: 'Customer ID', value: entry.operatorId),
                   _MetaRow(
-                    label: 'operator_id',
-                    value: entry.operatorId,
+                    label: 'Location ID',
+                    value: entry.locationId ?? 'Unknown',
                   ),
                   _MetaRow(
-                    label: 'location_id',
-                    value: entry.locationId ?? '—',
-                  ),
-                  _MetaRow(
-                    label: 'started_at',
+                    label: 'Started',
                     value: entry.startedAt.toUtc().toIso8601String(),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'request_meta',
+                    'Request details',
                     style: AppTextStyles.mono10(
                       color: AppColors.textMuted,
                     ).copyWith(fontWeight: FontWeight.w700),
@@ -1126,11 +1103,11 @@ class _FullContentLockedBlock extends StatelessWidget {
         ? 'View-only role (ff_support) cannot reveal full content. '
               'Sign in as super_admin to debug payloads.'
         : !optInOn
-            ? "This operator's full-content opt-in is OFF. Toggle "
-                  '"$kDebugConsoleFullContentFlagName" on the Feature '
-                  'Flags admin surface to reveal payloads.'
-            : 'Proxy did not project a full content payload for this '
-                  'request.';
+        ? "This operator's full-content opt-in is OFF. Toggle "
+              '"$kDebugConsoleFullContentFlagName" on the Feature '
+              'Flags admin surface to reveal payloads.'
+        : 'Proxy did not project a full content payload for this '
+              'request.';
     return Container(
       key: const Key('admin_debug_console_full_content_locked'),
       padding: const EdgeInsets.all(10),

@@ -33,8 +33,9 @@ void main() {
       // Ensure no wage rows
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
       expect(ctx.source, WageStandardSource.configFallback);
       expect(ctx.fohWage, isNotNull);
       expect(ctx.bohWage, isNotNull);
@@ -51,23 +52,28 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 15.00,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 20.00,
-        weightedHours: 35,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 15.00,
+          weightedHours: 30,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
       expect(ctx.source, WageStandardSource.appConfiguredGenerator);
       expect(ctx.fohWage, closeTo(15.00, 0.01));
       expect(ctx.bohWage, closeTo(20.00, 0.01));
@@ -83,30 +89,37 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 14.00,
-        weightedHours: 40,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Bartender',
-        laborBucket: 'foh',
-        hourlyRate: 18.00,
-        weightedHours: 20,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 20.00,
-        weightedHours: 35,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 14.00,
+          weightedHours: 40,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Bartender',
+          laborBucket: 'foh',
+          hourlyRate: 18.00,
+          weightedHours: 20,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
 
       // FOH weighted avg = (14*40 + 18*20) / (40+20) = (560+360)/60 = 15.33
       expect(ctx.fohWage, closeTo(15.33, 0.01));
@@ -122,30 +135,37 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 16.00,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 19.00,
-        weightedHours: 35,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Prep Cook',
-        laborBucket: 'boh',
-        hourlyRate: 17.00,
-        weightedHours: 20,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 16.00,
+          weightedHours: 30,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 19.00,
+          weightedHours: 35,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Prep Cook',
+          laborBucket: 'boh',
+          hourlyRate: 17.00,
+          weightedHours: 20,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
 
       // BOH weighted avg = (19*35 + 17*20) / (35+20) = (665+340)/55 = 18.27
       expect(ctx.bohWage, closeTo(18.27, 0.01));
@@ -161,30 +181,37 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 15.00,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 20.00,
-        weightedHours: 35,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Kitchen Manager',
-        laborBucket: 'manager',
-        hourlyRate: 28.00,
-        weightedHours: 45,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 15.00,
+          weightedHours: 30,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Kitchen Manager',
+          laborBucket: 'manager',
+          hourlyRate: 28.00,
+          weightedHours: 45,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
 
       // FOH = 15.00 (only Server)
       expect(ctx.fohWage, closeTo(15.00, 0.01));
@@ -201,16 +228,19 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'GM',
-        laborBucket: 'manager',
-        hourlyRate: 30.00,
-        weightedHours: 45,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'GM',
+          laborBucket: 'manager',
+          hourlyRate: 30.00,
+          weightedHours: 45,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
 
       // Incomplete generator (no FOH or BOH rows) degrades to
       // configFallback so provenance and in-force standards stay honest.
@@ -224,16 +254,19 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 15.00,
-        weightedHours: 30,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 15.00,
+          weightedHours: 30,
+        ),
+      );
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
 
       // Only FOH rows — incomplete generator degrades to configFallback.
       expect(ctx.source, WageStandardSource.configFallback);
@@ -245,56 +278,64 @@ void main() {
   // ── F: Sync updates active profile ─────────────────────────────────────
 
   group('F — sync to active profile', () {
-    test('sync updates profile wages and recomputes theoretical labor %',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+    test(
+      'sync updates profile wages and recomputes theoretical labor %',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      // Get profile before sync
-      final before = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      expect(before, isNotNull);
+        // Get profile before sync
+        final before = await SqliteTargetProfileRepository.instance
+            .getActiveTargetProfile(restaurantId);
+        expect(before, isNotNull);
 
-      // Add generator rows with different wages
-      await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 18.00, // Higher than MeridianConfig.fohWage (16.50)
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 23.00, // Higher than MeridianConfig.bohWage (21.35)
-        weightedHours: 35,
-      ));
+        // Add generator rows with different wages
+        await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 18.00, // Higher than MeridianConfig.fohWage (16.50)
+            weightedHours: 30,
+          ),
+        );
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 23.00, // Higher than MeridianConfig.bohWage (21.35)
+            weightedHours: 35,
+          ),
+        );
 
-      // Sync
-      await WageStandardContextService.instance.syncWagesToActiveProfile();
+        // Sync
+        await WageStandardContextService.instance.syncWagesToActiveProfile();
 
-      // Verify profile updated
-      final after = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      expect(after, isNotNull);
-      expect(after!.fohWage, closeTo(18.00, 0.01));
-      expect(after.bohWage, closeTo(23.00, 0.01));
+        // Verify profile updated
+        final after = await SqliteTargetProfileRepository.instance
+            .getActiveTargetProfile(restaurantId);
+        expect(after, isNotNull);
+        expect(after!.fohWage, closeTo(18.00, 0.01));
+        expect(after.bohWage, closeTo(23.00, 0.01));
 
-      // Theoretical labor % should be higher with higher wages
-      expect(after.theoreticalLaborPct,
-          greaterThan(before!.theoreticalLaborPct));
+        // Theoretical labor % should be higher with higher wages
+        expect(
+          after.theoreticalLaborPct,
+          greaterThan(before!.theoreticalLaborPct),
+        );
 
-      // FOH theoretical = fohWage / (CPLH * PPA) * 100
-      final expectedFohPct =
-          18.00 / (after.targetCPLH * after.targetPPA) * 100;
-      expect(after.theoreticalFohLaborPct, closeTo(expectedFohPct, 0.01));
+        // FOH theoretical = fohWage / (CPLH * PPA) * 100
+        final expectedFohPct =
+            18.00 / (after.targetCPLH * after.targetPPA) * 100;
+        expect(after.theoreticalFohLaborPct, closeTo(expectedFohPct, 0.01));
 
-      // BOH theoretical = bohWage / SPLH * 100
-      final expectedBohPct = 23.00 / after.targetSPLH * 100;
-      expect(after.theoreticalBohLaborPct, closeTo(expectedBohPct, 0.01));
-    });
+        // BOH theoretical = bohWage / SPLH * 100
+        final expectedBohPct = 23.00 / after.targetSPLH * 100;
+        expect(after.theoreticalBohLaborPct, closeTo(expectedBohPct, 0.01));
+      },
+    );
 
     test('sync skips when wages match', () async {
       final restaurantId = await SqliteRestaurantScopeRepository.instance
@@ -327,22 +368,25 @@ void main() {
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
       // Add complete generator (FOH + BOH) then delete
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 15.00,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 20.00,
-        weightedHours: 35,
-      ));
-      var ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 15.00,
+          weightedHours: 30,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 20.00,
+          weightedHours: 35,
+        ),
+      );
+      var ctx = await WageStandardContextService.instance.resolve(restaurantId);
       expect(ctx.source, WageStandardSource.appConfiguredGenerator);
 
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
@@ -355,14 +399,22 @@ void main() {
 
   group('H — provenance semantics', () {
     test('displayLabel returns correct labels', () {
-      expect(WageStandardSource.laborDerivedFromActualDollars.displayLabel,
-          contains('Actual'));
-      expect(WageStandardSource.appConfiguredGenerator.displayLabel,
-          equals('App Configured'));
-      expect(WageStandardSource.configFallback.displayLabel,
-          equals('Config Default'));
-      expect(WageStandardSource.unavailable.displayLabel,
-          equals('Unavailable'));
+      expect(
+        WageStandardSource.laborDerivedFromActualDollars.displayLabel,
+        equals('Labor dollars and hours'),
+      );
+      expect(
+        WageStandardSource.appConfiguredGenerator.displayLabel,
+        equals('Custom wage mix'),
+      );
+      expect(
+        WageStandardSource.configFallback.displayLabel,
+        equals('Default wages'),
+      );
+      expect(
+        WageStandardSource.unavailable.displayLabel,
+        equals('Not available'),
+      );
     });
 
     test('isAvailable and isLaborDerived', () async {
@@ -370,8 +422,9 @@ void main() {
           .getActiveRestaurantId();
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
-      final ctx =
-          await WageStandardContextService.instance.resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
       expect(ctx.isAvailable, isTrue);
       expect(ctx.isLaborDerived, isFalse);
     });
@@ -380,96 +433,111 @@ void main() {
   // ── I: Bootstrap uses wage authority ─────────────────────────────────────
 
   group('I — bootstrap uses wage authority', () {
-    test('loadOrBootstrapProfile prefers the active cycle projection when a cycle exists',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
-      final seeded = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      expect(seeded, isNotNull);
+    test(
+      'loadOrBootstrapProfile prefers the active cycle projection when a cycle exists',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
+        final seeded = await SqliteTargetProfileRepository.instance
+            .getActiveTargetProfile(restaurantId);
+        expect(seeded, isNotNull);
 
-      // Add generator rows with different wages. These should not
-      // override the active cycle when the cycle already exists.
-      await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 18.50,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 22.00,
-        weightedHours: 35,
-      ));
+        // Add generator rows with different wages. These should not
+        // override the active cycle when the cycle already exists.
+        await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 18.50,
+            weightedHours: 30,
+          ),
+        );
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 22.00,
+            weightedHours: 35,
+          ),
+        );
 
-      // Delete the persisted profile row to force a bootstrap read.
-      final db = await SqliteDatabase.instance.database;
-      await db.delete('active_target_profiles');
+        // Delete the persisted profile row to force a bootstrap read.
+        final db = await SqliteDatabase.instance.database;
+        await db.delete('active_target_profiles');
 
-      final profile = await WageStandardContextService.instance
-          .loadOrBootstrapProfile(restaurantId);
+        final profile = await WageStandardContextService.instance
+            .loadOrBootstrapProfile(restaurantId);
 
-      expect(profile.sourceType, equals(seeded!.sourceType));
-      expect(profile.fohWage, closeTo(seeded.fohWage, 0.01));
-      expect(profile.bohWage, closeTo(seeded.bohWage, 0.01));
-    });
+        expect(profile.sourceType, equals(seeded!.sourceType));
+        expect(profile.fohWage, closeTo(seeded.fohWage, 0.01));
+        expect(profile.bohWage, closeTo(seeded.bohWage, 0.01));
+      },
+    );
 
-    test('loadOrBootstrapProfile returns existing profile when available',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+    test(
+      'loadOrBootstrapProfile returns existing profile when available',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      // Profile already seeded by reseedDemo
-      final profile = await WageStandardContextService.instance
-          .loadOrBootstrapProfile(restaurantId);
-      expect(profile, isNotNull);
-      expect(profile.restaurantId, restaurantId);
-    });
+        // Profile already seeded by reseedDemo
+        final profile = await WageStandardContextService.instance
+            .loadOrBootstrapProfile(restaurantId);
+        expect(profile, isNotNull);
+        expect(profile.restaurantId, restaurantId);
+      },
+    );
   });
 
   // ── J: Reseed preserves wage authority ──────────────────────────────────
 
   group('J — reseed preserves wage authority', () {
-    test('reseedDemo preserves generator rows and uses them in profile',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
+    test(
+      'reseedDemo preserves generator rows and uses them in profile',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
 
-      // Add generator rows BEFORE reseed
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 19.00,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 24.00,
-        weightedHours: 35,
-      ));
+        // Add generator rows BEFORE reseed
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 19.00,
+            weightedHours: 30,
+          ),
+        );
+        await SqliteWageRoleRowRepository.instance.upsertRow(
+          WageRoleRow(
+            restaurantId: restaurantId,
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 24.00,
+            weightedHours: 35,
+          ),
+        );
 
-      // Reseed — should NOT delete wage_role_rows and SHOULD use them
-      await SqliteDatabase.instance.reseedDemo();
+        // Reseed — should NOT delete wage_role_rows and SHOULD use them
+        await SqliteDatabase.instance.reseedDemo();
 
-      // Verify rows survived
-      final rows =
-          await SqliteWageRoleRowRepository.instance.getRows(restaurantId);
-      expect(rows.length, 2);
+        // Verify rows survived
+        final rows = await SqliteWageRoleRowRepository.instance.getRows(
+          restaurantId,
+        );
+        expect(rows.length, 2);
 
-      // Verify the reseeded profile uses generator wages
-      final profile = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      expect(profile, isNotNull);
-      expect(profile!.fohWage, closeTo(19.00, 0.01));
-      expect(profile.bohWage, closeTo(24.00, 0.01));
-    });
+        // Verify the reseeded profile uses generator wages
+        final profile = await SqliteTargetProfileRepository.instance
+            .getActiveTargetProfile(restaurantId);
+        expect(profile, isNotNull);
+        expect(profile!.fohWage, closeTo(19.00, 0.01));
+        expect(profile.bohWage, closeTo(24.00, 0.01));
+      },
+    );
   });
 
   // ── K: WageMixSetupSummary — whole-mix setup helper (7.55p.5f1) ────────
@@ -564,41 +632,43 @@ void main() {
       expect(summary.totalWeightedHours, closeTo(45.0, 0.01));
     });
 
-    test('mixed FOH + BOH + manager → complete, manager included in totals',
-        () {
-      final rows = [
-        const WageRoleRow(
-          restaurantId: 'r1',
-          roleName: 'Server',
-          laborBucket: 'foh',
-          hourlyRate: 15.00,
-          weightedHours: 30,
-        ),
-        const WageRoleRow(
-          restaurantId: 'r1',
-          roleName: 'Line Cook',
-          laborBucket: 'boh',
-          hourlyRate: 20.00,
-          weightedHours: 35,
-        ),
-        const WageRoleRow(
-          restaurantId: 'r1',
-          roleName: 'Kitchen Manager',
-          laborBucket: 'manager',
-          hourlyRate: 28.00,
-          weightedHours: 45,
-        ),
-      ];
-      final summary = WageStandardContextService.summarizeMix(rows);
-      expect(summary.hasCompleteFohBoh, isTrue);
-      expect(summary.fohRows.length, 1);
-      expect(summary.bohRows.length, 1);
-      expect(summary.managerRows.length, 1);
-      // totalCost = 15*30 + 20*35 + 28*45 = 450 + 700 + 1260 = 2410
-      expect(summary.totalHourlyCost, closeTo(2410.0, 0.01));
-      // totalHours = 30 + 35 + 45 = 110
-      expect(summary.totalWeightedHours, closeTo(110.0, 0.01));
-    });
+    test(
+      'mixed FOH + BOH + manager → complete, manager included in totals',
+      () {
+        final rows = [
+          const WageRoleRow(
+            restaurantId: 'r1',
+            roleName: 'Server',
+            laborBucket: 'foh',
+            hourlyRate: 15.00,
+            weightedHours: 30,
+          ),
+          const WageRoleRow(
+            restaurantId: 'r1',
+            roleName: 'Line Cook',
+            laborBucket: 'boh',
+            hourlyRate: 20.00,
+            weightedHours: 35,
+          ),
+          const WageRoleRow(
+            restaurantId: 'r1',
+            roleName: 'Kitchen Manager',
+            laborBucket: 'manager',
+            hourlyRate: 28.00,
+            weightedHours: 45,
+          ),
+        ];
+        final summary = WageStandardContextService.summarizeMix(rows);
+        expect(summary.hasCompleteFohBoh, isTrue);
+        expect(summary.fohRows.length, 1);
+        expect(summary.bohRows.length, 1);
+        expect(summary.managerRows.length, 1);
+        // totalCost = 15*30 + 20*35 + 28*45 = 450 + 700 + 1260 = 2410
+        expect(summary.totalHourlyCost, closeTo(2410.0, 0.01));
+        // totalHours = 30 + 35 + 45 = 110
+        expect(summary.totalWeightedHours, closeTo(110.0, 0.01));
+      },
+    );
 
     test('grouping maps rows to the correct bucket list', () {
       final rows = [
@@ -625,8 +695,10 @@ void main() {
         ),
       ];
       final summary = WageStandardContextService.summarizeMix(rows);
-      expect(summary.fohRows.map((r) => r.roleName),
-          containsAll(['Server', 'Bartender']));
+      expect(
+        summary.fohRows.map((r) => r.roleName),
+        containsAll(['Server', 'Bartender']),
+      );
       expect(summary.bohRows.map((r) => r.roleName), contains('Line Cook'));
       expect(summary.managerRows, isEmpty);
     });
@@ -642,24 +714,29 @@ void main() {
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
       // Persist a complete mix (FOH + BOH).
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Server',
-        laborBucket: 'foh',
-        hourlyRate: 17.25,
-        weightedHours: 30,
-      ));
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'Line Cook',
-        laborBucket: 'boh',
-        hourlyRate: 22.40,
-        weightedHours: 35,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Server',
+          laborBucket: 'foh',
+          hourlyRate: 17.25,
+          weightedHours: 30,
+        ),
+      );
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'Line Cook',
+          laborBucket: 'boh',
+          hourlyRate: 22.40,
+          weightedHours: 35,
+        ),
+      );
 
       // Resolve — same authority path the Settings UX uses.
-      final ctx = await WageStandardContextService.instance
-          .resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
       expect(ctx.source, WageStandardSource.appConfiguredGenerator);
       expect(ctx.fohWage, closeTo(17.25, 0.01));
       expect(ctx.bohWage, closeTo(22.40, 0.01));
@@ -682,8 +759,10 @@ void main() {
       final expectedBoh = 22.40 / profile.targetSPLH * 100;
       expect(profile.theoreticalFohLaborPct, closeTo(expectedFoh, 0.01));
       expect(profile.theoreticalBohLaborPct, closeTo(expectedBoh, 0.01));
-      expect(profile.theoreticalLaborPct,
-          closeTo(expectedFoh + expectedBoh, 0.01));
+      expect(
+        profile.theoreticalLaborPct,
+        closeTo(expectedFoh + expectedBoh, 0.01),
+      );
     });
 
     test('incomplete setup (manager only) does not override the profile '
@@ -693,16 +772,19 @@ void main() {
       await SqliteWageRoleRowRepository.instance.deleteAll(restaurantId);
 
       // Only a manager row — incomplete mix.
-      await SqliteWageRoleRowRepository.instance.upsertRow(WageRoleRow(
-        restaurantId: restaurantId,
-        roleName: 'GM',
-        laborBucket: 'manager',
-        hourlyRate: 30.00,
-        weightedHours: 40,
-      ));
+      await SqliteWageRoleRowRepository.instance.upsertRow(
+        WageRoleRow(
+          restaurantId: restaurantId,
+          roleName: 'GM',
+          laborBucket: 'manager',
+          hourlyRate: 30.00,
+          weightedHours: 40,
+        ),
+      );
 
-      final ctx = await WageStandardContextService.instance
-          .resolve(restaurantId);
+      final ctx = await WageStandardContextService.instance.resolve(
+        restaurantId,
+      );
       // Honesty rule: manager-only does not claim a full override.
       expect(ctx.source, WageStandardSource.configFallback);
 
@@ -719,37 +801,40 @@ void main() {
   });
 
   group('M — cycle-backed profile repair', () {
-    test('loadOrBootstrapProfile repairs a stale persisted row from the cycle',
-        () async {
-      final restaurantId = await SqliteRestaurantScopeRepository.instance
-          .getActiveRestaurantId();
-      final seeded = await SqliteTargetProfileRepository.instance
-          .getActiveTargetProfile(restaurantId);
-      expect(seeded, isNotNull);
+    test(
+      'loadOrBootstrapProfile repairs a stale persisted row from the cycle',
+      () async {
+        final restaurantId = await SqliteRestaurantScopeRepository.instance
+            .getActiveRestaurantId();
+        final seeded = await SqliteTargetProfileRepository.instance
+            .getActiveTargetProfile(restaurantId);
+        expect(seeded, isNotNull);
 
-      final stale = ActiveTargetProfile.build(
-        restaurantId: restaurantId,
-        sourceType: 'manager_override',
-        targetCPLH: seeded!.targetCPLH + 1.25,
-        targetSPLH: seeded.targetSPLH + 10,
-        targetPPA: seeded.targetPPA + 3,
-        fohWage: seeded.fohWage + 2,
-        bohWage: seeded.bohWage + 2,
-        opzFloorCPLH: seeded.opzFloorCPLH + 0.2,
-        opzCeilingCPLH: seeded.opzCeilingCPLH + 0.2,
-      );
-      await SqliteTargetProfileRepository.instance
-          .upsertActiveTargetProfile(stale);
+        final stale = ActiveTargetProfile.build(
+          restaurantId: restaurantId,
+          sourceType: 'manager_override',
+          targetCPLH: seeded!.targetCPLH + 1.25,
+          targetSPLH: seeded.targetSPLH + 10,
+          targetPPA: seeded.targetPPA + 3,
+          fohWage: seeded.fohWage + 2,
+          bohWage: seeded.bohWage + 2,
+          opzFloorCPLH: seeded.opzFloorCPLH + 0.2,
+          opzCeilingCPLH: seeded.opzCeilingCPLH + 0.2,
+        );
+        await SqliteTargetProfileRepository.instance.upsertActiveTargetProfile(
+          stale,
+        );
 
-      final repaired = await WageStandardContextService.instance
-          .loadOrBootstrapProfile(restaurantId);
+        final repaired = await WageStandardContextService.instance
+            .loadOrBootstrapProfile(restaurantId);
 
-      expect(repaired.sourceType, equals(seeded.sourceType));
-      expect(repaired.targetCPLH, closeTo(seeded.targetCPLH, 0.001));
-      expect(repaired.targetSPLH, closeTo(seeded.targetSPLH, 0.001));
-      expect(repaired.targetPPA, closeTo(seeded.targetPPA, 0.001));
-      expect(repaired.fohWage, closeTo(seeded.fohWage, 0.001));
-      expect(repaired.bohWage, closeTo(seeded.bohWage, 0.001));
-    });
+        expect(repaired.sourceType, equals(seeded.sourceType));
+        expect(repaired.targetCPLH, closeTo(seeded.targetCPLH, 0.001));
+        expect(repaired.targetSPLH, closeTo(seeded.targetSPLH, 0.001));
+        expect(repaired.targetPPA, closeTo(seeded.targetPPA, 0.001));
+        expect(repaired.fohWage, closeTo(seeded.fohWage, 0.001));
+        expect(repaired.bohWage, closeTo(seeded.bohWage, 0.001));
+      },
+    );
   });
 }

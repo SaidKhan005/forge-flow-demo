@@ -49,8 +49,7 @@ class IntegrationAdminScreen extends StatefulWidget {
   final String Function()? idempotencyKeyFactory;
 
   @override
-  State<IntegrationAdminScreen> createState() =>
-      _IntegrationAdminScreenState();
+  State<IntegrationAdminScreen> createState() => _IntegrationAdminScreenState();
 }
 
 class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
@@ -112,9 +111,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
         title: 'Rotate ${kind.displayName} key?',
         message:
             'A confirmation row will be written to the audit log. The new '
-            'plaintext value is shown ONCE in a follow-up modal. Close the '
-            'modal and the masked list resumes — there is no second chance '
-            'to read the plaintext from this screen.',
+            'secret value is shown once in a follow-up modal. After you close it, this screen only shows the hidden key preview.',
         confirmLabel: 'Continue',
       ),
     );
@@ -173,7 +170,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     // real audit hook plugs in here once the audit endpoint lands.
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text('Copied ${kind.displayName} plaintext to clipboard.'),
+        content: Text('Copied ${kind.displayName} secret value to clipboard.'),
       ),
     );
   }
@@ -239,7 +236,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Provider keys',
+                  'Service keys',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -263,7 +260,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Vendor connectors',
+                  'Connected services',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -274,8 +271,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      'No vendor connectors configured. Lights up in '
-                      'Phase 8.',
+                      'No connected providers are configured yet. This will appear in a future connected-services release.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -292,7 +288,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Other integrations',
+                  'Other services',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -327,14 +323,12 @@ class _Header extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Integrations',
+          'Connected services',
           style: AppTextStyles.display28(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
-          'Provider key rotation, vendor connector status, FX-rate '
-          'source, and email-provider readiness. Plaintext keys are '
-          'never displayed after rotation closes.',
+          'Rotate service keys safely and check whether connected providers are ready. Secret values are shown once, then hidden.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -357,16 +351,11 @@ class _ReadOnlyBanner extends StatelessWidget {
       ),
       child: Row(
         children: [
-          const Icon(
-            Icons.lock_outline,
-            size: 16,
-            color: AppColors.textMuted,
-          ),
+          const Icon(Icons.lock_outline, size: 16, color: AppColors.textMuted),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: rotating provider keys requires the '
-              'super_admin role.',
+              'View only: rotating service keys requires platform admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -424,23 +413,21 @@ class _ProviderKeyTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   hasRow
-                      ? 'masked: ${row!.maskedValue}'
-                      : 'No active credential. Rotate to seed the lane.',
-                  key: Key(
-                    'admin_integrations_masked_${kind.wireName}',
-                  ),
+                      ? 'Hidden value: ${row!.maskedValue}'
+                      : 'No active key yet. Rotate to add one.',
+                  key: Key('admin_integrations_masked_${kind.wireName}'),
                   style: AppTextStyles.mono11(color: AppColors.textSecondary),
                 ),
                 if (hasRow) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'rotated by ${row!.updatedBy ?? row!.createdBy ?? '—'} '
+                    'Rotated by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
                     'at ${row!.rotatedAt.toUtc().toIso8601String()}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'kms: ${row!.kmsSecretName}',
+                    'Secret location: ${row!.kmsSecretName}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                 ],
@@ -545,8 +532,7 @@ class _RotatePlaintextDialog extends StatefulWidget {
   final String idempotencyKey;
 
   @override
-  State<_RotatePlaintextDialog> createState() =>
-      _RotatePlaintextDialogState();
+  State<_RotatePlaintextDialog> createState() => _RotatePlaintextDialogState();
 }
 
 class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
@@ -578,8 +564,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Paste the new plaintext value. The proxy stores only the '
-                'masked display and the KMS pointer.',
+                'Paste the new secret value. Only the hidden preview and secure storage location are saved.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -589,7 +574,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                 obscureText: _obscured,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: 'New plaintext value',
+                  labelText: 'New secret value',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
                     borderSide: const BorderSide(
@@ -604,8 +589,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                           : Icons.visibility_off_outlined,
                       size: 18,
                     ),
-                    onPressed: () =>
-                        setState(() => _obscured = !_obscured),
+                    onPressed: () => setState(() => _obscured = !_obscured),
                   ),
                 ),
                 validator: (value) {
@@ -613,8 +597,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                     return 'Required';
                   }
                   if (value.trim().length < 9) {
-                    return 'Plaintext must be at least 9 characters '
-                        'so the masked display has prefix + suffix.';
+                    return 'Secret value must be at least 9 characters.';
                   }
                   return null;
                 },
@@ -686,21 +669,15 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This is the only time the plaintext value is shown. '
-              'Copy it into your KMS / env now — the masked grid '
-              'cannot reveal it again.',
+              'This is the only time the secret value is shown. Store it now because the hidden grid cannot reveal it again.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 10,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
                 color: AppColors.backgroundDeep,
-                border:
-                    Border.all(color: AppColors.borderSubtle, width: 1),
+                border: Border.all(color: AppColors.borderSubtle, width: 1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: SelectableText(

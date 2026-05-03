@@ -161,7 +161,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load corpus data: $error';
+        _loadError = 'Could not load advisor content: $error';
         _loading = false;
       });
     }
@@ -272,7 +272,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
         _stagedDiff = null;
         _stagedFileName = null;
       });
-    }, successHint: 'Corpus updated.');
+    }, successHint: 'Advisor content published.');
   }
 
   Future<void> _onPickOperatorPressed() async {
@@ -284,7 +284,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       _pickedOperatorId = result.operatorId;
       _pickedLocationId = result.locationId;
       _pickedTargetLabel =
-          '${result.operatorBusinessName} — ${result.locationName}';
+          '${result.operatorBusinessName} - ${result.locationName}';
     });
   }
 
@@ -292,13 +292,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Rollback to this version?',
+        title: 'Restore this version?',
         message:
-            'Replaces the active corpus with the chunk set from this '
-            'version. A new ledger row will record the rollback. '
-            'Existing chunks stay in the ledger so prior advisor '
-            'recommendations remain replayable.',
-        confirmLabel: 'Rollback',
+            'Makes this version current again. The previous version stays '
+            'in history, so past advisor recommendations can still be traced.',
+        confirmLabel: 'Restore',
       ),
     );
     if (confirmed != true) return;
@@ -306,11 +304,11 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
       await widget.gateway.rollbackToVersion(
         RollbackCommand(
           targetVersionId: target.versionId,
-          summary: 'Rolled back to ${_shortVersion(target.versionId)}',
+          summary: 'Restored ${_shortVersion(target.versionId)}',
           idempotencyKey: _newIdempotencyKey(),
         ),
       );
-    }, successHint: 'Corpus rolled back.');
+    }, successHint: 'Advisor content restored.');
   }
 
   CorpusVersionRef? get _selected {
@@ -350,10 +348,13 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                 labelColor: AppColors.textPrimary,
                 unselectedLabelColor: AppColors.textSecondary,
                 tabs: <Widget>[
-                  Tab(key: Key('admin_corpus_versions_tab'), text: 'Versions'),
+                  Tab(
+                    key: Key('admin_corpus_versions_tab'),
+                    text: 'Content versions',
+                  ),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
-                    text: 'Graph candidates',
+                    text: 'Graph review',
                   ),
                 ],
               ),
@@ -476,13 +477,12 @@ class _VersionsTab extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No corpus versions yet',
+                  'No advisor content yet',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Upload a markdown methodology seed to commit the '
-                  'first corpus version.',
+                  'Upload the first methodology file to create the advisor knowledge base.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (editingEnabled) ...[
@@ -664,7 +664,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load graph candidates: $error';
+        _loadError = 'Could not load relationship suggestions: $error';
         _loading = false;
       });
     }
@@ -897,8 +897,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_extracted_section'),
-            label: 'Extracted',
-            description: 'Producer-emitted EXTRACTED edges. Bulk-approve safe.',
+            label: 'Source matches',
+            description:
+                'These relationships were read directly from source content. Review and approve them in bulk when they look right.',
             candidates: diff.extracted,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -925,9 +926,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_inferred_section'),
-            label: 'Inferred',
+            label: 'Suggested matches',
             description:
-                'Producer flagged INFERRED. Per-edge approve / reject required.',
+                'These are suggested relationships. Approve, edit, or reject each one before it goes live.',
             candidates: diff.inferred,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -942,11 +943,9 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
           const SizedBox(height: 16),
           _GraphCandidateSection(
             sectionKey: const Key('admin_corpus_graph_ambiguous_section'),
-            label: 'Ambiguous',
+            label: 'Needs review',
             description:
-                'Producer flagged AMBIGUOUS. Edit into a clear approved '
-                'relation or reject — bare Approve is intentionally '
-                'unavailable so unedited candidates cannot reach AGE.',
+                'These need a clearer relationship before approval. Edit the suggestion or reject it.',
             candidates: diff.ambiguous,
             isQueuedForApprove: _approveQueue.contains,
             isQueuedForReject: _rejectQueue.contains,
@@ -990,13 +989,10 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Operator selection is required to commit graph '
-                          'decisions. Pick the (operator, location) pair '
-                          'this session should commit graph approvals '
-                          'against — the choice is remembered for the '
-                          'rest of the admin session so a super_admin '
-                          'cannot accidentally write against the wrong '
-                          'tenant.',
+                          'Choose the customer and location before applying '
+                          'relationship decisions. This keeps approvals '
+                          'attached to the right workspace for the rest of '
+                          'this session.',
                           style: AppTextStyles.body13(
                             color: AppColors.textSecondary,
                           ),
@@ -1017,7 +1013,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                         foregroundColor: AppColors.backgroundSurface,
                       ),
                       icon: const Icon(Icons.swap_horiz, size: 16),
-                      label: const Text('Pick operator'),
+                      label: const Text('Choose customer'),
                     ),
                   ),
                 ],
@@ -1049,7 +1045,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'Targeting ${widget.pickedTargetLabel} for this '
+                      'Applying decisions to ${widget.pickedTargetLabel} for this '
                       'session.',
                       style: AppTextStyles.body13(color: AppColors.positive),
                     ),
@@ -1079,7 +1075,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                   ),
                   icon: const Icon(Icons.check_circle_outline, size: 16),
                   label: Text(
-                    'Commit batch (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
+                    'Apply decisions (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
                     'decision'
                     '${(_approveQueue.length + _rejectQueue.length + _editQueue.length) == 1 ? '' : 's'})',
                   ),
@@ -1090,13 +1086,13 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       ? null
                       : _discardQueue,
                   icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Discard queue'),
+                  label: const Text('Clear selections'),
                 ),
                 OutlinedButton.icon(
                   key: const Key('admin_corpus_age_rebuild_button'),
                   onPressed: _busy ? null : _onAgeRebuild,
                   icon: const Icon(Icons.refresh, size: 16),
-                  label: const Text('Run AGE rebuild'),
+                  label: const Text('Rebuild relationship search'),
                 ),
               ],
             ),
@@ -1118,22 +1114,22 @@ class _GraphCandidateMetaCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Graphify candidate diff',
+            'Relationship review summary',
             style: AppTextStyles.mono15(
               color: AppColors.textPrimary,
               weight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 6),
-          _DetailRow(label: 'Graph scope', value: diff.graphScope),
-          _DetailRow(label: 'Graph version', value: diff.graphVersion),
-          _DetailRow(label: 'Graphify version', value: diff.graphifyVersion),
+          _DetailRow(label: 'Review scope', value: diff.graphScope),
+          _DetailRow(label: 'Relationship version', value: diff.graphVersion),
+          _DetailRow(label: 'Review tool version', value: diff.graphifyVersion),
           if (diff.graphifySourceCommit != null)
             _DetailRow(
-              label: 'Source commit',
+              label: 'Source revision',
               value: diff.graphifySourceCommit!,
             ),
-          _DetailRow(label: 'Total candidates', value: '${diff.totalCount}'),
+          _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
         ],
       ),
     );
@@ -1219,7 +1215,7 @@ class _GraphCandidateSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Text(
-                '— none —',
+                'None',
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
             )
@@ -1312,7 +1308,7 @@ class _GraphCandidateRow extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              _TypeChip(label: candidate.candidateType),
+              _TypeChip(label: _friendlyCandidateType(candidate.candidateType)),
               const SizedBox(width: 6),
               _ConfidenceChip(candidate: candidate),
             ],
@@ -1331,13 +1327,13 @@ class _GraphCandidateRow extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Text(
-                'node_type ${candidate.candidateType}',
+                'Item type: ${_friendlyCandidateType(candidate.candidateType)}',
                 style: AppTextStyles.mono11(color: AppColors.textSecondary),
               ),
             ),
           if (candidate.sourceFile != null)
             Text(
-              'source ${candidate.sourceFile}'
+              'Source file: ${candidate.sourceFile}'
               '${candidate.sourceRef != null ? ' (${candidate.sourceRef})' : ''}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
             ),
@@ -1346,10 +1342,10 @@ class _GraphCandidateRow extends StatelessWidget {
             _StagedDecisionChip(
               key: Key('admin_corpus_graph_staged_${candidate.candidateId}'),
               label: queuedForApprove
-                  ? 'approve'
+                  ? 'Approve'
                   : queuedForReject
-                  ? 'reject'
-                  : 'edit',
+                  ? 'Reject'
+                  : 'Edit',
             ),
           ],
           if (editingEnabled) ...[
@@ -1375,7 +1371,7 @@ class _GraphCandidateRow extends StatelessWidget {
                       queuedForApprove ? Icons.check : Icons.check_outlined,
                       size: 14,
                     ),
-                    label: Text(queuedForApprove ? 'Queued ✓' : 'Approve'),
+                    label: Text(queuedForApprove ? 'Selected' : 'Approve'),
                   ),
                 OutlinedButton.icon(
                   key: Key(
@@ -1395,7 +1391,7 @@ class _GraphCandidateRow extends StatelessWidget {
                     queuedForReject ? Icons.close : Icons.close_outlined,
                     size: 14,
                   ),
-                  label: Text(queuedForReject ? 'Queued ✗' : 'Reject'),
+                  label: Text(queuedForReject ? 'Selected' : 'Reject'),
                 ),
                 OutlinedButton.icon(
                   key: Key(
@@ -1447,15 +1443,15 @@ class _StagedDecisionChip extends StatelessWidget {
     Color bg;
     Color fg;
     switch (label) {
-      case 'approve':
+      case 'Approve':
         bg = AppColors.positive.withValues(alpha: 0.15);
         fg = AppColors.positive;
         break;
-      case 'reject':
+      case 'Reject':
         bg = AppColors.negative.withValues(alpha: 0.15);
         fg = AppColors.negative;
         break;
-      case 'edit':
+      case 'Edit':
       default:
         bg = AppColors.warningBadgeBg;
         fg = AppColors.warning;
@@ -1467,7 +1463,7 @@ class _StagedDecisionChip extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(4),
       ),
-      child: Text('Staged: $label', style: AppTextStyles.mono11(color: fg)),
+      child: Text('Selection: $label', style: AppTextStyles.mono11(color: fg)),
     );
   }
 }
@@ -1499,7 +1495,7 @@ class _ConfidenceChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
-        low ? '$scoreText ⚠ low confidence' : '$scoreText confidence',
+        low ? 'Low confidence ($scoreText)' : 'Confidence $scoreText',
         style: AppTextStyles.mono8(
           color: low ? AppColors.warning : AppColors.positive,
         ),
@@ -1552,7 +1548,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
       key: const Key('admin_corpus_graph_candidates_edit_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Edit candidate',
+        'Edit relationship suggestion',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -1585,8 +1581,8 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
               controller: _typeController,
               decoration: InputDecoration(
                 labelText: widget.candidate.kind == GraphCandidateKind.node
-                    ? 'node_type'
-                    : 'edge_type',
+                    ? 'Item type'
+                    : 'Relationship type',
               ),
             ),
             const SizedBox(height: 8),
@@ -1696,14 +1692,12 @@ class _Header extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Corpus',
+          'Knowledge base',
           style: AppTextStyles.display28(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
-          'Markdown corpus admin. Upload a seed, preview the diff '
-          'against the active corpus, commit, or rollback to a prior '
-          'version.',
+          'Manage the advisor content your team can search. Upload new files, review changes, and restore earlier versions when needed.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -1730,8 +1724,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: corpus uploads, commits, and rollbacks '
-              'require the super_admin role.',
+              'View only: uploads, approvals, and restores require platform admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -1834,7 +1827,7 @@ class _VersionList extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            v.summary.isEmpty ? '(no summary)' : v.summary,
+                            v.summary.isEmpty ? 'No summary' : v.summary,
                             style: AppTextStyles.body13(
                               color: AppColors.textSecondary,
                             ),
@@ -1843,8 +1836,8 @@ class _VersionList extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${v.chunkCount} chunk'
-                            '${v.chunkCount == 1 ? '' : 's'} · '
+                            '${v.chunkCount} content piece'
+                            '${v.chunkCount == 1 ? '' : 's'} - '
                             'created ${_iso(v.createdAt)}',
                             style: AppTextStyles.mono8(
                               color: AppColors.textMuted,
@@ -1853,7 +1846,7 @@ class _VersionList extends StatelessWidget {
                           if (v.rollbackOf != null) ...[
                             const SizedBox(height: 2),
                             Text(
-                              'rollback of ${_shortVersion(v.rollbackOf!)}',
+                              'restored from ${_shortVersion(v.rollbackOf!)}',
                               style: AppTextStyles.mono8(
                                 color: AppColors.textMuted,
                               ),
@@ -1874,7 +1867,7 @@ class _VersionList extends StatelessWidget {
                                   Icons.history_outlined,
                                   size: 14,
                                 ),
-                                label: const Text('Rollback'),
+                                label: const Text('Restore'),
                               ),
                             ),
                           ],
@@ -1935,18 +1928,18 @@ class _VersionDetail extends StatelessWidget {
                   label: 'Status',
                   value: version.isCurrent ? 'Current' : 'Superseded',
                 ),
-                _DetailRow(label: 'Created at', value: _iso(version.createdAt)),
+                _DetailRow(label: 'Created', value: _iso(version.createdAt)),
                 _DetailRow(
                   label: 'Created by',
-                  value: version.createdBy ?? '—',
+                  value: version.createdBy ?? 'Unknown',
                 ),
                 _DetailRow(label: 'Summary', value: version.summary),
                 if (version.rollbackOf != null)
                   _DetailRow(
-                    label: 'Rollback of',
+                    label: 'Restored from',
                     value: _shortVersion(version.rollbackOf!),
                   ),
-                _DetailRow(label: 'Chunks', value: '${chunks.length}'),
+                _DetailRow(label: 'Content pieces', value: '${chunks.length}'),
               ],
             ),
           ),
@@ -1966,7 +1959,7 @@ class _VersionDetail extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Chunks in this version',
+                  'Content in this version',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -1977,7 +1970,7 @@ class _VersionDetail extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'No chunks loaded yet.',
+                      'No content loaded yet.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -2022,7 +2015,7 @@ class _StagedDiffCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Staged upload${fileName != null ? ': $fileName' : ''}',
+            'Upload preview${fileName != null ? ': $fileName' : ''}',
             style: AppTextStyles.mono15(
               color: AppColors.textPrimary,
               weight: FontWeight.w700,
@@ -2049,7 +2042,7 @@ class _StagedDiffCard extends StatelessWidget {
             keyPrefix: 'modified',
           ),
           _DiffSection(
-            label: 'Inactivated',
+            label: 'Archived',
             countKey: const Key('admin_corpus_diff_inactivated_count'),
             chunks: diff.inactivated,
             color: AppColors.negative,
@@ -2067,12 +2060,12 @@ class _StagedDiffCard extends StatelessWidget {
                   backgroundColor: AppColors.sunset,
                   foregroundColor: AppColors.backgroundSurface,
                 ),
-                child: const Text('Commit'),
+                child: const Text('Publish content'),
               ),
               OutlinedButton(
                 key: const Key('admin_corpus_discard_button'),
                 onPressed: busy ? null : onDiscard,
-                child: const Text('Discard'),
+                child: const Text('Clear preview'),
               ),
             ],
           ),
@@ -2135,7 +2128,7 @@ class _DiffSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 18),
               child: Text(
-                '— none —',
+                'None',
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
             )
@@ -2155,7 +2148,7 @@ class _DiffSection extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(18, 2, 0, 0),
               child: Text(
-                '… +${chunks.length - 6} more',
+                '+${chunks.length - 6} more',
                 style: AppTextStyles.mono11(color: AppColors.textMuted),
               ),
             ),
@@ -2208,8 +2201,8 @@ class _ChunkPreviewTile extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'risk ${chunk.riskLevel} · ~${chunk.estimatedTokens} tokens · '
-            'sha256 ${chunk.contentSha256.substring(0, math.min(12, chunk.contentSha256.length))}…',
+            'Risk ${chunk.riskLevel} - about ${chunk.estimatedTokens} tokens - '
+            'sha256 ${chunk.contentSha256.substring(0, math.min(12, chunk.contentSha256.length))}',
             style: AppTextStyles.mono8(color: AppColors.textMuted),
           ),
         ],
@@ -2362,6 +2355,19 @@ String _shortVersion(String versionId) {
 
 String _iso(DateTime when) => when.toUtc().toIso8601String();
 
+String _friendlyCandidateType(String type) {
+  final parts = type
+      .replaceAll('_', ' ')
+      .trim()
+      .split(' ')
+      .where((part) => part.isNotEmpty)
+      .toList();
+  if (parts.isEmpty) return 'Unknown type';
+  return parts
+      .map((part) => part.substring(0, 1).toUpperCase() + part.substring(1))
+      .join(' ');
+}
+
 /// Default upload picker used when the screen is dropped into the
 /// admin shell without a custom picker. Pops a dialog letting the
 /// admin paste markdown into a text field; this keeps the launch
@@ -2377,7 +2383,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
         '## Daypart\n\n'
         'Daypart guidance lives alongside whole-day truth.\n\n'
         '## Operator review\n\n'
-        'Operators must review the corpus diff before commit.\n',
+        'Customers should review advisor content changes before publishing.\n',
   );
   final fileNameController = TextEditingController(text: 'methodology_seed.md');
   final result = await showDialog<UploadCommand>(
@@ -2408,7 +2414,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
                   controller: controller,
                   maxLines: null,
                   decoration: const InputDecoration(
-                    labelText: 'Markdown body',
+                    labelText: 'Markdown content',
                     alignLabelWithHint: true,
                   ),
                 ),
@@ -2444,7 +2450,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
                 ),
               );
             },
-            child: const Text('Stage upload'),
+            child: const Text('Preview upload'),
           ),
         ],
       );

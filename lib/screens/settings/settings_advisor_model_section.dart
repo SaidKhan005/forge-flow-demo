@@ -63,8 +63,8 @@ class _SettingsAdvisorModelSectionState
           : '';
       _nuancedController.text =
           r.nuancedSource == AdvisorModelSource.userOverride
-              ? r.effectiveNuancedModelId
-              : '';
+          ? r.effectiveNuancedModelId
+          : '';
     });
   }
 
@@ -97,20 +97,24 @@ class _SettingsAdvisorModelSectionState
   Widget build(BuildContext context) {
     final routing = _routing;
     if (routing == null) {
-      return const SettingsCard(children: [
-        Padding(
-          padding: EdgeInsets.all(14),
-          child: Text('Loading advisor model routing...',
-              style: TextStyle(color: AppColors.textSecondary)),
-        ),
-      ]);
+      return const SettingsCard(
+        children: [
+          Padding(
+            padding: EdgeInsets.all(14),
+            child: Text(
+              'Loading advisor model routing...',
+              style: TextStyle(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      );
     }
     return SettingsCard(
       children: [
         _AdvisorRoutingHeader(routing: routing),
         const SettingsRowDivider(),
         _OverrideField(
-          label: 'QUICK OVERRIDE',
+          label: 'Quick answer model',
           controller: _quickController,
           hintModelId: routing.effectiveQuickModelId,
           fieldKey: const Key('advisor_quick_override_field'),
@@ -118,7 +122,7 @@ class _SettingsAdvisorModelSectionState
         ),
         const SettingsRowDivider(),
         _OverrideField(
-          label: 'NUANCED OVERRIDE',
+          label: 'Detailed answer model',
           controller: _nuancedController,
           hintModelId: routing.effectiveNuancedModelId,
           fieldKey: const Key('advisor_nuanced_override_field'),
@@ -133,7 +137,7 @@ class _SettingsAdvisorModelSectionState
                 child: TextButton(
                   key: const Key('advisor_reset_button'),
                   onPressed: _reset,
-                  child: const Text('Reset Defaults'),
+                  child: const Text('Reset defaults'),
                 ),
               ),
               const SizedBox(width: 8),
@@ -141,9 +145,9 @@ class _SettingsAdvisorModelSectionState
                 child: TextButton(
                   key: const Key('advisor_check_button'),
                   onPressed: _checking ? null : _check,
-                  child: Text(_checking
-                      ? 'Checking...'
-                      : 'Check Anthropic Models'),
+                  child: Text(
+                    _checking ? 'Checking...' : 'Check available models',
+                  ),
                 ),
               ),
             ],
@@ -173,11 +177,17 @@ class _AdvisorRoutingHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _row('QUICK', routing.effectiveQuickModelId,
-              routing.sourceLabelForTier(LLMTier.quick)),
+          _row(
+            'Quick answers',
+            routing.effectiveQuickModelId,
+            routing.sourceLabelForTier(LLMTier.quick),
+          ),
           const SizedBox(height: 6),
-          _row('NUANCED', routing.effectiveNuancedModelId,
-              routing.sourceLabelForTier(LLMTier.nuanced)),
+          _row(
+            'Detailed answers',
+            routing.effectiveNuancedModelId,
+            routing.sourceLabelForTier(LLMTier.nuanced),
+          ),
         ],
       ),
     );
@@ -187,12 +197,17 @@ class _AdvisorRoutingHeader extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('$tier · $modelId',
-            style: const TextStyle(
-                color: AppColors.textPrimary, fontFamily: 'monospace')),
-        Text(source,
-            style: const TextStyle(
-                color: AppColors.textSecondary, fontSize: 11)),
+        Text(
+          '$tier - $modelId',
+          style: const TextStyle(
+            color: AppColors.textPrimary,
+            fontFamily: 'monospace',
+          ),
+        ),
+        Text(
+          source,
+          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+        ),
       ],
     );
   }
@@ -220,9 +235,13 @@ class _OverrideField extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 11)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -231,11 +250,13 @@ class _OverrideField extends StatelessWidget {
                   key: fieldKey,
                   controller: controller,
                   decoration: InputDecoration(
-                    hintText: 'override (current: $hintModelId)',
+                    hintText: 'Optional model ID. Current: $hintModelId',
                     isDense: true,
                   ),
                   style: const TextStyle(
-                      color: AppColors.textPrimary, fontFamily: 'monospace'),
+                    color: AppColors.textPrimary,
+                    fontFamily: 'monospace',
+                  ),
                 ),
               ),
               const SizedBox(width: 8),
@@ -261,9 +282,9 @@ class _CheckResultRow extends StatelessWidget {
     //   * cannotCheck               → CANNOT CHECK
     final label = switch (result.status) {
       AnthropicModelCheckStatus.available =>
-        result.updateAvailable ? 'UPDATE AVAILABLE' : 'UP TO DATE',
-      AnthropicModelCheckStatus.unavailable => 'UNAVAILABLE',
-      AnthropicModelCheckStatus.cannotCheck => 'CANNOT CHECK',
+        result.updateAvailable ? 'Update available' : 'Up to date',
+      AnthropicModelCheckStatus.unavailable => 'Unavailable',
+      AnthropicModelCheckStatus.cannotCheck => 'Cannot check',
     };
     return Padding(
       key: const Key('advisor_check_result'),
@@ -271,27 +292,37 @@ class _CheckResultRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: const TextStyle(
-                  color: AppColors.textSecondary, fontSize: 11)),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(result.message,
-              style: const TextStyle(color: AppColors.textPrimary)),
+          Text(
+            result.message,
+            style: const TextStyle(color: AppColors.textPrimary),
+          ),
           if (result.updateAvailable) ...[
             const SizedBox(height: 6),
             if (result.latestQuickCandidate != null)
               Text(
-                'Quick candidate · ${result.latestQuickCandidate}',
+                'Quick answer update: ${result.latestQuickCandidate}',
                 key: const Key('advisor_check_quick_candidate'),
                 style: const TextStyle(
-                    color: AppColors.textPrimary, fontFamily: 'monospace'),
+                  color: AppColors.textPrimary,
+                  fontFamily: 'monospace',
+                ),
               ),
             if (result.latestNuancedCandidate != null)
               Text(
-                'Nuanced candidate · ${result.latestNuancedCandidate}',
+                'Detailed answer update: ${result.latestNuancedCandidate}',
                 key: const Key('advisor_check_nuanced_candidate'),
                 style: const TextStyle(
-                    color: AppColors.textPrimary, fontFamily: 'monospace'),
+                  color: AppColors.textPrimary,
+                  fontFamily: 'monospace',
+                ),
               ),
           ],
         ],
@@ -312,23 +343,28 @@ class _VoyagePinnedRow extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('VOYAGE (PINNED, READ-ONLY)',
-              style: TextStyle(
-                  color: AppColors.textSecondary, fontSize: 11)),
+          const Text(
+            'Search model settings',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+          ),
           const SizedBox(height: 4),
           Text(
-            'embedding · ${routing.voyageEmbeddingProviderId}/'
+            'Embedding: ${routing.voyageEmbeddingProviderId}/'
             '${routing.voyageEmbeddingModelId} '
             '(${routing.voyageEmbeddingDimensions} dims)',
             style: const TextStyle(
-                color: AppColors.textPrimary, fontFamily: 'monospace'),
+              color: AppColors.textPrimary,
+              fontFamily: 'monospace',
+            ),
           ),
           const SizedBox(height: 2),
           Text(
-            'rerank · ${routing.voyageRerankProviderId}/'
+            'Rerank: ${routing.voyageRerankProviderId}/'
             '${routing.voyageRerankModelId}',
             style: const TextStyle(
-                color: AppColors.textPrimary, fontFamily: 'monospace'),
+              color: AppColors.textPrimary,
+              fontFamily: 'monospace',
+            ),
           ),
         ],
       ),
