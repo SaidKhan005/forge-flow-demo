@@ -32,6 +32,7 @@ import 'package:forge_and_flow/domain/services/circuit_breaker.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/package_postgres_outbox_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
+import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
 import 'advisor_proxy.dart';
@@ -326,7 +327,17 @@ Future<void> main(List<String> args) async {
   // claims durable rows from `event_outbox` (NEVER bypasses the
   // table; see `docs/contracts/event_outbox_contract.md`) and hands
   // them to the publisher for the WebSocket route to fan out.
-  final realtimePublisher = InProcessRealtimePublisher();
+  //
+  // Phase 10a.1 — the bridge's outbound publisher is selected via
+  // `selectRealtimePublisher` so flipping `PUBSUB_REALTIME_ENABLED`
+  // swaps in the Cloud Pub/Sub adapter behind the same seam. The
+  // WebSocket route still subscribes to the in-process publisher
+  // (the multi-instance Pub/Sub → in-process consumer leg is a
+  // downstream slice). The Pub/Sub message publisher callback is
+  // the production-not-yet-wired stub below; the startup gate
+  // immediately after the selector exits with 78 if the flag is on,
+  // so production cannot accidentally route fan-out to a stub.
+  final realtimeInProcessPublisher = InProcessRealtimePublisher();
   final realtimeOutboxListener = PackagePostgresOutboxListener.fromUrl(
     config.secretFor(ProxySecretNames.postgresUrl),
   );
@@ -336,10 +347,44 @@ Future<void> main(List<String> args) async {
   final realtimeAdminWrapper = TenantTransactionWrapper(
     productionBindings.adminPool,
   );
+  final realtimeBridgePublisher = selectRealtimePublisher(
+    environment: Platform.environment,
+    inProcessPublisher: realtimeInProcessPublisher,
+    pubsubMessagePublisher: _unwiredPubsubMessagePublisher,
+    pubsubLogger: _logPubsubRealtimePublisherEvent,
+  );
+  if (realtimeBridgePublisher is PubsubRealtimePublisher) {
+    // Fail-close startup gate: the locked-namespace check in the
+    // PubsubRealtimePublisher constructor already passed (every
+    // namespace resolves to a Pub/Sub topic name), but the message
+    // publisher itself is still the unwired stub. Until the
+    // production callback lands (Application Default Credentials,
+    // GCP project + region, `gcloud_pubsub` SDK or REST), flipping
+    // the flag in a real deploy must NOT silently route fan-out to
+    // a stub. Operators remove the env flag, or land the production
+    // adapter, then redeploy.
+    log(
+      LogSeverity.error,
+      'startup.failed',
+      fields: <String, Object?>{
+        'phase': 'realtime_pubsub_message_publisher_unwired',
+        'message':
+            '$pubsubRealtimeEnabledEnvVar is set but the Pub/Sub '
+            'message publisher adapter is not yet wired in this '
+            'slice; remove the env flag for now or land the '
+            'production Pub/Sub binding (Phase 10a follow-up).',
+        'env_flag_name': pubsubRealtimeEnabledEnvVar,
+        'resolved_topics': realtimeBridgePublisher.resolvedTopics,
+        'exit_code': 78,
+      },
+    );
+    exitCode = 78;
+    return;
+  }
   final realtimeBridge = RealtimeBridgeWorker(
     listener: realtimeOutboxListener,
     outboxRepository: realtimeOutboxRepository,
-    publisher: realtimePublisher,
+    publisher: realtimeBridgePublisher,
     locationResolver: _BootstrapLocationResolver(
       adminWrapper: realtimeAdminWrapper,
     ).resolve,
@@ -473,8 +518,11 @@ Future<void> main(List<String> args) async {
         adminRequestIdempotencyStore:
             productionBindings.adminRequestIdempotencyStore,
         // Phase 10a.0 — WebSocket route subscribes to this publisher
-        // for the connected operator's events.
-        realtimePublisher: realtimePublisher,
+        // for the connected operator's events. The route always sees
+        // the in-process publisher; when the Phase 10a.1 Pub/Sub
+        // adapter is enabled, the multi-instance fan-out leg layers
+        // a Pub/Sub → in-process consumer on top in a downstream slice.
+        realtimePublisher: realtimeInProcessPublisher,
       );
     } catch (error, stack) {
       log(
@@ -602,6 +650,58 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
       log(LogSeverity.warning, 'realtime.bridge.mark_delivered_failed',
           fields: fields);
   }
+}
+
+/// Phase 10a.1 — funnel `PubsubRealtimePublisher` log events into the
+/// canonical `log()` helper. Mirrors `_logRealtimeBridgeEvent` so the
+/// existing realtime metric path absorbs the Pub/Sub publisher's
+/// envelope without a new log shape (no new health producer).
+void _logPubsubRealtimePublisherEvent(
+  PubsubRealtimePublisherLogEvent event,
+) {
+  final fields = <String, Object?>{
+    if (event.operatorId != null) 'operator_id': event.operatorId,
+    if (event.eventId != null) 'event_id': event.eventId,
+    if (event.topic != null) 'topic': event.topic,
+    if (event.topicName != null) 'pubsub_topic_name': event.topicName,
+    if (event.error != null) 'error_type': event.error.runtimeType.toString(),
+    if (event.error != null) 'error_message': event.error.toString(),
+    if (event.stack != null)
+      'stack_first_frame': firstStackFrame(event.stack!),
+  };
+  switch (event.kind) {
+    case PubsubRealtimePublisherLogKind.published:
+      log(
+        LogSeverity.info,
+        'realtime.publisher.published',
+        fields: fields,
+      );
+    case PubsubRealtimePublisherLogKind.publishFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.publisher.publish_failed',
+        fields: fields,
+      );
+  }
+}
+
+/// Phase 10a.1 — production-not-yet-wired Pub/Sub message publisher
+/// stub. The `PUBSUB_REALTIME_ENABLED` startup gate exits 78 before
+/// this is ever invoked, so it is defensive only. Once the production
+/// adapter (Application Default Credentials, GCP project + region,
+/// `gcloud_pubsub` SDK or REST) lands in a follow-up slice, this stub
+/// is replaced with the real callback and the startup gate is removed.
+Future<void> _unwiredPubsubMessagePublisher({
+  required String topicName,
+  required String body,
+  required Map<String, String> attributes,
+}) async {
+  throw StateError(
+    'PubsubMessagePublisher invoked before the production adapter '
+    'is wired. The startup gate in tool/advisor_proxy/main.dart '
+    'should have exited 78 before reaching this call. Either remove '
+    'the env flag or land the production adapter.',
+  );
 }
 
 List<String> loadProxyMigrationFilenames({Directory? directory}) {

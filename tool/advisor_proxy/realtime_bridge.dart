@@ -33,6 +33,7 @@ import 'dart:async';
 
 import 'package:forge_and_flow/infrastructure/persistence/postgres/outbox_notification_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
+import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
@@ -395,3 +396,47 @@ enum RealtimeBridgeLogKind {
 }
 
 void _noopLogger(RealtimeBridgeLogEvent event) {}
+
+/// Phase 10a.1 - env flag that swaps the bridge's outbound publisher
+/// to the Cloud Pub/Sub adapter. Default off; in-process binding
+/// remains the demo/local default per Hard Promise #2.
+const String pubsubRealtimeEnabledEnvVar = 'PUBSUB_REALTIME_ENABLED';
+
+/// Phase 10a.1 - selects the [RealtimeEventPublisher] the bridge
+/// worker should hand claimed `event_outbox` rows to. The default is
+/// the existing 10a.0 [InProcessRealtimePublisher] (same single-
+/// instance fan-out semantics); setting [pubsubRealtimeEnabledEnvVar]
+/// to `true`, `1`, or `yes` swaps in [PubsubRealtimePublisher] without
+/// touching the bridge worker, the WebSocket route, or the client
+/// `RealtimeSubscription`. Only the implementation behind the seam
+/// changes.
+///
+/// The Pub/Sub adapter validates every locked topic namespace at
+/// construction (see [PubsubRealtimePublisher]); a misconfigured
+/// resolver fails the bridge's startup rather than silently dropping
+/// events. That keeps the swap fail-closed.
+RealtimeEventPublisher selectRealtimePublisher({
+  required Map<String, String> environment,
+  required InProcessRealtimePublisher inProcessPublisher,
+  required PubsubMessagePublisher pubsubMessagePublisher,
+  PubsubTopicNameResolver? topicNameResolver,
+  Set<String> lockedNamespaces = defaultLockedNamespaces,
+  void Function(PubsubRealtimePublisherLogEvent)? pubsubLogger,
+}) {
+  if (!_isPubsubRealtimeEnabled(environment)) {
+    return inProcessPublisher;
+  }
+  return PubsubRealtimePublisher(
+    messagePublisher: pubsubMessagePublisher,
+    topicNameResolver: topicNameResolver,
+    lockedNamespaces: lockedNamespaces,
+    logger: pubsubLogger,
+  );
+}
+
+bool _isPubsubRealtimeEnabled(Map<String, String> environment) {
+  final raw = environment[pubsubRealtimeEnabledEnvVar];
+  if (raw == null) return false;
+  final lower = raw.trim().toLowerCase();
+  return lower == 'true' || lower == '1' || lower == 'yes';
+}
