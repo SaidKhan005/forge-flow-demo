@@ -227,6 +227,7 @@ class AppShell extends StatefulWidget {
 
 class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  final Set<int> _visitedTabIndices = <int>{0};
   List<TeamRoleOption> _teamRoleOptions =
       TeamSettingsSection.defaultRoleOptions;
   late final ValueNotifier<List<TeamRoleOption>> _teamRoleOptionsListenable =
@@ -349,7 +350,9 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
           BusinessDateAuthorityService.instance.resolveBusinessDate,
       onBoundaryChanged: () {
         if (mounted) {
-          context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces();
+          context.read<AppRefreshCoordinator>().refreshCurrentStateSurfaces(
+            allowInitialRefresh: true,
+          );
         }
       },
       eventOutbox: outbox,
@@ -445,7 +448,38 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
   }
 
   void _navigateTo(int index) {
-    setState(() => _selectedIndex = index);
+    if (index == _selectedIndex && _visitedTabIndices.contains(index)) {
+      return;
+    }
+    setState(() {
+      _selectedIndex = index;
+      _visitedTabIndices.add(index);
+    });
+  }
+
+  Widget _buildTab(int index, Object revision) {
+    if (!_visitedTabIndices.contains(index)) {
+      return const SizedBox.shrink();
+    }
+    return switch (index) {
+      0 => KeyedSubtree(
+        key: ValueKey('shift-$revision'),
+        child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
+      ),
+      1 => KeyedSubtree(
+        key: ValueKey('variance-$revision'),
+        child: const VarianceReport(),
+      ),
+      2 => KeyedSubtree(
+        key: ValueKey('schedule-$revision'),
+        child: const ScheduleBuilder(),
+      ),
+      3 => KeyedSubtree(
+        key: ValueKey('baseline-$revision'),
+        child: const BaselineTracker(),
+      ),
+      _ => const SizedBox.shrink(),
+    };
   }
 
   Future<void> _openSettings(BuildContext context) async {
@@ -1440,24 +1474,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         top: !widget.embeddedInBarrio,
         child: IndexedStack(
           index: _selectedIndex,
-          children: [
-            KeyedSubtree(
-              key: ValueKey('shift-$revision'),
-              child: ShiftDashboard(onVarianceTap: () => _navigateTo(1)),
-            ),
-            KeyedSubtree(
-              key: ValueKey('variance-$revision'),
-              child: const VarianceReport(),
-            ),
-            KeyedSubtree(
-              key: ValueKey('schedule-$revision'),
-              child: const ScheduleBuilder(),
-            ),
-            KeyedSubtree(
-              key: ValueKey('baseline-$revision'),
-              child: const BaselineTracker(),
-            ),
-          ],
+          children: List<Widget>.generate(
+            4,
+            (index) => _buildTab(index, revision),
+          ),
         ),
       ),
       bottomNavigationBar: _AppBottomNav(

@@ -73,6 +73,12 @@ RUN printf '%s\n' \
         'server {' \
         '    listen 0.0.0.0:8080;' \
         '    listen [::]:8080;' \
+        '    gzip on;' \
+        '    gzip_comp_level 6;' \
+        '    gzip_min_length 1024;' \
+        '    gzip_proxied any;' \
+        '    gzip_vary on;' \
+        '    gzip_types application/javascript application/json application/wasm font/ttf font/otf font/woff font/woff2 image/svg+xml text/css text/javascript text/plain;' \
         '    root /usr/share/nginx/html;' \
         '    index index.html;' \
         '    location / {' \
