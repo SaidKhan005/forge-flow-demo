@@ -2,8 +2,11 @@
 
 Updated: 2026-05-03
 Status: Active. `7.61.0` contract pin accepted 2026-05-02; `7.61.1`
-accepted 2026-05-03 (F-1: analyzer fallthrough removal). `.2`/`.3`
-queued; `.4` deferred to `cutover.0b`. Phase-8 hard gate remains in force.
+accepted 2026-05-03 (F-1: analyzer fallthrough removal); `7.61.2`
+accepted 2026-05-03 (F-2: empty-leak default flipped to `''`);
+`7.61.3` accepted 2026-05-03 (F-3: dev-fixture lookup honesty).
+`.4` deferred to `cutover.0b`; F-B deferred post-`cutover.5` (no
+slice owner). Phase-8 hard gate now satisfied.
 Owner: Variance / Vendor-connector lane
 Companion contract: `docs/contracts/phase_7_61_driver_key_contract.md`
 
@@ -52,8 +55,8 @@ land the remaining fixes.
 | --- | --- | --- |
 | `7.61.0` | audit / docs | this plan + contract; enumerate findings; no production code |
 | `7.61.1` | logic | ACCEPTED 2026-05-03 - replaced banned `firstWhere(orElse: coversDown / ppaUp)` patterns in `history_teaching_analyzer.dart` with `LeverCards.lookup` / catalog filtering (Finding F-1) |
-| `7.61.2` | logic | empty-leak default in `history_teaching_analyzer.dart` (`mostCommonLeakId = 'covers_down'` overclaim — Finding F-2) |
-| `7.61.3` | dev-tooling | `demo_fixture_data.dart` `firstWhere(orElse: coversDown)` cleanup (Finding F-3) |
+| `7.61.2` | logic | ACCEPTED 2026-05-03 - flipped `mostCommonLeakId` initial value from `'covers_down'` to `''` and taught `variance_learn_tab.dart` to suppress the leak card on empty/unknown ids (Finding F-2) |
+| `7.61.3` | dev-tooling | ACCEPTED 2026-05-03 - replaced banned `firstWhere(orElse: coversDown)` in `demo_fixture_data.dart` with `LeverCards.lookup` + explicit null handling via new `resolveLeverCard` helper (Finding F-3) |
 | `7.61.4` | infra (deferred) | optional CHECK constraint pinning `week_records.primary_lever_id` lowercase form during Postgres cutover (Finding F-A); upper-snake `shifts.primary_lever` stays verbatim for back-compat with `7.5b` rows |
 
 Each sub-slice ships with its own test additions per `7.58` precedent.
@@ -121,9 +124,10 @@ findings that *do* surface to the operator are:
   unknown-id analyzer summary that can fabricate primary-leak or benchmark
   copy (after the `firstWhere(orElse: ...)` removal). Evidence:
   `docs/_walkthroughs/7.61.1.md`.
-- `7.61.UX.2` — Learn tab no longer renders `'covers down'` as the
-  primary leak when there are zero leak records (after the empty-state
-  default flips).
+- `7.61.UX.2` - ACCEPTED 2026-05-03. Learn tab no longer renders
+  `'covers down'` as the primary leak when there are zero leak records
+  (empty-state default flipped to `''`). Evidence:
+  `docs/_walkthroughs/7.61.2.md`.
 
 `7.61.3` and `7.61.4` ship without UX sub-slices (dev fixtures + infra
 constraints, no operator-visible change).
@@ -408,7 +412,17 @@ type change), teach `variance_learn_tab.dart:152` to suppress the
 leak card on `primaryLeakId.isEmpty` (or when `LeverCards.lookup`
 returns null).
 
-**Status:** OPEN.
+**Status:** RESOLVED in `7.61.2` (accepted 2026-05-03). Evidence:
+`docs/_walkthroughs/7.61.2.md`,
+`test/contracts/phase_7_61_driver_key_test.dart` (32 active, 0
+skipped — F-2 holdout flipped on),
+`test/history_teaching_analyzer_test.dart`,
+`test/learn_teaching_analyzer_test.dart`. Implementation:
+`history_teaching_analyzer.dart:89` initialises
+`String mostCommonLeakId = '';`; `variance_learn_tab.dart` suppresses
+the leak card when `primaryLeakId.isEmpty` or `LeverCards.lookup`
+returns null. Archived closeout (if present):
+`docs/archive/phases/phase_7_61/7.61.2_acceptance_closeout.md`.
 
 ### F-3 / `7.61.3` — `firstWhere(orElse: coversDown)` in `demo_fixture_data.dart`
 
@@ -428,7 +442,15 @@ fixtures used by tests / dev tools), R-STOR-7.
 **Owns:** `7.61.3`. Replace with `LeverCards.lookup` + explicit null
 handling. Audit other `lib/dev/` fixtures while in the file.
 
-**Status:** OPEN.
+**Status:** RESOLVED in `7.61.3` (accepted 2026-05-03). Evidence:
+`docs/_walkthroughs/7.61.3.md`,
+`test/contracts/phase_7_61_driver_key_test.dart` (33 active + 1
+intentionally skipped). Implementation: `demo_fixture_data.dart:100-101`
+calls `resolveLeverCard(primaryLeverId)`; the new helper at
+`demo_fixture_data.dart:110+` wraps `LeverCards.lookup(id) ?? throw
+StateError(...)`. The banned `firstWhere(orElse: coversDown)` pattern
+no longer appears in executable code. Archived closeout (if present):
+`docs/archive/phases/phase_7_61/7.61.3_acceptance_closeout.md`.
 
 ### F-A / `7.61.4` — Storage-form CHECK constraint deferred to Postgres cutover
 
