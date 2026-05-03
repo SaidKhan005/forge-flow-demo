@@ -3945,10 +3945,11 @@ Future<List<String>> loadAdminCorsExtraOrigins({
 ///      `main.dart` reads the flag via
 ///      [FeatureFlagsTableAdminCorsOriginsExtraFlag] before calling
 ///      this function; tests pass an inline list.
-///   3. `http://localhost:*` when [ProxyConfig.proxyEnvironment] is
-///      one of [kAdminCorsDevStagingEnvironments] (`dev` or
-///      `staging`). Any other value — including null, empty, or a
-///      misspelled `production` / `PRD` — does NOT add localhost.
+///   3. `http://localhost:*` and `http://127.0.0.1:*` when
+///      [ProxyConfig.proxyEnvironment] is one of
+///      [kAdminCorsDevStagingEnvironments] (`dev` or `staging`). Any
+///      other value — including null, empty, or a misspelled
+///      `production` / `PRD` — does NOT add local browser origins.
 ///
 /// Fail-closed: when the resolved list is empty AND
 /// [ProxyConfig.proxyEnvironment] is anything other than a known
@@ -3979,6 +3980,7 @@ List<String> resolveAdminCorsAllowList(
       kAdminCorsDevStagingEnvironments.contains(environment);
   if (isKnownDevOrStaging) {
     merged.add('http://localhost:*');
+    merged.add('http://127.0.0.1:*');
   }
   if (merged.isEmpty && !isKnownDevOrStaging) {
     throw ProxyConfigError(

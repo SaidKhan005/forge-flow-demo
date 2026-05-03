@@ -85,28 +85,24 @@ void main() {
       final unset = ProxyConfig.fromEnvironment(_baseEnv());
       expect(unset.proxyEnvironment, isNull);
     });
-
   });
 
   group('loadAdminCorsExtraOrigins — feature-flag-sourced extras', () {
-    test(
-      'returns origins surfaced by the feature_flags row reader',
-      () async {
-        final result = await loadAdminCorsExtraOrigins(
-          flag: const FixedAdminCorsOriginsExtraFlag(<String>[
-            'https://preview-1.forgeandflow.app',
-            'https://preview-2.forgeandflow.app',
-          ]),
-        );
-        expect(
-          result,
-          equals(<String>[
-            'https://preview-1.forgeandflow.app',
-            'https://preview-2.forgeandflow.app',
-          ]),
-        );
-      },
-    );
+    test('returns origins surfaced by the feature_flags row reader', () async {
+      final result = await loadAdminCorsExtraOrigins(
+        flag: const FixedAdminCorsOriginsExtraFlag(<String>[
+          'https://preview-1.forgeandflow.app',
+          'https://preview-2.forgeandflow.app',
+        ]),
+      );
+      expect(
+        result,
+        equals(<String>[
+          'https://preview-1.forgeandflow.app',
+          'https://preview-2.forgeandflow.app',
+        ]),
+      );
+    });
 
     test('returns empty list when flag yields nothing', () async {
       final result = await loadAdminCorsExtraOrigins(
@@ -130,53 +126,51 @@ void main() {
   });
 
   group('FeatureFlagsTableAdminCorsOriginsExtraFlag — query shape', () {
-    test(
-      'production reader queries enabled + description from '
-      'feature_flags by flag_name = admin_cors_origins_extra',
-      () {
-        // The reader is the contract-named source, so the SQL it
-        // issues is part of the contract surface. Source-grep
-        // catches drift when someone refactors the column list,
-        // table name, or filter.
-        final source = File(
-          'tool/advisor_proxy/proxy_bootstrap.dart',
-        ).readAsStringSync();
-        // SELECT clause includes both columns.
-        expect(
-          source,
-          contains('select enabled, description from public.feature_flags'),
-        );
-        // Filter pins flag_name to the contract-named row.
-        expect(
-          source,
-          contains("flag_name = '\$kAdminCorsOriginsExtraFlagName'"),
-        );
-        // Constant matches the contract.
-        expect(
-          source,
-          contains(
-            "const String kAdminCorsOriginsExtraFlagName = "
-            "'admin_cors_origins_extra'",
-          ),
-        );
-        // Global scope only — operator/location-scoped rows do not
-        // bleed into the platform allow-list.
-        expect(source, contains('and operator_id is null'));
-        expect(source, contains('and location_id is null'));
-      },
-    );
+    test('production reader queries enabled + description from '
+        'feature_flags by flag_name = admin_cors_origins_extra', () {
+      // The reader is the contract-named source, so the SQL it
+      // issues is part of the contract surface. Source-grep
+      // catches drift when someone refactors the column list,
+      // table name, or filter.
+      final source = File(
+        'tool/advisor_proxy/proxy_bootstrap.dart',
+      ).readAsStringSync();
+      // SELECT clause includes both columns.
+      expect(
+        source,
+        contains('select enabled, description from public.feature_flags'),
+      );
+      // Filter pins flag_name to the contract-named row.
+      expect(
+        source,
+        contains("flag_name = '\$kAdminCorsOriginsExtraFlagName'"),
+      );
+      // Constant matches the contract.
+      expect(
+        source,
+        contains(
+          "const String kAdminCorsOriginsExtraFlagName = "
+          "'admin_cors_origins_extra'",
+        ),
+      );
+      // Global scope only — operator/location-scoped rows do not
+      // bleed into the platform allow-list.
+      expect(source, contains('and operator_id is null'));
+      expect(source, contains('and location_id is null'));
+    });
   });
 
   group('resolveAdminCorsAllowList — dev / staging fallback', () {
-    test('dev with no env entries adds http://localhost:*', () {
+    test('dev with no env entries adds local browser origins', () {
       final config = ProxyConfig.fromEnvironment(
         _baseEnv(proxyEnvironment: 'dev'),
       );
       final result = resolveAdminCorsAllowList(config);
       expect(result, contains('http://localhost:*'));
+      expect(result, contains('http://127.0.0.1:*'));
     });
 
-    test('staging with env entries unions localhost', () {
+    test('staging with env entries unions local browser origins', () {
       final config = ProxyConfig.fromEnvironment(
         _baseEnv(
           adminCorsAllowedOrigins: 'https://admin-staging.forgeandflow.app',
@@ -186,9 +180,10 @@ void main() {
       final result = resolveAdminCorsAllowList(config);
       expect(result, contains('https://admin-staging.forgeandflow.app'));
       expect(result, contains('http://localhost:*'));
+      expect(result, contains('http://127.0.0.1:*'));
     });
 
-    test('prod with non-empty env entries does NOT add localhost', () {
+    test('prod with non-empty env entries does NOT add local origins', () {
       final config = ProxyConfig.fromEnvironment(
         _baseEnv(
           adminCorsAllowedOrigins: 'https://admin.forgeandflow.app',
@@ -198,6 +193,7 @@ void main() {
       final result = resolveAdminCorsAllowList(config);
       expect(result, equals(<String>['https://admin.forgeandflow.app']));
       expect(result, isNot(contains('http://localhost:*')));
+      expect(result, isNot(contains('http://127.0.0.1:*')));
     });
 
     test('feature-flag extras are merged (de-duplicated)', () {
@@ -221,49 +217,38 @@ void main() {
   });
 
   group('resolveAdminCorsAllowList — prod fail-closed', () {
-    test(
-      'prod with empty allow-list throws ProxyConfigError carrying '
-      'admin_cors_allowlist_missing_in_prod',
-      () {
-        final config = ProxyConfig.fromEnvironment(
-          _baseEnv(proxyEnvironment: 'prod'),
-        );
+    test('prod with empty allow-list throws ProxyConfigError carrying '
+        'admin_cors_allowlist_missing_in_prod', () {
+      final config = ProxyConfig.fromEnvironment(
+        _baseEnv(proxyEnvironment: 'prod'),
+      );
 
-        Object? thrown;
-        try {
-          resolveAdminCorsAllowList(config);
-        } catch (error) {
-          thrown = error;
-        }
+      Object? thrown;
+      try {
+        resolveAdminCorsAllowList(config);
+      } catch (error) {
+        thrown = error;
+      }
 
-        expect(thrown, isA<ProxyConfigError>());
-        final err = thrown! as ProxyConfigError;
-        expect(
-          err.message,
-          contains('admin_cors_allowlist_missing_in_prod'),
-        );
-        expect(
-          err.missingSecretNames,
-          contains(ProxyConfigNames.adminCorsAllowedOrigins),
-        );
-      },
-    );
+      expect(thrown, isA<ProxyConfigError>());
+      final err = thrown! as ProxyConfigError;
+      expect(err.message, contains('admin_cors_allowlist_missing_in_prod'));
+      expect(
+        err.missingSecretNames,
+        contains(ProxyConfigNames.adminCorsAllowedOrigins),
+      );
+    });
 
-    test(
-      'prod with empty env but feature-flag extras succeeds',
-      () {
-        final config = ProxyConfig.fromEnvironment(
-          _baseEnv(proxyEnvironment: 'prod'),
-        );
-        final result = resolveAdminCorsAllowList(
-          config,
-          featureFlagExtras: const <String>[
-            'https://preview.forgeandflow.app',
-          ],
-        );
-        expect(result, equals(<String>['https://preview.forgeandflow.app']));
-      },
-    );
+    test('prod with empty env but feature-flag extras succeeds', () {
+      final config = ProxyConfig.fromEnvironment(
+        _baseEnv(proxyEnvironment: 'prod'),
+      );
+      final result = resolveAdminCorsAllowList(
+        config,
+        featureFlagExtras: const <String>['https://preview.forgeandflow.app'],
+      );
+      expect(result, equals(<String>['https://preview.forgeandflow.app']));
+    });
 
     test('non-prod environment never fails closed', () {
       final config = ProxyConfig.fromEnvironment(
@@ -287,44 +272,38 @@ void main() {
       }
       expect(thrown, isA<ProxyConfigError>());
       final err = thrown! as ProxyConfigError;
-      expect(
-        err.message,
-        contains('admin_cors_allowlist_missing_in_prod'),
-      );
+      expect(err.message, contains('admin_cors_allowlist_missing_in_prod'));
     });
 
-    test(
-      'misspelled PROXY_ENVIRONMENT (e.g. `production`) fails closed',
-      () {
-        // P1 — only the canonical `dev` / `staging` strings unlock
-        // the localhost fallback. A typo or alternate spelling must
-        // be treated as production-equivalent.
-        for (final misspelled in const <String>[
-          'production',
-          'PRD',
-          'qa',
-          'preview',
-          '',
-        ]) {
-          final config = ProxyConfig.fromEnvironment(
-            _baseEnv(proxyEnvironment: misspelled),
-          );
-          Object? thrown;
-          try {
-            resolveAdminCorsAllowList(config);
-          } catch (error) {
-            thrown = error;
-          }
-          expect(
-            thrown,
-            isA<ProxyConfigError>(),
-            reason:
-                'PROXY_ENVIRONMENT="$misspelled" must fail closed when '
-                'the env-var allow-list is empty',
-          );
+    test('misspelled PROXY_ENVIRONMENT (e.g. `production`) fails closed', () {
+      // P1 — only the canonical `dev` / `staging` strings unlock
+      // the localhost fallback. A typo or alternate spelling must
+      // be treated as production-equivalent.
+      for (final misspelled in const <String>[
+        'production',
+        'PRD',
+        'qa',
+        'preview',
+        '',
+      ]) {
+        final config = ProxyConfig.fromEnvironment(
+          _baseEnv(proxyEnvironment: misspelled),
+        );
+        Object? thrown;
+        try {
+          resolveAdminCorsAllowList(config);
+        } catch (error) {
+          thrown = error;
         }
-      },
-    );
+        expect(
+          thrown,
+          isA<ProxyConfigError>(),
+          reason:
+              'PROXY_ENVIRONMENT="$misspelled" must fail closed when '
+              'the env-var allow-list is empty',
+        );
+      }
+    });
 
     test('unknown PROXY_ENVIRONMENT does NOT add localhost', () {
       final config = ProxyConfig.fromEnvironment(
@@ -345,11 +324,7 @@ void main() {
 
       expect(
         source,
-        matches(
-          RegExp(
-            r'adminCorsAllowList:\s*adminCorsAllowList',
-          ),
-        ),
+        matches(RegExp(r'adminCorsAllowList:\s*adminCorsAllowList')),
       );
     });
 
@@ -358,26 +333,17 @@ void main() {
       expect(source, contains('resolveAdminCorsAllowList('));
     });
 
-    test(
-      'main.dart awaits loadAdminCorsExtraOrigins from feature flag',
-      () {
-        final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
-        expect(source, contains('await loadAdminCorsExtraOrigins('));
-        expect(
-          source,
-          contains('productionBindings.adminCorsOriginsExtraFlag'),
-        );
-        expect(source, contains('featureFlagExtras: adminCorsExtraOrigins'));
-      },
-    );
+    test('main.dart awaits loadAdminCorsExtraOrigins from feature flag', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+      expect(source, contains('await loadAdminCorsExtraOrigins('));
+      expect(source, contains('productionBindings.adminCorsOriginsExtraFlag'));
+      expect(source, contains('featureFlagExtras: adminCorsExtraOrigins'));
+    });
 
-    test(
-      'main.dart logs admin_cors_allow_list_count diagnostics line',
-      () {
-        final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
-        expect(source, contains('admin_cors_allow_list_count:'));
-      },
-    );
+    test('main.dart logs admin_cors_allow_list_count diagnostics line', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+      expect(source, contains('admin_cors_allow_list_count:'));
+    });
 
     test(
       'main.dart catches ProxyConfigError from the resolver and exits 78',

@@ -11984,9 +11984,9 @@ const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
 ///   * exact strings are case-sensitive equality matches;
 ///   * an entry ending in `:*` (e.g. `http://localhost:*`) matches
 ///     any numeric port on the same scheme + host. Used for the
-///     dev / staging localhost fallback the bootstrap resolver adds
-///     so the operator console served from `localhost:5173` and
-///     `localhost:5174` both round-trip.
+///     dev / staging local-browser fallback the bootstrap resolver
+///     adds so consoles served from `localhost:*` or `127.0.0.1:*`
+///     both round-trip.
 ///
 /// Wildcard `*` is intentionally not supported. The HARD-C contract
 /// bans wildcard origin echoes on admin routes because admin JWTs
