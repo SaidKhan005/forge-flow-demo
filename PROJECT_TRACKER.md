@@ -25,6 +25,14 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 - 11A Operations Console foundation now spans `11A.0`–`4c`/`7`/`UX.health`
   accepted; `11A.5`/`11A.6` blocked on B45/B47 producers (B44 graph producers
   delivered — see `docs/_walkthroughs/B44.md`).
+- **Live staging console remediation (2026-05-03 branch)**: Corpus -> Graph
+  candidates 503 is fixed in branch by shipping sanitized candidate artifacts
+  with the advisor proxy image at `/app/graphify-out/candidates`.
+  `audit_chain_lag_seconds` was not future UI/backend wiring; after
+  action-time approval, staging Cloud Run execution
+  `forge-flow-audit-anchor-zmsvj` anchored the 2026-05-02 chain and `/health`
+  now reports that metric green. Overall staging health remains yellow due to
+  other producer/ops-data signals outside this branch's two requested fixes.
 - **Recently accepted (2026-05-02 sprint, PRs #50–54)**: `7.58.0` Primary
   Driver contract pin (test-only, 22 assertions / 12 fixtures, 31 of 32 rules
   MET, F-1 deferred to 7.58.UX.5); `11A.3a` operator-picker (Graph candidates
@@ -39,14 +47,19 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   `coversDown` fall-through; closed-row `_driverLabel` lowercased; inline
   `_LeverBadge` switched to `LeverCardData.metric` copy. Contract test stays
   green (22/22); regression suite 181/181. Phase 7.58 has zero DRIFT.
+- **Recently accepted (2026-05-02 evening, PRs #60-66)**: `10.5.1`
+  bucketing engine, `7.61.0` driver-key audit, `10a.0` realtime scaffold,
+  B44 graph health producer family, postgres repository test batch 2, admin
+  MFA challenge parity, and staging admin console stabilization. Follow-up
+  migration queue now extends through `202605021900`.
 - **Earlier 2026-05-02 batch**: `HARD-A`–`HARD-H` hardening (PRs #41–49);
   `11A.3b`, `11A.4`/`4b`/`4c`, `11A.7`, `11A.UX.health`; `G.2` boundary
   monitor; `7.58.5` variance row purity. Hardening contracts `Status: Closed`
   in `docs/contracts/hardening_*.md`.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
   Postgres on CMK (`forge-flow-production1-pg-cmk`). 32 baseline migrations
-  applied (`202604250000`–`202604280013`); **22 newer pending Production1
-  apply** (`202604280014`–`202605021500`) — see runbook +
+  applied (`202604250000`–`202604280013`); **27 newer pending Production1
+  apply** (`202604280014`–`202605021900`) — see runbook +
   `docs/POST_HARDENING_FOLLOWUPS.md` P0.
 - **Cloud Armor**: preview-only at sensitivity 2; awaits ≥3 clean post-tuning
   days + approval before enforcement.
@@ -91,12 +104,13 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run
 in parallel. File ownership, walkthrough, merge sequencing:
 `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 
-Sprints PRs #50–59 closed (incl. `7.58.UX.5`, `10.5.0`, postgres repo + MFA
-adapter test parcels, runbook companion). Phase 7.58 is zero-DRIFT. Next
-candidates by readiness:
+Sprints PRs #50–66 closed (incl. `7.58.UX.5`, `10.5.0`, `10.5.1`,
+`7.61.0`, `10a.0`, B44 graph producers, postgres repo + MFA adapter test
+parcels, admin MFA challenge parity, staging admin stabilization, and the
+runbook companion). Phase 7.58 is zero-DRIFT. Next candidates by readiness:
 
-1. **Production1 migration apply event** — 22 migrations queued
-   (`202604280014`–`202605021500`); runbook now refreshed.
+1. **Production1 migration apply event** — 27 migrations queued
+   (`202604280014`–`202605021900`); runbook now refreshed.
    Operator-driven; no code change needed.
 2. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
 3. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
@@ -140,6 +154,12 @@ Live board lists active + queued only.
 - `cutover.0b` Tier-M perf gate is the launch blocker.
 - Production migrations use online-migration patterns once real operator data
   exists; transition point is `cutover.4` accepting.
+- After any slice adds `db/migrations/*.sql`, run
+  `dart run tool/migration_drift_scanner.dart --fix --strict-docs` before
+  tracker/runbook closeout. It updates the staging setup cutoff, emits
+  `build/reports/migration_drift_report.md`, and flags authority docs that
+  still need manual migration queue/count wording. `tool/migration_cutoff_lint.dart`
+  remains the hard cutoff gate.
 - 35 scalability locks (`phase_9_scalability_decisions_2026-04-27.md`) are
   authoritative; the 10 Hard Promises in `CLAUDE.md` are durable.
 

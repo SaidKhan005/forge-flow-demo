@@ -103,6 +103,21 @@ const Set<String> _defaultExemptions = <String>{
   // `execute_after`/`processing_started_at` ORDER BY scan.
   '202604300000_phase_9_mfa_factor_removal_requests.sql:mfa_factor_removal_due_idx',
   '202604300000_phase_9_mfa_factor_removal_requests.sql:mfa_factor_removal_processing_idx',
+
+  // 202605020452 — HARD-B auth lockout ledger. This index backs the
+  // pre-tenant login lockout counter, which intentionally runs under
+  // `forge_admin` BYPASSRLS before Firebase/operator scope exists.
+  // The lookup contract is `(user_email_hash, ip_hash, attempted_at)`;
+  // there is no tenant key to lead with at evaluation time.
+  '202605020452_hardening_auth_login_attempts.sql:auth_login_attempts_idx_email_hash_time',
+  '202605021800_hardening_auth_login_attempts_index_rekey.sql:auth_login_attempts_idx_email_hash_time',
+
+  // 202605020452 — original IP-failure triage index was created
+  // before the repo lint covered this table. Follow-up migration
+  // `202605021800_hardening_auth_login_attempts_index_rekey.sql`
+  // drops and recreates it as operator-leading; the legacy CREATE
+  // INDEX text remains here for shipped-migration immutability.
+  '202605020452_hardening_auth_login_attempts.sql:auth_login_attempts_idx_ip_hash_failures',
 };
 
 /// Severity of a lint finding.
@@ -169,8 +184,7 @@ class IndexLintResult {
   final int skippedPreCutoffCount;
   final int operatorScopedTableCount;
 
-  Iterable<IndexLintViolation> get errors =>
-      violations.where((v) => v.isError);
+  Iterable<IndexLintViolation> get errors => violations.where((v) => v.isError);
 
   Iterable<IndexLintViolation> get warnings =>
       violations.where((v) => v.isWarning);
@@ -324,16 +338,19 @@ class IndexLeadingColumnLintRunner {
       //     leading column is `operator_id`.
       if (leadingCol == 'operator_id') continue;
 
-      out.add(IndexLintViolation(
-        fileName: fileName,
-        lineNumber: _lineNumberAt(sqlBody, m.start),
-        tableName: tableName,
-        indexName: indexName,
-        leadingColumn: leadingCol,
-        severity: IndexLintSeverity.error,
-        note: 'B-tree index on operator-scoped table must lead with '
-            'operator_id (RLS performance discipline)',
-      ));
+      out.add(
+        IndexLintViolation(
+          fileName: fileName,
+          lineNumber: _lineNumberAt(sqlBody, m.start),
+          tableName: tableName,
+          indexName: indexName,
+          leadingColumn: leadingCol,
+          severity: IndexLintSeverity.error,
+          note:
+              'B-tree index on operator-scoped table must lead with '
+              'operator_id (RLS performance discipline)',
+        ),
+      );
     }
   }
 }
@@ -476,9 +493,7 @@ List<String> _splitTopLevelAnd(String predicate) {
     // identifier; the trailing one against a prefix.
     if (i + 5 > predicate.length) continue;
     final slice = lower.substring(i, i + 5);
-    if (slice == ' and ' ||
-        slice == '\nand ' ||
-        slice == '\tand ') {
+    if (slice == ' and ' || slice == '\nand ' || slice == '\tand ') {
       parts.add(predicate.substring(start, i));
       start = i + 5;
     }
@@ -661,19 +676,22 @@ String _stripCommentsAndStrings(String sql) {
 Future<void> main(List<String> args) async {
   final dir = Directory('db/migrations');
   if (!dir.existsSync()) {
-    stderr.writeln('index_leading_column_lint: db/migrations not found '
-        '(run from repository root).');
+    stderr.writeln(
+      'index_leading_column_lint: db/migrations not found '
+      '(run from repository root).',
+    );
     exitCode = 2;
     return;
   }
 
   final files = <String, String>{};
-  final entries = dir
-      .listSync()
-      .whereType<File>()
-      .where((f) => f.path.toLowerCase().endsWith('.sql'))
-      .toList()
-    ..sort((a, b) => a.path.compareTo(b.path));
+  final entries =
+      dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.sql'))
+          .toList()
+        ..sort((a, b) => a.path.compareTo(b.path));
   for (final f in entries) {
     final name = f.uri.pathSegments.last;
     files[name] = f.readAsStringSync().replaceAll('\r\n', '\n');
@@ -690,27 +708,35 @@ Future<void> main(List<String> args) async {
   );
 
   if (result.violations.isEmpty) {
-    stdout.writeln('index_leading_column_lint: clean — every B-tree '
-        'index on an operator-scoped table leads with operator_id.');
+    stdout.writeln(
+      'index_leading_column_lint: clean — every B-tree '
+      'index on an operator-scoped table leads with operator_id.',
+    );
     return;
   }
 
   if (result.warnings.isNotEmpty) {
-    stdout.writeln('index_leading_column_lint: '
-        '${result.warnings.length} warning(s):');
+    stdout.writeln(
+      'index_leading_column_lint: '
+      '${result.warnings.length} warning(s):',
+    );
     for (final w in result.warnings) {
       stdout.writeln('  - $w');
     }
   }
 
   if (!result.hasErrors) {
-    stdout.writeln('index_leading_column_lint: no errors. '
-        'Warnings allowed; lint exits 0.');
+    stdout.writeln(
+      'index_leading_column_lint: no errors. '
+      'Warnings allowed; lint exits 0.',
+    );
     return;
   }
 
-  stderr.writeln('index_leading_column_lint: '
-      '${result.errors.length} error(s):');
+  stderr.writeln(
+    'index_leading_column_lint: '
+    '${result.errors.length} error(s):',
+  );
   for (final e in result.errors) {
     stderr.writeln('  - $e');
   }

@@ -54,6 +54,12 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
   `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Lanes".
 - **Between batches**: Claude on master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md`
   to audit the merged batch, lean trackers/phase docs, archive, and emit next prompts.
+- **Migration drift scanner**: after any slice adds `db/migrations/*.sql`, run
+  `dart run tool/migration_drift_scanner.dart --fix --strict-docs`. It updates
+  the staging setup cutoff, writes `build/reports/migration_drift_report.md`,
+  and flags tracker/runbook authority docs that still need manual queue/count
+  wording updates. Keep `dart run tool/migration_cutoff_lint.dart` as the hard
+  CI-style gate.
 - **Main chat is read-only across worktrees** when worktrees are running
   (observe/diff/review only). Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked.

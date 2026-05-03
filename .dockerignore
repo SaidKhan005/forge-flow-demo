@@ -24,6 +24,9 @@ windows/
 
 assets/
 docs/
+!docs/
+!docs/Knowledge_graph_docs/
+!docs/Knowledge_graph_docs/corpus_manifest.yaml
 runbooks/
 test/
 

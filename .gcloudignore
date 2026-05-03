@@ -20,6 +20,9 @@ graphify-out/
 android/
 assets/
 docs/
+!docs/
+!docs/Knowledge_graph_docs/
+!docs/Knowledge_graph_docs/corpus_manifest.yaml
 ios/
 runbooks/
 test/

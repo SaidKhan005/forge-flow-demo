@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/feature_flags_admin_models.dart';
+import 'admin_http_timeout.dart';
 
 /// Source for the bearer token the gateway attaches to every proxy
 /// call. Production binds this to the admin Firebase ID-token stream;
@@ -66,13 +67,16 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
     required this.baseUri,
     required this.bearerTokenProvider,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+    Duration timeout = kAdminHttpRequestTimeout,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/feature-flags/*` against this.
   final Uri baseUri;
   final FeatureFlagsAdminBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
+  final Duration _timeout;
 
   static const String listPath = '/v1/admin/feature-flags';
   static const String togglePath = '/v1/admin/feature-flags/toggle';
@@ -120,9 +124,22 @@ class HttpFeatureFlagsAdminGateway implements FeatureFlagsAdminGateway {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
-    );
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw FeatureFlagsAdminGatewayError(
+        statusCode: 408,
+        errorCode: 'timeout',
+        message:
+            'admin feature flags proxy timed out after '
+            '${_timeout.inSeconds}s',
+      );
+    }
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
