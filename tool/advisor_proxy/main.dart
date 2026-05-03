@@ -37,6 +37,7 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 import 'package:forge_and_flow/services/realtime/pubsub_realtime_publisher.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event_publisher.dart';
 
+import 'admin_email_routes.dart';
 import 'advisor_proxy.dart';
 import 'log.dart';
 import 'proxy_bootstrap.dart';
@@ -430,6 +431,61 @@ Future<void> main(List<String> args) async {
     return;
   }
 
+  // region: phase_9_8_email_routes
+  // Phase 9.8 email-provider slice. Builds the SendGrid-backed
+  // EmailProvider + 8 V1 templates + admin "Test connection"
+  // route before the listener loop binds. The router pre-handles
+  // POST /v1/admin/integrations/email/test inside the per-request
+  // IIFE below; everything else falls through to routeRequest.
+  //
+  // Production secret names (server-side only per Hard Promise #7):
+  //   * SENDGRID_API_KEY            — active SendGrid API key.
+  //   * EMAIL_FROM_ADDRESS          — verified sender (defaults to
+  //                                   noreply@mail.forgeflow.app).
+  //   * EMAIL_FROM_DISPLAY_NAME     — sender display name (defaults
+  //                                   to "Forge & Flow").
+  //   * EMAIL_TEST_RECIPIENT        — fallback recipient for the
+  //                                   admin Test Connection POST when
+  //                                   the body omits recipient_email.
+  //   * SENDGRID_SANDBOX_MODE       — when "true", every send sets
+  //                                   mail_settings.sandbox_mode.enable
+  //                                   so the staging key never burns
+  //                                   real provider quota.
+  //
+  // The router is null when the email_templates directory is not
+  // present in the deployed image. The listener loop treats null
+  // as "no email surface installed" and falls through to
+  // routeRequest, which today returns 404 for the email path. A
+  // follow-up slice can extend this region to also wire the
+  // email_outbox dispatcher (cron tick subscription) without
+  // touching the rest of main.dart.
+  final adminEmailRouter = buildProductionAdminEmailRouter(
+    apiKey: Platform.environment['SENDGRID_API_KEY'] ?? '',
+    fromAddress: Platform.environment['EMAIL_FROM_ADDRESS'] ??
+        'noreply@mail.forgeflow.app',
+    fromDisplayName: Platform.environment['EMAIL_FROM_DISPLAY_NAME'] ??
+        'Forge & Flow',
+    defaultRecipientEmail: Platform.environment['EMAIL_TEST_RECIPIENT'],
+    sandboxMode: (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+            .trim()
+            .toLowerCase() ==
+        'true',
+  );
+  log(
+    LogSeverity.info,
+    'startup.email_router',
+    fields: <String, Object?>{
+      'mounted': adminEmailRouter != null,
+      'sandbox_mode': (Platform.environment['SENDGRID_SANDBOX_MODE'] ?? '')
+              .trim()
+              .toLowerCase() ==
+          'true',
+      'sendgrid_api_key_loaded':
+          (Platform.environment['SENDGRID_API_KEY'] ?? '').isNotEmpty,
+    },
+  );
+  // endregion
+
   final server = await HttpServer.bind(InternetAddress.anyIPv4, config.port);
 
   // HARD-A: own line for gemini_slot_enabled so deploy verification
@@ -491,6 +547,18 @@ Future<void> main(List<String> args) async {
     unawaited(
       (() async {
         try {
+          // region: phase_9_8_email_routes
+          // Pre-check: email-provider routes (today: POST
+          // /v1/admin/integrations/email/test) short-circuit the
+          // monolithic dispatcher so the integrations seam stays
+          // untouched. The router writes its own JSON response and
+          // closes the HTTP response; we early-return so the rest
+          // of routeRequest does not fire on the same request.
+          if (adminEmailRouter != null &&
+              await adminEmailRouter.tryHandle(request)) {
+            return;
+          }
+          // endregion
           await routeRequest(
             request,
             authGuard,
