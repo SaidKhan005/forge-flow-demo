@@ -15,6 +15,18 @@ When sources conflict, earlier wins:
 `docs/KNOWN_FAILING_TESTS.md` lists pre-existing failures; treat them as
 expected, not regressions.
 
+## Codex Skill
+
+Codex has a local `$forge-flow` skill at `~/.codex/skills/forge-flow`.
+Use it for Forge & Flow repo work when available: it loads the repo authority
+order, phase routing, live-mutation boundaries, migration/runtime gates,
+walkthrough expectations, and tracker closeout rules.
+
+When available, use the local MCP servers registered in `.mcp.json` for
+orientation: `forgeflow_docs` exposes active docs, contracts, phase plans,
+runbooks, walkthroughs, and doc search; `forgeflow_sqlite_schema` exposes the
+local SQLite schema read-only; `graphify` remains the code/docs graph.
+
 ## Hard Promises
 
 Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization_plan.md`.
@@ -59,6 +71,10 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
   `dart run tool/migration_cutoff_lint.dart`.
 - **Runtime acceptance**: runtime-exposed slices follow
   `docs/contracts/slice_runtime_acceptance_contract.md`.
+- **Browser acceptance**: browser-exposed slices use Browser Use as the
+  acceptance harness when available; route sweep, screenshot/DOM evidence,
+  mobile viewport check when layout is in scope, and attach results to the
+  walkthrough.
 - **Main chat is read-only across worktrees** when worktrees are running
   (observe/diff/review only). Tracker/memory/coordination edits on master OK.
 - Don't broaden scope. Don't update trackers during implementation unless asked.
