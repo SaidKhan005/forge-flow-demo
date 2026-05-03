@@ -28,6 +28,9 @@ Read only what the slice needs:
 - At most one relevant contract under `docs/contracts/**`.
 - `docs/contracts/slice_runtime_acceptance_contract.md` for runtime-exposed
   slices.
+- `docs/PERFORMANCE_FRAMEWORK.md` for performance, scale, mobile
+  responsiveness, web-console timing, load, polling, health, or bundle-size
+  work.
 
 Avoid archived docs unless explicitly named. Keep `PROJECT_TRACKER.md` and
 `CLAUDE.md` pointer-only; put detail in phase docs, contracts, runbooks, or
@@ -93,6 +96,10 @@ If a slice exposes runtime behavior, browser/admin/operator UX, migrations,
 health metrics, packaged artifacts, vendor/AI calls, workflows, or cutover
 evidence, the prompt must include the relevant checks from
 `docs/contracts/slice_runtime_acceptance_contract.md`.
+
+If a slice is performance-sensitive or asks for performance optimization, the
+prompt must also include the measurement, behavior-preservation, runtime-proof,
+and reporting loop from `docs/PERFORMANCE_FRAMEWORK.md`.
 
 Minimum acceptance path:
 

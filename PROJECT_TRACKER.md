@@ -55,6 +55,9 @@ Routing map only. Slice scopes live in their phase docs.
    `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`,
    `docs/phases/phase_9/phase_9_decision_lock_2026-04-26.md`.
 6. `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape, parallel-lane rules.
+7. `docs/PERFORMANCE_FRAMEWORK.md` — required for performance, scale,
+   mobile responsiveness, web-console timing, load, polling, health, or
+   bundle-size work.
 
 `docs/archive/**` is history; ignore unless explicitly named.
 
