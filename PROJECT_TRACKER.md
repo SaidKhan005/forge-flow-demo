@@ -11,12 +11,10 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   engine accepted; `10.5.2` per-period read service and `10.5.3+`
   primary-driver teaching are next. Evidence:
   `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`.
-- 11A Operations Console: foundation `11A.0`–`4c`/`7` accepted; `UX.health`
-  (sub-slice of `11A.6` per phase doc) shipped — read-only `/health` envelope
-  viewer is live. B44/B45/B47 health producers code-delivered. Remaining:
-  `11A.5` Debug Console (per-operator request log viewer; not started — placeholder
-  route only) and `11A.6` cost-telemetry/dependency surfaces (partial; UX.health
-  shipped, cost dashboard queued).
+- 11A Operations Console foundation now spans `11A.0`–`5`/`7`/`UX.health`
+  accepted. `11A.5` Debug Console is complete with walkthrough evidence at
+  `docs/_walkthroughs/11A.5.md`; `11A.6` cost/dependency observability is the
+  remaining health-producer UX surface.
 - **2026-05-03 staging runtime/perf remediation**: graph candidates packaging,
   staging audit-anchor recovery, manual Health diagnostics, and perf guardrails
   are captured in `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
@@ -89,9 +87,8 @@ runbook companion). Phase 7.58 is zero-DRIFT. Next candidates by readiness:
 5. **`7.61` pre-Phase-8 cleanup** - driver-key audit; `.1` accepted,
    `.2`/`.3` queued, `.4` deferred; gated before Phase 8.
 
-**Then queued (rough order):** `11A.5` Debug Console (per-operator request log
-viewer; placeholder route only), `11A.6` cost-telemetry/dependency surfaces
-(UX.health already shipped; cost dashboard queued), `9.5`, `9.75`, `8`/`8R`/`8.5`,
+**Then queued (rough order):** `11A.6` (health producers delivered; cost and
+dependency observability surface work next), `9.5`, `9.75`, `8`/`8R`/`8.5`,
 `11b`/`11b.1`/`11b.2`, `12.*`, `9.8`, `cutover.0b`–`0-5`.
 
 ## Phase Board
@@ -101,14 +98,14 @@ Live board lists active + queued only.
 
 | Phase | Status | Plan |
 | --- | --- | --- |
-| `11A` foundation | active; `0`–`4c`/`7` accepted; `UX.health` (sub-slice of `6`) shipped; B44/B45/B47 producers delivered; `5` (Debug Console) not started; `6` partial (cost surfaces queued); `8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
+| `11A` foundation | active; `0`–`5`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
 | `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted; per-period read service + driver teaching queued | `phase_10_5/*` |
 | `7.61` | active; `7.61.0` audit pinned; `7.61.1` F-1 accepted (HistoryTeachingAnalyzer unknown-id fallthrough removed, 28 active + 1 F-2 holdout skipped, walkthrough `7.61.1.md`); `.2`/`.3` queued per F-2/F-3; `.4` deferred to `cutover.0b` (F-A); F-B (`shifts.primary_lever` lowercase migration) deferred post-`cutover.5` | `phase_7_61/*` |
 | `10a` | active; `10a.0` realtime push channel scaffold (NOTIFY → claim → in-process publisher → WebSocket) — Pub/Sub adapter + dead-letter + retention sweep + tripwires + UX surfaces queued | `phase_10a/*` |
 | `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
-| `11b`/`11b.1`/`11b.2` | queued (gated on `11A.5`/`11A.6` + B43 prod anchor) | `phase_11b/*` |
+| `11b`/`11b.1`/`11b.2` | queued (gated on `11A.6` + B43 prod anchor; `11A.5` accepted) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
 | `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |
 | `cutover.0b` | queued — Tier-M 14-row perf gate is the launch blocker | `phase_production_cutover/*` |

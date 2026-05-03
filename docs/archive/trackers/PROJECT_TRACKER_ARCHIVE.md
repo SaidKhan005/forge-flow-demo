@@ -15,6 +15,43 @@ Detailed `7.52` scope, destination contracts, completion notes, and the post-`7.
 
 Use this archive plus that execution-plan doc together when you need to revisit how the private Barrio shell and content phase was delivered.
 
+## 11A Accepted Detail
+
+### `11A.5` Debug Console
+
+Accepted 2026-05-03 in worktree `claude/nifty-colden-5621fa`.
+
+- Promoted the admin Debug route from placeholder to a live
+  `DebugConsoleAdminScreen` with Request log, Graph debug stub, and MFA
+  diagnostics stub tabs.
+- Added request-log models, filter/time-window matching, full-content opt-in
+  projection, and the `DebugConsoleAdminGateway` interface with HTTP and
+  in-memory demo implementations.
+- Wired `lib/main_admin.dart` so live admin builds resolve
+  `HttpDebugConsoleAdminGateway` for `/v1/admin/debug/*`; in-memory seed data
+  stays limited to demo/missing-proxy contexts.
+- Preserved the PII discipline: request meta is visible by default, while raw
+  full content requires both `super_admin` and the operator
+  `debug_console_full_content_enabled` feature-flag opt-in.
+- Runtime posture is accepted: cheap initial render, live-tail off by default,
+  no stacked tail requests, and entry merges clamped to
+  `kDebugConsoleListLimit`.
+- Verification reported clean analyzer plus 45 passing focused tests across
+  debug gateway, debug screen, and admin shell route coverage.
+
+Evidence:
+
+- Walkthrough: `docs/_walkthroughs/11A.5.md`.
+- Active plan closeout:
+  `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`.
+
+Residuals:
+
+- `11A.6` still owns cost/dependency observability over the delivered
+  B44/B45/B47 health producers and live evidence.
+- Graph debug and MFA diagnostics are mounted as future extension stubs; they
+  do not reopen the accepted 11A.5 request-log scope.
+
 ## 7.57 Stabilization Accepted Detail
 
 ### `7.57.3a` Provider Abstraction Foundation

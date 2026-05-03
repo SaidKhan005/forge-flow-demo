@@ -10,8 +10,9 @@ B42 defines the health envelope that the Phase 11A operations console reads.
 It is intentionally a foundation contract: the proxy owns the response shape,
 while B44, B45, B47, and adjacent operational slices fill metric values over
 time. As of 2026-05-03, B44 graph, B45 rollup, and B47 vector producer wiring
-is code-delivered; remaining work is the 11A.5/11A.6 UX/observability surface,
-live data evidence, and operational recovery posture.
+is code-delivered and `11A.5` Debug Console is accepted. Remaining health
+work is the `11A.6` UX/observability surface, live data evidence, and
+operational recovery posture.
 
 This contract is the handoff between:
 

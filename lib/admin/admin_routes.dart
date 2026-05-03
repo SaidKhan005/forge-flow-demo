@@ -24,6 +24,7 @@ import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
 import 'screens/admin_home_screen.dart';
 import 'screens/corpus_admin_screen.dart';
+import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
@@ -31,6 +32,7 @@ import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
+import 'services/debug_console_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
 import 'services/health_admin_gateway.dart';
 import 'services/integration_admin_gateway.dart';
@@ -101,6 +103,9 @@ const String kAdminHealthRouteId = 'health';
 
 /// Canonical Feature Flags route ID (11A.7).
 const String kAdminFeatureFlagsRouteId = 'feature_flags';
+
+/// Canonical Debug console route ID (11A.5).
+const String kAdminDebugConsoleRouteId = 'debug';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
 /// is reached via Navigator.push from the Corpus admin "Pick operator"
@@ -174,13 +179,14 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
-    id: 'debug',
+    id: kAdminDebugConsoleRouteId,
     title: 'Debug',
     path: '/debug',
     icon: Icons.bug_report_outlined,
-    subtitle: 'Per-operator debug console lands in 11A.5.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle:
+        'Per-operator request log. Filter, search by request_id or '
+        'idempotency_key, optional live-tail.',
+    builder: _buildDebugConsole,
   ),
   AdminRoute(
     id: 'observability',
@@ -349,6 +355,31 @@ Widget _buildFeatureFlags(BuildContext context) {
   );
 }
 
+Widget _buildDebugConsole(BuildContext context) {
+  // 11A.5 — full-content reveal is gated on `super_admin`. `ff_support`
+  // lands on the read-only meta view (no expand-to-full-content
+  // affordance); the diff still renders so support can audit recent
+  // request meta.
+  final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return DebugConsoleAdminScreen(gateway: gateway);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return DebugConsoleAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
 Widget _placeholderBuilder(BuildContext context) {
   // 11A.0 placeholder body. The shell wraps this with the branded
   // empty-state surface using the route's [subtitle], so this builder
@@ -370,6 +401,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.integrationGateway,
     this.healthGateway,
     this.featureFlagsGateway,
+    this.debugConsoleGateway,
     this.adminAuthSource,
   });
 
@@ -423,6 +455,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// without hitting Postgres.
   final FeatureFlagsAdminGateway? featureFlagsGateway;
 
+  /// Phase 11A.5 — debug console admin gateway. Optional; the default
+  /// fallback is a seeded in-memory gateway with the per-operator
+  /// request log demo so the walkthrough exercises filters, search,
+  /// live-tail, and the full-content opt-in paths without a backend.
+  final DebugConsoleAdminGateway? debugConsoleGateway;
+
   /// Phase 11A.2 — admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -471,6 +509,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.featureFlagsGateway ?? _defaultFeatureFlagsDemoGateway;
   }
 
+  static DebugConsoleAdminGateway debugConsoleGatewayOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.debugConsoleGateway ?? _defaultDebugConsoleDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -485,6 +529,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       integrationGateway != oldWidget.integrationGateway ||
       healthGateway != oldWidget.healthGateway ||
       featureFlagsGateway != oldWidget.featureFlagsGateway ||
+      debugConsoleGateway != oldWidget.debugConsoleGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -815,4 +860,14 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           updatedAt: DateTime.utc(2026, 5, 1, 10, 0),
         ),
       ],
+    );
+
+/// 11A.5 fallback debug console gateway. Seeded with the per-operator
+/// request log demo (mixed operators / usage_class / status / opt-ins)
+/// so the walkthrough exercises filters, search, live-tail, and the
+/// full-content opt-in paths without hitting the proxy.
+final DebugConsoleAdminGateway _defaultDebugConsoleDemoGateway =
+    InMemoryDebugConsoleAdminGateway(
+      seed: kDebugConsoleDemoEntries,
+      optInSeed: kDebugConsoleDemoOptIns,
     );

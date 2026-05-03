@@ -40,7 +40,11 @@ resolved items out of open trackers.
   `docs/contracts/hardening_feature_flag_idempotency_contract.md` around the
   shipped `admin_request_idempotency` durable backstop.
 - B44/B45/B47 health producer status now reflects code reality:
-  producers are delivered; 11A.5/11A.6 still own UX/live evidence.
+  producers are delivered; `11A.6` still owns the health/cost
+  observability UX and live evidence.
+- `11A.5` Debug Console is accepted with walkthrough evidence at
+  `docs/_walkthroughs/11A.5.md`; Graph debug and MFA diagnostics remain
+  mounted as future extension stubs.
 - `docs/contracts/migrations_summary.md` was regenerated from the migration
   directory and now reports 59 migrations.
 - `docs/ARCHITECTURE.md` no longer lists B33/B34, RLS sweep,
@@ -53,8 +57,8 @@ resolved items out of open trackers.
   (`202604280014` through `202605021900`).
 - B43 Production1 audit-anchor deployment once the production GCP project is
   provisioned.
-- 11A.5/11A.6 UX/observability surfaces and live evidence over the delivered
-  health producers.
+- `11A.6` cost/dependency observability surface and live evidence over the
+  delivered health producers.
 - Admin provider credential/KMS rollout and browser QA require operator-held
   secrets/action-time approval.
 - Remaining P2/P3 follow-ups in `docs/POST_HARDENING_FOLLOWUPS.md`.

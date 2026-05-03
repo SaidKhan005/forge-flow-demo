@@ -1,7 +1,7 @@
 # Phase 11b - Agentic Advisor UX
 
-Updated: 2026-05-02
-Status: Planned (gated on `11A.5`/`11A.6` debug + observability surfaces and on B43 prod anchor deploy)
+Updated: 2026-05-03
+Status: Planned (gated on `11A.6` observability and on B43 prod anchor deploy; `11A.5` Debug Console is accepted)
 Owner: Future advisor UX lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies

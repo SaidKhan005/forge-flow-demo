@@ -182,15 +182,18 @@ to `11A.0`.
 
 ## After `11a.11c-e`
 
-Open Phase 11A Operations Console foundation:
+Phase 11A Operations Console foundation status is tracked in
+`docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md`.
+As of 2026-05-03, `11A.0` through `11A.5` are accepted and `11A.6`
+remains the next cost/dependency observability surface:
 
 - `11A.0` Flutter for Web bootstrap
 - `11A.1` operator/location management
 - `11A.2` pricing tier admin
 - `11A.3` corpus admin
 - `11A.4` integration management
-- `11A.5` debug console
-- `11A.6` observability dashboard
+- `11A.5` debug console (accepted)
+- `11A.6` observability dashboard (remaining)
 
 Then resume the tracker cadence at `9.8`.
 

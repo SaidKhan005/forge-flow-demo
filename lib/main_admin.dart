@@ -33,6 +33,7 @@ import 'admin/admin_app.dart';
 import 'admin/admin_auth_gate.dart';
 import 'admin/admin_routes.dart';
 import 'admin/services/corpus_admin_gateway.dart';
+import 'admin/services/debug_console_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
@@ -91,6 +92,9 @@ Future<void> main() async {
     final featureFlagsGateway = gateway == null
         ? null
         : _resolveFeatureFlagsAdminGateway(authBinding.authClient);
+    final debugConsoleGateway = gateway == null
+        ? null
+        : _resolveDebugConsoleAdminGateway(authBinding.authClient);
     final adminApp = AdminConsoleApp(authSource: source);
     // Always wrap with `AdminConsoleServicesScope` so the Pricing /
     // Corpus / Integrations / Feature Flags routes can read
@@ -106,6 +110,7 @@ Future<void> main() async {
         integrationGateway: integrationGateway,
         healthGateway: healthGateway,
         featureFlagsGateway: featureFlagsGateway,
+        debugConsoleGateway: debugConsoleGateway,
         adminAuthSource: source,
         child: adminApp,
       ),
@@ -251,6 +256,28 @@ FeatureFlagsAdminGateway? _resolveFeatureFlagsAdminGateway(
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpFeatureFlagsAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
+}
+
+/// Phase 11A.5 — debug console admin gateway. Same admin proxy base
+/// URI as the other admin surfaces. Live mode wires the HTTP gateway
+/// so the per-operator request log is sourced from the real proxy
+/// `proxy_requests` projection — the seeded in-memory walkthrough
+/// fixtures must NEVER reach a live deploy. Demo mode (or a missing
+/// `ADMIN_PROXY_BASE_URI`) falls back to the in-memory demo gateway
+/// in `admin_routes.dart`.
+DebugConsoleAdminGateway? _resolveDebugConsoleAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpDebugConsoleAdminGateway(
     baseUri: baseUri,
     bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
   );
