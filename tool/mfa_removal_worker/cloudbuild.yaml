@@ -5,7 +5,7 @@
 #
 #   gcloud builds submit . \
 #     --config=tool/mfa_removal_worker/cloudbuild.yaml \
-#     --substitutions=_REGION=northamerica-northeast1,_REPO=forge-flow
+#     --substitutions=_REGION=northamerica-northeast2,_REPO=forge-flow
 #
 # Build context MUST be the repo root (the Dockerfile copies pubspec.*
 # and lib/ from the workspace). Do NOT submit from
@@ -22,7 +22,7 @@
 
 substitutions:
   # Artifact Registry region. Override at submit time per environment.
-  _REGION: northamerica-northeast1
+  _REGION: northamerica-northeast2
   # Artifact Registry repository name (already provisioned).
   _REPO: forge-flow
   # Image base name; rarely overridden.

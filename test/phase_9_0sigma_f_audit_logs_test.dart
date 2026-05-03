@@ -1473,17 +1473,16 @@ void main() {
         'deploy procedure and rotation pattern (B43)', () {
       final body = runbook.readAsStringSync();
       final normalizedBody = body.replaceAll(RegExp(r'\s+'), ' ');
-      // Deploy procedure section + cross-references to the new
-      // YAML and script.
-      expect(body, contains('Deploy procedure'));
+      // Deploy procedure section + cross-references to the YAML
+      // manual contract and script.
+      expect(body, contains('Stage 4'));
       expect(body, contains('infrastructure/cloud_run/audit_anchor_job.yaml'));
       expect(body, contains('scripts/deploy_audit_anchor_job.ps1'));
       expect(
         normalizedBody,
-        contains('command/args (`dart run tool/audit_anchor/main.dart sweep`)'),
+        contains('ENTRYPOINT ["/app/audit_anchor"]'),
         reason:
-            'the by-hand deploy contract must name the no-arg '
-            '`sweep` mode, not `anchor`',
+            'the deploy contract must rely on the compiled binary entrypoint',
       );
       expect(
         normalizedBody,
@@ -1498,7 +1497,7 @@ void main() {
       );
       // Manual smoke after deploy is documented (operators must
       // verify the pipe before the unattended firing).
-      expect(body.toLowerCase(), contains('manual smoke'));
+      expect(body.toLowerCase(), contains('first manual run'));
       // Rotation section: secrets and Blob container both covered.
       expect(body, contains('Rotation pattern'));
       expect(body.toLowerCase(), contains('secret rotation'));
@@ -1570,31 +1569,18 @@ void main() {
         reason: 'YAML must not embed an Azure connection-string key',
       );
 
-      // The deployed CLI command is exactly
-      //   dart run tool/audit_anchor/main.dart sweep
-      // — not `anchor`. The earlier review pointed out that an
-      // `anchor`-mode invocation without `--operator-id` exits with
-      // a parser error before any anchor work runs. Pinning the
-      // exact command/args list (and re-parsing it via the CLI's
-      // own parseArgs below) prevents a regression to that shape.
-      final command = _extractYamlCommandArgs(body);
+      // The container now owns the deployed command through Dockerfile
+      // ENTRYPOINT + CMD. The manual YAML contract must not override
+      // that with `dart run ...` because the runtime image contains
+      // only the compiled /app/audit_anchor binary.
       expect(
-        command,
-        equals(<String>['dart', 'run', 'tool/audit_anchor/main.dart', 'sweep']),
+        _extractYamlCommandArgs(body),
+        isEmpty,
         reason:
-            'YAML command + args must be exactly '
-            '["dart", "run", "tool/audit_anchor/main.dart", "sweep"]',
+            'YAML must rely on Dockerfile ENTRYPOINT/CMD instead of '
+            'overriding command/args with a Dart SDK invocation',
       );
-
-      // Re-feed the deployed CLI args through the tool's own
-      // parser. Cloud Run runs `dart run <script> <args>`; the
-      // Dart `main(List<String> args)` receives only the entries
-      // AFTER the script path (slice index 3 of the full command).
-      // The deployed command parses cleanly into sweep mode with
-      // no operator ids — exactly the daily firing shape.
-      final parsed = audit_anchor_main.parseArgs(command.skip(3).toList());
-      expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
-      expect(parsed.operatorIds, isEmpty);
+      expect(body, contains('CMD ["sweep"]'));
 
       // Job manifest carries the Cloud Run Job kind and the
       // Cloud Scheduler kind in a multi-doc YAML.
@@ -1667,23 +1653,17 @@ void main() {
         reason: 'preflight branch must exit before live mutation',
       );
 
-      // The deployed Cloud Run command shape MUST be `sweep`, not
-      // `anchor`. The `--args` value the apply path hands to
-      // `gcloud run jobs deploy/update` is a comma-joined list (no
-      // shell quoting); split it and re-feed through the CLI's own
-      // parser to prove the deployed shape parses cleanly into
-      // sweep mode with no operator ids.
-      final scriptArgs = _extractScriptCliArgs(body);
+      // The deploy helper must not override the image entrypoint with
+      // `dart run ...`; the runtime image owns sweep mode via
+      // ENTRYPOINT ["/app/audit_anchor"] + CMD ["sweep"].
+      expect(body, contains('Do NOT set `--command` / `--args`'));
       expect(
-        scriptArgs,
-        equals(<String>['run', 'tool/audit_anchor/main.dart', 'sweep']),
+        body,
+        isNot(contains("--args 'run,tool/audit_anchor/main.dart,sweep'")),
         reason:
-            'deploy script must invoke `audit_anchor sweep`; '
-            '`anchor` would exit on `--operator-id is required`',
+            'preflight/apply text must not advertise a Dart SDK command '
+            'that the distroless runtime cannot execute',
       );
-      final parsed = audit_anchor_main.parseArgs(scriptArgs.skip(2).toList());
-      expect(parsed.mode, audit_anchor_main.AuditAnchorMode.sweep);
-      expect(parsed.operatorIds, isEmpty);
     });
 
     test('preflight printout uses \$JobName for the Cloud Run :run '
@@ -1697,15 +1677,15 @@ void main() {
       // bindings and references it from the URI. Pin the corrected
       // shape directly so a future edit cannot silently regress.
       final urlPattern = RegExp(
-        r"--uri\s+https://\{3\}-run\.googleapis\.com"
-        r"/apis/run\.googleapis\.com/v1/namespaces/\{2\}/jobs/\{6\}:run",
+        r"--uri\s+https://\{6\}-run\.googleapis\.com"
+        r"/apis/run\.googleapis\.com/v1/namespaces/\{2\}/jobs/\{7\}:run",
       );
       expect(
         urlPattern.hasMatch(body),
         isTrue,
         reason:
-            'preflight URI must use {6} (\$JobName) for the '
-            ':run segment, not {1} (\$SchedulerName)',
+            'preflight URI must use {7} (\$JobName) for the '
+            ':run segment and {6} (\$Region) for the Cloud Run region',
       );
       // Defense in depth: the buggy `/jobs/{1}:run` shape MUST NOT
       // appear anywhere in the script.
@@ -1714,11 +1694,11 @@ void main() {
         isNot(contains(r'jobs/{1}:run')),
         reason: r'jobs/{1}:run was the bug — {1} is $SchedulerName',
       );
-      // Also confirm `$JobName` actually appears in the format
-      // bindings list of the offending Write-Host (the `-f` tail).
-      // The bindings line is exactly one line; we read it back and
-      // assert $JobName precedes $ServiceAccount (matches the
-      // {6}/{7} ordering above).
+      // Also confirm `$Region` and `$JobName` actually appear in the
+      // format bindings list of the offending Write-Host (the `-f`
+      // tail). The bindings line is exactly one line; we read it back
+      // and assert the `{6}=Region`, `{7}=JobName`,
+      // `{8}=ServiceAccount` ordering.
       final preflightSchedulerLine = body
           .split('\n')
           .firstWhere(
@@ -1732,11 +1712,11 @@ void main() {
       );
       expect(
         preflightSchedulerLine,
-        contains(r'$JobName, $ServiceAccount'),
+        contains(r'$Region, $JobName, $ServiceAccount'),
         reason:
-            r'format bindings must list $JobName before '
-            r'$ServiceAccount so the URI {6}=JobName, '
-            r'{7}=ServiceAccount mapping holds',
+            r'format bindings must list $Region, $JobName before '
+            r'$ServiceAccount so the URI {6}=Region, {7}=JobName, '
+            r'{8}=ServiceAccount mapping holds',
       );
     });
 
@@ -1784,13 +1764,9 @@ String _readSqlNormalized(String path) {
   return File(path).readAsStringSync().replaceAll('\r\n', '\n');
 }
 
-/// Reads the Cloud Run Job YAML and returns the concatenation of the
-/// container's `command:` block and its `args:` block as a flat list
-/// (e.g. `['dart', 'run', 'tool/audit_anchor/main.dart', 'sweep']`).
-/// The deployed shell command is the first element followed by the
-/// remainder. Tests use this to feed the deployed args back through
-/// `audit_anchor`'s own `parseArgs` so a regression in the YAML
-/// command shape is caught at test time.
+/// Reads the Cloud Run Job YAML and returns any explicit `command:` /
+/// `args:` override as a flat list. The current contract expects this to
+/// be empty because the Dockerfile owns ENTRYPOINT + CMD.
 List<String> _extractYamlCommandArgs(String yaml) {
   final lines = yaml.replaceAll('\r\n', '\n').split('\n');
   final command = <String>[];
@@ -1828,29 +1804,6 @@ List<String> _collectYamlListItems(List<String> lines, int startIndex) {
     items.add(dashMatch.group(1)!);
   }
   return items;
-}
-
-/// Reads the deploy script and extracts every `--args 'a,b,c'` literal
-/// used for the preflight echo and apply path. All occurrences must
-/// match so the test cannot pass by validating only the dry-run text
-/// while the real `gcloud run jobs deploy/update` command regresses.
-/// Returns the comma-split list (e.g. `['run',
-/// 'tool/audit_anchor/main.dart', 'sweep']`). Tests feed this through
-/// `audit_anchor`'s parser so a regression to `anchor` (which requires
-/// --operator-id) fails fast.
-List<String> _extractScriptCliArgs(String script) {
-  final pattern = RegExp(r"--args\s+'([^']+)'");
-  final matches = pattern.allMatches(script).toList(growable: false);
-  if (matches.isEmpty) {
-    throw StateError('deploy script does not contain a --args literal');
-  }
-  final literals = <String>{for (final match in matches) match.group(1)!};
-  if (literals.length != 1) {
-    throw StateError(
-      'deploy script contains mismatched --args literals: $literals',
-    );
-  }
-  return literals.single.split(',');
 }
 
 AuditLogRow _buildRow({

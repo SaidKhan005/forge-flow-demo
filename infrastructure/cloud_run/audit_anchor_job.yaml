@@ -28,13 +28,14 @@
 #     `chain_date < as-of-utc` are eligible. Timezone is pinned
 #     to `Etc/UTC` to remove DST surprise.
 #
-# Apply order:
+# Apply order for by-hand use:
 #   1. Cloud Run Job manifest (this file's first document).
 #   2. Cloud Scheduler trigger (this file's second document).
 #
-# A deploy operator should NEVER commit a copy of this file with
-# placeholder substitution applied; the deploy script produces a
-# rendered copy in a temp directory and feeds it to `gcloud`.
+# The current deploy helper does not render this YAML; it calls
+# `gcloud run jobs deploy/update` and `gcloud scheduler jobs
+# create/update` directly. Keep this file as the name-only manual
+# contract and never commit a placeholder-substituted copy.
 ---
 apiVersion: run.googleapis.com/v1
 kind: Job
@@ -67,19 +68,10 @@ spec:
           containers:
             - name: audit-anchor
               image: __IMAGE__
-              command:
-                - dart
-              # The daily firing uses `sweep`, not `anchor`. The sweep
-              # mode resolves the operator-id list from
-              # `public.operators` via `runAsSystem` (audit reason
-              # `audit_anchor.sweep`) and dispatches the existing
-              # per-operator anchor logic for each. The `anchor` mode
-              # remains the documented manual-rerun form (caller
-              # passes `--operator-id` repeatedly).
-              args:
-                - run
-                - tool/audit_anchor/main.dart
-                - sweep
+              # The image's Dockerfile sets
+              # ENTRYPOINT ["/app/audit_anchor"] and CMD ["sweep"].
+              # Do not override command/args here; the runtime image
+              # is distroless-style and does not contain a Dart SDK.
               env:
                 # ─── Required (names only; values from Secret Manager) ───
                 - name: POSTGRES_URL

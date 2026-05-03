@@ -72,6 +72,19 @@ void main() {
       );
     });
 
+    test('supports optional VPC connector flags for first production deploys',
+        () {
+      expect(script, contains("[string] \$VpcConnector = ''"));
+      expect(script, contains("[string] \$VpcEgress = 'all-traffic'"));
+      expect(
+        script,
+        contains('BLOCKED: -VpcEgress is required when -VpcConnector is set.'),
+      );
+      expect(script, contains("'--vpc-connector', \$VpcConnector"));
+      expect(script, contains("'--vpc-egress', \$VpcEgress"));
+      expect(script, contains('VPC connector: \$VpcConnector (\$VpcEgress)'));
+    });
+
     test('requires FIREBASE_WEB_API_KEY for the Phase 9 route bindings', () {
       expect(script, contains("'FIREBASE_WEB_API_KEY'"));
       expect(
@@ -124,8 +137,9 @@ void main() {
       expect(script, contains('function Sync-SecretManagerSecret'));
       expect(script, contains('gcloud secrets versions add'));
       expect(script, contains('roles/secretmanager.secretAccessor'));
-      expect(script, contains('--set-secrets \$secretAssignments'));
-      expect(script, contains('--env-vars-file \$envVarsFile'));
+      expect(script, contains("'--set-secrets', \$secretAssignments"));
+      expect(script, contains("'--env-vars-file', \$envVarsFile"));
+      expect(script, contains(r'& $gcloud @deployArgs'));
       expect(script, contains("'PROXY_ENVIRONMENT' = \$ProxyEnvironment"));
       expect(script, contains("'ADMIN_CORS_ALLOWED_ORIGINS'"));
       expect(

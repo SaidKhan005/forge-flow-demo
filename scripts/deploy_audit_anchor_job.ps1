@@ -47,6 +47,10 @@
 param(
   [string] $Project = 'forge-flow-staging',
   [string] $Region = 'northamerica-northeast2',
+  # Cloud Scheduler is not available in northamerica-northeast2 today; keep
+  # the trigger in northamerica-northeast1 while the Cloud Run Job remains
+  # in $Region.
+  [string] $SchedulerLocation = 'northamerica-northeast1',
   [string] $JobName = 'forge-flow-audit-anchor',
   [string] $SchedulerName = 'forge-flow-audit-anchor-daily',
   [string] $ServiceAccount = 'forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com',
@@ -145,6 +149,7 @@ function Write-PreflightHeader {
   Write-Host '=== Preflight (no live mutation) ==='
   Write-Host "Project:         $Project"
   Write-Host "Region:          $Region"
+  Write-Host "Scheduler loc.:  $SchedulerLocation"
   Write-Host "Job name:        $JobName"
   Write-Host "Scheduler name:  $SchedulerName"
   Write-Host "Service account: $ServiceAccount"
@@ -178,9 +183,9 @@ if ($Preflight) {
     Write-Host (" {0} secrets describe {1} --project {2}" -f $gcloud, $entry.Value, $Project)
     Write-Host (" {0} secrets versions add {1} --project {2} --data-file <temp file from `$env:{3}> (value never printed)" -f $gcloud, $entry.Value, $Project, $entry.Key)
   }
-  Write-Host (" {0} run jobs deploy {1} --project {2} --region {3} --service-account {4} --image <image> --command dart --args 'run,tool/audit_anchor/main.dart,sweep' --set-secrets <name=secret:latest,...> --quiet" -f $gcloud, $JobName, $Project, $Region, $ServiceAccount)
-  Write-Host (" {0} scheduler jobs describe {1} --project {2} --location {3}" -f $gcloud, $SchedulerName, $Project, $Region)
-  Write-Host (" {0} scheduler jobs create http {1} --project {2} --location {3} --schedule '{4}' --time-zone '{5}' --uri https://{3}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{2}/jobs/{6}:run --http-method POST --oauth-service-account-email {7} --attempt-deadline 3600s" -f $gcloud, $SchedulerName, $Project, $Region, $ScheduleCron, $ScheduleTimeZone, $JobName, $ServiceAccount)
+  Write-Host (" {0} run jobs deploy {1} --project {2} --region {3} --service-account {4} --image <image> --set-secrets <name=secret:latest,...> --vpc-connector {5} --vpc-egress {6} --quiet" -f $gcloud, $JobName, $Project, $Region, $ServiceAccount, $VpcConnector, $VpcEgress)
+  Write-Host (" {0} scheduler jobs describe {1} --project {2} --location {3}" -f $gcloud, $SchedulerName, $Project, $SchedulerLocation)
+  Write-Host (" {0} scheduler jobs create http {1} --project {2} --location {3} --schedule '{4}' --time-zone '{5}' --uri https://{6}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/{2}/jobs/{7}:run --http-method POST --oauth-service-account-email {8} --attempt-deadline 3600s" -f $gcloud, $SchedulerName, $Project, $SchedulerLocation, $ScheduleCron, $ScheduleTimeZone, $Region, $JobName, $ServiceAccount)
   Write-Host ''
   Write-Host 'Preflight complete. Re-run without -Preflight to apply (after human approval).'
   exit 0
@@ -328,7 +333,7 @@ $ErrorActionPreference = 'Continue'
 try {
   & $gcloud scheduler jobs describe $SchedulerName `
     --project $Project `
-    --location $Region `
+    --location $SchedulerLocation `
     --quiet *> $null
   $schedulerDescribeExit = $LASTEXITCODE
 } finally {
@@ -338,7 +343,7 @@ try {
 if ($schedulerDescribeExit -eq 0) {
   & $gcloud scheduler jobs update http $SchedulerName `
     --project $Project `
-    --location $Region `
+    --location $SchedulerLocation `
     --schedule $ScheduleCron `
     --time-zone $ScheduleTimeZone `
     --uri $jobRunUri `
@@ -350,7 +355,7 @@ if ($schedulerDescribeExit -eq 0) {
 } else {
   & $gcloud scheduler jobs create http $SchedulerName `
     --project $Project `
-    --location $Region `
+    --location $SchedulerLocation `
     --schedule $ScheduleCron `
     --time-zone $ScheduleTimeZone `
     --uri $jobRunUri `

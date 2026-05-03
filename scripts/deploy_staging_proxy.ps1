@@ -9,7 +9,8 @@
 # Multi-environment posture (matches scripts/deploy_audit_anchor_job.ps1):
 #   * Defaults target staging. Override -Project / -Region / -Service /
 #     -ServiceAccount / -SecretPrefix / -ProxyBaseUriEnvVarName /
-#     -FirebaseGoogleServicesPath for production1 or any other environment.
+#     -FirebaseGoogleServicesPath / -VpcConnector for production1 or any
+#     other environment.
 #   * -SecretPrefix MUST end with '-'. Convention: 'forge-flow-<env>-'.
 #   * Secret name suffixes are stable; the prefix toggles per environment.
 #   * Each non-staging environment requires its own pre-provisioned
@@ -45,6 +46,12 @@ param(
   # that end in :* (for example http://127.0.0.1:*) because the proxy
   # matcher supports exact origins plus dev/staging port wildcards.
   [string] $AdminCorsAllowedOrigins = $env:ADMIN_CORS_ALLOWED_ORIGINS,
+  # Optional static-egress connector for Cloud Run. Required on first deploy
+  # for any environment that reaches Azure Postgres through the firewall
+  # allowlist. Leave empty only when the service already has the correct
+  # connector or the target environment deliberately has no Azure dependency.
+  [string] $VpcConnector = '',
+  [string] $VpcEgress = 'all-traffic',
   [int] $MinInstances = 1,
   [switch] $SkipApiEnable,
   [switch] $SkipSecretManagerSync
@@ -52,6 +59,13 @@ param(
 
 if (-not $SecretPrefix.EndsWith('-')) {
   Write-Host "BLOCKED: -SecretPrefix '$SecretPrefix' must end with '-'."
+  exit 1
+}
+if (
+  -not [string]::IsNullOrWhiteSpace($VpcConnector) -and
+  [string]::IsNullOrWhiteSpace($VpcEgress)
+) {
+  Write-Host 'BLOCKED: -VpcEgress is required when -VpcConnector is set.'
   exit 1
 }
 
@@ -264,21 +278,31 @@ $envVarsContent = (
     }
 ) -join "`n"
 
+$deployArgs = @(
+  'run', 'deploy', $Service,
+  '--project', $Project,
+  '--region', $Region,
+  '--source', '.',
+  '--service-account', $ServiceAccount,
+  '--allow-unauthenticated',
+  '--no-invoker-iam-check',
+  '--env-vars-file', $envVarsFile,
+  '--set-secrets', $secretAssignments,
+  '--min-instances', $MinInstances,
+  '--max-instances', '2'
+)
+if (-not [string]::IsNullOrWhiteSpace($VpcConnector)) {
+  $deployArgs += @(
+    '--vpc-connector', $VpcConnector,
+    '--vpc-egress', $VpcEgress
+  )
+}
+$deployArgs += '--quiet'
+
 Push-Location $repoRoot
 try {
   [System.IO.File]::WriteAllText($envVarsFile, $envVarsContent)
-  & $gcloud run deploy $Service `
-    --project $Project `
-    --region $Region `
-    --source . `
-    --service-account $ServiceAccount `
-    --allow-unauthenticated `
-    --no-invoker-iam-check `
-    --env-vars-file $envVarsFile `
-    --set-secrets $secretAssignments `
-    --min-instances $MinInstances `
-    --max-instances 2 `
-    --quiet
+  & $gcloud @deployArgs
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 } finally {
   if (Test-Path -LiteralPath $envVarsFile) {
@@ -321,3 +345,6 @@ Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
 Write-Host ' - POSTGRES_URL'
 Write-Host ' - POSTGRES_ADMIN_URL'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'
+if (-not [string]::IsNullOrWhiteSpace($VpcConnector)) {
+  Write-Host " - VPC connector: $VpcConnector ($VpcEgress)"
+}
