@@ -215,7 +215,9 @@ Next candidates by readiness:
 
 1. **Production1 Debug Console grant follow-up** — apply
    `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-   after the usual live-mutation gate; staging applied/verified.
+   after the usual live-mutation gate and explicit "begin execution"
+   approval; staging is already applied/verified, and Production1 is not
+   Debug Console request-log ready until the grant is directly verified.
 2. **Production1 GCP/Firebase/proxy/DNS setup** — paused; substantial
    unblock list (see Now).
 3. **B43 Production1 anchor deploy** — needs production runtime APIs +

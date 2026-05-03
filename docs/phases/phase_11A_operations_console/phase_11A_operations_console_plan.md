@@ -59,6 +59,10 @@ after staging proved `forge_admin` lacked explicit `SELECT` on
 `proxy_requests` for read-only request-log inspection. The grant is applied
 and verified on staging; it remains the only pending Production1 migration
 before Debug Console request-log inspection can be called production-ready.
+Until that Production1 apply and direct grant verification land, `11A.5`
+request-log inspection remains staging-ready only; the admin UI/runtime work
+is accepted, but the production database privilege is deliberately not marked
+ready.
 
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by

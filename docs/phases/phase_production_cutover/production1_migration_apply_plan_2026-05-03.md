@@ -1,7 +1,9 @@
 # Production1 Migration Apply Plan
 
 Updated: 2026-05-03
-Status: Completed for cutoff `202605021900`; production runtime setup remains paused
+Status: Completed for cutoff `202605021900`; next one-file follow-up prepared
+but blocked on explicit operator approval. Production runtime setup remains
+paused.
 Owner: F&F launch lane
 
 This plan records the next operational Production1 database step before full
@@ -16,6 +18,12 @@ Production1 migration apply was the next operational step and completed on
 `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` through
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`, using
 `runbooks/phase_9_production1_migration_apply_runbook.md`.
+
+The current post-cutoff staging addition is
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+It is applied and Browser Use verified on staging only. It is the prepared
+next Production1 migration batch unless later staging migrations supersede the
+batch inventory.
 
 This happens before full production buildout:
 
@@ -37,12 +45,42 @@ change, provider call, or traffic switch.
 ## Future Batches
 
 Anything after
-`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` is not
-part of this batch. New migrations from ongoing staging lanes must update drift
-docs and wait for a later Production1 apply event.
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` was not
+part of the completed 27-file batch. The current next batch contains only
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+New migrations from ongoing staging lanes must update drift docs and join the
+next Production1 apply inventory until that inventory is applied.
 
 After real operator/customer data lands, production migrations must follow the
 locked online-migration discipline. The transition point is `cutover.4`.
+
+## Next One-Shot Apply Plan
+
+Blocked until the operator explicitly says "begin execution".
+
+1. Reconfirm branch, commit SHA, and that `db/migrations/` has no newer file
+   than `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+2. Confirm staging parity: the same migration is applied and Debug Console
+   request-log inspection is Browser Use verified on staging.
+3. Confirm fresh Production1 backup/restore point and target by name only:
+   `forge-flow-production1-pg-cmk`, database `forgeflow`.
+4. Run repo gates before apply:
+   - `dart run tool/migration_drift_scanner.dart --fix --strict-docs`
+   - `dart run tool/migration_cutoff_lint.dart`
+   - `dart analyze`
+   - focused migration/proxy/admin tests for the Debug Console request-log path
+   - `dart run tool/rls_policy_lint.dart`
+5. Apply the one migration to Production1 using the runbook's no-secrets
+   handling.
+6. Verify directly that `forge_admin` has `SELECT` on
+   `public.proxy_requests`, and keep tenant/RLS smokes truthful where fixtures
+   exist.
+7. Update apply history, tracker, phase docs, migration summary, and this plan.
+
+This apply does not create Firebase apps, enable runtime APIs, deploy Cloud
+Run, create secrets, change DNS/static egress/firewall, call providers, load
+corpus data, or mark the Debug Console production-ready before Production1
+verification passes.
 
 ## Execution Result
 
@@ -71,14 +109,16 @@ Before any apply:
 - Review `runbooks/phase_9_production1_migration_apply_runbook.md` in-session.
 - Confirm the exact target by name only:
   `forge-flow-production1-pg-cmk`, database `forgeflow`.
-- Confirm operator approval for this apply.
+- Confirm operator approval for this apply; while production setup is paused,
+  do not run it unless the operator explicitly says "begin execution".
 - Confirm a fresh Azure backup/restore point is available.
 - Confirm staging has already applied the same file set successfully.
 - Run local gates:
+  - `dart run tool/migration_drift_scanner.dart --fix --strict-docs`
+  - `dart run tool/migration_cutoff_lint.dart`
   - `flutter analyze --fatal-infos`
   - focused migration/auth/proxy tests
   - `dart run tool/rls_policy_lint.dart`
-  - `dart run tool/migration_cutoff_lint.dart`
 - Confirm no secret values will be pasted into chat or docs.
 
 Stop with `BLOCKED` if any item is missing.
@@ -89,6 +129,10 @@ Apply in the exact order listed in the runbook. The cutoff file is:
 
 `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
+Current pending follow-up order:
+
+1. `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+
 Out of scope:
 
 - Cloud Armor enforcement.
@@ -98,7 +142,7 @@ Out of scope:
 - Provider calls.
 - Operator/customer data import.
 - Corpus load.
-- Any migration after the cutoff file.
+- Any migration later than the selected follow-up inventory.
 
 ## Verification
 
