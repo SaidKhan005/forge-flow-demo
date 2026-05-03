@@ -298,7 +298,7 @@ Helpful but not required:
 
 ## Source Material
 
-- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
+- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md) (substrate accepted; archive reference)
 - [phase_11A_operations_console_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md)
 - [Graphify v5 repository](https://github.com/safishamsi/graphify/tree/v5)
 - [project_rag_vision.md](C:/Users/saidu/.claude/projects/C--Git-Local-Repos-forge-flow-demo/memory/project_rag_vision.md)

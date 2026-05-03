@@ -124,9 +124,10 @@ flags, and audit logs from any browser without on-premise tooling.
   can replace the Flutter Web client without backend changes.
 
 Hosting: separate Cloud Run service from the proxy backend, at
-`admin.forgeflow.app` (or similar). Shares the Azure DB Flexible
-Server (Postgres) instance with the proxy backend. ~$0-15/month at
-idle (Cloud Run admin service); Azure DB cost shared with the proxy.
+`admin.forgeflow.app` (or similar). The current admin service serves
+static Flutter Web assets and calls the advisor proxy from the browser;
+it does not open a server-side Azure connection. Azure DB cost is shared
+with the proxy. ~$0-15/month at idle (Cloud Run admin service).
 
 ## Goal
 
@@ -526,10 +527,28 @@ optional `-VpcConnector` parameter. They are not optional in
 practice; omitting them produces a 30-minute connectivity
 debugging detour that ends with the operator adding them anyway.
 
+Current correction: `scripts/deploy_admin_console.ps1` intentionally omits
+these flags because it only serves static web assets; all admin data access
+goes through the browser to the proxy URL compiled into
+`ADMIN_PROXY_BASE_URI`. If a future admin service adds server-side calls to
+Azure-hosted resources, its deploy script must add the same static-egress
+flags before that release.
+
 This same prerequisite applies to a future production GCP project:
 that project will need its own VPC connector + NAT + reserved IP +
 matching Azure firewall rule before any Cloud Run service in it
 can talk to production Azure.
+
+## Production Firebase Gap
+
+The repo currently carries only staging Firebase client configuration:
+`.firebaserc` has `default`/`staging` aliases for `forge-flow-staging`;
+`web/firebase-config.js`, both Android `google-services.json` files, both
+iOS `GoogleService-Info-*.plist` files, and `lib/main_admin.dart` point at
+`forge-flow-staging`. Production setup must create a separate Firebase/GCP
+project and add production client config/flavors before any production admin
+console or operator app build is considered live. Until that lands, the
+current admin console can be used for staging only.
 
 ## Non-Negotiables
 
@@ -569,6 +588,6 @@ can talk to production Azure.
 - [Graphify v5 repository](https://github.com/safishamsi/graphify/tree/v5)
 - [Graphify architecture](https://raw.githubusercontent.com/safishamsi/graphify/v5/ARCHITECTURE.md)
 - [Graphify MIT license](https://raw.githubusercontent.com/safishamsi/graphify/v5/LICENSE)
-- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
+- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md) (substrate accepted; archive reference)
 - [Architecture_Guide.pdf](C:/Git%20Local%20Repos/forge_flow_demo/Architecture_Guide.pdf)
 - [lib/theme/app_theme.dart](C:/Git%20Local%20Repos/forge_flow_demo/lib/theme/app_theme.dart)

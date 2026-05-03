@@ -417,8 +417,7 @@ computed answers serve 70-80% of recurring questions at $0 (lever 4).
 
 - `docs/phases/phase_11a/phase_11a_decision_register.md` — architecture lock,
   cost levers, pricing tier model
-- `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md` — 11a.11c-e
-  prerequisites for AGE + extension allowlist
+- `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md` (substrate accepted) — 11a.11c-e prerequisites for AGE + extension allowlist
 - `docs/phases/phase_8_5_external_integrations/phase_8_5_external_integrations_plan.md`
   — integration lane Phase 12 consumes
 - Anthropic Message Batches API documentation

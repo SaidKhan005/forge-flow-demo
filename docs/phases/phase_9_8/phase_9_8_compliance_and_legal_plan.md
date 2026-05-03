@@ -197,7 +197,7 @@ Helpful adjacent inputs:
 - [phase_8_live_pos_labor_adapter_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md)
 - [phase_8R_official_reservation_connector_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_8R/phase_8R_official_reservation_connector_plan.md)
 - [phase_10a_shared_state_v1_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md)
-- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md)
+- [phase_11a_advisor_infrastructure_plan.md](C:/Git%20Local%20Repos/forge_flow_demo/docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md) (substrate accepted; archive reference)
 - [ForgeFlow Project Cost.xlsx](C:/Git%20Local%20Repos/forge_flow_demo/docs/business/ForgeFlow%20Project%20Cost.xlsx)
 
 ## Placeholder Notes

@@ -79,7 +79,7 @@ Important current files:
 
 - `tool/advisor_proxy/advisor_proxy.dart`
 - `tool/advisor_proxy/main.dart`
-- `docs/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`
+- `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md` (substrate accepted)
 - `docs/phases/phase_11b/phase_11b_advisor_ux_plan.md`
 - `db/migrations/202604250001_advisor_corpus_storage_schema.sql`
 - `db/migrations/202604250003_advisor_vector_search.sql`

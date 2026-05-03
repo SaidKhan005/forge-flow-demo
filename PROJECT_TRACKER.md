@@ -24,13 +24,19 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   Durable future-slice rules live in
   `docs/contracts/slice_runtime_acceptance_contract.md`. Authenticated
   screen/action timing still needs explicit credential-send approval.
-- **Recent accepted batches**: PRs #41-66 closed HARD-A-H, 7.58/7.61,
-  10a.0, 10.5.0/1/2, 11A foundation/B44, admin MFA/staging stabilization,
-  and postgres/MFA test parcels. Details live in phase docs, walkthroughs, and
+- **Recent accepted batches**: PRs #41-66 closed HARD-A-H, 7.58/7.61.0,
+  10a.0, 10.5.0/1, 11A foundation/B44, admin MFA/staging stabilization,
+  and postgres/MFA test parcels. PRs #70-73 (2026-05-03) closed 7.61.1
+  (driver-key F-1), 11A.5 Debug Console, 11A.6 Observability, and 10.5.2
+  per-period read service. Details live in phase docs, walkthroughs, and
   `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
   Postgres on CMK (`forge-flow-production1-pg-cmk`); post-baseline migration
   apply remains the top operational gate.
+- **Production cloud setup lane active**: Production1 still needs a visible
+  GCP/Firebase project, production Firebase client config/flavors, production
+  proxy static egress + DNS, and production Secret Manager namespace before
+  traffic cutover. Repo client config is staging-only today.
 - **Cloud Armor**: preview-only at sensitivity 2; awaits ≥3 clean post-tuning
   days + approval before enforcement.
 - **iOS physical device matrix**: deferred until Apple device/signing lane
@@ -56,7 +62,7 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 
 | Slice prefix | Read |
 | --- | --- |
-| `11a.*` | `phase_11a/phase_11a_advisor_infrastructure_plan.md` (+ decision register if architecture/cost question) |
+| `11a.*` | substrate accepted (no new slices expected); historical plan at `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`; live decision register at `phase_11a/phase_11a_decision_register.md` for architecture/cost/security rationale |
 | `11A.*` | `phase_11A_operations_console/phase_11A_operations_console_plan.md` |
 | `cutover.*` | `phase_production_cutover/phase_production_cutover_plan.md` (+ scalability decisions for 0a; perf audit for 0b) |
 | `9.0Σ.*`, `9.live-closeout`, `9.0-9.10` | `phase_9/phase_9_auth_plan.md` + `phase_9_execution_backlog.md` (+ scalability decisions doc for `0Σ`) |
@@ -74,21 +80,33 @@ Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run
 in parallel. File ownership, walkthrough, merge sequencing:
 `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
 
-Sprints PRs #50-66 closed (incl. `7.58.UX.5`, `10.5.0`, `10.5.1`,
-`7.61.0`/`.1`, `10a.0`, B44 graph producers, postgres repo + MFA adapter test
-parcels, admin MFA challenge parity, staging admin stabilization, and the
-runbook companion). Phase 7.58 is zero-DRIFT. Next candidates by readiness:
+Sprints PRs #50-66 closed `7.58.UX.5`, `10.5.0`, `10.5.1`, `7.61.0`,
+`10a.0`, B44 graph producers, postgres repo + MFA adapter test parcels,
+admin MFA challenge parity, staging admin stabilization, and the runbook
+companion. PRs #70-73 (2026-05-03) closed `7.61.1` (driver-key F-1
+HistoryTeachingAnalyzer cleanup), `11A.5` Debug Console (per-operator
+request log viewer), `11A.6` Observability dashboard (cost telemetry +
+dormancy + cap events + graph + Cloud Run), and `10.5.2` per-period read
+service + Shift cards + Variance lens. Phase 7.58 is zero-DRIFT. Next
+candidates by readiness:
 
 1. **Production1 migration apply event** — 27 migrations queued
    (`202604280014`–`202605021900`); runbook now refreshed.
    Operator-driven; no code change needed.
+2. **Production1 GCP/Firebase/proxy/DNS setup** — needs production project
+   visibility, Firebase workspace/apps, static egress, DNS, and secrets.
 2. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
-3. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
-4. **`10.5` follow-on slices** — `10.5.2` per-period read service + Shift
-   cards + Variance lens accepted; primary-driver teaching (`10.5.3+`) next
-   per phase doc.
-5. **`7.61` pre-Phase-8 cleanup** - driver-key audit; `.1` accepted,
-   `.2`/`.3` queued, `.4` deferred; gated before Phase 8.
+3. **`10a` follow-on UX surfaces** — `10a.0` scaffold accepted; `10a.UX.0`
+   sync-state badge and `10a.UX.1` peer-edit toast + Settings freshness rows
+   queued; Pub/Sub adapter + dead-letter + retention sweep + tripwires also
+   queued.
+4. **`10.5.3+` daypart-live primary-driver teaching** — `10.5.0`/`.1`/`.2`
+   accepted; `.3+` next per phase doc; coordinates with `7.61.2` empty-state
+   default fix.
+5. **`7.61` pre-Phase-8 cleanup** — driver-key audit; `.1` accepted, `.2`
+   (F-2 empty-state default in `history_teaching_analyzer.dart`) and `.3`
+   (F-3 dev-fixture cleanup in `demo_fixture_data.dart`) queued; `.4`
+   deferred; gated before Phase 8.
 
 **Then queued (rough order):** `9.5`, `9.75`, `8`/`8R`/`8.5`,
 `11b`/`11b.1`/`11b.2`, `12.*`, `9.8`, `cutover.0b`–`0-5`.
