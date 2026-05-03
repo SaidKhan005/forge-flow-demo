@@ -203,6 +203,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _mockReplayDate;
   int _manualRefreshGeneration = 0;
   bool _manualRefreshing = false;
+  bool _routeSawAuthenticatedSession = false;
+  bool _authDismissScheduled = false;
 
   @override
   void initState() {
@@ -274,6 +276,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget build(BuildContext context) {
     final restaurant = context.watch<RestaurantScopeNotifier?>()?.restaurant;
     final authNotifier = context.watch<AuthSessionNotifier?>();
+    if (_dismissRouteAfterSignOut(authNotifier)) {
+      return const SizedBox.shrink();
+    }
     final session = authNotifier?.session;
     final showAccount = session != null;
     final showAdvisorModels =
@@ -633,6 +638,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             : null,
       ),
     );
+  }
+
+  bool _dismissRouteAfterSignOut(AuthSessionNotifier? authNotifier) {
+    final state = authNotifier?.state;
+    if (state is AuthSessionAuthenticated) {
+      _routeSawAuthenticatedSession = true;
+      _authDismissScheduled = false;
+      return false;
+    }
+    if (!_routeSawAuthenticatedSession ||
+        state is! AuthSessionUnauthenticated ||
+        _authDismissScheduled) {
+      return _authDismissScheduled;
+    }
+    _authDismissScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final navigator = Navigator.of(context);
+      if (navigator.canPop()) {
+        navigator.pop();
+      }
+    });
+    return true;
   }
 }
 

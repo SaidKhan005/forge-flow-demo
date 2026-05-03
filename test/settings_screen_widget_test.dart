@@ -21,6 +21,8 @@ import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sq
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/repositories/sqlite_wage_role_row_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/sqlite/sqlite_database.dart';
 import 'package:forge_and_flow/models/app_data_status.dart';
+import 'package:forge_and_flow/screens/auth/auth_gate.dart';
+import 'package:forge_and_flow/screens/auth/login_screen.dart';
 import 'package:forge_and_flow/screens/settings/settings_custom_roles_section.dart';
 import 'package:forge_and_flow/screens/settings/settings_org_hierarchy_section.dart';
 import 'package:forge_and_flow/screens/settings_screen.dart';
@@ -917,7 +919,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('sign out everywhere shows the captain progress message', (
+    testWidgets('sign out everywhere dismisses Settings during revoke', (
       tester,
     ) async {
       final loginService = _CompletingAuthLoginService();
@@ -931,13 +933,33 @@ void main() {
         ChangeNotifierProvider<AuthSessionNotifier>.value(
           value: notifier,
           child: MaterialApp(
-            home: SettingsScreen(
-              initialStatus: AppDataStatus.current(),
-              initialMockDate: '2026-03-27',
+            home: AuthGate(
+              authenticatedChild: Builder(
+                builder: (context) => Scaffold(
+                  body: Center(
+                    child: TextButton(
+                      key: const Key('open_settings_route'),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SettingsScreen(
+                              initialStatus: AppDataStatus.current(),
+                              initialMockDate: '2026-03-27',
+                            ),
+                          ),
+                        );
+                      },
+                      child: const Text('Open settings'),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
       );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('open_settings_route')));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('settings_tab_account')));
       await tester.pumpAndSettle();
@@ -958,13 +980,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(TextButton, 'Sign out'));
-      await tester.pump();
+      await tester.pumpAndSettle();
 
-      expect(find.text('Signing you out of all devices.'), findsOneWidget);
-      expect(
-        find.byKey(const Key('account_sign_out_everywhere_progress')),
-        findsOneWidget,
-      );
+      expect(notifier.state, isA<AuthSessionUnauthenticated>());
+      expect(find.byType(SettingsScreen), findsNothing);
+      expect(find.byType(LoginScreen), findsOneWidget);
 
       loginService.completeSignOutAll();
       await tester.pumpAndSettle();

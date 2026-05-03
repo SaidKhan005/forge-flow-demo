@@ -730,7 +730,7 @@ String _activeSessionsLoadMessage(Object error) {
     return 'Active sessions are unavailable in this build.';
   }
   if (text.contains('transport_error') || text.contains('status: null')) {
-    return 'Could not reach the service. Check your connection and retry.';
+    return 'Could not reach the proxy. Check connection and retry.';
   }
   return "We couldn't load your active sessions. Please try again.";
 }

@@ -635,6 +635,29 @@ void main() {
       expect(ledger.revokeAllStarted, isTrue);
       ledger.complete();
     });
+
+    test(
+      'signOutAllSessions clears app auth state before auth revoke finishes',
+      () async {
+        final service = _BlockingSignOutAllAuthLoginService(
+          signInResult: AuthLoginSuccess(buildSession()),
+        );
+        final notifier = buildNotifier(
+          service: service,
+          storage: InMemorySecureSessionStorage(),
+        );
+        await notifier.signInWithEmailPassword(email: 'a@b.c', password: 'pw');
+
+        final signOut = notifier.signOutAllSessions();
+
+        expect(notifier.state, isA<AuthSessionUnauthenticated>());
+        await Future<void>.delayed(Duration.zero);
+        expect(service.signOutAllStarted, isTrue);
+
+        service.completeSignOutAll();
+        await signOut;
+      },
+    );
   });
 
   group('AuthGate widget', () {
@@ -1023,6 +1046,26 @@ class _OrderingAuthLoginService extends _FakeAuthLoginService {
   Future<void> signOutAllSessions() async {
     order.add('auth.signOutAllSessions');
     await super.signOutAllSessions();
+  }
+}
+
+class _BlockingSignOutAllAuthLoginService extends _FakeAuthLoginService {
+  _BlockingSignOutAllAuthLoginService({super.signInResult});
+
+  final Completer<void> _signOutAllCompleter = Completer<void>();
+  bool signOutAllStarted = false;
+
+  void completeSignOutAll() {
+    if (!_signOutAllCompleter.isCompleted) {
+      _signOutAllCompleter.complete();
+    }
+  }
+
+  @override
+  Future<void> signOutAllSessions() async {
+    signOutAllSessionsCalls += 1;
+    signOutAllStarted = true;
+    await _signOutAllCompleter.future;
   }
 }
 
