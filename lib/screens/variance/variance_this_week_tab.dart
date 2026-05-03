@@ -374,6 +374,7 @@ class _DaypartVarianceLens extends StatelessWidget {
             _DaypartVarianceCard(
               definition: def,
               bucket: buckets?[def.id],
+              primaryLeverCard: notifier?.primaryLeverCardFor(def.id),
             ),
             const SizedBox(height: 8),
           ],
@@ -386,9 +387,11 @@ class _DaypartVarianceLens extends StatelessWidget {
 class _DaypartVarianceCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final ServicePeriodAccumulator? bucket;
+  final LeverCardData? primaryLeverCard;
   const _DaypartVarianceCard({
     required this.definition,
     required this.bucket,
+    this.primaryLeverCard,
   });
 
   @override
@@ -443,14 +446,60 @@ class _DaypartVarianceCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          if (hasData)
-            _DaypartVarianceMetrics(bucket: bucket!)
-          else
+          if (hasData) ...[
+            _DaypartVarianceMetrics(bucket: bucket!),
+            const SizedBox(height: 10),
+            // Phase 10.5.3 — per-period primary driver chip. Shares
+            // the Shift daypart chip semantics: null surfaces as
+            // "No pattern yet" instead of falling through to a real
+            // lever (`LeverCards.coversDown` overclaim banned at the
+            // daypart scope per 7.58 F-1 / F-6).
+            _DaypartVarianceDriverChip(card: primaryLeverCard),
+          ] else
             Text(
               'No data yet for this period.',
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Phase 10.5.3 — per-period primary driver chip on the Variance
+/// daypart lens. Mirrors the chip on the Shift daypart card.
+class _DaypartVarianceDriverChip extends StatelessWidget {
+  final LeverCardData? card;
+  const _DaypartVarianceDriverChip({required this.card});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = card;
+    final hasDriver = c != null;
+    // Color = favorability; arrow = raw metric direction from id
+    // suffix (mirrors `_DaypartDriverChip` on Shift). The two are
+    // independent: `foh_wage_down` is favorable (green) but its
+    // metric arrow is ↓ because the metric moved down.
+    final accent = hasDriver
+        ? (c.isFavorable ? AppColors.positive : AppColors.negative)
+        : AppColors.textMuted;
+    final arrow = hasDriver
+        ? (LeverCards.metricDirectionGlyph(c.id) ?? '')
+        : '';
+    final label = hasDriver
+        ? 'PRIMARY DRIVER · ${c.shortLabel} $arrow'
+        : 'PRIMARY DRIVER · NO PATTERN YET';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.10),
+        border: Border.all(color: accent.withValues(alpha: 0.55), width: 1),
+        borderRadius: BorderRadius.circular(2),
+      ),
+      child: Text(
+        label,
+        style: AppTextStyles.mono10(color: accent)
+            .copyWith(fontWeight: FontWeight.w700),
       ),
     );
   }
