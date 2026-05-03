@@ -47,8 +47,10 @@ import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/team/team_settings_section.dart';
 import 'screens/variance_report.dart';
+import 'services/realtime/realtime_subscription.dart';
 import 'state/boundary_monitor_supervisor.dart';
 import 'theme/app_theme.dart';
+import 'widgets/sync_state_badge.dart';
 
 /// Shared Forge & Flow runtime that can run standalone or inside Barrio.
 class ForgeFlowApp extends StatelessWidget {
@@ -215,6 +217,19 @@ class AppShell extends StatefulWidget {
   @visibleForTesting
   final bool testDisableDefaultBoundaryEventOutbox;
 
+  /// Phase 10a.UX.0 — bridge connection-state stream that feeds the
+  /// app-bar [SyncStateBadge]. Production wires
+  /// `RealtimeSubscription.connectionState` here once the subscription
+  /// is mounted; until then (and in widget tests that don't exercise
+  /// the badge) leaving this `null` keeps the badge hidden.
+  final Stream<RealtimeConnectionState>? realtimeConnectionState;
+
+  /// Phase 10a.UX.0 — initial connection state used by the badge's
+  /// [StreamBuilder] until the stream emits its first value. Defaults
+  /// to [RealtimeConnectionState.idle] so the badge stays hidden on
+  /// first frame.
+  final RealtimeConnectionState realtimeInitialConnectionState;
+
   const AppShell({
     super.key,
     this.embeddedInBarrio = false,
@@ -226,6 +241,8 @@ class AppShell extends StatefulWidget {
     this.testBusinessDateResolver,
     this.testBoundaryEventOutbox,
     this.testDisableDefaultBoundaryEventOutbox = false,
+    this.realtimeConnectionState,
+    this.realtimeInitialConnectionState = RealtimeConnectionState.idle,
   });
 
   @override
@@ -372,6 +389,24 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
     // Replay any rollover events the previous foreground session
     // persisted but did not mark delivered (e.g. crash mid-fire).
     unawaited(_boundarySupervisor!.drainBacklog());
+  }
+
+  /// Resolves the bootstrap-provided realtime subscription so the
+  /// app-bar [SyncStateBadge] can read its connection-state stream.
+  /// Returns `null` when the provider is not in the tree (existing
+  /// widget tests, demo paths) so the badge stays hidden.
+  ///
+  /// The auth-to-realtime bridge that drives `setTenantContext` /
+  /// `clearTenantContext` lives ABOVE this shell at bootstrap level
+  /// ([RealtimeAuthBridge]) so popping the embedded F&F destination
+  /// inside Barrio cannot leave a stale operator channel alive
+  /// across a later sign-out.
+  RealtimeSubscription? _resolveRealtimeSubscription() {
+    try {
+      return Provider.of<RealtimeSubscription?>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
   }
 
   /// Mirrors the active locations from [RestaurantScopeNotifier] into
@@ -1408,6 +1443,10 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
         onPressed: () => Navigator.of(context).maybePop(),
       ),
       actions: [
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 4),
+          child: Center(child: SyncStateBadge()),
+        ),
         IconButton(
           icon: const Icon(
             Icons.notifications_none_outlined,
@@ -1455,6 +1494,7 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
             padding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
             child: Row(
               children: [
+                const SyncStateBadge(),
                 const Spacer(),
                 _AppShellIconButton(
                   icon: Icons.notifications_none_outlined,
@@ -1474,22 +1514,39 @@ class _AppShellState extends State<AppShell> with WidgetsBindingObserver {
       ),
     );
 
-    return Scaffold(
-      backgroundColor: AppColors.backgroundDeep,
-      appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
-      body: SafeArea(
-        top: !widget.embeddedInBarrio,
-        child: IndexedStack(
-          index: _selectedIndex,
-          children: List<Widget>.generate(
-            4,
-            (index) => _buildTab(index, revision),
+    // Phase 10a.UX.0 — prefer the bootstrap-provided
+    // [RealtimeSubscription] when wired (production main entry +
+    // proxy URI). Fall back to the test-injected stream so widget
+    // tests stay scriptable. The subscription emits its current
+    // state synchronously via [currentConnectionState], so seed the
+    // [StreamBuilder] with that to avoid a brief idle/hidden flash
+    // on shell mount.
+    final bootstrapSubscription = _resolveRealtimeSubscription();
+    final Stream<RealtimeConnectionState>? connectionStream =
+        bootstrapSubscription?.connectionState ?? widget.realtimeConnectionState;
+    final RealtimeConnectionState initialState = bootstrapSubscription != null
+        ? bootstrapSubscription.currentConnectionState
+        : widget.realtimeInitialConnectionState;
+    return RealtimeConnectionScope(
+      connectionStateStream: connectionStream,
+      initialState: initialState,
+      child: Scaffold(
+        backgroundColor: AppColors.backgroundDeep,
+        appBar: widget.embeddedInBarrio ? embeddedAppBar : standaloneAppBar,
+        body: SafeArea(
+          top: !widget.embeddedInBarrio,
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: List<Widget>.generate(
+              4,
+              (index) => _buildTab(index, revision),
+            ),
           ),
         ),
-      ),
-      bottomNavigationBar: _AppBottomNav(
-        selectedIndex: _selectedIndex,
-        onTap: _navigateTo,
+        bottomNavigationBar: _AppBottomNav(
+          selectedIndex: _selectedIndex,
+          onTap: _navigateTo,
+        ),
       ),
     );
   }

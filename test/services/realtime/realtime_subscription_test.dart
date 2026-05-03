@@ -248,6 +248,150 @@ void main() {
     );
   });
 
+  group('RealtimeSubscription clearTenantContext (sign-out path)', () {
+    test(
+      'tears down active channel, cancels reconnect, emits idle, '
+      'and stays restartable on the next setTenantContext',
+      () async {
+        // The teardown chain walks real Stream microtasks
+        // (StreamSubscription.cancel + StreamController.close), which
+        // do not resolve under `fakeAsync` — use real async/await
+        // here, matching the "in-flight stale connect" test above.
+        final transport = _ScriptedTransport()
+          ..nextResult = _ConnectResult.success();
+        final subscription = RealtimeSubscription(
+          proxyBaseUri: Uri.parse('ws://localhost:8080'),
+          transport: transport,
+          initialBackoff: const Duration(seconds: 1),
+          maxBackoff: const Duration(seconds: 30),
+        );
+        final states = <RealtimeConnectionState>[];
+        final stateSub = subscription.connectionState.listen(states.add);
+
+        await subscription.setTenantContext(
+          const RealtimeTenantContext(operatorId: _opA, authToken: 'tA'),
+        );
+        await Future<void>.delayed(Duration.zero);
+        // Reached the connected lifecycle.
+        expect(transport.attempts, 1);
+        expect(states.last, RealtimeConnectionState.connected);
+        final connectedChannel = transport.activeChannel!;
+        expect(connectedChannel.closed, isFalse);
+
+        // Sign-out: drop the tenant scope. The state stream delivers
+        // events on a microtask hop, so yield once after the clear
+        // completes before asserting the last broadcast value.
+        await subscription.clearTenantContext();
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          connectedChannel.closed,
+          isTrue,
+          reason: 'sign-out must close the previous tenant\'s channel',
+        );
+        expect(states.last, RealtimeConnectionState.idle);
+        // currentConnectionState reads the synchronous field; the
+        // public stream always trails by a microtask.
+        expect(
+          subscription.currentConnectionState,
+          RealtimeConnectionState.idle,
+        );
+
+        // Walk forward — clearTenantContext must not schedule any
+        // future reconnect attempts under the old tenant. We don't
+        // have access to fakeAsync here, but the public counter is
+        // good enough: any scheduled reconnect would have to call
+        // transport.connect again.
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          transport.attempts,
+          1,
+          reason: 'no reconnect attempts allowed while tenant is cleared',
+        );
+
+        // Restartable: signing back in resumes the lifecycle.
+        transport.nextResult = _ConnectResult.success();
+        await subscription.setTenantContext(
+          const RealtimeTenantContext(operatorId: _opB, authToken: 'tB'),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(transport.attempts, 2);
+        expect(states.last, RealtimeConnectionState.connected);
+
+        await stateSub.cancel();
+        await subscription.dispose();
+      },
+    );
+
+    test(
+      'invalidates an in-flight stale connect so it cannot bind '
+      'to the post-sign-out idle subscription',
+      () async {
+        final transport = _DeferredTransport();
+        final subscription = RealtimeSubscription(
+          proxyBaseUri: Uri.parse('ws://localhost:8080'),
+          transport: transport,
+        );
+        await subscription.setTenantContext(
+          const RealtimeTenantContext(operatorId: _opA, authToken: 'tA'),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(transport.pendingConnects, hasLength(1));
+        final pending = transport.pendingConnects.removeAt(0);
+
+        // Sign-out arrives while the connect is still pending.
+        await subscription.clearTenantContext();
+
+        // Now resolve the stale connect with a fresh channel; the
+        // generation invariant must close it instead of binding it.
+        final staleChannel = _FakeChannel();
+        pending.complete(staleChannel);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          staleChannel.closed,
+          isTrue,
+          reason: 'channel resolved after clearTenantContext belongs to '
+              'a discarded session and must be closed',
+        );
+        expect(
+          subscription.currentConnectionState,
+          RealtimeConnectionState.idle,
+        );
+
+        await subscription.dispose();
+      },
+    );
+
+    test('repeated clearTenantContext calls are idempotent', () {
+      fakeAsync((async) {
+        final transport = _AlwaysFailingTransport();
+        final subscription = RealtimeSubscription(
+          proxyBaseUri: Uri.parse('ws://localhost:8080'),
+          transport: transport,
+        );
+        // No tenant has ever been set; clearing must not throw.
+        subscription.clearTenantContext();
+        async.flushMicrotasks();
+        expect(subscription.currentConnectionState,
+            RealtimeConnectionState.idle);
+
+        // Set + clear + clear is also fine.
+        subscription.setTenantContext(
+          const RealtimeTenantContext(operatorId: _opA, authToken: 'tA'),
+        );
+        async.flushMicrotasks();
+        subscription.clearTenantContext();
+        async.flushMicrotasks();
+        subscription.clearTenantContext();
+        async.flushMicrotasks();
+        expect(subscription.currentConnectionState,
+            RealtimeConnectionState.idle);
+
+        subscription.dispose();
+      });
+    });
+  });
+
   group('RealtimeSubscription dispose', () {
     test(
       'dispose cancels the in-flight reconnect timer and stops further '
