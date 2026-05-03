@@ -420,6 +420,10 @@ Acceptance:
   re-run it against current corpus + model, compare to original
   answer. Lights up if a real customer dispute ever surfaces.
 
+### Cross-operator parity (deferred per V1 lean scope cut, 2026-05-03)
+
+Phase 11W gives operators desktop self-service for their own data. F&F support staff need cross-operator inspect and audited edit views over operator-managed data, but at V1 with 5 to 20 operators, F&F has shell access for support escalations. The slice family for cross-operator parity (`11A.12` member view, `11A.13` hierarchy and session inspect, `11A.14` audited support actions) is deferred until operator volume justifies the engineering work, typically around 20 plus operators when shell-access support load becomes operationally painful. See `project_v1_lean_scope_cut.md` for the rationale.
+
 ## Sequencing in the Build Cadence
 
 Updated locked sequence 2026-04-25:
@@ -481,7 +485,12 @@ explicit per Hard Promise #10.
 **Operator-facing surfaces this phase requires:** **none**. By
 design, 11A never surfaces to operators. Cross-checks: any operator-
 visible feature must NOT live under `admin.forgeflow.app` or
-`/v1/admin/*`; those surfaces are F&F super-admin only.
+`/v1/admin/*`; those surfaces are F&F super-admin only. Operator-side
+self-service for the same operator-managed data lives in Phase 11W
+(Operator Web Console) with the same backend routes and a different
+host shell, operator-scope only. The cross-operator parity slice
+family (`11A.12`, `11A.13`, `11A.14`) is deferred until operator
+volume justifies it, typically around 20 plus operators.
 
 **UX sub-slice family:** owned inline by existing `11A.x` slices —
 each `11A.x` IS a UX surface. Each slice adds the `Operator

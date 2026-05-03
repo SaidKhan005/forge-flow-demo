@@ -53,6 +53,83 @@ Routing map only. Slice scopes live in their phase docs.
   sprints. Skip lanes touching `lib/internal/barrio/**`,
   `lib/main_barrio.dart`, Phase 9.75, and `9.5.UX.*`. Phase 9.5 backend
   (Postgres schema, RLS, repository) is general-purpose and stays in scope.
+- **Inbound integrations scope locked (2026-05-03)**: 17 INTEGRATE
+  vendors across Phase 8 (POS, 7), Phase 8R (Reservations, 4), Phase
+  8.S (Scheduling, 6) per
+  `docs/phases/phase_8/vendor_master_list.md`. **Direct integration
+  only — no middleware in the default path** (Omnivore retained as
+  legacy on-prem fallback). Reference-first wave plan: `8.0` framework
+  + Lightspeed K-Series + Libro + QuickBooks Time are Wave 1.
+  Partnership applications (Toast, OpenTable, Oracle, NCR Voyix, ADP
+  Marketplace, SevenRooms, Push Operations) kick off at Wave 1 start
+  in parallel with engineering. Resy is CANNOT INTEGRATE (15% market
+  gap, demo/CSV fallback). Memory:
+  `project_phase_8_architecture.md`, `project_operator_share_assumptions.md`.
+- **Web management plane = two consoles (2026-05-03)**: F&F Operations
+  Console (Phase 11A — F&F staff cross-operator) + Operator Web
+  Console (Phase 11W — NEW; operator senior roles; single-operator).
+  Mobile Settings stays read-mostly. Phase 11W ships **in parallel
+  with Phase 8 / 8R / 8.S** (self-serve at V1 launch). Vendor
+  Connections + Outbound Integrations are dual-surface widgets — same
+  widget tree, two host shells. Phase 11A `11A.12` / `.13` / `.14`
+  add cross-operator parity views for support escalation. Memory:
+  `project_two_console_framing.md`. Plans:
+  `docs/phases/phase_11W/phase_11W_operator_web_console_plan.md`,
+  `docs/phases/phase_8/vendor_connections_admin_surface.md`.
+- **Phase pause directive (2026-05-03 operator direction)**: full
+  focus on the inbound-integration + web-console push. **Paused for
+  new work**: Phase 11b/.1/.2 (advisor — AI), Phase 12.* (workflow
+  platform — AI), Phase 11A.3 + 11A.3.x (corpus + Graphify — AI
+  input), Phase 11A.11 (replay tool — advisor debug), Phase 8.5
+  (outbound finance — outward vendor), Phase 11W.9 (outbound mount,
+  depends on 8.5), Phase 9.8 AI portion (advisor T&Cs), Phase 10b.
+  **In scope this push**: Phase 8 / 8R / 8.S / 11W (minus .9) /
+  11A.10 status page / 11A.12-14 / Phase 10a / Phase 9.8 inbound-vendor T&Cs only +
+  email-provider slice / Phase 7.58 / Cutover. Already-accepted work
+  on master unaffected. Memory:
+  `project_phase_pause_2026_05_03.md`. Pause stays in effect until
+  operator explicitly unfreezes (same pattern as Barrio pause).
+- **2026-05-03 audit fold-in (V1 launch decisions)**: post-audit decisions
+  locked. (1) Production1 stays paused; Wave 1 ships staging-only first;
+  Production1 unfreeze becomes parallel critical path before V1 launch.
+  (2) Operator Web Console URL = **`app.forgeflow.app`**. (3) Phase 11W
+  uses separate Flutter web entry `lib/main_operator_web.dart` (not
+  operator-app web build; `dart:io` + sqflite incompat verified
+  2026-05-03). (4) Wave 1 vendor capability profiles drafted at
+  `docs/phases/phase_8/wave_1_vendor_profiles.md`. (5) Sandbox
+  provisioning for Lightspeed / Libro / QBT is operator action pre-spawn.
+  (6) Operator onboarding end-to-end spec at
+  `docs/phases/phase_11W/operator_onboarding_flow.md`. (7) Email provider
+  = SendGrid; slice scoped at
+  `docs/phases/phase_9_8/phase_9_8_email_provider_slice.md`. (8/9/10/13)
+  Phase 8 `8.0` slice covers inbound webhook reliability +
+  dead-letter, OAuth refresh cron, KMS rollout (staging pgcrypto /
+  prod Cloud KMS), demo-mode-to-live transition (per-(op, loc, category)).
+  (11) Inbound-vendor T&Cs draft at
+  `docs/phases/phase_9_8/phase_9_8_inbound_vendor_tcs_draft.md`,
+  pending legal review. (12) `11A.10` status page is launch-useful,
+  not paused (incident comms surface for V1). (14) Email-comms
+  infrastructure marked launch-blocking (must ship before operator
+  invitation flow can fire). Memory:
+  `project_v1_launch_decisions_2026_05_03.md`.
+- **2026-05-03 V1 lean scope cut (post-pressure-test)**: rolled back
+  ~30 percent of the doc work after pressure-test audit revealed
+  scoping for a 100-operator V2 system. **Cut from V1**: append-only
+  fact-correction supersede mechanism, `source_connection_id` column
+  on canonical fact rows, vendor-migration overlap window with
+  primary-source filtering, multi-location 3-pattern mapping UI,
+  Phase 11A.12/.13/.14 cross-operator parity slices (deferred until
+  20+ operators), Phase 11W slices for Members/Roles/Hierarchy/
+  Sessions/Audit/Security parity (mobile Settings handles V1),
+  per-vendor token bucket, PgBouncer, schema-migration freeze-window
+  runbook, async-Cloud-Run-Job backfill with progress UI, 5-state
+  connection machine (cut to 3 states), most pre-written runbooks,
+  most 11A.6 observability tiles. **Phase 11W cut from 10 slices to
+  3** (`11W.0` shell, `11W.7` Account, `11W.8` vendor connections
+  mount). **UX writing standard** locked across all operator-facing
+  surfaces (training-as-UX). Memory:
+  `project_v1_lean_scope_cut.md`,
+  `project_ux_writing_standard.md`.
 - **Notify before** any live Firebase mutation, key/account request,
   billing setup, provider call, or product decision.
 
@@ -70,6 +147,9 @@ Routing map only. Slice scopes live in their phase docs.
 7. `docs/PERFORMANCE_FRAMEWORK.md` — required for performance, scale,
    mobile responsiveness, web-console timing, load, polling, health, or
    bundle-size work.
+8. `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — required for live Browser Use,
+   web/admin console acceptance, mobile-device QA, safe-action sweeps, and
+   branch-to-artifact-to-runtime proof.
 
 `docs/archive/**` is history; ignore unless explicitly named.
 
@@ -86,7 +166,7 @@ Prefer `.mcp.json` servers for orientation when available: `forgeflow_docs`
 | `cutover.*` | `phase_production_cutover/phase_production_cutover_plan.md` (+ scalability decisions for `0a`; perf audit for `0b`) |
 | `9.0Σ.*`, `9.live-closeout`, `9.0-9.10` | `phase_9/phase_9_auth_plan.md` + `phase_9_execution_backlog.md` |
 | `7.61` / `10.5` (both closed) | archived at `docs/archive/phases/phase_7_61/` and `docs/archive/phases/phase_10_5/`; carry-forward items live in `phase_production_cutover_plan.md` |
-| `9.8`, `10a`/`10b`, `9.5`/`9.75`, `7.58`, `8`/`8R`/`8.5`, `11b*`, `12.*` | that phase's doc under `docs/phases/**` |
+| `9.8`, `10a`/`10b`, `9.5`/`9.75`, `7.58`, `8`/`8R`/`8.S`/`8.5`, `11b*`, `11W*`, `12.*` | that phase's doc under `docs/phases/**` (`8` POS, `8R` reservations, `8.S` scheduling, `8.5` outbound finance, `11W` operator web console) |
 
 ## North Star
 
@@ -106,12 +186,20 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `10.5` (closed) | all 4 slices (`.0`/`.1`/`.2`/`.3`) accepted | `docs/archive/phases/phase_10_5/` |
 | `10a` | `.0`/`.1` + `UX.0`/`UX.1` accepted; `.2` dead-letter, `.3` retention sweep, `.4` tripwires, `.5` last_event_id replay queued | `phase_10a/*` |
 | `9.5` | `.0` backend (schema + RLS) accepted; `.UX.*` **paused (Barrio)** per 2026-05-03 operator direction; Recognition/Operations El Podio later | `phase_9_5/*` |
-| `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started | `phase_11A_operations_console/*` |
+| `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started; cross-operator parity (`11A.12`/`13`/`14`) deferred per V1 lean cut until 20+ operators justify it | `phase_11A_operations_console/*` |
+| `11W` Operator Web Console (NEW) | queued, V1 cut to 3 slices: `11W.0` shell + `11W.7` Account + `11W.8` vendor connections mount; ships parallel with Phase 8 `8.0`; remaining 7 slices (Members/Roles/Hierarchy/Sessions/Audit/Security/Outbound) deferred per `project_v1_lean_scope_cut.md` | `phase_11W/*` |
 | `9.75` | **paused (Barrio)** per 2026-05-03 operator direction (Barrio Staff Daily Companion frozen until unfreeze) | `phase_9_75/*` |
-| `8`, `8R`, `8.5` | queued | their respective plans |
-| `11b`/`11b.1`/`11b.2` | queued (gated on B43 prod anchor) | `phase_11b/*` |
-| `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
-| `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |
+| `8` (POS) | queued — framework + 7 POS adapters; Wave 1 reference is Lightspeed K-Series; direct integration only | `phase_8/*` + `vendor_master_list.md` + `vendor_connections_admin_surface.md` |
+| `8R` (Reservations) | queued — 4 reservation adapters; Wave 1 reference is Libro; Resy uncovered (15% market gap) | `phase_8R/*` |
+| `8.S` (Scheduling) | queued — 6 scheduling adapters; Wave 1 reference is QuickBooks Time; ADP/QuickBooks module disambiguation at connect | `phase_8S/*` |
+| `8.5` (Outbound finance) | **paused (outward-vendor focus pivot 2026-05-03)** — QBO Accounting/Xero/Bill.com/Plaid; sibling lane to 8/8R/8.S; resumes after inbound integration push | `phase_8_5_external_integrations/*` |
+| `11b`/`11b.1`/`11b.2` | **paused (AI focus pivot 2026-05-03)** — operator-facing advisor; gated on B43 prod anchor; resumes post-pause | `phase_11b/*` |
+| `12.0`–`12.5` | **paused (AI focus pivot 2026-05-03)** — workflow platform AI-driven; gated by B41 live apply; resumes post-pause | `phase_12_workflow_platform/*` |
+| `9.8` | partial — **inbound-vendor T&Cs portion in scope** (operator authorization for POS/Reservation/Scheduling data); **advisor + outbound T&Cs paused** | `phase_9_8/*` |
+| `11A.3` + `11A.3.x` (corpus / Graphify) | **paused (AI focus pivot 2026-05-03)** — corpus management + Graphify-assisted review are AI input; resumes post-pause | `phase_11A_operations_console/*` |
+| `11A.11` (replay tool) | **paused (AI focus pivot 2026-05-03)** — advisor debug tooling; resumes post-pause | `phase_11A_operations_console/*` |
+| `11W.9` (outbound mount) | **paused** — depends on paused Phase 8.5; resumes post-pause | `phase_11W/*` |
+| `10b` | **paused (AI focus pivot 2026-05-03)** — advanced realtime / advisor-adjacent; resumes post-pause | n/a |
 | `cutover.0b` | queued — Tier-M perf gate; needs `cutover.1` corpus seed first; absorbs `7.61.4` (F-A) | `phase_production_cutover/*` |
 | `cutover.1` | queued — production corpus load generates the `0b` seed/harness | same plan |
 | `cutover.2`–`5` | queued (post-`0b`) | same plan |
@@ -139,14 +227,28 @@ Next candidates by readiness:
    inheritance in `variance_week_projection_read_service.dart` so
    open/projected rows return `'on_model'` rather than the prior closed
    daypart's id.
-6. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate satisfied;
-   stub adapter + Settings → Integrations card tractable now; vendor
-   (Toast) sandbox creds blocker only for live transport.
+6. **Phase 8 `8.0` framework + Wave 1 reference adapters** — `8.0`
+   builds adapter interfaces, IANA timezone (Scenarios A-F),
+   `vendor_credentials` schema, raw-payload retention, admin-console
+   "Vendor connections" surface scoped per (operator, location), Cloud
+   Run admin endpoints, webhook ingestion. `8.LSK` (Lightspeed
+   K-Series), `8R.LB` (Libro), `8.S.QBT` (QuickBooks Time) are the
+   three Wave 1 reference adapters that ship after `8.0`. Direct
+   integration only — no middleware in default path. See
+   `docs/phases/phase_8/vendor_master_list.md` for full Wave 1-5 plan
+   and partnership-application kickoff list.
 
 **Barrio-paused (skip until unfreeze):** `9.5.UX.*`, `9.75`.
 
-Then queued: `10a.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`, `8R`, `8.5`,
-`11b`/`.1`/`.2`, `12.*`, `9.8`, `cutover.0b`–`5`.
+**AI/outward-vendor-paused (skip until unfreeze):** `11b`/`.1`/`.2`,
+`12.*`, `11A.3`/`.3.x`, `11A.11`, `8.5`, `11W.9`, `10b`, `9.8` AI
+portion. See `project_phase_pause_2026_05_03.md` for full list.
+
+Then queued (in-scope, sequencing intent):
+`10a.2`/`.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`/`.5`, Phase 8 Waves
+2-5 (POS / 8R / 8.S — see `vendor_master_list.md`), Phase 11W
+Waves B/C, Phase 11A `10`/`12`/`13`/`14`, `9.8` inbound-vendor T&Cs +
+email-provider slice, `cutover.0b`–`5`.
 
 ## Hard Gates
 
@@ -161,7 +263,8 @@ Then queued: `10a.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`, `8R`, `8.5`,
 - Runtime-exposed slices satisfy
   `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed
   slices use Browser Use evidence per
-  `runbooks/browser_use_acceptance_harness_runbook.md`.
+  `runbooks/browser_use_acceptance_harness_runbook.md` and full mobile/web
+  console E2E passes use `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md`.
 - Before staging console perf claims:
   `dart run tool/perf_gate/staging_console_probe.dart --run --admin-url=<url> --proxy-url=<url>`
   and attach JSON output. `--enforce-budgets` for PR/release gates;
