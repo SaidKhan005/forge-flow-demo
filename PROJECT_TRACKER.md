@@ -37,7 +37,9 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   branch `codex/staging-perf-audit` measured the real staging console and
   proxy, not a mock replacement. Tested admin URL:
   `https://forge-flow-admin-console-rf7nosnoka-pd.a.run.app`
-  (`forge-flow-admin-console-00003-shn`, image tag `20260503025703`);
+  (latest redeploy `forge-flow-admin-console-00004-6xw`, image tag
+  `20260503033441`; prior measured baseline deploy was
+  `forge-flow-admin-console-00003-shn`, image tag `20260503025703`);
   local browser-served audit URL: `http://127.0.0.1:7362/?audit=after`;
   proxy URL: `https://forge-flow-staging-proxy-rf7nosnoka-pd.a.run.app`
   (`forge-flow-staging-proxy-00051-7x5`, digest
@@ -48,6 +50,9 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   opening the Health screen does not call `/health`, and the operator must
   confirm a read-only check after seeing the 15-30+ second staging dependency
   warning.
+  Live browser-served smoke after the redeploy loaded the staging sign-in
+  screen from `00004-6xw` with HTTP 200, no console errors, no failed
+  requests, and zero `/health` requests before sign-in.
   Safe staging load results: admin index c4 p95 `330.4ms`; gzip
   `main.dart.js` c4 p95 `978.9ms` (995,111 byte gzip transfer by `curl`);
   proxy `/readyz` c4 p95 `171.3ms`; proxy `/health` was intentionally not
@@ -57,10 +62,11 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   `dart run tool/perf_gate/staging_console_probe.dart --run --admin-url=<url> --proxy-url=<url>`;
   add `--enforce-budgets` in release checks to fail on current starting
   guardrails (admin index p95 <= 750ms, `main.dart.js` gzip p95 <= 1500ms
-  and <= 1.25MB transfer, proxy `/readyz` p95 <= 500ms). Script verification
-  at `2026-05-03T03:20:29Z` passed those budgets: admin index c4 p95
-  `308.7ms`, `main.dart.js` gzip c4 p95 `779.7ms` / `995111` bytes, proxy
-  `/readyz` c4 p95 `181.1ms`, 0% error rate on default probes.
+  and <= 1.25MB transfer, proxy `/readyz` p95 <= 500ms). Post-manual-health
+  redeploy verification at `2026-05-03T03:41:29Z` passed those budgets:
+  admin index c4 p95 `184.1ms`, `main.dart.js` gzip c4 p95 `1191.1ms` /
+  `995566` bytes, proxy `/readyz` c4 p95 `238.8ms`, 0% error rate on
+  default probes.
   Authenticated screen/action timing remains pending explicit credential-send
   approval in the in-app browser.
 - **Recently accepted (2026-05-02 sprint, PRs #50–54)**: `7.58.0` Primary
