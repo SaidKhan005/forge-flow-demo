@@ -33,8 +33,11 @@ import 'realtime_transport.dart';
 /// here so a notifier can pick this up without changes to the
 /// subscription contract.
 enum RealtimeConnectionState {
-  /// Subscription is dormant — `start()` not yet called or
-  /// `dispose()` has run.
+  /// Subscription is dormant — [setTenantContext] has not been
+  /// called, [clearTenantContext] has dropped the active scope, or
+  /// [dispose] has run. Idle is restartable from the cleared case
+  /// (a subsequent [setTenantContext] resumes the lifecycle); the
+  /// disposed case is terminal.
   idle,
 
   /// Connecting (initial connect or reconnect after back-off).
@@ -126,6 +129,27 @@ class RealtimeSubscription {
     _reconnectTimer = null;
     if (_disposed) return;
     unawaited(_connect());
+  }
+
+  /// Drop the active tenant scope and tear down the channel without
+  /// disposing the subscription. Used by the operator shell on
+  /// sign-out so the previous operator's WebSocket cannot stay
+  /// connected (or keep walking the back-off curve) under the
+  /// per-operator isolation rule. The subscription stays alive — a
+  /// subsequent [setTenantContext] resumes the lifecycle without
+  /// rebuilding the broadcast streams the UI badge is listening on.
+  ///
+  /// Idempotent: calling on an already-cleared / never-set
+  /// subscription is a no-op aside from re-emitting the idle state.
+  Future<void> clearTenantContext() async {
+    _tenantContext = null;
+    _currentBackoff = Duration.zero;
+    _generation += 1;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    await _teardownChannel();
+    if (_disposed) return;
+    _setState(RealtimeConnectionState.idle);
   }
 
   /// Tear down the active channel, cancel any pending reconnect, and

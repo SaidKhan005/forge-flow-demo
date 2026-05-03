@@ -7,10 +7,12 @@ import 'package:provider/provider.dart';
 import 'package:forge_and_flow/services/baseline_manager_service.dart';
 import 'services/auth_login_service.dart';
 import 'services/auth/auth_session_ledger_writer.dart';
+import 'services/realtime/realtime_subscription.dart';
 import 'services/secure_session_storage.dart';
 import 'services/target_cycle_service.dart';
 import 'services/wage_standard_context_service.dart';
 import 'state/auth_session_notifier.dart';
+import 'state/realtime_auth_bridge.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 
 /// Shared Forge & Flow app bootstrap used by both standalone and host shells.
@@ -32,6 +34,7 @@ Future<void> bootstrapAndRunApp(
   AuthLoginService? authLoginService,
   SecureSessionStorage? secureSessionStorage,
   AuthSessionLedgerWriter? authSessionLedgerWriter,
+  RealtimeSubscription? realtimeSubscription,
 }) async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(
@@ -61,10 +64,28 @@ Future<void> bootstrapAndRunApp(
     ledgerWriter: ledgerWriter,
   );
 
+  // Phase 10a.UX.0 — expose the bridge subscription (when wired by
+  // production main entry points) so the operator-facing
+  // [SyncStateBadge] in [AppShell] can render its Live / Reconnecting
+  // chrome. Demo / no-Firebase paths pass `null`; the badge stays
+  // hidden in those builds, which matches the no-realtime-channel
+  // reality.
+  //
+  // The [RealtimeAuthBridge] sits ABOVE every operator surface
+  // (standalone F&F shell, embedded F&F destination inside Barrio,
+  // Barrio home itself) so the tenant context tracks the auth
+  // session for the lifetime of the subscription — popping out of
+  // the embedded F&F destination cannot leave a stale operator
+  // channel alive across a later sign-out. No-op when the
+  // subscription was not wired (try/catch resolves through to a
+  // null subscription).
   runApp(
-    ChangeNotifierProvider<AuthSessionNotifier>.value(
-      value: authNotifier,
-      child: app,
+    Provider<RealtimeSubscription?>.value(
+      value: realtimeSubscription,
+      child: ChangeNotifierProvider<AuthSessionNotifier>.value(
+        value: authNotifier,
+        child: RealtimeAuthBridge(child: app),
+      ),
     ),
   );
 
