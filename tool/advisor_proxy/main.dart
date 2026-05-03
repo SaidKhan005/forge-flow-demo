@@ -404,6 +404,8 @@ Future<void> main(List<String> args) async {
       'corpus_admin': 'postgres',
       'integration_admin': 'postgres_kms_stub',
       'feature_flags_admin': 'postgres',
+      'debug_console_admin': 'postgres',
+      'observability_admin': 'postgres',
       // HARD-H — admin idempotency cache backed by
       // `public.admin_request_idempotency`. Surfacing the binding
       // here lets a deploy grep confirm dedup is wired before the
@@ -456,6 +458,8 @@ Future<void> main(List<String> args) async {
         integrationAdminActorResolver:
             productionBindings.integrationAdminActorResolver,
         featureFlagsAdminGateway: productionBindings.featureFlagsAdminGateway,
+        debugConsoleAdminGateway: productionBindings.debugConsoleAdminGateway,
+        observabilityAdminGateway: productionBindings.observabilityAdminGateway,
         // HARD-B - auth lockout / retry enforcement.
         authLockoutEnforcer: productionBindings.authLockoutEnforcer,
         authLockoutAuditSink: productionBindings.authLockoutAuditSink,
