@@ -1,0 +1,35 @@
+{
+    "name": "Forge & Flow — Operator Web Console",
+    "short_name": "F&F",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#F8EDE6",
+    "theme_color": "#CC7A3E",
+    "description": "Forge & Flow Operator Web Console — account, vendor connections, and onboarding for your business.",
+    "orientation": "any",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}

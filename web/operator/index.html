@@ -1,0 +1,80 @@
+<!DOCTYPE html><html><head>
+  <!--
+    Phase 11W.0 — Operator Web Console index shell.
+
+    Distinct from `web/index.html` (the operator-app web shell which
+    Phase 11A.0 reused as the F&F Operations Console). The operator
+    web build target reads from `web/operator/` so the brand title and
+    description match the customer-facing Operator Web Console rather
+    than the F&F internal Operations Console.
+
+    `--web-resources-dir=web/operator` on the `flutter build web`
+    invocation tells Flutter to copy this directory in alongside the
+    compiled bundle.
+
+    The `<base href>` value is rewritten by `flutter build` per the
+    `--base-href` argument. The Cloud Run nginx config in
+    `Dockerfile.operator_web` falls back to `/index.html` for any
+    unknown path so client-side routes (e.g.
+    `/onboarding/welcome?token=...`) still hit the SPA bundle.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Forge &amp; Flow Operator Web Console — manage account, vendor connections, and onboarding for your business.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Forge &amp; Flow">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png">
+
+  <title>Forge &amp; Flow — Operator Web Console</title>
+  <link rel="manifest" href="manifest.json">
+  <style id="splash-screen-style">
+    html {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      min-height: 100%;
+      background-color: #F8EDE6;
+          background-size: 100% 100%;
+    }
+
+    .center {
+      margin: 0;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      -ms-transform: translate(-50%, -50%);
+      transform: translate(-50%, -50%);
+    }
+
+    .contain {
+      display:block;
+      width:100%; height:100%;
+      object-fit: contain;
+    }
+  </style>
+  <script id="splash-screen-script">
+    function removeSplashFromWeb() {
+      document.getElementById("splash")?.remove();
+      document.body.style.background = "transparent";
+    }
+  </script>
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+</head>
+<body>
+  <picture id="splash">
+      <img class="center" aria-hidden="true" src="icons/Icon-192.png" alt="" width="96" height="96">
+  </picture>
+  <script src="flutter_bootstrap.js" async=""></script>
+
+
+</body></html>
