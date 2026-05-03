@@ -17,16 +17,17 @@
 //   - Tier-2 fail → yellow chip on the offending tile.
 //   - Tier-3 fail → grey chip on the offending tile (informational).
 //
-// Refresh cadence: 30s auto-poll plus a manual refresh button. The
-// "Last refreshed" timestamp is rendered prominently so an operator
-// can confirm the surface is live.
+// Health checks are manual-only. The staging `/health` envelope can
+// take tens of seconds because it checks real backend dependencies
+// and producer freshness, so the screen asks for confirmation before
+// sending the read-only request. The "Last checked" timestamp is
+// rendered prominently so an operator does not mistake an older
+// result for live monitoring.
 //
 // Read-only: this screen has NO mutate affordances. The proxy gate
 // for `/health` is unauthenticated; the admin shell role gate
 // (`super_admin` or `ff_support`) is what restricts access. Both
 // admit decisions render the same view.
-
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 
@@ -34,9 +35,6 @@ import '../../theme/app_theme.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
-
-/// Default polling cadence per F.1 decision.
-const Duration kHealthAdminPollInterval = Duration(seconds: 30);
 
 /// One tile entry in a tab section.
 class _TileSpec {
@@ -190,21 +188,12 @@ class HealthAdminScreen extends StatefulWidget {
   const HealthAdminScreen({
     super.key,
     required this.gateway,
-    this.pollInterval = kHealthAdminPollInterval,
-    this.autoRefresh = true,
     @visibleForTesting this.now,
   });
 
   final HealthAdminGateway gateway;
 
-  /// Auto-poll interval. Defaults to 30s per the F.1 decision.
-  final Duration pollInterval;
-
-  /// Disabling auto-refresh is useful for widget tests that need to
-  /// drive refresh deterministically. Production always polls.
-  final bool autoRefresh;
-
-  /// Test-only clock injection so the "Last refreshed" timestamp is
+  /// Test-only clock injection so the "Last checked" timestamp is
   /// deterministic. Production uses [DateTime.now].
   final DateTime Function()? now;
 
@@ -215,9 +204,8 @@ class HealthAdminScreen extends StatefulWidget {
 class _HealthAdminScreenState extends State<HealthAdminScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  Timer? _pollTimer;
 
-  bool _loading = true;
+  bool _loading = false;
   bool _refreshing = false;
   HealthEnvelope? _envelope;
   String? _loadError;
@@ -229,27 +217,32 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   void initState() {
     super.initState();
     _tabs = TabController(length: _kTabs.length, vsync: this);
-    _refresh(initial: true);
-    if (widget.autoRefresh) {
-      _pollTimer = Timer.periodic(widget.pollInterval, (_) => _refresh());
-    }
   }
 
   @override
   void dispose() {
-    _pollTimer?.cancel();
     _tabs.dispose();
     super.dispose();
   }
 
-  Future<void> _refresh({bool initial = false}) async {
+  Future<void> _confirmAndRefresh() async {
+    if (_refreshing) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => const _HealthCheckConfirmDialog(),
+    );
+    if (confirmed != true || !mounted) return;
+    await _refresh();
+  }
+
+  Future<void> _refresh() async {
     if (_refreshing) return;
     setState(() {
       _refreshing = true;
-      if (initial) {
+      if (_envelope == null) {
         _loading = true;
-        _loadError = null;
       }
+      _loadError = null;
     });
     try {
       final envelope = await widget.gateway.fetch();
@@ -300,7 +293,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
           children: [
             _Header(
               lastRefreshed: _lastRefreshed,
-              onRefresh: _refresh,
+              onRunHealthCheck: _confirmAndRefresh,
               loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
@@ -322,6 +315,12 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
                       color: AppColors.sunsetDark,
                     ),
                   ),
+                ),
+              ),
+            if (!_loading && _envelope == null && _loadError == null)
+              Expanded(
+                child: _ManualHealthPrompt(
+                  onRunHealthCheck: _confirmAndRefresh,
                 ),
               ),
           ],
@@ -386,12 +385,12 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
 class _Header extends StatelessWidget {
   const _Header({
     required this.lastRefreshed,
-    required this.onRefresh,
+    required this.onRunHealthCheck,
     required this.loading,
   });
 
   final DateTime? lastRefreshed;
-  final Future<void> Function() onRefresh;
+  final Future<void> Function() onRunHealthCheck;
   final bool loading;
 
   @override
@@ -399,9 +398,8 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'Health',
       subtitle:
-          'Read-only view of the proxy /health envelope. Three tabs '
-          'mirror the D.1 contract tiers (Retrieval / Proxy / Infra). '
-          'Auto-refreshes every 30 seconds.',
+          'Manual, read-only diagnostic for the proxy /health envelope. '
+          'Three tabs mirror the D.1 contract tiers after a check runs.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -411,15 +409,21 @@ class _Header extends StatelessWidget {
           children: [
             OutlinedButton.icon(
               key: const Key('admin_health_refresh_button'),
-              onPressed: loading ? null : () => onRefresh(),
-              icon: const Icon(Icons.refresh, size: 16),
-              label: const Text('Refresh'),
+              onPressed: loading ? null : () => onRunHealthCheck(),
+              icon: loading
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.health_and_safety_outlined, size: 16),
+              label: Text(loading ? 'Running...' : 'Run health check'),
             ),
             const SizedBox(height: 6),
             Text(
               lastRefreshed == null
-                  ? 'Last refreshed: —'
-                  : 'Last refreshed: '
+                  ? 'Last checked: -'
+                  : 'Last checked: '
                         '${lastRefreshed!.toUtc().toIso8601String()}',
               key: const Key('admin_health_last_refreshed'),
               maxLines: 1,
@@ -427,6 +431,99 @@ class _Header extends StatelessWidget {
               style: AppTextStyles.mono10(color: AppColors.textMuted),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HealthCheckConfirmDialog extends StatelessWidget {
+  const _HealthCheckConfirmDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      key: const Key('admin_health_confirm_dialog'),
+      backgroundColor: AppColors.backgroundSurface,
+      title: Text(
+        'Run health check?',
+        style: AppTextStyles.display20(color: AppColors.textPrimary),
+      ),
+      content: Text(
+        'This can take 15-30+ seconds because staging checks real '
+        'dependencies and producer freshness, including Postgres, AGE, '
+        'pgvector, audit chain, event outbox, and proxy metrics. It is '
+        'read-only, and red or yellow results may reflect real backend '
+        'state rather than a console issue.',
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+      ),
+      actions: [
+        TextButton(
+          key: const Key('admin_health_confirm_cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton.icon(
+          key: const Key('admin_health_confirm_run'),
+          onPressed: () => Navigator.of(context).pop(true),
+          style: FilledButton.styleFrom(
+            backgroundColor: AppColors.sunset,
+            foregroundColor: AppColors.backgroundSurface,
+          ),
+          icon: const Icon(Icons.play_arrow, size: 16),
+          label: const Text('Run check'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ManualHealthPrompt extends StatelessWidget {
+  const _ManualHealthPrompt({required this.onRunHealthCheck});
+
+  final Future<void> Function() onRunHealthCheck;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      key: const Key('admin_health_manual_prompt'),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'No health check run in this session',
+                style: AppTextStyles.display20(color: AppColors.textPrimary),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Run a live diagnostic when you need the current staging '
+                'state. The request is read-only and may take 15-30+ '
+                'seconds because it checks real backend dependencies.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 14),
+              FilledButton.icon(
+                key: const Key('admin_health_manual_run_button'),
+                onPressed: () => onRunHealthCheck(),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.sunset,
+                  foregroundColor: AppColors.backgroundSurface,
+                ),
+                icon: const Icon(Icons.health_and_safety_outlined, size: 16),
+                label: const Text('Run health check'),
+              ),
+            ],
+          ),
         ),
       ),
     );

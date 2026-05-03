@@ -42,8 +42,12 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   proxy URL: `https://forge-flow-staging-proxy-rf7nosnoka-pd.a.run.app`
   (`forge-flow-staging-proxy-00051-7x5`, digest
   `sha256:f4dbd6c7a95c1efeb74322c8ae65655341e762dabb96244d1b037de02cecc668`).
-  Baseline -> after kept the same UX while deferring the Graph candidates
-  fetch until that tab is visited and preventing overlapping `/health` polls.
+  Baseline -> after deferred the Graph candidates fetch until that tab is
+  visited and first prevented overlapping `/health` polls.
+  Follow-up `2026-05-03`: Health is now a manual confirmed diagnostic only;
+  opening the Health screen does not call `/health`, and the operator must
+  confirm a read-only check after seeing the 15-30+ second staging dependency
+  warning.
   Safe staging load results: admin index c4 p95 `330.4ms`; gzip
   `main.dart.js` c4 p95 `978.9ms` (995,111 byte gzip transfer by `curl`);
   proxy `/readyz` c4 p95 `171.3ms`; proxy `/health` was intentionally not

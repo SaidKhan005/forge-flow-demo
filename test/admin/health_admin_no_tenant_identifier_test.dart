@@ -20,10 +20,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   void setLargeViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1440, 1024);
@@ -34,8 +34,9 @@ void main() {
     });
   }
 
-  testWidgets('rendered text contains no operator_id/tenant_id-shaped values',
-      (tester) async {
+  testWidgets('rendered text contains no operator_id/tenant_id-shaped values', (
+    tester,
+  ) async {
     setLargeViewport(tester);
     // The envelope below intentionally smuggles values into the
     // metadata slots that LOOK like tenant identifiers. The screen
@@ -93,11 +94,14 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
     await tester.pumpAndSettle();
 
     // Walk every Text widget in the tree and assert no identifier-
