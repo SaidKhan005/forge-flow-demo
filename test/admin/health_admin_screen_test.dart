@@ -17,9 +17,12 @@
 // Auto-polling is disabled in these tests (`autoRefresh: false`) so
 // the timer cannot leak into the test runner.
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/models/health_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/health_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/health_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -261,6 +264,53 @@ void main() {
 
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
   });
+
+  testWidgets('auto-poll skips a refresh while one is still in flight', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingHealthGateway();
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          pollInterval: const Duration(milliseconds: 10),
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+
+    await tester.pump(const Duration(milliseconds: 55));
+
+    expect(
+      gateway.fetchCount,
+      equals(1),
+      reason: 'slow /health calls must not stack overlapping polls',
+    );
+
+    await tester.pumpWidget(wrap(const SizedBox.shrink()));
+    gateway.completeOldest(HealthEnvelope.fromJson(_greenEnvelope()));
+    await tester.pump();
+  });
+}
+
+class _BlockingHealthGateway implements HealthAdminGateway {
+  int fetchCount = 0;
+  final List<Completer<HealthEnvelope>> _pending =
+      <Completer<HealthEnvelope>>[];
+
+  @override
+  Future<HealthEnvelope> fetch() {
+    fetchCount += 1;
+    final completer = Completer<HealthEnvelope>();
+    _pending.add(completer);
+    return completer.future;
+  }
+
+  void completeOldest(HealthEnvelope envelope) {
+    if (_pending.isEmpty) return;
+    _pending.removeAt(0).complete(envelope);
+  }
 }
 
 Map<String, Object?> _greenEnvelope() => <String, Object?>{

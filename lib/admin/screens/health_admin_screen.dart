@@ -218,6 +218,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   Timer? _pollTimer;
 
   bool _loading = true;
+  bool _refreshing = false;
   HealthEnvelope? _envelope;
   String? _loadError;
   DateTime? _lastRefreshed;
@@ -242,12 +243,14 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
   }
 
   Future<void> _refresh({bool initial = false}) async {
-    if (initial) {
-      setState(() {
+    if (_refreshing) return;
+    setState(() {
+      _refreshing = true;
+      if (initial) {
         _loading = true;
         _loadError = null;
-      });
-    }
+      }
+    });
     try {
       final envelope = await widget.gateway.fetch();
       if (!mounted) return;
@@ -271,6 +274,12 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
         _loading = false;
         _lastRefreshed = _clockNow();
       });
+    } finally {
+      if (mounted) {
+        setState(() => _refreshing = false);
+      } else {
+        _refreshing = false;
+      }
     }
   }
 
@@ -292,7 +301,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
             _Header(
               lastRefreshed: _lastRefreshed,
               onRefresh: _refresh,
-              loading: _loading,
+              loading: _loading || _refreshing,
             ),
             const SizedBox(height: 12),
             if (_loadError != null)

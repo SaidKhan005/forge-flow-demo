@@ -384,16 +384,18 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                         _stagedFileName = null;
                       }),
                     ),
-                    _GraphCandidatesTab(
-                      gateway: widget.gateway,
-                      editingEnabled: widget.editingEnabled,
-                      newIdempotencyKey: _newIdempotencyKey,
-                      targetOperatorId: _effectiveTargetOperatorId,
-                      targetLocationId: _effectiveTargetLocationId,
-                      onPickOperator: widget.operatorPickerOpener == null
-                          ? null
-                          : _onPickOperatorPressed,
-                      pickedTargetLabel: _pickedTargetLabel,
+                    _LazyGraphCandidatesTab(
+                      builder: (_) => _GraphCandidatesTab(
+                        gateway: widget.gateway,
+                        editingEnabled: widget.editingEnabled,
+                        newIdempotencyKey: _newIdempotencyKey,
+                        targetOperatorId: _effectiveTargetOperatorId,
+                        targetLocationId: _effectiveTargetLocationId,
+                        onPickOperator: widget.operatorPickerOpener == null
+                            ? null
+                            : _onPickOperatorPressed,
+                        pickedTargetLabel: _pickedTargetLabel,
+                      ),
                     ),
                   ],
                 ),
@@ -527,6 +529,56 @@ class _VersionsTab extends StatelessWidget {
               onDiscardStaged: onDiscardStaged,
             ),
     );
+  }
+}
+
+class _LazyGraphCandidatesTab extends StatefulWidget {
+  const _LazyGraphCandidatesTab({required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  State<_LazyGraphCandidatesTab> createState() =>
+      _LazyGraphCandidatesTabState();
+}
+
+class _LazyGraphCandidatesTabState extends State<_LazyGraphCandidatesTab> {
+  TabController? _controller;
+  bool _visited = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final nextController = DefaultTabController.maybeOf(context);
+    if (_controller == nextController) {
+      _markVisitedIfActive();
+      return;
+    }
+    _controller?.removeListener(_handleTabChange);
+    _controller = nextController;
+    _controller?.addListener(_handleTabChange);
+    _markVisitedIfActive();
+  }
+
+  @override
+  void dispose() {
+    _controller?.removeListener(_handleTabChange);
+    super.dispose();
+  }
+
+  void _handleTabChange() => _markVisitedIfActive();
+
+  void _markVisitedIfActive() {
+    if (_visited) return;
+    final controller = _controller;
+    if (controller == null || controller.index != 1) return;
+    setState(() => _visited = true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_visited) return const SizedBox.shrink();
+    return widget.builder(context);
   }
 }
 
