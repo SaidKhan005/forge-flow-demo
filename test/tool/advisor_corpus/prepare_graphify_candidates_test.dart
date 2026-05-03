@@ -367,6 +367,18 @@ void main() {
     );
 
     final dockerfile = File(p.join(repoRoot, 'Dockerfile')).readAsStringSync();
+    for (final ignoreFile in const <String>['.gcloudignore', '.dockerignore']) {
+      final ignoreContents = File(
+        p.join(repoRoot, ignoreFile),
+      ).readAsStringSync();
+      expect(
+        ignoreContents,
+        contains('!docs/Knowledge_graph_docs/corpus_manifest.yaml'),
+        reason:
+            '$ignoreFile must allow the manifest through the Cloud Build '
+            'context while keeping the rest of docs excluded',
+      );
+    }
     expect(
       dockerfile,
       contains('docs/Knowledge_graph_docs/corpus_manifest.yaml'),
