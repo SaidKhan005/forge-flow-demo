@@ -11,6 +11,18 @@ Resolved items are archived to
 `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`.
 Open items below are the current remainder.
 
+## P0 - Production1 Migration Apply Gap
+
+**1 migration pending Production1 apply**:
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+It restores read-only Debug Console request-log inspection by granting
+`forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
+was applied to staging and Browser Use verified on 2026-05-03; it was not
+part of the 27-file Production1 apply completed earlier the same day.
+
+**Action:** include this file in the next Production1 apply event under
+`runbooks/phase_9_production1_migration_apply_runbook.md`.
+
 ## P1 - Live Admin Operational Gates
 
 The staging admin smoke surfaced live actions that code cannot complete

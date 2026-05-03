@@ -26,6 +26,11 @@ Routing map only. Slice scopes live in their phase docs.
   Postgres on CMK. The 27-file Production1 migration batch
   (`202604280014` through `202605021900`) was applied and verified on
   2026-05-03; `cutover.1` repeats verification before corpus load.
+- **Post-cutoff staging migration addition**:
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+  is a Debug Console `forge_admin` request-log read grant. It is applied and
+  Browser Use verified on staging; it was not part of the 2026-05-03
+  Production1 apply and is the only migration currently pending Production1.
 - **Production1 GCP/Firebase/proxy/DNS setup paused** per operator
   direction 2026-05-03. Project/Firebase shell exists; runtime needs
   Firebase apps/configs, runtime APIs, deploy SA, static egress, DNS,
@@ -102,18 +107,21 @@ below is sequencing intent.
 
 Next candidates by readiness:
 
-1. **Production1 GCP/Firebase/proxy/DNS setup** — paused; substantial
+1. **Production1 Debug Console grant follow-up** — apply
+   `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+   after the usual live-mutation gate; staging is already applied/verified.
+2. **Production1 GCP/Firebase/proxy/DNS setup** — paused; substantial
    unblock list (see Now).
-2. **B43 Production1 anchor deploy** — needs production runtime APIs +
+3. **B43 Production1 anchor deploy** — needs production runtime APIs +
    Secret Manager namespace + static egress + Azure audit-anchor secrets.
-3. **`10.5.3+` daypart-live primary-driver teaching** — extends 10.5.2
+4. **`10.5.3+` daypart-live primary-driver teaching** — extends 10.5.2
    read service with per-period driver computation; closes Phase 10.5.
-4. **`10a.1` Cloud Pub/Sub publisher adapter** — replaces in-process
+5. **`10a.1` Cloud Pub/Sub publisher adapter** — replaces in-process
    binding behind `RealtimeEventPublisher` seam; topics locked in
    `event_outbox_contract.md`.
-5. **`9.5.0` Postgres leaderboard schema + RLS scaffold** — first
+6. **`9.5.0` Postgres leaderboard schema + RLS scaffold** — first
    Phase 9.5 slice; UX deferred to `.UX.*`.
-6. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate now
+7. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate now
    satisfied; opens once vendor (Toast) sandbox creds available.
 
 Then queued: `9.75`, `8R`, `8.5`, `11b`/`.1`/`.2`, `12.*`, `9.8`,

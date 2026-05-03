@@ -63,8 +63,10 @@ Do not re-open stale findings unless the repo regresses:
 - Phase 9 auth-table RLS/grants are live on staging and Production1.
 - Azure extension and preload requirements are captured in setup/runbook docs.
 - The first and second Production1 migration apply batches are no longer
-  queued. Production1 is current through `202605021900`; future migrations
-  after that cutoff need a fresh apply event.
+  queued. Production1 is current through `202605021900`. The
+  `202605031430` Debug Console request-log grant is applied/verified on
+  staging and is the only migration currently pending Production1; use the
+  same runbook/drift scanner pattern for that follow-up.
 
 ## Remaining Live-Closeout Gates
 

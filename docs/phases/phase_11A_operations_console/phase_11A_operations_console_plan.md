@@ -53,6 +53,13 @@ feature-flag runtime edits, auth lockout triage indexes, and pre-existing
 corpus ledger visibility as schema-ready. B43 production anchoring remains a
 separate runtime/cloud gate.
 
+Debug Console live Browser Use QA on 2026-05-03 added
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+after staging proved `forge_admin` lacked explicit `SELECT` on
+`proxy_requests` for read-only request-log inspection. The grant is applied
+and verified on staging; it remains the only pending Production1 migration
+before Debug Console request-log inspection can be called production-ready.
+
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by
 `runbooks/admin_provider_credentials_kms_rollout_runbook.md`, and local

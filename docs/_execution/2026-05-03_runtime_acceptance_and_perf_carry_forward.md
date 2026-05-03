@@ -154,12 +154,14 @@ the hard gate.
 Current clean state verified on 2026-05-03:
 
 - Latest migration:
-  `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - Staging setup cutoff:
-  `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 - Production1 apply state: completed 2026-05-03 for 27 migrations,
-  `202604280014` through `202605021900`; future migrations after this cutoff
-  belong to a later apply event.
+  `202604280014` through `202605021900`.
+- Staging follow-up state: `202605031430` is applied and Browser Use
+  verified on staging; it is the only migration currently pending
+  Production1.
 
 ## Phase Carry-Forward
 

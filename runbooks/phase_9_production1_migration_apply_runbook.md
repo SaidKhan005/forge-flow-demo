@@ -2,13 +2,15 @@
 
 Updated: 2026-05-03.
 
-Purpose: govern and record the live Production1 apply of the second migration
-batch: 27 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and
-the HARD-B/HARD-F/HARD-H hardening pack through cutoff
-`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. This runbook must be reviewed
-before any Production1 mutation. The first batch (Phase 9.0 Sigma slices b-k
-plus auth/recovery patches) was applied 2026-04-29; the second batch was
-applied 2026-05-03. See the Apply History section for results.
+Purpose: govern and record Production1 migration applies. The second
+migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
+advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
+applied 2026-05-03. The current one-file follow-up cutoff is
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`. This
+runbook must be reviewed before any Production1 mutation. The first batch
+(Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
+2026-04-29. See the Apply History section for results.
 
 ## Scope
 
@@ -47,6 +49,11 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
+Pending follow-up scope (1 migration; staging applied/verified 2026-05-03,
+Production1 pending):
+
+- `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+
 Out of scope:
 
 - Cloud Armor enforcement mutation.
@@ -56,6 +63,14 @@ Out of scope:
   earlier than `202604280014` is already in production from the first batch;
   anything later than `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` belongs to
   a future apply event and is gated by `tool/migration_cutoff_lint.dart`).
+
+Current known post-cutoff staging addition:
+
+- `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+  restores read-only Debug Console request-log inspection for `forge_admin`.
+  It is applied/verified on staging, was not part of the 27-file Production1
+  apply, and belongs to the next Production1 migration batch unless superseded
+  by later staging additions.
 
 Migration drift automation:
 
@@ -113,6 +128,10 @@ Run in this exact lex order:
 26. `202605021800_hardening_auth_login_attempts_index_rekey.sql`
 27. `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
+Current pending follow-up order:
+
+1. `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+
 Dependency notes:
 
 - All 27 files are additive on the prior baseline (slices b–k plus auth /
@@ -143,6 +162,10 @@ Dependency notes:
 - `…1600_phase_11A_7_feature_flags_forge_admin_grants` grants the
   `forge_admin` runtime role the explicit table privileges needed by
   feature-flag admin and startup checks.
+- `…1430_phase_11A_5_debug_proxy_requests_forge_admin_grant` grants the
+  `forge_admin` runtime role read-only access to `proxy_requests`; BYPASSRLS
+  skips tenant row policies, but the Debug Console request-log gateway still
+  needs explicit table privilege.
 - `…1700_phase_11A_health_age_graph_bootstrap` ensures the canonical AGE graph
   namespace exists even before corpus projection has materialized vertices.
 - `…1710_phase_11A_health_age_runtime_grants` grants `forge_admin` AGE schema,
@@ -439,6 +462,13 @@ until the post-tuning monitor window is clean.
 - No backout was needed. Local logs are under
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
+
+### Next follow-up - pending (cutoff `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`)
+
+- `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
+  applied and Browser Use verified on staging. Apply it to Production1 under
+  the Live-Mutation Gate before calling Debug Console request-log inspection
+  production-ready.
 
 ## Apply Report Template
 
