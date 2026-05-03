@@ -1,0 +1,345 @@
+// Forge & Flow — EmailTemplateRenderer.
+//
+// Phase 9.8 email-provider slice. Renders Markdown email templates
+// committed at `tool/advisor_proxy/email_templates/*.md` into:
+//   * a plaintext body (Markdown source with header/footer trimmed),
+//   * an HTML body wrapped in the brand-styled wrapper from
+//     `tool/advisor_proxy/email_templates/_brand_wrapper.html`,
+//   * the resolved subject line (locked per template_id, never
+//     interpolated from user input).
+//
+// Variable interpolation: templates and the subject map use the
+// `{{variableName}}` syntax. The renderer accepts a
+// `Map<String, String>` from `email_outbox.template_data` (JSONB
+// stored as flat key→string) and substitutes every occurrence.
+// Missing variables surface a [MissingTemplateVariableError]
+// because a half-rendered email is worse than a queued retry — the
+// dispatcher dead-letters the row immediately.
+//
+// Markdown subset: this renderer implements the small subset the V1
+// templates need (paragraphs, bold/italic emphasis, single-level
+// headings, bullet lists, links). Production-grade Markdown is
+// out of scope; templates are author-controlled so we do not need
+// to defend against arbitrary user input.
+//
+// HTML escaping: every interpolated variable is HTML-escaped before
+// being stitched into the rendered HTML body. The plaintext body
+// keeps variables raw because plaintext has no escape semantics.
+//
+// Subject line policy: subject patterns are LOCKED in the slice doc
+// (`docs/phases/phase_9_8/phase_9_8_email_provider_slice.md`). The
+// renderer ships them as a const map so a deploy can grep
+// `subjectFor(...)` to confirm the active pattern without reading
+// every template file.
+
+import 'dart:convert';
+
+/// Thrown when a template references a variable that is missing
+/// from the supplied [templateData]. The dispatcher treats this as
+/// a permanent failure and dead-letters the row — retrying will not
+/// fix the missing variable.
+class MissingTemplateVariableError implements Exception {
+  const MissingTemplateVariableError({
+    required this.templateId,
+    required this.variableName,
+  });
+
+  final String templateId;
+  final String variableName;
+
+  @override
+  String toString() =>
+      'MissingTemplateVariableError(template=$templateId, variable=$variableName)';
+}
+
+/// Rendered email envelope returned by [EmailTemplateRenderer.render].
+class RenderedEmail {
+  const RenderedEmail({
+    required this.subject,
+    required this.htmlBody,
+    required this.textBody,
+  });
+
+  final String subject;
+  final String htmlBody;
+  final String textBody;
+}
+
+/// Source of one email template's Markdown body. Production binds
+/// this to a file-system loader rooted at
+/// `tool/advisor_proxy/email_templates/`; tests inject a map-backed
+/// loader so the suite does not touch disk.
+typedef EmailTemplateSource = String Function(String templateId);
+
+/// Loader for the brand-styled HTML wrapper. The wrapper contains
+/// the literal string `{{body}}` which the renderer replaces with
+/// the rendered Markdown body. Headers / footers / brand styling
+/// live entirely in the wrapper, so swapping the wrapper does not
+/// touch any individual template.
+typedef EmailBrandWrapperSource = String Function();
+
+/// Locked V1 template ids. Adding a new template means: drop the
+/// .md file alongside the existing eight, add the id + subject
+/// pattern here, and ship a renderer test.
+class EmailTemplateIds {
+  EmailTemplateIds._();
+
+  static const String operatorInviteFirstAdmin =
+      'operator_invite_first_admin';
+  static const String operatorAdminInvite = 'operator_admin_invite';
+  static const String passwordResetRequest = 'password_reset_request';
+  static const String mfaFactorChangedNotice = 'mfa_factor_changed_notice';
+  static const String vendorSyncErrorAlert = 'vendor_sync_error_alert';
+  static const String vendorWebhookSignatureAlert =
+      'vendor_webhook_signature_alert';
+
+  /// V1 status: TEMPLATE ONLY. Phase 8 lean cut 2 explicitly defers
+  /// the OAuth-refresh-cron emitter that would enqueue an
+  /// `email_outbox` row when a vendor connection auto-disables on
+  /// 3 consecutive refresh failures. The template file ships
+  /// production-ready so the future `9.8.email` follow-up can wire
+  /// the emitter without touching templates; until then the
+  /// operator sees the `error` state in the admin Connected
+  /// services card. Source: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
+  /// 8.0 deliverables block ("Email alert wiring to `9.8.email`
+  /// deferred") and the V1 explicit non-goals list ("3-strike
+  /// auto-disable email wiring" — `project_v1_lean_cut_2_2026_05_03.md`
+  /// round 2).
+  static const String vendorConnectionAutoDisabled =
+      'vendor_connection_auto_disabled';
+  static const String tosVersionUpdatedNotice = 'tos_version_updated_notice';
+
+  /// All V1 template ids in the order they appear in the slice doc.
+  /// Runtime tests iterate this list to confirm every file renders
+  /// with sample data.
+  static const List<String> all = <String>[
+    operatorInviteFirstAdmin,
+    operatorAdminInvite,
+    passwordResetRequest,
+    mfaFactorChangedNotice,
+    vendorSyncErrorAlert,
+    vendorWebhookSignatureAlert,
+    vendorConnectionAutoDisabled,
+    tosVersionUpdatedNotice,
+  ];
+}
+
+/// Subject patterns LOCKED in the slice doc. Variables in the
+/// pattern are interpolated through the same `{{name}}` substitution
+/// as the body.
+const Map<String, String> _subjectByTemplate = <String, String>{
+  EmailTemplateIds.operatorInviteFirstAdmin:
+      'Welcome to Forge & Flow — set up your account',
+  EmailTemplateIds.operatorAdminInvite:
+      '{{inviterName}} invited you to join {{businessName}}',
+  EmailTemplateIds.passwordResetRequest:
+      'Reset your Forge & Flow password',
+  EmailTemplateIds.mfaFactorChangedNotice:
+      'Your Forge & Flow MFA has been updated',
+  EmailTemplateIds.vendorSyncErrorAlert:
+      'Forge & Flow could not sync from {{vendorName}}',
+  EmailTemplateIds.vendorWebhookSignatureAlert:
+      'Suspicious webhook activity from {{vendorName}}',
+  EmailTemplateIds.vendorConnectionAutoDisabled:
+      '{{vendorName}} connection disabled',
+  EmailTemplateIds.tosVersionUpdatedNotice:
+      'Forge & Flow Terms of Service updated',
+};
+
+class EmailTemplateRenderer {
+  EmailTemplateRenderer({
+    required EmailTemplateSource templateSource,
+    required EmailBrandWrapperSource brandWrapperSource,
+  })  : _templateSource = templateSource,
+        _brandWrapperSource = brandWrapperSource;
+
+  final EmailTemplateSource _templateSource;
+  final EmailBrandWrapperSource _brandWrapperSource;
+
+  /// Resolves the locked subject for [templateId] without rendering.
+  /// The proxy's "Test connection" admin route uses this to surface
+  /// the subject in the response payload alongside `provider_message_id`.
+  String subjectFor(String templateId, Map<String, String> templateData) {
+    final pattern = _subjectByTemplate[templateId];
+    if (pattern == null) {
+      throw ArgumentError('Unknown templateId: $templateId');
+    }
+    return _interpolate(
+      pattern,
+      templateData,
+      templateId: templateId,
+    );
+  }
+
+  /// Render the Markdown source for [templateId] into a
+  /// [RenderedEmail] envelope. Throws on missing variables, unknown
+  /// template ids, or a wrapper missing the `{{body}}` slot.
+  RenderedEmail render({
+    required String templateId,
+    required Map<String, String> templateData,
+  }) {
+    if (!_subjectByTemplate.containsKey(templateId)) {
+      throw ArgumentError('Unknown templateId: $templateId');
+    }
+    final markdown = _templateSource(templateId);
+    final interpolatedMarkdown = _interpolate(
+      markdown,
+      templateData,
+      templateId: templateId,
+    );
+    final renderedHtmlBody = _markdownToHtml(interpolatedMarkdown);
+    final wrapper = _brandWrapperSource();
+    if (!wrapper.contains('{{body}}')) {
+      throw StateError(
+        'Brand wrapper is missing the literal {{body}} placeholder',
+      );
+    }
+    final wrappedHtml = wrapper.replaceAll('{{body}}', renderedHtmlBody);
+    final subject = subjectFor(templateId, templateData);
+    return RenderedEmail(
+      subject: subject,
+      htmlBody: wrappedHtml,
+      textBody: interpolatedMarkdown.trim(),
+    );
+  }
+
+  /// Map-backed [EmailTemplateSource] convenience constructor — used
+  /// by the unit tests so the suite does not touch disk. Production
+  /// loads templates from `tool/advisor_proxy/email_templates/`.
+  static EmailTemplateSource fromMap(Map<String, String> templates) {
+    return (templateId) {
+      final value = templates[templateId];
+      if (value == null) {
+        throw ArgumentError(
+          'Template source has no entry for $templateId',
+        );
+      }
+      return value;
+    };
+  }
+
+  static EmailBrandWrapperSource fromString(String wrapper) {
+    return () => wrapper;
+  }
+
+  String _interpolate(
+    String source,
+    Map<String, String> data, {
+    required String templateId,
+  }) {
+    final pattern = RegExp(r'\{\{\s*([a-zA-Z][a-zA-Z0-9_]*)\s*\}\}');
+    return source.replaceAllMapped(pattern, (match) {
+      final name = match.group(1)!;
+      if (name == 'body') {
+        // The brand wrapper uses {{body}} as a slot the renderer
+        // fills after Markdown→HTML; templates themselves should
+        // never reference {{body}} directly.
+        throw StateError(
+          'Template $templateId references reserved variable name "body"',
+        );
+      }
+      final value = data[name];
+      if (value == null) {
+        throw MissingTemplateVariableError(
+          templateId: templateId,
+          variableName: name,
+        );
+      }
+      return value;
+    });
+  }
+
+  /// Tiny Markdown→HTML pipeline tuned for the V1 template surface.
+  /// Implements paragraphs, single-level headings (`# `), bullet
+  /// lists (`- `), bold (`**bold**`), italic (`*italic*`), and
+  /// inline links (`[text](url)`). Anything else passes through with
+  /// HTML-escaping so unsafe characters do not corrupt the output.
+  String _markdownToHtml(String markdown) {
+    final lines = const LineSplitter().convert(markdown);
+    final buffer = StringBuffer();
+    final paragraph = <String>[];
+    final bullets = <String>[];
+
+    void flushParagraph() {
+      if (paragraph.isEmpty) return;
+      final text = paragraph.join(' ').trim();
+      paragraph.clear();
+      if (text.isEmpty) return;
+      buffer.writeln('<p>${_renderInline(text)}</p>');
+    }
+
+    void flushBullets() {
+      if (bullets.isEmpty) return;
+      buffer.writeln('<ul>');
+      for (final item in bullets) {
+        buffer.writeln('  <li>${_renderInline(item)}</li>');
+      }
+      buffer.writeln('</ul>');
+      bullets.clear();
+    }
+
+    for (final raw in lines) {
+      final line = raw.trimRight();
+      if (line.isEmpty) {
+        flushParagraph();
+        flushBullets();
+        continue;
+      }
+      if (line.startsWith('# ')) {
+        flushParagraph();
+        flushBullets();
+        buffer.writeln('<h1>${_renderInline(line.substring(2).trim())}</h1>');
+        continue;
+      }
+      if (line.startsWith('## ')) {
+        flushParagraph();
+        flushBullets();
+        buffer.writeln('<h2>${_renderInline(line.substring(3).trim())}</h2>');
+        continue;
+      }
+      if (line.startsWith('- ')) {
+        flushParagraph();
+        bullets.add(line.substring(2).trim());
+        continue;
+      }
+      paragraph.add(line.trim());
+    }
+    flushParagraph();
+    flushBullets();
+    return buffer.toString().trim();
+  }
+
+  String _renderInline(String text) {
+    var working = _escapeHtml(text);
+    // Bold (**text**) — must run before italics so the inner *...*
+    // does not match.
+    working = working.replaceAllMapped(
+      RegExp(r'\*\*([^*]+)\*\*'),
+      (m) => '<strong>${m.group(1)}</strong>',
+    );
+    // Italic (*text*) — single-asterisk pairs.
+    working = working.replaceAllMapped(
+      RegExp(r'\*([^*\s][^*]*[^*\s]|[^*\s])\*'),
+      (m) => '<em>${m.group(1)}</em>',
+    );
+    // Inline links [text](url).
+    working = working.replaceAllMapped(
+      RegExp(r'\[([^\]]+)\]\(([^)\s]+)\)'),
+      (m) {
+        final label = m.group(1)!;
+        final href = m.group(2)!;
+        return '<a href="$href">$label</a>';
+      },
+    );
+    return working;
+  }
+
+  String _escapeHtml(String input) {
+    return input
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+  }
+}

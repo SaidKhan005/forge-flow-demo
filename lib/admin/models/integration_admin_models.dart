@@ -23,7 +23,15 @@ enum ProviderKeyKind {
   anthropic('anthropic', 'Anthropic API'),
   voyage('voyage', 'Voyage embeddings'),
   azureDb('azure_db', 'Azure DB superuser'),
-  gemini('gemini', 'Gemini API');
+  gemini('gemini', 'Gemini API'),
+  // Phase 9.8 — SendGrid joins the rotatable provider lanes alongside
+  // Anthropic / Voyage / Azure DB / Gemini. The wire name + display
+  // name follow the established pattern; the ledger is backed by
+  // public.email_credentials (separate table because the SendGrid
+  // key is platform-wide and the rotation contract is identical to
+  // provider_credentials but kept distinct so a future Postmark / SES
+  // swap is purely additive).
+  sendgrid('sendgrid', 'SendGrid email');
 
   const ProviderKeyKind(this.wireName, this.displayName);
 

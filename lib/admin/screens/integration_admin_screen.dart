@@ -2,9 +2,21 @@
 //
 // F&F internal Integrations surface. Reads the masked-display
 // ledger via [IntegrationAdminGateway] and renders one row per
-// rotatable provider (Anthropic / Voyage / Azure DB) plus status
-// placeholders for vendor connectors (Phase 8), the FX-rate source,
-// and the email provider (Phase 9.8).
+// rotatable provider (Anthropic / Voyage / Azure DB / Gemini /
+// SendGrid) plus status placeholders for vendor connectors
+// (Phase 8) and the FX-rate source.
+//
+// Phase 9.8 extension: SendGrid joins the rotatable provider lanes
+// alongside the existing four. The lane lights up automatically
+// because the screen iterates `ProviderKeyKind.values` — adding
+// `sendgrid` to the enum at `lib/admin/models/integration_admin_models.dart`
+// is the only change needed for the visual surface. The rotate
+// flow reuses the shared `RotateKeyCommand` pattern so no per-kind
+// branching lands here. Demo-mode rotation flows through
+// `InMemoryIntegrationAdminGateway`; live-mode rotation extends
+// downstream when the SendGrid key path through the proxy lands
+// (the `email_credentials` pgcrypto envelope from the migration is
+// the production-mode rotation target).
 //
 // Rotation flow (super_admin only):
 //
