@@ -72,6 +72,7 @@ live here side-by-side (e.g. `7.58.0.md` audit + `7.58.UX.5.md` fix).
 | [`11A.3b.md`](11A.3b.md) | `11A.3b` | Graphify candidate review console |
 | [`11A.4.md`](11A.4.md) | `11A.4` | Integration management + KMS-stubbed key rotation |
 | [`11A.5.md`](11A.5.md) | `11A.5` | Debug console request log + opt-in full-content gate + bounded live-tail |
+| [`11A.6.md`](11A.6.md) | `11A.6` | Observability dashboard: bounded cost telemetry, dormancy, margins, cap events, graph, Cloud Run |
 
 ## Phase 9 Foundation Producers (B-series)
 

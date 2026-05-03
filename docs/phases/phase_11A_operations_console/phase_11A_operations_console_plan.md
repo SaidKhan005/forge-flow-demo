@@ -1,19 +1,21 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-03 (`11A.5` Debug Console accepted; B44/B45/B47 producer delivery + staging remediation acknowledged)
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`7`/`UX.health` accepted.
-Remaining: `11A.6` (B44/B45/B47 producers delivered; cost/dependency observability surface not started); `11A.8`/`9`/`10` not started.
+Updated: 2026-05-03 (`11A.5` Debug Console + `11A.6` observability dashboard accepted)
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted.
+Remaining: `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-03)
 
 Active contract: `docs/contracts/proxy_health_contract.md` (live; consumed by
-`11A.UX.health`).
+`11A.UX.health` and the remaining `11A.5` health/debug surface).
 
-`11A.6` observability dashboard reads proxy `/health` per-surface metrics.
-`11A.5` now owns the Debug Console request-log surface; its Graph debug tab is
-a future `11A.3.x` extension stub, not the health-producer dashboard.
-Producers from the 9.0Σ foundation series:
+`11A.5` Debug Console owns the per-operator request-log surface; its Graph
+debug tab is a future `11A.3.x` extension stub, not a health-producer
+dashboard. `11A.6` observability is a separate bounded dashboard that links
+to the Health viewer instead of duplicating `/health`; its live gateway
+targets `GET /v1/admin/observability`. Producers from the 9.0Σ foundation
+series:
 
 - `audit_chain_lag_seconds` — **delivered** by B27 (`audit_logs` hash chain).
 - `vector_index_size_per_corpus`, latency, recall — **delivered** by B47
@@ -351,17 +353,22 @@ Acceptance:
   requests, notification/outbox status, and Firebase/local drift
   flags. Full repair actions consume Phase 9 safe backend routes;
   the admin client must not perform direct DB/Firebase writes.
-- `11A.6` **Observability dashboard.** *Status (2026-05-03): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; Observability remains the placeholder route in `lib/admin/admin_routes.dart`. Graph, vector, and rollup metric producers are now delivered by B44/B47/B45; remaining work is the dashboard surface and live evidence, not producer wiring.* System health
-  (Postgres + AGE + pgvector + Cloud Run via the `/health`
-  probe). Latency p95 / p99 charts. Error rate by route.
-  Cap-event stream (incoming alerts when operators hit cap).
-  Cloud Run instance counts. Replaces "I'll figure out if
-  something's broken from raw logs" as the path.
-  Graph observability must include approved node count, approved edge
-  count, inferred-edge approval count, rejected candidate count,
-  isolated-node count, AGE projection freshness, and traversal p95.
+- `11A.6` **Observability dashboard.** *Status (2026-05-03): accepted —
+  walkthrough `docs/_walkthroughs/11A.6.md`. The former scaffold route is replaced
+  by a read-only `/observability` binding in `lib/admin/admin_routes.dart`.
+  Production `lib/main_admin.dart` wires `HttpObservabilityAdminGateway` to
+  bearer-token `GET /v1/admin/observability` with a 60s timeout and typed
+  errors; demo mode uses the seeded in-memory envelope. The surface is
+  manual-confirmed, has no auto-polling, prevents stacked in-flight requests,
+  and keeps the Health envelope viewer separate and untouched.* Accepted
+  dashboard coverage includes latency p95 / p99 charts, route error summaries,
+  cap-event stream (incoming alerts when operators hit cap), Cloud Run instance
+  counts, approved/inferred-approved/rejected/isolated graph counts, AGE
+  projection freshness, and traversal p95.
 
-  **Cost telemetry surfaces** (Hard Promise #9 visibility):
+  **Accepted cost telemetry surfaces** (Hard Promise #9 visibility; bounded by
+  `kObservabilityCostTelemetryLimit = 100`, scoped with optional `query_class`
+  filtering, and rendered through a fixed-height virtualized list):
   - Total cost-by-(`operator_id` / `location_id` / `staff_id` /
     `workflow_id` / `usage_class`)
   - Cost-by-`query_class` (advisor_qa / coach_qa / wf_pl /
@@ -448,7 +455,7 @@ explicit per Hard Promise #10.
 - `11A.4` integration management (consumed by Phase 8 / 8R / 8.5)
 - `11A.5` debug console request log (meta-by-default, full-content
   reveal gated by role and operator opt-in, live-tail bounded)
-- `11A.6` observability dashboard
+- `11A.6` observability dashboard (accepted; walkthrough `docs/_walkthroughs/11A.6.md`)
 - `11A.7` feature flag admin
 - `11A.8` API version management
 - `11A.9` audit log review (consumes B27 / B37)

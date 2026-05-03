@@ -3383,9 +3383,9 @@ Key pieces, one at a time:
 #### Health producers delivered
 
 - **What it means:** B44 graph, B45 rollup, and B47 vector producers now fill the B42 health envelope in code
-- **Example in the app:** 11A can build health/observability surfaces against real producer families.
+- **Example in the app:** `11A.6` now has a bounded observability dashboard; `11A.5` remains the health/debug surface against these producer families.
 - **Why it matters:** Needed for ops console health views
-- **How this helps long term:** Moves the next work from producer wiring to bounded UX/live evidence.
+- **How this helps long term:** Moves remaining work from producer wiring to health UX, live evidence, and operational recovery posture.
 
 
 ### Where It Lives
