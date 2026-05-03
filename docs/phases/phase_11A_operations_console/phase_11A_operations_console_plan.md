@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
 Updated: 2026-05-03 (B44/B45/B47 producer delivery + staging remediation acknowledged)
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7`/`UX.health` accepted.
-Remaining: `11A.5`, `11A.6` (B44/B45/B47 producers delivered; UX surfaces not started); `11A.8`/`9`/`10` not started.
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7` accepted; sub-slice `11A.UX.health` (read-only `/health` envelope viewer at `lib/admin/screens/health_admin_screen.dart`) shipped 2026-05-02 as the first delivery of `11A.6`.
+Remaining: `11A.5` (Debug Console, not started — placeholder route only at `lib/admin/admin_routes.dart` line 167-174); `11A.6` cost-telemetry / dependency / dormancy / margin surfaces (queued — placeholder route at `admin_routes.dart` line 175-183; B44/B45/B47 producers delivered); `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-02)
