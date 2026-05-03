@@ -86,10 +86,32 @@ class ShiftSnapshot {
         targetSPLH: BaselineData.derivedTargetSPLH,
       );
 
-  static LeverCardData get primaryLeverCard => LeverCards.all.firstWhere(
-        (l) => l.id == primaryLeverId,
-        orElse: () => LeverCards.coversDown,
-      );
+  // 7.61.3 / F-3: resolve through `LeverCards.lookup` per R-CONS-1 +
+  // R-STOR-7 instead of the banned `firstWhere(orElse: coversDown)`
+  // fall-through. `primaryLeverId` is sourced from
+  // `LaborModel.determineLever`, which always returns a catalog id
+  // (R-PROD-1), so the StateError branch is defense-in-depth — it
+  // loudly surfaces a producer regression instead of silently
+  // materializing a real `coversDown` card the engine never picked.
+  // The resolver is split out as `resolveLeverCard` so the contract
+  // test can pin the unknown-id failure boundary directly (the
+  // deterministic seed never mints an unknown id, so calling the
+  // getter alone cannot exercise the StateError branch).
+  static LeverCardData get primaryLeverCard =>
+      resolveLeverCard(primaryLeverId);
+
+  /// Test-visible resolver. Returns the catalog card for [id], or
+  /// throws `StateError` (naming the offending id) when [id] is the
+  /// `on_model` sentinel, an unknown id, or empty. Mirrors the
+  /// renderer-side R-CONS-3 contract on
+  /// `lib/models/shift_dashboard_read_model.dart` while keeping the
+  /// failure mode loud for dev fixtures rather than asserting via `!`.
+  @visibleForTesting
+  static LeverCardData resolveLeverCard(String id) =>
+      LeverCards.lookup(id) ??
+      (throw StateError(
+        'demo fixture primaryLeverId not in catalog: $id',
+      ));
 }
 
 // ─── Week-to-date totals (9 closed shifts Mon–Fri lunch) ─────────────────────

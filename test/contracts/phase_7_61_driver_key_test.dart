@@ -25,6 +25,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/data/app_defaults.dart';
+import 'package:forge_and_flow/dev/demo_fixture_data.dart';
 import 'package:forge_and_flow/domain/models/closed_shift_input.dart';
 import 'package:forge_and_flow/domain/models/target_snapshot.dart';
 import 'package:forge_and_flow/domain/services/shift_fact_builder.dart';
@@ -878,6 +879,114 @@ void main() {
           reason:
               'F-1 — Sun Lunch (the unknown row\'s daypart) MUST NOT '
               'appear; only the known benchmark\'s daypart survives.');
+    });
+  });
+
+  group(
+      'F-3 — demo_fixture_data primaryLeverCard resolves through '
+      'LeverCards.lookup, never silently maps unknown ids to coversDown', () {
+    // Pins the `7.61.3` fix in `lib/dev/demo_fixture_data.dart`:
+    // pre-fix the `ShiftSnapshot.primaryLeverCard` getter used
+    // `LeverCards.all.firstWhere(... orElse: () => LeverCards.coversDown)`
+    // (lines 89-92), which would have silently materialized the
+    // `coversDown` card for any id outside the catalog. Post-fix the
+    // getter resolves through `LeverCards.lookup` and throws StateError
+    // if the upstream `LaborModel.determineLever` invariant ever breaks.
+    // R-CONS-1 (renderer/fixture consumers) + R-STOR-7 (lookup returns
+    // null for unknown).
+
+    test(
+        'ShiftSnapshot.primaryLeverCard equals LeverCards.lookup of the '
+        'same id (golden path — no silent fall-through)', () {
+      final id = ShiftSnapshot.primaryLeverId;
+      final viaLookup = LeverCards.lookup(id);
+      expect(viaLookup, isNotNull,
+          reason:
+              'R-PROD-1 invariant: LaborModel.determineLever always returns '
+              'a catalog id, so lookup must resolve.');
+      expect(identical(ShiftSnapshot.primaryLeverCard, viaLookup), isTrue,
+          reason:
+              'F-3 — primaryLeverCard must come from LeverCards.lookup, not '
+              'a firstWhere fall-through to coversDown.');
+    });
+
+    test(
+        'ShiftSnapshot.primaryLeverCard.id round-trips with primaryLeverId '
+        '(catalog membership)', () {
+      final card = ShiftSnapshot.primaryLeverCard;
+      expect(card.id, equals(ShiftSnapshot.primaryLeverId),
+          reason:
+              'F-3 — the resolved card id must equal the engine-minted id; '
+              'a fall-through to coversDown would surface card.id == '
+              "'covers_down' even when the engine picked something else.");
+      expect(_expectedCatalog, contains(card.id),
+          reason:
+              'R-CONS-1 — fixture-side card id must be a catalog id.');
+    });
+
+    test(
+        'unknown id throws StateError naming the offending id, never falls '
+        'through to coversDown (regression pin — exercises the failure '
+        'boundary the deterministic seed cannot)', () {
+      // P2 review: the deterministic ShiftSnapshot fixture mints
+      // 'covers_down', so calling primaryLeverCard alone would also pass
+      // against the pre-fix `firstWhere(orElse: coversDown)` (the
+      // orElse never fires). This test calls the resolver helper
+      // directly with an id outside the catalog so the failure branch
+      // is actually exercised: pre-fix this would have silently
+      // returned LeverCards.coversDown; post-fix it must throw.
+      expect(
+        () => ShiftSnapshot.resolveLeverCard('made_up_lever'),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('made_up_lever'),
+        )),
+        reason:
+            'F-3 — unknown id MUST throw StateError naming the id, never '
+            'silently return LeverCards.coversDown via firstWhere fall-through.',
+      );
+    });
+
+    test(
+        'on_model sentinel throws StateError (same failure surface as '
+        'unknown id; renderer-side asserts this via lookup!)', () {
+      // R-STOR-6: lookup returns null for the sentinel. The dev
+      // fixture's resolver MUST surface that as a loud StateError, not
+      // a silent fall-through to a real catalog card. This pins the
+      // sentinel branch separately from the unknown-id branch because
+      // a future "treat sentinel as coversDown" regression would slip
+      // past a unknown-id-only test.
+      expect(
+        () => ShiftSnapshot.resolveLeverCard('on_model'),
+        throwsA(isA<StateError>().having(
+          (e) => e.message,
+          'message',
+          contains('on_model'),
+        )),
+        reason:
+            'R-STOR-6 — the on_model sentinel is intentionally outside the '
+            'catalog; the dev resolver MUST throw, never fabricate a card.',
+      );
+    });
+
+    test(
+        'known catalog id resolves to the matching card (golden-path '
+        'regression guard for the resolver helper)', () {
+      // Complements the unknown-id assertions: pin that the resolver
+      // still returns the right card on the happy path so a future
+      // refactor that breaks the lookup direction (e.g. accidentally
+      // throwing for every input) gets caught.
+      expect(
+        identical(
+          ShiftSnapshot.resolveLeverCard('cplh_down'),
+          LeverCards.cplhDown,
+        ),
+        isTrue,
+        reason:
+            'F-3 — golden-path resolver returns the SAME LeverCardData '
+            'instance LeverCards.lookup returns (no copy / no fall-through).',
+      );
     });
   });
 }
