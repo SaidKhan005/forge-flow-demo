@@ -3,6 +3,12 @@
 This runbook makes the launch smoke accounts durable in staging or production
 without hand-editing rows.
 
+For production, load/override the production `POSTGRES_ADMIN_URL` and
+`FIREBASE_PROJECT_ID` first. The repo's Firebase config is staging-only today,
+so `-RefreshFirebaseClaims` must not run against production until the
+production Firebase project exists and the launch accounts have been created
+there.
+
 ## Accounts
 
 | Account | Intended role |
@@ -34,6 +40,16 @@ Apply the database write and refresh Firebase custom claims:
 
 ```powershell
 scripts/set_launch_account_roles.ps1 -RefreshFirebaseClaims
+```
+
+For a production run, pass the target explicitly if the shell contains both
+staging and production values:
+
+```powershell
+scripts/set_launch_account_roles.ps1 `
+  -ConnectionString $env:POSTGRES_PRODUCTION_ADMIN_URL `
+  -FirebaseProjectId forge-flow-production1 `
+  -RefreshFirebaseClaims
 ```
 
 `-RefreshFirebaseClaims` requires

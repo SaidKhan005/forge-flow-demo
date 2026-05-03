@@ -77,9 +77,11 @@ Pairs with:
   account `forgeflowprod1` + key vault `forgeflow-prod-kv` /
   `blob-cmk` this runbook depends on.
 - `infrastructure/cloud_run/audit_anchor_job.yaml` — Cloud Run Job
-  + Cloud Scheduler manifest, schedule pinned `55 23 * * *` Etc/UTC.
+  + Cloud Scheduler name-only manual contract, schedule pinned
+  `55 23 * * *` Etc/UTC. The deploy helper now calls `gcloud`
+  directly instead of rendering this YAML.
 - `scripts/deploy_audit_anchor_job.ps1` — idempotent deploy helper
-  (Secret Manager sync, Job replace, Scheduler upsert).
+  (Secret Manager sync, Job deploy/update, Scheduler upsert).
 - `tool/audit_anchor/Dockerfile` — Cloud Build container recipe.
 - `tool/audit_anchor/cloudbuild.yaml` — image build + push pipeline.
 
@@ -107,13 +109,20 @@ Pairs with:
   assertion. **If preflight fails, STOP — do not partially deploy.**
 - Stages 2 (Azure provisioning) and 4d (immutability lock) are
   irreversible. Each lists an explicit human-confirmation prompt.
+- Production1 note (2026-05-03): production runtime setup is paused.
+  Do not deploy the audit-anchor job to Production1 until
+  `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`
+  has been updated with the production Secret Manager namespace,
+  deploy service account, static egress, Azure firewall allowlist,
+  and audit-anchor Azure app/federated-credential values.
 
 ## Variable name reference
 
 | Variable | Source | Used by |
 | --- | --- | --- |
 | `FF_GCP_PROJECT` | secrets.ps1 | gcloud |
-| `FF_GCP_REGION` | secrets.ps1 | gcloud |
+| `FF_GCP_REGION` | secrets.ps1 (`northamerica-northeast2` for the Cloud Run Job) | gcloud run / Artifact Registry |
+| `FF_GCP_SCHEDULER_LOCATION` | secrets.ps1 or deploy param (`northamerica-northeast1`; Cloud Scheduler location) | gcloud scheduler |
 | `FF_CLOUDRUN_SA_EMAIL` | secrets.ps1 | gcloud / az |
 | `FF_CLOUDRUN_SA_UNIQUE_ID` | secrets.ps1 (numeric) | az federated-credential subject |
 | `FF_ARTIFACT_REGISTRY` | secrets.ps1 (`region-docker.pkg.dev/proj/repo`) | gcloud builds + Cloud Run image ref |
@@ -130,19 +139,25 @@ Pairs with:
 ## Stage 1 — Preflight (read-only; idempotent)
 
 Run the deploy script's `-Preflight` switch. The script exits non-zero
-on the first missing variable or failed describe call without
-performing any mutation. Add `-Verbose` to print each command before
-execution.
+on the first missing local env name and prints the exact `gcloud`
+commands that would run, without performing any mutation.
 
 ```powershell
 pwsh scripts/deploy_audit_anchor_job.ps1 -Preflight
 ```
 
-Expected output: 14 PASS lines, no ERRORs, no BLOCKED markers. The
-specific assertions are:
+Expected output: name-only required variables, the Secret Manager mapping,
+and dry-run `gcloud` commands. Current
+`scripts/deploy_audit_anchor_job.ps1 -Preflight` does not run the
+historical `az`/`gcloud describe` checks below; run those describes
+manually before live apply when changing target projects, tenants,
+service accounts, storage accounts, or the static-egress connector.
+The specific assertions to verify are:
 
 1. `gcloud projects describe $FF_GCP_PROJECT` exit 0.
-2. `gcloud config get-value run/region` matches `$FF_GCP_REGION`.
+2. Cloud Run Job region is `$FF_GCP_REGION`; Scheduler location is
+   `$FF_GCP_SCHEDULER_LOCATION` (staging uses `northamerica-northeast1`
+   for Scheduler).
 3. `gcloud iam service-accounts describe $FF_CLOUDRUN_SA_EMAIL` exit 0.
 4. `gcloud iam service-accounts describe $FF_CLOUDRUN_SA_EMAIL --format='value(uniqueId)'` equals `$FF_CLOUDRUN_SA_UNIQUE_ID`.
 5. `gcloud artifacts repositories describe ...` parsed from `$FF_ARTIFACT_REGISTRY` exit 0.
@@ -292,9 +307,10 @@ IMAGE="${FF_GCP_REGION}-docker.pkg.dev/${FF_GCP_PROJECT}/forge-flow/audit-anchor
 
 ## Stage 4 — Deploy the Cloud Run Job + Scheduler
 
-The deploy script (idempotent — describe-first, replace) syncs Secret
-Manager, deploys the Job from `infrastructure/cloud_run/audit_anchor_job.yaml`,
-and upserts the Cloud Scheduler trigger.
+The deploy script (idempotent — describe-first, deploy/update) syncs Secret
+Manager, deploys or updates the Cloud Run Job directly from the compiled
+image, and upserts the Cloud Scheduler trigger. It no longer renders
+`infrastructure/cloud_run/audit_anchor_job.yaml`.
 
 ### 4a. Sync secrets (idempotent — adds new versions only when content changes)
 
@@ -325,7 +341,10 @@ from the scaffold-rejecter to the live
 pwsh scripts/deploy_audit_anchor_job.ps1 `
   -Image "$IMAGE" `
   -Project "$FF_GCP_PROJECT" `
-  -Region  "$FF_GCP_REGION"
+  -Region "$FF_GCP_REGION" `
+  -SchedulerLocation "$FF_GCP_SCHEDULER_LOCATION" `
+  -VpcConnector "$FF_GCP_VPC_CONNECTOR" `
+  -VpcEgress all-traffic
 ```
 
 The script:
@@ -333,11 +352,13 @@ The script:
 1. Validates `Assert-PresentEnv` for every variable above.
 2. Calls `Sync-SecretManagerSecret` for each of the five secrets
    (idempotent — describe-first add-version).
-3. Renders `infrastructure/cloud_run/audit_anchor_job.yaml` with
-   `__IMAGE__` substituted to `$IMAGE`.
-4. `gcloud run jobs replace` the rendered manifest.
-5. `gcloud scheduler jobs create` (or `update` if it exists) for
-   `forge-flow-audit-anchor-daily` at `55 23 * * *` Etc/UTC.
+3. Runs `gcloud run jobs deploy` on first deploy or `gcloud run jobs
+   update` on later runs, with `--vpc-connector` + `--vpc-egress`.
+4. Runs `gcloud scheduler jobs create http` or `update http` for
+   `forge-flow-audit-anchor-daily` at `55 23 * * *` Etc/UTC, in the
+   Scheduler location (not necessarily the Cloud Run Job region).
+5. Relies on the image's `ENTRYPOINT ["/app/audit_anchor"]` and
+   `CMD ["sweep"]`; do not set `--command` or `--args` for the daily job.
 
 ### 4c. Verify Job + Scheduler
 
@@ -347,7 +368,7 @@ gcloud run jobs describe forge-flow-audit-anchor \
   --format='value(metadata.name, spec.template.spec.template.spec.containers[0].image)'
 
 gcloud scheduler jobs describe forge-flow-audit-anchor-daily \
-  --location="$FF_GCP_REGION" \
+  --location="$FF_GCP_SCHEDULER_LOCATION" \
   --format='value(name, schedule, timeZone, state)'
 # expected: ...  55 23 * * *  Etc/UTC  ENABLED
 ```
@@ -465,6 +486,19 @@ grep -E '(eyJ|Bearer |password=|sas=|key=)' /tmp/audit_anchor_exec.log
 # expected: (no output)
 ```
 
+## Rotation pattern
+
+Secret rotation is the same pattern as the advisor proxy: update the
+operator's non-repo env loader, rerun `scripts/deploy_audit_anchor_job.ps1`,
+and let the script add fresh Secret Manager versions before redeploying the
+Job. The Job reads only Secret Manager refs at execution time; never paste
+secret values into this runbook.
+
+Container rotation is intentionally separate. Build a new image from the repo
+root, then rerun Stage 4 with the new `-Image` value. The blob container and
+existing `audit_chain_anchors` rows are durable evidence and are not rotated
+by a code deploy.
+
 ## Rollback
 
 The Cloud Run Job + Scheduler are reversible. The blob container, its
@@ -474,7 +508,7 @@ point of the slice.
 ```bash
 # Pause future scheduled executions.
 gcloud scheduler jobs pause forge-flow-audit-anchor-daily \
-  --location="$FF_GCP_REGION"
+  --location="$FF_GCP_SCHEDULER_LOCATION"
 
 # (Optional) delete the Job — leaves blobs and DB rows intact.
 gcloud run jobs delete forge-flow-audit-anchor \

@@ -64,6 +64,13 @@ When browser or service-worker cache can hide the deployed state, use a fresh
 URL, revision capture, cache-busting query, or browser context and record which
 runtime revision was tested.
 
+Use Browser Use as the default browser acceptance harness when available.
+Browser-exposed slices should include a route sweep, one primary click path,
+desktop evidence, mobile-width evidence when UI layout is in scope, and an
+explicit safe-action boundary. The reusable evidence shape lives in
+`runbooks/browser_use_acceptance_harness_runbook.md`; admin-console-specific
+build/origin notes live in `runbooks/admin_console_browser_qa_runbook.md`.
+
 ## Health And Producer Truth
 
 Health red/yellow means "find the producer," not "hide the UI state."

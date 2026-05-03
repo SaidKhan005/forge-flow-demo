@@ -1,6 +1,6 @@
 # CMK Provisioning Runbook
 
-Updated: 2026-05-01.
+Updated: 2026-05-03.
 Owner: F&F launch lane.
 Slice: `phase_production_cutover` / `cutover.0a`.
 
@@ -9,7 +9,9 @@ Slice: `phase_production_cutover` / `cutover.0a`.
 Provision customer-managed keys (CMK) for production Postgres data
 encryption-at-rest and production Blob storage encryption-at-rest. Run once,
 during production cutover, before any operator data is loaded into
-`forge-flow-production1-pg`.
+Production1. The CMK path has already landed through the
+`forge-flow-production1-pg-cmk` replacement server; this runbook is now
+historical evidence plus any remaining alert/backup follow-up.
 
 Pairs with:
 
@@ -28,15 +30,16 @@ Read-only preflight against the production subscription returned:
   tenant `13c004f7-8019-4729-bf18-b56b14f42b41`,
   signed-in user `saidumarkhan005@gmail.com`. Confirmed by operator on
   2026-05-01 as the production target tenant.
-- `forge-flow-production1-rg` (Canada Central) contains exactly one
-  resource: `forge-flow-production1-pg` (Postgres flexible server,
-  PG 16, `dataEncryption.type = SystemManaged`). Ready for CMK
-  rotation.
+- `forge-flow-production1-rg` (Canada Central) originally contained
+  `forge-flow-production1-pg` (Postgres flexible server, PG 16,
+  `dataEncryption.type = SystemManaged`). That server was deleted and
+  replaced on 2026-05-01 by `forge-flow-production1-pg-cmk`, created
+  with Azure Key Vault data encryption enabled at create time.
 - `forge-flow-staging-rg` (Canada Central) contains exactly one
   resource: `forge-flow-staging-pg`.
 - **No storage account exists in either resource group, or anywhere
   else in this subscription** as of 2026-05-01.
-- Postgres CMK path is unblocked and ready.
+- Postgres CMK path is complete via `cutover.0a.pg`.
 - Blob CMK path was initially blocked. Per operator decision on
   2026-05-01 (Option 1, "just do it"), slice scope was expanded to
   include creating BOTH a production storage account
@@ -63,7 +66,8 @@ In scope:
   pre-expiry notify trigger.
 - Create user-assigned managed identity (UAMI) for the Postgres flexible
   server; assign and grant Wrap/Unwrap on `pg-tde-cmk`.
-- Rotate `forge-flow-production1-pg` data encryption to `pg-tde-cmk`.
+- Preserve/verify `forge-flow-production1-pg-cmk` data encryption with
+  `pg-tde-cmk`.
 - Enable system-assigned identity on the production storage account; grant
   Wrap/Unwrap on `blob-cmk`.
 - Rotate the production storage account to `blob-cmk`.
@@ -94,7 +98,7 @@ Before running any mutation step, every box must be checked. Stop with
       operator has affirmed this IS the production target for Forge & Flow.
       Re-verify with `az account show` immediately before each mutation.)
 - [x] Operator approving the apply: `saidumarkhan005@gmail.com`.
-- [ ] `forge-flow-production1-pg` 35-day backup is healthy
+- [ ] `forge-flow-production1-pg-cmk` 35-day backup is healthy
       (`az postgres flexible-server show ... backup`).
 - [ ] Production database is empty (no operator data loaded yet) — keeps
       rotation blast radius minimal.
@@ -112,7 +116,7 @@ Set as shell variables before running steps. Replace placeholders.
 export RG="forge-flow-production1-rg"
 export LOCATION="canadacentral"
 export VAULT="forgeflow-prod-kv"
-export PG_SERVER="forge-flow-production1-pg"
+export PG_SERVER="forge-flow-production1-pg-cmk"
 export STORAGE_ACCOUNT="forgeflowprod1" # created in Step 4b; must be globally unique 3-24 char lowercase alphanumeric
 export UAMI="forgeflow-prod-pg-uami"
 export PG_KEY_NAME="pg-tde-cmk"
@@ -632,7 +636,7 @@ KIDs live only in shell variables and the management plane.
 | Alert recipient | `saidumarkhan005@gmail.com` |
 | UAMI name | `forgeflow-prod-pg-uami` |
 | UAMI principal ID | (recorded out-of-band; do not paste full ID here if policy requires) |
-| Postgres server | `forge-flow-production1-pg` |
+| Postgres server | `forge-flow-production1-pg-cmk` |
 | Postgres pre-rotation `dataEncryption.type` | `SystemManaged` (confirmed 2026-05-01) |
 | Postgres post-rotation `dataEncryption.type` | **`AzureKeyVault` ✓** — landed via `cutover.0a.pg` server replacement on 2026-05-01. Old server `forge-flow-production1-pg` deleted; new server `forge-flow-production1-pg-cmk` created with `--key <pg-tde-cmk KID>` + `--identity forgeflow-prod-pg-uami` at create time (Azure FS does not support post-create CMK enable). Server name renamed because Azure FS post-delete reserved the original name; the `-cmk` suffix doubles as a CMK-enabled signal. |
 | Postgres post-recreate verification | `dataEncryption.type=AzureKeyVault`, `keyName=pg-tde-cmk`, 8 extensions installed (matches pre-recreate), 5 non-system roles (matches), 45 RLS-enabled tables (matches), 3 cron jobs scheduled (matches), 32 migrations re-applied (`202604250000`–`202604280013`). |

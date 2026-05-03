@@ -1,6 +1,6 @@
 # Forge Flow Advisor Proxy Deploy Runbook
 
-Updated: 2026-05-01.
+Updated: 2026-05-03.
 Owner: F&F launch lane.
 Scope: environment-agnostic Cloud Run deploy of the advisor proxy.
 Defaults target staging; overrides target Production1 (or any future
@@ -47,42 +47,27 @@ environment) via the same procedure. Lands at C.3 to bring
 | `forge-flow-staging-firebase-web-api-key` | v? | v5 |
 | `forge-flow-staging-service-principal-jwt-secret` | v2 | **v3** (value identical to v2 — pulled from Secret Manager since canonical secrets file lacks the line; recommend the operator add `$env:SERVICE_PRINCIPAL_JWT_SECRET` to `~/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` so future deploys don't require Secret Manager round-trip) |
 
-### `/health` 503 is structural at HEAD — gated on slice D.1
+### `/health` wiring update — D.1 superseded by HARD-A
 
-`/health` always returns HTTP 503 with `error: health_check_failed` on
-00032 (and would on any other revision built from current master).
-Root cause is NOT Postgres connectivity.
+The 2026-05-01 staging execution above is historical evidence only.
+At that time `/health` returned a synthetic 503 because production
+startup still referenced the scaffold health store.
 
-Smoking gun: `tool/advisor_proxy/main.dart:70` const-instantiates
-`ScaffoldFailingProxyHealthCheckStore`, whose `check()` throws
-`StateError('11a.11d scaffold: real Postgres health checks are not
-wired.')` (`tool/advisor_proxy/advisor_proxy.dart:3650-3655`). The
-catch block at `advisor_proxy.dart:5026-5037` projects that throw as a
-503 envelope; the `dependencies.{postgres,age,pgvector}.status: red`
-fields in the body are SYNTHETIC (spread from
-`ProxyHealthStatus(postgresOk: false, ageOk: false, pgvectorOk:
-false).toJson()`), not real probe results.
+As of the 2026-05-03 hardening closeout, current source wires the
+real registry-backed health store and the Postgres-backed usage
+counter store:
 
-The real `RegistryProxyHealthCheckStore`
-(`advisor_proxy.dart:3719-3812`) and the 57-producer registry
-(`tool/advisor_proxy/health_producers/producer_registry.dart`) are
-fully implemented but never instantiated in production. Wiring them
-in is **slice D.1**'s scope, not C.3's. Until D.1 ships, `/health`
-gives no signal about backend dependencies (good or bad), and the
-TCP probe to `forge-flow-staging-pg.postgres.database.azure.com:5432`
-from the operator's Windows host succeeded — Postgres may well be
-healthy; we cannot tell from this proxy.
+- `tool/advisor_proxy/main.dart` calls `buildProxyProductionBindings`
+  and passes `productionBindings.healthCheckStore` into `routeRequest`.
+- `tool/advisor_proxy/proxy_bootstrap.dart` constructs
+  `RegistryProxyHealthCheckStore` from the producer registry.
+- `docs/contracts/proxy_health_contract.md` is the active envelope
+  authority for `/health`.
 
-**C.3 close-out posture:**
-
-- Bindings + 11A.3a routes are live; that's what C.3 was meant to
-  ship.
-- Stage 4 (4 h soak on B-series / D.1 producers) is structurally
-  impossible at HEAD and is gated on D.1 — see Stage 4 prereqs.
-- `/readyz` (returns `200 {"status":"ok"}`) is the only liveness
-  signal available pre-D.1.
-- No `tool/advisor_proxy/main.dart` or `health_producers/*` changes
-  in C.3 — that work belongs to D.1 by design.
+Therefore a fresh deploy from current master must treat `/health` as
+a real dependency signal. HTTP 503 after current-source deploy is no
+longer "pre-D.1 expected"; it means a required dependency check failed
+or the health store threw. Use `/readyz` only for cheap liveness.
 
 ### What's wired in source
 
@@ -195,15 +180,13 @@ Pairs with:
   `{"status":"ok"}`) for liveness probing. The proxy's `/healthz`
   route exists in source for local dev compatibility but is
   unreachable in Cloud Run by design.
-- **`/health` (deep) is scaffold-failing at HEAD until D.1 ships.**
-  Production main hardwires `ScaffoldFailingProxyHealthCheckStore`;
-  every `/health` request returns 503 with `error:
-  health_check_failed` regardless of actual backend state. Do NOT
-  treat `/health` as a dependency signal in C.3 smokes or soak. The
-  real `RegistryProxyHealthCheckStore` exists in source but is
-  unwired by design — slice D.1 owns the wiring. Once D.1 ships,
-  `/health` body's `dependencies.{postgres,age,pgvector}.status` and
-  the surface-level B-series producer slots become meaningful.
+- **`/health` (deep) is a real dependency signal on current master.**
+  The old C.3-era scaffold warning is superseded. Current production
+  startup wires `RegistryProxyHealthCheckStore` through
+  `buildProxyProductionBindings`, so `dependencies.postgres`,
+  `dependencies.age`, and `dependencies.pgvector` are authoritative.
+  Reserved producer metrics may still report `unknown`; those do not
+  degrade the response unless the producer emits yellow/red.
 - **`account_info` is a code binding, not an env var.** Preflight
   greps `tool/advisor_proxy/proxy_bootstrap.dart` for
   `RepositoryAccountInfoGateway`; it never queries Cloud Run env-var
@@ -235,6 +218,8 @@ Pairs with:
 | `SecretPrefix` | `secrets.ps1` (e.g. `forge-flow-staging-`, `forge-flow-production-`); trailing `-` enforced | dynamic Secret Manager mapping |
 | `ProxyBaseUriEnvVarName` | `secrets.ps1` (e.g. `FORGE_FLOW_PROXY_BASE_URI`, `FORGE_FLOW_PROXY_BASE_URI_PROD1`) | rewrite-back target in secrets file |
 | `FirebaseGoogleServicesPath` | `secrets.ps1` (per-flavor, optional; defaults to staging path) | `Resolve-FirebaseWebApiKey` fallback |
+| `VpcConnector` | `secrets.ps1` / deploy param | Cloud Run static egress (`--vpc-connector`) |
+| `VpcEgress` | deploy param (`all-traffic`) | Cloud Run static egress mode |
 | `FIREBASE_PROJECT_ID` | `secrets.ps1` | Cloud Run literal env var |
 | `ANTHROPIC_API_KEY` | `secrets.ps1` | Secret Manager → Cloud Run env |
 | `VOYAGE_API_KEY` | `secrets.ps1` | Secret Manager → Cloud Run env |
@@ -259,13 +244,14 @@ from `secrets.ps1`):
 
 | | Staging (default) | Production1 |
 | --- | --- | --- |
-| `Project` | `forge-flow-staging` | `forge-flow-production1` (TBD — verify) |
-| `Region` | `northamerica-northeast2` | `northamerica-northeast2` (assumed; verify) |
-| `Service` | `forge-flow-staging-proxy` | `forge-flow-production1-proxy` (TBD) |
-| `ServiceAccount` | `forge-flow-staging-admin@…` | `forge-flow-production1-admin@…` (TBD) |
+| `Project` | `forge-flow-staging` | `forge-flow-production1` |
+| `Region` | `northamerica-northeast2` | `northamerica-northeast2` |
+| `Service` | `forge-flow-staging-proxy` | `forge-flow-production1-proxy` (planned; not deployed) |
+| `ServiceAccount` | `forge-flow-staging-admin@…` | `forge-flow-production1-admin@…` (planned; not created) |
 | `SecretPrefix` | `forge-flow-staging-` | `forge-flow-production-` (per audit_anchor convention) |
 | `ProxyBaseUriEnvVarName` | `FORGE_FLOW_PROXY_BASE_URI` | `FORGE_FLOW_PROXY_BASE_URI_PROD1` |
-| `FirebaseGoogleServicesPath` | empty (defaults to `android\app\src\forgeflow\google-services.json`) | per-flavor path (TBD, e.g. `android\app\src\forgeflow_prod1\google-services.json`) |
+| `FirebaseGoogleServicesPath` | empty (defaults to `android\app\src\forgeflow\google-services.json`) | production flavor path after Firebase apps are created (not checked in yet) |
+| `VpcConnector` | `ff-staging-proxy-egress` | production connector in `forge-flow-production1` (not created; must have NAT/reserved IP allowlisted on `forge-flow-production1-pg-cmk`) |
 
 ### 0b. GCP project + service account + Cloud Run service exist
 
@@ -280,10 +266,23 @@ gcloud run services describe $Service --region=$Region --project=$Project \
 # expected: exit 0; record latestReadyRevisionName + image as PRIOR_REVISION/PRIOR_TAG
 ```
 
-Stage 0b BLOCKED for Production1 today: `gcloud projects list`
-returns no `forge-flow-production1` for this account. Production1
-deploy cannot begin until Production1 GCP project is provisioned and
-visible.
+Production1 shell status as of 2026-05-03: the GCP/Firebase project
+`forge-flow-production1` exists and is billing-linked, but production runtime
+setup is paused by operator direction. Cloud Run, Secret Manager, VPC Access,
+and Compute APIs are intentionally not enabled yet; no production proxy service,
+deploy service account, production Firebase apps, production client configs,
+secrets, static egress, DNS, or Azure firewall rule exists.
+
+Production Firebase is not represented in repo client config today:
+`.firebaserc`, `web/firebase-config.js`, Android `google-services.json`,
+iOS `GoogleService-Info-*.plist`, and `lib/main_admin.dart` all point at
+`forge-flow-staging`. Do not use the staging config as a production stand-in.
+Create production Firebase apps and add production client config/flavors before
+passing `-FirebaseGoogleServicesPath` for a prod deploy.
+
+Current staging parity is frozen in
+`docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
+Any staging addition after that snapshot is a new production setup delta.
 
 ### 0c. Secret Manager pre-provisioned under `$SecretPrefix`
 
@@ -423,7 +422,10 @@ pwsh scripts/deploy_staging_proxy.ps1 `
   -ServiceAccount forge-flow-production1-admin@forge-flow-production1.iam.gserviceaccount.com `
   -SecretPrefix forge-flow-production- `
   -ProxyBaseUriEnvVarName FORGE_FLOW_PROXY_BASE_URI_PROD1 `
-  -FirebaseGoogleServicesPath android\app\src\forgeflow_prod1\google-services.json
+  -FirebaseGoogleServicesPath android\app\src\forgeflow_prod1\google-services.json `
+  -ProxyEnvironment prod `
+  -VpcConnector <production-vpc-connector> `
+  -VpcEgress all-traffic
 ```
 
 The script (idempotent — describe-first, replace) does:
@@ -439,7 +441,8 @@ The script (idempotent — describe-first, replace) does:
    `$SecretPrefix + $secretSuffix[name]`. Creates new versions only
    when the value differs from current `latest`.
 6. `gcloud run deploy --source .` with secret env refs +
-   `FIREBASE_PROJECT_ID` literal env var.
+   `FIREBASE_PROJECT_ID` literal env var. When `-VpcConnector` is set,
+   the script also passes `--vpc-connector` + `--vpc-egress`.
 7. Rewrite `$ProxyBaseUriEnvVarName` in `secrets.ps1` to the new URL
    (or append if not present).
 
@@ -472,12 +475,9 @@ curl -sS -o /dev/null -w '%{http_code}\n' "$PROXY_URL/readyz"
 # with `curl -sS "$PROXY_URL/readyz"`; subsequent polls are status-only)
 
 curl -sS -o /dev/null -w '%{http_code}\n' "$PROXY_URL/health"
-# pre-D.1 expected: 503 with `error: health_check_failed` (scaffold
-# wired in main.dart at HEAD; documented in §Conventions). NOT a
-# regression — the route is structurally degraded until D.1 wires
-# RegistryProxyHealthCheckStore.
-# post-D.1 expected: 200 with `dependencies.*.status: ok`; HTTP 503
-# would then be a real degradation signal (see triage).
+# expected on current-source deploy: 200 with
+# dependencies.{postgres,age,pgvector}.status = green. HTTP 503 is a
+# real degradation signal; decode the body and use the triage table.
 
 # Bindings-live verification (replaces /health as the C.3 acceptance signal):
 curl -sS -o /dev/null -w '%{http_code}\n' \
@@ -510,17 +510,12 @@ see triage matrix.
 **Acceptance:** all four status codes recorded in §"Live mutations"
 smoke table; `/health` postgres+age+pgvector green.
 
-## Stage 4 — Soak (4 h, D.1 producer watch)
+## Stage 4 — Soak (4 h, producer watch)
 
-**Stage-4 precondition: slice D.1 has shipped and `/health` returns
-HTTP 200 with real `dependencies.*.status` values on a fresh probe.**
-At HEAD without D.1, `/health` always returns the scaffold-thrown
-503 (see §Conventions); a 4 h soak loop would log 48 identical
-synthetic-red rows and prove nothing. If running C.3 before D.1
-ships, **skip Stage 4** and proceed directly to Stage 5 once you
-have a separately-verified Postgres/AGE/pgvector liveness signal
-(e.g. operator-run `psql "SELECT 1"` from a host with VPC
-equivalence). Document the skip in the audit trail.
+**Stage-4 precondition:** `/health` returns HTTP 200 with real
+`dependencies.*.status` values on a fresh probe. Current master meets
+the wiring requirement; a 503 now indicates a real dependency or
+producer-store failure and must be triaged before promotion.
 
 Run only on the FIRST environment of a multi-env deploy (staging
 before Production1). Skip when deploying to a single environment
@@ -638,13 +633,13 @@ Record the rollback in the audit trail.
 | Stage 0c: Secret Manager secret NOT_FOUND under target prefix | Pre-provisioning incomplete | BLOCKED for non-staging. For staging, the deploy script's `Sync-SecretManagerSecret` creates secrets idempotently (operator must have Secret Manager Admin). |
 | Stage 0e: `secrets.ps1` shim absent OR canonical absent | Operator's local secrets kit not installed | BLOCKED. Operator restores from secrets vault. |
 | Stage 1e: secret `latest` version newer than prior revision deploy time | Secret rotated but proxy not redeployed since (the secret-pin invariant) | Expected for this slice — the redeploy IS the fix. Document the drift in the audit table; the new revision will pin the fresh `latest`. |
-| Stage 3c `/health` returns 503 with `error: health_check_failed` and ALL dependencies red | **Pre-D.1 expected behavior.** Production main wires `ScaffoldFailingProxyHealthCheckStore`; the throw is caught and projected as a synthetic red envelope. Documented in §Conventions. | Not a regression. Confirm deploy by checking `/v1/admin/corpus/versions` returns 401 (route present) and boot logs show the binding tags. Real `/health` signal lights up once D.1 ships. |
-| (Post-D.1 only) `/health` returns 503 with `dependencies.postgres.status=error` after redeploy | New revision pinned to a Secret Manager version whose value is itself wrong, OR Postgres host unreachable | Verify operator's local `POSTGRES_URL` is current; rerun deploy script (idempotent — it'll add a new version if value differs from latest). If still red, run `psql "$POSTGRES_URL" -c "SELECT 1"` from a host with VPC equivalence; if that fails too, Postgres host is the problem, not the secret. |
+| Stage 3c `/health` returns 503 with `error: health_check_failed` and all dependencies red | Current source did not deploy, OR the health store threw before dependency results were available. | Verify the deployed revision SHA/source bundle, boot logs, and that `main.dart` reports the registry health binding. If current source is deployed, inspect the first stack frame in logs and roll back if startup/health is unstable. |
+| `/health` returns 503 with `dependencies.postgres.status=error` after redeploy | New revision pinned to a Secret Manager version whose value is itself wrong, OR Postgres host unreachable. | Verify operator's local `POSTGRES_URL` is current; rerun deploy script (idempotent — it'll add a new version if value differs from latest). If still red, run `psql "$POSTGRES_URL" -c "SELECT 1"` from a host with VPC equivalence; if that fails too, Postgres host is the problem, not the secret. |
 | Stage 3c `/v1/advisor-smoke` returns 503 `accounting_store_unavailable` | New `accountInfoGateway` binding masking accounting init order | Inspect Stage 6a boot logs for stack trace. Rollback if init throws. File a regression — bindings should not block accounting init. |
 | Stage 3c `/v1/advisor-smoke` returns 503 `llm_provider_unavailable` | Anthropic / Voyage key rotation drift, or quota | Verify Secret Manager `latest` version is the rotated one; check Anthropic / Voyage console for quota; do NOT promote. |
 | Stage 3c `/healthz` returns Google's HTML 404 (NOT proxy JSON) | Cloud Run GFE intercepts `/healthz` by design | Use `/readyz` instead — same handler, returns proxy JSON `{"status":"ok"}`. The proxy's `/healthz` route is unreachable in Cloud Run; documented in §Conventions. Not a regression. |
-| (Post-D.1 only) Stage 4 soak: B37/B43 producer flips red mid-soak | Postgres / VPC connector flap | Investigate Cloud SQL / Azure Postgres / VPC connector. Do NOT promote even if it flaps back green — flap indicates instability. |
-| (Post-D.1 only) Stage 4 soak: B44/B45/B47 producer status `unknown` | Producer backends not yet wired (B44 graph rebuild, B45 rollups, B47 vector recall) | Expected. Not a regression. Documented in §Conventions. |
+| Stage 4 soak: required dependency flips red mid-soak | Postgres / AGE / pgvector / VPC connector / secret-pin flap. | Investigate Azure Postgres, VPC connector, NAT/firewall, and current secret pins. Do NOT promote even if it flaps back green — flap indicates instability. |
+| Stage 4 soak: optional producer status `unknown` | Producer backend lacks live data or is intentionally placeholder for that surface. | Expected only for reserved optional metrics. Not a regression unless a launch gate requires that producer to be green. |
 | Stage 5 smokes fail on next env only | Per-env overrides incorrect (SA email mismatch, Secret Manager prefix, google-services path) | Verify Stage 0a values for the failing env; run Stage 0b–0e diagnostic against that env explicitly before reattempting. |
 | Stage 6b: `/v1/admin/corpus/versions` returns 404 (proxy JSON) | New revision was built from a commit that lacks 11A.3a (`411c9da` not in source bundle) | Inspect Cloud Build source archive — `--source .` zips the working tree. Verify worktree is at expected SHA + clean (Stage 1a). Redeploy. |
 | Postgres-only red (age + pgvector ok) | Stale `POSTGRES_URL` pin AND admin URL unaffected — partial rotation OK | Document partial rotation; admin operations unaffected if they don't depend on rotated host. |
@@ -694,7 +689,7 @@ Recording tables — filled from 2026-05-01 23:14 UTC staging execution
 | Endpoint | Status | Note |
 | --- | --- | --- |
 | `/readyz` | **200** ✅ | body `{"status":"ok"}` |
-| `/health` | 503 ⚠️ | `error: health_check_failed` — pre-D.1 expected (scaffold orphan, see §Conventions) |
+| `/health` | 503 ⚠️ | Historical C.3 result from old scaffold wiring. Current master must be redeployed and expected to return real dependency state. |
 | `/v1/usage-smoke` | **401** ✅ | route registered; bearer not issued in this session, so route logic itself was not exercised end-to-end |
 | `/v1/advisor-smoke` (200 or 402) | **401** ✅ | route registered; bearer not issued in this session |
 | `/v1/admin/corpus/versions` (Stage 6b — expect 401, NOT 404) | **401** ✅ | 11A.3a corpus-admin routes are LIVE in 00032 (was 404 in 00031) |
@@ -745,14 +740,14 @@ gateways; 11A.3a corpus admin routes become reachable; the rotation
 captured in the secret-pin drift table takes effect on the new
 revision.
 
-## Slice boundary — handoff to D.1
+## Slice boundary — health wiring superseded
 
-C.3 deliberately does NOT touch the production health-check wiring.
-That work belongs to slice D.1, which will replace
-`tool/advisor_proxy/main.dart:70`'s
-`ScaffoldFailingProxyHealthCheckStore` const with a real
-`RegistryProxyHealthCheckStore` instance backed by the producer
-registry at `tool/advisor_proxy/health_producers/producer_registry.dart`.
+This section is retained as historical C.3 boundary evidence. The old
+D.1 handoff has been superseded by HARD-A: production startup now uses
+`buildProxyProductionBindings()` to provide
+`RegistryProxyHealthCheckStore`, and `routeRequest` receives that store
+at runtime. Do not use this runbook to assign new health-store wiring
+work to D.1.
 
 **Files C.3 is allowed to touch and DID touch:**
 
@@ -763,40 +758,12 @@ registry at `tool/advisor_proxy/health_producers/producer_registry.dart`.
 - `test/deploy_staging_proxy_contract_test.dart` (assertions updated
   for the parameterized structure).
 
-**Files C.3 is NOT allowed to touch — reserved for D.1:**
+**Current health ownership:**
 
-- `tool/advisor_proxy/main.dart` (specifically line 70's
-  `healthCheckStore` const + line 108's `routeRequest` arg).
-- `tool/advisor_proxy/advisor_proxy.dart` lines 3647-3812 (the two
-  health-store class implementations).
-- `tool/advisor_proxy/health_producers/**` (producer registry + family
-  files).
-- `tool/advisor_proxy/proxy_bootstrap.dart` health-check binding (if
-  D.1 chooses to construct the runner / dependency probe through
-  bootstrap).
-
-**What C.3 leaves in place for D.1 to pick up:**
-
-- A live staging proxy at HEAD (revision 00032-lgs at execution time)
-  with all production bindings wired EXCEPT the health-check store.
-- Confirmed reachability of Postgres at the TCP layer (TCP probe to
-  `forge-flow-staging-pg.postgres.database.azure.com:5432` succeeded);
-  D.1's first real `/health` probe will tell us whether the
-  Postgres-protocol layer (auth, TLS, firewall) is actually
-  healthy.
-- Documented `/readyz` as the working liveness endpoint pre-D.1.
-- The runbook's Stage 4 (soak) gated on D.1 — `[Post-D.1 only]`
-  rows in the triage matrix flag which behaviors only become
-  observable after D.1.
-
-**What D.1 will need from this runbook (none — they are independent):**
-
-- C.3's deploy procedure (Stages 0-6) is independent of the
-  health-store wiring. D.1 can ship its own redeploy through a
-  separate runbook OR by running this one after the wiring change.
-- `/health` envelope contract assertions stay in
-  `docs/contracts/proxy_health_contract.md`; this runbook does not
-  duplicate that.
+- Runtime binding: `tool/advisor_proxy/main.dart`.
+- Production construction: `tool/advisor_proxy/proxy_bootstrap.dart`.
+- Envelope authority: `docs/contracts/proxy_health_contract.md`.
+- Producer families: `tool/advisor_proxy/health_producers/**`.
 
 **Cross-lane file overlap check (Batch 5):**
 
@@ -805,7 +772,7 @@ registry at `tool/advisor_proxy/health_producers/producer_registry.dart`.
 | E.3 (feature_flags_admin_ui) | `lib/admin/admin_routes.dart`, `lib/main_admin.dart`, `tool/advisor_proxy/advisor_proxy.dart`, `tool/advisor_proxy/proxy_bootstrap.dart` | No |
 | F.1 (health_admin_view) | `lib/admin/admin_routes.dart`, `lib/main_admin.dart` | No |
 | G.2 (boundary_monitor_restaurant_tz) | `lib/services/current_state_boundary_monitor.dart`, `pubspec.yaml` | No |
-| D.1 (registry health-store wiring) | `tool/advisor_proxy/main.dart`, `tool/advisor_proxy/health_producers/**` | No |
+| HARD-A (registry health-store wiring, delivered after C.3) | `tool/advisor_proxy/main.dart`, `tool/advisor_proxy/health_producers/**`, `tool/advisor_proxy/proxy_bootstrap.dart` | No during C.3 |
 
 C.3 closes out cleanly: zero file overlap with any pending Batch 5
-lane or with D.1.
+lane. The health-store overlap was handled later by HARD-A.

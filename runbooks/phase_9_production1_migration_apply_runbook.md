@@ -12,7 +12,10 @@ section below for the prior result.
 
 ## Scope
 
-Production1 target: `forge-flow-production1-pg`.
+Production1 target: `forge-flow-production1-pg-cmk` (Azure Flexible
+Server, Canada Central, PG 16). The original
+`forge-flow-production1-pg` server was deleted during `cutover.0a.pg`
+and replaced by the CMK-enabled `-cmk` server on 2026-05-01.
 
 In scope (27 pending migrations, lex order):
 

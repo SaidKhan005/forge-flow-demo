@@ -13,6 +13,11 @@ A complete walkthrough has three parts:
 3. **Contract / plan cross-link** — points back to the authority doc
    the slice closes against.
 
+For browser-exposed slices, include a short Browser Acceptance block from
+`runbooks/browser_use_acceptance_harness_runbook.md`: exact origin,
+routes swept, primary click path, desktop/mobile evidence, and safe-action
+boundary.
+
 When a slice has both an audit pass and a fix pass, both walkthroughs
 live here side-by-side (e.g. `7.58.0.md` audit + `7.58.UX.5.md` fix).
 

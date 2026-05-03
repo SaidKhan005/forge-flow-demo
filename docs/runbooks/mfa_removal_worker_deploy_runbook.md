@@ -27,9 +27,10 @@ guarded by pending state. Cloud Scheduler retries cannot double-process.
 
 | Setting | Value |
 | ------- | ----- |
-| Cloud Run Job region | `northamerica-northeast1` (matches advisor proxy + audit anchor) |
-| Artifact Registry repo | `northamerica-northeast1-docker.pkg.dev/<project>/forge-flow` |
-| Postgres host | `forge-flow-staging-pg` / `forge-flow-production1-pg` (Canada Central) |
+| Cloud Run Job region | `northamerica-northeast2` by default for parity with the advisor proxy and audit-anchor Job; use `northamerica-northeast1` only if the deploy operator deliberately provisions a separate Scheduler/Job lane there. |
+| Cloud Scheduler location | `northamerica-northeast1` by default; it triggers the Job in `northamerica-northeast2`. |
+| Artifact Registry repo | `northamerica-northeast2-docker.pkg.dev/<project>/forge-flow` |
+| Postgres host | `forge-flow-staging-pg` / `forge-flow-production1-pg-cmk` (Canada Central) |
 
 If a multi-region rollout is needed later, the cloudbuild
 substitutions accept `_REGION=...`; the runbook's job spec must be
@@ -42,7 +43,7 @@ Submit via Cloud Build from the repository root:
 ```bash
 gcloud builds submit . \
   --config=tool/mfa_removal_worker/cloudbuild.yaml \
-  --substitutions=_REGION=northamerica-northeast1,_REPO=forge-flow
+  --substitutions=_REGION=northamerica-northeast2,_REPO=forge-flow
 ```
 
 The pipeline:
@@ -103,10 +104,19 @@ Until then, the full required set is mandatory.
 
 ## Cloud Run Job spec
 
+Production1 note (2026-05-03): do not deploy this job to Production1 until
+the production setup lane reopens and
+`docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`
+has been updated with the production connector, NAT IP, Secret Manager
+namespace, Firebase apps/configs, and Azure firewall allowlist.
+
 ```bash
+SECRET_PREFIX=forge-flow-staging- # use forge-flow-production- for Production1
+VPC_CONNECTOR=ff-staging-proxy-egress # use the production connector for Production1
+
 gcloud run jobs deploy mfa-removal-worker \
-  --region=northamerica-northeast1 \
-  --image=northamerica-northeast1-docker.pkg.dev/${PROJECT_ID}/forge-flow/mfa-removal-worker:${SHORT_SHA} \
+  --region=northamerica-northeast2 \
+  --image=northamerica-northeast2-docker.pkg.dev/${PROJECT_ID}/forge-flow/mfa-removal-worker:${SHORT_SHA} \
   --service-account=mfa-removal-worker-sa@${PROJECT_ID}.iam.gserviceaccount.com \
   --task-timeout=5m \
   --max-retries=2 \
@@ -115,14 +125,14 @@ gcloud run jobs deploy mfa-removal-worker \
   --memory=512Mi \
   --cpu=1 \
   --set-env-vars=FIREBASE_PROJECT_ID=${FIREBASE_PROJECT_ID},MFA_REMOVAL_BATCH_SIZE=50 \
-  --set-secrets=POSTGRES_URL=forge-flow-postgres-url:latest \
-  --set-secrets=POSTGRES_ADMIN_URL=forge-flow-postgres-admin-url:latest \
-  --set-secrets=FIREBASE_WEB_API_KEY=forge-flow-firebase-web-api-key:latest \
-  --set-secrets=SERVICE_PRINCIPAL_JWT_SECRET=forge-flow-service-principal-jwt-secret:latest \
-  --set-secrets=ANTHROPIC_API_KEY=forge-flow-anthropic-api-key:latest \
-  --set-secrets=VOYAGE_API_KEY=forge-flow-voyage-api-key:latest \
-  --vpc-connector=projects/${PROJECT_ID}/locations/northamerica-northeast1/connectors/forge-flow-vpc \
-  --vpc-egress=private-ranges-only
+  --set-secrets=POSTGRES_URL=${SECRET_PREFIX}postgres-url:latest \
+  --set-secrets=POSTGRES_ADMIN_URL=${SECRET_PREFIX}postgres-admin-url:latest \
+  --set-secrets=FIREBASE_WEB_API_KEY=${SECRET_PREFIX}firebase-web-api-key:latest \
+  --set-secrets=SERVICE_PRINCIPAL_JWT_SECRET=${SECRET_PREFIX}service-principal-jwt-secret:latest \
+  --set-secrets=ANTHROPIC_API_KEY=${SECRET_PREFIX}anthropic-api-key:latest \
+  --set-secrets=VOYAGE_API_KEY=${SECRET_PREFIX}voyage-api-key:latest \
+  --vpc-connector=projects/${PROJECT_ID}/locations/northamerica-northeast2/connectors/${VPC_CONNECTOR} \
+  --vpc-egress=all-traffic
 ```
 
 Repeated `--set-secrets` flags are concatenated by `gcloud`; the
@@ -140,8 +150,8 @@ Key choices:
 | `--tasks` | `1` | Same reason — one task per execution. |
 | `--memory` | `512Mi` | Dart AOT binary plus tenant-context working set. Headroom for occasional batch-size overrides. |
 | `--cpu` | `1` | The job is I/O-bound (Postgres) — single CPU is correct. |
-| `--vpc-connector` | `forge-flow-vpc` | Required for the private-IP Azure Postgres reach. |
-| `--vpc-egress` | `private-ranges-only` | All traffic stays inside the connector; no internet egress from the job. |
+| `--vpc-connector` | Environment-specific static-egress connector (`ff-staging-proxy-egress` in staging; Production1 needs its own connector/NAT/reserved IP before deploy). | Required so Azure Postgres sees an allowlisted stable egress IP. |
+| `--vpc-egress` | `all-traffic` | Required because Azure Postgres is reached through a public FQDN/firewall path; `private-ranges-only` bypasses the connector for that traffic. |
 | Service account | `mfa-removal-worker-sa` | See IAM table below. |
 
 ## IAM grants on `mfa-removal-worker-sa`
@@ -153,7 +163,7 @@ SDK calls authenticated by the Cloud Run service account's ADC.
 
 | Role | Scope | Reason |
 | ---- | ----- | ------ |
-| `roles/secretmanager.secretAccessor` | each of `forge-flow-postgres-url`, `forge-flow-postgres-admin-url`, `forge-flow-firebase-web-api-key`, `forge-flow-service-principal-jwt-secret`, `forge-flow-anthropic-api-key`, `forge-flow-voyage-api-key` | Cloud Run injects `--set-secrets` values at boot; the SA must read each secret version. |
+| `roles/secretmanager.secretAccessor` | each env-prefixed proxy secret (`${SECRET_PREFIX}postgres-url`, `${SECRET_PREFIX}postgres-admin-url`, `${SECRET_PREFIX}firebase-web-api-key`, `${SECRET_PREFIX}service-principal-jwt-secret`, `${SECRET_PREFIX}anthropic-api-key`, `${SECRET_PREFIX}voyage-api-key`) | Cloud Run injects `--set-secrets` values at boot; the SA must read each secret version. |
 | `roles/logging.logWriter` | project | stdout/stderr from the AOT binary lands in Cloud Logging. |
 | `roles/firebaseauth.admin` | Firebase project (same as `FIREBASE_PROJECT_ID`) | Identity Toolkit `accounts:update` + `accounts:lookup` to clear the Firebase MFA factor. Without this role, Identity Toolkit returns `PERMISSION_DENIED` and the worker reports `failed=N` per batch. |
 | (optional) `roles/cloudtrace.agent` | project | If Cloud Trace is wired into the proxy bindings later. Not required today. |
@@ -167,9 +177,9 @@ for ROLE in roles/logging.logWriter roles/firebaseauth.admin; do
     --role="${ROLE}"
 done
 
-for SECRET in forge-flow-postgres-url forge-flow-postgres-admin-url \
-              forge-flow-firebase-web-api-key forge-flow-service-principal-jwt-secret \
-              forge-flow-anthropic-api-key forge-flow-voyage-api-key; do
+for SECRET in ${SECRET_PREFIX}postgres-url ${SECRET_PREFIX}postgres-admin-url \
+              ${SECRET_PREFIX}firebase-web-api-key ${SECRET_PREFIX}service-principal-jwt-secret \
+              ${SECRET_PREFIX}anthropic-api-key ${SECRET_PREFIX}voyage-api-key; do
   gcloud secrets add-iam-policy-binding "${SECRET}" \
     --member="serviceAccount:mfa-removal-worker-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role=roles/secretmanager.secretAccessor
@@ -188,14 +198,15 @@ which is the global endpoint — no regional shell substitution
 needed in the URI.
 
 ```bash
-LOCATION=northamerica-northeast1
+JOB_REGION=northamerica-northeast2
+SCHEDULER_LOCATION=northamerica-northeast1
 JOB_NAME=mfa-removal-worker
 
 gcloud scheduler jobs create http mfa-removal-worker-tick \
-  --location="${LOCATION}" \
+  --location="${SCHEDULER_LOCATION}" \
   --schedule="*/10 * * * *" \
   --time-zone=Etc/UTC \
-  --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${LOCATION}/jobs/${JOB_NAME}:run" \
+  --uri="https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${JOB_REGION}/jobs/${JOB_NAME}:run" \
   --http-method=POST \
   --oauth-service-account-email="mfa-removal-worker-scheduler-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --oauth-token-scope="https://www.googleapis.com/auth/cloud-platform" \
@@ -212,7 +223,7 @@ authorized to call `:run`:
 
 ```bash
 gcloud run jobs add-iam-policy-binding "${JOB_NAME}" \
-  --region="${LOCATION}" \
+  --region="${JOB_REGION}" \
   --member="serviceAccount:mfa-removal-worker-scheduler-sa@${PROJECT_ID}.iam.gserviceaccount.com" \
   --role=roles/run.invoker
 ```
@@ -271,7 +282,7 @@ channel ID into this repo.
 1. Trigger one execution by hand:
    ```bash
    gcloud run jobs execute mfa-removal-worker \
-     --region=northamerica-northeast1 --wait
+     --region=northamerica-northeast2 --wait
    ```
 2. Tail the execution log; expect a single line:
    ```
@@ -295,8 +306,8 @@ state.
 
 ```bash
 gcloud run jobs update mfa-removal-worker \
-  --region=northamerica-northeast1 \
-  --image=northamerica-northeast1-docker.pkg.dev/${PROJECT_ID}/forge-flow/mfa-removal-worker:${PREVIOUS_SHORT_SHA}
+  --region=northamerica-northeast2 \
+  --image=northamerica-northeast2-docker.pkg.dev/${PROJECT_ID}/forge-flow/mfa-removal-worker:${PREVIOUS_SHORT_SHA}
 ```
 
 If the regression is severe and pausing processing is preferable to

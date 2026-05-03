@@ -212,7 +212,7 @@ monitor:
 
 | Field | Value |
 |---|---|
-| Target | `forge-flow-production1-pg` (Azure Flexible Server, `Canada Central`, PG 16) |
+| Target | `forge-flow-production1-pg-cmk` (Azure Flexible Server, `Canada Central`, PG 16, CMK-enabled replacement) |
 | Database | `forgeflow` |
 | Connection | `$env:POSTGRES_PRODUCTION_ADMIN_URL` (admin role; never printed) |
 | Apply gate | `2026-05-02T05:24:27-02:30` (24h soak from staging apply) |

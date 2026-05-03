@@ -129,6 +129,13 @@ static Flutter Web assets and calls the advisor proxy from the browser;
 it does not open a server-side Azure connection. Azure DB cost is shared
 with the proxy. ~$0-15/month at idle (Cloud Run admin service).
 
+Staging runtime snapshot (2026-05-03): admin console is deployed as
+`forge-flow-admin-console` in `forge-flow-staging` /
+`northamerica-northeast2`, revision `forge-flow-admin-console-00004-6xw`,
+using `forge-flow-staging-admin@forge-flow-staging.iam.gserviceaccount.com`.
+Production1 has no admin-console Cloud Run service yet; deploy it only after
+the production proxy base URI is live and documented in the cutover baseline.
+
 ## Goal
 
 Ship the F&F Operations Console that handles every internal
@@ -521,18 +528,11 @@ Both `forge-flow-staging-proxy` (Phase 11a.10) and
 the throughput envelope (200–300) is fine for an admin Cloud Run
 service with bursty operator traffic.
 
-When Phase 11A's `admin.forgeflow.app` ships its deploy script,
-include these flags in the default invocation — *not* as an
-optional `-VpcConnector` parameter. They are not optional in
-practice; omitting them produces a 30-minute connectivity
-debugging detour that ends with the operator adding them anyway.
-
-Current correction: `scripts/deploy_admin_console.ps1` intentionally omits
-these flags because it only serves static web assets; all admin data access
-goes through the browser to the proxy URL compiled into
-`ADMIN_PROXY_BASE_URI`. If a future admin service adds server-side calls to
-Azure-hosted resources, its deploy script must add the same static-egress
-flags before that release.
+`scripts/deploy_admin_console.ps1` intentionally omits static-egress flags today
+because it only serves static web assets; all admin data access goes through
+the browser to the proxy URL compiled into `ADMIN_PROXY_BASE_URI`. If a future
+admin service adds server-side calls to Azure-hosted resources, its deploy
+script must add the same static-egress flags before that release.
 
 This same prerequisite applies to a future production GCP project:
 that project will need its own VPC connector + NAT + reserved IP +

@@ -3,6 +3,11 @@
 Purpose: test the 11A Flutter Web admin console in the in-app browser
 using the same built assets shape that Cloud Run serves.
 
+Use this runbook together with
+`runbooks/browser_use_acceptance_harness_runbook.md`. The harness defines the
+repeatable Browser Use evidence shape; this file adds admin-console-specific
+build, origin, and safety notes.
+
 ## Default Local QA Path
 
 Use a static web build for browser QA:
@@ -62,3 +67,22 @@ Graphify cache files, or converted source material.
   or rebuild actions without action-time approval.
 - Do not include secrets, emails, OTPs, passwords, or bearer tokens in
   screenshots or notes.
+
+## Admin Route Sweep
+
+For admin-console slices, sweep the touched route plus any adjacent route that
+shares its gateway, health producer, or side-nav shell. For full acceptance
+passes, cover the current side-nav keys:
+
+- `admin_nav_item_home`
+- `admin_nav_item_operators`
+- `admin_nav_item_pricing`
+- `admin_nav_item_corpus`
+- `admin_nav_item_integrations`
+- `admin_nav_item_health`
+- `admin_nav_item_feature_flags`
+- `admin_nav_item_debug`
+- `admin_nav_item_observability`
+
+Record the exact origin, build/revision, route result, screenshot or DOM/text
+evidence, and whether any action stopped for approval.

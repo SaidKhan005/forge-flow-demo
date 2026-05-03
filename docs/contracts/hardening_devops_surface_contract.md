@@ -71,10 +71,10 @@ New files under `tool/mfa_removal_worker/`:
 
 `Dockerfile`:
 
-- Base image: `dart:stable-sha256:<digest>` (pinned digest, not floating tag).
-- Multi-stage build: build stage runs `dart pub get` + `dart compile exe`;
-  runtime stage runs the AOT binary on `gcr.io/distroless/cc:nonroot` (or
-  `debian:bookworm-slim` digest-pinned with explicit `useradd` + `USER`).
+- Base/build image matches the Flutter package shape (`ghcr.io/cirruslabs/flutter:stable`
+  in the checked-in Dockerfile today); refresh/pin digest before release hardening.
+- Multi-stage build: build stage runs `flutter pub get` + `dart compile exe`;
+  runtime stage runs the AOT binary on `debian:bookworm-slim` with a nonroot user.
 - No build secrets baked into final image.
 - Default `CMD ["mfa_removal_worker"]`.
 - `HEALTHCHECK` not required (Cloud Run Job, not Service).
@@ -82,14 +82,15 @@ New files under `tool/mfa_removal_worker/`:
 `cloudbuild.yaml`:
 
 - Builds image, tags with `$SHORT_SHA`, pushes to artifact registry.
-- Step gated on `dart analyze --fatal-infos` and `dart test
-  test/mfa/` passing.
+- Step gated on `flutter analyze --fatal-infos` and the focused MFA test files
+  listed in `tool/mfa_removal_worker/cloudbuild.yaml`.
 
 `README.md` (or runbook addition under `docs/runbooks/`):
 
-- Cloud Run Job spec: image, region (`northamerica-northeast1`), min/max
-  retries, parallelism, timeout (5 min).
-- Cloud Scheduler trigger: `every 10 minutes`, OIDC-authenticated invoker,
+- Cloud Run Job spec: image, region (`northamerica-northeast2` by default),
+  min/max retries, parallelism, timeout (5 min), and static egress when the
+  job talks to Azure Postgres.
+- Cloud Scheduler trigger: `every 10 minutes`, OAuth-authenticated invoker,
   retry config exponential 1m/30m.
 - Failure alarms point to existing `forgeflow-cmk-alerts` Action Group.
 

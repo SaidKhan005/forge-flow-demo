@@ -1,6 +1,6 @@
 # Audit Chain Verify Runbook
 
-Version: 1.0 (2026-04-28)
+Version: 1.1 (2026-05-03)
 Owner: F&F super_admin operations + Cloud Run audit job operator
 Source contracts:
 - `db/migrations/202604280005_phase_9_0sigma_f_audit_logs.sql`
@@ -60,8 +60,11 @@ before triggering a manual or out-of-band run:
    policy change recorded in the F&F Azure tenant audit log. The
    container name is exposed to the Cloud Run job through the env var
    `AZURE_BLOB_AUDIT_CONTAINER` and the endpoint through
-   `AZURE_BLOB_AUDIT_ENDPOINT` (names only — the value is resolved
-   from the deployment runtime, never from this runbook).
+   `AZURE_BLOB_AUDIT_ENDPOINT` (names only - the value is resolved
+   from the deployment runtime, never from this runbook). Live Azure
+   mode also requires `AZURE_AD_TENANT_ID` and `AZURE_AD_CLIENT_ID`
+   so the Cloud Run Job selects the real Azure Blob client instead
+   of the fail-closed scaffold rejecter.
 
 2. **Cloud Run scheduled job configured.** The job runs at 23:55 UTC
    daily (cron: `55 23 * * *`, timezone `Etc/UTC`). The 23:55 firing
@@ -71,11 +74,15 @@ before triggering a manual or out-of-band run:
    business date the chain trigger uses. The job + scheduler contract
    lives in
    `infrastructure/cloud_run/audit_anchor_job.yaml`; the deploy
-   surface is `scripts/deploy_audit_anchor_job.ps1`. The job's
-   managed identity has `Storage Blob Data Contributor` on the audit
-   container and `audit_anchor_role` (a Postgres role with
-   `service_role` inheritance, no DB-level write privileges beyond
-   `audit_logs` INSERT and `audit_chain_anchors` INSERT).
+   surface is `scripts/deploy_audit_anchor_job.ps1`. The production
+   image owns the daily command through Dockerfile
+   `ENTRYPOINT ["/app/audit_anchor"]` and `CMD ["sweep"]`; do not
+   override command/args in Cloud Run because the runtime image does
+   not contain the Dart SDK. The job's managed identity has
+   `Storage Blob Data Contributor` on the audit container and
+   `audit_anchor_role` (a Postgres role with `service_role`
+   inheritance, no DB-level write privileges beyond `audit_logs`
+   INSERT and `audit_chain_anchors` INSERT).
 
 3. **Postgres connectivity.** The job reads `POSTGRES_URL` from its
    env. Live Azure setup, container creation, and any mutation of
@@ -165,20 +172,30 @@ Expected exit codes (both `sweep` and `anchor`):
 
 ## Deploy procedure (Cloud Run Job + Cloud Scheduler)
 
+This is the Stage 4 deploy procedure for the scheduled audit-anchor
+surface.
+
 The deploy surface is repo-owned in two files:
 
-- `infrastructure/cloud_run/audit_anchor_job.yaml` — the Cloud Run
-  Job + Cloud Scheduler manifest contract. Documents job name,
+- `infrastructure/cloud_run/audit_anchor_job.yaml` - the Cloud Run
+  Job + Cloud Scheduler name-only contract. Documents job name,
   region/service-account placeholders, schedule (`55 23 * * *`,
-  `Etc/UTC`), command/args (`dart run tool/audit_anchor/main.dart
-  sweep`), and the Secret Manager `secretKeyRef` bindings for
-  `POSTGRES_URL`, `AZURE_BLOB_AUDIT_CONTAINER`, and
-  `AZURE_BLOB_AUDIT_ENDPOINT`. Names only; never values.
-- `scripts/deploy_audit_anchor_job.ps1` — name-only deploy script.
+  `Etc/UTC`), and the Secret Manager `secretKeyRef` bindings for
+  `POSTGRES_URL`, `AZURE_BLOB_AUDIT_CONTAINER`,
+  `AZURE_BLOB_AUDIT_ENDPOINT`, `AZURE_AD_TENANT_ID`, and
+  `AZURE_AD_CLIENT_ID`. It intentionally does not set Cloud Run
+  command/args; the image's `ENTRYPOINT ["/app/audit_anchor"]` and
+  `CMD ["sweep"]` own the daily command. Names only; never values.
+- `scripts/deploy_audit_anchor_job.ps1` - name-only deploy script.
   Loads `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1`, asserts the
   required env names are present (values never echoed), syncs each
   to Secret Manager, then deploys the Cloud Run Job and creates /
-  updates the Cloud Scheduler trigger.
+  updates the Cloud Scheduler trigger. The Job region defaults to
+  `northamerica-northeast2`; the Scheduler location defaults to
+  `northamerica-northeast1` because Toronto is not currently a
+  Cloud Scheduler region. The script accepts `-VpcConnector` and
+  `-VpcEgress` so the Job can use the same static-egress pattern as
+  the proxy when it talks to Azure resources.
 
 ### IAM / service-account grants
 
@@ -203,6 +220,8 @@ Grants the deploy operator must confirm out-of-band:
 | `POSTGRES_URL`                    | `forge-flow-staging-postgres-url`                |
 | `AZURE_BLOB_AUDIT_CONTAINER`      | `forge-flow-staging-azure-blob-audit-container`  |
 | `AZURE_BLOB_AUDIT_ENDPOINT`       | `forge-flow-staging-azure-blob-audit-endpoint`   |
+| `AZURE_AD_TENANT_ID`              | `forge-flow-staging-azure-ad-tenant-id`          |
+| `AZURE_AD_CLIENT_ID`              | `forge-flow-staging-azure-ad-client-id`          |
 
 The proxy already publishes `forge-flow-staging-postgres-url`; the
 job reuses it so the proxy and the daily anchor read the same
@@ -225,7 +244,10 @@ no env name is missing.
 
 ```powershell
 .\scripts\deploy_audit_anchor_job.ps1 `
-  -Image <artifact-registry-image-uri>
+  -Image <artifact-registry-image-uri> `
+  -SchedulerLocation northamerica-northeast1 `
+  -VpcConnector ff-staging-proxy-egress `
+  -VpcEgress all-traffic
 ```
 
 The script is idempotent: re-running against an existing job +
@@ -238,7 +260,7 @@ transient failure is safe by design.
 
 After the apply step succeeds, force one execution of the Job to
 prove the wiring is live (the Job's command is `audit_anchor sweep`,
-so this single call exercises the full daily firing shape):
+so this first manual run exercises the full daily firing shape):
 
 Action-time approval is required before running this command in staging or
 production. If eligible completed audit chains exist, the Job writes durable

@@ -120,7 +120,7 @@ Stop with `BLOCKED` if any item is missing.
 
 - [ ] This runbook reviewed in the current session.
 - [ ] Target host named explicitly by name only
-      (`forge-flow-staging-pg` or `forge-flow-production1-pg`,
+      (`forge-flow-staging-pg` or `forge-flow-production1-pg-cmk`,
       Canada Central). No DSNs, secrets, tokens, or passwords pasted
       into chat or docs.
 - [ ] AGE extension allow-listed in `azure.extensions` for the target

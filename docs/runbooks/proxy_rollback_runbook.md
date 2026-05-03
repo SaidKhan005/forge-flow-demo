@@ -1,7 +1,7 @@
 # Proxy Rollback Runbook
 
 Owner: Platform / On-call
-Updated: 2026-05-02
+Updated: 2026-05-03
 Source: HARD-G observability-baseline contract
 
 This runbook covers the advisor proxy on Cloud Run. It tells the
@@ -40,13 +40,19 @@ deletes.
 
 ```bash
 # Confirm the service name and the prior revision id.
-gcloud run services describe forge-flow-advisor-proxy \
-  --region=northamerica-northeast2 \
+# Staging:     SERVICE=forge-flow-staging-proxy PROJECT=forge-flow-staging
+# Production1: SERVICE=forge-flow-production1-proxy PROJECT=forge-flow-production1
+REGION=northamerica-northeast2
+
+gcloud run services describe "$SERVICE" \
+  --project="$PROJECT" \
+  --region="$REGION" \
   --format='value(status.traffic[].revisionName)'
 
 # 100% to the prior good revision.
-gcloud run services update-traffic forge-flow-advisor-proxy \
-  --region=northamerica-northeast2 \
+gcloud run services update-traffic "$SERVICE" \
+  --project="$PROJECT" \
+  --region="$REGION" \
   --to-revisions <PRIOR_REVISION>=100
 ```
 
