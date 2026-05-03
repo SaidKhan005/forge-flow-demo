@@ -157,14 +157,12 @@ void main() {
       expect(find.text('23:00 – 02:00', skipOffstage: false),
           findsOneWidget);
 
-      // Scaffold banner reminds the operator whole-day stays authoritative.
-      expect(
-        find.textContaining(
-          'Whole-day Shift remains the source of truth',
-          skipOffstage: false,
-        ),
-        findsOneWidget,
-      );
+      // 10.5.2 replaces the 10.5.0 "build out in upcoming 10.5 slices"
+      // banner with live per-period accumulator metrics on each card.
+      // The banner is intentionally gone — the per-period read service
+      // is the deliverable. The empty-state placeholder
+      // ("No data yet for this period.") replaces it for buckets the
+      // notifier hasn't filled yet.
 
       // Active period chip surfaces exactly once — Lunch is live.
       expect(find.text('ACTIVE NOW', skipOffstage: false), findsOneWidget);

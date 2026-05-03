@@ -26,6 +26,10 @@ POS + Labor + Reservation Systems
 - The app path is canonical model -> SQLite -> app state/read models -> UI.
 - Phase 8 replaces transport only; it must not create a second UI-facing truth
   path.
+- Phase 10.5.2 adds the per-service-period read service as an additive lens:
+  Shift and Variance daypart cards share `ShiftServicePeriodNotifier`, while
+  Phase 8 still owns the real POS/Labor canonical fact transport that will
+  replace the demo synthesizer.
 - Live/actual values and target/comparison values are audited separately.
   Do not compare live operating results against targets as architectural drift.
 - The dev-only data-alignment audit now answers both questions:
@@ -50,8 +54,11 @@ POS + Labor + Reservation Systems
   allocation used by Schedule.
 - Closed Full Week rows stay locked historical truth.
 - Blended wage comes from one shared benchmark target value.
-- Whole-day Shift target alignment is landed; Phase 10.5 owns additive
-  service-period/daypart Shift behavior and driver teaching.
+- Whole-day Shift target alignment is landed and remains authoritative.
+  Phase 10.5.0-10.5.2 landed the additive daypart toggle, bucketing engine,
+  per-period read service, Shift service-period cards, time-into-service, and
+  Variance daypart lens. `10.5.3+` still owns daypart-live primary-driver
+  teaching.
 - History stays closed-truth only.
 - Learn is teaching, not another source-truth surface.
 - Driver-key shape is pinned by the Phase 7.61 contract. `7.61.1` is
@@ -92,7 +99,8 @@ App owns:
 - weekly plan snapshot
 - app-side service-period mapping
 - reservation-book aggregation
-- whole-day Shift behavior until Phase 10.5
+- whole-day Shift authority plus the additive service-period/daypart lens
+  introduced by Phase 10.5
 
 ## Active Planning Docs
 
@@ -102,6 +110,9 @@ App owns:
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - `docs/contracts/phase_7_61_driver_key_contract.md`
 - `docs/phases/phase_7_61/phase_7_61_audit_plan.md`
+- `docs/contracts/slice_runtime_acceptance_contract.md`
+- `docs/phases/phase_10_5/phase_10_5_shift_daypart_service_period_view_and_primary_driver.md`
+- `docs/_walkthroughs/10.5.2.md`
 - `docs/archive/phases/phase_8_gate/`
 
 ## Archive And Reference
@@ -111,3 +122,5 @@ App owns:
   `docs/archive/internal/status_ledger_post_7_55p_deep_check.md`
 - Completed history:
   `docs/archive/trackers/DATA_ALIGNMENT_TRACKER_FULL_2026-04-10.md`
+- Phase 10.5.2 closeout:
+  `docs/archive/phases/phase_10_5/10_5_2_per_period_read_service_closeout.md`

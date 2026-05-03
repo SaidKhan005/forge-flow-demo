@@ -95,3 +95,8 @@ locks, backlog, QA matrix, and operational runbooks.
 
 2026-04-29 Phase 9 live update: B17 staging smoke and Cloud Armor preview
 tuning evidence is archived with the other Phase 9 result reports.
+
+2026-05-03 Phase 10.5 update: accepted 10.5.2 closeout/result material lives
+under `docs/archive/phases/phase_10_5/`. The active Phase 10.5 plan remains
+under `docs/phases/phase_10_5/` because daypart-live primary-driver teaching
+is still queued.

@@ -35,6 +35,7 @@ import 'demand_forecast_context_notifier.dart';
 import 'restaurant_scope_notifier.dart';
 import 'schedule_distribution_weights_notifier.dart';
 import 'shift_dashboard_notifier.dart';
+import 'shift_service_period_notifier.dart';
 import 'week_data_notifier.dart';
 
 class AppRefreshCoordinator {
@@ -42,6 +43,7 @@ class AppRefreshCoordinator {
   final ActiveTargetProfileNotifier _activeTarget;
   final WeekDataNotifier _weekData;
   final ShiftDashboardNotifier _shiftDashboard;
+  final ShiftServicePeriodNotifier? _shiftServicePeriod;
   final DemandForecastContextNotifier _demandForecast;
   final ScheduleDistributionWeightsNotifier _scheduleWeights;
 
@@ -56,12 +58,14 @@ class AppRefreshCoordinator {
     required ActiveTargetProfileNotifier activeTarget,
     required WeekDataNotifier weekData,
     required ShiftDashboardNotifier shiftDashboard,
+    ShiftServicePeriodNotifier? shiftServicePeriod,
     required DemandForecastContextNotifier demandForecast,
     required ScheduleDistributionWeightsNotifier scheduleWeights,
   }) : _restaurantScope = restaurantScope,
        _activeTarget = activeTarget,
        _weekData = weekData,
        _shiftDashboard = shiftDashboard,
+       _shiftServicePeriod = shiftServicePeriod,
        _demandForecast = demandForecast,
        _scheduleWeights = scheduleWeights;
 
@@ -118,5 +122,6 @@ class AppRefreshCoordinator {
     }
     _weekData.refresh();
     _shiftDashboard.refresh();
+    _shiftServicePeriod?.refresh();
   }
 }
