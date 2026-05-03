@@ -598,19 +598,211 @@ void main() {
 
     test(
         'R-CONS-9 — empty leak set yields empty mostCommonLeakId '
-        '(F-2 holdout, expected to flip in 7.61.2)', () {
-      // Today the analyzer initialises `mostCommonLeakId = "covers_down"`
-      // and only overrides it when freq.isNotEmpty, so an empty input
-      // returns 'covers_down' instead of the contract-mandated empty
-      // string. Skipped until 7.61.2 flips the default; the assertion
-      // body is the post-fix expectation. Removing `skip:` after 7.61.2
-      // closes is the contract-test trip wire that the fix landed.
+        '(F-2, post-7.61.2 — covers_down overclaim closed)', () {
+      // 7.61.2 (F-2) flipped the empty-state default at
+      // `history_teaching_analyzer.dart:79` from `'covers_down'` to `''`.
+      // Pre-fix, an empty leak set returned `'covers_down'`,
+      // `LearnTeachingAnalyzer` stamped that into `primaryLeakId`, and
+      // `variance_learn_tab.dart:151-153` materialised a real leak card
+      // the operator had not earned. Post-fix, the empty id flows
+      // through `LeverCards.lookup` → null → the 7.61.1 (F-1) reset
+      // branch, so the entire envelope (id, count, side label,
+      // dayparts) collapses to the explicit "no pattern yet" state —
+      // structurally identical to the F-1 unknown-id case. R-CONS-9.
       final summary = HistoryTeachingAnalyzer.summarize(const []);
       expect(summary.mostCommonLeakId, equals(''),
           reason:
-              'R-CONS-9 — empty leak set must yield empty string, not the '
-              "'covers_down' overclaim. F-2 fix lands in 7.61.2.");
-    }, skip: 'F-2 holdout — see docs/phases/phase_7_61/phase_7_61_audit_plan.md');
+              'R-CONS-9 — empty leak set yields empty id, not the '
+              "pre-7.61.2 'covers_down' overclaim.");
+      expect(summary.mostCommonLeakCount, equals(0),
+          reason:
+              'F-2 — empty-set count is zero. Pre-7.61.2 it was zero by '
+              'coincidence (default `maxCount = 0` was never overridden), '
+              'but the lookup-reset branch (7.61.1 F-1) now zeros it '
+              'explicitly when the empty default flows through `lookup`.');
+      expect(summary.mostCommonLeakSideLabel, equals('No leak pattern yet'),
+          reason:
+              'F-2 — null lookup → placeholder side label, never '
+              "coversDown's '${LeverCards.coversDown.sideLabel}'. "
+              'Symmetric with the F-1 unknown-id envelope.');
+      expect(summary.topLeakDayparts, equals(const <String>[]),
+          reason:
+              'F-2 — empty-set dayparts list. The daypart-frequency '
+              'loop filters by `r.leverId == mostCommonLeakId` against '
+              "an empty id, so no record matches and `_topTwo` returns []. "
+              'Pre-7.61.2 this was already empty (no leak records to '
+              'iterate), but the post-fix path makes it empty BY '
+              'CONSTRUCTION through the same null-lookup reset.');
+    });
+
+    test(
+        'R-CONS-9 — single leak record → mostCommonLeakId is that id '
+        '(7.61.2 freq edge case (a))', () {
+      // Companion to the F-2 empty-set test: with a single leak record
+      // the freq.isNotEmpty branch fires, the tie-break trivially picks
+      // the only entry, and `lookup` resolves it to a real catalog card —
+      // so the post-tie-break reset does NOT fire and the id survives.
+      // Pins the boundary between the empty-set path (`''` envelope) and
+      // the populated path (catalog id). R-CONS-9.
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W13',
+          weekLabel: 'Mar 24',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          leverId: 'cplh_down',
+          isBenchmark: false,
+        ),
+      ]);
+      expect(summary.mostCommonLeakId, equals('cplh_down'),
+          reason:
+              '7.61.2 (a) — single-record freq picks that record\'s id; '
+              'lookup resolves it; reset does not fire.');
+      expect(_expectedCatalog, contains(summary.mostCommonLeakId),
+          reason:
+              'R-CONS-9 — single-record id is a catalog id (lowercase '
+              'canonical).');
+      expect(summary.mostCommonLeakCount, equals(1),
+          reason:
+              '7.61.2 (a) — single-record freq has count 1; the empty '
+              'default `maxCount = 0` is overridden inside `freq.isNotEmpty`.');
+    });
+
+    test(
+        'R-CONS-9 — empty leak set → mostCommonLeakId is empty string '
+        '(7.61.2 freq edge case (b))', () {
+      // Companion to (a): with zero leak records the `freq.isNotEmpty`
+      // branch is skipped entirely, the empty default flows through to
+      // `lookup`, returns null, and the reset zeros the envelope. This
+      // is the same input as the F-2 test above; this assertion frames
+      // it from the freq-path angle (the F-2 test frames it from the
+      // bug-fix angle). R-CONS-9.
+      final summary = HistoryTeachingAnalyzer.summarize(const []);
+      expect(summary.mostCommonLeakId, equals(''),
+          reason:
+              '7.61.2 (b) — empty freq → empty default → null lookup → '
+              "empty id. Closes the pre-fix 'covers_down' overclaim.");
+    });
+
+    test(
+        'R-CONS-9 — non-empty history with zero leak candidates yields the '
+        'empty-leak envelope (F-2 — operator-facing Learn-tab harm chain pin)',
+        () {
+      // Reviewer P3: the `const []` test above pins the analyzer's
+      // behavior on truly-empty input, but `LearnTeachingAnalyzer`
+      // short-circuits ONLY when `patternRecords.isEmpty`
+      // ([learn_teaching_analyzer.dart:22-24]). The phase doc's
+      // operator-facing failure mode is a non-empty history window
+      // where every record filters out of `leakRecords` — either
+      // every record is a benchmark (`isBenchmark: true` from
+      // `HistoryPatternBuilder` whenever `LaborModel.isFavorableLever`
+      // is true, see `history_pattern_builder.dart:50`) or otherwise
+      // has a favorable lever id. In that path
+      // `LearnTeachingAnalyzer` invokes
+      // `HistoryTeachingAnalyzer.summarize` and copies the result
+      // into `LearnTeachingSummary.primaryLeakId / SideLabel /
+      // Count / topLeakDayparts` verbatim, then
+      // [variance_learn_tab.dart:151-153] runs
+      // `LeverCards.lookup(primaryLeakId)`. Pre-7.61.2 this resolved
+      // 'covers_down' to the real coversDown card and rendered the
+      // four-card carousel — the exact "leak the operator did not
+      // earn" symptom the audit plan flagged. Post-7.61.2 the empty
+      // default flows through `lookup` → null → renderer falls into
+      // the 'NO PATTERNS YET' placeholder card. This test pins the
+      // analyzer's contribution to the harm chain (the empty-leak
+      // envelope) on the operator-realistic input shape.
+      // R-CONS-9 + R-CONS-2.
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        // Two benchmark records (filtered out by `!r.isBenchmark`).
+        // splh_up wins the benchmark side (count 2 vs ppa_up's 1)
+        // so the test isolates the leak-side empty envelope without
+        // collapsing the benchmark side, which exercises the
+        // analyzer's two-side independence.
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'splh_up',
+          isBenchmark: true,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W13',
+          weekLabel: 'Mar 24',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'splh_up',
+          isBenchmark: true,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Wed',
+          daypart: 'dinner',
+          leverId: 'ppa_up',
+          isBenchmark: true,
+        ),
+      ]);
+      // Leak side: the empty-leak envelope holds for non-empty
+      // input as long as `leakRecords` (post-filter) is empty.
+      expect(summary.mostCommonLeakId, equals(''),
+          reason:
+              'F-2 — non-empty patternRecords but zero leak '
+              'candidates → empty id. Pre-7.61.2 the analyzer never '
+              "overrode the 'covers_down' default and `lookup` "
+              'returned a real card, so the renderer fabricated a '
+              'covers_down leak the operator had not earned.');
+      expect(summary.mostCommonLeakCount, equals(0),
+          reason:
+              'F-2 — non-empty patternRecords but zero leak '
+              'candidates → zero count.');
+      expect(summary.mostCommonLeakSideLabel,
+          equals('No leak pattern yet'),
+          reason:
+              'F-2 — non-empty patternRecords but zero leak '
+              "candidates → placeholder side label, never coversDown's "
+              "'${LeverCards.coversDown.sideLabel}'. This is the exact "
+              'side label `LearnTeachingAnalyzer` then stamps into '
+              '`primaryLeakSideLabel` and renders into the '
+              "'NO PATTERNS YET' placeholder card body when "
+              '`variance_learn_tab.dart:151-153` falls into the '
+              'lookup-null branch.');
+      expect(summary.topLeakDayparts, equals(const <String>[]),
+          reason:
+              'F-2 — non-empty patternRecords but zero leak '
+              'candidates → empty dayparts. The benchmark records\' '
+              "dayparts ('Sat Dinner', 'Wed Dinner') MUST NOT bleed "
+              'into `topLeakDayparts` — the daypart-frequency loop '
+              "filters by `r.leverId == ''` against an empty "
+              '`leakRecords` list, so no record matches.');
+      // Benchmark side: the analyzer still surfaces the real
+      // benchmark winner from the same input. This proves the
+      // leak-side empty envelope is isolated — it does not
+      // accidentally collapse the benchmark side, which was the
+      // F-1 (7.61.1) concern on the unknown-id path.
+      expect(summary.mostCommonBenchmarkId, equals('splh_up'),
+          reason:
+              'F-2 — benchmark side still surfaces the real winner '
+              "(splh_up x2) from the same input. The leak-side empty "
+              'envelope must be isolated to the leak side.');
+      expect(summary.mostCommonBenchmarkCount, equals(2),
+          reason:
+              'F-2 — benchmark count is preserved on the same input '
+              'where the leak side is empty.');
+      expect(summary.benchmarkDayparts,
+          equals(['Sat Dinner', 'Wed Dinner']),
+          reason:
+              'F-2 — benchmark dayparts include both Sat Dinner '
+              "(splh_up x2) and Wed Dinner (ppa_up x1) because "
+              "`benchFreq` aggregates across ALL known-id benchmark "
+              'records, not just the winner-id rows. The 7.61.1 '
+              '`_knownLeverIds` filter only drops unknown ids '
+              'upstream; known sibling benchmark dayparts still '
+              "aggregate together by design (the renderer's study "
+              'line treats them as "study these benchmark dayparts in '
+              'general"). The leak-side empty envelope is independent '
+              'of this benchmark-side aggregation.');
+    });
   });
 
   group('F-1 — unknown id zeros out every summary field, no silent overclaim',

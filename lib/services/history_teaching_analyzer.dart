@@ -57,10 +57,12 @@ class HistoryTeachingAnalyzer {
   // the record-filter layer so that neither the tie-break frequency
   // (`bFreq`) nor the daypart frequency (`benchFreq`) ever sees an
   // unknown id. The leak side keeps the post-tie-break `LeverCards.lookup`
-  // reset because applying this allow-list there would push the
-  // all-unknown case onto the F-2 default `'covers_down'` (line 69) and
-  // re-introduce the silent overclaim until 7.61.2 flips that default
-  // to `''`.
+  // reset because the empty-state default at line 79 is now `''`
+  // (7.61.2, F-2): an all-unknown leak set still produces an empty id
+  // through the tie-break and the `lookup` reset zeros the rest of the
+  // envelope. Pre-7.61.2 the default was `'covers_down'`, so applying
+  // the allow-list here would have pushed the all-unknown case onto a
+  // real lever card.
   static final _knownLeverIds = LeverCards.all.map((l) => l.id).toSet();
 
   static HistoryTeachingSummary summarize(List<HistoryPatternRecord> records) {
@@ -75,8 +77,16 @@ class HistoryTeachingAnalyzer {
       freq[r.leverId] = (freq[r.leverId] ?? 0) + 1;
     }
 
-    // Most common leak with tie-break.
-    String mostCommonLeakId = 'covers_down';
+    // Most common leak with tie-break. 7.61.2 (F-2): empty default is
+    // `''`, not `'covers_down'`. With zero leak records, the analyzer
+    // returns an empty id and the post-tie-break `lookup` reset below
+    // zeros the count and dayparts together; line 177 falls back to
+    // `'No leak pattern yet'` symmetric with the benchmark side. Pre-fix
+    // an empty leak set still surfaced `'covers_down'`, which
+    // `LearnTeachingAnalyzer` stamped into `primaryLeakId` and
+    // `variance_learn_tab.dart:151-153` materialised as a real leak card
+    // the operator had not earned. R-CONS-9.
+    String mostCommonLeakId = '';
     int maxCount = 0;
     if (freq.isNotEmpty) {
       maxCount = freq.values.reduce((a, b) => a > b ? a : b);
@@ -95,22 +105,24 @@ class HistoryTeachingAnalyzer {
       mostCommonLeakId = tied.first;
     }
 
-    // 7.61.1 (F-1): null-safe lookup. An unknown id (or an empty
-    // mostCommonLeakId once 7.61.2 flips the empty-state default) zeros
-    // out every leak summary field — id, count, dayparts, side label —
-    // so downstream copy in LearnTeachingAnalyzer can't stitch a
-    // "Fix no leak pattern yet first in <real daypart>" sentence out of
-    // a phantom lever. R-CONS-2 + R-CONS-9 + R-STOR-7. The empty-state
-    // default at line 69 is owned by 7.61.2 and intentionally unchanged.
+    // 7.61.1 (F-1) + 7.61.2 (F-2): null-safe lookup. An unknown id
+    // OR the post-7.61.2 empty-state default (`''`) zeros out every
+    // leak summary field — id, count, dayparts, side label — so
+    // downstream copy in LearnTeachingAnalyzer can't stitch a
+    // "Fix no leak pattern yet first in <real daypart>" sentence out
+    // of a phantom lever. R-CONS-2 + R-CONS-9 + R-STOR-7. With the
+    // empty-state default flipped, the empty-set path and the
+    // unknown-id path now share this same null-lookup branch.
     final LeverCardData? leakCard = LeverCards.lookup(mostCommonLeakId);
     if (leakCard == null) {
       mostCommonLeakId = '';
       maxCount = 0;
     }
 
-    // Top 2 dayparts for the most common leak. After an unknown-id reset
-    // mostCommonLeakId is '', which never matches r.leverId, so this stays
-    // empty — symmetric with the "no pattern" state.
+    // Top 2 dayparts for the most common leak. After an empty-set OR
+    // unknown-id reset, mostCommonLeakId is '', which never matches
+    // r.leverId, so this stays empty — symmetric with the "no pattern"
+    // state.
     final leakDpFreq = <String, int>{};
     for (final r in leakRecords.where((r) => r.leverId == mostCommonLeakId)) {
       leakDpFreq[r.fullLabel] = (leakDpFreq[r.fullLabel] ?? 0) + 1;
