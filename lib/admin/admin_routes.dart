@@ -398,13 +398,6 @@ Widget _buildDebugConsole(BuildContext context) {
   );
 }
 
-Widget _placeholderBuilder(BuildContext context) {
-  // 11A.0 placeholder body. The shell wraps this with the branded
-  // empty-state surface using the route's [subtitle], so this builder
-  // never actually renders.
-  return const SizedBox.shrink();
-}
-
 /// Inherited services scope for the admin console. Production wires
 /// the HTTP-backed [OperatorLocationAdminGateway] above the auth
 /// gate; demo + widget tests fall back to a seeded in-memory
