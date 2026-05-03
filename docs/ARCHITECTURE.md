@@ -1992,11 +1992,12 @@ workflow needs to run
   -> audit log records service actor
 ```
 
-Known gap:
+Current gap:
 
-- The verifier exists.
-- The issuer route is still queued.
-- Phase 12 workflows need that issuer route.
+- The verifier and issuer route are locally implemented.
+- The queued Production1 migration apply must land before live Phase 12
+  workflows depend on service-principal issuance.
+- Phase 12 workflows still need live issuance evidence.
 
 ### Where It Lives
 
@@ -3344,47 +3345,47 @@ Key pieces, one at a time:
 - **Why it matters:** Unblocks operator team settings consumption
 - **How this helps long term:** Unblocks future team/settings UX work.
 
-#### B33 queued
+#### B33 complete
 
-- **What it means:** `usage_logs` two-slot mirror missing
-- **Example in the app:** Usage logs need two-slot mirror follow-up.
-- **Why it matters:** Needed for cap-vs-actual reconciliation
-- **How this helps long term:** Needs closure before usage billing/reconciliation becomes reliable.
+- **What it means:** `usage_logs` two-slot mirror work is complete
+- **Example in the app:** Usage/cap reconciliation has the two-slot writer and constraint posture.
+- **Why it matters:** Supports cap-vs-actual reconciliation
+- **How this helps long term:** Gives billing/reconciliation a stable base.
 
-#### B34 queued
+#### B34 complete
 
-- **What it means:** Audit attribution contract clarification
-- **Example in the app:** Audit actor attribution docs need clarification.
-- **Why it matters:** Needed for clear cross-table audit queries
-- **How this helps long term:** Needs closure before audit reporting matures.
+- **What it means:** Audit attribution contract clarification is complete
+- **Example in the app:** Audit actor attribution has a documented discriminator rule.
+- **Why it matters:** Supports clear cross-table audit queries
+- **How this helps long term:** Keeps audit reporting semantics stable.
 
-#### RLS isolation sweep missing
+#### RLS isolation sweep complete
 
-- **What it means:** New tables need cross-tenant tests
-- **Example in the app:** Need tests proving Operator A cannot read Operator B.
+- **What it means:** New tenant-scoped tables have passive cross-tenant tests
+- **Example in the app:** The staging sweep can prove Operator A cannot read Operator B when explicitly enabled.
 - **Why it matters:** Reduces tenant leak risk
-- **How this helps long term:** Should be closed before relying more heavily on new production tables.
+- **How this helps long term:** Keeps future production-table work tied to isolation evidence.
 
-#### Service-principal issuer route missing
+#### Service-principal issuer route local complete
 
-- **What it means:** Verifier exists but issuance endpoint is queued
-- **Example in the app:** Need endpoint to mint `sp:` tokens.
+- **What it means:** Issuance route/client/tests landed; live apply evidence is still pending
+- **Example in the app:** `sp:` token issuance is implemented locally and waits on the queued Production1 apply batch.
 - **Why it matters:** Needed for Phase 12 workflows
-- **How this helps long term:** Blocks the workflow platform from issuing automation identity safely.
+- **How this helps long term:** Gives the workflow platform an automation identity path once live migrations are applied.
 
-#### Event outbox worker missing
+#### Event outbox scaffold landed
 
-- **What it means:** Table exists but consumer scaffold queued
-- **Example in the app:** Need worker to claim and publish events.
+- **What it means:** Phase 10a scaffold exists; Pub/Sub adapter, dead-letter handling, retention sweep, tripwires, and UX surfaces are still queued
+- **Example in the app:** Durable `event_outbox` rows are the source of truth; NOTIFY only wakes consumers.
 - **Why it matters:** Needed for real event fan-out
-- **How this helps long term:** Blocks durable event fan-out and real-time consumers.
+- **How this helps long term:** Keeps durable event delivery separate from transient push signals.
 
-#### Health producers needed
+#### Health producers delivered
 
-- **What it means:** `/health` now has the B42 metric envelope; later producers still need to fill it
-- **Example in the app:** B44/B45/B47 fill audit/vector/graph/rollup metric values.
+- **What it means:** B44 graph, B45 rollup, and B47 vector producers now fill the B42 health envelope in code
+- **Example in the app:** 11A can build health/observability surfaces against real producer families.
 - **Why it matters:** Needed for ops console health views
-- **How this helps long term:** Lets the operations console bind to stable health keys before every producer is live.
+- **How this helps long term:** Moves the next work from producer wiring to bounded UX/live evidence.
 
 
 ### Where It Lives

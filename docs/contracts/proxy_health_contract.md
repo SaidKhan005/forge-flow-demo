@@ -1,15 +1,17 @@
 # Proxy /health Contract
 
-Updated: 2026-04-29
+Updated: 2026-05-03
 Owner: B42 proxy `/health` expansion
 Status: Active authority
 
 ## Why This Exists
 
-B42 defines the health envelope that the Phase 11A operations console reads
-before the deeper health producers land. It is intentionally a foundation
-contract: the proxy owns the response shape, while B44, B45, B47, and adjacent
-operational slices fill the metric values over time.
+B42 defines the health envelope that the Phase 11A operations console reads.
+It is intentionally a foundation contract: the proxy owns the response shape,
+while B44, B45, B47, and adjacent operational slices fill metric values over
+time. As of 2026-05-03, B44 graph, B45 rollup, and B47 vector producer wiring
+is code-delivered; remaining work is the 11A.5/11A.6 UX/observability surface,
+live data evidence, and operational recovery posture.
 
 This contract is the handoff between:
 
@@ -214,11 +216,15 @@ B42 lands:
 - Compatibility aliases for the original dependency fields.
 - Focused tests proving the reserved metric and surface keys.
 
-B42 does not land:
+B42 did not land these producer families; they are tracked under their owner
+slices and are now partly or fully delivered as noted:
 
-- Graph projection rebuild tooling or traversal benchmarks. That is B44.
-- Rollup freshness UI integration or worker telemetry filling. That is B45.
-- Vector health collection or filtered-search benchmark execution. That is B47.
+- Graph projection rebuild tooling or traversal benchmarks. That is B44
+  (producer wiring delivered).
+- Rollup freshness UI integration or worker telemetry filling. That is B45
+  (producer wiring delivered; UX/live evidence remains with 11A).
+- Vector health collection or filtered-search benchmark execution. That is B47
+  (producer wiring delivered; live benchmark evidence remains with 11A).
 - Event bridge worker metrics. Those land with Phase 10a.
 - Audit anchor deployment. That is B43.
 

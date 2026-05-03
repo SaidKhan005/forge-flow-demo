@@ -5,9 +5,9 @@ ships have merged to master and before you spawn the next batch.
 
 **Workflow:** copy the fenced block below, fill in the four input
 slots at the top, paste into a fresh Claude main-chat session on
-`master`. Claude returns the audit verdicts, lean tracker/phase-doc
-updates, archive verdict, parallel-safety matrix, and Codex prompts
-for the next batch.
+`master`. Claude returns audit verdicts, lean tracker/phase-doc updates,
+archive verdict, a parallel-safety matrix, and next-batch prompts that follow
+`docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
 
 ---
 
@@ -37,8 +37,8 @@ allowed (those are not project-code edits).
 Authority docs to follow throughout:
 - `CLAUDE.md` — Hard Promises, hygiene rule, parallel-lane rules
 - `PROJECT_TRACKER.md` — Active Lanes, Phase Board, queue
-- `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt format,
-  Parallel Lanes, Frontend Exposure & UX Acceptance Gate
+- `docs/CODEX_PROMPT_GENERATION_STANDARD.md` — prompt shape,
+  Parallel Worktrees, Codex Review, Docs After Approval
 
 ### 1. Discovery
 - `git log --oneline -20` and identify the merge commits matching
@@ -109,17 +109,17 @@ For each candidate slice:
 - Recommend a sustainable parallel set (typically 3-4 lanes; max
   parallel from inputs)
 
-### 7. Codex prompts for the recommended next batch
+### 7. Prompts for the recommended next batch
 Per slice in the recommended set, produce a full prompt in the
 standard's format (`docs/CODEX_PROMPT_GENERATION_STANDARD.md`
-"Slice Prompt Block Template"):
+"Prompt Shape"):
 - **Block 1 (Markdown, visible to user):** Plain English, Lane
   line (`Lane: <slice-id> — worktree
   .claude/worktrees/<lane-name> on branch codex/<lane-name> off
   master @ <sha>, to be created`), Important context (call out
   parallel-safety with sibling lanes), Current issue, Human
   prerequisites (Setup/access + Decision needed)
-- **Block 2 + Block 3 (single fenced `text` block, paste-ready
+- **Block 2 (single fenced `text` block, paste-ready
   for Claude):** Authority files (3 max), Hard constraints — must
   include explicit **additive-safe carve-outs** naming each
   sibling lane's surface that this lane must NOT modify; Files to
@@ -128,7 +128,7 @@ standard's format (`docs/CODEX_PROMPT_GENERATION_STANDARD.md`
   including walkthrough evidence at
   `docs/_walkthroughs/<slice>.md`, brand styling, permission
   gating, no-tracker-update + no-commit
-- Block 2+3 target ≤50 lines per the standard
+- Block 2 target ≤50 lines per the standard
 
 ### 8. Spawn commands
 End with `git worktree add` commands for each recommended lane,
@@ -144,8 +144,8 @@ deliverables in this order:
    with `before -> after` line counts for any leaned docs)
 3. Archive verdict + stale-worktree cleanup commands (if any)
 4. Parallel-safety matrix (file-overlap table for the next batch)
-5. Codex prompts (one section per recommended lane: Block 1 in
-   plain Markdown + Block 2+3 in a fenced `text` block)
+5. Next-batch prompts (one section per recommended lane: Block 1 in
+   plain Markdown + Block 2 in a fenced `text` block)
 6. Spawn commands (one fenced shell block)
 7. After-batch outlook (one paragraph: what closes after this
    batch merges, what remains queued)
