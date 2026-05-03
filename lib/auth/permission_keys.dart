@@ -33,12 +33,14 @@
 //                                facing Settings → Team UX)
 //   - billing.*       (5 keys)  billing-related actions
 //   - integration.*   (9 keys)  integration management
+//   - integrations.*  (1 key)   Phase 8.0 vendor-connections category gate
 //   - workflow.*      (8 keys)  Phase 12 workflow capabilities (placeholder)
 //
-// Total: 96 keys (81 baseline + 13 team.* keys + 2 later admin
-// later admin keys added in 9.0Σ.h2/B41). Some keys are flagged
-// MFA-required via PermissionKeys.requiresMfa; the migration mirrors
-// that in the permission_keys.requires_mfa column.
+// Total: 97 keys (81 baseline + 13 team.* keys + 2 later admin
+// later admin keys added in 9.0Σ.h2/B41 + 1 integrations.configure
+// added in Phase 8.0). Some keys are flagged MFA-required via
+// PermissionKeys.requiresMfa; the migration mirrors that in the
+// permission_keys.requires_mfa column.
 
 /// Frozen permission key catalog. See file header for invariants.
 class PermissionKeys {
@@ -167,6 +169,15 @@ class PermissionKeys {
   static const String integrationXeroConnect = 'integration.xero.connect';
   static const String integrationKeyRotate = 'integration.key_rotate'; // MFA
 
+  // ─── integrations.* (1) ───────────────────────────────────────────
+  // Phase 8.0 — single category-level gate for the Vendor Connections
+  // admin surface (POS / labor / reservation). Distinct from the
+  // per-vendor `integration.*` keys above which gate F&F-internal
+  // provider key rotation in 11A.4. Granted to forge_admin and
+  // operator_admin / operator_owner; read-only for ff_support
+  // (no mutate routes wired); denied to location_manager.
+  static const String integrationsConfigure = 'integrations.configure';
+
   // ─── workflow.* (8 placeholder) ───────────────────────────────────
   static const String workflowCatalogView = 'workflow.catalog.view';
   static const String workflowRun = 'workflow.run';
@@ -269,6 +280,7 @@ class PermissionKeys {
     integrationQboConnect,
     integrationXeroConnect,
     integrationKeyRotate,
+    integrationsConfigure,
     workflowCatalogView,
     workflowRun,
     workflowApprove,

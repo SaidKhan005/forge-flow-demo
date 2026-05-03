@@ -18,6 +18,10 @@ import '../../theme/app_theme.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+// Phase 8.0 — vendor connections mount (per-location admin sub-route).
+// Append-only addition; the existing Edit / Remove / Make-primary
+// affordances stay untouched.
+import 'vendor_connections/vendor_connections_admin_mount.dart';
 
 class OperatorLocationAdminScreen extends StatefulWidget {
   const OperatorLocationAdminScreen({
@@ -664,6 +668,29 @@ class _LocationRow extends StatelessWidget {
             tooltip: 'Edit location',
             onPressed: onEdit,
             icon: const Icon(Icons.edit_outlined, size: 16),
+          ),
+          // Phase 8.0 — vendor connections sub-route for this
+          // (operator_id, location_id). Append-only; the existing
+          // Make-primary / Edit / Remove buttons stay untouched.
+          Builder(
+            builder: (subContext) => IconButton(
+              key: Key(
+                'admin_location_vendor_connections_${location.locationId}',
+              ),
+              tooltip: 'Vendor connections',
+              onPressed: () {
+                Navigator.of(subContext).push(
+                  MaterialPageRoute<void>(
+                    settings: const RouteSettings(name: '/vendor-connections'),
+                    builder: (_) => VendorConnectionsAdminMount(
+                      operatorId: location.operatorId,
+                      locationId: location.locationId,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.link, size: 16),
+            ),
           ),
           IconButton(
             key: Key('admin_location_remove_${location.locationId}'),

@@ -17,10 +17,13 @@ import '../models/current_state_freshness.dart';
 import '../models/shift_dashboard_read_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_screen_header.dart';
+import '../widgets/data_source_health_pill.dart';
+import '../widgets/metric_card_not_yet_available.dart';
 import '../widgets/sticky_section_delegate.dart';
 import '../widgets/zone_status_card.dart';
 import '../widgets/input_metric_card.dart';
 import '../widgets/sales_forecast_card.dart';
+import '../domain/models/metric_provenance.dart';
 
 /// Default business-day cutoff used by the daypart scaffold until the
 /// timing-config wiring (`RestaurantTimingConfigReadService`) is plumbed
@@ -131,6 +134,16 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                     scope: _scope,
                     onChanged: _setScope,
                   ),
+                ),
+                // Phase 8.0 V1 lean cut 2 — DataSourceHealthPill
+                // mounted at the dashboard root. Renders nothing when
+                // every visible metric is `live`; renders a single
+                // line when any metric is non-live. Per
+                // metric_card_honesty_contract.md "Forbidden
+                // Patterns": no card-level chrome, no "All live"
+                // pill.
+                SliverToBoxAdapter(
+                  child: _ShiftDashboardHealthPill(readModel: rm),
                 ),
                 if (_scope == ShiftScope.wholeDay) ..._wholeDaySlivers(rm),
                 if (_scope == ShiftScope.daypart) ..._daypartSlivers(),
@@ -496,6 +509,13 @@ class _OutputsSection extends StatelessWidget {
     final coversCard = readModel.metricCards.where((m) => m.name == 'COVERS').toList();
     final wageCard = readModel.metricCards.where((m) => m.name == 'BLENDED WAGE').toList();
 
+    // Phase 8.0 V1 lean cut 2 — switch on MetricProvenance state
+    // BEFORE rendering. When state is `unavailable`, render
+    // MetricCardNotYetAvailable in the same slot so the dashboard
+    // never produces a phantom zero.
+    final coversProv = readModel.coversProvenance;
+    final wageProv = readModel.blendedWageProvenance;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
       child: Column(
@@ -524,11 +544,24 @@ class _OutputsSection extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (coversCard.isNotEmpty)
-                  Expanded(child: InputMetricCard(metric: coversCard.first)),
+                Expanded(
+                  child: coversProv.state == MetricState.unavailable
+                      ? const MetricCardNotYetAvailable(metricLabel: 'COVERS')
+                      : (coversCard.isNotEmpty
+                          ? InputMetricCard(metric: coversCard.first)
+                          : const MetricCardNotYetAvailable(
+                              metricLabel: 'COVERS')),
+                ),
                 const SizedBox(width: 8),
-                if (wageCard.isNotEmpty)
-                  Expanded(child: InputMetricCard(metric: wageCard.first)),
+                Expanded(
+                  child: wageProv.state == MetricState.unavailable
+                      ? const MetricCardNotYetAvailable(
+                          metricLabel: 'BLENDED WAGE')
+                      : (wageCard.isNotEmpty
+                          ? InputMetricCard(metric: wageCard.first)
+                          : const MetricCardNotYetAvailable(
+                              metricLabel: 'BLENDED WAGE')),
+                ),
               ],
             ),
           ),
@@ -551,6 +584,21 @@ class _InputsSection extends StatelessWidget {
         .where((m) => m.name != 'COVERS' && m.name != 'BLENDED WAGE')
         .toList();
 
+    // Phase 8.0 V1 lean cut 2 — provenance lookup per metric.
+    final provByName = <String, MetricProvenance>{
+      'PPA': readModel.ppaProvenance,
+      'CPLH': readModel.cplhProvenance,
+      'SPLH': readModel.splhProvenance,
+    };
+
+    Widget renderInputCard(InputMetric m) {
+      final prov = provByName[m.name];
+      if (prov != null && prov.state == MetricState.unavailable) {
+        return MetricCardNotYetAvailable(metricLabel: m.name);
+      }
+      return InputMetricCard(metric: m);
+    }
+
     // Hours data — plan targets from SchedulePlan day row
     final fohScheduled = readModel.scheduledFohHours;
     final bohScheduled = readModel.scheduledBohHours;
@@ -572,8 +620,7 @@ class _InputsSection extends StatelessWidget {
             crossAxisSpacing: 8,
             mainAxisSpacing: 8,
             childAspectRatio: 1.05,
-            children:
-                inputCards.map((m) => InputMetricCard(metric: m)).toList(),
+            children: inputCards.map(renderInputCard).toList(),
           ),
           const SizedBox(height: 8),
           // FOH + BOH hours side by side
@@ -1410,5 +1457,72 @@ class _CompactHoursColumn extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+// ─── Phase 8.0 V1 lean cut 2 — DataSourceHealthPill mount ─────────────────
+//
+// Assembles the union of MetricProvenance states across the visible
+// dashboard metrics and feeds DataSourceHealthPill. The pill renders
+// nothing when every state is `live`; one short line otherwise.
+
+class _ShiftDashboardHealthPill extends StatelessWidget {
+  const _ShiftDashboardHealthPill({required this.readModel});
+
+  final ShiftDashboardReadModel readModel;
+
+  @override
+  Widget build(BuildContext context) {
+    final entries = <DataSourceHealthEntry>[];
+    void addIfDegraded(String label, MetricProvenance prov,
+        {String? overrideLine}) {
+      if (!prov.isDegraded) return;
+      String summary;
+      switch (prov.state) {
+        case MetricState.unavailable:
+          summary = overrideLine ?? '$label: not yet connected';
+          break;
+        case MetricState.fallback:
+          summary = '$label: ${_pillCopyForFallback(prov.provenance)}';
+          break;
+        case MetricState.partial:
+          summary = '$label: partial sync';
+          break;
+        case MetricState.live:
+          return;
+      }
+      entries.add(DataSourceHealthEntry(
+        metricLabel: label,
+        state: prov.state,
+        provenance: prov.provenance,
+        summaryLine: summary,
+      ));
+    }
+
+    addIfDegraded('Sales', readModel.salesProvenance);
+    addIfDegraded('Covers', readModel.coversProvenance);
+    addIfDegraded('PPA', readModel.ppaProvenance);
+    addIfDegraded('CPLH', readModel.cplhProvenance,
+        overrideLine: 'Labor: not yet connected');
+    addIfDegraded('SPLH', readModel.splhProvenance);
+    addIfDegraded('Blended wage', readModel.blendedWageProvenance);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: DataSourceHealthPill(entries: entries),
+      ),
+    );
+  }
+
+  String _pillCopyForFallback(String provenance) {
+    if (provenance.contains('forecast_covers')) {
+      return 'covers via forecast';
+    }
+    if (provenance.contains('fallback_labor_dollars')) {
+      return 'labor via wage × hours fallback';
+    }
+    return 'fallback source';
   }
 }

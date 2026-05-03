@@ -41,7 +41,8 @@ the constants without seeding it, the test catches that.
 The catalog carries 83 keys across 7 categories in the core catalog
 (81 original + 2 admin keys added after baseline). The 13 `team.*` keys
 added across 9.0a and the MFA hardening slice live in their own section
-below; the running total across all 8 categories is 96 keys.
+below; the Phase 8.0 single `integrations.configure` key adds a 9th
+category. The running total across all 9 categories is 97 keys.
 
 ### `product.*` (2)
 
@@ -221,6 +222,21 @@ catch-all rotate-secret action used by Phase 11A.4. Vendor-specific
 | `integration.qbo.connect` | Connect or rotate QuickBooks Online credentials. | — |
 | `integration.xero.connect` | Connect or rotate Xero credentials. | — |
 | `integration.key_rotate` | Rotate any integration secret. | yes |
+
+### `integrations.*` (1)
+
+Phase 8.0 single-category gate for the Vendor Connections admin
+surface (POS / labor / reservation). Distinct from the per-vendor
+`integration.*` keys above which gate F&F-internal provider-key
+rotation in 11A.4. Granted to `forge_admin` and operator senior
+roles (`operator_owner` / `operator_admin`); read-only for
+`ff_support` (no mutate routes wired); denied to `location_manager`
+because misconfigured vendor credentials cascade into broken
+cost / labor data and senior roles own that risk.
+
+| Key | Description | MFA |
+|---|---|---|
+| `integrations.configure` | Configure inbound vendor connections (POS / labor / reservation) on the per-(operator, location) Vendor Connections admin surface. | — |
 
 ### `workflow.*` (8 placeholder)
 

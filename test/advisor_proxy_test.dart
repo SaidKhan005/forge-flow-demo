@@ -2198,6 +2198,10 @@ void main() {
                   key.startsWith('team.') ||
                   key.startsWith('billing.') ||
                   key.startsWith('integration.') ||
+                  // Phase 8.0 added `integrations.configure` (plural)
+                  // for the Vendor Connections category gate. Distinct
+                  // from the per-vendor `integration.*` keys above.
+                  key.startsWith('integrations.') ||
                   key.startsWith('workflow.'),
             )
             .toSet();

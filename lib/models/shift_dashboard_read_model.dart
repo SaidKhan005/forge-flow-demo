@@ -4,6 +4,7 @@ library;
 
 import '../data/app_defaults.dart';
 import '../domain/models/active_target_profile.dart';
+import '../domain/models/metric_provenance.dart';
 import '../domain/models/open_shift_snapshot.dart';
 import '../services/labor_model.dart';
 
@@ -74,8 +75,135 @@ class ShiftDashboardReadModel {
   // ── Reservation book signal ─────────────────────────────────────────────
   final int? inTheBooksCovers;
 
+  // ── Phase 8.0 V1 lean cut 2 — Vendor source provenance fields ───────────
+  // Optional fields populated by Phase 8 read-model builders to name
+  // the connected vendor in provenance strings. Demo paths leave
+  // these null; the read-model getters fall through to
+  // `MetricCardNotYetAvailable` when null.
+  final String? _posSourceVendorId;
+  final String? _laborSourceVendorId;
+  final bool _laborDollarsFromVendor;
+
   // ── Derived ─────────────────────────────────────────────────────────────
   double get currentSales => actualSales;
+
+  // ── Phase 8.0 V1 lean cut 2 — MetricProvenance accessors ────────────────
+  //
+  // Per docs/contracts/metric_card_honesty_contract.md. The renderer
+  // (`shift_dashboard.dart` + variance tabs) consults state +
+  // provenance for every load-bearing metric and renders
+  // `MetricCardNotYetAvailable` when state == unavailable. The
+  // existing numeric fields stay as the value carrier; these
+  // getters expose state.
+
+  /// Vendor identifier used in provenance strings. Resolves from
+  /// the read model's wired data sources; defaults to
+  /// `vendor_unknown` when the demo seed has no source declared.
+  /// Production read-model builders should override via
+  /// [posSourceVendorId] / [laborSourceVendorId] when wiring real
+  /// adapters.
+  String get _posVendor => posSourceVendorId ?? 'unknown';
+  String get _laborVendor => laborSourceVendorId ?? 'unknown';
+
+  /// Optional injection points so a wired Phase 8 adapter can name
+  /// itself in provenance without changing the read-model
+  /// constructor for legacy callers.
+  String? get posSourceVendorId => _posSourceVendorId;
+  String? get laborSourceVendorId => _laborSourceVendorId;
+
+  /// Whether the labor read came from a connected vendor source
+  /// (true) or from the wage*hours fallback (false). Defaults to
+  /// `true` for backward compatibility with demo paths; production
+  /// read-model builders can pass `false` when actuals are missing.
+  bool get laborDollarsFromVendor => _laborDollarsFromVendor;
+
+  /// Covers state — `unavailable` when neither actual covers nor a
+  /// vendor source is wired. Renderer switches to
+  /// `MetricCardNotYetAvailable` for unavailable.
+  MetricProvenance get coversProvenance {
+    if (actualCovers <= 0 && posSourceVendorId == null) {
+      return const MetricProvenance.unavailable();
+    }
+    return MetricProvenance.live(
+      value: actualCovers,
+      provenance: 'vendor_$_posVendor',
+    );
+  }
+
+  MetricProvenance get salesProvenance {
+    if (actualSales <= 0 && posSourceVendorId == null) {
+      return const MetricProvenance.unavailable();
+    }
+    return MetricProvenance.live(
+      value: actualSales,
+      provenance: 'vendor_$_posVendor',
+    );
+  }
+
+  /// PPA — `unavailable` when covers are zero (no honest divisor).
+  MetricProvenance get ppaProvenance {
+    if (actualCovers <= 0) return const MetricProvenance.unavailable();
+    return MetricProvenance.live(
+      value: actualPPA,
+      provenance: 'vendor_$_posVendor',
+    );
+  }
+
+  /// CPLH — `unavailable` when no labor vendor connected OR actual
+  /// FOH hours are zero. `fallback` when labor dollars came via
+  /// wage*hours instead of vendor data.
+  MetricProvenance get cplhProvenance {
+    if (laborSourceVendorId == null || actualFohHours <= 0) {
+      return const MetricProvenance.unavailable();
+    }
+    if (!laborDollarsFromVendor) {
+      return MetricProvenance.fallback(
+        value: actualCPLH,
+        provenance: 'vendor_${_laborVendor}_with_fallback_labor_dollars',
+      );
+    }
+    return MetricProvenance.live(
+      value: actualCPLH,
+      provenance: 'vendor_$_laborVendor',
+    );
+  }
+
+  /// SPLH — same `unavailable` / `fallback` rules as CPLH.
+  MetricProvenance get splhProvenance {
+    if (laborSourceVendorId == null || actualBohHours <= 0) {
+      return const MetricProvenance.unavailable();
+    }
+    if (!laborDollarsFromVendor) {
+      return MetricProvenance.fallback(
+        value: actualSPLH,
+        provenance: 'vendor_${_laborVendor}_with_fallback_labor_dollars',
+      );
+    }
+    return MetricProvenance.live(
+      value: actualSPLH,
+      provenance: 'vendor_$_laborVendor',
+    );
+  }
+
+  /// Blended wage — `unavailable` when no labor vendor connected OR
+  /// total hours are zero.
+  MetricProvenance get blendedWageProvenance {
+    if (laborSourceVendorId == null) {
+      return const MetricProvenance.unavailable();
+    }
+    final totalHours = actualFohHours + actualBohHours;
+    if (totalHours <= 0) return const MetricProvenance.unavailable();
+    if (!laborDollarsFromVendor) {
+      return MetricProvenance.fallback(
+        value: blendedWage,
+        provenance: 'vendor_${_laborVendor}_with_fallback_labor_dollars',
+      );
+    }
+    return MetricProvenance.live(
+      value: blendedWage,
+      provenance: 'vendor_$_laborVendor',
+    );
+  }
 
   const ShiftDashboardReadModel({
     required this.daypart,
@@ -115,7 +243,12 @@ class ShiftDashboardReadModel {
     required this.targetLaborPct,
     required this.laborVariancePts,
     this.inTheBooksCovers,
-  });
+    String? posSourceVendorId,
+    String? laborSourceVendorId,
+    bool laborDollarsFromVendor = true,
+  })  : _posSourceVendorId = posSourceVendorId,
+        _laborSourceVendorId = laborSourceVendorId,
+        _laborDollarsFromVendor = laborDollarsFromVendor;
 
   /// Builds the read model from a single snapshot + active target profile.
   /// Used by tests and legacy paths. Plan values are derived from the snapshot.
@@ -155,6 +288,12 @@ class ShiftDashboardReadModel {
     int? inTheBooksCovers,
     int? actualCoversOverride,
     double? actualSalesOverride,
+    // Phase 8.0 V1 lean cut 2 — vendor source provenance.
+    // Demo paths leave these null; production wiring populates
+    // them from connector_connection.metadata.
+    String? posSourceVendorId,
+    String? laborSourceVendorId,
+    bool laborDollarsFromVendor = true,
   }) {
     // Day label to full name
     const dayFull = {
@@ -305,6 +444,9 @@ class ShiftDashboardReadModel {
       targetLaborPct: computedTargetLaborPct,
       laborVariancePts: computedLaborVariancePts,
       inTheBooksCovers: inTheBooksCovers,
+      posSourceVendorId: posSourceVendorId,
+      laborSourceVendorId: laborSourceVendorId,
+      laborDollarsFromVendor: laborDollarsFromVendor,
     );
   }
 
