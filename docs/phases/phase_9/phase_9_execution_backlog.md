@@ -51,8 +51,8 @@ Closed and verified:
   (`202604290000` and `202604280014`) still need explicit staging +
   Production1 apply evidence before live phases depend on them.
 - B44/B45/B47 helper, runbook, and metric producer wiring now exist; `11A.5`
-  Debug Console is accepted, and remaining health-producer UX/live evidence
-  belongs to `11A.6`.
+  Debug Console and `11A.6` observability dashboard are both accepted, with
+  live producer evidence the remaining open follow-up.
 - Latest local baseline: `flutter analyze --fatal-infos`,
   `dart run tool/rls_policy_lint.dart`, focused B17 auth/proxy tests,
   `git diff --check`, and full `flutter test --reporter compact` passed
@@ -94,10 +94,10 @@ already-completed Production1 apply unless explicitly stated.
 | B41 service-principal issuance route | local complete; live apply pending | Route/client/tests landed; apply `202604290000` to staging + Production1 before live Phase 12 dependence |
 | B42 proxy `/health` expansion | complete | Contract/code/tests landed; B44/B45/B47 now fill reserved metric values |
 | B43 Cloud Run audit anchor deploy | staging deployed (lock deferred); production owed | Binary at `tool/audit_anchor/main.dart`; live `AzureBlobAuditAnchorBlobClient` (WIF, REST-direct) at `tool/audit_anchor/azure_blob_client.dart`; image build at `tool/audit_anchor/Dockerfile` + `cloudbuild.yaml`; deploy script `scripts/deploy_audit_anchor_job.ps1` (now with `-SecretPrefix`, `-VpcConnector`, `-VpcEgress`); deploy + verification runbook `runbooks/audit_anchor_cloudrun_deploy_runbook.md`. Staging live (2026-05-01): Cloud Run Job `forge-flow-audit-anchor` (project `forge-flow-staging`, image `audit-anchor:7f95227`, VPC connector `ff-staging-proxy-egress` → static IP `34.130.85.86`); Cloud Scheduler `forge-flow-audit-anchor-daily` (`northeast1`, `55 23 * * *` UTC, **PAUSED**); Azure container `audit-chain-anchors-immutable` on `forgeflowstaging1` **EMPTY + UNLOCKED**; AD app `forge-flow-audit-anchor-staging` + federated credential + container-scoped RBAC. Manual sweep `forge-flow-audit-anchor-lxqgm` exit 0 (1 operator resolved, no eligible chains). 7-year immutability lock **intentionally deferred** until real staging audit_logs accumulate AND a verified anchor (DB row + blob) lands; conditions + procedure in the runbook's "Current staging state" section. Production target still owed (no production GCP project; production VPC/NAT/firewall pattern deferred to its own slice — see `docs/phases/phase_11A_operations_console/phase_11A_operations_console_plan.md` "Dev UX prerequisite — cross-cloud egress" for the reusable pattern). |
-| B44 graph health metrics and rebuild runbook | complete | Producer registry + graph producer tests landed; `11A.6` still owns health/observability UX |
-| B45 rollup worker/freshness UI integration | producer wiring landed; route/UI pending | `rollup_producers.dart` + tests landed; `11A.6` owns UX/live evidence |
+| B44 graph health metrics and rebuild runbook | complete | Producer registry + graph producer tests landed; `11A.5` Debug Console + `11A.6` observability dashboard both accepted; live producer evidence remains |
+| B45 rollup worker/freshness UI integration | producer wiring landed; `11A.6` UI accepted; live evidence pending | `rollup_producers.dart` + tests landed; live evidence remains |
 | B46 advisor conversation encryption/audit privacy | local complete; live apply pending | Apply `202604280014` to staging + Production1 before live 11b writes |
-| B47 vector health + filtered-search benchmark | producer wiring landed; live benchmark evidence pending | `vector_producers.dart` + tests landed; `11A.6` owns UX/live evidence |
+| B47 vector health + filtered-search benchmark | producer wiring landed; live benchmark evidence pending | `vector_producers.dart` + tests landed; `11A.6` dashboard accepted; live benchmark evidence remains |
 | B48 password reset email-link parity | local complete; live apply pending | The email-link reset path now posts to proxy route `POST /v1/auth/password/reset/confirm` instead of calling Firebase `confirmPasswordReset` directly. The route resolves `oobCode` to email/user, runs `PasswordChangeService.evaluate` server-side, enforces HIBP and last-5 history reuse checks, completes Firebase reset only after policy acceptance, writes `password_history`, and audits the reset. The Firebase action page reads `proxyBaseUri` from `web/firebase-config.js` so the reset confirm request reaches the proxy host instead of Firebase Hosting. Live deploy of the updated proxy/web action page remains the cutover requirement. |
 | B49 MFA production hardening | local complete; live apply pending | `9.UX.1a` now moves 24-hour MFA removal completion to a backend worker, keeps self/admin removal on delayed initiation, lets users/admins cancel pending removal requests during the delay window, avoids storing raw ID tokens as step-up proof, requires fresh admin auth for team reset, rate-limits public MFA help requests, removes recovery-code display and challenge entry from the app UX, repairs Firebase-only self factors before delayed removal, and fixes help-request copy so it does not promise email delivery. Mandatory admin-tier MFA enforcement remains deferred until post-launch stability and approval. Phone/SMS MFA remains out of scope and killed for this launch track. |
 | B50 auth notification delivery bridge | queued with Phase 10a unless 9.UX copy promises delivery | MFA recovery-request and factor-removed notifications should use the durable `event_outbox` bridge. Current 9.UX.1a code only queues event rows; true in-app/email notification delivery is not a background pipeline yet. If the 9.UX surface says "notification will be sent", Phase 10a must provide the provider/worker path and acceptance proof. Until then, user-facing copy must say the request was recorded or tell the user to contact the restaurant admin directly, not promise an email. |
@@ -118,8 +118,8 @@ the `9.UX.1a` hardening sub-slice in
 - B41 service-principal JWT issuance â†’ no operator UX (admin-only;
   surfaces in `11A.7-10` audit log review)
 - B42 / B44 / B45 / B47 health producers â†’ no operator UX (surface in
-  `11A.6` observability dashboard; `11A.5` is the Debug Console request-log
-  surface)
+  `11A.6` observability dashboard; `11A.5` is the per-operator Debug Console
+  request-log surface)
 - B46 advisor conversation encryption â†’ operator UX lands with `11b`
   Coach Chatbot, gated by audit-privacy permission
 

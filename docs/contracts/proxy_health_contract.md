@@ -10,9 +10,10 @@ B42 defines the health envelope that the Phase 11A operations console reads.
 It is intentionally a foundation contract: the proxy owns the response shape,
 while B44, B45, B47, and adjacent operational slices fill metric values over
 time. As of 2026-05-03, B44 graph, B45 rollup, and B47 vector producer wiring
-is code-delivered and `11A.5` Debug Console is accepted. Remaining health
-work is the `11A.6` UX/observability surface, live data evidence, and
-operational recovery posture.
+is code-delivered, `11A.5` Debug Console is accepted, and `11A.6`
+observability is accepted as a separate bounded dashboard that links to
+the Health viewer and consumes `GET /v1/admin/observability`. Remaining
+work is live data evidence and operational recovery posture.
 
 This contract is the handoff between:
 
@@ -223,9 +224,11 @@ slices and are now partly or fully delivered as noted:
 - Graph projection rebuild tooling or traversal benchmarks. That is B44
   (producer wiring delivered).
 - Rollup freshness UI integration or worker telemetry filling. That is B45
-  (producer wiring delivered; UX/live evidence remains with 11A).
+  (producer wiring delivered; `11A.6` dashboard accepted; live evidence remains
+  with the producer/proxy cutover).
 - Vector health collection or filtered-search benchmark execution. That is B47
-  (producer wiring delivered; live benchmark evidence remains with 11A).
+  (producer wiring delivered; `11A.6` dashboard accepted; live benchmark
+  evidence remains with the producer/proxy cutover).
 - Event bridge worker metrics. Those land with Phase 10a.
 - Audit anchor deployment. That is B43.
 

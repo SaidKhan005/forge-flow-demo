@@ -7,6 +7,7 @@ This folder holds historical or background material that should stay discoverabl
 - `trackers/` - archived tracker snapshots, prompt history, and older progress logs
 - `phases/` - completed phase planning docs that are no longer active authority
 - `reference/` - background/reference material that still matters, but is not part of the active working loop
+- `internal/` - completed execution closeouts and audit notes kept for traceability
 
 Recent archive landmarks:
 
@@ -22,6 +23,8 @@ Recent archive landmarks:
 - `phases/phase_10_5/10_5_2_per_period_read_service_closeout.md`
   records the accepted 10.5.2 per-period read service + Shift cards +
   Variance lens closeout while the Phase 10.5 planning doc stays active.
+- `internal/2026-05-03_docs_code_audit_closeout.md`
+  preserves the pre-`11A.6` docs/code audit closeout after active trackers were updated.
 
 ## Working Rule
 

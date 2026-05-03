@@ -286,8 +286,8 @@ families close before phase acceptance.
   the change.
 
 **Admin (11A) surfaces this phase requires:** outbox lag tile +
-undelivered-count tile in the `11A.6` health dashboard (B26 → B42
-producer wiring). No additional 11A scope here.
+undelivered-count tile in the 11A health/observability admin surfaces
+(B26 → B42 producer wiring). No additional 11A scope here.
 
 **UX sub-slice family:** `10a.UX.0-1`
 

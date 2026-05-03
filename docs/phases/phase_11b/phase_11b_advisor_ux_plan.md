@@ -1,7 +1,7 @@
 # Phase 11b - Agentic Advisor UX
 
 Updated: 2026-05-03
-Status: Planned (gated on `11A.6` observability and on B43 prod anchor deploy; `11A.5` Debug Console is accepted)
+Status: Planned (gated on B43 prod anchor deploy; `11A.5` Debug Console and `11A.6` observability dashboard both accepted)
 Owner: Future advisor UX lane
 
 ## 2026-04-28 - Phase 9 Foundation Dependencies
@@ -19,15 +19,15 @@ Owner: Future advisor UX lane
 
 `11b.2` causal traversal depends on `9.0Σ.i` graph_canonical (B30
 merged) plus the tripwire metric exposure + projection rebuild runbook
-in B44. B44 helper/runbook evidence exists; producer wiring into the B42
-health envelope remains follow-on work. Read both before drafting `11b.2`
-prompts.
+in B44. B44 helper/runbook evidence and producer wiring into the B42
+health envelope exist; `11A.6` now has the bounded observability surface.
+Read both before drafting `11b.2` prompts.
 
 `11b` advisor retrieval depends on `9.0Σ.j` pgvector HNSW (B31 merged)
 plus B47 vector health helper + filtered-search benchmark artifact. The
-helper/benchmark shape exists; producer wiring into the B42 health envelope
-remains follow-on work. The HNSW->DiskANN switch trigger doc names exact
-thresholds.
+helper/benchmark shape and producer wiring into the B42 health envelope
+exist; live benchmark evidence remains a producer/proxy cutover concern. The
+HNSW->DiskANN switch trigger doc names exact thresholds.
 
 ## Goal
 
