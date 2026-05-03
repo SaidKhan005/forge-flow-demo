@@ -1,6 +1,6 @@
 # Data Alignment Tracker
 
-Updated: 2026-04-25
+Updated: 2026-05-03
 Owner: You
 Purpose: keep live POS, labor, reservation, Plan, Benchmark, Shift, Variance,
 History, and Learn aligned before Phase 8 / 8R.
@@ -54,6 +54,11 @@ POS + Labor + Reservation Systems
   service-period/daypart Shift behavior and driver teaching.
 - History stays closed-truth only.
 - Learn is teaching, not another source-truth surface.
+- Driver-key shape is pinned by the Phase 7.61 contract. `7.61.1` is
+  accepted: unknown History/Learn analyzer ids degrade to explicit empty
+  states instead of silently materializing `covers_down` / `ppa_up` cards.
+  `7.61.2` (empty-leak default) and `7.61.3` (dev fixture cleanup) remain
+  queued before Phase 8 can open.
 
 ## Source Ownership
 
@@ -95,6 +100,8 @@ App owns:
 - `docs/contracts/phase_7_55_current_state_freshness_contract.md`
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
+- `docs/contracts/phase_7_61_driver_key_contract.md`
+- `docs/phases/phase_7_61/phase_7_61_audit_plan.md`
 - `docs/archive/phases/phase_8_gate/`
 
 ## Archive And Reference

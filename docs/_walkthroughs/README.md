@@ -28,7 +28,8 @@ live here side-by-side (e.g. `7.58.0.md` audit + `7.58.UX.5.md` fix).
 
 | File | Slice | Notes |
 |---|---|---|
-| [`7.61.0.md`](7.61.0.md) | `7.61.0` | Driver-key audit + contract pin; 21+1 tests; .1/.2/.3 queued per F-1/F-2/F-3 |
+| [`7.61.0.md`](7.61.0.md) | `7.61.0` | Driver-key audit + contract pin; 21+1 tests; F-1/F-2/F-3 follow-ups identified |
+| [`7.61.1.md`](7.61.1.md) | `7.61.1` | HistoryTeachingAnalyzer lookup honesty; unknown ids degrade without summary/daypart escape |
 
 ## Phase 9.UX — Auth & Settings UX
 

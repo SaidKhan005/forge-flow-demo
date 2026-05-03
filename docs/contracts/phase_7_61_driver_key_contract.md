@@ -1,6 +1,6 @@
 # Phase 7.61 - Driver Key Contract
 
-Updated: 2026-05-02
+Updated: 2026-05-03
 Owner: Codex architecture
 Status: Active authority for `7.61` sub-slice family
 Companion: `docs/phases/phase_7_61/phase_7_61_audit_plan.md`
@@ -253,7 +253,7 @@ Findings F-A and F-B.
 | Slice | Owns |
 | --- | --- |
 | `7.61.0` | this audit + contract; no production code change |
-| `7.61.1` | `history_teaching_analyzer.dart` `firstWhere(orElse: …)` removal (F-1 below) |
+| `7.61.1` | ACCEPTED 2026-05-03 - `history_teaching_analyzer.dart` `firstWhere(orElse: ...)` removal (F-1) |
 | `7.61.2` | `history_teaching_analyzer.dart` `mostCommonLeakId = 'covers_down'` empty-state default (F-2 below) |
 | `7.61.3` | `demo_fixture_data.dart` `firstWhere(orElse: …)` cleanup + dev-only audit (F-3 below) |
 | `7.61.4` | optional CHECK constraints on `week_records.primary_lever_id` form during Postgres cutover (F-A below) — defers to `cutover.0b` if the form column hasn't been touched by then |
