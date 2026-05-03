@@ -93,19 +93,49 @@ void main() {
     );
 
     // Click into a route that is still deliberately placeholder-only.
-    await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
+    // 11A.5 promoted `debug` from placeholder to live; `observability`
+    // (lane 11A.6) is the remaining placeholder.
+    await tester.tap(find.byKey(const Key('admin_nav_item_observability')));
     await tester.pumpAndSettle();
 
     expect(
-      find.byKey(const Key('admin_placeholder_debug')),
+      find.byKey(const Key('admin_placeholder_observability')),
       findsOneWidget,
     );
     expect(
-      find.text('Per-operator debug console lands in 11A.5.'),
+      find.text('System health + cost dashboard lands in 11A.6.'),
       findsOneWidget,
     );
     // Home card should no longer be in the tree.
     expect(find.byKey(const Key('admin_home_card')), findsNothing);
+  });
+
+  testWidgets('11A.5 promotes the debug route from placeholder to live',
+      (tester) async {
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+
+    await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
+    await tester.pumpAndSettle();
+
+    // The live debug console screen renders; the old placeholder is
+    // gone.
+    expect(
+      find.byKey(const Key('admin_debug_console_screen')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_placeholder_debug')),
+      findsNothing,
+    );
+    // Regression guard: pre-fix the embedded screen overflowed by
+    // ~124 px at the normal shell viewport. The ListView refactor
+    // + tightened header copy must keep the embed clean.
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('operators route renders the live admin surface (11A.1)',
@@ -151,13 +181,13 @@ void main() {
         AdminShell(
           session: superAdmin,
           authSource: source,
-          initialRouteId: 'debug',
+          initialRouteId: 'observability',
         ),
       ),
     );
 
     expect(
-      find.byKey(const Key('admin_placeholder_debug')),
+      find.byKey(const Key('admin_placeholder_observability')),
       findsOneWidget,
     );
     expect(find.byKey(const Key('admin_home_card')), findsNothing);

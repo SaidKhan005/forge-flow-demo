@@ -1,17 +1,19 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-03 (B44/B45/B47 producer delivery + staging remediation acknowledged)
-Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7` accepted; sub-slice `11A.UX.health` (read-only `/health` envelope viewer at `lib/admin/screens/health_admin_screen.dart`) shipped 2026-05-02 as the first delivery of `11A.6`.
-Remaining: `11A.5` (Debug Console, not started — placeholder route only at `lib/admin/admin_routes.dart` line 167-174); `11A.6` cost-telemetry / dependency / dormancy / margin surfaces (queued — placeholder route at `admin_routes.dart` line 175-183; B44/B45/B47 producers delivered); `11A.8`/`9`/`10` not started.
+Updated: 2026-05-03 (`11A.5` Debug Console accepted; B44/B45/B47 producer delivery + staging remediation acknowledged)
+Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`7`/`UX.health` accepted.
+Remaining: `11A.6` (B44/B45/B47 producers delivered; cost/dependency observability surface not started); `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
 
-## Phase 9 Foundation Dependencies (status as of 2026-05-02)
+## Phase 9 Foundation Dependencies (status as of 2026-05-03)
 
 Active contract: `docs/contracts/proxy_health_contract.md` (live; consumed by
 `11A.UX.health`).
 
-`11A.5` Graph/Vector Health and `11A.6` observability dashboard read
-proxy `/health` per-surface metrics. Producers from the 9.0Σ foundation series:
+`11A.6` observability dashboard reads proxy `/health` per-surface metrics.
+`11A.5` now owns the Debug Console request-log surface; its Graph debug tab is
+a future `11A.3.x` extension stub, not the health-producer dashboard.
+Producers from the 9.0Σ foundation series:
 
 - `audit_chain_lag_seconds` — **delivered** by B27 (`audit_logs` hash chain).
 - `vector_index_size_per_corpus`, latency, recall — **delivered** by B47
@@ -326,13 +328,20 @@ Acceptance:
   API; never displays plaintext after creation). Vendor
   connector status placeholder (lights up when Phase 8 lands).
   FX-rate source status. Email provider status (when 9.8 lands).
-- `11A.5` **Debug console.** *Status (2026-05-02): not started — placeholder route only at `lib/admin/admin_routes.dart` line 167-174.* Per-operator request log viewer.
+- `11A.5` **Debug console.** *Status (2026-05-03): accepted in worktree `claude/nifty-colden-5621fa`; walkthrough `docs/_walkthroughs/11A.5.md`.* Per-operator request log viewer.
   Filter by operator / location / usage_class / time-window /
   status. View request meta by default; toggle full content per
   operator (per `feature_flags` opt-in row). Search by
   `request_id` or `idempotency_key`. Live-tail latest requests
   for the active session. **This is the "remote debug" surface**
   - accessible from any browser, no shell access required.
+  Implementation adds `RequestLogEntry`/filter/opt-in models,
+  `DebugConsoleAdminGateway` with HTTP and in-memory demo
+  implementations, the live `/debug` admin route binding, and
+  `lib/main_admin.dart` wiring so live builds use the proxy-backed
+  `/v1/admin/debug/*` gateway instead of demo fixtures. Runtime posture:
+  cheap initial render, opt-in live-tail, no stacked tail requests, and
+  bounded list growth back to `kDebugConsoleListLimit`.
   Graph debug extends this surface for `11A.3.x`: inspect a graph
   node, inspect neighbors, inspect shortest approved path between
   two approved nodes, and see whether an edge was extracted,
@@ -342,7 +351,7 @@ Acceptance:
   requests, notification/outbox status, and Firebase/local drift
   flags. Full repair actions consume Phase 9 safe backend routes;
   the admin client must not perform direct DB/Firebase writes.
-- `11A.6` **Observability dashboard.** *Status (2026-05-03): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; placeholder route only at `lib/admin/admin_routes.dart` line 175-183. Graph, vector, and rollup metric producers are now delivered by B44/B47/B45; remaining work is the dashboard surface and live evidence, not producer wiring.* System health
+- `11A.6` **Observability dashboard.** *Status (2026-05-03): partial — `11A.UX.health` shipped (read-only Health envelope viewer at `lib/admin/screens/health_admin_screen.dart`). Cost telemetry + dependency dashboard surfaces below NOT started; Observability remains the placeholder route in `lib/admin/admin_routes.dart`. Graph, vector, and rollup metric producers are now delivered by B44/B47/B45; remaining work is the dashboard surface and live evidence, not producer wiring.* System health
   (Postgres + AGE + pgvector + Cloud Run via the `/health`
   probe). Latency p95 / p99 charts. Error rate by route.
   Cap-event stream (incoming alerts when operators hit cap).
@@ -437,8 +446,8 @@ explicit per Hard Promise #10.
 - `11A.2` pricing tier admin + usage-cap editor
 - `11A.3` corpus management (upload, diff, Graphify-assisted review)
 - `11A.4` integration management (consumed by Phase 8 / 8R / 8.5)
-- `11A.5` graph + vector + rollup health (consumes B42 / B44 / B45 /
-  B47 producers)
+- `11A.5` debug console request log (meta-by-default, full-content
+  reveal gated by role and operator opt-in, live-tail bounded)
 - `11A.6` observability dashboard
 - `11A.7` feature flag admin
 - `11A.8` API version management

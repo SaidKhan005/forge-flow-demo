@@ -190,7 +190,7 @@ This ordering means a non-empty index with a high `timeout_rate` is
 `execute_cutover`, not `investigate` — the failing operational
 signal is real evidence, not an evidence gap.
 
-The three B42 metric keys reserved for the 11A.5 health surface map
+The three B42 metric keys reserved for the 11A.6 observability surface map
 1:1 to the snapshot, keyed by `corpus_id`:
 
 - `vector_index_size_per_corpus` ← `index_size_bytes` plus
@@ -259,7 +259,7 @@ two-file artifact pair:
   benchmark numeric left null. The operator records measured numbers
   under the same keys (`p50_latency_ms`, `p95_latency_ms`,
   `p99_latency_ms`, `recall_score`, `filtered_search_behavior.*`)
-  so the 11A.5 surface reads them through the existing field set.
+  so the 11A.6 observability surface reads them through the existing field set.
 
 CLI usage:
 
