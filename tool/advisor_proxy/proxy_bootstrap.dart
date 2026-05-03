@@ -4652,3 +4652,69 @@ CloudRunAdminClient _buildCloudRunAdminClient({
     accessTokenProvider: accessTokenProvider,
   );
 }
+
+// region: phase_10a_2_dlq_metric
+//
+// Phase 10a.2 — event_outbox dead-letter wiring.
+//
+// `EVENT_OUTBOX_DLQ_CAP` is the bridge worker's per-row attempt-count
+// cap before a row MOVES to `event_outbox_dead_letter`. The contract
+// (`docs/contracts/event_outbox_contract.md` "Worker Responsibilities"
+// "Dead-letter rows whose attempt_count exceeds the tunable cap …
+// expected ≥ 5") requires the cap be tunable and ≥ 5; the default
+// (`defaultEventOutboxDlqCap`, declared in
+// `tool/advisor_proxy/realtime_bridge.dart`) is 5 — sitting at the
+// contract floor so the live `event_outbox` cannot recycle a
+// permanently-failing row indefinitely.
+//
+// Operators tune the cap via the env var:
+//
+//   * Raise (e.g. EVENT_OUTBOX_DLQ_CAP=20) when triaging a vendor-
+//     side outage that is expected to clear so genuinely retriable
+//     failures stay in the live queue rather than landing in the DLQ.
+//   * Lower (e.g. EVENT_OUTBOX_DLQ_CAP=3) when the live queue is
+//     filling with the same handful of poison-pill rows and the
+//     operator wants to clear them out faster.
+//   * Non-numeric / blank values fall back to
+//     `defaultEventOutboxDlqCap`. Caps below 1 are clamped back to
+//     the default — a non-positive cap would auto-DLQ every row on
+//     first failure, which destroys the bridge's retry semantics.
+//
+// The cap is read once at proxy startup and held on the worker; an
+// env-var change only takes effect on the next deploy / process
+// restart (Cloud Run discards the old revision when a new one rolls
+// out, so the value is effectively immediate at the operator's
+// timeline). Live tuning without restart is a post-V1 lane.
+//
+// `event_outbox_dlq_depth` (the new `/health` metric) reports the
+// row count in `public.event_outbox_dead_letter`. The producer is
+// registered in `tool/advisor_proxy/health_producers/outbox_producers.dart`
+// alongside the existing `event_outbox_*` family so the
+// `RegistryProxyHealthCheckStore` picks it up automatically through
+// `proxyHealthProducerCatalog()` (no producer-registry mutation
+// required). Thresholds: yellow at 1 (any DLQ depth needs operator
+// triage), red at 100 (producer / consumer outage suspected).
+//
+// V1 surface posture (per `memory/project_v1_lean_cut_2_2026_05_03.md`):
+// the `/health` envelope is an F&F-internal surface (Tier-1 ops
+// console) — not operator-facing. Per lean cut 2 the 11A.6 DLQ tile
+// is deferred; V1 ops triage flow is logs + admin SQL against
+// `public.event_outbox_dead_letter`. The walkthrough at
+// `docs/_walkthroughs/10a.2.md` documents the SQL queries and the
+// `/health` JSON shape an F&F engineer reads during a DLQ event.
+// `EventOutboxDeadLetterRepository.listByOperator` /
+// `countByOperator` stay available for any future tile or replay
+// flow once depth ever justifies the operator-facing investment.
+
+/// Phase 10a.2 — public reference to the env var so deploy scripts
+/// and tests can read the same constant without re-declaring the
+/// literal. Mirrors `eventOutboxDlqCapEnvVar` in
+/// `tool/advisor_proxy/realtime_bridge.dart`.
+const String phase10a2DlqCapEnvVar = 'EVENT_OUTBOX_DLQ_CAP';
+
+/// Phase 10a.2 — public reference to the metric key so tests can
+/// look up the producer by name and the deploy verifier can grep the
+/// `/health` envelope without re-declaring the literal.
+const String phase10a2DlqDepthMetricKey = 'event_outbox_dlq_depth';
+
+// endregion

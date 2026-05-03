@@ -184,10 +184,74 @@ Future<ProxyHealthMetric> notifyQueueUsageRatioProducer(
   });
 }
 
+// ─── Phase 10a.2 — event_outbox_dead_letter depth ──────────────────────
+//
+// Reports the number of rows currently sitting in the dead-letter
+// table. The bridge worker MOVEs rows here when their attempt_count
+// exceeds `EVENT_OUTBOX_DLQ_CAP` (see
+// `tool/advisor_proxy/realtime_bridge.dart`).
+//
+// Thresholds: yellow at 1 (any DLQ depth means at least one
+// permanently-failing row needs F&F-engineer triage); red at 100 (a
+// DLQ that big indicates either a producer running wild on bad
+// payloads or a Pub/Sub-side outage that cleared after the cap
+// kicked in). V1 has no auto-replay and per
+// `memory/project_v1_lean_cut_2_2026_05_03.md` no operator-facing
+// tile — F&F engineers triage via log search +
+// `SELECT * FROM public.event_outbox_dead_letter ORDER BY
+// dead_lettered_at DESC LIMIT N` and decide whether to manually
+// reissue or accept the loss. See `docs/_walkthroughs/10a.2.md`
+// for the click-path.
+//
+// The producer aggregates platform-wide (no operator filter) so the
+// envelope contract's "no tenant identifiers in /health" rule
+// holds. Per-operator drilldown is admin SQL only at V1; future
+// per-operator surfaces would re-enter the per-tenant RLS policy
+// via `EventOutboxDeadLetterRepository.countByOperator`.
+
+ProxyHealthMetric _eventOutboxDlqDepthTemplate() => const ProxyHealthMetric(
+  status: 'unknown',
+  value: null,
+  unit: 'count',
+  description:
+      'Rows sitting in event_outbox_dead_letter awaiting operator triage. '
+      'Phase 10a.2 fires yellow at 1 (any DLQ depth needs review) and red '
+      'at 100 (producer / consumer-side outage suspected).',
+  source: 'event_outbox_dead_letter',
+  owner: 'Phase 10a',
+  thresholds: <String, Object?>{'yellow': 1, 'red': 100},
+  metadata: <String, Object?>{'tier': 2},
+);
+
+Future<ProxyHealthMetric> eventOutboxDlqDepthProducer(
+  ProxyHealthProducerContext context,
+) {
+  return runProducer(context, _eventOutboxDlqDepthTemplate, () async {
+    final rows = await context.runner.query(
+      'select coalesce(count(*), 0)::bigint as cnt '
+      'from event_outbox_dead_letter',
+    );
+    final count = (rows.first['cnt'] as num?)?.toInt() ?? 0;
+    return ProxyHealthMetric(
+      status: count >= 100 ? 'red' : (count >= 1 ? 'yellow' : 'green'),
+      value: count,
+      unit: 'count',
+      description: _eventOutboxDlqDepthTemplate().description,
+      source: 'event_outbox_dead_letter',
+      owner: 'Phase 10a',
+      observedAt: context.now,
+      thresholds: _eventOutboxDlqDepthTemplate().thresholds,
+      metadata: const <String, Object?>{'tier': 2},
+    );
+  });
+}
+
 final Map<String, ProxyHealthProducer> outboxProducers =
     <String, ProxyHealthProducer>{
       'event_outbox_undelivered_count': eventOutboxUndeliveredCountProducer,
       'event_outbox_lag_seconds': eventOutboxLagSecondsProducer,
       'event_outbox_publish_error_rate': eventOutboxPublishErrorRateProducer,
       'notify_queue_usage_ratio': notifyQueueUsageRatioProducer,
+      // Phase 10a.2 — DLQ depth.
+      'event_outbox_dlq_depth': eventOutboxDlqDepthProducer,
     };

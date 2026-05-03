@@ -20,12 +20,19 @@
 //     fresh notification.
 //   * RealtimeEvent.eventId prefers payload['event_id'] when present;
 //     falls back to outbox id otherwise.
+//
+// Phase 10a.2 — additional pinned behaviour for the dead-letter cap
+// + transactional MOVE + counter increment, exercised in a separate
+// test group below so the existing publish-loop tests stay
+// untouched (per the slice's "do NOT modify existing publish-loop
+// tests" constraint).
 
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/outbox_notification_listener.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/postgres_executor.dart';
+import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_dead_letter_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/repositories/event_outbox_repository.dart';
 import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transaction.dart';
 import 'package:forge_and_flow/services/realtime/realtime_event.dart';
@@ -382,6 +389,436 @@ void main() {
       },
     );
   });
+
+  // ── Phase 10a.2 — DLQ cap + transactional MOVE + counter ─────────────
+  //
+  // These tests are intentionally a separate group so the existing
+  // publish-loop tests above stay byte-untouched (per the slice's
+  // "do NOT modify existing publish-loop tests" constraint).
+  group('RealtimeBridgeWorker — Phase 10a.2 DLQ', () {
+    test(
+      'cap enforcement: row with attempt_count > cap MOVES to DLQ '
+      'BEFORE the publish loop runs; publisher never sees the row',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '801',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 6,
+            ),
+          ],
+          updateRowCount: 1,
+          dlqMoveReturningId: '801',
+        );
+        final publisher = _RecordingPublisher();
+        final logEvents = <RealtimeBridgeLogEvent>[];
+        final wrapper = TenantTransactionWrapper(pool);
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+          logger: logEvents.add,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        // Publisher must NOT have received the over-cap row — MOVE
+        // happens before the publish loop.
+        expect(
+          publisher.published,
+          isEmpty,
+          reason: 'rows past the cap must MOVE to DLQ instead of '
+              'being published; otherwise subscribers get a payload '
+              'the bridge already gave up on',
+        );
+
+        // The MOVE CTE ran exactly once.
+        final moveTransactions = pool.transactions.where(
+          (t) => t.executedSql.any(
+            (s) =>
+                s.contains('with dead as') &&
+                s.contains('insert into event_outbox_dead_letter'),
+          ),
+        );
+        expect(
+          moveTransactions,
+          hasLength(1),
+          reason: 'one row past the cap → exactly one MOVE CTE',
+        );
+
+        // Counter increments by 1 on a successful MOVE.
+        expect(worker.deadLetteredTotal, equals(1));
+
+        // Structured log surfaced the deadLettered event with cap +
+        // attempt_count metadata so log search can correlate cap
+        // changes with DLQ-rate changes.
+        final dlqEvent = logEvents.firstWhere(
+          (e) => e.kind == RealtimeBridgeLogKind.deadLettered,
+        );
+        expect(dlqEvent.attemptCount, equals(6));
+        expect(dlqEvent.cap, equals(5));
+        expect(dlqEvent.outboxId, equals('801'));
+
+        await worker.stop();
+      },
+    );
+
+    test(
+      'transactional move: the MOVE CTE is a single statement that '
+      'BOTH deletes from event_outbox AND inserts into '
+      'event_outbox_dead_letter — either both writes commit or '
+      'neither does (test asserts the wire shape and rollback path)',
+      () async {
+        // Path A — both writes in one CTE, commit.
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '901',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 7,
+            ),
+          ],
+          updateRowCount: 1,
+          dlqMoveReturningId: '901',
+        );
+        final publisher = _RecordingPublisher();
+        final wrapper = TenantTransactionWrapper(pool);
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        final moveTx = pool.transactions.firstWhere(
+          (t) => t.executedSql.any((s) => s.contains('with dead as')),
+        );
+        // The single SQL string contains BOTH the DELETE and the
+        // INSERT — Postgres CTE semantics make this one statement
+        // execute atomically inside the wrapping transaction.
+        final cteSql = moveTx.executedSql.firstWhere(
+          (s) => s.contains('with dead as'),
+        );
+        expect(cteSql, contains('delete from event_outbox'));
+        expect(cteSql, contains('insert into event_outbox_dead_letter'));
+        expect(cteSql, contains('returning'));
+        // The MOVE transaction committed (success path).
+        expect(moveTx.commitCount, equals(1));
+        expect(moveTx.rollbackCount, equals(0));
+
+        await worker.stop();
+
+        // Path B — DB failure inside the MOVE rolls the whole
+        // transaction back; counter does NOT increment; the row
+        // stays in the live queue (re-claimable on the next cycle).
+        final failingPool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '902',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 7,
+            ),
+          ],
+          updateRowCount: 1,
+          dlqMoveThrows: const _SimulatedDlqMoveFailure(),
+        );
+        final failingPublisher = _RecordingPublisher();
+        final failingLogs = <RealtimeBridgeLogEvent>[];
+        final failingWrapper = TenantTransactionWrapper(failingPool);
+        final failingWorker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(failingWrapper),
+          deadLetterRepository:
+              EventOutboxDeadLetterRepository(failingWrapper),
+          publisher: failingPublisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+          logger: failingLogs.add,
+        );
+        await failingWorker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        final failedMoveTx = failingPool.transactions.firstWhere(
+          (t) => t.executedSql.any((s) => s.contains('with dead as')),
+        );
+        expect(
+          failedMoveTx.commitCount,
+          equals(0),
+          reason: 'MOVE failure must NOT commit — neither DELETE nor '
+              'INSERT can land partially',
+        );
+        expect(failedMoveTx.rollbackCount, equals(1));
+        expect(
+          failingWorker.deadLetteredTotal,
+          equals(0),
+          reason: 'counter must not advance on rollback — it tracks '
+              'successful MOVEs only',
+        );
+        expect(
+          failingPublisher.published,
+          isEmpty,
+          reason: 'a row that should have moved must NOT be published, '
+              'even when the MOVE itself failed; the next claim cycle '
+              're-attempts the partition',
+        );
+        // Failure event surfaced in the log stream.
+        expect(
+          failingLogs.where(
+            (e) => e.kind == RealtimeBridgeLogKind.deadLetterMoveFailed,
+          ),
+          isNotEmpty,
+        );
+        await failingWorker.stop();
+      },
+    );
+
+    test(
+      'counter increment: each successful MOVE bumps the bridge '
+      'worker\'s deadLetteredTotal by exactly 1 (process-local '
+      'counter; the proxy /health envelope reports table depth via '
+      'a separate SQL count, not this counter)',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '1001',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 6,
+            ),
+            _row(
+              id: '1002',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 8,
+            ),
+            _row(
+              id: '1003',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 2, // BELOW cap — should NOT count toward DLQ
+            ),
+          ],
+          updateRowCount: 1,
+          dlqMoveReturningId: 'will-be-overridden',
+          dlqMoveReturningIds: <String>['1001', '1002'],
+        );
+        final publisher = _RecordingPublisher();
+        final wrapper = TenantTransactionWrapper(pool);
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(
+          worker.deadLetteredTotal,
+          equals(2),
+          reason: 'two rows past the cap → counter at 2; the third row '
+              'with attempt_count below the cap must NOT count toward '
+              'the DLQ total',
+        );
+        // The below-cap row went through the publish path normally.
+        expect(
+          publisher.published.map((e) => e.eventId).toList(),
+          equals(<String>['1003']),
+        );
+        await worker.stop();
+      },
+    );
+
+    test(
+      'env var override: a higher EVENT_OUTBOX_DLQ_CAP keeps a row at '
+      'attempt_count = 6 in the live queue (matches the walkthrough '
+      'env var override scenario)',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '1101',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 6,
+            ),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _RecordingPublisher();
+        final wrapper = TenantTransactionWrapper(pool);
+        // Resolved cap = 10 (operator raised the env var to ride out
+        // a vendor-side outage). Row at attempt_count = 6 should NOT
+        // move to DLQ; should publish normally.
+        final cap = resolveEventOutboxDlqCap(<String, String>{
+          eventOutboxDlqCapEnvVar: '10',
+        });
+        expect(cap, equals(10));
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository: EventOutboxRepository(wrapper),
+          deadLetterRepository: EventOutboxDeadLetterRepository(wrapper),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: cap,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        // No MOVE happened — row stayed in the live queue and went
+        // through publish + markDelivered.
+        expect(worker.deadLetteredTotal, equals(0));
+        final moveAttempts = pool.transactions
+            .where(
+              (t) =>
+                  t.executedSql.any((s) => s.contains('with dead as')),
+            )
+            .length;
+        expect(
+          moveAttempts,
+          equals(0),
+          reason: 'env var override raised the cap; row stays in '
+              'the live queue and goes through normal publish path',
+        );
+        expect(publisher.published, hasLength(1));
+        expect(publisher.published.single.eventId, equals('1101'));
+
+        await worker.stop();
+      },
+    );
+
+    test(
+      'resolveEventOutboxDlqCap: missing env, blank, non-numeric, or '
+      'sub-1 values fall back to defaultEventOutboxDlqCap',
+      () {
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{}),
+          equals(defaultEventOutboxDlqCap),
+        );
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{
+            eventOutboxDlqCapEnvVar: '',
+          }),
+          equals(defaultEventOutboxDlqCap),
+        );
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{
+            eventOutboxDlqCapEnvVar: '   ',
+          }),
+          equals(defaultEventOutboxDlqCap),
+        );
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{
+            eventOutboxDlqCapEnvVar: 'abc',
+          }),
+          equals(defaultEventOutboxDlqCap),
+        );
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{
+            eventOutboxDlqCapEnvVar: '0',
+          }),
+          equals(defaultEventOutboxDlqCap),
+          reason: 'cap < 1 would auto-DLQ every row on first failure; '
+              'the resolver clamps back to the default',
+        );
+        expect(
+          resolveEventOutboxDlqCap(const <String, String>{
+            eventOutboxDlqCapEnvVar: '12',
+          }),
+          equals(12),
+        );
+      },
+    );
+
+    test(
+      'when no dead-letter repository is wired (existing demo / '
+      'scaffold callers), the bridge runs the original publish loop '
+      'without DLQ logic — preserves backward compatibility',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(
+              id: '1201',
+              operatorId: _opA,
+              topic: 'rollup.invalidate.variance_week',
+              attemptCount: 99,
+            ),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _RecordingPublisher();
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository:
+              EventOutboxRepository(TenantTransactionWrapper(pool)),
+          // deadLetterRepository intentionally null.
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          dlqCap: 5,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        // Even though attempt_count = 99, no MOVE happens because
+        // the dead-letter repo is null. The row publishes normally.
+        expect(worker.deadLetteredTotal, equals(0));
+        expect(publisher.published, hasLength(1));
+        expect(publisher.published.single.eventId, equals('1201'));
+
+        await worker.stop();
+      },
+    );
+  });
+}
+
+class _SimulatedDlqMoveFailure implements Exception {
+  const _SimulatedDlqMoveFailure();
+}
+
+class _RecordingPublisher implements RealtimeEventPublisher {
+  final List<RealtimeEvent> published = <RealtimeEvent>[];
+
+  @override
+  Future<void> publish(RealtimeEvent event) async {
+    published.add(event);
+  }
 }
 
 PostgresRow _row({
@@ -389,6 +826,7 @@ PostgresRow _row({
   required String operatorId,
   required String topic,
   Map<String, Object?> payload = const <String, Object?>{},
+  int attemptCount = 0,
 }) {
   final now = DateTime.utc(2026, 5, 2, 12);
   return <String, Object?>{
@@ -398,7 +836,7 @@ PostgresRow _row({
     'payload': payload,
     'created_at': now.subtract(const Duration(seconds: 1)),
     'picked_up_at': now,
-    'attempt_count': 0,
+    'attempt_count': attemptCount,
   };
 }
 
@@ -450,20 +888,50 @@ class _BridgePool implements PostgresPool {
   _BridgePool({
     this.claimedRows = const <PostgresRow>[],
     this.updateRowCount = 0,
+    this.dlqMoveReturningId,
+    this.dlqMoveReturningIds,
+    this.dlqMoveThrows,
   });
 
   final List<PostgresRow> claimedRows;
   final int updateRowCount;
+
+  /// Phase 10a.2 — what the MOVE CTE's `RETURNING id` should hand
+  /// back. Used when a single row is moved.
+  final String? dlqMoveReturningId;
+
+  /// Phase 10a.2 — when the test expects multiple sequential MOVE
+  /// calls (different rows in the same drain), each entry is the
+  /// next response in order. Falls back to [dlqMoveReturningId] when
+  /// the list is exhausted.
+  final List<String>? dlqMoveReturningIds;
+
+  /// Phase 10a.2 — simulate a DB failure inside the MOVE CTE. The
+  /// transaction should roll back; counter must not increment.
+  final Exception? dlqMoveThrows;
+
   final List<_BridgeTransaction> transactions = <_BridgeTransaction>[];
+  int _dlqMoveCallIndex = 0;
 
   @override
   Future<PostgresTransaction> beginTransaction() async {
+    final returningId = _nextDlqReturningId();
     final tx = _BridgeTransaction(
       claimedRows: claimedRows,
       updateRowCount: updateRowCount,
+      dlqMoveReturningId: returningId,
+      dlqMoveThrows: dlqMoveThrows,
     );
     transactions.add(tx);
     return tx;
+  }
+
+  String? _nextDlqReturningId() {
+    final ids = dlqMoveReturningIds;
+    if (ids != null && _dlqMoveCallIndex < ids.length) {
+      return ids[_dlqMoveCallIndex++];
+    }
+    return dlqMoveReturningId;
   }
 }
 
@@ -471,12 +939,18 @@ class _BridgeTransaction extends PostgresTransaction {
   _BridgeTransaction({
     required this.claimedRows,
     required this.updateRowCount,
+    this.dlqMoveReturningId,
+    this.dlqMoveThrows,
   });
 
   final List<PostgresRow> claimedRows;
   final int updateRowCount;
+  final String? dlqMoveReturningId;
+  final Exception? dlqMoveThrows;
   final List<String> executedSql = <String>[];
   final List<PostgresParameters> parameters = <PostgresParameters>[];
+  int commitCount = 0;
+  int rollbackCount = 0;
   bool _finalized = false;
 
   @override
@@ -489,6 +963,14 @@ class _BridgeTransaction extends PostgresTransaction {
     this.parameters.add(parameters);
     if (sql.contains('with claimed as') && sql.contains('update event_outbox e')) {
       return claimedRows;
+    }
+    if (sql.contains('with dead as') &&
+        sql.contains('insert into event_outbox_dead_letter')) {
+      if (dlqMoveThrows != null) throw dlqMoveThrows!;
+      if (dlqMoveReturningId == null) return const <PostgresRow>[];
+      return <PostgresRow>[
+        <String, Object?>{'id': dlqMoveReturningId},
+      ];
     }
     return const <PostgresRow>[];
   }
@@ -511,10 +993,12 @@ class _BridgeTransaction extends PostgresTransaction {
   @override
   Future<void> commit() async {
     _finalized = true;
+    commitCount += 1;
   }
 
   @override
   Future<void> rollback() async {
     _finalized = true;
+    rollbackCount += 1;
   }
 }
