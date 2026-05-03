@@ -169,13 +169,18 @@ Architecture detail: `docs/phases/phase_11a/phase_11a_decision_register.md`.
 
 ## Graph vs Grep
 
-`rg` first when symbol, filename, import path, or literal text is known. The
-`graphify` MCP server is for orientation:
+`rg` first when symbol, filename, import path, or literal text is known.
+Project `.mcp.json` MCP servers are for orientation/context lookup, not search:
 
-- `shortest_path` — trace how unfamiliar concepts connect.
-- `query_graph` — find which contract bullet covers a topic (returns
-  `source_file` + `source_location`).
-- Phase-lane orientation before opening files.
+- `forgeflow_docs` — read-only access and search across active authority docs,
+  contracts, phase docs, runbooks, walkthroughs.
+- `forgeflow_sqlite_schema` — read-only inspection of the local
+  `forge_flow_v2.db` schema.
+- `graphify` — graph relationships across code and docs:
+  - `shortest_path` — trace how unfamiliar concepts connect.
+  - `query_graph` — find which contract bullet covers a topic (returns
+    `source_file` + `source_location`).
+  - Phase-lane orientation before opening files.
 
 Skip god-nodes and community exploration unless Codex requests them.
 
