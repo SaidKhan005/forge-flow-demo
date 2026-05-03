@@ -37,6 +37,7 @@ import 'admin/services/debug_console_admin_gateway.dart';
 import 'admin/services/feature_flags_admin_gateway.dart';
 import 'admin/services/health_admin_gateway.dart';
 import 'admin/services/integration_admin_gateway.dart';
+import 'admin/services/observability_admin_gateway.dart';
 import 'admin/services/operator_location_admin_gateway.dart';
 import 'admin/services/pricing_tier_admin_gateway.dart';
 import 'services/auth/firebase_auth_client.dart';
@@ -89,6 +90,9 @@ Future<void> main() async {
         ? null
         : _resolveIntegrationAdminGateway(authBinding.authClient);
     final healthGateway = gateway == null ? null : _resolveHealthAdminGateway();
+    final observabilityGateway = gateway == null
+        ? null
+        : _resolveObservabilityAdminGateway(authBinding.authClient);
     final featureFlagsGateway = gateway == null
         ? null
         : _resolveFeatureFlagsAdminGateway(authBinding.authClient);
@@ -109,6 +113,7 @@ Future<void> main() async {
         corpusAdminGateway: corpusGateway,
         integrationGateway: integrationGateway,
         healthGateway: healthGateway,
+        observabilityGateway: observabilityGateway,
         featureFlagsGateway: featureFlagsGateway,
         debugConsoleGateway: debugConsoleGateway,
         adminAuthSource: source,
@@ -241,6 +246,26 @@ HealthAdminGateway? _resolveHealthAdminGateway() {
   final baseUri = Uri.parse(rawBaseUri);
   if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
   return HttpHealthAdminGateway(baseUri: baseUri);
+}
+
+/// Phase 11A.6 — observability admin gateway. Lives on the same
+/// admin proxy base URI as the other admin surfaces. The route hits
+/// `GET /v1/admin/observability` with the signed-in admin's bearer
+/// token; demo mode returns null and the route falls back to the
+/// seeded in-memory envelope in `admin_routes.dart`.
+ObservabilityAdminGateway? _resolveObservabilityAdminGateway(
+  FirebaseAuthClient? authClient,
+) {
+  if (_kAdminDemoAuth) return null;
+  final liveAuthClient = _requireLiveAuthClient(authClient);
+  final rawBaseUri = _kAdminProxyBaseUri.trim();
+  if (rawBaseUri.isEmpty) return null;
+  final baseUri = Uri.parse(rawBaseUri);
+  if (!baseUri.hasScheme || !baseUri.hasAuthority) return null;
+  return HttpObservabilityAdminGateway(
+    baseUri: baseUri,
+    bearerTokenProvider: () => _firebaseIdTokenProvider(liveAuthClient),
+  );
 }
 
 /// Phase 11A.7 — feature flags admin gateway. Same admin proxy base

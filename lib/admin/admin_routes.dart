@@ -28,6 +28,7 @@ import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
 import 'screens/health_admin_screen.dart';
 import 'screens/integration_admin_screen.dart';
+import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
@@ -36,6 +37,7 @@ import 'services/debug_console_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
 import 'services/health_admin_gateway.dart';
 import 'services/integration_admin_gateway.dart';
+import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
 
@@ -106,6 +108,12 @@ const String kAdminFeatureFlagsRouteId = 'feature_flags';
 
 /// Canonical Debug console route ID (11A.5).
 const String kAdminDebugConsoleRouteId = 'debug';
+
+/// Canonical Observability route ID (Phase 11A.6). The Observability
+/// surface is the cost-telemetry / dormancy / margin / cap-event /
+/// graph / Cloud-Run dashboard. The /health envelope viewer is owned
+/// by [kAdminHealthRouteId] and is intentionally a different route.
+const String kAdminObservabilityRouteId = 'observability';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
 /// is reached via Navigator.push from the Corpus admin "Pick operator"
@@ -189,13 +197,14 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     builder: _buildDebugConsole,
   ),
   AdminRoute(
-    id: 'observability',
+    id: kAdminObservabilityRouteId,
     title: 'Observability',
     path: '/observability',
     icon: Icons.insights_outlined,
-    subtitle: 'System health + cost dashboard lands in 11A.6.',
-    placeholder: true,
-    builder: _placeholderBuilder,
+    subtitle:
+        'Cost telemetry, dormancy, margin, cap events, graph, and '
+        'Cloud Run signals.',
+    builder: _buildObservability,
   ),
 ];
 
@@ -334,6 +343,15 @@ Widget _buildHealth(BuildContext context) {
   return HealthAdminScreen(gateway: gateway);
 }
 
+Widget _buildObservability(BuildContext context) {
+  // 11A.6 — read-only surface. Same admit posture as Health: both
+  // `super_admin` and `ff_support` see the full cost-telemetry +
+  // dormancy + margin + cap-event + graph + Cloud Run dashboard.
+  // No editingEnabled flag because there are no mutate affordances.
+  final gateway = AdminConsoleServicesScope.observabilityGatewayOf(context);
+  return ObservabilityAdminScreen(gateway: gateway);
+}
+
 Widget _buildFeatureFlags(BuildContext context) {
   final gateway = AdminConsoleServicesScope.featureFlagsGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
@@ -400,6 +418,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.corpusAdminGateway,
     this.integrationGateway,
     this.healthGateway,
+    this.observabilityGateway,
     this.featureFlagsGateway,
     this.debugConsoleGateway,
     this.adminAuthSource,
@@ -448,6 +467,13 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// Optional; the default fallback is the seeded in-memory demo
   /// envelope shared with the F.1 walkthrough.
   final HealthAdminGateway? healthGateway;
+
+  /// Phase 11A.6 — observability dashboard gateway. Optional; the
+  /// default fallback is the seeded in-memory demo envelope so the
+  /// 11A.6 walkthrough renders without the Cloud Run admin proxy.
+  /// The /health envelope is intentionally NOT consumed here — that
+  /// surface lives behind [healthGateway] / the Health route.
+  final ObservabilityAdminGateway? observabilityGateway;
 
   /// Phase 11A.7 — feature flags admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the launch flag
@@ -501,6 +527,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.healthGateway ?? _defaultHealthDemoGateway;
   }
 
+  static ObservabilityAdminGateway observabilityGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.observabilityGateway ?? _defaultObservabilityDemoGateway;
+  }
+
   static FeatureFlagsAdminGateway featureFlagsGatewayOf(
     BuildContext context,
   ) {
@@ -528,6 +562,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       corpusAdminGateway != oldWidget.corpusAdminGateway ||
       integrationGateway != oldWidget.integrationGateway ||
       healthGateway != oldWidget.healthGateway ||
+      observabilityGateway != oldWidget.observabilityGateway ||
       featureFlagsGateway != oldWidget.featureFlagsGateway ||
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
@@ -789,6 +824,16 @@ final IntegrationAdminGateway _defaultIntegrationDemoGateway =
 /// dependencies strip without a live proxy.
 final HealthAdminGateway _defaultHealthDemoGateway =
     InMemoryHealthAdminGateway(envelope: kHealthAdminDemoEnvelope);
+
+/// 11A.6 fallback observability gateway. Seeded with the demo
+/// envelope from `observability_admin_gateway.dart`; the click path
+/// renders cost telemetry, dormancy, margin, cap events, graph, and
+/// Cloud Run sections without the production cost / dormancy proxy
+/// endpoints having to be live.
+final ObservabilityAdminGateway _defaultObservabilityDemoGateway =
+    InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
 
 /// 11A.7 fallback feature flags gateway. Seeds the launch flag
 /// catalog so the demo walkthrough can exercise the toggle and
