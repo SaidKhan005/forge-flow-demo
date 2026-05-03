@@ -16,6 +16,9 @@ Recent archive landmarks:
   preserves the tracker before the Phase 9 closeout lean pass.
 - `phases/phase_9/phase_9_b17_staging_cloud_armor_tuning_result.md`
   records the B17 staging smoke and Cloud Armor preview tuning result.
+- `phases/phase_7_61/7.61.1_acceptance_closeout.md` records the accepted
+  F-1 driver-key analyzer cleanup while the wider Phase 7.61 family stays
+  live.
 
 ## Working Rule
 

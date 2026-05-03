@@ -612,4 +612,272 @@ void main() {
               "'covers_down' overclaim. F-2 fix lands in 7.61.2.");
     }, skip: 'F-2 holdout — see docs/phases/phase_7_61/phase_7_61_audit_plan.md');
   });
+
+  group('F-1 — unknown id zeros out every summary field, no silent overclaim',
+      () {
+    // Pins the `7.61.1` fix in `history_teaching_analyzer.dart`:
+    // pre-fix the analyzer used `firstWhere(orElse: () => LeverCards.coversDown)`
+    // (lines 88-91) and `firstWhere(orElse: () => LeverCards.ppaUp)`
+    // (lines 131-134), silently materializing a real lever card whenever
+    // an upstream filter let an unknown id through. Post-fix the analyzer
+    // resolves through `LeverCards.lookup`; a null return zeros out the
+    // entire side of the summary (id, count, side label, dayparts) so
+    // downstream copy in `LearnTeachingAnalyzer` cannot stitch a
+    // "Fix no leak pattern yet first in <real daypart>" sentence out of
+    // a phantom lever. R-CONS-2 + R-CONS-9 + R-STOR-7.
+    test(
+        'unknown leak id zeros out mostCommonLeakId, count, side label, '
+        'and topLeakDayparts (no escape path through summary fields)', () {
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          leverId: 'made_up_lever',
+          isBenchmark: false,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W13',
+          weekLabel: 'Mar 24',
+          dayLabel: 'Tue',
+          daypart: 'dinner',
+          leverId: 'made_up_lever',
+          isBenchmark: false,
+        ),
+      ]);
+      expect(summary.mostCommonLeakId, equals(''),
+          reason:
+              'F-1 — null lookup → empty id (R-CONS-9: catalog id OR '
+              'empty string when no evidence exists).');
+      expect(summary.mostCommonLeakCount, equals(0),
+          reason:
+              'F-1 — null lookup → zero count (the unknown record cannot '
+              'pose as a real leak with count > 0).');
+      expect(summary.mostCommonLeakSideLabel, equals('No leak pattern yet'),
+          reason:
+              'F-1 — null lookup → placeholder side label, never '
+              "coversDown's '${LeverCards.coversDown.sideLabel}'.");
+      expect(summary.topLeakDayparts, isEmpty,
+          reason:
+              'F-1 — null lookup → empty dayparts list. Pre-fix this '
+              'leaked the unknown record\'s daypart into '
+              'LearnTeachingAnalyzer.primaryFixLine as '
+              "'Fix no leak pattern yet first in Mon Lunch.'");
+    });
+
+    test(
+        'unknown benchmark id zeros out mostCommonBenchmarkId, count, side '
+        'label, and benchmarkDayparts (no escape path through summary fields)',
+        () {
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'made_up_lever',
+          isBenchmark: true,
+        ),
+      ]);
+      expect(summary.mostCommonBenchmarkId, equals(''),
+          reason:
+              'F-1 — null lookup → empty id (R-CONS-9). Already pinned by '
+              'the existing R-CONS-9 benchmark test for empty input; this '
+              'extends the pin to the unknown-id case.');
+      expect(summary.mostCommonBenchmarkCount, equals(0),
+          reason:
+              'F-1 — null lookup → zero count.');
+      expect(summary.mostCommonBenchmarkSideLabel,
+          equals('No benchmark pattern yet'),
+          reason:
+              'F-1 — null lookup → placeholder side label, never '
+              "ppaUp's '${LeverCards.ppaUp.sideLabel}'.");
+      expect(summary.benchmarkDayparts, isEmpty,
+          reason:
+              'F-1 — null lookup → empty dayparts. Pre-fix this leaked '
+              'the unknown record\'s daypart into '
+              "LearnTeachingAnalyzer.studyLine as "
+              "'Study benchmark dayparts: Sat Dinner.'");
+    });
+
+    test(
+        'known leak id still resolves to the matching catalog card and '
+        'preserves count + dayparts (no regression on the golden path)', () {
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          leverId: 'cplh_down',
+          isBenchmark: false,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W13',
+          weekLabel: 'Mar 24',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          leverId: 'cplh_down',
+          isBenchmark: false,
+        ),
+      ]);
+      expect(summary.mostCommonLeakId, equals('cplh_down'));
+      expect(summary.mostCommonLeakCount, equals(2),
+          reason:
+              'F-1 — count is preserved on the golden path; only unknown '
+              'ids zero it out.');
+      expect(summary.mostCommonLeakSideLabel,
+          equals(LeverCards.cplhDown.sideLabel),
+          reason:
+              'F-1 — golden-path side label still comes from the matched '
+              'catalog card.');
+      expect(summary.topLeakDayparts, equals(['Mon Lunch']),
+          reason: 'F-1 — golden-path dayparts are preserved.');
+    });
+
+    test(
+        'known benchmark id still resolves to the matching catalog card and '
+        'preserves count + dayparts (no regression on the golden path)', () {
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'splh_up',
+          isBenchmark: true,
+        ),
+      ]);
+      expect(summary.mostCommonBenchmarkId, equals('splh_up'));
+      expect(summary.mostCommonBenchmarkCount, equals(1));
+      expect(summary.mostCommonBenchmarkSideLabel,
+          equals(LeverCards.splhUp.sideLabel),
+          reason:
+              'F-1 — golden-path side label still comes from the matched '
+              'catalog card.');
+      expect(summary.benchmarkDayparts, equals(['Sat Dinner']),
+          reason: 'F-1 — golden-path dayparts are preserved.');
+    });
+
+    test(
+        'known leak id wins tie-break over an unknown id and the unknown '
+        "id's dayparts do not bleed into topLeakDayparts", () {
+      // Mixed input: one known leak (cplh_down) + one unknown id. The
+      // tie-break order at line 32-39 puts cplh_down at slot 0 and any
+      // unlisted id at slot 999, so cplh_down wins. The unknown record
+      // appears on a different daypart than the known one — if the
+      // post-fix analyzer leaked the unknown daypart in, this would catch
+      // it. (It doesn't — leakDpFreq filters by `r.leverId == mostCommonLeakId`.)
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Mon',
+          daypart: 'lunch',
+          leverId: 'cplh_down',
+          isBenchmark: false,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W13',
+          weekLabel: 'Mar 24',
+          dayLabel: 'Wed',
+          daypart: 'dinner',
+          leverId: 'made_up_lever',
+          isBenchmark: false,
+        ),
+      ]);
+      expect(summary.mostCommonLeakId, equals('cplh_down'),
+          reason: 'tie-break: cplh_down (slot 0) beats unlisted id.');
+      expect(summary.topLeakDayparts, equals(['Mon Lunch']),
+          reason:
+              'F-1 — only the known leak\'s daypart appears; the unknown '
+              "record's 'Wed Dinner' must not leak in.");
+    });
+
+    test(
+        'known benchmark id wins tie-break and the unknown sibling record\'s '
+        "daypart does not bleed into benchmarkDayparts", () {
+      // The exact case Reviewer P1 flagged: a known winner (splh_up x10
+      // on Sat) plus an unknown sibling (made_up_lever x1 on Sun). Pre-fix,
+      // `benchFreq` aggregated across all benchmark records regardless of
+      // leverId, so `benchmarkDayparts` returned ['Sat Dinner', 'Sun Lunch']
+      // and `LearnTeachingAnalyzer.studyLine` would render
+      // "Study benchmark dayparts: Sat Dinner / Sun Lunch." — fabricating
+      // a study target out of a phantom benchmark.
+      // Post-fix, the upstream `_knownLeverIds.contains(r.leverId)` filter
+      // on `benchmarkRecords` drops the unknown row before either `bFreq`
+      // or `benchFreq` sees it, so only Sat Dinner survives.
+      final summary = HistoryTeachingAnalyzer.summarize(const [
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'splh_up',
+          isBenchmark: true,
+        ),
+        HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sun',
+          daypart: 'lunch',
+          leverId: 'made_up_lever',
+          isBenchmark: true,
+        ),
+      ]);
+      expect(summary.mostCommonBenchmarkId, equals('splh_up'),
+          reason:
+              'F-1 — known id wins because the unknown row is filtered '
+              'out before tie-break.');
+      expect(summary.mostCommonBenchmarkCount, equals(1),
+          reason:
+              'F-1 — count reflects the known records only (1× splh_up); '
+              'the unknown sibling does not pad the count.');
+      expect(summary.benchmarkDayparts, equals(['Sat Dinner']),
+          reason:
+              "F-1 — only Sat Dinner appears; the unknown record's "
+              "'Sun Lunch' MUST NOT leak into benchmarkDayparts. Pre-fix "
+              "this returned ['Sat Dinner', 'Sun Lunch']. Reviewer P1.");
+    });
+
+    test(
+        'known benchmark id wins by tie-break order even when an unknown '
+        'sibling has higher raw frequency, because the unknown is filtered '
+        'out before bFreq', () {
+      // Stronger version of the test above: the unknown id has 10×
+      // higher count than the known id, so without the upstream filter
+      // it would dominate `bFreq`, win the tie-break, and trigger the
+      // "no benchmark pattern yet" reset — silencing the real benchmark.
+      // With the upstream filter, only known rows enter `bFreq`, so the
+      // single splh_up surfaces as the real benchmark.
+      final summary = HistoryTeachingAnalyzer.summarize([
+        const HistoryPatternRecord(
+          weekId: '2026-W12',
+          weekLabel: 'Mar 17',
+          dayLabel: 'Sat',
+          daypart: 'dinner',
+          leverId: 'splh_up',
+          isBenchmark: true,
+        ),
+        for (int i = 0; i < 10; i++)
+          const HistoryPatternRecord(
+            weekId: '2026-W12',
+            weekLabel: 'Mar 17',
+            dayLabel: 'Sun',
+            daypart: 'lunch',
+            leverId: 'made_up_lever',
+            isBenchmark: true,
+          ),
+      ]);
+      expect(summary.mostCommonBenchmarkId, equals('splh_up'),
+          reason:
+              'F-1 — upstream filter drops unknown rows before tie-break, '
+              'so the real benchmark surfaces even when unknowns outnumber it.');
+      expect(summary.benchmarkDayparts, equals(['Sat Dinner']),
+          reason:
+              'F-1 — Sun Lunch (the unknown row\'s daypart) MUST NOT '
+              'appear; only the known benchmark\'s daypart survives.');
+    });
+  });
 }

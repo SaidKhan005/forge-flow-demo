@@ -53,6 +53,16 @@ class HistoryTeachingAnalyzer {
       .map((l) => l.id)
       .toSet();
 
+  // 7.61.1 (F-1): catalog allow-list applied to the benchmark side at
+  // the record-filter layer so that neither the tie-break frequency
+  // (`bFreq`) nor the daypart frequency (`benchFreq`) ever sees an
+  // unknown id. The leak side keeps the post-tie-break `LeverCards.lookup`
+  // reset because applying this allow-list there would push the
+  // all-unknown case onto the F-2 default `'covers_down'` (line 69) and
+  // re-introduce the silent overclaim until 7.61.2 flips that default
+  // to `''`.
+  static final _knownLeverIds = LeverCards.all.map((l) => l.id).toSet();
+
   static HistoryTeachingSummary summarize(List<HistoryPatternRecord> records) {
     // Leak candidates: not a benchmark AND not a favorable lever.
     final leakRecords = records
@@ -85,30 +95,45 @@ class HistoryTeachingAnalyzer {
       mostCommonLeakId = tied.first;
     }
 
-    final leakCard = LeverCards.all.firstWhere(
-      (l) => l.id == mostCommonLeakId,
-      orElse: () => LeverCards.coversDown,
-    );
+    // 7.61.1 (F-1): null-safe lookup. An unknown id (or an empty
+    // mostCommonLeakId once 7.61.2 flips the empty-state default) zeros
+    // out every leak summary field — id, count, dayparts, side label —
+    // so downstream copy in LearnTeachingAnalyzer can't stitch a
+    // "Fix no leak pattern yet first in <real daypart>" sentence out of
+    // a phantom lever. R-CONS-2 + R-CONS-9 + R-STOR-7. The empty-state
+    // default at line 69 is owned by 7.61.2 and intentionally unchanged.
+    final LeverCardData? leakCard = LeverCards.lookup(mostCommonLeakId);
+    if (leakCard == null) {
+      mostCommonLeakId = '';
+      maxCount = 0;
+    }
 
-    // Top 2 dayparts for the most common leak.
+    // Top 2 dayparts for the most common leak. After an unknown-id reset
+    // mostCommonLeakId is '', which never matches r.leverId, so this stays
+    // empty — symmetric with the "no pattern" state.
     final leakDpFreq = <String, int>{};
     for (final r in leakRecords.where((r) => r.leverId == mostCommonLeakId)) {
       leakDpFreq[r.fullLabel] = (leakDpFreq[r.fullLabel] ?? 0) + 1;
     }
     final topLeakDayparts = _topTwo(leakDpFreq);
 
-    // Top 2 benchmark dayparts.
-    final benchFreq = <String, int>{};
-    final benchmarkRecords = records.where((r) => r.isBenchmark).toList();
-    for (final r in benchmarkRecords) {
-      benchFreq[r.fullLabel] = (benchFreq[r.fullLabel] ?? 0) + 1;
-    }
-    final benchmarkDayparts = _topTwo(benchFreq);
+    // 7.61.1 (F-1): filter benchmark records to known catalog ids upstream
+    // so the tie-break (`bFreq`) and dayparts (`benchFreq`) computations
+    // both ignore unknown-id rows. Pre-fix, a known winner could still
+    // ship an unknown record's daypart in `benchmarkDayparts` because
+    // `benchFreq` aggregated across all benchmark records regardless of
+    // leverId — `LearnTeachingAnalyzer.studyLine` would then say
+    // "Study benchmark dayparts: <unknown record's daypart>." even
+    // though the most-common id was real. R-CONS-2 + R-CONS-9 + R-STOR-7.
+    final benchmarkRecords = records
+        .where((r) => r.isBenchmark && _knownLeverIds.contains(r.leverId))
+        .toList();
 
-    // Most common benchmark lever pattern.
+    // Most common benchmark lever pattern + its dayparts.
     String mostCommonBenchmarkId = '';
     int benchMaxCount = 0;
     String mostCommonBenchmarkSideLabel = 'No benchmark pattern yet';
+    List<String> benchmarkDayparts = const [];
 
     if (benchmarkRecords.isNotEmpty) {
       final bFreq = <String, int>{};
@@ -128,17 +153,28 @@ class HistoryTeachingAnalyzer {
         return ai2.compareTo(bi2);
       });
       mostCommonBenchmarkId = tied.first;
-      final benchCard = LeverCards.all.firstWhere(
-        (l) => l.id == mostCommonBenchmarkId,
-        orElse: () => LeverCards.ppaUp,
-      );
-      mostCommonBenchmarkSideLabel = benchCard.sideLabel;
+      // 7.61.1 (F-1): defense-in-depth. With the upstream `_knownLeverIds`
+      // filter on `benchmarkRecords` above, every id in `bFreq` is in the
+      // catalog and `lookup` never returns null on this path. The else
+      // branch stays as a guardrail in case the filter is ever loosened.
+      final LeverCardData? benchCard = LeverCards.lookup(mostCommonBenchmarkId);
+      if (benchCard != null) {
+        mostCommonBenchmarkSideLabel = benchCard.sideLabel;
+        final benchFreq = <String, int>{};
+        for (final r in benchmarkRecords) {
+          benchFreq[r.fullLabel] = (benchFreq[r.fullLabel] ?? 0) + 1;
+        }
+        benchmarkDayparts = _topTwo(benchFreq);
+      } else {
+        mostCommonBenchmarkId = '';
+        benchMaxCount = 0;
+      }
     }
 
     return HistoryTeachingSummary(
       mostCommonLeakId: mostCommonLeakId,
       mostCommonLeakCount: maxCount,
-      mostCommonLeakSideLabel: leakCard.sideLabel,
+      mostCommonLeakSideLabel: leakCard?.sideLabel ?? 'No leak pattern yet',
       topLeakDayparts: topLeakDayparts,
       benchmarkDayparts: benchmarkDayparts,
       mostCommonBenchmarkId: mostCommonBenchmarkId,

@@ -1,6 +1,6 @@
 # Docs Layout
 
-Updated: 2026-04-29
+Updated: 2026-05-03
 
 This repo keeps docs in four main buckets:
 
@@ -38,6 +38,8 @@ Current live groups:
 
 - `docs/phases/phase_8/`
 - `docs/phases/phase_8R/`
+- `docs/phases/phase_7_58/`
+- `docs/phases/phase_7_61/`
 - `docs/phases/phase_9/`
 - `docs/phases/phase_9_5/`
 - `docs/phases/phase_9_75/`

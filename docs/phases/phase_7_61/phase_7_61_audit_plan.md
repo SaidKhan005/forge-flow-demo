@@ -1,9 +1,9 @@
 # Phase 7.61 - Driver Key Audit + Sub-Slice Plan
 
-Updated: 2026-05-02
-Status: Active. `7.61.0` contract pin accepted 2026-05-02; sub-slices
-`.1`/`.2`/`.3` queued; `.4` deferred to `cutover.0b`. Phase-8 hard gate
-remains in force.
+Updated: 2026-05-03
+Status: Active. `7.61.0` contract pin accepted 2026-05-02; `7.61.1`
+accepted 2026-05-03 (F-1: analyzer fallthrough removal). `.2`/`.3`
+queued; `.4` deferred to `cutover.0b`. Phase-8 hard gate remains in force.
 Owner: Variance / Vendor-connector lane
 Companion contract: `docs/contracts/phase_7_61_driver_key_contract.md`
 
@@ -30,8 +30,9 @@ mints or transforms a driver key, every consumer that reads one, and
 every cross-table seam that carries one all collapse to the same
 17-value space (16 catalog ids + `'on_model'` sentinel) in one of two
 documented forms (lowercase canonical or upper-snake at the
-`ShiftRecord` boundary). `7.61.0` (this audit) maps the current code
-to the contract and emits findings; `.1`/`.2`/`.3` land the fixes.
+`ShiftRecord` boundary). `7.61.0` mapped the current code to the
+contract and emitted findings; `.1` has landed F-1, and `.2`/`.3`
+land the remaining fixes.
 
 ## Non-Goals
 
@@ -50,7 +51,7 @@ to the contract and emits findings; `.1`/`.2`/`.3` land the fixes.
 | Slice | Type | Scope |
 | --- | --- | --- |
 | `7.61.0` | audit / docs | this plan + contract; enumerate findings; no production code |
-| `7.61.1` | logic | replace banned `firstWhere(orElse: coversDown / ppaUp)` patterns in `history_teaching_analyzer.dart` with `LeverCards.lookup` (Finding F-1) |
+| `7.61.1` | logic | ACCEPTED 2026-05-03 - replaced banned `firstWhere(orElse: coversDown / ppaUp)` patterns in `history_teaching_analyzer.dart` with `LeverCards.lookup` / catalog filtering (Finding F-1) |
 | `7.61.2` | logic | empty-leak default in `history_teaching_analyzer.dart` (`mostCommonLeakId = 'covers_down'` overclaim — Finding F-2) |
 | `7.61.3` | dev-tooling | `demo_fixture_data.dart` `firstWhere(orElse: coversDown)` cleanup (Finding F-3) |
 | `7.61.4` | infra (deferred) | optional CHECK constraint pinning `week_records.primary_lever_id` lowercase form during Postgres cutover (Finding F-A); upper-snake `shifts.primary_lever` stays verbatim for back-compat with `7.5b` rows |
@@ -58,8 +59,8 @@ to the contract and emits findings; `.1`/`.2`/`.3` land the fixes.
 Each sub-slice ships with its own test additions per `7.58` precedent.
 UX sub-slices interleave only when an operator-visible change is
 involved; F-1 / F-2 close a silent overclaim that does reach the Learn
-tab via `LearnTeachingSummary.primaryLeakId`, so `7.61.1` ships
-`7.61.UX.1` and `7.61.2` ships `7.61.UX.2`. `7.61.3` is dev-only and
+tab via `LearnTeachingSummary.primaryLeakId`. `7.61.1` shipped
+`7.61.UX.1`; `7.61.2` ships `7.61.UX.2`. `7.61.3` is dev-only and
 ships without UX evidence. `7.61.4` is infra-only.
 
 ## Hard Gates
@@ -85,17 +86,13 @@ ships without UX evidence. `7.61.4` is infra-only.
 Most of `7.61` is non-rendering — it pins shape, not visuals. The two
 findings that *do* surface to the operator are:
 
-- **F-1 / `7.61.1`** — `HistoryTeachingAnalyzer.summarize` falls
-  through to `LeverCards.coversDown` (line 88-91) and `LeverCards.ppaUp`
-  (line 131-134) on unknown ids. Today the inputs are pre-filtered
-  through `_favorableIds.contains(r.leverId)` and through
-  `HistoryPatternBuilder`'s catalog filter, so the `orElse` is
-  defensive — but the `7.58` Presentation Split rule bans the pattern,
-  and a future producer that didn't pre-filter would silently
-  overclaim. Lands a `LeverCards.lookup` rewrite in lockstep with
-  `LearnTeachingAnalyzer` so its `primaryLeakId` consumer
-  (`variance_learn_tab.dart:152`) keeps a known catalog id or empty
-  string only.
+- **F-1 / `7.61.1` (accepted 2026-05-03)** - `HistoryTeachingAnalyzer.summarize`
+  no longer falls through to `LeverCards.coversDown` / `LeverCards.ppaUp`
+  on unknown ids. Leak summaries resolve through `LeverCards.lookup` and
+  zero id/count/dayparts/side label on null. Benchmark summaries filter to
+  known catalog ids before frequency and daypart aggregation, with a
+  lookup guard left as defense-in-depth. Walkthrough:
+  `docs/_walkthroughs/7.61.1.md`.
 - **F-2 / `7.61.2`** — `HistoryTeachingAnalyzer` initialises
   `mostCommonLeakId = 'covers_down'` and only overrides it when
   `freq.isNotEmpty`. When there are zero leak records the analyzer
@@ -120,9 +117,10 @@ findings that *do* surface to the operator are:
 
 **UX sub-slice family:**
 
-- `7.61.UX.1` — Learn tab no longer renders a "primary leak" card when
-  the analyzer returns an unknown id (after the `firstWhere(orElse: …)`
-  removal).
+- `7.61.UX.1` - ACCEPTED 2026-05-03. Learn tab no longer receives an
+  unknown-id analyzer summary that can fabricate primary-leak or benchmark
+  copy (after the `firstWhere(orElse: ...)` removal). Evidence:
+  `docs/_walkthroughs/7.61.1.md`.
 - `7.61.UX.2` — Learn tab no longer renders `'covers down'` as the
   primary leak when there are zero leak records (after the empty-state
   default flips).
@@ -171,7 +169,21 @@ files and update the affected sites' existing test suites.
   referenced from this plan, not added to `CLAUDE.md`).
 - [x] `PROJECT_TRACKER.md` Phase Board row for `7.61` updated to
   "active; 7.61.0 audit pinned; .1/.2/.3 queued; .4 deferred to
-  cutover.0b". Hard Gates row unchanged.
+  cutover.0b" at `7.61.0` close. Hard Gates row unchanged.
+
+## Acceptance Criteria for `7.61.1`
+
+- [x] Banned `firstWhere(orElse: coversDown / ppaUp)` patterns removed
+  from `history_teaching_analyzer.dart`.
+- [x] Unknown leak ids degrade to empty/no-pattern summary fields:
+  id, count, side label, and dayparts.
+- [x] Unknown benchmark ids are filtered before frequency/daypart
+  aggregation, including mixed known/unknown benchmark inputs.
+- [x] F-2 empty-leak default remains untouched for `7.61.2`; F-3
+  `demo_fixture_data.dart` cleanup remains untouched for `7.61.3`.
+- [x] Walkthrough evidence captured in `docs/_walkthroughs/7.61.1.md`.
+- [x] Archived resolved detail in
+  `docs/archive/phases/phase_7_61/7.61.1_acceptance_closeout.md`.
 
 ## Audit Map (current code vs contract, file:line)
 
@@ -280,10 +292,12 @@ renderer drift.
 
 ### Consumers — service / analyzer sites (R-CONS-2)
 
-- [history_teaching_analyzer.dart:88-91, :131-134](../../../lib/services/history_teaching_analyzer.dart) —
-  banned `firstWhere(orElse: coversDown / ppaUp)` pattern still
-  present. See Finding F-1.
-- [history_teaching_analyzer.dart:69](../../../lib/services/history_teaching_analyzer.dart) —
+- [history_teaching_analyzer.dart:98-118, :120-172](../../../lib/services/history_teaching_analyzer.dart) -
+  F-1 RESOLVED by `7.61.1`: banned `firstWhere(orElse: coversDown / ppaUp)`
+  pattern removed. Leak side uses `LeverCards.lookup` and zeros null
+  lookups; benchmark side filters to known catalog ids before count/daypart
+  aggregation and keeps a lookup guard.
+- [history_teaching_analyzer.dart:79](../../../lib/services/history_teaching_analyzer.dart) -
   `mostCommonLeakId = 'covers_down'` initial value. See Finding F-2.
 - [learn_teaching_analyzer.dart:34-100](../../../lib/services/learn_teaching_analyzer.dart) —
   consumer of `mostCommonLeakId`; emits empty string when no history
@@ -321,8 +335,8 @@ renderer drift.
 | `ShiftDashboardReadModel.primaryLeverId` | lowercase | `buildWholeDay` (engine direct) | no — never sentinel by R6 |
 | `HistoryPatternRecord.leverId` | lowercase | `HistoryPatternBuilder` | yes — sentinel + unknown skipped |
 | `DaypartPatternSummary.dominant{Benchmark,Leak}LeverId` | lowercase, nullable | `DaypartPatternSummaryBuilder` | yes — sentinel + unknown skipped |
-| `HistoryTeachingSummary.mostCommonLeakId` | lowercase | `HistoryTeachingAnalyzer` | partial — defaults to `'covers_down'` (F-2) |
-| `HistoryTeachingSummary.mostCommonBenchmarkId` | lowercase | `HistoryTeachingAnalyzer` | yes — empty string when none |
+| `HistoryTeachingSummary.mostCommonLeakId` | lowercase or empty string | `HistoryTeachingAnalyzer` | partial - unknown ids reset to empty in `7.61.1`; empty leak set still defaults to `'covers_down'` (F-2) |
+| `HistoryTeachingSummary.mostCommonBenchmarkId` | lowercase or empty string | `HistoryTeachingAnalyzer` | yes - filters unknown ids and emits empty string when none |
 | `LearnTeachingSummary.primaryLeakId` | lowercase | `LearnTeachingAnalyzer` | inherits from above (F-2) |
 | `LearnRepeatableWinSummary.dominantLeverId` | lowercase | `LearnRepeatableWinsReadService` | yes — non-null guarded by `dominantBenchmarkLeverId != null` |
 
@@ -338,8 +352,10 @@ post-`cutover.5`.
 ### F-1 / `7.61.1` — `firstWhere(orElse: coversDown / ppaUp)` in `history_teaching_analyzer.dart`
 
 **Where:**
-[history_teaching_analyzer.dart:88-91](../../../lib/services/history_teaching_analyzer.dart),
-[history_teaching_analyzer.dart:131-134](../../../lib/services/history_teaching_analyzer.dart).
+Pre-fix sites were `history_teaching_analyzer.dart:88-91` and
+`:131-134`. Current accepted implementation lives at
+[history_teaching_analyzer.dart:98-118](../../../lib/services/history_teaching_analyzer.dart)
+and [history_teaching_analyzer.dart:120-172](../../../lib/services/history_teaching_analyzer.dart).
 
 **Symptom:** the banned pre-`7.58.UX.5` pattern. Today the inputs are
 pre-filtered (`HistoryPatternBuilder` already drops `'on_model'` and
@@ -353,18 +369,22 @@ real leak / benchmark card via the fall-through.
 **Contract reference:** R-CONS-2 (service consumers), R-STOR-7
 (`lookup` returns null for unknown).
 
-**Owns:** `7.61.1`. Re-implement as
-`final leakCard = LeverCards.lookup(mostCommonLeakId);` with an
-explicit `if (leakCard == null) return _emptySummary();` branch (or
-the analyzer-equivalent of "no pattern yet"). Same rewrite for the
+**Owns:** `7.61.1`. Accepted implementation uses
+`LeverCards.lookup(mostCommonLeakId)` plus an empty/no-pattern reset on
+the leak side, and a known-catalog filter plus lookup guard on the
 benchmark side.
 
-**Status:** OPEN.
+**Status:** RESOLVED in `7.61.1` (accepted 2026-05-03). Evidence:
+`docs/_walkthroughs/7.61.1.md`,
+`test/contracts/phase_7_61_driver_key_test.dart` (28 active + 1 F-2
+holdout skipped), `test/history_teaching_analyzer_test.dart`, and
+`test/learn_teaching_analyzer_test.dart`. Archived closeout:
+`docs/archive/phases/phase_7_61/7.61.1_acceptance_closeout.md`.
 
 ### F-2 / `7.61.2` — `mostCommonLeakId = 'covers_down'` empty-state default
 
 **Where:**
-[history_teaching_analyzer.dart:69](../../../lib/services/history_teaching_analyzer.dart).
+[history_teaching_analyzer.dart:79](../../../lib/services/history_teaching_analyzer.dart).
 
 **Symptom:** `String mostCommonLeakId = 'covers_down';` initialises
 the default to a real catalog id, then only overrides it when
@@ -470,9 +490,10 @@ upper-snake into the existing column shape until then.
 - Each slice's prompt should cite this Findings list by ID
   (`F-1` / `7.61.1` etc.) so traceability stays clean.
 - `7.61.1` and `7.61.2` together close the same harm chain (Learn
-  tab silently overclaims a leak). Sequencing matters — land `7.61.2`
-  first (default flip) then `7.61.1` (`firstWhere` removal), so the
-  `firstWhere` rewrite has a non-fall-through default to migrate to.
+  tab silently overclaims a leak). `7.61.1` accepted first by using a
+  post-tie-break lookup reset on the leak side and a catalog allow-list on
+  the benchmark side, while intentionally leaving the empty-leak default
+  for `7.61.2`.
 - `lever_logic_test.dart` and `shift_driver_trust_audit_test.dart`
   pin `7.58` engine math and may need adjustment when `7.58.0b`
   flips the empty-candidate default. `7.61.2` does not touch the

@@ -34,6 +34,8 @@ The current product flow is:
 - Phase 7.55o is the active refactor / extraction lane; it follows `docs/CODEX_PROMPT_GENERATION_STANDARD.md` for prompt generation, verification, tracker ownership, and automatic next-prompt sequencing
 - Phase 9 auth planning is locked in `docs/phases/phase_9/phase_9_auth_plan.md`
 - Phase 8 gate artifacts are archived at `docs/archive/phases/phase_8_gate/` (gate work complete; Phase 8 itself remains queued behind vendor selection)
+- Phase 7.61 driver-key gate is active before Phase 8; `7.61.0` and
+  `7.61.1` are accepted, with `7.61.2`/`.3` still queued.
 - Phase 8 / 8R live integration remains a future adapter lane; the current app is still fixture/replay-backed at the transport layer and should not be described as simple-swap integration-ready
 - Phase 11a advisor infrastructure is active: the Markdown corpus lives under `docs/Knowledge_graph_docs`, local Postgres corpus loading is verified, all 233 local corpus chunks have Voyage `voyage-4-large` vectors, and the current retrieval lane is pgvector -> Voyage `rerank-2.5` -> Claude answer runtime. Live cloud Postgres host: Azure Database for PostgreSQL Flexible Server (`Canada Central`, PG 16) with Apache AGE, pgvector, and `pg_diskann` extensions allowlisted (locked 2026-04-26; replaces prior Supabase plan because AGE is GA on Azure but unavailable on Supabase).
 
