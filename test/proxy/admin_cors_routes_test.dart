@@ -336,6 +336,90 @@ void main() {
     });
   });
 
+  group('admin route CORS — debug console', () {
+    test('OPTIONS allowed origin echoes origin and announces GET', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminDebugRequestsPath),
+            requestMethod: 'GET',
+            origin: _adminOrigin,
+          );
+          _expectAllowed(res);
+          final methods =
+              res.headers.value('access-control-allow-methods') ?? '';
+          expect(methods.toUpperCase(), contains('GET'));
+          expect(methods.toUpperCase(), contains('OPTIONS'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('OPTIONS disallowed origin → 403 on debug-console path', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminDebugFullContentOptInsPath),
+            requestMethod: 'GET',
+            origin: _attackerOrigin,
+          );
+          _expectDisallowed(res);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
+  group('admin route CORS — observability', () {
+    test('OPTIONS allowed origin echoes origin and announces GET', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminObservabilityPath),
+            requestMethod: 'GET',
+            origin: _adminOrigin,
+          );
+          _expectAllowed(res);
+          final methods =
+              res.headers.value('access-control-allow-methods') ?? '';
+          expect(methods.toUpperCase(), contains('GET'));
+          expect(methods.toUpperCase(), contains('OPTIONS'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('OPTIONS disallowed origin → 403 on observability path', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp();
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(adminObservabilityPath),
+            requestMethod: 'GET',
+            origin: _attackerOrigin,
+          );
+          _expectDisallowed(res);
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
   group('admin route CORS - deep health', () {
     test('OPTIONS allowed origin echoes origin and announces GET', () async {
       await _withRealHttp(() async {

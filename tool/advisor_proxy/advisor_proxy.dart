@@ -6331,6 +6331,79 @@ abstract class FeatureFlagsAdminProxyGateway {
   });
 }
 
+// Phase 11A.5 / 11A.6 — Debug console and observability admin
+// routes. Both are read-only, F&F internal-only surfaces. GET admits
+// `super_admin` and `ff_support`; raw full-content debug payloads are
+// additionally limited to `super_admin` and only when the per-operator
+// opt-in flag is enabled by the producer.
+const String adminDebugRequestsPath = '/v1/admin/debug/requests';
+const String adminDebugRequestByIdPath = '/v1/admin/debug/requests/by-id';
+const String adminDebugRequestByKeyPath = '/v1/admin/debug/requests/by-key';
+const String adminDebugRequestsTailPath = '/v1/admin/debug/requests/tail';
+const String adminDebugFullContentOptInsPath =
+    '/v1/admin/debug/full-content-opt-ins';
+const String adminObservabilityPath = '/v1/admin/observability';
+
+const Set<String> kFfDebugConsoleAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+const Set<String> kFfDebugConsoleFullContentRoles = <String>{'super_admin'};
+const Set<String> kFfObservabilityAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
+abstract class DebugConsoleAdminProxyGateway {
+  Future<List<Map<String, Object?>>> listRequests({
+    required String actorUserId,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    String? usageClass,
+    String? status,
+    int? timeWindowSeconds,
+    String? searchText,
+    required int limit,
+    required bool includeFullContent,
+  });
+
+  Future<Map<String, Object?>?> getByRequestId({
+    required String actorUserId,
+    required String adminReason,
+    required String requestId,
+    required bool includeFullContent,
+  });
+
+  Future<Map<String, Object?>?> getByIdempotencyKey({
+    required String actorUserId,
+    required String adminReason,
+    required String idempotencyKey,
+    required bool includeFullContent,
+  });
+
+  Future<List<Map<String, Object?>>> tailRecent({
+    required String actorUserId,
+    required String adminReason,
+    required int limit,
+    required bool includeFullContent,
+  });
+
+  Future<List<Map<String, Object?>>> listFullContentOptIns({
+    required String actorUserId,
+    required String adminReason,
+  });
+}
+
+abstract class ObservabilityAdminProxyGateway {
+  Future<Map<String, Object?>> fetch({
+    required String actorUserId,
+    required String adminReason,
+    required int costTelemetryLimit,
+    String? queryClassFilter,
+  });
+}
+
 /// HARD-H — idempotency ledger for cross-tenant F&F admin routes.
 /// The Phase 9 `proxy_requests` table is per-tenant; admin routes
 /// driven by super_admin / ff_support actors have no operator scope
@@ -6623,6 +6696,8 @@ Future<void> routeRequest(
   IntegrationAdminProxyGateway? integrationAdminGateway,
   IntegrationAdminActorResolver? integrationAdminActorResolver,
   FeatureFlagsAdminProxyGateway? featureFlagsAdminGateway,
+  DebugConsoleAdminProxyGateway? debugConsoleAdminGateway,
+  ObservabilityAdminProxyGateway? observabilityAdminGateway,
   // HARD-B — auth lockout / retry enforcement. All four are optional
   // for back-compat with existing tests + scaffolds. When null the
   // route runs in legacy "no enforcement" mode.
@@ -6676,6 +6751,8 @@ Future<void> routeRequest(
         final isAdminCorpusPath = _isAdminCorpusPath(path);
         final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
         final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
+        final isAdminDebugPath = _isAdminDebugPath(path);
+        final isAdminObservabilityPath = _isAdminObservabilityPath(path);
         final isDeepHealthPath = path == deepHealthPath;
         final List<String>? adminCorsMethods = isAdminOperatorLocationPath
             ? kAdminOperatorLocationCorsMethods
@@ -6687,6 +6764,10 @@ Future<void> routeRequest(
             ? kAdminIntegrationsCorsMethods
             : isAdminFeatureFlagsPath
             ? kAdminFeatureFlagsCorsMethods
+            : isAdminDebugPath
+            ? kAdminDebugConsoleCorsMethods
+            : isAdminObservabilityPath
+            ? kAdminObservabilityCorsMethods
             : isDeepHealthPath
             ? kAdminHealthCorsMethods
             : null;
@@ -9855,6 +9936,134 @@ Future<void> routeRequest(
           return;
         }
 
+        // Phase 11A.5 — debug console request-log routes. Read-only
+        // support/admin surface; `ff_support` can inspect sanitized
+        // request metadata, while full content only leaves the proxy
+        // for a super_admin caller and an opted-in operator.
+        if (_isAdminDebugOperation(path, request.method)) {
+          if (debugConsoleAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'debug_console_admin_not_configured',
+              'message':
+                  'route requires a DebugConsoleAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+
+          if (!_callerHasAnyRole(actor, kFfDebugConsoleAdminReadRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': kFfDebugConsoleAdminReadRoles.toList(),
+            });
+            return;
+          }
+
+          try {
+            await _routeDebugConsoleAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: debugConsoleAdminGateway,
+              actorUserId: actor.userId,
+              includeFullContent:
+                  _callerHasAnyRole(actor, kFfDebugConsoleFullContentRoles),
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'debug_console_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'debug_console_admin_unavailable',
+              'message':
+                  'debug console operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
+        // Phase 11A.6 — observability aggregate route. The dashboard is
+        // manual-run in the client; the proxy still clamps the expensive
+        // cost rows and exposes empty lists for producers that have not
+        // emitted rows yet.
+        if (_isAdminObservabilityOperation(path, request.method)) {
+          if (observabilityAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'observability_admin_not_configured',
+              'message':
+                  'route requires an ObservabilityAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+
+          if (!_callerHasAnyRole(actor, kFfObservabilityAdminReadRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': kFfObservabilityAdminReadRoles.toList(),
+            });
+            return;
+          }
+
+          try {
+            await _routeObservabilityAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: observabilityAdminGateway,
+              actorUserId: actor.userId,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'observability_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'observability_admin_unavailable',
+              'message':
+                  'observability operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         if (_isAdminOperatorOrLocationOperation(path, request.method)) {
           if (operatorLocationAdminGateway == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -10745,6 +10954,155 @@ Future<void> _routeCorpusAdmin({
   }
 
   _writeNotFound(response, request);
+}
+
+bool _isAdminDebugPath(String path) {
+  return path == adminDebugRequestsPath ||
+      path == adminDebugRequestByIdPath ||
+      path == adminDebugRequestByKeyPath ||
+      path == adminDebugRequestsTailPath ||
+      path == adminDebugFullContentOptInsPath;
+}
+
+bool _isAdminDebugOperation(String path, String method) {
+  if (method != 'GET') return false;
+  return _isAdminDebugPath(path);
+}
+
+Future<void> _routeDebugConsoleAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required DebugConsoleAdminProxyGateway gateway,
+  required String actorUserId,
+  required bool includeFullContent,
+}) async {
+  final params = request.uri.queryParameters;
+  final reasonPrefix = 'admin.debug.GET:$actorUserId';
+
+  if (path == adminDebugRequestsPath) {
+    final rows = await gateway.listRequests(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:list',
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      usageClass: _nonBlankString(params['usage_class']),
+      status: _nonBlankString(params['status']),
+      timeWindowSeconds: _clampedQueryInt(
+        params['time_window_seconds'],
+        min: 1,
+        max: 604800,
+      ),
+      searchText: _nonBlankString(params['q']),
+      limit: _clampedQueryInt(
+        params['limit'],
+        defaultValue: 100,
+        min: 1,
+        max: 100,
+      ),
+      includeFullContent: includeFullContent,
+    );
+    _writeJson(response, 200, <String, Object?>{'requests': rows});
+    return;
+  }
+
+  if (path == adminDebugRequestsTailPath) {
+    final rows = await gateway.tailRecent(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:tail',
+      limit: _clampedQueryInt(
+        params['limit'],
+        defaultValue: 25,
+        min: 1,
+        max: 100,
+      ),
+      includeFullContent: includeFullContent,
+    );
+    _writeJson(response, 200, <String, Object?>{'requests': rows});
+    return;
+  }
+
+  if (path == adminDebugRequestByIdPath) {
+    final requestId = _requireQueryString(params, 'request_id');
+    final row = await gateway.getByRequestId(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:by_id:$requestId',
+      requestId: requestId,
+      includeFullContent: includeFullContent,
+    );
+    if (row == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_request',
+        'message': 'request_id was not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'request': row});
+    return;
+  }
+
+  if (path == adminDebugRequestByKeyPath) {
+    final idempotencyKey = _requireQueryString(params, 'idempotency_key');
+    final row = await gateway.getByIdempotencyKey(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:by_key',
+      idempotencyKey: idempotencyKey,
+      includeFullContent: includeFullContent,
+    );
+    if (row == null) {
+      _writeJson(response, 404, <String, Object?>{
+        'error': 'unknown_request',
+        'message': 'idempotency_key was not found',
+      });
+      return;
+    }
+    _writeJson(response, 200, <String, Object?>{'request': row});
+    return;
+  }
+
+  if (path == adminDebugFullContentOptInsPath) {
+    final rows = await gateway.listFullContentOptIns(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:opt_ins',
+    );
+    _writeJson(response, 200, <String, Object?>{'opt_ins': rows});
+    return;
+  }
+
+  _writeNotFound(response, request);
+}
+
+bool _isAdminObservabilityPath(String path) => path == adminObservabilityPath;
+
+bool _isAdminObservabilityOperation(String path, String method) {
+  return method == 'GET' && path == adminObservabilityPath;
+}
+
+Future<void> _routeObservabilityAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required ObservabilityAdminProxyGateway gateway,
+  required String actorUserId,
+}) async {
+  if (path != adminObservabilityPath) {
+    _writeNotFound(response, request);
+    return;
+  }
+  final params = request.uri.queryParameters;
+  final limit = _clampedQueryInt(
+    params['cost_telemetry_limit'],
+    defaultValue: 100,
+    min: 1,
+    max: 100,
+  );
+  final payload = await gateway.fetch(
+    actorUserId: actorUserId,
+    adminReason: 'admin.observability.GET:$actorUserId:fetch',
+    costTelemetryLimit: limit,
+    queryClassFilter: _nonBlankString(params['query_class']),
+  );
+  _writeJson(response, 200, payload);
 }
 
 bool _isAdminFeatureFlagsPath(String path) {
@@ -11648,6 +12006,32 @@ Map<String, Object?> _teamOrgLocationToJson(TeamOrgLocationEntry entry) {
   };
 }
 
+String _requireQueryString(Map<String, String> params, String field) {
+  final value = _nonBlankString(params[field]);
+  if (value == null) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'missing_$field',
+      message: '$field query parameter is required',
+    );
+  }
+  return value;
+}
+
+int _clampedQueryInt(
+  String? raw, {
+  int? defaultValue,
+  required int min,
+  required int max,
+}) {
+  final parsed = int.tryParse(raw ?? '');
+  final value = parsed ?? defaultValue;
+  if (value == null) return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
 Map<String, Object?> _authEventEntryToJson(AuthEventListEntry entry) {
   return <String, Object?>{
     'event_id': entry.eventId,
@@ -11971,6 +12355,8 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
   'POST',
   'OPTIONS',
 ];
+const List<String> kAdminDebugConsoleCorsMethods = <String>['GET', 'OPTIONS'];
+const List<String> kAdminObservabilityCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
 
 /// HARD-C — sole origin-decision site for admin CORS.

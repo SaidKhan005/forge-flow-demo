@@ -144,6 +144,8 @@ class ProxyProductionBindings {
     required this.integrationAdminGateway,
     required this.integrationAdminActorResolver,
     required this.featureFlagsAdminGateway,
+    required this.debugConsoleAdminGateway,
+    required this.observabilityAdminGateway,
     required this.adminCorsOriginsExtraFlag,
     required this.adminRequestIdempotencyStore,
     required this.llmProvider,
@@ -196,6 +198,8 @@ class ProxyProductionBindings {
   /// (which fans out to `audit_logs` per the `audit_logs_cutover_enabled`
   /// flag).
   final FeatureFlagsAdminProxyGateway featureFlagsAdminGateway;
+  final DebugConsoleAdminProxyGateway debugConsoleAdminGateway;
+  final ObservabilityAdminProxyGateway observabilityAdminGateway;
 
   /// HARD-C — Postgres-backed gate for the supplemental admin CORS
   /// allow-list. `main.dart` awaits this flag at startup; when
@@ -658,6 +662,14 @@ ProxyProductionBindings buildProxyProductionBindings(
     featureFlagsAdminGateway: RepositoryFeatureFlagsAdminProxyGateway(
       featureFlagsRepository: FeatureFlagsRepository(adminWrapper),
       auditRepository: adminAudit,
+    ),
+    debugConsoleAdminGateway: RepositoryDebugConsoleAdminProxyGateway(
+      adminWrapper: adminWrapper,
+    ),
+    observabilityAdminGateway: RepositoryObservabilityAdminProxyGateway(
+      adminWrapper: adminWrapper,
+      cloudRunServiceName: config.cloudRunServiceName,
+      cloudRunRevision: Platform.environment['K_REVISION'],
     ),
     // HARD-C — Postgres-backed gate for the supplemental admin CORS
     // allow-list. main.dart awaits this once during bootstrap before
@@ -3135,6 +3147,620 @@ class RepositoryFeatureFlagsAdminProxyGateway
         '}';
     return sha256.convert(utf8.encode(canonical)).toString();
   }
+}
+
+class RepositoryDebugConsoleAdminProxyGateway
+    implements DebugConsoleAdminProxyGateway {
+  RepositoryDebugConsoleAdminProxyGateway({
+    required TenantTransactionWrapper adminWrapper,
+  }) : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+
+  @override
+  Future<List<Map<String, Object?>>> listRequests({
+    required String actorUserId,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    String? usageClass,
+    String? status,
+    int? timeWindowSeconds,
+    String? searchText,
+    required int limit,
+    required bool includeFullContent,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final rows = await exec.query(
+        _debugRequestProjectionSql,
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'usage_class': usageClass,
+          'status': status,
+          'time_window_seconds': timeWindowSeconds,
+          'search_text': searchText,
+          'search_like': searchText == null ? null : '$searchText%',
+          'limit': limit,
+          'include_full_content': includeFullContent,
+        },
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows) _debugRequestRowJson(row),
+      ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> getByRequestId({
+    required String actorUserId,
+    required String adminReason,
+    required String requestId,
+    required bool includeFullContent,
+  }) {
+    return _fetchOneDebugRequest(
+      adminReason: adminReason,
+      includeFullContent: includeFullContent,
+      extraWhere: 'and pr.request_id = @request_id::uuid',
+      parameters: <String, Object?>{'request_id': requestId},
+    );
+  }
+
+  @override
+  Future<Map<String, Object?>?> getByIdempotencyKey({
+    required String actorUserId,
+    required String adminReason,
+    required String idempotencyKey,
+    required bool includeFullContent,
+  }) {
+    return _fetchOneDebugRequest(
+      adminReason: adminReason,
+      includeFullContent: includeFullContent,
+      extraWhere: 'and pr.idempotency_key = @idempotency_key',
+      parameters: <String, Object?>{'idempotency_key': idempotencyKey},
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> tailRecent({
+    required String actorUserId,
+    required String adminReason,
+    required int limit,
+    required bool includeFullContent,
+  }) {
+    return listRequests(
+      actorUserId: actorUserId,
+      adminReason: adminReason,
+      limit: limit,
+      includeFullContent: includeFullContent,
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listFullContentOptIns({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final rows = await exec.query(
+        '''
+select
+  flag_id::text as flag_id,
+  operator_id::text as operator_id,
+  flag_name,
+  enabled,
+  updated_at,
+  updated_by
+from public.feature_flags
+where flag_name = 'debug_console_full_content_enabled'
+  and operator_id is not null
+  and location_id is null
+order by operator_id::text
+''',
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows)
+          <String, Object?>{
+            'flag_id': row['flag_id']?.toString(),
+            'operator_id': row['operator_id']?.toString() ?? '',
+            'flag_name': row['flag_name']?.toString() ?? '',
+            'enabled': row['enabled'] == true,
+            'updated_at': _adminIso(row['updated_at']),
+            'updated_by': row['updated_by']?.toString(),
+          },
+      ];
+    }, reason: adminReason);
+  }
+
+  Future<Map<String, Object?>?> _fetchOneDebugRequest({
+    required String adminReason,
+    required bool includeFullContent,
+    required String extraWhere,
+    required Map<String, Object?> parameters,
+  }) {
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final rows = await exec.query(
+        _debugRequestBaseSelect(extraWhere: extraWhere, limitClause: 'limit 1'),
+        parameters: <String, Object?>{
+          ...parameters,
+          'include_full_content': includeFullContent,
+        },
+      );
+      if (rows.isEmpty) return null;
+      return _debugRequestRowJson(rows.single);
+    }, reason: adminReason);
+  }
+}
+
+class RepositoryObservabilityAdminProxyGateway
+    implements ObservabilityAdminProxyGateway {
+  RepositoryObservabilityAdminProxyGateway({
+    required TenantTransactionWrapper adminWrapper,
+    String? cloudRunServiceName,
+    String? cloudRunRevision,
+  }) : _adminWrapper = adminWrapper,
+       _cloudRunServiceName = cloudRunServiceName,
+       _cloudRunRevision = cloudRunRevision;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final String? _cloudRunServiceName;
+  final String? _cloudRunRevision;
+
+  @override
+  Future<Map<String, Object?>> fetch({
+    required String actorUserId,
+    required String adminReason,
+    required int costTelemetryLimit,
+    String? queryClassFilter,
+  }) {
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      final asOf = DateTime.now().toUtc();
+      final costRows = await exec.query(
+        _observabilityCostTelemetrySql,
+        parameters: <String, Object?>{
+          'query_class': queryClassFilter,
+          'limit': costTelemetryLimit,
+        },
+      );
+      final costTotal = costRows.isEmpty
+          ? 0
+          : _adminInt(costRows.first['total_count']);
+      final cacheRows = await exec.query(_observabilityCacheHitSql);
+      final modelRows = await exec.query(_observabilityModelMixSql);
+      final batchRows = await exec.query(_observabilityBatchShareSql);
+      final dormancyRows = await exec.query(
+        _observabilityDormancySql,
+        parameters: <String, Object?>{'as_of': asOf.toIso8601String()},
+      );
+      final graphRows = await exec.query(_observabilityGraphSql);
+      final graphRow = graphRows.isEmpty
+          ? const <String, Object?>{}
+          : graphRows.single;
+
+      return <String, Object?>{
+        'as_of': asOf.toIso8601String(),
+        'contract': 'admin_observability.v1',
+        'schema_version': 1,
+        'cost_telemetry': <Map<String, Object?>>[
+          for (final row in costRows) _costTelemetryRowJson(row),
+        ],
+        'cost_telemetry_meta': <String, Object?>{
+          'total_count': costTotal,
+          'truncated': costTotal > costRows.length,
+          if (queryClassFilter != null) 'query_class_filter': queryClassFilter,
+        },
+        'cache_hit_rates': <Map<String, Object?>>[
+          for (final row in cacheRows)
+            <String, Object?>{
+              'query_class': row['query_class']?.toString() ?? '',
+              'hit_rate': _adminDouble(row['hit_rate']),
+              'yellow_threshold': 0.30,
+              'red_threshold': 0.10,
+            },
+        ],
+        'model_mix': <Map<String, Object?>>[
+          for (final row in modelRows)
+            <String, Object?>{
+              'query_class': row['query_class']?.toString() ?? '',
+              'haiku_share': _adminDouble(row['haiku_share']),
+              'sonnet_share': _adminDouble(row['sonnet_share']),
+              'sonnet_share_ceiling': 0.40,
+            },
+        ],
+        'batch_mode_share': <Map<String, Object?>>[
+          for (final row in batchRows)
+            <String, Object?>{
+              'query_class': row['query_class']?.toString() ?? '',
+              'batch_share': _adminDouble(row['batch_share']),
+              'target_share': 0.50,
+            },
+        ],
+        // These surfaces intentionally stay empty until their durable
+        // producers exist. Empty lists keep the dashboard neutral rather
+        // than showing synthetic top-N, revenue, cap-event, route, or
+        // Cloud Run instance confidence.
+        'top_expensive': const <Map<String, Object?>>[],
+        'dormancy': <Map<String, Object?>>[
+          for (final row in dormancyRows)
+            <String, Object?>{
+              'operator_id': row['operator_id']?.toString() ?? '',
+              'business_name': row['business_name']?.toString() ?? '',
+              'last_active_at': _adminIsoOrNull(row['last_active_at']),
+              'days_silent': row['days_silent'] == null
+                  ? null
+                  : _adminInt(row['days_silent']),
+              'subscription_tier': row['subscription_tier']?.toString(),
+            },
+        ],
+        'margins': const <Map<String, Object?>>[],
+        'cap_events': const <Map<String, Object?>>[],
+        'graph': <String, Object?>{
+          'approved_node_count': _adminInt(graphRow['approved_node_count']),
+          'approved_edge_count': _adminInt(graphRow['approved_edge_count']),
+          'inferred_approved_count': _adminInt(
+            graphRow['inferred_approved_count'],
+          ),
+          'rejected_candidate_count': _adminInt(
+            graphRow['rejected_candidate_count'],
+          ),
+          'isolated_node_count': _adminInt(graphRow['isolated_node_count']),
+          'projection_age_seconds': _adminInt(
+            graphRow['projection_age_seconds'],
+          ),
+          'traversal_p95_ms': 0,
+        },
+        'route_latency': const <Map<String, Object?>>[],
+        'cloud_run': const <Map<String, Object?>>[],
+        'producer_notes': <String, Object?>{
+          'cloud_run_service_name': _cloudRunServiceName,
+          'cloud_run_revision': _cloudRunRevision,
+          'neutral_empty_surfaces': const <String>[
+            'top_expensive',
+            'margins',
+            'cap_events',
+            'route_latency',
+            'cloud_run',
+          ],
+        },
+      };
+    }, reason: adminReason);
+  }
+}
+
+const String _debugRequestProjectionSql = '''
+select *
+from (
+  select
+    pr.request_id::text as request_id,
+    pr.idempotency_key,
+    pr.operator_id::text as operator_id,
+    pr.location_id::text as location_id,
+    pr.usage_class,
+    case
+      when pr.response_payload is null then 'unknown'
+      else 'success'
+    end as status,
+    pr.created_at as started_at,
+    greatest(
+      0,
+      floor(
+        extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
+        * 1000
+      )
+    )::int as latency_ms,
+    jsonb_build_object(
+      'request_type', pr.request_type,
+      'response_recorded', pr.response_payload is not null,
+      'content_logging', 'meta_only'
+    ) as request_meta,
+    coalesce(ff.enabled, false) as full_content_opt_in,
+    case
+      when @include_full_content::boolean
+       and coalesce(ff.enabled, false)
+       and pr.response_payload is not null
+      then pr.response_payload
+      else null
+    end as full_content
+  from public.proxy_requests pr
+  left join public.feature_flags ff
+    on ff.flag_name = 'debug_console_full_content_enabled'
+   and ff.operator_id = pr.operator_id
+   and ff.location_id is null
+) projected
+where (@operator_id::uuid is null or projected.operator_id::uuid = @operator_id::uuid)
+  and (@location_id::uuid is null or projected.location_id::uuid = @location_id::uuid)
+  and (@usage_class::text is null or projected.usage_class = @usage_class)
+  and (@status::text is null or projected.status = @status)
+  and (
+    @time_window_seconds::int is null
+    or projected.started_at >= now() - make_interval(secs => @time_window_seconds::int)
+  )
+  and (
+    @search_text::text is null
+    or projected.request_id ilike @search_like
+    or projected.idempotency_key ilike @search_like
+  )
+order by projected.started_at desc
+limit @limit::int
+''';
+
+String _debugRequestBaseSelect({
+  required String extraWhere,
+  required String limitClause,
+}) =>
+    '''
+select
+  pr.request_id::text as request_id,
+  pr.idempotency_key,
+  pr.operator_id::text as operator_id,
+  pr.location_id::text as location_id,
+  pr.usage_class,
+  case
+    when pr.response_payload is null then 'unknown'
+    else 'success'
+  end as status,
+  pr.created_at as started_at,
+  greatest(
+    0,
+    floor(
+      extract(epoch from (coalesce(pr.updated_at, pr.created_at) - pr.created_at))
+      * 1000
+    )
+  )::int as latency_ms,
+  jsonb_build_object(
+    'request_type', pr.request_type,
+    'response_recorded', pr.response_payload is not null,
+    'content_logging', 'meta_only'
+  ) as request_meta,
+  coalesce(ff.enabled, false) as full_content_opt_in,
+  case
+    when @include_full_content::boolean
+     and coalesce(ff.enabled, false)
+     and pr.response_payload is not null
+    then pr.response_payload
+    else null
+  end as full_content
+from public.proxy_requests pr
+left join public.feature_flags ff
+  on ff.flag_name = 'debug_console_full_content_enabled'
+ and ff.operator_id = pr.operator_id
+ and ff.location_id is null
+where 1 = 1
+$extraWhere
+order by pr.created_at desc
+$limitClause
+''';
+
+Map<String, Object?> _debugRequestRowJson(PostgresRow row) {
+  return <String, Object?>{
+    'request_id': row['request_id']?.toString() ?? '',
+    'idempotency_key': row['idempotency_key']?.toString() ?? '',
+    'operator_id': row['operator_id']?.toString() ?? '',
+    'location_id': row['location_id']?.toString(),
+    'usage_class': row['usage_class']?.toString() ?? '',
+    'status': row['status']?.toString() ?? 'unknown',
+    'started_at': _adminIso(row['started_at']),
+    'latency_ms': _adminInt(row['latency_ms']),
+    'request_meta': _adminJsonObject(row['request_meta']),
+    'full_content_opt_in': row['full_content_opt_in'] == true,
+    if (row['full_content'] != null)
+      'full_content': _adminJsonObject(row['full_content']),
+  };
+}
+
+const String _observabilityCostTelemetrySql = '''
+with rows as (
+  select
+    l.operator_id::text as operator_id,
+    l.location_id::text as location_id,
+    l.staff_id::text as staff_id,
+    l.workflow_id::text as workflow_id,
+    l.usage_class,
+    l.query_class,
+    sum(l.cost_usd)::double precision as total_usd,
+    sum(l.request_count)::bigint as request_count,
+    max(o.business_name) as business_name
+  from public.usage_logs l
+  join public.operators o on o.operator_id = l.operator_id
+  where l.period_start >= date_trunc('month', now() - interval '30 days')
+    and (@query_class::text is null or l.query_class = @query_class)
+  group by
+    l.operator_id,
+    l.location_id,
+    l.staff_id,
+    l.workflow_id,
+    l.usage_class,
+    l.query_class
+),
+counted as (
+  select count(*)::int as total_count from rows
+)
+select rows.*, counted.total_count
+from rows cross join counted
+order by rows.total_usd desc, rows.request_count desc
+limit @limit::int
+''';
+
+const String _observabilityCacheHitSql = '''
+select
+  query_class,
+  coalesce(
+    sum(case when cache_hit then request_count else 0 end)::double precision /
+      nullif(sum(request_count), 0),
+    0
+  ) as hit_rate
+from public.usage_logs
+where period_start >= date_trunc('month', now() - interval '30 days')
+group by query_class
+having sum(request_count) > 0
+order by query_class
+''';
+
+const String _observabilityModelMixSql = '''
+select
+  query_class,
+  coalesce(
+    sum(
+      case
+        when lower(llm_tier) like '%haiku%' or lower(model_used) like '%haiku%'
+        then request_count
+        else 0
+      end
+    )::double precision / nullif(sum(request_count), 0),
+    0
+  ) as haiku_share,
+  coalesce(
+    sum(
+      case
+        when lower(llm_tier) like '%sonnet%' or lower(model_used) like '%sonnet%'
+        then request_count
+        else 0
+      end
+    )::double precision / nullif(sum(request_count), 0),
+    0
+  ) as sonnet_share
+from public.usage_logs
+where period_start >= date_trunc('month', now() - interval '30 days')
+group by query_class
+having sum(request_count) > 0
+order by query_class
+''';
+
+const String _observabilityBatchShareSql = '''
+select
+  query_class,
+  coalesce(
+    sum(case when batch_mode then request_count else 0 end)::double precision /
+      nullif(sum(request_count), 0),
+    0
+  ) as batch_share
+from public.usage_logs
+where period_start >= date_trunc('month', now() - interval '30 days')
+group by query_class
+having sum(request_count) > 0
+order by query_class
+''';
+
+const String _observabilityDormancySql = '''
+select
+  o.operator_id::text as operator_id,
+  o.business_name,
+  o.subscription_tier,
+  max(l.updated_at) as last_active_at,
+  case
+    when max(l.updated_at) is null then null
+    else greatest(
+      0,
+      floor(extract(epoch from (@as_of::timestamptz - max(l.updated_at))) / 86400)
+    )::int
+  end as days_silent
+from public.operators o
+left join public.usage_logs l on l.operator_id = o.operator_id
+group by o.operator_id, o.business_name, o.subscription_tier
+order by last_active_at asc nulls first, o.business_name asc
+limit 200
+''';
+
+const String _observabilityGraphSql = '''
+with active_nodes as (
+  select *
+  from public.graph_nodes
+  where deleted_at is null
+    and archived_at is null
+    and active_from <= now()
+    and (active_to is null or active_to > now())
+),
+active_edges as (
+  select *
+  from public.graph_edges
+  where deleted_at is null
+    and archived_at is null
+    and active_from <= now()
+    and (active_to is null or active_to > now())
+),
+latest_graph_update as (
+  select max(updated_at) as updated_at
+  from (
+    select updated_at from public.graph_nodes
+    union all
+    select updated_at from public.graph_edges
+  ) updates
+)
+select
+  (select count(*)::int from active_nodes) as approved_node_count,
+  (select count(*)::int from active_edges) as approved_edge_count,
+  (
+    select count(*)::int
+    from active_edges
+    where properties->>'confidence_label' = 'INFERRED'
+  ) as inferred_approved_count,
+  (
+    select count(*)::int
+    from public.graphify_review_audit
+    where decision in ('rejected', 'edited_then_rejected')
+  ) as rejected_candidate_count,
+  (
+    select count(*)::int
+    from active_nodes n
+    where not exists (
+      select 1
+      from active_edges e
+      where e.operator_id = n.operator_id
+        and e.graph_scope = n.graph_scope
+        and e.graph_version = n.graph_version
+        and (e.from_node_id = n.id or e.to_node_id = n.id)
+    )
+  ) as isolated_node_count,
+  coalesce(
+    floor(extract(epoch from (now() - (select updated_at from latest_graph_update))))::int,
+    0
+  ) as projection_age_seconds
+''';
+
+Map<String, Object?> _costTelemetryRowJson(PostgresRow row) {
+  return <String, Object?>{
+    'operator_id': row['operator_id']?.toString() ?? '',
+    'location_id': row['location_id']?.toString(),
+    'staff_id': row['staff_id']?.toString(),
+    'workflow_id': row['workflow_id']?.toString(),
+    'usage_class': row['usage_class']?.toString() ?? '',
+    'query_class': row['query_class']?.toString() ?? '',
+    'total_usd': _adminDouble(row['total_usd']),
+    'request_count': _adminInt(row['request_count']),
+    'business_name': row['business_name']?.toString(),
+  };
+}
+
+String _adminIso(Object? value) {
+  return _adminIsoOrNull(value) ?? DateTime.utc(1970).toIso8601String();
+}
+
+String? _adminIsoOrNull(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) return value.toUtc().toIso8601String();
+  final parsed = DateTime.tryParse(value.toString());
+  return parsed?.toUtc().toIso8601String();
+}
+
+int _adminInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value?.toString() ?? '') ?? 0;
+}
+
+double _adminDouble(Object? value) {
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0.0;
+}
+
+Map<String, Object?> _adminJsonObject(Object? value) {
+  if (value is Map) return value.cast<String, Object?>();
+  if (value is String && value.isNotEmpty) {
+    final decoded = jsonDecode(value);
+    if (decoded is Map) return decoded.cast<String, Object?>();
+  }
+  return const <String, Object?>{};
 }
 
 /// In-memory dedup for HARD-D. See the comment on
