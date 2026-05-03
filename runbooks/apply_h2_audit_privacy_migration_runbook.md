@@ -1,6 +1,8 @@
 # Apply h2 Audit-Privacy Migration Runbook
 
 Version: 1.0 (2026-05-01)
+Status: Applied and verified on staging + Production1 on 2026-05-03 via
+`runbooks/phase_9_production1_migration_apply_runbook.md`.
 Owner: F&F super_admin operations
 Source authority:
 - `db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`

@@ -46,10 +46,12 @@ Staging admin stabilization follow-up (2026-05-02): the repo now includes
 `202605021700_phase_11A_health_age_graph_bootstrap.sql`,
 `202605021710_phase_11A_health_age_runtime_grants.sql`, and
 `202605021800_hardening_auth_login_attempts_index_rekey.sql`, plus
-`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. These belong in
-the next Production1 migration apply before 11A health surfaces treat AGE graph
-checks, feature-flag runtime edits, auth lockout triage indexes, and
-pre-existing corpus ledger visibility as production-ready.
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. These
+were replayed/verified on staging and applied/verified on Production1 on
+2026-05-03, so 11A health surfaces may treat AGE graph checks,
+feature-flag runtime edits, auth lockout triage indexes, and pre-existing
+corpus ledger visibility as schema-ready. B43 production anchoring remains a
+separate runtime/cloud gate.
 
 Operational runbooks added from the 2026-05-03 live staging console smoke:
 provider credential/KMS rollout is owned by

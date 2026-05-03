@@ -7,11 +7,11 @@ Owner: F&F launch lane
 ## 2026-04-28 - Phase 9 Foundation Dependencies
 
 `cutover.0a` CMK provisioning pairs with `9.0Σ.h` advisor_conversation_log
-encryption-key references and B46 audit-privacy gating. B46 is local/code/test
-complete, but `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` still
-needs live staging + Production1 apply evidence. The CMK key ID is stored on
-each row; provisioning must be live before the table receives encrypted
-content.
+encryption-key references and B46 audit-privacy gating. The B46 follow-up
+`202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` was applied and
+verified on staging + Production1 on 2026-05-03 as part of the second
+Production1 batch. The CMK key ID is stored on each row; provisioning must be
+live before the table receives encrypted content.
 
 ## 2026-05-01 - `cutover.0a` Scope Expansion + Live Execution
 
@@ -264,7 +264,7 @@ explicitly approves moving to `cutover.1`.
 
 Live, billable. Mirror of staging load with explicit approval gates.
 
-- Apply/verify the queued Production1 migration batch through
+- Re-verify Production1 remains current through
   `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
   using `runbooks/phase_9_production1_migration_apply_runbook.md`, then
   verify no later `db/migrations/*` files are pending.

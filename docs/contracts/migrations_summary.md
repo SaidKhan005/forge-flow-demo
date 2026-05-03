@@ -1566,8 +1566,8 @@ Migration count: **59**
   Re-applying this migration is a no-op (`on conflict do nothing`
   for catalog rows, `do $$` guards on role grants).
 
-  * No live database mutation. Live apply on staging + Production1
-  is queued under the Phase 9 live-mutation gate.
+  * Live apply status: applied and verified on staging + Production1 on
+  2026-05-03 as part of the second Production1 batch.
 
 ## `202604290000_phase_9_b41_service_principal_issue_permission.sql`
 
@@ -1584,10 +1584,9 @@ Migration count: **59**
   replaying the foundation migration.
 
   Live apply note:
-  * Phase 9 closeout evidence only covers staging + Production1 through
-  `202604280013`. Apply this additive seed under a fresh live-mutation
-  gate before Phase 12 depends on service-principal JWT issuance in live
-  environments.
+  * Applied and verified on staging + Production1 on 2026-05-03 as part of
+  the second Production1 batch. Runtime/live issuance evidence remains before
+  Phase 12 depends on service-principal JWT issuance in live environments.
 
 ## `202604290100_phase_11A_1_operators_suspended_at.sql`
 
@@ -1973,9 +1972,9 @@ Migration count: **59**
   shape post-migration.
 
   Live apply status:
-  * Will land on staging + Production1 alongside the rest of the
-  11A.3b slice. The migration is guarded by `create table if not
-  exists` + idempotent GRANT/REVOKE so a re-run is a no-op.
+  * Applied and verified on staging + Production1 on 2026-05-03 as part of
+  the second Production1 batch. The migration drops existing policies before
+  recreating them so partial/replay applies are safe.
 
 ## `202605020001_phase_11A_4b_gemini_provider_kind.sql`
 

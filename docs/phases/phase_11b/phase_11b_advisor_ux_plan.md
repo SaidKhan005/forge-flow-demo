@@ -12,10 +12,10 @@ Owner: Future advisor UX lane
 - B46 is local/code/test complete: encryption-key reference, audit-privacy
   permission gate, and paired audit-on-read are documented in
   `docs/contracts/advisor_conversation_log_contract.md`.
-- Before live advisor writes depend on this path, apply
-  `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` to staging +
-  Production1 under a fresh live-mutation gate. CMK provisioning
-  (`cutover.0a`) must be live before encrypted writes start.
+- The B46 follow-up
+  `202604280014_phase_9_0sigma_h2_audit_privacy_role.sql` was applied and
+  verified on staging + Production1 on 2026-05-03. CMK provisioning
+  (`cutover.0a`) must stay live before encrypted writes start.
 
 `11b.2` causal traversal depends on `9.0Σ.i` graph_canonical (B30
 merged) plus the tripwire metric exposure + projection rebuild runbook

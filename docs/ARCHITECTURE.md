@@ -1995,8 +1995,8 @@ workflow needs to run
 Current gap:
 
 - The verifier and issuer route are locally implemented.
-- The queued Production1 migration apply must land before live Phase 12
-  workflows depend on service-principal issuance.
+- The 2026-05-03 Production1 migration apply landed the service-principal
+  issuance permission key on Production1.
 - Phase 12 workflows still need live issuance evidence.
 
 ### Where It Lives
@@ -3366,12 +3366,12 @@ Key pieces, one at a time:
 - **Why it matters:** Reduces tenant leak risk
 - **How this helps long term:** Keeps future production-table work tied to isolation evidence.
 
-#### Service-principal issuer route local complete
+#### Service-principal issuer route live schema ready
 
-- **What it means:** Issuance route/client/tests landed; live apply evidence is still pending
-- **Example in the app:** `sp:` token issuance is implemented locally and waits on the queued Production1 apply batch.
+- **What it means:** Issuance route/client/tests landed, and the Production1 permission-key apply completed on 2026-05-03.
+- **Example in the app:** `sp:` token issuance has the live database permission key needed before Phase 12 workflows depend on it.
 - **Why it matters:** Needed for Phase 12 workflows
-- **How this helps long term:** Gives the workflow platform an automation identity path once live migrations are applied.
+- **How this helps long term:** Gives the workflow platform an automation identity path once runtime deploy and live issuance evidence are in place.
 
 #### Event outbox scaffold landed
 

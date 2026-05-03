@@ -157,14 +157,15 @@ Current clean state verified on 2026-05-03:
   `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 - Staging setup cutoff:
   `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
-- Production1 pending apply queue: 27 migrations,
-  `202604280014` through `202605021900`
+- Production1 apply state: completed 2026-05-03 for 27 migrations,
+  `202604280014` through `202605021900`; future migrations after this cutoff
+  belong to a later apply event.
 
 ## Phase Carry-Forward
 
-- Production1 and B43: apply queued migrations, run drift scanner, verify
-  Production1 health, and do not close audit health until production anchor
-  lag is green or explicitly deferred.
+- Production1 and B43: the queued migrations are applied; before corpus or
+  runtime deploy, re-run drift/schema verification, then do not close audit
+  health until production anchor lag is green or explicitly deferred.
 - 11A: debug, observability, replay, provider usage, status, and health
   surfaces must be filtered, paginated, scoped, and manually refreshed when
   checks are expensive. Unknown metrics stay neutral; populated bad metrics

@@ -126,9 +126,12 @@ tools, exports, and workflow monitors as performance-sensitive by default.
 
 ### Production1 Migration Apply And B43
 
-Apply migrations in documented order, run the drift scanner, then verify
-Production1 health. Audit health is not complete until production anchor lag is
-green or explicitly deferred with an owner and recovery path.
+Production1 is current through
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` as of
+2026-05-03. Before corpus load or runtime deploy, re-run drift/schema
+verification and confirm no later migrations are pending. Audit health is not
+complete until production anchor lag is green or explicitly deferred with an
+owner and recovery path.
 
 ### 11A Operations Console
 

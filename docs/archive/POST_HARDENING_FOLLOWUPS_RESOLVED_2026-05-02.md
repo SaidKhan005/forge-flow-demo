@@ -30,6 +30,7 @@ These resolved items were removed from the live follow-up file during the
 |---|---|---|
 | P1 - Corpus graph candidates 503 | Sanitized candidate artifacts packaged into the advisor proxy runtime path | `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md` |
 | P1 - Staging `audit_chain_lag_seconds` red | Action-approved staging audit-anchor run `forge-flow-audit-anchor-zmsvj` anchored the 2026-05-02 chain | `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md` |
+| P0 - Production1 Migration Apply Gap | 27-file batch `202604280014` through `202605021900` applied and verified on Production1 | `runbooks/phase_9_production1_migration_apply_runbook.md` Apply History, 2026-05-03 |
 | P2 - MFA test coverage row | MFA test parcels had already closed and were archived in the 2026-05-02 batch | this archive, P2 MFA sections |
 | P3 - HARD-D `admin_idempotency_cache` name drift | `docs/contracts/hardening_feature_flag_idempotency_contract.md` now names HARD-H `admin_request_idempotency` as the shipped durable backstop | `db/migrations/202605021000_phase_hardh_admin_idempotency.sql` |
 

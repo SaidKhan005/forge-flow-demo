@@ -1,14 +1,14 @@
 # Phase 9 Production1 Migration Apply Runbook
 
-Updated: 2026-05-02.
+Updated: 2026-05-03.
 
-Purpose: govern the live Production1 apply of the second migration batch —
-27 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and the
-HARD-B/HARD-F/HARD-H hardening pack — through cutoff
+Purpose: govern and record the live Production1 apply of the second migration
+batch: 27 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and
+the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. This runbook must be reviewed
-before any Production1 mutation. The first batch (Phase 9.0 Sigma slices b–k
-plus auth/recovery patches) was applied 2026-04-29; see the Apply History
-section below for the prior result.
+before any Production1 mutation. The first batch (Phase 9.0 Sigma slices b-k
+plus auth/recovery patches) was applied 2026-04-29; the second batch was
+applied 2026-05-03. See the Apply History section for results.
 
 ## Scope
 
@@ -17,7 +17,7 @@ Server, Canada Central, PG 16). The original
 `forge-flow-production1-pg` server was deleted during `cutover.0a.pg`
 and replaced by the CMK-enabled `-cmk` server on 2026-05-01.
 
-In scope (27 pending migrations, lex order):
+In scope (27 migrations applied 2026-05-03, lex order):
 
 - `db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`
 - `db/migrations/202604290000_phase_9_b41_service_principal_issue_permission.sql`
@@ -406,10 +406,39 @@ until the post-tuning monitor window is clean.
 - No backout was needed. Local logs are under
   `build/phase_9_production1_apply/` and intentionally stay uncommitted.
 
-### Next batch — pending (cutoff `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`)
+### 2026-05-03 - second batch (Phase 9 + 11A + hardening)
 
-The 27 files inventoried under "Scope" above are queued for the next
-Production1 apply event. Append the result here once the apply is run.
+- Staging prerequisite: direct schema sentinels initially found several batch
+  effects missing even though `proxy_migrations_applied` had recorded the
+  filenames. The exact 27-file batch was replayed on staging and direct
+  sentinels then passed.
+- Replay safety fix before Production1: the graphify review audit and
+  auth-login-attempts migrations now drop existing policies before recreating
+  them, matching the runbook's idempotency/backout promise for partial or
+  replay applies.
+- Production1 target: `forge-flow-production1-pg-cmk`, database `forgeflow`.
+- Approval: operator instructed "Begin execution" on 2026-05-03.
+- Backup posture: Azure automatic backups were present with 35-day retention;
+  latest listed full backup was 2026-05-02T18:10:14Z.
+- Local gates: `flutter analyze --fatal-infos`,
+  `dart run tool/rls_policy_lint.dart`,
+  `dart run tool/migration_cutoff_lint.dart`, focused auth/proxy/migration
+  tests, and feature-flag admin screen tests passed after the replay-safety
+  patch.
+- Files applied: all 27 files in the Scope list, in order. The concurrent-index
+  migration was applied without a global enclosing transaction.
+- Production1 verification: table/column presence, RLS policies,
+  tenant-leading indexes, AGE graph bootstrap/runtime grants, feature-flag
+  grants, provider/corpus/admin idempotency tables, and auth lockout tables all
+  passed direct sentinels.
+- Production1 data posture after apply: `operators`, `users`,
+  `advisor_source_chunks`, and `corpus_versions` all had zero rows. Negative
+  tenant fixture smokes remain pending until a data-load gate creates fixtures.
+- `proxy_migrations_applied` exists on Production1; rows remain empty until the
+  first Production1 proxy startup records the runtime migration catalog.
+- No backout was needed. Local logs are under
+  `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
+  stay uncommitted.
 
 ## Apply Report Template
 
