@@ -46,18 +46,15 @@ ProxyConfig _configFromEnv({
 }
 
 Map<String, String> _baseEnv() => <String, String>{
-      ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
-      ProxySecretNames.voyageApiKey: 'placeholder-voyage',
-      ProxySecretNames.postgresUrl:
-          'postgres://app-role.example/forgeflow',
-      ProxySecretNames.postgresAdminUrl:
-          'postgres://admin-role.example/forgeflow',
-      ProxySecretNames.firebaseWebApiKey:
-          'placeholder-firebase-web-api-key',
-      ProxySecretNames.servicePrincipalJwtSecret:
-          'placeholder-service-principal-jwt-secret',
-      ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
-    };
+  ProxySecretNames.anthropicApiKey: 'placeholder-anthropic',
+  ProxySecretNames.voyageApiKey: 'placeholder-voyage',
+  ProxySecretNames.postgresUrl: 'postgres://app-role.example/forgeflow',
+  ProxySecretNames.postgresAdminUrl: 'postgres://admin-role.example/forgeflow',
+  ProxySecretNames.firebaseWebApiKey: 'placeholder-firebase-web-api-key',
+  ProxySecretNames.servicePrincipalJwtSecret:
+      'placeholder-service-principal-jwt-secret',
+  ProxyConfigNames.firebaseProjectId: 'forge-flow-test',
+};
 
 class _StubPostgresPool implements PostgresPool {
   @override
@@ -68,116 +65,109 @@ class _StubPostgresPool implements PostgresPool {
 
 void main() {
   group('evaluateProxyStartup — PROXY_ENVIRONMENT=prod fail-closed', () {
-    test(
-      'PROXY_ENVIRONMENT=prod with FIREBASE_PROJECT_ID unset returns '
-      'EX_CONFIG (78) and the contracted stderr line',
-      () {
-        final config = _configFromEnv();
-        // Sanity: config still parses, FIREBASE_PROJECT_ID is just absent.
-        expect(config.firebaseProjectId, isNull);
+    test('PROXY_ENVIRONMENT=prod with FIREBASE_PROJECT_ID unset returns '
+        'EX_CONFIG (78) and the contracted stderr line', () {
+      final config = _configFromEnv();
+      // Sanity: config still parses, FIREBASE_PROJECT_ID is just absent.
+      expect(config.firebaseProjectId, isNull);
 
-        final failure = evaluateProxyStartup(
-          config: config,
-          environment: <String, String>{'PROXY_ENVIRONMENT': 'prod'},
-        );
+      final failure = evaluateProxyStartup(
+        config: config,
+        environment: <String, String>{'PROXY_ENVIRONMENT': 'prod'},
+      );
 
-        expect(failure, isNotNull);
-        expect(failure!.exitCode, equals(78));
-        expect(
-          failure.message,
-          equals('startup_failure: firebase_project_id_required_in_prod'),
-        );
-      },
-    );
+      expect(failure, isNotNull);
+      expect(failure!.exitCode, equals(78));
+      expect(
+        failure.message,
+        equals('startup_failure: firebase_project_id_required_in_prod'),
+      );
+    });
 
-    test(
-      'PROXY_ENVIRONMENT=prod with FIREBASE_PROJECT_ID set returns null '
-      '(proxy continues to bind)',
-      () {
-        final config = _configFromEnv(overrides: <String, String>{
+    test('PROXY_ENVIRONMENT=prod with FIREBASE_PROJECT_ID set returns null '
+        '(proxy continues to bind)', () {
+      final config = _configFromEnv(
+        overrides: <String, String>{
           ProxyConfigNames.firebaseProjectId: 'forge-flow-prod',
-        });
-        expect(config.firebaseProjectId, equals('forge-flow-prod'));
+        },
+      );
+      expect(config.firebaseProjectId, equals('forge-flow-prod'));
 
-        final failure = evaluateProxyStartup(
-          config: config,
-          environment: <String, String>{'PROXY_ENVIRONMENT': 'prod'},
-        );
+      final failure = evaluateProxyStartup(
+        config: config,
+        environment: <String, String>{'PROXY_ENVIRONMENT': 'prod'},
+      );
 
-        expect(failure, isNull);
-      },
-    );
+      expect(failure, isNull);
+    });
 
-    test(
-      'PROXY_ENVIRONMENT=staging with FIREBASE_PROJECT_ID unset preserves '
-      'the scaffold-fallback (no fail-closed)',
-      () {
-        final config = _configFromEnv();
-        final failure = evaluateProxyStartup(
-          config: config,
-          environment: <String, String>{'PROXY_ENVIRONMENT': 'staging'},
-        );
-        expect(failure, isNull);
-      },
-    );
-
-    test(
-      'PROXY_ENVIRONMENT=dev with FIREBASE_PROJECT_ID unset preserves '
-      'the scaffold-fallback (no fail-closed)',
-      () {
-        final config = _configFromEnv();
-        final failure = evaluateProxyStartup(
-          config: config,
-          environment: <String, String>{'PROXY_ENVIRONMENT': 'dev'},
-        );
-        expect(failure, isNull);
-      },
-    );
-
-    test(
-      'PROXY_ENVIRONMENT unset with FIREBASE_PROJECT_ID unset preserves '
-      'the scaffold-fallback (no fail-closed)',
-      () {
-        final config = _configFromEnv();
-        final failure = evaluateProxyStartup(
-          config: config,
-          environment: const <String, String>{},
-        );
-        expect(failure, isNull);
-      },
-    );
-
-    test('PROXY_ENVIRONMENT match is case-insensitive and trims whitespace',
-        () {
+    test('PROXY_ENVIRONMENT=staging with FIREBASE_PROJECT_ID unset preserves '
+        'the scaffold-fallback (no fail-closed)', () {
       final config = _configFromEnv();
       final failure = evaluateProxyStartup(
         config: config,
-        environment: <String, String>{'PROXY_ENVIRONMENT': '  PROD  '},
+        environment: <String, String>{'PROXY_ENVIRONMENT': 'staging'},
       );
-      expect(failure, isNotNull);
-      expect(failure!.exitCode, equals(78));
+      expect(failure, isNull);
     });
+
+    test('PROXY_ENVIRONMENT=dev with FIREBASE_PROJECT_ID unset preserves '
+        'the scaffold-fallback (no fail-closed)', () {
+      final config = _configFromEnv();
+      final failure = evaluateProxyStartup(
+        config: config,
+        environment: <String, String>{'PROXY_ENVIRONMENT': 'dev'},
+      );
+      expect(failure, isNull);
+    });
+
+    test('PROXY_ENVIRONMENT unset with FIREBASE_PROJECT_ID unset preserves '
+        'the scaffold-fallback (no fail-closed)', () {
+      final config = _configFromEnv();
+      final failure = evaluateProxyStartup(
+        config: config,
+        environment: const <String, String>{},
+      );
+      expect(failure, isNull);
+    });
+
+    test(
+      'PROXY_ENVIRONMENT match is case-insensitive and trims whitespace',
+      () {
+        final config = _configFromEnv();
+        final failure = evaluateProxyStartup(
+          config: config,
+          environment: <String, String>{'PROXY_ENVIRONMENT': '  PROD  '},
+        );
+        expect(failure, isNotNull);
+        expect(failure!.exitCode, equals(78));
+      },
+    );
   });
 
   group('main.dart entrypoint surface (source assertions)', () {
     String readMainSource() =>
         File('tool/advisor_proxy/main.dart').readAsStringSync();
 
-    test(
-      'wires productionBindings.usageCounterStore into ProxyUsageGuard',
-      () {
-        expect(
-          readMainSource(),
-          contains('store: productionBindings.usageCounterStore'),
-        );
-      },
-    );
+    test('wires productionBindings.usageCounterStore into ProxyUsageGuard', () {
+      expect(
+        readMainSource(),
+        contains('store: productionBindings.usageCounterStore'),
+      );
+    });
 
     test('wires productionBindings.healthCheckStore into the runtime', () {
       final source = readMainSource();
       expect(source, contains('productionBindings.healthCheckStore'));
       // And the runtime call passes it into routeRequest.
       expect(source, contains('healthCheckStore: healthCheckStore'));
+    });
+
+    test('dispatches request handling without blocking the listener loop', () {
+      final source = readMainSource();
+      expect(source, contains('import \'dart:async\';'));
+      expect(source, contains('unawaited('));
+      expect(source, contains('long-lived WebSockets must not queue probes'));
     });
 
     test('loads migration catalog before production binding construction', () {
@@ -199,20 +189,11 @@ void main() {
       expect(source, contains("'migration_catalog_count'"));
     });
 
-    test(
-      'no longer references the scaffold-failing usage / health stores',
-      () {
-        final source = readMainSource();
-        expect(
-          source.contains('ScaffoldFailingUsageCounterStore'),
-          isFalse,
-        );
-        expect(
-          source.contains('ScaffoldFailingProxyHealthCheckStore'),
-          isFalse,
-        );
-      },
-    );
+    test('no longer references the scaffold-failing usage / health stores', () {
+      final source = readMainSource();
+      expect(source.contains('ScaffoldFailingUsageCounterStore'), isFalse);
+      expect(source.contains('ScaffoldFailingProxyHealthCheckStore'), isFalse);
+    });
 
     test('emits gemini_slot_enabled diagnostics line', () {
       final source = readMainSource();
@@ -224,28 +205,25 @@ void main() {
       );
     });
 
-    test(
-      'top-of-file comment references real Anthropic primary + optional '
-      'real Gemini secondary',
-      () {
-        final source = readMainSource();
-        // The top-of-file block has been retargeted to describe the
-        // post-Lock-7 reality: real Anthropic primary + optional real
-        // Gemini secondary, not the rejecting scaffold provider.
-        // Substrings are kept short so comment line wrapping cannot
-        // accidentally break them up.
-        expect(source, contains('real Anthropic'));
-        expect(source, contains('real Gemini'));
-        expect(source, contains('GEMINI_API_KEY'));
-        expect(
-          source.contains('ScaffoldRejectingProxyLlmProvider'),
-          isFalse,
-          reason:
-              'main.dart top-of-file comment should no longer reference '
-              'the removed ScaffoldRejectingProxyLlmProvider',
-        );
-      },
-    );
+    test('top-of-file comment references real Anthropic primary + optional '
+        'real Gemini secondary', () {
+      final source = readMainSource();
+      // The top-of-file block has been retargeted to describe the
+      // post-Lock-7 reality: real Anthropic primary + optional real
+      // Gemini secondary, not the rejecting scaffold provider.
+      // Substrings are kept short so comment line wrapping cannot
+      // accidentally break them up.
+      expect(source, contains('real Anthropic'));
+      expect(source, contains('real Gemini'));
+      expect(source, contains('GEMINI_API_KEY'));
+      expect(
+        source.contains('ScaffoldRejectingProxyLlmProvider'),
+        isFalse,
+        reason:
+            'main.dart top-of-file comment should no longer reference '
+            'the removed ScaffoldRejectingProxyLlmProvider',
+      );
+    });
   });
 
   group('proxy_bootstrap migration registry wiring', () {
@@ -318,8 +296,7 @@ void main() {
 
   group('startup KMS fail-closed (HARD-G observability)', () {
     test('prod + KMS_REAL_PROVIDER_ENABLED=true + all GCP vars unset '
-        'throws ProxyKmsMisconfiguredError listing the missing names',
-        () {
+        'throws ProxyKmsMisconfiguredError listing the missing names', () {
       final env = _baseEnv()
         ..[ProxyConfigNames.proxyEnvironment] = 'prod'
         ..[ProxyConfigNames.kmsRealProviderEnabled] = 'true';
@@ -339,10 +316,7 @@ void main() {
           ProxyConfigNames.cloudRunServiceName,
         ]),
       );
-      expect(
-        error.message,
-        contains(ProxyConfigNames.gcpProjectId),
-      );
+      expect(error.message, contains(ProxyConfigNames.gcpProjectId));
     });
 
     test('prod + KMS_REAL_PROVIDER_ENABLED=true + partial GCP vars '
@@ -391,8 +365,7 @@ void main() {
       expect(thrown, isNot(isA<ProxyKmsMisconfiguredError>()));
     });
 
-    test('staging + missing GCP vars proceeds with stub (no throw)',
-        () {
+    test('staging + missing GCP vars proceeds with stub (no throw)', () {
       final env = _baseEnv()
         ..[ProxyConfigNames.proxyEnvironment] = 'staging'
         ..[ProxyConfigNames.kmsRealProviderEnabled] = 'false';
@@ -435,9 +408,7 @@ void main() {
     test('rethrows DependencyTimeoutException when beginTransaction '
         'times out (covers both acquire and BEGIN paths)', () async {
       final bindings = _bindingsWithTenantPool(
-        _TimingOutPool(
-          throwOn: _TimingOutPoolPhase.beginTransaction,
-        ),
+        _TimingOutPool(throwOn: _TimingOutPoolPhase.beginTransaction),
       );
       Object? thrown;
       try {
@@ -468,10 +439,7 @@ void main() {
     test('happy path commits each pool exactly once', () async {
       final tenantPool = _RecordingPool();
       final adminPool = _RecordingPool();
-      final bindings = _bindingsWithPools(
-        tenant: tenantPool,
-        admin: adminPool,
-      );
+      final bindings = _bindingsWithPools(tenant: tenantPool, admin: adminPool);
       await probeProxyStartupConnectivity(bindings);
       expect(tenantPool.transactions.length, equals(1));
       expect(tenantPool.transactions.single.committed, isTrue);

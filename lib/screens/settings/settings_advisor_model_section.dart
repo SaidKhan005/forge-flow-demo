@@ -93,9 +93,26 @@ class _SettingsAdvisorModelSectionState
     });
   }
 
+  Widget _resetButton() {
+    return TextButton(
+      key: const Key('advisor_reset_button'),
+      onPressed: _reset,
+      child: const Text('Reset defaults'),
+    );
+  }
+
+  Widget _checkButton() {
+    return TextButton(
+      key: const Key('advisor_check_button'),
+      onPressed: _checking ? null : _check,
+      child: Text(_checking ? 'Checking...' : 'Check available models'),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final routing = _routing;
+    final stackActionButtons = MediaQuery.sizeOf(context).width < 480;
     if (routing == null) {
       return const SettingsCard(
         children: [
@@ -131,27 +148,22 @@ class _SettingsAdvisorModelSectionState
         const SettingsRowDivider(),
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  key: const Key('advisor_reset_button'),
-                  onPressed: _reset,
-                  child: const Text('Reset defaults'),
+          child: stackActionButtons
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _resetButton(),
+                    const SizedBox(height: 6),
+                    _checkButton(),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: _resetButton()),
+                    const SizedBox(width: 8),
+                    Expanded(child: _checkButton()),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextButton(
-                  key: const Key('advisor_check_button'),
-                  onPressed: _checking ? null : _check,
-                  child: Text(
-                    _checking ? 'Checking...' : 'Check available models',
-                  ),
-                ),
-              ),
-            ],
-          ),
         ),
         if (_lastCheck != null) ...[
           const SettingsRowDivider(),
@@ -195,18 +207,35 @@ class _AdvisorRoutingHeader extends StatelessWidget {
 
   Widget _row(String tier, String modelId, String source) {
     return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          '$tier - $modelId',
-          style: const TextStyle(
-            color: AppColors.textPrimary,
-            fontFamily: 'monospace',
+        Expanded(
+          child: Text(
+            '$tier - $modelId',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              height: 1.2,
+            ),
           ),
         ),
-        Text(
-          source,
-          style: const TextStyle(color: AppColors.textSecondary, fontSize: 11),
+        const SizedBox(width: 8),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 72),
+          child: Text(
+            source,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              height: 1.15,
+            ),
+          ),
         ),
       ],
     );
@@ -230,6 +259,7 @@ class _OverrideField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final stackSaveAction = MediaQuery.sizeOf(context).width < 480;
     return Padding(
       padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
       child: Column(
@@ -243,28 +273,53 @@ class _OverrideField extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  key: fieldKey,
-                  controller: controller,
-                  decoration: InputDecoration(
-                    hintText: 'Optional model ID. Current: $hintModelId',
-                    isDense: true,
-                  ),
-                  style: const TextStyle(
-                    color: AppColors.textPrimary,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              TextButton(onPressed: onSave, child: const Text('Save')),
-            ],
-          ),
+          if (stackSaveAction)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _field(),
+                const SizedBox(height: 6),
+                Align(alignment: Alignment.centerRight, child: _saveButton()),
+              ],
+            )
+          else
+            Row(
+              children: [
+                Expanded(child: _field()),
+                const SizedBox(width: 8),
+                _saveButton(),
+              ],
+            ),
         ],
       ),
+    );
+  }
+
+  Widget _field() {
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      decoration: InputDecoration(
+        hintText: 'Optional model ID. Current: $hintModelId',
+        isDense: true,
+      ),
+      style: const TextStyle(
+        color: AppColors.textPrimary,
+        fontSize: 14,
+        fontFamily: 'monospace',
+      ),
+    );
+  }
+
+  Widget _saveButton() {
+    return TextButton(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(52, 40),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      onPressed: onSave,
+      child: const Text('Save', style: TextStyle(fontSize: 14)),
     );
   }
 }

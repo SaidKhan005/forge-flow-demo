@@ -36,6 +36,21 @@ void main() {
     });
   });
 
+  group('admin console Dockerfile', () {
+    late String dockerfile;
+
+    setUpAll(() {
+      dockerfile = File('Dockerfile.admin_console').readAsStringSync();
+    });
+
+    test('serves Flutter web assets with no-store cache headers', () {
+      expect(
+        dockerfile,
+        contains('add_header Cache-Control "no-store, max-age=0" always;'),
+      );
+    });
+  });
+
   group('deploy_staging_proxy.ps1', () {
     late String script;
 
@@ -43,20 +58,23 @@ void main() {
       script = File('scripts/deploy_staging_proxy.ps1').readAsStringSync();
     });
 
-    test('declares -SecretPrefix parameter with staging default + dash guard',
-        () {
-      expect(
-        script,
-        contains("[string] \$SecretPrefix = 'forge-flow-staging-'"),
-      );
-      expect(
-        script,
-        contains("BLOCKED: -SecretPrefix '\$SecretPrefix' must end with '-'."),
-      );
-    });
+    test(
+      'declares -SecretPrefix parameter with staging default + dash guard',
+      () {
+        expect(
+          script,
+          contains("[string] \$SecretPrefix = 'forge-flow-staging-'"),
+        );
+        expect(
+          script,
+          contains(
+            "BLOCKED: -SecretPrefix '\$SecretPrefix' must end with '-'.",
+          ),
+        );
+      },
+    );
 
-    test('declares -ProxyBaseUriEnvVarName parameter with staging default',
-        () {
+    test('declares -ProxyBaseUriEnvVarName parameter with staging default', () {
       expect(
         script,
         contains(
@@ -66,34 +84,31 @@ void main() {
     });
 
     test('declares -FirebaseGoogleServicesPath parameter (empty default)', () {
-      expect(
-        script,
-        contains("[string] \$FirebaseGoogleServicesPath = ''"),
-      );
+      expect(script, contains("[string] \$FirebaseGoogleServicesPath = ''"));
     });
 
-    test('supports optional VPC connector flags for first production deploys',
-        () {
-      expect(script, contains("[string] \$VpcConnector = ''"));
-      expect(script, contains("[string] \$VpcEgress = 'all-traffic'"));
-      expect(
-        script,
-        contains('BLOCKED: -VpcEgress is required when -VpcConnector is set.'),
-      );
-      expect(script, contains("'--vpc-connector', \$VpcConnector"));
-      expect(script, contains("'--vpc-egress', \$VpcEgress"));
-      expect(script, contains('VPC connector: \$VpcConnector (\$VpcEgress)'));
-    });
+    test(
+      'supports optional VPC connector flags for first production deploys',
+      () {
+        expect(script, contains("[string] \$VpcConnector = ''"));
+        expect(script, contains("[string] \$VpcEgress = 'all-traffic'"));
+        expect(
+          script,
+          contains(
+            'BLOCKED: -VpcEgress is required when -VpcConnector is set.',
+          ),
+        );
+        expect(script, contains("'--vpc-connector', \$VpcConnector"));
+        expect(script, contains("'--vpc-egress', \$VpcEgress"));
+        expect(script, contains('VPC connector: \$VpcConnector (\$VpcEgress)'));
+      },
+    );
 
     test('requires FIREBASE_WEB_API_KEY for the Phase 9 route bindings', () {
       expect(script, contains("'FIREBASE_WEB_API_KEY'"));
       expect(
         script,
-        matches(
-          RegExp(
-            r"'FIREBASE_WEB_API_KEY'\s+=\s+'firebase-web-api-key'",
-          ),
-        ),
+        matches(RegExp(r"'FIREBASE_WEB_API_KEY'\s+=\s+'firebase-web-api-key'")),
       );
       expect(script, contains('--set-secrets'));
       expect(script, isNot(contains('"FIREBASE_WEB_API_KEY: ')));

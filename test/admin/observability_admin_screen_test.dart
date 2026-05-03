@@ -29,10 +29,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   /// Same large-viewport setup as the health screen test — six tabs +
   /// scrollable section cards do not fit the default 800x600 viewport.
@@ -54,9 +54,7 @@ void main() {
       find.byKey(const Key('admin_observability_confirm_dialog')),
       findsOneWidget,
     );
-    await tester.tap(
-      find.byKey(const Key('admin_observability_confirm_run')),
-    );
+    await tester.tap(find.byKey(const Key('admin_observability_confirm_run')));
     await tester.pumpAndSettle();
   }
 
@@ -100,10 +98,7 @@ void main() {
     );
     await runCheck(tester);
 
-    expect(
-      find.byKey(const Key('admin_observability_screen')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
     expect(find.byKey(const Key('admin_observability_tabs')), findsOneWidget);
     expect(
       find.byKey(const Key('admin_observability_tab_cost')),
@@ -192,9 +187,7 @@ void main() {
     );
     // Per-query_class cache hit rate / model mix / batch share render.
     expect(
-      find.byKey(
-        const Key('admin_observability_cache_hit_rate_advisor_qa'),
-      ),
+      find.byKey(const Key('admin_observability_cache_hit_rate_advisor_qa')),
       findsOneWidget,
     );
     expect(
@@ -246,7 +239,7 @@ void main() {
       findsNothing,
     );
     // Sunset Cafe Group last_active_at = 2026-04-01; as_of =
-    // 2026-05-03 → 32 days silent → DORMANT chip rendered.
+    // 2026-05-03 -> 32 days silent -> inactive chip rendered.
     expect(
       find.byKey(
         const Key(
@@ -258,53 +251,50 @@ void main() {
     );
   });
 
-  testWidgets(
-    'null last_active_at renders as never-active dormant '
-    '(no silent collapse to as_of)',
-    (tester) async {
-      setLargeViewport(tester);
-      // Build an envelope where one operator has a missing
-      // last_active_at — the parser must NOT default it to as_of, and
-      // the dormancy flag must trip because never-active is the
-      // strongest skip-precompute signal.
-      final envelope = <String, Object?>{
-        ...kObservabilityAdminDemoEnvelope,
-        'dormancy': <Map<String, Object?>>[
-          <String, Object?>{
-            'operator_id': '00000000-0000-4000-8000-000000000099',
-            'business_name': 'Never-Active Cafe',
-            'subscription_tier': 'pilot',
-            // last_active_at intentionally absent.
-          },
-        ],
-      };
-      final gateway = InMemoryObservabilityAdminGateway(envelope: envelope);
-      await tester.pumpWidget(
-        wrap(
-          ObservabilityAdminScreen(
-            gateway: gateway,
-            now: () => DateTime.utc(2026, 5, 3, 12),
-          ),
+  testWidgets('null last_active_at renders as never-active dormant '
+      '(no silent collapse to as_of)', (tester) async {
+    setLargeViewport(tester);
+    // Build an envelope where one operator has a missing
+    // last_active_at — the parser must NOT default it to as_of, and
+    // the dormancy flag must trip because never-active is the
+    // strongest skip-precompute signal.
+    final envelope = <String, Object?>{
+      ...kObservabilityAdminDemoEnvelope,
+      'dormancy': <Map<String, Object?>>[
+        <String, Object?>{
+          'operator_id': '00000000-0000-4000-8000-000000000099',
+          'business_name': 'Never-Active Cafe',
+          'subscription_tier': 'pilot',
+          // last_active_at intentionally absent.
+        },
+      ],
+    };
+    final gateway = InMemoryObservabilityAdminGateway(envelope: envelope);
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
         ),
-      );
-      await runCheck(tester);
-      await tester.tap(
-        find.byKey(const Key('admin_observability_tab_operators')),
-      );
-      await tester.pumpAndSettle();
+      ),
+    );
+    await runCheck(tester);
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_operators')),
+    );
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(
-          const Key(
-            'admin_observability_dormancy_flag_'
-            '00000000-0000-4000-8000-000000000099',
-          ),
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_dormancy_flag_'
+          '00000000-0000-4000-8000-000000000099',
         ),
-        findsOneWidget,
-      );
-      expect(find.text('never active · DORMANT'), findsOneWidget);
-    },
-  );
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('never active - inactive'), findsOneWidget);
+  });
 
   testWidgets('cost telemetry truncation hint surfaces when capped', (
     tester,
@@ -358,76 +348,69 @@ void main() {
     );
   });
 
-  testWidgets(
-    'applying a query_class filter narrows the cost table and '
-    'echoes the active filter chip',
-    (tester) async {
-      setLargeViewport(tester);
-      final gateway = InMemoryObservabilityAdminGateway(
-        envelope: kObservabilityAdminDemoEnvelope,
-      );
-      await tester.pumpWidget(
-        wrap(
-          ObservabilityAdminScreen(
-            gateway: gateway,
-            now: () => DateTime.utc(2026, 5, 3, 12),
-          ),
+  testWidgets('applying a query_class filter narrows the cost table and '
+      'echoes the active filter chip', (tester) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
         ),
-      );
-      await runCheck(tester);
+      ),
+    );
+    await runCheck(tester);
 
-      // Default state: no active filter chip.
-      expect(
-        find.byKey(
-          const Key('admin_observability_cost_query_class_filter_chip'),
-        ),
-        findsNothing,
-      );
+    // Default state: no active filter chip.
+    expect(
+      find.byKey(const Key('admin_observability_cost_query_class_filter_chip')),
+      findsNothing,
+    );
 
-      await tester.enterText(
-        find.byKey(const Key('admin_observability_cost_query_class_filter')),
-        'wf_pl',
-      );
-      await tester.tap(
-        find.byKey(
-          const Key('admin_observability_cost_query_class_filter_apply'),
-        ),
-      );
-      await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('admin_observability_cost_query_class_filter')),
+      'wf_pl',
+    );
+    await tester.tap(
+      find.byKey(
+        const Key('admin_observability_cost_query_class_filter_apply'),
+      ),
+    );
+    await tester.pumpAndSettle();
 
-      // Active filter chip echoes the current scope.
-      expect(
-        find.byKey(
-          const Key('admin_observability_cost_query_class_filter_chip'),
+    // Active filter chip echoes the current scope.
+    expect(
+      find.byKey(const Key('admin_observability_cost_query_class_filter_chip')),
+      findsOneWidget,
+    );
+    // After filtering to wf_pl, only the workflow row from the
+    // demo seed remains in the cost table.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_cost_row_'
+          '00000000-0000-4000-8000-000000000001_'
+          '00000000-0000-4000-8000-0000000000a1_none_'
+          '00000000-0000-4000-8000-0000000000w1_wf_pl',
         ),
-        findsOneWidget,
-      );
-      // After filtering to wf_pl, only the workflow row from the
-      // demo seed remains in the cost table.
-      expect(
-        find.byKey(
-          const Key(
-            'admin_observability_cost_row_'
-            '00000000-0000-4000-8000-000000000001_'
-            '00000000-0000-4000-8000-0000000000a1_none_'
-            '00000000-0000-4000-8000-0000000000w1_wf_pl',
-          ),
+      ),
+      findsOneWidget,
+    );
+    // The advisor_qa rows are gone after filtering.
+    expect(
+      find.byKey(
+        const Key(
+          'admin_observability_cost_row_'
+          '00000000-0000-4000-8000-000000000001_'
+          '00000000-0000-4000-8000-0000000000a1_none_none_advisor_qa',
         ),
-        findsOneWidget,
-      );
-      // The advisor_qa rows are gone after filtering.
-      expect(
-        find.byKey(
-          const Key(
-            'admin_observability_cost_row_'
-            '00000000-0000-4000-8000-000000000001_'
-            '00000000-0000-4000-8000-0000000000a1_none_none_advisor_qa',
-          ),
-        ),
-        findsNothing,
-      );
-    },
-  );
+      ),
+      findsNothing,
+    );
+  });
 
   testWidgets('underwater margin row surfaces the negative chip', (
     tester,
@@ -530,9 +513,7 @@ void main() {
       ),
     );
     await runCheck(tester);
-    await tester.tap(
-      find.byKey(const Key('admin_observability_tab_graph')),
-    );
+    await tester.tap(find.byKey(const Key('admin_observability_tab_graph')));
     await tester.pumpAndSettle();
 
     // Phase_11A lines 351-353 require approved/inferred-approved/
@@ -703,9 +684,7 @@ void main() {
       find.byKey(const Key('admin_observability_refresh_button')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('admin_observability_confirm_run')),
-    );
+    await tester.tap(find.byKey(const Key('admin_observability_confirm_run')));
     await tester.pump();
 
     expect(
@@ -729,7 +708,8 @@ class _BlockingObservabilityGateway implements ObservabilityAdminGateway {
   int fetchCount = 0;
   final List<Completer<ObservabilityEnvelope>> _pending =
       <Completer<ObservabilityEnvelope>>[];
-  final List<ObservabilityFetchRequest> requests = <ObservabilityFetchRequest>[];
+  final List<ObservabilityFetchRequest> requests =
+      <ObservabilityFetchRequest>[];
 
   @override
   Future<ObservabilityEnvelope> fetch([

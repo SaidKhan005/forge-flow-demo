@@ -2934,9 +2934,21 @@ Future<ActiveTargetProfile?> _getActiveTargetProfile(
 Future<void> _pumpAdvisorSettings(
   WidgetTester tester, {
   required AdvisorModelConfigService service,
+  double textScaleFactor = 1,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      builder: textScaleFactor == 1
+          ? null
+          : (context, child) {
+              final media = MediaQuery.of(context);
+              return MediaQuery(
+                data: media.copyWith(
+                  textScaler: TextScaler.linear(textScaleFactor),
+                ),
+                child: child!,
+              );
+            },
       home: SettingsScreen(
         initialStatus: AppDataStatus.current(),
         initialMockDate: '2026-03-27',
@@ -2993,6 +3005,30 @@ void _advisorSectionTests() {
         find.textContaining('rerank-2.5', skipOffstage: false),
         findsWidgets,
       );
+    });
+
+    testWidgets('advisor routing header does not overflow on phone viewport', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      final svc = AdvisorModelConfigService(
+        onlineCheckFn:
+            ({
+              required String quickModelId,
+              required String nuancedModelId,
+            }) async =>
+                const AnthropicModelCheckResult.cannotCheck('test default'),
+      );
+
+      await _pumpAdvisorSettings(tester, service: svc, textScaleFactor: 1.4);
+      await _scrollToText(tester, 'Advisor routing');
+
+      expect(find.text('Advisor routing', skipOffstage: false), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('Reset Defaults and Check Anthropic Models actions render', (
