@@ -107,6 +107,50 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_current_v1')), findsNothing);
   });
 
+  testWidgets('defers Graph candidates fetch until the tab is opened', (
+    tester,
+  ) async {
+    final gateway = _CountingCorpusAdminGateway(
+      InMemoryCorpusAdminGateway(
+        seed: <CorpusBundle>[
+          seedBundle(versionId: 'v1', summary: 'seed', chunkCount: 1),
+        ],
+        graphCandidateSeed: const GraphCandidateDiff(
+          graphScope: 'methodology',
+          graphVersion: '1',
+          graphifyVersion: 'v5',
+          graphifySourceCommit: 'perf-test',
+          extracted: <GraphCandidate>[],
+          inferred: <GraphCandidate>[],
+          ambiguous: <GraphCandidate>[],
+        ),
+      ),
+    );
+    await tester.pumpWidget(wrap(CorpusAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    expect(gateway.listVersionsCount, equals(1));
+    expect(gateway.fetchVersionCount, equals(1));
+    expect(
+      gateway.graphCandidateFetchCount,
+      equals(0),
+      reason: 'default Versions tab should not prefetch the hidden graph tab',
+    );
+
+    final tabFinder = find.descendant(
+      of: find.byKey(const Key('admin_corpus_tab_bar')),
+      matching: find.text('Graph candidates'),
+    );
+    await tester.tap(tabFinder);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_corpus_graph_tab_body')),
+      findsOneWidget,
+    );
+    expect(gateway.graphCandidateFetchCount, equals(1));
+  });
+
   testWidgets('stacks version list/detail panes on compact widths', (
     tester,
   ) async {
@@ -389,4 +433,54 @@ void main() {
     expect(find.byKey(const Key('admin_corpus_action_error')), findsOneWidget);
     expect(find.byKey(const Key('admin_corpus_staged_diff')), findsNothing);
   });
+}
+
+class _CountingCorpusAdminGateway implements CorpusAdminGateway {
+  _CountingCorpusAdminGateway(this._inner);
+
+  final CorpusAdminGateway _inner;
+
+  int listVersionsCount = 0;
+  int fetchVersionCount = 0;
+  int graphCandidateFetchCount = 0;
+
+  @override
+  Future<List<CorpusVersionRef>> listVersions() {
+    listVersionsCount += 1;
+    return _inner.listVersions();
+  }
+
+  @override
+  Future<CorpusBundle> fetchVersion({required String versionId}) {
+    fetchVersionCount += 1;
+    return _inner.fetchVersion(versionId: versionId);
+  }
+
+  @override
+  Future<CorpusDiff> previewDiff(UploadCommand command) =>
+      _inner.previewDiff(command);
+
+  @override
+  Future<CorpusVersionRef> commitVersion(CommitCommand command) =>
+      _inner.commitVersion(command);
+
+  @override
+  Future<CorpusVersionRef> rollbackToVersion(RollbackCommand command) =>
+      _inner.rollbackToVersion(command);
+
+  @override
+  Future<GraphCandidateDiff> listGraphCandidates() {
+    graphCandidateFetchCount += 1;
+    return _inner.listGraphCandidates();
+  }
+
+  @override
+  Future<BatchCommitResult> commitGraphCandidatesBatch(
+    BatchCommitCommand command,
+  ) => _inner.commitGraphCandidatesBatch(command);
+
+  @override
+  Future<AgeRebuildResult> requestAgeRebuild({
+    required String idempotencyKey,
+  }) => _inner.requestAgeRebuild(idempotencyKey: idempotencyKey);
 }

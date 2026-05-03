@@ -58,12 +58,12 @@ class AppRefreshCoordinator {
     required ShiftDashboardNotifier shiftDashboard,
     required DemandForecastContextNotifier demandForecast,
     required ScheduleDistributionWeightsNotifier scheduleWeights,
-  })  : _restaurantScope = restaurantScope,
-        _activeTarget = activeTarget,
-        _weekData = weekData,
-        _shiftDashboard = shiftDashboard,
-        _demandForecast = demandForecast,
-        _scheduleWeights = scheduleWeights;
+  }) : _restaurantScope = restaurantScope,
+       _activeTarget = activeTarget,
+       _weekData = weekData,
+       _shiftDashboard = shiftDashboard,
+       _demandForecast = demandForecast,
+       _scheduleWeights = scheduleWeights;
 
   /// Full manual refresh of all app-state surfaces.
   ///
@@ -109,10 +109,12 @@ class AppRefreshCoordinator {
   /// fires update() once on initial build before any real dependency
   /// change, and notifiers already load in their constructors.
   /// Screens and proxy providers do not maintain their own copy of this list.
-  void refreshCurrentStateSurfaces() {
+  void refreshCurrentStateSurfaces({bool allowInitialRefresh = false}) {
     if (!_coldStartComplete) {
       _coldStartComplete = true;
-      return;
+      if (!allowInitialRefresh) {
+        return;
+      }
     }
     _weekData.refresh();
     _shiftDashboard.refresh();

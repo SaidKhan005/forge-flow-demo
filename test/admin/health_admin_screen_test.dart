@@ -4,8 +4,9 @@
 // so the click path runs end-to-end without a backend or real
 // proxy. Coverage:
 //
-//   * Initial render shows three tabs (Retrieval, Proxy, Infra) and
-//     the dependencies strip.
+//   * Initial render is manual-only and does not fetch.
+//   * Confirmed manual fetch shows three tabs (Retrieval, Proxy, Infra)
+//     and the dependencies strip.
 //   * Tier coloring routes correctly:
 //       - tier-1 fail surfaces a red top-of-page banner;
 //       - tier-2 fail leaves the banner absent and decorates the
@@ -14,12 +15,15 @@
 //   * The 503 path renders the "Dependencies unavailable" banner.
 //   * Manual refresh consumes a re-seeded envelope.
 //
-// Auto-polling is disabled in these tests (`autoRefresh: false`) so
-// the timer cannot leak into the test runner.
+// Health checks are manual-only, so tests explicitly confirm the
+// read-only diagnostic before expecting an envelope to render.
+
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:forge_and_flow/admin/models/health_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/health_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/health_admin_gateway.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
@@ -45,19 +49,51 @@ void main() {
     });
   }
 
-  testWidgets('renders three tabs with the dependencies strip', (tester) async {
+  Future<void> runHealthCheck(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('admin_health_confirm_dialog')),
+      findsOneWidget,
+    );
+    await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('initial render waits for a confirmed manual check', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingHealthGateway();
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.fetchCount, equals(0));
+    expect(find.byKey(const Key('admin_health_manual_prompt')), findsOneWidget);
+    expect(find.byKey(const Key('admin_health_tabs')), findsNothing);
+  });
+
+  testWidgets('confirmed manual check renders three tabs with dependencies', (
+    tester,
+  ) async {
     setLargeViewport(tester);
     final gateway = InMemoryHealthAdminGateway(envelope: _greenEnvelope());
     await tester.pumpWidget(
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_screen')), findsOneWidget);
     expect(find.byKey(const Key('admin_health_tabs')), findsOneWidget);
@@ -104,12 +140,11 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(tester.takeException(), isNull);
     expect(find.text('Health'), findsOneWidget);
@@ -144,12 +179,11 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
     // The 503 banner stays absent — tier-1 failure is metric-level,
@@ -172,12 +206,11 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(
       find.byKey(const Key('admin_health_dependencies_unavailable')),
@@ -206,12 +239,11 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     // Top-of-page tier-1 banner stays absent.
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsNothing);
@@ -232,17 +264,16 @@ void main() {
       wrap(
         HealthAdminScreen(
           gateway: gateway,
-          autoRefresh: false,
           now: () => DateTime.utc(2026, 5, 2, 12),
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsNothing);
 
-    // Now seed an envelope with a tier-1 fail and tap the Refresh
-    // button. The tier-1 banner should appear after the refresh.
+    // Now seed an envelope with a tier-1 fail and confirm another
+    // manual check. The tier-1 banner should appear after the fetch.
     final json = _greenEnvelope();
     (json['metrics']! as Map<String, Object?>)['azure_extensions_present'] =
         <String, Object?>{
@@ -256,11 +287,63 @@ void main() {
         };
     gateway.setEnvelope(json);
 
-    await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
-    await tester.pumpAndSettle();
+    await runHealthCheck(tester);
 
     expect(find.byKey(const Key('admin_health_tier1_banner')), findsOneWidget);
   });
+
+  testWidgets('manual health check does not auto-poll or stack in flight', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = _BlockingHealthGateway();
+    await tester.pumpWidget(
+      wrap(
+        HealthAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 2, 12),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(gateway.fetchCount, equals(0));
+    await tester.tap(find.byKey(const Key('admin_health_refresh_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_health_confirm_run')));
+    await tester.pump();
+
+    expect(
+      gateway.fetchCount,
+      equals(1),
+      reason: 'manual /health calls must not stack while one is in flight',
+    );
+    await tester.pump(const Duration(milliseconds: 55));
+    expect(gateway.fetchCount, equals(1));
+
+    await tester.pumpWidget(wrap(const SizedBox.shrink()));
+    gateway.completeOldest(HealthEnvelope.fromJson(_greenEnvelope()));
+    await tester.pump();
+  });
+}
+
+class _BlockingHealthGateway implements HealthAdminGateway {
+  int fetchCount = 0;
+  final List<Completer<HealthEnvelope>> _pending =
+      <Completer<HealthEnvelope>>[];
+
+  @override
+  Future<HealthEnvelope> fetch() {
+    fetchCount += 1;
+    final completer = Completer<HealthEnvelope>();
+    _pending.add(completer);
+    return completer.future;
+  }
+
+  void completeOldest(HealthEnvelope envelope) {
+    if (_pending.isEmpty) return;
+    _pending.removeAt(0).complete(envelope);
+  }
 }
 
 Map<String, Object?> _greenEnvelope() => <String, Object?>{
