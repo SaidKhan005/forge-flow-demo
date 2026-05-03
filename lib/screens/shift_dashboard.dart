@@ -8,10 +8,11 @@ import '../theme/app_theme.dart';
 import '../data/app_defaults.dart';
 import '../domain/models/restaurant_location.dart';
 import '../domain/models/service_period_definition.dart';
-import '../domain/services/business_date_resolver.dart';
 import '../domain/services/service_period_definition_resolver.dart';
+import '../services/shift_service_period_read_service.dart';
 import '../state/restaurant_scope_notifier.dart';
 import '../state/shift_dashboard_notifier.dart';
+import '../state/shift_service_period_notifier.dart';
 import '../models/current_state_freshness.dart';
 import '../models/shift_dashboard_read_model.dart';
 import '../utils/formatters.dart';
@@ -76,11 +77,25 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
             child: CircularProgressIndicator(color: AppColors.sunset),
           );
         }
+        // Phase 10.5.2 — pull-to-refresh must refresh BOTH the
+        // whole-day notifier and the per-period accumulator notifier
+        // so the daypart cards don't go stale relative to whole-day.
+        // Awaits both in parallel so the spinner only releases once
+        // both surfaces have rebuilt.
+        Future<void> refreshBoth() async {
+          final periodNotifier =
+              context.read<ShiftServicePeriodNotifier?>();
+          await Future.wait([
+            notifier.refresh(),
+            if (periodNotifier != null) periodNotifier.refresh(),
+          ]);
+        }
+
         final rm = notifier.readModel;
         if (rm == null) {
           return RefreshIndicator(
             color: AppColors.sunset,
-            onRefresh: () => notifier.refresh(),
+            onRefresh: refreshBoth,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -107,7 +122,7 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
           ),
           child: RefreshIndicator(
             color: AppColors.sunset,
-            onRefresh: () => notifier.refresh(),
+            onRefresh: refreshBoth,
             child: CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
@@ -182,26 +197,24 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
     ];
   }
 
-  /// Daypart scaffold — surface-only seam for slice 10.5.0. Renders the
-  /// service-period strip from [ServicePeriodDefinitionResolver.demoDefinitions]
-  /// so the operator can see the lens exists and which period is live; the
-  /// live bucketing engine, per-period metrics, and primary-driver teaching
-  /// land in subsequent 10.5 slices. The scaffold owns its own
-  /// restaurant-local clock and ticker — see [_DaypartScaffoldSection].
+  /// Daypart slivers — Phase 10.5.2 lights up the live per-period
+  /// accumulator. The scaffold reads from [ShiftServicePeriodNotifier]
+  /// (with a graceful fallback to `demoDefinitions` when the notifier
+  /// is missing) and renders one card per service-period definition
+  /// with covers / sales / CPLH / SPLH / PPA / blended-wage metrics
+  /// when the bucket has data. The time-into-service header
+  /// ("Lunch · 1h 12m in") sits above the SERVICE PERIODS sticky
+  /// header and only renders when an active period is in progress.
   List<Widget> _daypartSlivers() {
     return [
+      const SliverToBoxAdapter(child: _TimeIntoServiceHeader()),
       SliverMainAxisGroup(
         slivers: [
           SliverPersistentHeader(
             pinned: true,
-            delegate: StickySectionDelegate('SERVICE PERIODS'),
+            delegate: const StickySectionDelegate('SERVICE PERIODS'),
           ),
-          const SliverToBoxAdapter(
-            child: _DaypartScaffoldSection(
-              definitions:
-                  ServicePeriodDefinitionResolver.demoDefinitions,
-            ),
-          ),
+          const SliverToBoxAdapter(child: _DaypartScaffoldSection()),
         ],
       ),
     ];
@@ -722,13 +735,17 @@ class _ScopePill extends StatelessWidget {
   }
 }
 
-// ─── Daypart scaffold (Phase 10.5.0) ────────────────────────────────────────
+// ─── Daypart scaffold (Phase 10.5.0 → 10.5.2) ───────────────────────────────
 
-/// Surface-only scaffold for the daypart lens.
+/// Live daypart lens for the Shift surface.
 ///
-/// Renders one card per restaurant-scoped service-period definition
-/// (Lunch, Dinner, Late Night from the demo defaults) plus a banner
-/// reminding the operator that whole-day stays authoritative.
+/// Phase 10.5.0 opened the surface seam (cards + ACTIVE NOW chip).
+/// Phase 10.5.2 lights up the per-service-period accumulator: the
+/// scaffold now reads bucket totals from [ShiftServicePeriodNotifier]
+/// (covers, sales, CPLH, SPLH, PPA, blended-wage) and renders them
+/// on each card. Empty buckets show an explicit "no data yet" line so
+/// the operator never sees zeros that could be confused with real
+/// truth.
 ///
 /// **Time-source contract (mirrors `current_state_boundary_monitor.dart`):**
 /// the active-period chip is computed from `tz.TZDateTime.now(loc)` for
@@ -743,14 +760,8 @@ class _ScopePill extends StatelessWidget {
 /// Has its own `Timer.periodic` (default 30s) so the chip stays
 /// accurate when the operator parks on the daypart view across a
 /// service-period boundary (e.g. Lunch → no-period → Dinner).
-///
-/// This intentionally has no live metrics — the bucketing engine and
-/// per-period numbers come from later 10.5 slices. The job of this
-/// slice is to open the surface seam without replacing whole-day.
 class _DaypartScaffoldSection extends StatefulWidget {
-  final List<ServicePeriodDefinition> definitions;
-
-  const _DaypartScaffoldSection({required this.definitions});
+  const _DaypartScaffoldSection();
 
   @override
   State<_DaypartScaffoldSection> createState() =>
@@ -778,108 +789,64 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
     super.dispose();
   }
 
-  /// Restaurant-local now. Returns null when the restaurant scope or
-  /// its IANA timezone is unavailable — caller renders no `ACTIVE NOW`
-  /// chip in that case (no fallback to the device clock).
-  DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
-    final override = ShiftDashboard.clockOverride;
-    if (override != null) return override();
-    if (restaurant == null) return null;
-    final tzName = restaurant.businessTimezone.trim();
-    if (tzName.isEmpty) return null;
-    _ensureTzInitialized();
-    try {
-      final loc = tz.getLocation(tzName);
-      return tz.TZDateTime.now(loc);
-    } on tz.LocationNotFoundException {
-      return null;
-    }
-  }
-
-  /// Resolves the active service-period id for [localNow] using the
-  /// **business-date weekday** (not the wall-clock weekday). Pure;
-  /// safe to call from the build path.
-  static String? _resolveActivePeriodId({
-    required DateTime localNow,
-    required String businessDayStartLocalTime,
-    required List<ServicePeriodDefinition> definitions,
-  }) {
-    final businessDateIso = BusinessDateResolver.resolve(
-      localTimestamp: localNow,
-      businessDayStartLocalTime: businessDayStartLocalTime,
-    );
-    final businessDate = DateTime.parse(businessDateIso);
-    final businessWeekday = businessDate.weekday; // 1 = Mon ... 7 = Sun
-    final minutes = localNow.hour * 60 + localNow.minute;
-    for (final d in definitions) {
-      if (!d.applicableDays.contains(businessWeekday)) continue;
-      final start = _parseHm(d.startLocalTime);
-      final end = _parseHm(d.endLocalTime);
-      if (start == null || end == null) continue;
-      if (d.rollsPastMidnight) {
-        if (minutes >= start || minutes <= end) return d.id;
-      } else {
-        if (minutes >= start && minutes <= end) return d.id;
-      }
-    }
-    return null;
-  }
-
-  static int? _parseHm(String hm) {
-    final parts = hm.split(':');
-    if (parts.length != 2) return null;
-    final h = int.tryParse(parts[0]);
-    final m = int.tryParse(parts[1]);
-    if (h == null || m == null) return null;
-    return h * 60 + m;
-  }
-
   @override
   Widget build(BuildContext context) {
     final restaurant =
         context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+
+    final definitions = periodNotifier?.definitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+    final cutoff = periodNotifier?.businessDayStartLocalTime ??
+        _defaultBusinessDayStartLocalTime;
     final localNow = _restaurantLocalNow(restaurant);
     final activeId = localNow == null
         ? null
-        : _resolveActivePeriodId(
+        : resolveActiveServicePeriodId(
             localNow: localNow,
-            // Business-day cutoff defaults to 04:00 until the
-            // RestaurantTimingConfig wiring lands in this widget tree
-            // (deferred-foundation work the phase 10.5 plan calls out).
-            businessDayStartLocalTime: _defaultBusinessDayStartLocalTime,
-            definitions: widget.definitions,
+            businessDayStartLocalTime: cutoff,
+            definitions: definitions,
           );
     final ordered =
-        ServicePeriodDefinitionResolver.ordered(widget.definitions);
+        ServicePeriodDefinitionResolver.ordered(definitions);
+    final buckets = periodNotifier?.buckets;
+    final missingTimezone = periodNotifier?.missingTimezone ?? false;
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.backgroundMid, AppColors.cardGlow],
-              ),
-              border: Border.all(
-                color: AppColors.borderSubtle.withValues(alpha: 0.7),
-                width: 1,
+          if (missingTimezone)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.backgroundMid, AppColors.cardGlow],
+                  ),
+                  border: Border.all(
+                    color: AppColors.borderSubtle.withValues(alpha: 0.7),
+                    width: 1,
+                  ),
+                ),
+                child: Text(
+                  'Restaurant timezone is not configured. Per-period '
+                  'metrics are unavailable until Settings is completed.',
+                  style:
+                      AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
               ),
             ),
-            child: Text(
-              'Whole-day Shift remains the source of truth. Live daypart '
-              'projections build out in upcoming 10.5 slices.',
-              style: AppTextStyles.body13(color: AppColors.textSecondary),
-            ),
-          ),
-          const SizedBox(height: 8),
           for (final def in ordered) ...[
             _DaypartScaffoldCard(
               definition: def,
               isActive: def.id == activeId,
+              bucket: buckets?[def.id],
+              missingTimezone: missingTimezone,
             ),
             const SizedBox(height: 8),
           ],
@@ -892,15 +859,20 @@ class _DaypartScaffoldSectionState extends State<_DaypartScaffoldSection> {
 class _DaypartScaffoldCard extends StatelessWidget {
   final ServicePeriodDefinition definition;
   final bool isActive;
+  final ServicePeriodAccumulator? bucket;
+  final bool missingTimezone;
 
   const _DaypartScaffoldCard({
     required this.definition,
     required this.isActive,
+    required this.bucket,
+    this.missingTimezone = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = isActive ? AppColors.sunset : AppColors.borderSubtle;
+    final hasData = bucket?.hasAnyData ?? false;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
@@ -965,14 +937,228 @@ class _DaypartScaffoldCard extends StatelessWidget {
               ],
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 8),
+          if (hasData)
+            _DaypartMetricGrid(bucket: bucket!)
+          else
+            Text(
+              missingTimezone
+                  ? 'Timezone not configured — metrics unavailable.'
+                  : 'No data yet for this period.',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Compact 3-row metric grid for a single service-period bucket.
+///
+/// Layout (per-period, all values are actuals — no plan target on
+/// purpose, since per-period plan targets are not yet shipped):
+///   row 1: COVERS · SALES
+///   row 2: PPA · CPLH · SPLH
+///   row 3: HRS (FOH/BOH) · BLENDED WAGE
+class _DaypartMetricGrid extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  const _DaypartMetricGrid({required this.bucket});
+
+  @override
+  Widget build(BuildContext context) {
+    final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
+        bucket.fohMinutes % 60 == 0 ? 0 : 1);
+    final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
+        bucket.bohMinutes % 60 == 0 ? 0 : 1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCell(
+                label: 'COVERS',
+                value: '${bucket.covers}',
+              ),
+            ),
+            Expanded(
+              child: _MetricCell(
+                label: 'SALES',
+                value: '\$${bucket.sales.toStringAsFixed(0)}',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCell(
+                label: 'PPA',
+                value: '\$${bucket.ppa.toStringAsFixed(2)}',
+              ),
+            ),
+            Expanded(
+              child: _MetricCell(
+                label: 'CPLH',
+                value: bucket.cplh.toStringAsFixed(2),
+              ),
+            ),
+            Expanded(
+              child: _MetricCell(
+                label: 'SPLH',
+                value: '\$${bucket.splh.toStringAsFixed(0)}',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: _MetricCell(
+                label: 'HRS',
+                value: '$fohHrs FOH / $bohHrs BOH',
+              ),
+            ),
+            Expanded(
+              child: _MetricCell(
+                label: 'BLENDED WAGE',
+                value: '\$${bucket.blendedWage.toStringAsFixed(2)}',
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _MetricCell extends StatelessWidget {
+  final String label;
+  final String value;
+  const _MetricCell({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: AppTextStyles.mono10(color: AppColors.textMuted)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: AppTextStyles.mono14(
+            color: AppColors.textPrimary,
+            weight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Restaurant-local now resolver shared by the daypart scaffold and
+/// the time-into-service header. Returns null when the scope's IANA
+/// timezone is missing or unrecognized — callers must refuse to fall
+/// back to the device clock.
+DateTime? _restaurantLocalNow(RestaurantLocation? restaurant) {
+  final override = ShiftDashboard.clockOverride;
+  if (override != null) return override();
+  if (restaurant == null) return null;
+  final tzName = restaurant.businessTimezone.trim();
+  if (tzName.isEmpty) return null;
+  _ensureTzInitialized();
+  try {
+    final loc = tz.getLocation(tzName);
+    return tz.TZDateTime.now(loc);
+  } on tz.LocationNotFoundException {
+    return null;
+  }
+}
+
+// ─── Time-into-service header (Phase 10.5.2) ────────────────────────────────
+
+/// Thin header strip rendered above the SERVICE PERIODS sticky group
+/// when the daypart lens is open. Shows the active period label and
+/// elapsed minutes (e.g., "Lunch · 1h 12m in"). Hidden when no period
+/// is active (between Lunch and Dinner) or when the restaurant has no
+/// usable IANA timezone.
+///
+/// Owns its own 30-second ticker so the elapsed display stays current
+/// without a snapshot refresh.
+class _TimeIntoServiceHeader extends StatefulWidget {
+  const _TimeIntoServiceHeader();
+
+  @override
+  State<_TimeIntoServiceHeader> createState() => _TimeIntoServiceHeaderState();
+}
+
+class _TimeIntoServiceHeaderState extends State<_TimeIntoServiceHeader> {
+  static const Duration _tickInterval = Duration(seconds: 30);
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(_tickInterval, (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final restaurant =
+        context.watch<RestaurantScopeNotifier?>()?.restaurant;
+    final periodNotifier = context.watch<ShiftServicePeriodNotifier?>();
+    final definitions = periodNotifier?.definitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+    final cutoff = periodNotifier?.businessDayStartLocalTime ??
+        _defaultBusinessDayStartLocalTime;
+    final localNow = _restaurantLocalNow(restaurant);
+    if (localNow == null) return const SizedBox.shrink();
+    final interval = resolveActiveServicePeriodInterval(
+      localNow: localNow,
+      businessDayStartLocalTime: cutoff,
+      definitions: definitions,
+    );
+    if (interval == null) return const SizedBox.shrink();
+    final elapsedMinutes = localNow.difference(interval.start).inMinutes;
+    if (elapsedMinutes < 0) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.sunset,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 8),
           Text(
-            'Daypart bucketing not yet wired.',
-            style: AppTextStyles.mono10(color: AppColors.textMuted),
+            '${interval.definition.label} · ${_formatElapsed(elapsedMinutes)} in',
+            style: AppTextStyles.mono12(color: AppColors.sunsetDark),
           ),
         ],
       ),
     );
+  }
+
+  static String _formatElapsed(int totalMinutes) {
+    final hours = totalMinutes ~/ 60;
+    final minutes = totalMinutes % 60;
+    if (hours == 0) return '${minutes}m';
+    return '${hours}h ${minutes}m';
   }
 }
 

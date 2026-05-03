@@ -19,6 +19,9 @@ Recent archive landmarks:
 - `phases/phase_7_61/7.61.1_acceptance_closeout.md` records the accepted
   F-1 driver-key analyzer cleanup while the wider Phase 7.61 family stays
   live.
+- `phases/phase_10_5/10_5_2_per_period_read_service_closeout.md`
+  records the accepted 10.5.2 per-period read service + Shift cards +
+  Variance lens closeout while the Phase 10.5 planning doc stays active.
 
 ## Working Rule
 

@@ -7,10 +7,12 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
 
 ## Now
 
-- **Active**: `10.5.0` daypart toggle scaffold + `10.5.1` bucketing
-  engine accepted; `10.5.2` per-period read service and `10.5.3+`
-  primary-driver teaching are next. Evidence:
-  `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`.
+- **Active**: `10.5.0` daypart toggle scaffold, `10.5.1` bucketing
+  engine, and `10.5.2` per-period read service + Shift cards + Variance
+  lens accepted; `10.5.3+` primary-driver teaching is next. Evidence:
+  `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`,
+  `docs/_walkthroughs/10.5.2.md`; 10.5.2 closeout:
+  `docs/archive/phases/phase_10_5/10_5_2_per_period_read_service_closeout.md`.
 - 11A Operations Console foundation now spans `11A.0`–`5`/`7`/`UX.health`
   accepted. `11A.5` Debug Console is complete with walkthrough evidence at
   `docs/_walkthroughs/11A.5.md`; `11A.6` cost/dependency observability is the
@@ -22,7 +24,7 @@ This is a routing map, not the full plan. Slice scopes live in their phase doc.
   `docs/contracts/slice_runtime_acceptance_contract.md`. Authenticated
   screen/action timing still needs explicit credential-send approval.
 - **Recent accepted batches**: PRs #41-66 closed HARD-A-H, 7.58/7.61,
-  10a.0, 10.5.0/1, 11A foundation/B44, admin MFA/staging stabilization,
+  10a.0, 10.5.0/1/2, 11A foundation/B44, admin MFA/staging stabilization,
   and postgres/MFA test parcels. Details live in phase docs, walkthroughs, and
   `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-05-02.md`.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
@@ -81,8 +83,8 @@ runbook companion). Phase 7.58 is zero-DRIFT. Next candidates by readiness:
    Operator-driven; no code change needed.
 2. **B43 Production1 anchor deploy** — needs Production GCP project provisioning.
 3. **`10a` realtime push channel** — Phase 10a NOTIFY → Pub/Sub → WebSocket.
-4. **`10.5` follow-on slices** — `10.5.1` bucketing engine accepted; per-period
-   read service (`10.5.2`) + primary-driver teaching (`10.5.3+`) next
+4. **`10.5` follow-on slices** — `10.5.2` per-period read service + Shift
+   cards + Variance lens accepted; primary-driver teaching (`10.5.3+`) next
    per phase doc.
 5. **`7.61` pre-Phase-8 cleanup** - driver-key audit; `.1` accepted,
    `.2`/`.3` queued, `.4` deferred; gated before Phase 8.
@@ -101,7 +103,7 @@ Live board lists active + queued only.
 | `11A` foundation | active; `0`–`5`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `6`/`8`/`9`/`10` not started | `phase_11A_operations_console_plan.md` |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 itself stays open until `9.8` lands; B41/B43/B44/B45/B46/B47/B48 are operational gates | `phase_9/*` |
 | `7.58` | `7.58.0` + `7.58.5` + `7.58.UX.5` accepted; zero DRIFT. `7.58.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
-| `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted; per-period read service + driver teaching queued | `phase_10_5/*` |
+| `10.5` | active; `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine + `10.5.2` per-period read service/Shift cards/Variance lens accepted; `10.5.3+` primary-driver teaching queued | `phase_10_5/*` |
 | `7.61` | active; `7.61.0` audit pinned; `7.61.1` F-1 accepted (HistoryTeachingAnalyzer unknown-id fallthrough removed, 28 active + 1 F-2 holdout skipped, walkthrough `7.61.1.md`); `.2`/`.3` queued per F-2/F-3; `.4` deferred to `cutover.0b` (F-A); F-B (`shifts.primary_lever` lowercase migration) deferred post-`cutover.5` | `phase_7_61/*` |
 | `10a` | active; `10a.0` realtime push channel scaffold (NOTIFY → claim → in-process publisher → WebSocket) — Pub/Sub adapter + dead-letter + retention sweep + tripwires + UX surfaces queued | `phase_10a/*` |
 | `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |

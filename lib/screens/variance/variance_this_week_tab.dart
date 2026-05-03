@@ -13,8 +13,11 @@ import '../../state/active_target_profile_notifier.dart';
 import '../../data/app_defaults.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';
+import '../../services/shift_service_period_read_service.dart';
+import '../../state/shift_service_period_notifier.dart';
 import '../../state/week_data_notifier.dart';
 import '../../domain/models/service_period_definition.dart';
+import '../../domain/services/service_period_definition_resolver.dart';
 import '../../models/shift_record.dart';
 import '../../models/variance_week_projection_row.dart';
 import '../../models/week_data.dart';
@@ -56,9 +59,28 @@ class ThisWeekTab extends StatelessWidget {
 
 // ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ This Week content ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬
 
-class _ThisWeekContent extends StatelessWidget {
+/// Variance "This Week" scope. Whole-week (default + authoritative)
+/// shows WTD vs Plan + Dollar Impact + Primary Driver + Full Week
+/// Projection. Daypart (Phase 10.5.2) renders today's per-service-
+/// period accumulator from [ShiftServicePeriodNotifier] alongside —
+/// never replacing — the whole-week truth.
+enum VarianceScope { wholeWeek, daypart }
+
+class _ThisWeekContent extends StatefulWidget {
   final WeekData weekData;
   const _ThisWeekContent({required this.weekData});
+
+  @override
+  State<_ThisWeekContent> createState() => _ThisWeekContentState();
+}
+
+class _ThisWeekContentState extends State<_ThisWeekContent> {
+  VarianceScope _scope = VarianceScope.wholeWeek;
+
+  void _setScope(VarianceScope next) {
+    if (_scope == next) return;
+    setState(() => _scope = next);
+  }
 
   static String _formatMonthDay(String isoDate) {
     const months = [
@@ -87,6 +109,7 @@ class _ThisWeekContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final weekData = widget.weekData;
     // 7.58.UX.5 (F-1): explicit lookup; null → on_model / unknown id, render
     // the degraded `LeverCardNotYetAvailable` instead of silently falling
     // through to coversDown. See phase_7_58_primary_driver_contract.md.
@@ -118,6 +141,30 @@ class _ThisWeekContent extends StatelessWidget {
           ),
         ),
 
+        // Phase 10.5.2 — Whole Week | Daypart scope toggle. Whole Week
+        // is the default and stays the source of truth for week-to-date
+        // variance; Daypart opens a today-scoped per-service-period
+        // lens reading from `ShiftServicePeriodNotifier`.
+        SliverToBoxAdapter(
+          child: _VarianceScopeToggle(
+            scope: _scope,
+            onChanged: _setScope,
+          ),
+        ),
+
+        if (_scope == VarianceScope.daypart) ...[
+          SliverMainAxisGroup(
+            slivers: [
+              SliverPersistentHeader(
+                pinned: true,
+                delegate:
+                    StickySectionDelegate('SERVICE PERIODS · TODAY'),
+              ),
+              const SliverToBoxAdapter(child: _DaypartVarianceLens()),
+              const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            ],
+          ),
+        ] else ...[
         // WTD Variance Table
         SliverMainAxisGroup(
           slivers: [
@@ -184,7 +231,289 @@ class _ThisWeekContent extends StatelessWidget {
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
+        ],
       ],
+    );
+  }
+}
+
+// ── Variance scope toggle (Phase 10.5.2) ──────────────────────────────
+
+/// Segmented control mirroring the Shift dashboard's scope pills.
+/// Whole Week stays the default + authoritative; Daypart adds the
+/// per-service-period lens alongside (Hard Promise: Shift's whole-day
+/// view is authoritative; 10.5 adds daypart alongside, never replacing.
+/// Variance follows the same posture.)
+class _VarianceScopeToggle extends StatelessWidget {
+  final VarianceScope scope;
+  final ValueChanged<VarianceScope> onChanged;
+
+  const _VarianceScopeToggle({
+    required this.scope,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: _VariancePill(
+              label: 'Whole Week',
+              selected: scope == VarianceScope.wholeWeek,
+              onTap: () => onChanged(VarianceScope.wholeWeek),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _VariancePill(
+              label: 'Daypart',
+              selected: scope == VarianceScope.daypart,
+              onTap: () => onChanged(VarianceScope.daypart),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VariancePill extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  const _VariancePill({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bgColor = selected ? AppColors.sunset : AppColors.backgroundMid;
+    final borderColor = selected
+        ? AppColors.sunsetDark
+        : AppColors.borderSubtle.withValues(alpha: 0.7);
+    final textColor =
+        selected ? AppColors.textPrimary : AppColors.textSecondary;
+    return Semantics(
+      button: true,
+      selected: selected,
+      label: label,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+          decoration: BoxDecoration(
+            color: bgColor,
+            border: Border.all(color: borderColor, width: 1),
+            borderRadius: BorderRadius.circular(2),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: AppTextStyles.mono12(
+              color: textColor,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Daypart variance lens (Phase 10.5.2) ──────────────────────────────
+
+/// Per-service-period variance lens. Renders one card per defined
+/// service period using the same accumulator the Shift daypart cards
+/// consume — keeps the two surfaces' numbers reconciliable by
+/// construction.
+class _DaypartVarianceLens extends StatelessWidget {
+  const _DaypartVarianceLens();
+
+  @override
+  Widget build(BuildContext context) {
+    final notifier = context.watch<ShiftServicePeriodNotifier?>();
+    final definitions = notifier?.definitions ??
+        ServicePeriodDefinitionResolver.demoDefinitions;
+    final ordered =
+        ServicePeriodDefinitionResolver.ordered(definitions);
+    final buckets = notifier?.buckets;
+    final isLoading = notifier?.isLoading ?? false;
+    final missingTimezone = notifier?.missingTimezone ?? false;
+
+    if (isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        child: Center(
+          child: CircularProgressIndicator(color: AppColors.sunset),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (missingTimezone)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Text(
+                'Restaurant timezone is not configured. Per-period '
+                'numbers are unavailable until Settings has been '
+                'completed.',
+                style:
+                    AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
+          for (final def in ordered) ...[
+            _DaypartVarianceCard(
+              definition: def,
+              bucket: buckets?[def.id],
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DaypartVarianceCard extends StatelessWidget {
+  final ServicePeriodDefinition definition;
+  final ServicePeriodAccumulator? bucket;
+  const _DaypartVarianceCard({
+    required this.definition,
+    required this.bucket,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasData = bucket?.hasAnyData ?? false;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.backgroundMid, AppColors.cardGlow],
+        ),
+        border: Border.all(
+          color: AppColors.borderSubtle.withValues(alpha: 0.7),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.sunset.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Text(
+                  definition.shortLabel,
+                  style: AppTextStyles.mono10(color: AppColors.sunsetDark)
+                      .copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  definition.label,
+                  style: AppTextStyles.mono14(
+                    color: AppColors.textPrimary,
+                    weight: FontWeight.w700,
+                  ),
+                ),
+              ),
+              Text(
+                '${definition.startLocalTime} – ${definition.endLocalTime}',
+                style: AppTextStyles.mono10(color: AppColors.textMuted),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (hasData)
+            _DaypartVarianceMetrics(bucket: bucket!)
+          else
+            Text(
+              'No data yet for this period.',
+              style: AppTextStyles.mono10(color: AppColors.textMuted),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DaypartVarianceMetrics extends StatelessWidget {
+  final ServicePeriodAccumulator bucket;
+  const _DaypartVarianceMetrics({required this.bucket});
+
+  @override
+  Widget build(BuildContext context) {
+    final fohHrs = (bucket.fohMinutes / 60).toStringAsFixed(
+        bucket.fohMinutes % 60 == 0 ? 0 : 1);
+    final bohHrs = (bucket.bohMinutes / 60).toStringAsFixed(
+        bucket.bohMinutes % 60 == 0 ? 0 : 1);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _VarianceMetricRow(label: 'Covers', value: '${bucket.covers}'),
+        _VarianceMetricRow(
+            label: 'Sales', value: '\$${bucket.sales.toStringAsFixed(0)}'),
+        _VarianceMetricRow(
+            label: 'PPA', value: '\$${bucket.ppa.toStringAsFixed(2)}'),
+        _VarianceMetricRow(
+            label: 'CPLH', value: bucket.cplh.toStringAsFixed(2)),
+        _VarianceMetricRow(
+            label: 'SPLH', value: '\$${bucket.splh.toStringAsFixed(0)}'),
+        _VarianceMetricRow(
+            label: 'FOH / BOH Hrs', value: '$fohHrs / $bohHrs'),
+        _VarianceMetricRow(
+            label: 'Blended Wage',
+            value: '\$${bucket.blendedWage.toStringAsFixed(2)}'),
+      ],
+    );
+  }
+}
+
+class _VarianceMetricRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _VarianceMetricRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: AppTextStyles.mono12(color: AppColors.textSecondary),
+            ),
+          ),
+          Text(
+            value,
+            style: AppTextStyles.mono12(
+              color: AppColors.textPrimary,
+              weight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

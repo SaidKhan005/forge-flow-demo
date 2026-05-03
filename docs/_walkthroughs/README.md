@@ -53,6 +53,7 @@ live here side-by-side (e.g. `7.58.0.md` audit + `7.58.UX.5.md` fix).
 |---|---|---|
 | [`10.5.0.md`](10.5.0.md) | `10.5.0` | Daypart toggle scaffold on Shift dashboard |
 | [`10.5.1.md`](10.5.1.md) | `10.5.1` | Daypart bucketing engine (pure-function `DaypartBucketer`) |
+| [`10.5.2.md`](10.5.2.md) | `10.5.2` | Per-period read service, Shift service-period cards, time-into-service, and Variance daypart lens |
 
 ## Phase 10a — Realtime Push Channel
 

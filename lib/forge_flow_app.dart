@@ -31,6 +31,7 @@ import 'state/restaurant_scope_notifier.dart';
 import 'services/auth/account_info_gateway.dart';
 import 'state/schedule_distribution_weights_notifier.dart';
 import 'state/shift_dashboard_notifier.dart';
+import 'state/shift_service_period_notifier.dart';
 import 'state/week_data_notifier.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_restaurant_scope_repository.dart';
 import 'infrastructure/persistence/sqlite/repositories/sqlite_shift_record_repository.dart';
@@ -126,6 +127,11 @@ class ForgeFlowScope extends StatelessWidget {
         ChangeNotifierProvider<ShiftDashboardNotifier>(
           create: (_) => ShiftDashboardNotifier(),
         ),
+        // Phase 10.5.2 — per-service-period accumulator surface for the
+        // Shift daypart lens and Variance daypart lens.
+        ChangeNotifierProvider<ShiftServicePeriodNotifier>(
+          create: (_) => ShiftServicePeriodNotifier(),
+        ),
         // Phase 7.55i.1 — canonical demand forecast context from closed shifts.
         // Loads on creation; Schedule/Shift/Audit read .context for demand.
         ChangeNotifierProvider<DemandForecastContextNotifier>(
@@ -165,6 +171,7 @@ class ForgeFlowScope extends StatelessWidget {
             activeTarget: ctx.read<ActiveTargetProfileNotifier>(),
             weekData: ctx.read<WeekDataNotifier>(),
             shiftDashboard: ctx.read<ShiftDashboardNotifier>(),
+            shiftServicePeriod: ctx.read<ShiftServicePeriodNotifier>(),
             demandForecast: ctx.read<DemandForecastContextNotifier>(),
             scheduleWeights: ctx.read<ScheduleDistributionWeightsNotifier>(),
           ),

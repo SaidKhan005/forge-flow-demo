@@ -1,7 +1,7 @@
 # Phase 10.5 - Shift Daypart-Aware Service Period View + Primary Driver
 
-Updated: 2026-05-02
-Status: Active. `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted 2026-05-02. `10.5.0` opens the Shift dashboard segmented control (whole-day stays default + authoritative). `10.5.1` ships the pure-function `DaypartBucketer` (POS / labor punch with split / reservation) sitting on `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; engine is stateless, segments include `non_service` slivers, and missing IANA tz throws `MissingTimezoneError`. Per-period read service + driver teaching slices queued. Walkthroughs: `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`.
+Updated: 2026-05-03
+Status: Active. `10.5.0` daypart toggle scaffold + `10.5.1` bucketing engine accepted 2026-05-02. `10.5.2` per-period read service + Shift cards + Variance lens accepted 2026-05-03. `10.5.0` opens the Shift dashboard segmented control (whole-day stays default + authoritative). `10.5.1` ships the pure-function `DaypartBucketer` (POS / labor punch with split / reservation) sitting on `ServicePeriodDefinitionResolver` + `BusinessDateResolver`; engine is stateless, segments include `non_service` slivers, and missing IANA tz throws `MissingTimezoneError`. `10.5.2` ships `ShiftServicePeriodReadService`, `ShiftServicePeriodNotifier`, live daypart cards, active-period time-in-service, and the additive Variance daypart lens. Daypart-live primary-driver teaching remains queued. Walkthroughs: `docs/_walkthroughs/10.5.0.md`, `docs/_walkthroughs/10.5.1.md`, `docs/_walkthroughs/10.5.2.md`.
 Owner: Shift / daypart lane
 
 ## Slice History
@@ -10,8 +10,31 @@ Owner: Shift / daypart lane
   `docs/_walkthroughs/10.5.0.md`)
 - `10.5.1` — daypart bucketing engine (RESOLVED 2026-05-02; walkthrough
   `docs/_walkthroughs/10.5.1.md`)
-- `10.5.2` — per-period read service (queued)
+- `10.5.2` — per-period read service + Shift cards + Variance lens
+  (RESOLVED 2026-05-03; walkthrough `docs/_walkthroughs/10.5.2.md`;
+  closeout archived at
+  `docs/archive/phases/phase_10_5/10_5_2_per_period_read_service_closeout.md`)
 - `10.5.3+` — daypart-live primary-driver teaching (queued)
+
+## Accepted Through 10.5.2
+
+- Shift whole-day remains the default and authoritative view.
+- Shift Daypart now renders per-service-period actuals from
+  `ShiftServicePeriodNotifier` instead of the 10.5.0 placeholder.
+- `ShiftServicePeriodReadService` accumulates canonical POS/labor facts into
+  covers, sales, checks, FOH/BOH minutes, wage dollars, CPLH, SPLH, PPA, and
+  blended wage.
+- Labor punches honor the Jim Taylor split rule: only in-period minutes count;
+  `non_service` gap minutes are excluded from CPLH/SPLH denominators.
+- POS and labor correction replay is keyed by source-id replacement semantics.
+- Active-period resolution is sub-minute exact: exact period endpoints are
+  inclusive, and any instant after the endpoint is a gap unless another period
+  starts there.
+- Shift and Variance daypart lenses share the same notifier/bucket source, and
+  manual/app refresh paths update the per-period buckets alongside whole-day
+  state.
+- Missing or unusable restaurant timezones degrade explicitly as configuration
+  unavailable, never as silent zero metrics.
 
 ## Decisions Locked (2026-04-23 review)
 
@@ -309,7 +332,8 @@ On `order_modified`, `order_voided`, `punch_edit`, or `punch_delete`:
 
 ## Dependencies
 
-Required before Phase 10.5 build can start:
+Remaining foundation and production dependencies after the accepted 10.5.2
+demo-backed read surface:
 
 - Foundation closure (app-owned, deferred today):
   - Persist `businessDayStartLocalTime` setting
@@ -327,7 +351,7 @@ Required before Phase 10.5 build can start:
   - `businessDate` from `BusinessDateResolver`
   - `correction` field for replacement semantics
 
-Required for Phase 10.5 validation in production:
+Required for Phase 10.5 validation against real vendor data:
 
 - `Phase 8` Toast POS adapter producing real order facts with clean
   timestamps.
@@ -336,8 +360,8 @@ Required for Phase 10.5 validation in production:
 - `Phase 8R` OpenTable adapter (useful for daypart reservation signal
   but not strictly required for initial 10.5 launch).
 
-Build and validate against demo data works without Phase 8; validation
-against real vendor data requires Phase 8 to be stable.
+Build and widget validation against demo data is accepted through 10.5.2.
+Validation against real vendor data still requires Phase 8 to be stable.
 
 ## Non-Negotiables
 
@@ -354,7 +378,9 @@ against real vendor data requires Phase 8 to be stable.
 
 ## Source Material
 
-This phase is built against real vendor capability data, not synthesis.
+This phase plan is built against real vendor capability data, not vendor-field
+guesswork. The accepted 10.5.2 runtime path uses a demo synthesizer only until
+Phase 8 lands canonical POS/Labor facts.
 
 Vendor capability audit (official-documentation-backed, 7.55n.12):
 
@@ -394,5 +420,7 @@ Integration requirements:
 - Per-daypart OPZ rendering is adjacent but not in this phase's core
   scope; it can slot in once daypart buckets are producing live
   numbers.
-- Tracker folding: add to `PROJECT_TRACKER.md` Active Planning Docs
-  list on the next Codex pass.
+- Archive verdict after 10.5.2: keep this phase doc live because `10.5.3+`
+  is still queued. The completed 10.5.2 closeout/result material is archived
+  under `docs/archive/phases/phase_10_5/`; the walkthrough stays in
+  `docs/_walkthroughs/` until the entire Phase 10.5 family closes.
