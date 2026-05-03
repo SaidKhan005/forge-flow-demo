@@ -109,9 +109,9 @@ App owns:
 - `docs/contracts/phase_7_55_time_boundary_contract.md`
 - `docs/contracts/phase_7_55_target_cycle_weekly_plan_rules.md`
 - `docs/contracts/phase_7_61_driver_key_contract.md`
-- `docs/phases/phase_7_61/phase_7_61_audit_plan.md`
+- `docs/archive/phases/phase_7_61/phase_7_61_audit_plan.md` (archived)
 - `docs/contracts/slice_runtime_acceptance_contract.md`
-- `docs/phases/phase_10_5/phase_10_5_shift_daypart_service_period_view_and_primary_driver.md`
+- `docs/archive/phases/phase_10_5/phase_10_5_shift_daypart_service_period_view_and_primary_driver.md` (archived 2026-05-03)
 - `docs/_walkthroughs/10.5.2.md`
 - `docs/archive/phases/phase_8_gate/`
 

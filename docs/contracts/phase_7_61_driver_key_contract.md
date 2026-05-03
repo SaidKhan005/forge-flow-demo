@@ -3,7 +3,7 @@
 Updated: 2026-05-03
 Owner: Codex architecture
 Status: Active authority for `7.61` sub-slice family
-Companion: `docs/phases/phase_7_61/phase_7_61_audit_plan.md`
+Companion: `docs/archive/phases/phase_7_61/phase_7_61_audit_plan.md` (archived 2026-05-03 after `.0`/`.1`/`.2`/`.3` accepted; `.4` carried to `cutover.0b`)
 
 ## Why This Exists
 
@@ -258,8 +258,9 @@ Findings F-A and F-B.
 | `7.61.3` | `demo_fixture_data.dart` `firstWhere(orElse: …)` cleanup + dev-only audit (F-3 below) |
 | `7.61.4` | optional CHECK constraints on `week_records.primary_lever_id` form during Postgres cutover (F-A below) — defers to `cutover.0b` if the form column hasn't been touched by then |
 
-`docs/phases/phase_7_61/phase_7_61_audit_plan.md` owns the per-slice
-scope, Frontend Exposure, hard gates, and the running Findings list.
+`docs/archive/phases/phase_7_61/phase_7_61_audit_plan.md` (archived) owns
+the per-slice scope, Frontend Exposure, hard gates, and the running
+Findings list.
 **All `7.61.*` sub-slices must accept before Phase 8 opens** (per
 `PROJECT_TRACKER.md` Hard Gates).
 

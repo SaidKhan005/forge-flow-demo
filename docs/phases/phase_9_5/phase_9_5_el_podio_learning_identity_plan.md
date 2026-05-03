@@ -1,7 +1,7 @@
 # Phase 9.5 - El Podio Learning Identity
 
-Updated: 2026-04-26
-Status: Planned
+Updated: 2026-05-03
+Status: Active. `9.5.0` Postgres leaderboard schema + RLS skeleton accepted 2026-05-03 (migration `db/migrations/202605030000_phase_9_5_0_leaderboard_schema_rls.sql`; repository `lib/infrastructure/persistence/postgres/repositories/leaderboard_score_repository.dart`; walkthrough `docs/_walkthroughs/9.5.0.md`). UX (`9.5.UX.*` family) and Recognition/Operations El Podio pulls remain queued.
 Owner: Future El Podio learning lane
 
 Last review: 2026-04-23 - Backend stack pivoted from Firestore to Postgres alongside Phase 9. Leaderboard tables use RLS policies for per-operator scoping; JWT claims from Firebase Auth drive the scoping.

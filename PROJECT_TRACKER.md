@@ -7,19 +7,27 @@ Routing map only. Slice scopes live in their phase docs.
 
 ## Now
 
-- **Latest sprint accepted (PRs #74-79, 2026-05-03)**: `7.61.2` (F-2
-  empty-leak default flip), `7.61.3` (F-3 dev-fixture lookup honesty),
-  `10a.UX.0` (sync-state badge + auth bridge), `10a.UX.1` (peer-edit
-  toast + Settings freshness rows), plus staging admin debug/observability
-  routes, Codex MCP helpers, Cloud Run deploy helpers, and a runbook
-  refresh. Walkthroughs at `docs/_walkthroughs/7.61.2.md` /
-  `7.61.3.md` / `10a.UX.0.md` / `10a.UX.1.md`.
-- **Pre-Phase-8 driver-key gate satisfied.** All `7.61.*` non-deferred
-  slices accepted; `.4` deferred to `cutover.0b` (F-A), F-B has no
-  slice owner (post-`cutover.5`).
+- **Latest sprint accepted (PRs #80-83 + standalone commits, 2026-05-03)**:
+  `10.5.3` daypart-live primary-driver chip (closes Phase 10.5),
+  `9.5.0` El Podio leaderboard schema + RLS skeleton (opens Phase 9.5),
+  `10a.1` Cloud Pub/Sub publisher adapter (#1 of 5 queued 10a
+  follow-ups). Plus `d46329a` admin/settings UI relabel, `b82c933`
+  migration-policy replay safety, `ae6cb77` Debug Console request-log
+  read grant migration, `caacffb` Production1 migration apply record,
+  `7d33eae` performance framework doc. Walkthroughs at
+  `docs/_walkthroughs/10.5.3.md` / `9.5.0.md` / `10a.1.md`.
+- **Phase 10.5 closed; phase doc archived** at
+  `docs/archive/phases/phase_10_5/phase_10_5_shift_daypart_service_period_view_and_primary_driver.md`.
+  All 4 slices (`.0`/`.1`/`.2`/`.3`) accepted.
+- **Phase 7.61 closed; audit plan archived** at
+  `docs/archive/phases/phase_7_61/phase_7_61_audit_plan.md`. All
+  non-deferred slices (`.0`/`.1`/`.2`/`.3`) accepted; F-A carried into
+  `cutover.0b` per cutover plan; F-B (no owner) carried
+  post-`cutover.5`. Driver-key contract
+  `docs/contracts/phase_7_61_driver_key_contract.md` stays active.
 - **2026-05-03 staging runtime/perf remediation** captured in
   `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`;
-  durable future-slice rules in
+  durable rules in
   `docs/contracts/slice_runtime_acceptance_contract.md`. Authenticated
   screen/action timing still needs explicit credential-send approval.
 - **`cutover.0a` + `cutover.0a.pg` complete (2026-05-01)**. Production1
@@ -28,9 +36,8 @@ Routing map only. Slice scopes live in their phase docs.
   2026-05-03; `cutover.1` repeats verification before corpus load.
 - **Post-cutoff staging migration addition**:
   `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-  is a Debug Console `forge_admin` request-log read grant. It is applied and
-  Browser Use verified on staging; it was not part of the 2026-05-03
-  Production1 apply and is the only migration currently pending Production1.
+  is a Debug Console `forge_admin` request-log read grant. Applied +
+  Browser Use verified on staging; pending Production1 apply.
 - **Production1 GCP/Firebase/proxy/DNS setup paused** per operator
   direction 2026-05-03. Project/Firebase shell exists; runtime needs
   Firebase apps/configs, runtime APIs, deploy SA, static egress, DNS,
@@ -69,11 +76,12 @@ Prefer `.mcp.json` servers for orientation when available: `forgeflow_docs`
 
 | Slice prefix | Read |
 | --- | --- |
-| `11a.*` | substrate accepted (no new slices); historical plan at `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`; live decision register at `phase_11a/phase_11a_decision_register.md` |
+| `11a.*` | substrate accepted; archived plan at `docs/archive/phases/phase_11a/phase_11a_advisor_infrastructure_plan.md`; live decision register at `phase_11a/phase_11a_decision_register.md` |
 | `11A.*` | `phase_11A_operations_console/phase_11A_operations_console_plan.md` |
 | `cutover.*` | `phase_production_cutover/phase_production_cutover_plan.md` (+ scalability decisions for `0a`; perf audit for `0b`) |
 | `9.0Σ.*`, `9.live-closeout`, `9.0-9.10` | `phase_9/phase_9_auth_plan.md` + `phase_9_execution_backlog.md` |
-| `9.8`, `10a`/`10b`/`10.5`, `9.5`/`9.75`, `7.58`/`7.61`, `8`/`8R`/`8.5`, `11b*`, `12.*` | that phase's doc under `docs/phases/**` |
+| `7.61` / `10.5` (both closed) | archived at `docs/archive/phases/phase_7_61/` and `docs/archive/phases/phase_10_5/`; carry-forward items live in `phase_production_cutover_plan.md` |
+| `9.8`, `10a`/`10b`, `9.5`/`9.75`, `7.58`, `8`/`8R`/`8.5`, `11b*`, `12.*` | that phase's doc under `docs/phases/**` |
 
 ## North Star
 
@@ -89,15 +97,16 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | --- | --- | --- |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted on master + applied to staging; phase 9 stays open until `9.8` lands | `phase_9/*` |
 | `7.58` | `.0`/`.5`/`.UX.5` accepted; `.1`/`.2`/`.3`/`.4` queued; zero DRIFT | `phase_7_58/*` |
-| `7.61` | `.0`/`.1`/`.2`/`.3` accepted (driver-key gate satisfied); `.4` deferred to `cutover.0b` (F-A); F-B post-`cutover.5`, no owner | `phase_7_61/*` |
-| `10.5` | `.0`/`.1`/`.2` accepted; `.3+` daypart-live primary-driver teaching queued | `phase_10_5/*` |
-| `10a` | `.0` realtime scaffold + `UX.0` + `UX.1` accepted; Pub/Sub adapter + dead-letter + retention sweep + tripwires + `last_event_id` replay queued | `phase_10a/*` |
+| `7.61` (closed) | all 4 non-deferred slices accepted; F-A → `cutover.0b`, F-B post-`cutover.5` no owner | `docs/archive/phases/phase_7_61/` |
+| `10.5` (closed) | all 4 slices (`.0`/`.1`/`.2`/`.3`) accepted | `docs/archive/phases/phase_10_5/` |
+| `10a` | `.0`/`.1` + `UX.0`/`UX.1` accepted; `.2` dead-letter, `.3` retention sweep, `.4` tripwires, `.5` last_event_id replay queued | `phase_10a/*` |
+| `9.5` | `.0` accepted; `.UX.*` queued (Barrio identity surfaces); Recognition/Operations El Podio later | `phase_9_5/*` |
 | `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started | `phase_11A_operations_console/*` |
-| `9.5`, `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
+| `9.75`, `8`, `8R`, `8.5` | queued | their respective plans |
 | `11b`/`11b.1`/`11b.2` | queued (gated on B43 prod anchor) | `phase_11b/*` |
 | `12.0`–`12.5` | queued (gated by B41 live apply) | `phase_12_workflow_platform/*` |
 | `9.8` | queued (launch-blocking; sequenced after auth + vendor contracts) | `phase_9_8/*` |
-| `cutover.0b` | queued — Tier-M perf gate; needs `cutover.1` corpus seed first | `phase_production_cutover/*` |
+| `cutover.0b` | queued — Tier-M perf gate; needs `cutover.1` corpus seed first; absorbs `7.61.4` (F-A) | `phase_production_cutover/*` |
 | `cutover.1` | queued — production corpus load generates the `0b` seed/harness | same plan |
 | `cutover.2`–`5` | queued (post-`0b`) | same plan |
 
@@ -112,23 +121,27 @@ Next candidates by readiness:
 
 1. **Production1 Debug Console grant follow-up** — apply
    `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-   after the usual live-mutation gate; staging is already applied/verified.
+   after the usual live-mutation gate; staging applied/verified.
 2. **Production1 GCP/Firebase/proxy/DNS setup** — paused; substantial
    unblock list (see Now).
 3. **B43 Production1 anchor deploy** — needs production runtime APIs +
    Secret Manager namespace + static egress + Azure audit-anchor secrets.
-4. **`10.5.3+` daypart-live primary-driver teaching** — extends 10.5.2
-   read service with per-period driver computation; closes Phase 10.5.
-5. **`10a.1` Cloud Pub/Sub publisher adapter** — replaces in-process
-   binding behind `RealtimeEventPublisher` seam; topics locked in
-   `event_outbox_contract.md`.
-6. **`9.5.0` Postgres leaderboard schema + RLS scaffold** — first
-   Phase 9.5 slice; UX deferred to `.UX.*`.
-7. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate now
-   satisfied; opens once vendor (Toast) sandbox creds available.
+4. **`10a.2` dead-letter cap** — bridge worker moves rows whose
+   `attempt_count` exceeds tunable cap to `event_outbox_dead_letter`;
+   counter surfaces in 11A.6 envelope.
+5. **`7.58.5` Variance row purity (G.5)** — drop daypart carry-forward
+   inheritance in `variance_week_projection_read_service.dart` so
+   open/projected rows return `'on_model'` rather than the prior closed
+   daypart's id.
+6. **`9.5.UX.0` El Podio identity surface** — replaces demo-data
+   leaderboard in `el_podio_screen.dart` with real-user identity;
+   weekly/monthly/all-time tabs; rank chip on Barrio Home.
+7. **Phase 8 (`8.0` POS adapter scaffold)** — driver-key gate satisfied;
+   stub adapter + Settings → Integrations card tractable now; vendor
+   (Toast) sandbox creds blocker only for live transport.
 
-Then queued: `9.75`, `8R`, `8.5`, `11b`/`.1`/`.2`, `12.*`, `9.8`,
-`cutover.0b`–`5`.
+Then queued: `10a.3`/`.4`/`.5`, `7.58.1`/`.2`/`.3`/`.4`, `9.75`, `8R`,
+`8.5`, `11b`/`.1`/`.2`, `12.*`, `9.8`, `cutover.0b`–`5`.
 
 ## Hard Gates
 
