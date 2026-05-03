@@ -98,15 +98,16 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `10a` | `.0`/`.1` + `UX.0`/`UX.1` accepted; `.2` dead-letter, `.3` retention sweep, `.4` tripwires, `.5` last_event_id replay queued | `phase_10a/*` |
 | `9.5` | `.0` backend (schema + RLS) accepted; `.UX.*` **paused (Barrio)** per 2026-05-03 operator direction; Recognition/Operations El Podio later | `phase_9_5/*` |
 | `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started; cross-operator parity (`11A.12`/`13`/`14`) deferred per V1 lean cut until 20+ operators justify it | `phase_11A_operations_console/*` |
-| `11W` Operator Web Console (NEW) | queued, V1 cut to 3 slices: `11W.0` shell + `11W.7` Account + `11W.8` vendor connections mount; ships parallel with Phase 8 `8.0`; remaining 7 slices (Members/Roles/Hierarchy/Sessions/Audit/Security/Outbound) deferred per `project_v1_lean_scope_cut.md` | `phase_11W/*` |
+| `11W` Operator Web Console (NEW) | `11W.0` shell + onboarding accepted on master 2026-05-03 (PR #87); `11W.7` Account + `11W.8` Vendor connections mount queued; remaining 7 slices (Members/Roles/Hierarchy/Sessions/Audit/Security/Outbound) deferred per `project_v1_lean_scope_cut.md` | `phase_11W/*` |
 | `9.75` | **paused (Barrio)** per 2026-05-03 operator direction (Barrio Staff Daily Companion frozen until unfreeze) | `phase_9_75/*` |
-| `8` (POS) | queued — framework + 7 POS adapters; Wave 1 reference is Lightspeed K-Series; direct integration only | `phase_8/*` + `vendor_master_list.md` + `vendor_connections_admin_surface.md` |
+| `8` (POS) | `8.0` framework accepted on master 2026-05-03 (PR #90) + 3 master-side fixes 2026-05-03 (sync-worker sanity hook, 24h replay window, ~30s test-connection); Wave 1 reference adapter `8.LSK` queued | `phase_8/*` + `vendor_master_list.md` + `vendor_connections_admin_surface.md` |
 | `8R` (Reservations) | queued — 4 reservation adapters; Wave 1 reference is Libro; Resy uncovered (15% market gap) | `phase_8R/*` |
 | `8.S` (Scheduling) | queued — 6 scheduling adapters; Wave 1 reference is QuickBooks Time; ADP/QuickBooks module disambiguation at connect | `phase_8S/*` |
 | `8.5` (Outbound finance) | **paused (outward-vendor focus pivot 2026-05-03)** — QBO Accounting/Xero/Bill.com/Plaid; sibling lane to 8/8R/8.S; resumes after inbound integration push | `phase_8_5_external_integrations/*` |
 | `11b`/`11b.1`/`11b.2` | **paused (AI focus pivot 2026-05-03)** — operator-facing advisor; gated on B43 prod anchor; resumes post-pause | `phase_11b/*` |
 | `12.0`–`12.5` | **paused (AI focus pivot 2026-05-03)** — workflow platform AI-driven; gated by B41 live apply; resumes post-pause | `phase_12_workflow_platform/*` |
-| `9.8` | partial — **inbound-vendor T&Cs portion in scope** (operator authorization for POS/Reservation/Scheduling data); **advisor + outbound T&Cs paused** | `phase_9_8/*` |
+| `9.8` | `9.8.email` (SendGrid transactional email pipeline + 8 templates) accepted on master 2026-05-03 (PR #88); **inbound-vendor T&Cs portion in scope** (operator authorization for POS/Reservation/Scheduling data); **advisor + outbound T&Cs paused** | `phase_9_8/*` |
+| `10a` (cont.) | `10a.2` event-outbox dead-letter cap + transactional MOVE + `/health` depth metric accepted on master 2026-05-03 (PR #89); operator-facing DLQ tile correctly absent per V1 lean cut 2 | `phase_10a/*` |
 | `11A.3` + `11A.3.x` (corpus / Graphify) | **paused (AI focus pivot 2026-05-03)** — corpus management + Graphify-assisted review are AI input; resumes post-pause | `phase_11A_operations_console/*` |
 | `11A.11` (replay tool) | **paused (AI focus pivot 2026-05-03)** — advisor debug tooling; resumes post-pause | `phase_11A_operations_console/*` |
 | `11W.9` (outbound mount) | **paused** — depends on paused Phase 8.5; resumes post-pause | `phase_11W/*` |
@@ -122,36 +123,50 @@ may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees". Phase Board above is canonical state; the list
 below is sequencing intent.
 
-Next candidates by readiness:
+Next candidates by readiness (post-2026-05-03 audit; 4 lanes from prior
+sprint accepted on master):
 
-1. **Phase 8 `8.0` framework** — adapter interfaces, IANA timezone
-   (Scenarios A-F), `vendor_credentials` schema, raw-payload retention,
-   admin-console "Vendor connections" surface, Cloud Run admin
-   endpoints, webhook ingestion w/ binding cross-check, OAuth refresh
-   cron, KMS rollout, demo-mode-to-live transition. Wave 1 reference
-   adapters (`8.LSK`/`8R.LB`/`8.S.QBT`) ship behind `8.0`.
-   Plan: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`.
-2. **Phase `11W.0` operator web console shell** — separate Flutter Web
-   entry `lib/main_operator_web.dart` at `app.forgeflow.app`; magic-link
-   onboarding (password/MFA/T&Cs), placeholder routes for Account +
-   Vendor connections. File-disjoint from `8.0`; ship in parallel.
-   Plan: `docs/phases/phase_11W/phase_11W_operator_web_console_plan.md`.
-3. **Phase `9.8.email` SendGrid email provider** — `EmailProvider<T>`
-   abstraction, `email_outbox` + `email_event` schemas, `pg_cron`
-   dispatcher, 8 V1 templates, DKIM/SPF/DMARC on `mail.forgeflow.app`.
-   Launch-blocking (operator invite flow depends on it). Plan:
-   `docs/phases/phase_9_8/phase_9_8_email_provider_slice.md`.
-4. **`10a.2` dead-letter cap** — bridge worker moves rows whose
-   `attempt_count` exceeds tunable cap to `event_outbox_dead_letter`;
-   tile in 11A.6 envelope. Plan: `docs/phases/phase_10a/`.
-5. **Production1 Debug Console grant follow-up** — apply
-   `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-   to Production1 after live-mutation gate + explicit "begin execution"
-   approval. Staging applied/verified.
-6. **Production1 GCP/Firebase/proxy/DNS setup + B43 anchor deploy** —
-   paused; needs Firebase apps/configs, runtime APIs, deploy SA, static
-   egress, DNS, Secret Manager namespace, Azure firewall allowlist,
-   audit-anchor secrets.
+1. **Phase 8 `8.LSK` Lightspeed K-Series POS reference adapter** —
+   Wave 1 reference for the framework that landed in `8.0`. Implements
+   `PosAdapter` for Lightspeed K-Series; exercises sanity hook,
+   idempotency, OAuth refresh, webhook handler, demo→live flip. THIS
+   IS THE FIRST REAL TEST OF THE FRAMEWORK end-to-end. Owns
+   `lib/integrations/pos/lightspeed_lsk_pos_adapter.dart` NEW + tests.
+   Plan: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
+   + `docs/phases/phase_8/vendor_master_list.md` (Wave 1 row).
+2. **Phase 8.S `8.S.QBT` QuickBooks Time labor reference adapter** —
+   Wave 1 sibling. Implements `LaborAdapter` for QuickBooks Time;
+   exercises module disambiguation (Time vs Accounting vs Payroll),
+   sanity hook on punches. Owns
+   `lib/integrations/labor/quickbooks_time_labor_adapter.dart` NEW +
+   tests. Plan: `docs/phases/phase_8S/*`.
+3. **Phase 8R `8R.LB` Libro reservation reference adapter** — Wave 1
+   sibling. Implements `ReservationAdapter` for Libro; exercises
+   sanity hook on reservations, perLocation grant scope. Owns
+   `lib/integrations/reservation/libro_reservation_adapter.dart` NEW +
+   tests. Plan: `docs/phases/phase_8R/*`.
+4. **Phase `11W.7` Operator Web Account screen** — replaces
+   `account_placeholder_screen.dart` with the live Account surface:
+   profile fields, MFA factor management, password change,
+   T&Cs version history. File-disjoint from the 3 vendor adapters.
+   Plan: `docs/phases/phase_11W/*`.
+5. **Phase `11W.8` Operator Web Vendor Connections mount** — replaces
+   `vendor_connections_placeholder_screen.dart` with the live admin
+   `VendorConnectionsWidget` mount on the operator web console (the
+   widget already shipped in `8.0`; this slice mounts it on web).
+   Plan: `docs/phases/phase_11W/*`.
+
+Operator parallel critical path (no engineering): sandbox provisioning
+(Lightspeed K-Series API access / Libro venue test creds / QuickBooks
+Time sandbox), DNS+TLS for `app.forgeflow.app` + `mail.forgeflow.app`,
+SendGrid account + DKIM/SPF/DMARC, partnership applications kickoff
+(Toast / OpenTable / Oracle / NCR Voyix / ADP Marketplace /
+SevenRooms / Push Operations), legal review of inbound-vendor T&Cs
+draft, Production1 unfreeze decision.
+
+After Wave 1 lands: `8.SQ` (Square — covers fallback), `8.S.7S`
+(7shifts), Phase 11A `8`/`9`/`10`, `cutover.0b` perf gate (depends on
+`cutover.1` corpus seed first).
 
 **Barrio-paused (skip until unfreeze):** `9.5.UX.*`, `9.75`.
 

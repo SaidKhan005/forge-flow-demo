@@ -57,22 +57,36 @@ abstract class PosAdapter {
   Future<ConnectResult> connect(ConnectCommand command);
 
   /// Called when the operator clicks "Test connection". Implementations
-  /// must return within 5 seconds (vendor-side rate limits permitting)
-  /// and surface a real sample order with covers + open/close
+  /// should aim to return well under 30 seconds; the framework
+  /// timeout the route applies is ~30s (V1 lean cut 2 — the 5s SLA
+  /// from iter1 was deleted because most vendor sandboxes can't
+  /// honor it). Surface a real sample order with covers + open/close
   /// timestamps so the operator sees that field mapping is working,
   /// not just that auth is valid.
   Future<TestConnectionResult> testConnection(TestConnectionCommand command);
 
   /// 60-day backfill on first connect (or operator-configured custom
-  /// window). Implementations MUST persist `connector_sync_watermark`
-  /// after each batch commit so a Cloud Run job restart resumes from
-  /// the last successful cursor instead of starting over.
+  /// window). Implementations MUST:
+  ///   * Persist `connector_sync_watermark` after each batch commit
+  ///     so a Cloud Run Job restart resumes from the last successful
+  ///     cursor instead of starting over.
+  ///   * Call `command.sanityHook(...)` BEFORE each canonical fact
+  ///     write and skip the write when it returns `false` (the
+  ///     framework already logged the drop). Backfill rows pass
+  ///     `isDeliberateBackfill: true` so the >90-day floor is
+  ///     bypassed for the operator-scheduled window.
   Future<BackfillResult> backfill(BackfillCommand command);
 
   /// Incremental polling loop. Cadence is owned by
   /// `tool/integration_sync_worker/`; this method is invoked once
   /// per tick and writes any new vendor entities visible since
   /// `watermark.lastModifiedSeen`.
+  ///
+  /// Implementations MUST call `command.sanityHook(...)` BEFORE each
+  /// canonical fact write and skip the write when it returns `false`.
+  /// The hook is the only enforcement point for timestamp sanity on
+  /// the polling path; a missed call silently ships future-dated /
+  /// out-of-order facts to the operator dashboard.
   Future<PollIncrementalResult> pollIncremental(PollIncrementalCommand command);
 
   /// Webhook handler. Called by [InboundWebhookHandler] AFTER signature

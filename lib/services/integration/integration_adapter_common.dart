@@ -228,6 +228,7 @@ class BackfillCommand {
     required this.vendorId,
     required this.windowStart,
     required this.windowEnd,
+    required this.sanityHook,
     this.resumeFromCursor,
   });
 
@@ -247,6 +248,14 @@ class BackfillCommand {
   /// `connector_sync_watermark.cursor_token` persists per batch
   /// commit.
   final String? resumeFromCursor;
+
+  /// V1 lean cut 2 — same contract as
+  /// [PollIncrementalCommand.sanityHook]. The 60-day backfill is
+  /// where stale / pre-launch garbage timestamps are most likely
+  /// to surface; the hook MUST be consulted per row. Adapters pass
+  /// `isDeliberateBackfill: true` here so rule 3 (>90-day floor)
+  /// is bypassed for the operator-scheduled window.
+  final VendorSanityHook sanityHook;
 }
 
 class BackfillResult {
@@ -278,6 +287,21 @@ class BackfillResult {
 
 // ─── Poll incremental ───────────────────────────────────────────────
 
+/// Sanity-hook callback shape. Polling and backfill adapters MUST
+/// call this before writing each canonical fact row. Returns `true`
+/// when the timestamps pass [VendorTimestampSanity]; returns `false`
+/// when the framework dropped the event (already logged via
+/// `sanity_log` + `connector_sync_log` 'sanity_drop'). Adapters MUST
+/// skip the write when this returns `false` — never fall through.
+///
+/// The webhook handler enforces sanity inline (step 4) so it does
+/// NOT carry this hook; only polling / backfill commands do.
+typedef VendorSanityHook = Future<bool> Function({
+  required String vendorEventId,
+  required Map<String, Object?> payload,
+  required bool isDeliberateBackfill,
+});
+
 class PollIncrementalCommand {
   const PollIncrementalCommand({
     required this.operatorId,
@@ -285,6 +309,7 @@ class PollIncrementalCommand {
     required this.actorUserId,
     required this.vendorId,
     required this.lastModifiedSeen,
+    required this.sanityHook,
     this.cursorToken,
   });
 
@@ -299,6 +324,15 @@ class PollIncrementalCommand {
   /// Optional pagination cursor (when the prior poll did not finish
   /// the page chain).
   final String? cursorToken;
+
+  /// V1 lean cut 2 — closes the polling-path sanity gap. The worker
+  /// constructs this closure with the connection context bound and
+  /// passes it in. Adapter implementations MUST call
+  /// `command.sanityHook(...)` before each canonical fact write and
+  /// skip the write when the hook returns `false`. This makes the
+  /// timestamp-sanity contract enforceable from the worker side
+  /// instead of relying on each adapter to remember.
+  final VendorSanityHook sanityHook;
 }
 
 class PollIncrementalResult {
@@ -306,11 +340,17 @@ class PollIncrementalResult {
     required this.recordsWritten,
     required this.newCursorToken,
     required this.newLastModifiedSeen,
+    this.sanityDropped = 0,
   });
 
   final int recordsWritten;
   final String newCursorToken;
   final DateTime newLastModifiedSeen;
+
+  /// Count of records the sanity hook rejected during this poll.
+  /// Adapters surface this so the worker telemetry sees per-tick
+  /// drop counts without re-querying `sanity_log`.
+  final int sanityDropped;
 }
 
 // ─── Webhook ────────────────────────────────────────────────────────

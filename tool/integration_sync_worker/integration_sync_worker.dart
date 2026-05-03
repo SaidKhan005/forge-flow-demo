@@ -145,11 +145,31 @@ class IntegrationSyncWorker {
     var connectionsProcessed = 0;
     var recordsWritten = 0;
     var errors = 0;
-    const sanityDropped = 0;
+    var sanityDropped = 0;
 
     for (final conn in due) {
       final tickStart = _now();
       try {
+        // V1 lean cut 2 — bind a connection-scoped sanity hook so the
+        // adapter cannot bypass the timestamp guard on the polling
+        // path. Adapters MUST call this before each canonical fact
+        // write and skip the write when it returns false.
+        Future<bool> boundSanityHook({
+          required String vendorEventId,
+          required Map<String, Object?> payload,
+          required bool isDeliberateBackfill,
+        }) {
+          return passesSanity(
+            connectionId: conn.connectionId,
+            operatorId: conn.operatorId,
+            locationId: conn.locationId,
+            vendorId: conn.vendorId,
+            vendorEventId: vendorEventId,
+            payload: payload,
+            isDeliberateBackfill: isDeliberateBackfill,
+          );
+        }
+
         final command = PollIncrementalCommand(
           operatorId: conn.operatorId,
           locationId: conn.locationId,
@@ -157,6 +177,7 @@ class IntegrationSyncWorker {
           vendorId: conn.vendorId,
           lastModifiedSeen: conn.lastModifiedSeen,
           cursorToken: conn.cursorToken,
+          sanityHook: boundSanityHook,
         );
         PollIncrementalResult result;
         switch (conn.category) {
@@ -196,6 +217,7 @@ class IntegrationSyncWorker {
           durationMs: _now().difference(tickStart).inMilliseconds,
         );
         recordsWritten += result.recordsWritten;
+        sanityDropped += result.sanityDropped;
         connectionsProcessed += 1;
       } catch (error) {
         errors += 1;

@@ -31,13 +31,19 @@ abstract class LaborAdapter {
 
   /// Heavy on-demand connection diagnostic that pulls a real sample
   /// punch + a vendor role list so the operator can verify role
-  /// mapping before committing.
+  /// mapping before committing. Should aim to return well under 30
+  /// seconds; the route timeout is ~30s.
   Future<TestConnectionResult> testConnection(TestConnectionCommand command);
 
-  /// 60-day backfill on first connect.
+  /// 60-day backfill on first connect. Implementations MUST call
+  /// `command.sanityHook(...)` BEFORE each canonical fact write and
+  /// skip the write when it returns `false`.
   Future<BackfillResult> backfill(BackfillCommand command);
 
-  /// Incremental poll cycle.
+  /// Incremental poll cycle. Implementations MUST call
+  /// `command.sanityHook(...)` BEFORE each canonical fact write and
+  /// skip the write when it returns `false`. The hook is the only
+  /// enforcement point for timestamp sanity on the polling path.
   Future<PollIncrementalResult> pollIncremental(PollIncrementalCommand command);
 
   /// Webhook handler. Called after signature / replay / binding /

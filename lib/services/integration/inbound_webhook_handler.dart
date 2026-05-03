@@ -4,7 +4,11 @@
 //
 //   1. Per-vendor signature verification using constant-time HMAC
 //      compare. Vendors that include a timestamp in the signature
-//      header trigger replay defense (5-minute ceiling).
+//      header trigger replay defense (24-hour tolerance — the strict
+//      5-minute window from iter1 was deleted per V1 lean cut 2;
+//      vendor retry windows commonly exceed 5 minutes and the
+//      idempotency UNIQUE on (vendor_id, operator_id, vendor_event_id)
+//      already prevents double-write of legitimate retries).
 //   2. Binding cross-check. After signature verification passes, the
 //      handler compares the payload's claimed vendor-location id
 //      (Toast `restaurantGuid`, Libro venue id, 7shifts `location_id`)
@@ -44,9 +48,17 @@ import 'reservation_adapter.dart';
 import 'vendor_timestamp_sanity.dart';
 
 /// Replay defense ceiling: signatures whose embedded timestamp is
-/// more than this old are rejected as replays. Same value as
-/// Stripe's recommended default.
-const Duration kInboundWebhookReplayCeiling = Duration(minutes: 5);
+/// more than this old are rejected as replays. V1 lean cut 2 set this
+/// to 24 hours — the strict 5-minute Stripe-style window from iter1
+/// was deleted because vendor retry windows commonly exceed 5 minutes
+/// and a legitimate retry would be misclassified as a replay. The
+/// idempotency UNIQUE on
+/// `inbound_webhook_idempotency(vendor_id, operator_id, vendor_event_id)`
+/// already prevents the double-write that strict replay was
+/// defending against; this ceiling now functions as a bound on
+/// catastrophically stale signatures (e.g., a webhook delayed for
+/// days because the vendor or our proxy was down).
+const Duration kInboundWebhookReplayCeiling = Duration(hours: 24);
 
 /// Maximum total processing attempts before a vendor event is
 /// dead-lettered. Three matches the framework spec.

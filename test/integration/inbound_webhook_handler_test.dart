@@ -103,8 +103,9 @@ void main() {
       expect(gateway.failedAttempts['evt-2'], 1);
     });
 
-    test('replay defense: rejects signature timestamp older than 5 min',
-        () async {
+    test(
+        'replay defense: rejects signature timestamp older than 24h '
+        '(V1 lean cut 2 — strict 5-min window deleted)', () async {
       gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
         connectionId: 'conn-1',
         metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
@@ -113,7 +114,7 @@ void main() {
       gateway.signingSecrets['lightspeed_lsk'] = 'secret';
       verifier.shouldPass = true;
       verifier.timestampOverride = nowFixed.subtract(
-        const Duration(minutes: 6),
+        const Duration(hours: 25),
       );
 
       final result = await handler.dispatch(
@@ -127,6 +128,36 @@ void main() {
 
       expect(result.outcome, WebhookOutcome.replayTooOld);
       expect(result.statusCode, 403);
+    });
+
+    test(
+        'replay defense: accepts signature timestamp within 24h tolerance '
+        '(legitimate vendor retry)', () async {
+      gateway.bindings['lightspeed_lsk'] = const ConnectionBinding(
+        connectionId: 'conn-1',
+        metadata: <String, Object?>{'business_id': 'lsk-biz-7c2f'},
+        status: ConnectionStatus.connected,
+      );
+      gateway.signingSecrets['lightspeed_lsk'] = 'secret';
+      verifier.shouldPass = true;
+      // 6 minutes old — would have been rejected under iter1 strict
+      // 5-min window. V1 lean cut 2 accepts it; idempotency UNIQUE
+      // prevents double-write.
+      verifier.timestampOverride = nowFixed.subtract(
+        const Duration(minutes: 6),
+      );
+
+      final result = await handler.dispatch(
+        operatorId: _opId,
+        locationId: _locId,
+        vendorId: 'lightspeed_lsk',
+        rawBody: Uint8List.fromList(utf8.encode('{}')),
+        payload: const <String, Object?>{'event_id': 'evt-3-replay-window'},
+        headers: const <String, String>{},
+      );
+
+      expect(result.outcome, isNot(WebhookOutcome.replayTooOld));
+      expect(result.statusCode, isNot(403));
     });
 
     test('binding mismatch: rejects 403 + no fact write', () async {
