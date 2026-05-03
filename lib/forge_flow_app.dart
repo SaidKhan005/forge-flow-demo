@@ -26,7 +26,9 @@ import 'state/app_refresh_coordinator.dart';
 import 'state/app_runtime_invalidation_bus.dart';
 import 'state/auth_session_notifier.dart';
 import 'state/demand_forecast_context_notifier.dart';
+import 'state/last_synced_timestamps_notifier.dart';
 import 'state/permission_context.dart';
+import 'state/realtime_event_bus.dart';
 import 'state/restaurant_scope_notifier.dart';
 import 'services/auth/account_info_gateway.dart';
 import 'state/schedule_distribution_weights_notifier.dart';
@@ -40,6 +42,9 @@ import 'screens/baseline_tracker.dart';
 import 'screens/auth/auth_permission_context_bridge.dart';
 import 'screens/auth/auth_gate.dart';
 import 'screens/notifications_screen.dart';
+import 'services/realtime/realtime_event.dart';
+import 'services/realtime/realtime_subscription.dart';
+import 'widgets/peer_edit_toast.dart';
 import 'screens/schedule_builder.dart';
 import 'screens/settings/settings_custom_roles_section.dart';
 import 'screens/settings/settings_org_hierarchy_section.dart';
@@ -47,7 +52,6 @@ import 'screens/settings_screen.dart';
 import 'screens/shift_dashboard.dart';
 import 'screens/team/team_settings_section.dart';
 import 'screens/variance_report.dart';
-import 'services/realtime/realtime_subscription.dart';
 import 'state/boundary_monitor_supervisor.dart';
 import 'theme/app_theme.dart';
 import 'widgets/sync_state_badge.dart';
@@ -86,25 +90,215 @@ class ForgeFlowApp extends StatelessWidget {
       passwordChangeGateway: passwordChangeGateway,
       mfaOperationsGateway: mfaOperationsGateway,
     );
+    final Widget homeContent = requireAuth
+        ? AuthGate(
+            mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
+            passwordResetGateway: passwordResetGateway,
+            passwordResetDeepLinkSource: passwordResetDeepLinkSource,
+            authenticatedChild: AuthPermissionContextBridge(
+              permissionContextLoader: permissionContextLoader,
+              child: shell,
+            ),
+          )
+        : shell;
     return ForgeFlowScope(
       child: MaterialApp(
         title: 'Forge & Flow',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.themeData,
-        home: requireAuth
-            ? AuthGate(
-                mfaRecoveryRequestGateway: mfaRecoveryRequestGateway,
-                passwordResetGateway: passwordResetGateway,
-                passwordResetDeepLinkSource: passwordResetDeepLinkSource,
-                authenticatedChild: AuthPermissionContextBridge(
-                  permissionContextLoader: permissionContextLoader,
-                  child: shell,
-                ),
-              )
-            : shell,
+        // Phase 10a.UX.1 — wrap the home content in (a) the realtime
+        // producer wiring that pipes 10a.UX.0's shared
+        // [RealtimeSubscription.events] into the
+        // [RealtimeEventBus] (and clears the freshness map on
+        // sign-out / operator change), and (b) a shell-level
+        // [PeerEditToast] so a shared-state frame surfaces a
+        // SnackBar across every route. The subscription itself is
+        // owned by the bootstrap layer (10a.UX.0); this widget
+        // consumes it via Provider so both lanes share one socket.
+        home: _RealtimeProducerWiring(
+          child: _PeerEditToastShellHost(child: homeContent),
+        ),
       ),
     );
   }
+}
+
+/// Phase 10a.UX.1 — internal host that mounts the shell-level
+/// [PeerEditToast] using the [RealtimeEventBus] from the enclosing
+/// [ForgeFlowScope] Provider. Splitting this out of `build` lets the
+/// MaterialApp `home` route stay readable and keeps the bus lookup
+/// inside the Provider tree.
+class _PeerEditToastShellHost extends StatelessWidget {
+  const _PeerEditToastShellHost({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final bus = context.read<RealtimeEventBus>();
+    return PeerEditToast(events: bus.events, child: child);
+  }
+}
+
+/// Phase 10a.UX.1 — shell-level realtime consumer. Reads the
+/// shared `Provider<RealtimeSubscription?>` introduced by sibling
+/// lane 10a.UX.0 in [bootstrapAndRunApp] and pipes its `events`
+/// stream into the [RealtimeEventBus] so the toast and freshness
+/// surfaces consume live frames from the **same** subscription
+/// instance the badge reads `connectionState` from.
+///
+/// Auth-driven lifecycle is owned by 10a.UX.0's
+/// [RealtimeAuthBridge] (which calls `setTenantContext` /
+/// `clearTenantContext` on the shared subscription). This widget
+/// carries the freshness-clear concern that's specific to UX.1:
+/// when the auth session leaves [AuthSessionAuthenticated] (hard
+/// sign-out) or transitions to a different operator id, the in-
+/// memory [LastSyncedTimestampsNotifier] map is cleared so the
+/// prior operator's per-table timestamps cannot leak. Token-
+/// refresh blips (transient Loading / MfaChallenge while the
+/// operator id is unchanged) preserve the freshness rows.
+///
+/// The widget renders [child] unchanged — it's a side-effect host
+/// that lives inside the Provider tree so it can read the bus, the
+/// shared subscription, and the auth notifier.
+class _RealtimeProducerWiring extends StatefulWidget {
+  const _RealtimeProducerWiring({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_RealtimeProducerWiring> createState() =>
+      _RealtimeProducerWiringState();
+}
+
+class _RealtimeProducerWiringState extends State<_RealtimeProducerWiring> {
+  StreamSubscription<RealtimeEvent>? _eventsPipe;
+  AuthSessionNotifier? _watchedAuthNotifier;
+  String? _appliedOperatorId;
+
+  @override
+  void initState() {
+    super.initState();
+    // The bus, the shared subscription, and the auth notifier come
+    // from the surrounding Provider tree, which is only readable
+    // after the first frame builds. Wire on the post-frame callback
+    // so `context.read` resolves cleanly for both production builds
+    // and widget tests.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _wireEventsPipe();
+      _wireAuthListener();
+      _applyCurrentSession();
+    });
+  }
+
+  void _wireEventsPipe() {
+    final subscription = _resolveSubscription();
+    if (subscription == null) {
+      // No shared subscription in the tree (demo / no-Firebase
+      // shells, widget tests that bypass bootstrap). The bus stays
+      // without a producer, which matches the pre-realtime-config
+      // behaviour.
+      return;
+    }
+    final bus = context.read<RealtimeEventBus>();
+    _eventsPipe = subscription.events.listen(bus.publish);
+  }
+
+  void _wireAuthListener() {
+    final notifier = _resolveAuthNotifier();
+    if (notifier == null) {
+      // No AuthSessionNotifier in the tree (Barrio embeds, isolated
+      // widget tests). Without it we have no signal for sign-out
+      // freshness clears; the rest of the surfaces still function.
+      return;
+    }
+    _watchedAuthNotifier = notifier;
+    notifier.addListener(_onAuthSessionChange);
+  }
+
+  void _onAuthSessionChange() {
+    if (!mounted) return;
+    _applyCurrentSession();
+  }
+
+  void _applyCurrentSession() {
+    final notifier = _watchedAuthNotifier;
+    if (notifier == null) return;
+    final state = notifier.state;
+    if (state is AuthSessionAuthenticated) {
+      final session = state.session;
+      // Defensive: an Authenticated → Authenticated transition with
+      // a different operator (e.g. an SSO session swap that skips
+      // Unauthenticated) must not let the prior tenant's freshness
+      // rows linger. The Unauthenticated path also clears freshness;
+      // this catches the no-intervening-Unauthenticated case.
+      if (_appliedOperatorId != null &&
+          _appliedOperatorId != session.operatorId) {
+        _clearFreshness();
+      }
+      _appliedOperatorId = session.operatorId;
+    } else if (state is AuthSessionUnauthenticated) {
+      // Hard sign-out: clear the in-memory freshness map so the next
+      // operator (or even this operator glancing at Settings while
+      // signed out) does not see the prior session's per-table
+      // timestamps. Loading and MfaChallenge are transient — preserve
+      // freshness across them so a token-refresh blip doesn't wipe
+      // valid rows.
+      _appliedOperatorId = null;
+      _clearFreshness();
+    }
+    // Loading / MfaChallenge: leave freshness alone.
+  }
+
+  /// Drop every freshness row from
+  /// [LastSyncedTimestampsNotifier]. Tolerant of a missing Provider
+  /// (Barrio embeds, isolated widget tests) — those call sites have
+  /// no notifier to clear and the call is a no-op.
+  void _clearFreshness() {
+    if (!mounted) return;
+    final freshness = _resolveFreshnessNotifier();
+    freshness?.clear();
+  }
+
+  RealtimeSubscription? _resolveSubscription() {
+    try {
+      return Provider.of<RealtimeSubscription?>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  AuthSessionNotifier? _resolveAuthNotifier() {
+    try {
+      return Provider.of<AuthSessionNotifier>(context, listen: false);
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  LastSyncedTimestampsNotifier? _resolveFreshnessNotifier() {
+    try {
+      return Provider.of<LastSyncedTimestampsNotifier>(
+        context,
+        listen: false,
+      );
+    } on ProviderNotFoundException {
+      return null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _eventsPipe?.cancel();
+    _eventsPipe = null;
+    _watchedAuthNotifier?.removeListener(_onAuthSessionChange);
+    _watchedAuthNotifier = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 class ForgeFlowScope extends StatelessWidget {
@@ -158,6 +352,33 @@ class ForgeFlowScope extends StatelessWidget {
         // paths complete. Exposed here so ProxyProvider2 can react.
         ChangeNotifierProvider<AppRuntimeInvalidationBus>.value(
           value: AppRuntimeInvalidationBus.instance,
+        ),
+        // Phase 10a.UX.1 — shell-level RealtimeEventBus seam. The
+        // bus is the join point between sibling lane 10a.UX.0's
+        // RealtimeSubscription instance (producer) and the Phase
+        // 10a.UX.1 surfaces (consumers: PeerEditToast wrapping the
+        // home, LastSyncedTimestampsNotifier feeding Settings → Data
+        // → Data freshness). Today the bus has no producer; UX.0
+        // pipes `subscription.events.listen(bus.publish)` when the
+        // live subscription lands.
+        Provider<RealtimeEventBus>(
+          create: (_) => RealtimeEventBus(),
+          dispose: (_, bus) => bus.dispose(),
+        ),
+        // Phase 10a.UX.1 — per-table last-sync timestamps. Auto-
+        // subscribes to the RealtimeEventBus once on creation; the
+        // `update` callback is a no-op because the bus instance is
+        // stable across rebuilds.
+        ChangeNotifierProxyProvider<
+          RealtimeEventBus,
+          LastSyncedTimestampsNotifier
+        >(
+          create: (_) => LastSyncedTimestampsNotifier(),
+          update: (_, bus, previous) {
+            final notifier = previous ?? LastSyncedTimestampsNotifier();
+            notifier.subscribeRealtime(bus.events);
+            return notifier;
+          },
         ),
         // Phase 7.55p.4a+4b — central refresh / invalidation policy.
         // ProxyProvider2: when EITHER ActiveTargetProfileNotifier changes

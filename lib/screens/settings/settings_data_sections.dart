@@ -17,6 +17,7 @@ import '../../services/auth/account_info_gateway.dart';
 import '../../services/auth/password_change_gateway.dart';
 import '../../services/shift_service.dart';
 import '../../state/auth_session_notifier.dart';
+import '../../state/last_synced_timestamps_notifier.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/data_alignment_audit_panel.dart';
 import 'settings_shared_widgets.dart';
@@ -31,6 +32,186 @@ class SettingsDataStatusSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _DataStatusTile(status: status);
+}
+
+/// Phase 10a.UX.1 — per-table last-sync timestamps. One row per known
+/// shared-state table (`docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md`
+/// §Shared-state list). The notifier in-memory only this slice; rows
+/// read "Never" until a frame on that table arrives, then flip to a
+/// relative timestamp ("just now", "2 min ago", …) with the absolute
+/// UTC ISO timestamp surfaced via tooltip on hover.
+///
+/// Production wires the notifier through a [Provider]; widget tests
+/// pass it directly via [notifier]. When neither is available the
+/// section renders the empty state ("Never" on every row) so the demo
+/// shell can mount it before the realtime subscription is present.
+class SettingsDataFreshnessSection extends StatelessWidget {
+  const SettingsDataFreshnessSection({super.key, this.notifier});
+
+  /// Test hook — when supplied, takes priority over the Provider
+  /// lookup. Production code passes `null` and relies on the shell-
+  /// level `ChangeNotifierProvider<LastSyncedTimestampsNotifier>`.
+  final LastSyncedTimestampsNotifier? notifier;
+
+  /// Tables surfaced as their own row. Order pinned by the phase doc
+  /// `Shared-state list` ordering. `restaurant_users` and `roles`
+  /// share a row (the Phase 9 user/role tables move together) and the
+  /// row label reflects that.
+  static const List<_FreshnessRowSpec> _rowSpecs = <_FreshnessRowSpec>[
+    _FreshnessRowSpec(
+      tableKeys: <String>['restaurants'],
+      label: 'restaurants',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['benchmark_overrides'],
+      label: 'benchmark_overrides',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['weekly_plan_snapshots'],
+      label: 'weekly_plan_snapshots',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['target_cycle_provenance'],
+      label: 'target_cycle_provenance',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['app_notifications'],
+      label: 'app_notifications',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['audit_trail'],
+      label: 'audit_trail',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>['connector_configs'],
+      label: 'connector_configs',
+    ),
+    _FreshnessRowSpec(
+      tableKeys: <String>[
+        'restaurant_users',
+        'roles',
+        'role_permissions',
+      ],
+      label: 'restaurant_users + roles + role_permissions',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final injected = notifier;
+    if (injected != null) {
+      return AnimatedBuilder(
+        animation: injected,
+        builder: (_, _) => _build(injected.timestamps),
+      );
+    }
+    final fromProvider = context
+        .watch<LastSyncedTimestampsNotifier?>();
+    return _build(fromProvider?.timestamps ?? const <String, DateTime>{});
+  }
+
+  Widget _build(Map<String, DateTime> timestamps) {
+    final now = DateTime.now().toUtc();
+    return SettingsCard(
+      key: const Key('settings_data_freshness_card'),
+      children: [
+        for (var i = 0; i < _rowSpecs.length; i++) ...[
+          _DataFreshnessRow(
+            spec: _rowSpecs[i],
+            timestamps: timestamps,
+            now: now,
+          ),
+          if (i != _rowSpecs.length - 1) const SettingsRowDivider(),
+        ],
+      ],
+    );
+  }
+}
+
+class _FreshnessRowSpec {
+  const _FreshnessRowSpec({required this.tableKeys, required this.label});
+
+  /// Real table names this row tracks. Most rows are 1:1 with a single
+  /// table. `restaurant_users + roles` consumes events for either.
+  final List<String> tableKeys;
+
+  /// Human-readable label rendered in the row.
+  final String label;
+}
+
+class _DataFreshnessRow extends StatelessWidget {
+  const _DataFreshnessRow({
+    required this.spec,
+    required this.timestamps,
+    required this.now,
+  });
+
+  final _FreshnessRowSpec spec;
+  final Map<String, DateTime> timestamps;
+  final DateTime now;
+
+  @override
+  Widget build(BuildContext context) {
+    final newest = _newestTimestamp();
+    final relative = newest == null
+        ? 'Never'
+        : _formatRelative(now.difference(newest));
+    final tooltip = newest == null
+        ? 'No realtime frame received in this app session.'
+        : newest.toIso8601String();
+    return Padding(
+      key: Key('settings_data_freshness_row_${spec.label}'),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Text(
+              spec.label,
+              style: AppTextStyles.mono11(color: AppColors.textPrimary),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Tooltip(
+            message: tooltip,
+            child: Text(
+              relative,
+              style: AppTextStyles.mono10(
+                color: newest == null
+                    ? AppColors.textMuted
+                    : AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  DateTime? _newestTimestamp() {
+    DateTime? newest;
+    for (final key in spec.tableKeys) {
+      final ts = timestamps[key];
+      if (ts == null) continue;
+      if (newest == null || ts.isAfter(newest)) {
+        newest = ts;
+      }
+    }
+    return newest;
+  }
+
+  static String _formatRelative(Duration delta) {
+    if (delta.isNegative) return 'just now';
+    if (delta.inSeconds < 30) return 'just now';
+    if (delta.inSeconds < 60) return '${delta.inSeconds} sec ago';
+    if (delta.inMinutes < 60) {
+      return '${delta.inMinutes} min ago';
+    }
+    if (delta.inHours < 24) {
+      return '${delta.inHours} hr ago';
+    }
+    return '${delta.inDays} day ago';
+  }
 }
 
 /// Mock replay section — mock-date card plus Reset / Advance action
