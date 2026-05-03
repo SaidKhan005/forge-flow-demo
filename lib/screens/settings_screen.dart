@@ -544,6 +544,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: 'Data status',
                     child: SettingsDataStatusSection(status: _status),
                   ),
+                  // Phase 10a.UX.1 — per-table last-sync timestamps
+                  // surfacing the realtime push channel from the
+                  // operator's perspective. Renders "Never" until the
+                  // shell-mounted RealtimeSubscription delivers a
+                  // shared-state frame for the table.
+                  _settingsSection(
+                    title: 'Data freshness',
+                    child: const SettingsDataFreshnessSection(),
+                  ),
                   _settingsSection(
                     title: 'Data management',
                     child: SettingsDataManagementSection(
