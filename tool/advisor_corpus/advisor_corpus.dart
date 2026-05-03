@@ -2024,10 +2024,8 @@ const String defaultGraphifyCandidatesOutputDirectory =
 const String graphifyGraphJsonFileName = 'graph.json';
 
 /// Output filenames emitted by [GraphifyCandidateImporter].
-const String graphifyNodeCandidatesFileName =
-    'graphify_node_candidates.jsonl';
-const String graphifyEdgeCandidatesFileName =
-    'graphify_edge_candidates.jsonl';
+const String graphifyNodeCandidatesFileName = 'graphify_node_candidates.jsonl';
+const String graphifyEdgeCandidatesFileName = 'graphify_edge_candidates.jsonl';
 const String graphifyCandidateManifestFileName =
     'graphify_candidate_manifest.json';
 
@@ -2095,9 +2093,9 @@ class GraphifyCandidateImporter {
     required Directory repoRoot,
     String graphifyVersion = 'v5',
     String? graphifySourceCommit,
-  })  : _repoRoot = repoRoot,
-        _graphifyVersion = graphifyVersion,
-        _graphifySourceCommit = graphifySourceCommit;
+  }) : _repoRoot = repoRoot,
+       _graphifyVersion = graphifyVersion,
+       _graphifySourceCommit = graphifySourceCommit;
 
   final Directory _repoRoot;
   final String _graphifyVersion;
@@ -2172,10 +2170,12 @@ class GraphifyCandidateImporter {
         droppedOutOfScope += 1;
         continue;
       }
-      nodeCandidates.add(_GraphifyNodeCandidate.fromGraphJson(
-        entry,
-        defaultNodeType: _normalizeNodeType(entry['file_type']),
-      ));
+      nodeCandidates.add(
+        _GraphifyNodeCandidate.fromGraphJson(
+          entry,
+          defaultNodeType: _normalizeNodeType(entry['file_type']),
+        ),
+      );
     }
 
     // ── Pairwise edges ─────────────────────────────────────────────
@@ -2227,15 +2227,11 @@ class GraphifyCandidateImporter {
 
     await _writeJsonl(
       File(p.join(output.path, graphifyNodeCandidatesFileName)),
-      <Map<String, Object?>>[
-        for (final node in orderedNodes) node.toJson(),
-      ],
+      <Map<String, Object?>>[for (final node in orderedNodes) node.toJson()],
     );
     await _writeJsonl(
       File(p.join(output.path, graphifyEdgeCandidatesFileName)),
-      <Map<String, Object?>>[
-        for (final edge in orderedEdges) edge.toJson(),
-      ],
+      <Map<String, Object?>>[for (final edge in orderedEdges) edge.toJson()],
     );
 
     final manifestSummary = <String, Object?>{
@@ -2244,32 +2240,39 @@ class GraphifyCandidateImporter {
         'graphify_source_commit': _graphifySourceCommit,
       'graph_scope': graphScope,
       'graph_version': graphVersion,
-      'corpus_manifest_path': manifest.path,
+      'corpus_manifest_path': _repoRelativeManifestPath(manifest.path),
       'in_scope_document_count': manifestSourcePaths.length,
       'node_candidate_count': orderedNodes.length,
       'edge_candidate_count': orderedEdges.length,
       'dropped_out_of_scope_count': droppedOutOfScope,
       'classification_counts': <String, Object?>{
-        'extracted_nodes':
-            orderedNodes.where((n) => n.label == 'EXTRACTED').length,
-        'inferred_nodes':
-            orderedNodes.where((n) => n.label == 'INFERRED').length,
-        'ambiguous_nodes':
-            orderedNodes.where((n) => n.label == 'AMBIGUOUS').length,
-        'extracted_edges':
-            orderedEdges.where((e) => e.label == 'EXTRACTED').length,
-        'inferred_edges':
-            orderedEdges.where((e) => e.label == 'INFERRED').length,
-        'ambiguous_edges':
-            orderedEdges.where((e) => e.label == 'AMBIGUOUS').length,
+        'extracted_nodes': orderedNodes
+            .where((n) => n.label == 'EXTRACTED')
+            .length,
+        'inferred_nodes': orderedNodes
+            .where((n) => n.label == 'INFERRED')
+            .length,
+        'ambiguous_nodes': orderedNodes
+            .where((n) => n.label == 'AMBIGUOUS')
+            .length,
+        'extracted_edges': orderedEdges
+            .where((e) => e.label == 'EXTRACTED')
+            .length,
+        'inferred_edges': orderedEdges
+            .where((e) => e.label == 'INFERRED')
+            .length,
+        'ambiguous_edges': orderedEdges
+            .where((e) => e.label == 'AMBIGUOUS')
+            .length,
       },
       'output_files': <String>[
         graphifyNodeCandidatesFileName,
         graphifyEdgeCandidatesFileName,
       ],
     };
-    await File(p.join(output.path, graphifyCandidateManifestFileName))
-        .writeAsString('${jsonEncode(manifestSummary)}\n');
+    await File(
+      p.join(output.path, graphifyCandidateManifestFileName),
+    ).writeAsString('${jsonEncode(manifestSummary)}\n');
 
     return GraphifyCandidatePreparationResult(
       outputDirectory: output.path,
@@ -2278,6 +2281,20 @@ class GraphifyCandidateImporter {
       droppedOutOfScopeCount: droppedOutOfScope,
       manifest: manifestSummary,
     );
+  }
+
+  String _repoRelativeManifestPath(String rawPath) {
+    final normalizedRoot = p.normalize(_repoRoot.absolute.path);
+    final normalizedPath = p.normalize(
+      p.isAbsolute(rawPath) ? rawPath : p.join(normalizedRoot, rawPath),
+    );
+    if (p.equals(normalizedRoot, normalizedPath) ||
+        p.isWithin(normalizedRoot, normalizedPath)) {
+      return p
+          .relative(normalizedPath, from: normalizedRoot)
+          .replaceAll(r'\', '/');
+    }
+    return rawPath.replaceAll(r'\', '/');
   }
 
   String _normalizeNodeType(Object? rawFileType) {
@@ -2380,23 +2397,24 @@ class _GraphifyNodeCandidate {
       payload: <String, Object?>{
         'label': displayLabel,
         if (entry['community'] != null) 'community': entry['community'],
-        if (entry['file_type'] != null) 'graphify_file_type': entry['file_type'],
+        if (entry['file_type'] != null)
+          'graphify_file_type': entry['file_type'],
         if (entry['norm_label'] != null) 'norm_label': entry['norm_label'],
       },
     );
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'candidate_id': candidateId,
-        'kind': 'node',
-        'candidate_key': candidateKey,
-        'candidate_type': candidateType,
-        'label': label,
-        if (confidenceScore != null) 'confidence_score': confidenceScore,
-        if (sourceFile != null) 'source_file': sourceFile,
-        if (sourceRef != null) 'source_ref': sourceRef,
-        'payload': payload,
-      };
+    'candidate_id': candidateId,
+    'kind': 'node',
+    'candidate_key': candidateKey,
+    'candidate_type': candidateType,
+    'label': label,
+    if (confidenceScore != null) 'confidence_score': confidenceScore,
+    if (sourceFile != null) 'source_file': sourceFile,
+    if (sourceRef != null) 'source_ref': sourceRef,
+    'payload': payload,
+  };
 }
 
 class _GraphifyEdgeCandidate {
@@ -2444,8 +2462,8 @@ class _GraphifyEdgeCandidate {
     // unknown — bucket as AMBIGUOUS so the admin re-classifies.
     final classifiedLabel =
         edgeType == 'RELATES_TO' && relation.toUpperCase() != 'RELATES_TO'
-            ? 'AMBIGUOUS'
-            : providedLabel;
+        ? 'AMBIGUOUS'
+        : providedLabel;
     final confidenceScore = (entry['confidence_score'] as num?)?.toDouble();
     final fromKey = 'graphify:$source';
     final toKey = 'graphify:$target';
@@ -2480,16 +2498,14 @@ class _GraphifyEdgeCandidate {
     );
     final classifiedLabel =
         edgeType == 'RELATES_TO' && relation.toUpperCase() != 'RELATES_TO'
-            ? 'AMBIGUOUS'
-            : providedLabel;
+        ? 'AMBIGUOUS'
+        : providedLabel;
     final confidenceScore = (entry['confidence_score'] as num?)?.toDouble();
     final sourceFile = entry['source_file']?.toString();
     final sourceRef = entry['source_location']?.toString();
     final displayLabel = entry['label']?.toString();
     final rawNodes = (entry['nodes'] as List?) ?? const <Object?>[];
-    final nodeIds = <String>[
-      for (final n in rawNodes) n.toString(),
-    ];
+    final nodeIds = <String>[for (final n in rawNodes) n.toString()];
     if (nodeIds.length < 2) return const <_GraphifyEdgeCandidate>[];
     final result = <_GraphifyEdgeCandidate>[];
     for (var i = 0; i < nodeIds.length; i++) {
@@ -2526,18 +2542,18 @@ class _GraphifyEdgeCandidate {
   }
 
   Map<String, Object?> toJson() => <String, Object?>{
-        'candidate_id': candidateId,
-        'kind': 'edge',
-        'candidate_key': candidateKey,
-        'candidate_type': candidateType,
-        'label': label,
-        if (confidenceScore != null) 'confidence_score': confidenceScore,
-        if (sourceFile != null) 'source_file': sourceFile,
-        if (sourceRef != null) 'source_ref': sourceRef,
-        'from_node_key': fromNodeKey,
-        'to_node_key': toNodeKey,
-        'payload': payload,
-      };
+    'candidate_id': candidateId,
+    'kind': 'edge',
+    'candidate_key': candidateKey,
+    'candidate_type': candidateType,
+    'label': label,
+    if (confidenceScore != null) 'confidence_score': confidenceScore,
+    if (sourceFile != null) 'source_file': sourceFile,
+    if (sourceRef != null) 'source_ref': sourceRef,
+    'from_node_key': fromNodeKey,
+    'to_node_key': toNodeKey,
+    'payload': payload,
+  };
 }
 
 String _classifyByConfidenceLabel(
@@ -2546,9 +2562,7 @@ String _classifyByConfidenceLabel(
 }) {
   if (rawLabel == null) return defaultLabel;
   final upper = rawLabel.toUpperCase();
-  if (upper == 'EXTRACTED' ||
-      upper == 'INFERRED' ||
-      upper == 'AMBIGUOUS') {
+  if (upper == 'EXTRACTED' || upper == 'INFERRED' || upper == 'AMBIGUOUS') {
     return upper;
   }
   // Numeric confidence sometimes lands in the same field; treat as

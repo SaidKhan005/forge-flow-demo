@@ -1,6 +1,7 @@
 # Admin Console MFA Challenge Parity Plan
 
-Status: Active hotfix slice.
+Status: Accepted 2026-05-02 (PR #65); staging admin stabilization followed in
+PR #66.
 Owner lane: Phase 9 auth behavior, consumed by Phase 11A Operations Console.
 Worktree: `.claude/worktrees/admin-mfa-challenge-parity`.
 
@@ -133,6 +134,16 @@ Route this as an active P0 hotfix in `PROJECT_TRACKER.md`. Do not update
 that file.
 
 ## Verification
+
+Accepted evidence:
+
+- Shared TOTP challenge view extracted for mobile + admin.
+- Admin auth gate now projects `AdminAuthMfaChallenge` and completes TOTP via
+  the shared Firebase auth client seam.
+- Admin entrypoint uses one `FirebaseAuthSdkClient` for sign-in, MFA
+  completion, and admin gateway bearer tokens.
+- Focused admin/MFA tests landed with the slice; staging stabilization followed
+  with admin-console plumbing, runtime grants, and health AGE graph fixes.
 
 Run from this worktree:
 

@@ -26,6 +26,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/corpus_admin_models.dart';
+import 'admin_http_timeout.dart';
 
 /// Source for the bearer token the gateway attaches to every proxy
 /// call. Production binds this to the admin Firebase ID-token stream;
@@ -105,12 +106,15 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
     required this.baseUri,
     required this.bearerTokenProvider,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+    Duration timeout = kAdminHttpRequestTimeout,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`).
   final Uri baseUri;
   final CorpusAdminBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
+  final Duration _timeout;
 
   static const String versionsPath = '/v1/admin/corpus/versions';
   static const String versionsPrefix = '$versionsPath/';
@@ -215,9 +219,22 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
       ..headers['Idempotency-Key'] = idempotencyKey
       ..headers['content-type'] = 'application/json'
       ..bodyBytes = utf8.encode(jsonEncode(<String, Object?>{}));
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
-    );
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw CorpusAdminGatewayError(
+        statusCode: 408,
+        errorCode: 'timeout',
+        message:
+            'admin AGE rebuild proxy timed out after '
+            '${_timeout.inSeconds}s',
+      );
+    }
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {
@@ -265,9 +282,20 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
-    );
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw CorpusAdminGatewayError(
+        statusCode: 408,
+        errorCode: 'timeout',
+        message: 'admin corpus proxy timed out after ${_timeout.inSeconds}s',
+      );
+    }
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {

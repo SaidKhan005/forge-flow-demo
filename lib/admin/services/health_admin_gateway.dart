@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/health_admin_models.dart';
+import 'admin_http_timeout.dart';
 
 class HealthAdminGatewayError implements Exception {
   const HealthAdminGatewayError({
@@ -39,12 +40,17 @@ abstract class HealthAdminGateway {
 /// 503 simply indicates a failed dependency probe). Any other status
 /// throws.
 class HttpHealthAdminGateway implements HealthAdminGateway {
-  HttpHealthAdminGateway({required this.baseUri, http.Client? httpClient})
-    : _httpClient = httpClient ?? http.Client();
+  HttpHealthAdminGateway({
+    required this.baseUri,
+    http.Client? httpClient,
+    Duration timeout = kAdminHealthHttpRequestTimeout,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   /// Proxy base URI (e.g. `https://advisor-proxy.forgeflow.app`).
   final Uri baseUri;
   final http.Client _httpClient;
+  final Duration _timeout;
 
   static const String healthPath = '/health';
 
@@ -53,9 +59,19 @@ class HttpHealthAdminGateway implements HealthAdminGateway {
     final uri = baseUri.resolve(healthPath);
     final request = http.Request('GET', uri)
       ..headers['accept'] = 'application/json';
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
-    );
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw HealthAdminGatewayError(
+        statusCode: 408,
+        message: 'proxy /health timed out after ${_timeout.inSeconds}s',
+      );
+    }
     final raw = utf8.decode(response.bodyBytes);
 
     Map<String, Object?> parsed = const <String, Object?>{};
@@ -210,7 +226,7 @@ const Map<String, Object?> kHealthAdminDemoEnvelope = <String, Object?>{
           'Required Azure extensions installed in the active business '
           'database (AGE, pgvector, pg_diskann, pg_partman, '
           'pg_stat_statements, pgcrypto). pg_cron is tracked separately '
-          'from Azure''s maintenance database.',
+          "from Azure's maintenance database.",
       'source': 'pg_extension',
       'owner': 'B42',
       'observed_at': '2026-05-01T12:00:00.000Z',

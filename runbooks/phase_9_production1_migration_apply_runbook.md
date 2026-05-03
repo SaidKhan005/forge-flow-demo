@@ -3,9 +3,9 @@
 Updated: 2026-05-02.
 
 Purpose: govern the live Production1 apply of the second migration batch —
-22 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and the
+27 files spanning Phase 9 follow-ups, Phase 11A advisor surfaces, and the
 HARD-B/HARD-F/HARD-H hardening pack — through cutoff
-`202605021500_phase_9_0sigma_l_rls_depth.sql`. This runbook must be reviewed
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. This runbook must be reviewed
 before any Production1 mutation. The first batch (Phase 9.0 Sigma slices b–k
 plus auth/recovery patches) was applied 2026-04-29; see the Apply History
 section below for the prior result.
@@ -14,7 +14,7 @@ section below for the prior result.
 
 Production1 target: `forge-flow-production1-pg`.
 
-In scope (22 pending migrations, lex order):
+In scope (27 pending migrations, lex order):
 
 - `db/migrations/202604280014_phase_9_0sigma_h2_audit_privacy_role.sql`
 - `db/migrations/202604290000_phase_9_b41_service_principal_issue_permission.sql`
@@ -38,6 +38,11 @@ In scope (22 pending migrations, lex order):
 - `db/migrations/202605020500_hardening_auth_rls_to_wrappers.sql`
 - `db/migrations/202605021000_phase_hardh_admin_idempotency.sql`
 - `db/migrations/202605021500_phase_9_0sigma_l_rls_depth.sql`
+- `db/migrations/202605021600_phase_11A_7_feature_flags_forge_admin_grants.sql`
+- `db/migrations/202605021700_phase_11A_health_age_graph_bootstrap.sql`
+- `db/migrations/202605021710_phase_11A_health_age_runtime_grants.sql`
+- `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
+- `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
 Out of scope:
 
@@ -46,8 +51,16 @@ Out of scope:
 - Operator data import.
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
-  anything later than `202605021500_phase_9_0sigma_l_rls_depth.sql` belongs to
+  anything later than `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql` belongs to
   a future apply event and is gated by `tool/migration_cutoff_lint.dart`).
+
+Migration drift automation:
+
+- After any slice lands a new `db/migrations/*.sql` file, run
+  `dart run tool/migration_drift_scanner.dart --fix --strict-docs`.
+- The scanner updates the staging setup cutoff between the sentinel markers,
+  writes `build/reports/migration_drift_report.md`, and flags watched
+  authority docs whose queue/count wording still needs a manual refresh.
 
 ## Live-Mutation Gate
 
@@ -91,10 +104,15 @@ Run in this exact lex order:
 20. `202605020500_hardening_auth_rls_to_wrappers.sql`
 21. `202605021000_phase_hardh_admin_idempotency.sql`
 22. `202605021500_phase_9_0sigma_l_rls_depth.sql`
+23. `202605021600_phase_11A_7_feature_flags_forge_admin_grants.sql`
+24. `202605021700_phase_11A_health_age_graph_bootstrap.sql`
+25. `202605021710_phase_11A_health_age_runtime_grants.sql`
+26. `202605021800_hardening_auth_login_attempts_index_rekey.sql`
+27. `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
 Dependency notes:
 
-- All 22 files are additive on the prior baseline (slices b–k plus auth /
+- All 27 files are additive on the prior baseline (slices b–k plus auth /
   recovery patches). Re-running any file after a partial failure is safe;
   every `create table` / `create index` uses `if not exists`, every
   `alter table` is idempotent on the second pass.
@@ -119,6 +137,20 @@ Dependency notes:
   (HARD-H). The L4 admin gateways already mint and forward
   `Idempotency-Key` headers; the proxy dedup helper engages once this table
   is in place.
+- `…1600_phase_11A_7_feature_flags_forge_admin_grants` grants the
+  `forge_admin` runtime role the explicit table privileges needed by
+  feature-flag admin and startup checks.
+- `…1700_phase_11A_health_age_graph_bootstrap` ensures the canonical AGE graph
+  namespace exists even before corpus projection has materialized vertices.
+- `…1710_phase_11A_health_age_runtime_grants` grants `forge_admin` AGE schema,
+  function, and graph-label read privileges so strict health probes can run.
+- `…1800_hardening_auth_login_attempts_index_rekey` preserves the pre-tenant
+  `(user_email_hash, ip_hash, attempted_at)` lockout index and rekeys the
+  tenant-side IP-failure triage index to lead with `operator_id`.
+- `…1900_phase_11A_3a_corpus_versions_seed_existing_chunks` creates exactly
+  one baseline corpus version when the ledger is empty but active pre-11A.3a
+  chunks already exist; it leaves empty environments and already-versioned
+  ledgers unchanged.
 - No `pg_cron` schedule changes in this batch; the existing
   `forge_rollup_hot_path` / `forge_rollup_cold_path` jobs from the prior
   batch continue unchanged.
@@ -239,10 +271,35 @@ from information_schema.role_table_grants
 where table_schema = 'public'
   and table_name in (
     'auth_events_audit',
+    'feature_flags',
     'recovery_code_attempts',
     'service_principals'
   )
 order by table_name, grantee, privilege_type;
+```
+
+AGE graph health bootstrap:
+
+```sql
+select extname
+from pg_extension
+where extname = 'age';
+
+select name
+from ag_catalog.ag_graph
+where name = 'forgeflow';
+
+select 'ag_catalog' as schema_name,
+       has_schema_privilege('forge_admin', 'ag_catalog', 'USAGE') as has_usage
+union all
+select 'forgeflow' as schema_name,
+       has_schema_privilege('forge_admin', 'forgeflow', 'USAGE') as has_usage;
+
+select table_schema, table_name, privilege_type
+from information_schema.role_table_grants
+where grantee = 'forge_admin'
+  and table_schema = 'forgeflow'
+order by table_name, privilege_type;
 ```
 
 RLS and tenant-leading discipline:
@@ -346,9 +403,9 @@ until the post-tuning monitor window is clean.
 - No backout was needed. Local logs are under
   `build/phase_9_production1_apply/` and intentionally stay uncommitted.
 
-### Next batch — pending (cutoff `202605021500_phase_9_0sigma_l_rls_depth.sql`)
+### Next batch — pending (cutoff `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`)
 
-The 22 files inventoried under "Scope" above are queued for the next
+The 27 files inventoried under "Scope" above are queued for the next
 Production1 apply event. Append the result here once the apply is run.
 
 ## Apply Report Template

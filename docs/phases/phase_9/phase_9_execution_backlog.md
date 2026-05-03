@@ -62,7 +62,10 @@ Do not re-open stale findings unless the repo regresses:
 - Tenant-leading auth indexes already lead with `operator_id`.
 - Phase 9 auth-table RLS/grants are live on staging and Production1.
 - Azure extension and preload requirements are captured in setup/runbook docs.
-- The Production1 migration apply is no longer queued.
+- The first Production1 migration apply is no longer queued. A second
+  Production1 apply batch is now queued for `202604280014` through
+  `202605021900`; use `runbooks/phase_9_production1_migration_apply_runbook.md`
+  and `docs/POST_HARDENING_FOLLOWUPS.md` P0 as the live authority.
 
 ## Remaining Live-Closeout Gates
 

@@ -48,6 +48,7 @@ WORKDIR /app
 
 COPY --from=build --chown=app:app /workspace/build/advisor_proxy /app/advisor_proxy
 COPY --from=build --chown=app:app /workspace/db/migrations /app/db/migrations
+COPY --from=build --chown=app:app /workspace/tool/advisor_proxy/graphify_candidates /app/graphify-out
 
 USER app
 

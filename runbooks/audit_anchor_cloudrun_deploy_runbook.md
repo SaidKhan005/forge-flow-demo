@@ -1,10 +1,10 @@
 # Audit Anchor Cloud Run Deploy Runbook
 
-Updated: 2026-05-01.
+Updated: 2026-05-03.
 Owner: F&F launch lane.
 Slice: Phase 9.0Σ.f — `audit_anchor` Cloud Run live preflight + deploy.
 
-## Current staging state (2026-05-01)
+## Current staging state (2026-05-03)
 
 **Deployed and verified end-to-end on staging, except the immutability
 lock — deliberately deferred.**
@@ -22,11 +22,19 @@ lock — deliberately deferred.**
 - Federated cred `forge-flow-audit-anchor-cloudrun-staging` on AD app
   `forge-flow-audit-anchor-staging`: attached, RBAC granted at container
   scope.
-- Last successful manual sweep: execution `forge-flow-audit-anchor-lxqgm`
-  (2026-05-01). Resolved 1 operator from `public.operators`, found no
-  unanchored chains (staging has no eligible audit_logs yet), exit 0.
-- Blob write path: **NOT yet exercised in staging** (no eligible chains).
-  Code path covered by unit tests (REST shape + 201/409/403 branches)
+- Latest successful manual sweep: execution `forge-flow-audit-anchor-zmsvj`
+  (2026-05-03). Resolved 1 operator from `public.operators`, anchored the
+  2026-05-02 chain, and exited 0.
+- Live `/health` check during the 2026-05-03 admin-console staging smoke first
+  reported `audit_chain_lag_seconds` red with metadata warning
+  `no_anchor_recorded`. After action-time approval and execution
+  `forge-flow-audit-anchor-zmsvj`, `/health` reported
+  `audit_chain_lag_seconds` green. This was not an admin auth/UI wiring defect
+  and is not assigned to a future 11A frontend slice.
+- Blob write path: **exercised in staging 2026-05-03** by the successful
+  anchor of the 2026-05-02 chain. Leave the immutability lock deferred until
+  the evidence body/ETag is verified and the four conditions below are true.
+  Code path remains covered by unit tests (REST shape + 201/409/403 branches)
   and orchestrator E2E.
 
 ### Deferred immutability lock — when to revisit

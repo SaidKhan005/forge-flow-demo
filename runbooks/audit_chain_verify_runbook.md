@@ -240,6 +240,10 @@ After the apply step succeeds, force one execution of the Job to
 prove the wiring is live (the Job's command is `audit_anchor sweep`,
 so this single call exercises the full daily firing shape):
 
+Action-time approval is required before running this command in staging or
+production. If eligible completed audit chains exist, the Job writes durable
+append-only `public.audit_chain_anchors` rows and Azure Blob evidence.
+
 ```bash
 gcloud run jobs execute forge-flow-audit-anchor \
   --project <project> \

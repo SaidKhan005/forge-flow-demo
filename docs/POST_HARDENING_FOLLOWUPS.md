@@ -20,10 +20,13 @@ Resolved items archived to `docs/archive/POST_HARDENING_FOLLOWUPS_RESOLVED_2026-
 
 ## P0 — Production1 migration apply gap
 
-**22 migrations pending Production1 apply** (`202604280014` through
-`202605021500`). HARD-B/HARD-H, all 11A admin column additions,
-B41/B42/B43, the audit privacy role, and Phase 9.0Σ.l (RLS depth on
-`proxy_requests` + `feature_flags`) are queued.
+**27 migrations pending Production1 apply** (`202604280014` through
+`202605021900`). HARD-B/HARD-H, all 11A admin column additions,
+B41/B42/B43, the audit privacy role, Phase 9.0Σ.l (RLS depth on
+`proxy_requests` + `feature_flags`), the `forge_admin` feature-flag grants,
+the 11A health AGE graph bootstrap/runtime grants, and the HARD-B
+auth-login-attempts index rekey plus the 11A.3a corpus-ledger seed are
+queued.
 
 Files to apply (lex order):
 
@@ -50,11 +53,39 @@ Files to apply (lex order):
 202605020500_hardening_auth_rls_to_wrappers.sql                  (HARD-F)
 202605021000_phase_hardh_admin_idempotency.sql                   (HARD-H)
 202605021500_phase_9_0sigma_l_rls_depth.sql                      (9.0Σ.l)
+202605021600_phase_11A_7_feature_flags_forge_admin_grants.sql    (11A.7)
+202605021700_phase_11A_health_age_graph_bootstrap.sql            (11A health)
+202605021710_phase_11A_health_age_runtime_grants.sql             (11A health)
+202605021800_hardening_auth_login_attempts_index_rekey.sql       (HARD-B)
+202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql (11A.3a)
 ```
 
 **Action:** schedule a Production1 apply event under existing runbook
 (`runbooks/phase_9_production1_migration_apply_runbook.md`) — does NOT
 require a new runbook; the lex-order pattern is the same.
+
+## P1 — Live admin operational gates made explicit
+
+The staging admin smoke surfaced two live actions that code cannot complete
+without operator-held secrets and action-time approval:
+
+- Provider credentials / KMS rollout: use
+  `runbooks/admin_provider_credentials_kms_rollout_runbook.md`.
+- Admin browser QA: use the static-build path in
+  `runbooks/admin_console_browser_qa_runbook.md`; treat debug web-server
+  bootstrap failures as dev-workflow noise unless the static build also fails.
+- Corpus graph candidates 503: **branch-fixed 2026-05-03** by packaging the
+  sanitized `tool/advisor_proxy/graphify_candidates/candidates/*` artifacts
+  into the advisor proxy image at `/app/graphify-out/candidates`. Raw
+  `graphify-out/graph.json`, cache, and converted source files remain ignored
+  and must not be committed.
+- Health red on `audit_chain_lag_seconds`: **staging-remediated 2026-05-03**.
+  This was not an auth/admin UI wiring gap. After action-time approval, Cloud
+  Run execution `forge-flow-audit-anchor-zmsvj` resolved 1 staging operator and
+  anchored the 2026-05-02 chain; `/health` then reported
+  `audit_chain_lag_seconds` green. Keep
+  `runbooks/audit_anchor_cloudrun_deploy_runbook.md` /
+  `runbooks/audit_chain_verify_runbook.md` as the canonical operating path.
 
 
 ## P2 — Test coverage gaps (open table)

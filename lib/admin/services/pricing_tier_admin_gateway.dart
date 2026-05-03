@@ -24,6 +24,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/pricing_tier_admin_models.dart';
+import 'admin_http_timeout.dart';
 
 /// Source for the bearer token the gateway attaches to every proxy
 /// call. Production binds this to the admin Firebase ID-token stream;
@@ -69,13 +70,16 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
     required this.baseUri,
     required this.bearerTokenProvider,
     http.Client? httpClient,
-  }) : _httpClient = httpClient ?? http.Client();
+    Duration timeout = kAdminHttpRequestTimeout,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
 
   /// Proxy base URI (e.g. `https://admin-proxy.forgeflow.app`). The
   /// gateway resolves `/v1/admin/pricing/*` against this.
   final Uri baseUri;
   final PricingAdminBearerTokenProvider bearerTokenProvider;
   final http.Client _httpClient;
+  final Duration _timeout;
 
   static const String operatorsPath = '/v1/admin/pricing/operators';
   static const String operatorsPrefix = '$operatorsPath/';
@@ -153,9 +157,20 @@ class HttpPricingTierAdminGateway implements PricingTierAdminGateway {
       request.headers['content-type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
     }
-    final response = await http.Response.fromStream(
-      await _httpClient.send(request),
-    );
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw PricingTierAdminGatewayError(
+        statusCode: 408,
+        errorCode: 'timeout',
+        message: 'admin pricing proxy timed out after ${_timeout.inSeconds}s',
+      );
+    }
     final raw = utf8.decode(response.bodyBytes);
     Map<String, Object?> parsed = const <String, Object?>{};
     if (raw.isNotEmpty) {

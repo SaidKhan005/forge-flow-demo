@@ -1,6 +1,6 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-02 (B44 graph producer delivery acknowledged)
+Updated: 2026-05-03 (B44 graph producer delivery + staging remediation acknowledged)
 Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`7`/`UX.health` accepted.
 Remaining: `11A.5`, `11A.6` (pending B45/B47 producers; B44 graph producers delivered); `11A.8`/`9`/`10` not started.
 Owner: F&F admin / operations lane
@@ -30,6 +30,32 @@ proxy `/health` per-surface metrics. Producers from the 9.0Σ foundation series:
 `11A.7-10` audit log review depends on B27 (delivered) + B37 (verifier E2E
 test, delivered) + B43 (Cloud Run anchor deploy, **operational gate pending
 Production1 GCP provisioning**).
+
+Staging admin stabilization follow-up (2026-05-02): the repo now includes
+`202605021600_phase_11A_7_feature_flags_forge_admin_grants.sql`,
+`202605021700_phase_11A_health_age_graph_bootstrap.sql`,
+`202605021710_phase_11A_health_age_runtime_grants.sql`, and
+`202605021800_hardening_auth_login_attempts_index_rekey.sql`, plus
+`202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`. These belong in
+the next Production1 migration apply before 11A health surfaces treat AGE graph
+checks, feature-flag runtime edits, auth lockout triage indexes, and
+pre-existing corpus ledger visibility as production-ready.
+
+Operational runbooks added from the 2026-05-03 live staging console smoke:
+provider credential/KMS rollout is owned by
+`runbooks/admin_provider_credentials_kms_rollout_runbook.md`, and local
+browser QA should use the static-build path in
+`runbooks/admin_console_browser_qa_runbook.md` when the Flutter debug
+web-server fails to bootstrap in the in-app browser. The same smoke also
+confirmed Corpus -> Graph candidates must ship sanitized
+`tool/advisor_proxy/graphify_candidates/candidates/*` artifacts in the proxy
+image; this branch copies them to `/app/graphify-out/candidates`, which is the
+path `RepositoryGraphCandidatesProxyGateway` reads in Cloud Run. The Health red
+`audit_chain_lag_seconds` item is not future 11A UI wiring; it is the B43 audit
+anchor ops-data gate. After action-time approval, staging execution
+`forge-flow-audit-anchor-zmsvj` anchored the 2026-05-02 chain and turned that
+metric green; Production1 anchoring remains the separate B43 production gate
+until the production project is provisioned and exercised.
 
 **2026-04-26 — Postgres host re-locked to Azure DB Flexible Server (Canada Central, PG 16).** Throughout this plan, "Supabase database" reads as "Azure Database for PostgreSQL Flexible Server". `11A.4` Integration management now manages Azure DB connection strings (in addition to Anthropic / Voyage keys) instead of Supabase project keys. `11A.6` Observability dashboard reads health + metrics from Azure Monitor (Postgres metrics) + Cloud Run + Anthropic / Voyage usage instead of Supabase + Cloud Run. Trigger: see `phase_9_auth_plan.md` 2026-04-26 banner.
 
@@ -193,6 +219,10 @@ Local implementation details:
   `graphify_candidate_manifest.json`.
 - The importer must not write live database rows directly. It produces
   review artifacts first, matching the existing `prepare-load` pattern.
+- The advisor proxy image must copy the sanitized candidate bundle from
+  `tool/advisor_proxy/graphify_candidates` to `/app/graphify-out`. Missing
+  artifacts still return the typed `graph_candidates_not_configured` 503, but
+  staging should not depend on a local workstation `graphify-out/` directory.
 - The Flutter admin client must never shell out to Graphify. The admin
   UI calls a proxy admin route, and the proxy/server-side job invokes the
   build tool.
@@ -267,7 +297,8 @@ License and source rules:
   owns persistence, tenant isolation, approval workflow, and runtime
   traversal.
 - Do not ship `graphify-out/graph.json` itself as production truth.
-  It is an input artifact only.
+  It is an input artifact only. Commit only the sanitized JSONL candidate
+  bundle and manifest; raw Graphify cache/source conversions stay ignored.
 
 Acceptance:
 
