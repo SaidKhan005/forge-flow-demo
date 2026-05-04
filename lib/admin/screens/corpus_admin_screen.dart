@@ -29,6 +29,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -354,7 +355,7 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
                   ),
                   Tab(
                     key: Key('admin_corpus_graph_candidates_tab'),
-                    text: 'Graph review',
+                    text: 'Relationship review',
                   ),
                 ],
               ),
@@ -1122,11 +1123,11 @@ class _GraphCandidateMetaCard extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           _DetailRow(label: 'Review scope', value: diff.graphScope),
-          _DetailRow(label: 'Relationship version', value: diff.graphVersion),
-          _DetailRow(label: 'Review tool version', value: diff.graphifyVersion),
+          _DetailRow(label: 'Relationship set', value: diff.graphVersion),
+          _DetailRow(label: 'Review engine', value: diff.graphifyVersion),
           if (diff.graphifySourceCommit != null)
             _DetailRow(
-              label: 'Source revision',
+              label: 'Source version',
               value: diff.graphifySourceCommit!,
             ),
           _DetailRow(label: 'Total suggestions', value: '${diff.totalCount}'),
@@ -1838,7 +1839,7 @@ class _VersionList extends StatelessWidget {
                           Text(
                             '${v.chunkCount} content piece'
                             '${v.chunkCount == 1 ? '' : 's'} - '
-                            'created ${_iso(v.createdAt)}',
+                            'created ${adminHumanDateTime(v.createdAt)}',
                             style: AppTextStyles.mono8(
                               color: AppColors.textMuted,
                             ),
@@ -1928,7 +1929,10 @@ class _VersionDetail extends StatelessWidget {
                   label: 'Status',
                   value: version.isCurrent ? 'Current' : 'Superseded',
                 ),
-                _DetailRow(label: 'Created', value: _iso(version.createdAt)),
+                _DetailRow(
+                  label: 'Created',
+                  value: adminHumanDateTime(version.createdAt),
+                ),
                 _DetailRow(
                   label: 'Created by',
                   value: version.createdBy ?? 'Unknown',
@@ -2352,8 +2356,6 @@ String _shortVersion(String versionId) {
   if (versionId.length <= 8) return versionId;
   return versionId.substring(0, 8);
 }
-
-String _iso(DateTime when) => when.toUtc().toIso8601String();
 
 String _friendlyCandidateType(String type) {
   final parts = type

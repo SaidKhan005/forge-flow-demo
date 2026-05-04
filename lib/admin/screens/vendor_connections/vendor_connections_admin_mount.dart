@@ -38,9 +38,7 @@ class VendorConnectionsAdminMount extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       key: const Key('admin_vendor_connections_screen'),
-      appBar: AppBar(
-        title: const Text('Vendor connections'),
-      ),
+      appBar: AppBar(title: const Text('Vendor integrations')),
       body: VendorConnectionsWidget(
         operatorId: operatorId,
         locationId: locationId,

@@ -83,7 +83,7 @@ class AdminPageHeader extends StatelessWidget {
       children: [
         Text(
           title,
-          style: AppTextStyles.display28(color: AppColors.textPrimary),
+          style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
         ),
         const SizedBox(height: 4),
         Text(
@@ -135,6 +135,13 @@ class AdminCard extends StatelessWidget {
         color: AppColors.backgroundSurface,
         border: Border.all(color: AppColors.borderSubtle, width: 1),
         borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.textPrimary.withValues(alpha: 0.035),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       padding: padding,
       child: child,
@@ -165,11 +172,11 @@ class AdminDetailRow extends StatelessWidget {
           final compact = constraints.maxWidth < labelWidth + 220;
           final labelText = Text(
             label,
-            style: AppTextStyles.mono11(color: AppColors.textMuted),
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
           );
           final valueText = Text(
             value,
-            style: AppTextStyles.mono14(color: AppColors.textPrimary),
+            style: AppTextStyles.body14(color: AppColors.textPrimary),
             overflow: TextOverflow.ellipsis,
           );
           if (compact) {

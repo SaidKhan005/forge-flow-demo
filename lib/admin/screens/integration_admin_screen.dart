@@ -37,6 +37,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
 
@@ -121,9 +122,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
-        title: 'Rotate ${kind.displayName} key?',
+        title: 'Replace ${kind.displayName} key?',
         message:
-            'This writes an audit record. The new secret is shown once after rotation; after you close it, only the hidden preview remains.',
+            'This change is logged. The new key is shown once; after you close it, only the saved preview remains.',
         confirmLabel: 'Continue',
       ),
     );
@@ -192,11 +193,11 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     // expose the audit-write endpoint outside rotation). Surface a
     // SnackBar so the operator knows the copy event happened — the
     // real audit hook plugs in here once the audit endpoint lands.
-    _showSnackBar('Copied ${kind.displayName} secret value to clipboard.');
+    _showSnackBar('Copied ${kind.displayName} key to clipboard.');
   }
 
   void _onPlaintextCopyFailed(ProviderKeyKind kind) {
-    _showSnackBar('Could not copy ${kind.displayName} secret value.');
+    _showSnackBar('Could not copy ${kind.displayName} key.');
   }
 
   @override
@@ -260,10 +261,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Provider keys',
-                  style: AppTextStyles.mono15(
+                  'Service access',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -284,10 +284,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Vendor connections',
-                  style: AppTextStyles.mono15(
+                  'Vendor integrations',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -295,7 +294,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      'Vendor connection status will appear here after providers are configured.',
+                      'Integration status will appear here after providers are connected.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -312,10 +311,9 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Platform services',
-                  style: AppTextStyles.mono15(
+                  'Shared services',
+                  style: AppTextStyles.sectionTitle(
                     color: AppColors.textPrimary,
-                    weight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -352,7 +350,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Check provider status and rotate service keys. Secret values show once, then stay hidden.',
+          'Check integration status and manage service keys. New keys show once, then stay hidden.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -379,8 +377,8 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: platform admin access is required to rotate service keys.',
-              style: AppTextStyles.mono11(color: AppColors.textSecondary),
+              'View only: platform admin access is required to manage service keys.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -429,29 +427,28 @@ class _ProviderKeyTile extends StatelessWidget {
               children: [
                 Text(
                   kind.displayName,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   hasRow
-                      ? 'Hidden value: ${row!.maskedValue}'
-                      : 'No active key yet. Rotate to add one.',
+                      ? 'Saved key: ${row!.maskedValue}'
+                      : 'No saved key yet. Use Replace key to add one.',
                   key: Key('admin_integrations_masked_${kind.wireName}'),
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: hasRow
+                      ? AppTextStyles.mono11(color: AppColors.textSecondary)
+                      : AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (hasRow) ...[
                   const SizedBox(height: 2),
                   Text(
-                    'Rotated by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
-                    'at ${row!.rotatedAt.toUtc().toIso8601String()}',
+                    'Last changed by ${row!.updatedBy ?? row!.createdBy ?? 'Unknown'} '
+                    'at ${adminHumanDateTime(row!.rotatedAt)}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    'Secret location: ${row!.kmsSecretName}',
+                    'Secure storage ID: ${row!.kmsSecretName}',
                     style: AppTextStyles.mono8(color: AppColors.textMuted),
                   ),
                 ],
@@ -476,7 +473,7 @@ class _ProviderKeyTile extends StatelessWidget {
                       ),
                     )
                   : const Icon(Icons.refresh, size: 14),
-              label: const Text('Rotate'),
+              label: const Text('Replace key'),
             ),
         ],
       ),
@@ -513,15 +510,12 @@ class _StatusRowTile extends StatelessWidget {
               children: [
                 Text(
                   status.displayName,
-                  style: AppTextStyles.mono14(
-                    color: AppColors.textPrimary,
-                    weight: FontWeight.w600,
-                  ),
+                  style: AppTextStyles.body14(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 2),
                 Text(
                   status.detailMessage,
-                  style: AppTextStyles.mono11(color: AppColors.textSecondary),
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -535,7 +529,7 @@ class _StatusRowTile extends StatelessWidget {
             ),
             child: Text(
               status.statusLabel,
-              style: AppTextStyles.mono8(color: AppColors.textMuted),
+              style: AppTextStyles.chipLabel(color: AppColors.textMuted),
             ),
           ),
         ],
@@ -576,7 +570,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
       key: const Key('admin_integrations_rotate_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Rotate ${widget.keyKind.displayName}',
+        'Replace ${widget.keyKind.displayName} key',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -588,7 +582,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Paste the new secret value. Only the hidden preview and secure storage location are saved.',
+                'Paste the new key. Only the saved preview and secure storage location are kept.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 12),
@@ -598,7 +592,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                 obscureText: _obscured,
                 autofocus: true,
                 decoration: InputDecoration(
-                  labelText: 'New secret value',
+                  labelText: 'New key',
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(6),
                     borderSide: const BorderSide(
@@ -621,7 +615,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
                     return 'Required';
                   }
                   if (value.trim().length < 9) {
-                    return 'Secret value must be at least 9 characters.';
+                    return 'Key must be at least 9 characters.';
                   }
                   return null;
                 },
@@ -652,7 +646,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
               ),
             );
           },
-          child: const Text('Rotate'),
+          child: const Text('Save key'),
         ),
       ],
     );
@@ -702,7 +696,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
       key: const Key('admin_integrations_reveal_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        '${widget.keyKind.displayName} rotated',
+        '${widget.keyKind.displayName} key saved',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: SizedBox(
@@ -712,7 +706,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This is the only time this secret is shown. Store it now; the console cannot reveal it again.',
+              'This is the only time this key is shown. Store it now; the console cannot reveal it again.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),

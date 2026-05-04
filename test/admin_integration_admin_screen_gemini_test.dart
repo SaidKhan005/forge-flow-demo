@@ -57,7 +57,7 @@ void main() {
 
       // No active credential → the empty-state copy is shown.
       expect(
-        find.text('No active key yet. Rotate to add one.'),
+        find.text('No saved key yet. Use Replace key to add one.'),
         findsAtLeastNWidgets(1),
       );
     });

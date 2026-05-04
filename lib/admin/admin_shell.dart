@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
+import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
 
 class AdminShell extends StatefulWidget {
@@ -36,6 +37,7 @@ class AdminShell extends StatefulWidget {
 
 class _AdminShellState extends State<AdminShell> {
   late String _selectedRouteId;
+  AdminSupportLogFilterIntent? _supportLogFilter;
 
   @override
   void initState() {
@@ -56,9 +58,23 @@ class _AdminShellState extends State<AdminShell> {
     orElse: () => widget.routes.first,
   );
 
+  void _selectIntent(AdminRouteIntent intent) {
+    final nextRouteId = _routeIdOrFallback(intent.routeId);
+    final nextSupportLogFilter = nextRouteId == kAdminDebugConsoleRouteId
+        ? intent.supportLogFilter
+        : null;
+    if (nextRouteId == _selectedRouteId &&
+        nextSupportLogFilter == _supportLogFilter) {
+      return;
+    }
+    setState(() {
+      _selectedRouteId = nextRouteId;
+      _supportLogFilter = nextSupportLogFilter;
+    });
+  }
+
   void _select(String id) {
-    if (id == _selectedRouteId) return;
-    setState(() => _selectedRouteId = id);
+    _selectIntent(AdminRouteIntent(routeId: id));
   }
 
   @override
@@ -83,9 +99,17 @@ class _AdminShellState extends State<AdminShell> {
                     onSelect: _select,
                   ),
                   Expanded(
-                    child: _AdminBody(
-                      key: ValueKey('admin-body-${_currentRoute.id}'),
-                      route: _currentRoute,
+                    child: AdminRouteHandoff(
+                      selectedRouteId: _selectedRouteId,
+                      supportLogFilter: _supportLogFilter,
+                      onSelectRoute: _selectIntent,
+                      child: _AdminBody(
+                        key: ValueKey(
+                          'admin-body-${_currentRoute.id}-'
+                          '${_supportLogFilter?.cacheKey ?? 'none'}',
+                        ),
+                        route: _currentRoute,
+                      ),
                     ),
                   ),
                 ],
@@ -151,7 +175,7 @@ class _AdminHeaderBar extends StatelessWidget {
                 Text(
                   'Admin Console',
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono8(color: AppColors.sunsetDark),
+                  style: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
                 ),
               ],
             ),
@@ -207,7 +231,7 @@ class _RolePill extends StatelessWidget {
       ),
       child: Text(
         roleLabel,
-        style: AppTextStyles.mono8(color: AppColors.peacockDark),
+        style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
       ),
     );
   }
@@ -248,7 +272,7 @@ class _AdminSideNav extends StatelessWidget {
       label: 'AI',
       badge: 'Work in progress',
     ),
-    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Dev'),
+    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Platform'),
   ];
 
   @override
@@ -322,7 +346,7 @@ class _NavSectionHeader extends StatelessWidget {
         children: [
           Text(
             section.label,
-            style: AppTextStyles.mono8(color: AppColors.textMuted),
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
           ),
           if (section.badge != null) ...[
             const SizedBox(width: 8),
@@ -341,7 +365,7 @@ class _NavSectionHeader extends StatelessWidget {
                 child: Text(
                   section.badge!,
                   overflow: TextOverflow.ellipsis,
-                  style: AppTextStyles.mono8(color: AppColors.peacockDark),
+                  style: AppTextStyles.chipLabel(color: AppColors.peacockDark),
                 ),
               ),
             ),
@@ -410,7 +434,7 @@ class _NavItem extends StatelessWidget {
                 if (route.placeholder)
                   Text(
                     'Coming soon',
-                    style: AppTextStyles.mono8(color: AppColors.textMuted),
+                    style: AppTextStyles.chipLabel(color: AppColors.textMuted),
                   ),
               ],
             ),

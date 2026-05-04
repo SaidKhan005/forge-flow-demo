@@ -30,6 +30,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -210,6 +211,8 @@ class _ObservabilityAdminScreenState extends State<ObservabilityAdminScreen>
         children: [
           _AsOfStrip(envelope: envelope),
           const SizedBox(height: 12),
+          const _MetricsKey(),
+          const SizedBox(height: 12),
           TabBar(
             key: const Key('admin_observability_tabs'),
             controller: _tabs,
@@ -283,7 +286,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'System metrics',
       subtitle:
-          'Review cost, usage limits, operator activity, relationships, and hosting signals.',
+          'Review cost, usage limits, operator activity, relationships, and hosting status.',
       compactBreakpoint: 720,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -307,8 +310,7 @@ class _Header extends StatelessWidget {
             Text(
               lastRefreshed == null
                   ? 'Last refreshed: -'
-                  : 'Last refreshed: '
-                        '${lastRefreshed!.toUtc().toIso8601String()}',
+                  : 'Last refreshed: ${adminHumanDateTime(lastRefreshed!)}',
               key: const Key('admin_observability_last_refreshed'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -359,7 +361,7 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
             foregroundColor: AppColors.backgroundSurface,
           ),
           icon: const Icon(Icons.play_arrow, size: 16),
-          label: const Text('Run check'),
+          label: const Text('Run metrics check'),
         ),
       ],
     );
@@ -394,7 +396,7 @@ class _ManualRunPrompt extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Cost, activity, margin, and hosting rows load on demand because the check scans recent usage.',
+                'Cost, activity, margin, and hosting rows load on demand because the check reads recent usage.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
@@ -440,7 +442,7 @@ class _AsOfStrip extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
           Text(
-            'As of: ${envelope.asOf.toUtc().toIso8601String()}',
+            'As of: ${adminHumanDateTime(envelope.asOf)}',
             style: AppTextStyles.mono11(
               color: AppColors.textPrimary,
             ).copyWith(fontWeight: FontWeight.w600),
@@ -460,13 +462,141 @@ class _AsOfStrip extends StatelessWidget {
                 : _SummarySeverity.neutral,
           ),
           _SummaryChip(
-            label: 'Cap events',
+            label: 'Limit events',
             value: '$capEventCount',
             severity: capEventCount > 0
                 ? _SummarySeverity.warning
                 : _SummarySeverity.neutral,
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _MetricsKey extends StatelessWidget {
+  const _MetricsKey();
+
+  static const List<_MetricsKeyItem> _items = <_MetricsKeyItem>[
+    _MetricsKeyItem(
+      label: 'Inactive',
+      meaning:
+          'An operator has no AI activity yet or has been quiet for about 30 days.',
+    ),
+    _MetricsKeyItem(
+      label: 'Losing money',
+      meaning:
+          'Estimated AI cost is higher than the operator plan revenue for the window.',
+    ),
+    _MetricsKeyItem(
+      label: 'Limit events',
+      meaning:
+          'A request was stopped because the operator reached a usage limit.',
+    ),
+    _MetricsKeyItem(
+      label: 'Highest spend',
+      meaning: 'The operators, staff, or workflows using the most AI budget.',
+    ),
+    _MetricsKeyItem(
+      label: 'Saved answer reuse',
+      meaning:
+          'How often the system reused a saved answer instead of paying for a new one.',
+    ),
+    _MetricsKeyItem(
+      label: '95th percentile',
+      meaning:
+          'Most requests were this fast or faster; a small slow group may be higher.',
+    ),
+    _MetricsKeyItem(
+      label: 'Unlinked items',
+      meaning:
+          'Knowledge graph items that are not connected to a confirmed relationship yet.',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_observability_metrics_key'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Metrics key',
+            style: AppTextStyles.body13(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 8),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const gap = 10.0;
+              final columns = constraints.maxWidth >= 1040
+                  ? 3
+                  : constraints.maxWidth >= 680
+                  ? 2
+                  : 1;
+              final itemWidth =
+                  (constraints.maxWidth - (gap * (columns - 1))) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: 8,
+                children: <Widget>[
+                  for (final item in _items)
+                    _MetricsKeyPill(item: item, width: itemWidth),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricsKeyItem {
+  const _MetricsKeyItem({required this.label, required this.meaning});
+
+  final String label;
+  final String meaning;
+}
+
+class _MetricsKeyPill extends StatelessWidget {
+  const _MetricsKeyPill({required this.item, required this.width});
+
+  final _MetricsKeyItem item;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text.rich(
+        TextSpan(
+          text: item.label,
+          style: AppTextStyles.body12(
+            color: AppColors.textPrimary,
+          ).copyWith(fontWeight: FontWeight.w700),
+          children: <InlineSpan>[
+            TextSpan(
+              text: ' - ${item.meaning}',
+              style: AppTextStyles.body12(color: AppColors.textSecondary),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -543,9 +673,9 @@ class _CostTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_cost_telemetry',
-            title: 'Cost by operator and use case',
+            title: 'AI request cost by request group',
             subtitle:
-                'Spend grouped by operator, location, staff member, workflow, and request type. Use the filter when the table reaches its result limit.',
+                'Shows cost by operator scope and readable request group. Use the exact request group ID when you need to narrow the table.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -556,13 +686,15 @@ class _CostTab extends StatelessWidget {
                   applying: filterApplying,
                 ),
                 const SizedBox(height: 8),
+                const _RequestGroupKey(),
+                const SizedBox(height: 8),
                 _CostTelemetryTruncationHint(envelope: envelope),
                 const SizedBox(height: 8),
                 if (envelope.costTelemetry.isEmpty)
                   const _EmptyState(
                     keyName: 'admin_observability_cost_telemetry_empty',
                     label:
-                        'No cost rows in this window, or the request-type filter excluded every row.',
+                        'No cost rows in this window, or the request group ID filter excluded every row.',
                   )
                 else
                   _CostTelemetryTable(rows: envelope.costTelemetry),
@@ -571,13 +703,13 @@ class _CostTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_cache_hit_rates',
-            title: 'Saved response reuse by request type',
+            title: 'Saved answer reuse',
             subtitle:
                 'Shows how often the system can reuse a saved answer. Low reuse can increase cost.',
             child: envelope.cacheHitRates.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cache_hit_rates_empty',
-                    label: 'No cache events in window.',
+                    label: 'No saved-answer data in this window.',
                   )
                 : Wrap(
                     spacing: 12,
@@ -596,13 +728,13 @@ class _CostTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_model_mix',
-            title: 'Model mix by request type',
+            title: 'Model use by request group',
             subtitle:
                 'Shows how much work is routed to fast, standard, or more detailed models. Higher detailed-model share can increase cost.',
             child: envelope.modelMix.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_model_mix_empty',
-                    label: 'No routed requests in window.',
+                    label: 'No model routing data in this window.',
                   )
                 : Wrap(
                     spacing: 12,
@@ -621,13 +753,13 @@ class _CostTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_batch_mode_share',
-            title: 'Batch savings by request type',
+            title: 'Lower-cost batch work',
             subtitle:
                 'Shows how much async work is using batch processing for lower-cost handling.',
             child: envelope.batchModeShare.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_batch_mode_share_empty',
-                    label: 'No async workloads in window.',
+                    label: 'No batch work in this window.',
                   )
                 : Wrap(
                     spacing: 12,
@@ -681,7 +813,7 @@ class _CostTelemetryFilterBar extends StatelessWidget {
             style: AppTextStyles.mono11(color: AppColors.textPrimary),
             decoration: InputDecoration(
               isDense: true,
-              hintText: 'Filter by request type key, for example advisor_qa',
+              hintText: 'Filter by request group ID, for example wf_pl',
               hintStyle: AppTextStyles.mono10(color: AppColors.textMuted),
               filled: true,
               fillColor: AppColors.backgroundSurface,
@@ -729,7 +861,7 @@ class _CostTelemetryFilterBar extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             child: Text(
-              'Request type: $activeFilter',
+              'Request group ID: $activeFilter',
               style: AppTextStyles.mono10(
                 color: AppColors.textMuted,
               ).copyWith(fontWeight: FontWeight.w600),
@@ -744,6 +876,71 @@ class _CostTelemetryFilterBar extends StatelessWidget {
 /// "Showing N of M (truncated — refine the filter)" hint above the
 /// cost-telemetry table. Always rendered so the operator knows the
 /// surface count even when the result is exhaustive.
+class _RequestGroupKey extends StatelessWidget {
+  const _RequestGroupKey();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_observability_request_group_key'),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Text(
+            'Request group ID key',
+            style: AppTextStyles.body13(
+              color: AppColors.textPrimary,
+            ).copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: <Widget>[
+              for (final useCase in adminRequestUseCases)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundSurface,
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: RichText(
+                    text: TextSpan(
+                      children: <InlineSpan>[
+                        TextSpan(
+                          text: useCase.label,
+                          style: AppTextStyles.body12(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        TextSpan(
+                          text: '  ${useCase.id}',
+                          style: AppTextStyles.mono10(
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _CostTelemetryTruncationHint extends StatelessWidget {
   const _CostTelemetryTruncationHint({required this.envelope});
 
@@ -756,7 +953,7 @@ class _CostTelemetryTruncationHint extends StatelessWidget {
     final truncated = envelope.costTelemetryTruncated;
     final color = truncated ? AppColors.warning : AppColors.textMuted;
     final label = truncated
-        ? 'Showing $shown of $total rows. Refine the request type filter to narrow the scope.'
+        ? 'Showing $shown of $total rows. Refine the request group ID filter to narrow the scope.'
         : 'Showing $shown of $total rows.';
     return Container(
       key: truncated
@@ -780,7 +977,7 @@ class _CostTelemetryTable extends StatelessWidget {
   final List<CostTelemetryEntry> rows;
 
   static const double _maxTableHeight = 360;
-  static const double _rowExtent = 52;
+  static const double _rowExtent = 68;
 
   @override
   Widget build(BuildContext context) {
@@ -797,24 +994,26 @@ class _CostTelemetryTable extends StatelessWidget {
             children: <Widget>[
               Expanded(
                 flex: 4,
-                child: Text(
-                  'operator / location / staff / workflow',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                child: _HelpLabel(
+                  label: 'Operator scope',
+                  message:
+                      'Operator, location, staff, and workflow scope for this cost row.',
                 ),
               ),
               Expanded(
                 flex: 2,
-                child: Text(
-                  'use case / request type',
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
+                child: _HelpLabel(
+                  label: 'Request group',
+                  message:
+                      'Human request type plus the exact request group ID used for filtering.',
                 ),
               ),
               Expanded(
                 flex: 2,
-                child: Text(
-                  'cost (USD) / requests',
+                child: _HelpLabel(
+                  label: 'Cost / requests',
+                  message: 'Estimated AI cost and request count for this row.',
                   textAlign: TextAlign.right,
-                  style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ),
             ],
@@ -845,16 +1044,17 @@ class _CostTelemetryTable extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Text(
-                            row.operatorId,
+                            row.businessName ??
+                                'Operator ID: ${row.operatorId}',
                             style: AppTextStyles.mono11(
                               color: AppColors.textPrimary,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
-                            'Location: ${row.locationId ?? 'Unknown'} - '
-                            'Staff: ${row.staffId ?? 'Any'} - '
-                            'Workflow: ${row.workflowId ?? 'Any'}',
+                            'Location ID: ${row.locationId ?? 'Any'} - '
+                            'Staff ID: ${row.staffId ?? 'Any'} - '
+                            'Workflow ID: ${row.workflowId ?? 'Any'}',
                             style: AppTextStyles.mono10(
                               color: AppColors.textMuted,
                             ),
@@ -870,13 +1070,13 @@ class _CostTelemetryTable extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: <Widget>[
                           Text(
-                            row.usageClass,
-                            style: AppTextStyles.mono11(
+                            adminRequestUseCaseLabel(row.queryClass),
+                            style: AppTextStyles.body13(
                               color: AppColors.textPrimary,
-                            ),
+                            ).copyWith(fontWeight: FontWeight.w700),
                           ),
                           Text(
-                            row.queryClass,
+                            _requestGroupCaption(row),
                             style: AppTextStyles.mono10(
                               color: AppColors.textMuted,
                             ),
@@ -898,7 +1098,7 @@ class _CostTelemetryTable extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            '${row.requestCount} req',
+                            '${row.requestCount} requests',
                             style: AppTextStyles.mono10(
                               color: AppColors.textMuted,
                             ),
@@ -937,11 +1137,12 @@ class _HitRateTile extends StatelessWidget {
         break;
     }
     return _MetricTileShell(
-      label: entry.queryClass,
+      label: adminRequestUseCaseLabel(entry.queryClass),
+      labelHelp: 'Request group measured for saved answer reuse.',
       value: '${(entry.hitRate * 100).toStringAsFixed(1)}%',
       caption:
-          'yellow at ${(entry.yellowThreshold * 100).toStringAsFixed(0)}% - '
-          'red: ${(entry.redThreshold * 100).toStringAsFixed(0)}%',
+          'ID: ${entry.queryClass} - review below ${(entry.yellowThreshold * 100).toStringAsFixed(0)}% - '
+          'failing below ${(entry.redThreshold * 100).toStringAsFixed(0)}%',
       accent: color,
     );
   }
@@ -958,12 +1159,13 @@ class _ModelMixTile extends StatelessWidget {
         ? AppColors.warning
         : AppColors.positive;
     return _MetricTileShell(
-      label: entry.queryClass,
+      label: adminRequestUseCaseLabel(entry.queryClass),
+      labelHelp: 'Request group whose model routing mix is shown.',
       value:
           'Haiku ${(entry.haikuShare * 100).toStringAsFixed(0)}% - '
           'Sonnet ${(entry.sonnetShare * 100).toStringAsFixed(0)}%',
       caption:
-          'sonnet ceiling: ${(entry.sonnetShareCeiling * 100).toStringAsFixed(0)}%',
+          'ID: ${entry.queryClass} - detailed model target: ${(entry.sonnetShareCeiling * 100).toStringAsFixed(0)}%',
       accent: color,
     );
   }
@@ -980,9 +1182,11 @@ class _BatchModeShareTile extends StatelessWidget {
         ? AppColors.positive
         : AppColors.neutral;
     return _MetricTileShell(
-      label: entry.queryClass,
+      label: adminRequestUseCaseLabel(entry.queryClass),
+      labelHelp: 'Request group measured for batch-processing share.',
       value: '${(entry.batchShare * 100).toStringAsFixed(0)}%',
-      caption: 'target ${(entry.targetShare * 100).toStringAsFixed(0)}%',
+      caption:
+          'ID: ${entry.queryClass} - target ${(entry.targetShare * 100).toStringAsFixed(0)}%',
       accent: color,
     );
   }
@@ -1004,10 +1208,10 @@ class _TopNTab extends StatelessWidget {
             _SectionCard(
               keyName:
                   'admin_observability_section_top_${observabilityWindowKey(window)}',
-              title: 'Highest spend - ${observabilityWindowKey(window)}',
+              title: 'Highest spend - last ${observabilityWindowKey(window)}',
               subtitle:
-                  'Most-expensive operators / staff / workflows over the '
-                  '${observabilityWindowKey(window)} rolling window.',
+                  'Highest-cost operators, staff, and workflows over the last '
+                  '${observabilityWindowKey(window)}.',
               child: _TopExpensiveList(
                 window: window,
                 rows: envelope
@@ -1040,6 +1244,49 @@ class _TopExpensiveList extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        Padding(
+          padding: const EdgeInsets.only(bottom: 6),
+          child: Row(
+            children: const <Widget>[
+              SizedBox(
+                width: 84,
+                child: _HelpLabel(
+                  label: 'Scope',
+                  message:
+                      'Whether this row is an operator, staff member, or workflow.',
+                ),
+              ),
+              SizedBox(width: 10),
+              Expanded(
+                child: _HelpLabel(
+                  label: 'Name or ID',
+                  message:
+                      'The operator, staff member, or workflow using the most AI budget.',
+                ),
+              ),
+              SizedBox(width: 10),
+              SizedBox(
+                width: 88,
+                child: _HelpLabel(
+                  label: 'Spend',
+                  message:
+                      'Estimated AI cost for this row during the selected window.',
+                  textAlign: TextAlign.right,
+                ),
+              ),
+              SizedBox(width: 6),
+              SizedBox(
+                width: 96,
+                child: _HelpLabel(
+                  label: 'Requests',
+                  message:
+                      'Request count for this row during the selected window.',
+                  textAlign: TextAlign.right,
+                ),
+              ),
+            ],
+          ),
+        ),
         for (final row in sorted)
           Container(
             key: Key(
@@ -1086,7 +1333,7 @@ class _TopExpensiveList extends StatelessWidget {
                 ),
                 const SizedBox(width: 6),
                 Text(
-                  '(${row.requestCount} req)',
+                  '(${row.requestCount} requests)',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ],
@@ -1122,6 +1369,7 @@ class _OperatorsTab extends StatelessWidget {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      const _DormancyHeader(),
                       for (final entry in envelope.dormancy)
                         _DormancyRow(
                           key: Key(
@@ -1135,17 +1383,18 @@ class _OperatorsTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_margin',
-            title: 'Per-tier margin estimate',
+            title: 'Plan margin estimate',
             subtitle:
                 'Plan revenue minus recent cost. Operators below margin target appear in red.',
             child: envelope.margins.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_margin_empty',
-                    label: 'No margin rows yet.',
+                    label: 'No margin data in this window.',
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      const _MarginHeader(),
                       for (final entry in envelope.margins)
                         _MarginRow(
                           key: Key(
@@ -1156,6 +1405,37 @@ class _OperatorsTab extends StatelessWidget {
                         ),
                     ],
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DormancyHeader extends StatelessWidget {
+  const _DormancyHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _HelpLabel(
+              label: 'Operator',
+              message: 'Operator account being checked for recent AI activity.',
+            ),
+          ),
+          SizedBox(width: 10),
+          SizedBox(
+            width: 150,
+            child: _HelpLabel(
+              label: 'Activity status',
+              message:
+                  'Whether the operator has been active recently or needs follow-up.',
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
       ),
@@ -1214,14 +1494,14 @@ class _DormancyRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Operator ID: ${entry.operatorId} - plan: '
+                  'Operator ID: ${entry.operatorId} - AI plan: '
                   '${entry.subscriptionTier ?? 'Unknown'}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 Text(
                   lastActive == null
                       ? 'Last active: no activity yet'
-                      : 'Last active: ${lastActive.toUtc().toIso8601String()}',
+                      : 'Last active: ${adminHumanDateTime(lastActive)}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ],
@@ -1243,6 +1523,36 @@ class _DormancyRow extends StatelessWidget {
               style: AppTextStyles.mono10(
                 color: color,
               ).copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarginHeader extends StatelessWidget {
+  const _MarginHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            child: _HelpLabel(
+              label: 'Operator',
+              message: 'Operator plan being checked for AI cost coverage.',
+            ),
+          ),
+          SizedBox(width: 10),
+          SizedBox(
+            width: 190,
+            child: _HelpLabel(
+              label: 'Revenue / cost / margin',
+              message: 'Plan revenue minus estimated AI cost for this window.',
+              textAlign: TextAlign.right,
             ),
           ),
         ],
@@ -1278,7 +1588,7 @@ class _MarginRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Plan: ${entry.subscriptionTier} - operator ID: '
+                  'AI plan: ${entry.subscriptionTier} - Operator ID: '
                   '${entry.operatorId}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
@@ -1290,11 +1600,11 @@ class _MarginRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: <Widget>[
               Text(
-                'rev \$${entry.revenueUsd.toStringAsFixed(2)}',
+                'Revenue \$${entry.revenueUsd.toStringAsFixed(2)}',
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
               ),
               Text(
-                'cost \$${entry.costUsd.toStringAsFixed(2)}',
+                'Cost \$${entry.costUsd.toStringAsFixed(2)}',
                 style: AppTextStyles.mono10(color: AppColors.textMuted),
               ),
               Container(
@@ -1312,7 +1622,7 @@ class _MarginRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
-                  'margin \$${entry.marginUsd.toStringAsFixed(2)}',
+                  'Margin \$${entry.marginUsd.toStringAsFixed(2)}',
                   style: AppTextStyles.mono10(
                     color: color,
                   ).copyWith(fontWeight: FontWeight.w700),
@@ -1340,17 +1650,18 @@ class _CapEventsTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_cap_events',
-            title: 'Usage limit events',
+            title: 'Limit reached events',
             subtitle:
                 'Requests refused because a usage limit was reached. Use this to explain when an operator hits a monthly or per-request limit.',
             child: envelope.capEvents.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cap_events_empty',
-                    label: 'No usage limit events in this window.',
+                    label: 'No limit events in this window.',
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      const _CapEventsHeader(),
                       for (final event in envelope.capEvents)
                         _CapEventRow(
                           key: Key(
@@ -1360,6 +1671,38 @@ class _CapEventsTab extends StatelessWidget {
                         ),
                     ],
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CapEventsHeader extends StatelessWidget {
+  const _CapEventsHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            flex: 3,
+            child: _HelpLabel(
+              label: 'Operator / request / time',
+              message:
+                  'Operator, request group, and time that hit a usage limit.',
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _HelpLabel(
+              label: 'Limit / attempted',
+              message:
+                  'The allowed spend limit and the attempted request cost.',
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
       ),
@@ -1389,13 +1732,13 @@ class _CapEventRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
                 Text(
-                  '${event.businessName} - use case: ${event.usageClass} - '
-                  'request type: ${event.queryClass}',
+                  '${event.businessName} - '
+                  '${adminRequestUseCaseLabelWithId(event.queryClass)}',
                   style: AppTextStyles.mono11(color: AppColors.textPrimary),
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
-                  event.occurredAt.toUtc().toIso8601String(),
+                  adminHumanDateTime(event.occurredAt),
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ],
@@ -1407,11 +1750,11 @@ class _CapEventRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: <Widget>[
                 Text(
-                  'cap \$${event.capUsd.toStringAsFixed(2)}',
+                  'Limit \$${event.capUsd.toStringAsFixed(2)}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 Text(
-                  'attempted \$${event.attemptedUsd.toStringAsFixed(2)}',
+                  'Attempted \$${event.attemptedUsd.toStringAsFixed(2)}',
                   style: AppTextStyles.mono14(
                     color: AppColors.negative,
                     weight: FontWeight.w700,
@@ -1451,6 +1794,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_approved_nodes'),
                   label: 'Approved items',
+                  labelHelp:
+                      'Knowledge items that have been confirmed by review.',
                   value: '${graph.approvedNodeCount}',
                   caption: 'Approved item records',
                   accent: AppColors.positive,
@@ -1458,6 +1803,7 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_approved_edges'),
                   label: 'Approved relationships',
+                  labelHelp: 'Confirmed links between knowledge items.',
                   value: '${graph.approvedEdgeCount}',
                   caption: 'Approved relationship records',
                   accent: AppColors.positive,
@@ -1465,6 +1811,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_inferred_approved'),
                   label: 'System-suggested approvals',
+                  labelHelp:
+                      'System-suggested relationships approved after review.',
                   value: '${graph.inferredApprovedCount}',
                   caption: 'Approved after review',
                   accent: AppColors.warning,
@@ -1472,6 +1820,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_rejected'),
                   label: 'Rejected suggestions',
+                  labelHelp:
+                      'System-suggested relationships rejected during review.',
                   value: '${graph.rejectedCandidateCount}',
                   caption: 'Review history',
                   accent: AppColors.neutral,
@@ -1479,6 +1829,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_isolated_nodes'),
                   label: 'Unlinked items',
+                  labelHelp:
+                      'Knowledge items that are not connected to a confirmed relationship yet.',
                   value: '${graph.isolatedNodeCount}',
                   caption: 'No relationships yet',
                   accent: graph.isolatedNodeCount > 0
@@ -1500,6 +1852,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_projection_age'),
                   label: 'Projection age',
+                  labelHelp:
+                      'How long it has been since relationship search was rebuilt.',
                   value: '${graph.projectionAgeSeconds}s',
                   caption: 'Last search rebuild',
                   accent: graph.projectionAgeSeconds > 3600
@@ -1509,6 +1863,8 @@ class _GraphTab extends StatelessWidget {
                 _MetricTileShell(
                   key: const Key('admin_observability_graph_traversal_p95'),
                   label: '95th percentile lookup',
+                  labelHelp:
+                      'Most relationship lookups were this fast or faster.',
                   value: '${graph.traversalP95Ms}ms',
                   caption: 'Relationship search checks',
                   accent: graph.traversalP95Ms > 250
@@ -1538,13 +1894,13 @@ class _CloudRunTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_route_latency',
-            title: 'Response time and errors by route',
+            title: 'Service response time',
             subtitle:
                 'Median, 95th percentile, and 99th percentile response time with server-error rate for each route.',
             child: envelope.routeLatency.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_route_latency_empty',
-                    label: 'No route metrics in window.',
+                    label: 'No response-time data in this window.',
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1555,47 +1911,42 @@ class _CloudRunTab extends StatelessWidget {
                           children: <Widget>[
                             Expanded(
                               flex: 4,
-                              child: Text(
-                                'route',
-                                style: AppTextStyles.mono10(
-                                  color: AppColors.textMuted,
-                                ),
+                              child: _HelpLabel(
+                                label: 'Route',
+                                message:
+                                    'API route or service path being measured.',
                               ),
                             ),
                             Expanded(
-                              child: Text(
-                                'median',
+                              child: _HelpLabel(
+                                label: 'Median',
+                                message:
+                                    'Typical response time; half of requests were faster.',
                                 textAlign: TextAlign.right,
-                                style: AppTextStyles.mono10(
-                                  color: AppColors.textMuted,
-                                ),
                               ),
                             ),
                             Expanded(
-                              child: Text(
-                                '95th',
+                              child: _HelpLabel(
+                                label: '95th',
+                                message:
+                                    'Most requests were this fast or faster.',
                                 textAlign: TextAlign.right,
-                                style: AppTextStyles.mono10(
-                                  color: AppColors.textMuted,
-                                ),
                               ),
                             ),
                             Expanded(
-                              child: Text(
-                                '99th',
+                              child: _HelpLabel(
+                                label: '99th',
+                                message:
+                                    'Nearly all requests were this fast or faster.',
                                 textAlign: TextAlign.right,
-                                style: AppTextStyles.mono10(
-                                  color: AppColors.textMuted,
-                                ),
                               ),
                             ),
                             Expanded(
-                              child: Text(
-                                'errors',
+                              child: _HelpLabel(
+                                label: 'Errors',
+                                message:
+                                    'Percent of requests ending in server errors.',
                                 textAlign: TextAlign.right,
-                                style: AppTextStyles.mono10(
-                                  color: AppColors.textMuted,
-                                ),
                               ),
                             ),
                           ],
@@ -1674,17 +2025,18 @@ class _CloudRunTab extends StatelessWidget {
           ),
           _SectionCard(
             keyName: 'admin_observability_section_cloud_run_instances',
-            title: 'Hosting instances',
+            title: 'Hosting capacity',
             subtitle:
                 'Active hosting instance counts and the deployed version currently serving traffic.',
             child: envelope.cloudRun.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cloud_run_empty',
-                    label: 'No hosting services reporting.',
+                    label: 'No hosting services reported in this window.',
                   )
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
+                      const _CloudRunHeader(),
                       for (final svc in envelope.cloudRun)
                         Container(
                           key: Key(
@@ -1715,7 +2067,7 @@ class _CloudRunTab extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      'Deployed version: ${svc.revisionId}',
+                                      'Running version: ${svc.revisionId}',
                                       style: AppTextStyles.mono10(
                                         color: AppColors.textMuted,
                                       ),
@@ -1736,7 +2088,7 @@ class _CloudRunTab extends StatelessWidget {
                                       ),
                                     ),
                                     Text(
-                                      'min ${svc.minInstances} / max '
+                                      'Min ${svc.minInstances} / max '
                                       '${svc.maxInstances}',
                                       style: AppTextStyles.mono10(
                                         color: AppColors.textMuted,
@@ -1750,6 +2102,38 @@ class _CloudRunTab extends StatelessWidget {
                         ),
                     ],
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CloudRunHeader extends StatelessWidget {
+  const _CloudRunHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: <Widget>[
+          Expanded(
+            flex: 3,
+            child: _HelpLabel(
+              label: 'Service / version',
+              message:
+                  'Cloud service and deployed version currently serving traffic.',
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _HelpLabel(
+              label: 'Active / min / max',
+              message:
+                  'Current active instances plus configured minimum and maximum capacity.',
+              textAlign: TextAlign.right,
+            ),
           ),
         ],
       ),
@@ -1772,6 +2156,13 @@ String _costRowKey(CostTelemetryEntry row) =>
     '${row.queryClass}';
 
 // ── Shared building blocks ──────────────────────────────────────────
+
+String _requestGroupCaption(CostTelemetryEntry row) {
+  if (row.usageClass == row.queryClass) {
+    return 'ID: ${row.queryClass}';
+  }
+  return 'Use case ID: ${row.usageClass} - request group ID: ${row.queryClass}';
+}
 
 class _SectionCard extends StatelessWidget {
   const _SectionCard({
@@ -1803,15 +2194,12 @@ class _SectionCard extends StatelessWidget {
           children: <Widget>[
             Text(
               title,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
+              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             child,
@@ -1835,7 +2223,38 @@ class _EmptyState extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Text(
         label,
-        style: AppTextStyles.mono11(color: AppColors.textMuted),
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      ),
+    );
+  }
+}
+
+class _HelpLabel extends StatelessWidget {
+  const _HelpLabel({
+    required this.label,
+    required this.message,
+    this.textAlign = TextAlign.start,
+    this.style,
+  });
+
+  final String label;
+  final String message;
+  final TextAlign textAlign;
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: message,
+      child: MouseRegion(
+        cursor: SystemMouseCursors.help,
+        child: Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: textAlign,
+          style: style ?? AppTextStyles.mono10(color: AppColors.textMuted),
+        ),
       ),
     );
   }
@@ -1845,12 +2264,14 @@ class _MetricTileShell extends StatelessWidget {
   const _MetricTileShell({
     super.key,
     required this.label,
+    this.labelHelp,
     required this.value,
     required this.caption,
     required this.accent,
   });
 
   final String label;
+  final String? labelHelp;
   final String value;
   final String caption;
   final Color accent;
@@ -1876,13 +2297,21 @@ class _MetricTileShell extends StatelessWidget {
             Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(
-                    label,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTextStyles.mono11(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w600),
-                  ),
+                  child: labelHelp == null
+                      ? Text(
+                          label,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTextStyles.uiLabel(
+                            color: AppColors.textPrimary,
+                          ),
+                        )
+                      : _HelpLabel(
+                          label: label,
+                          message: labelHelp!,
+                          style: AppTextStyles.uiLabel(
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
                 ),
                 Container(
                   width: 8,
@@ -1905,7 +2334,7 @@ class _MetricTileShell extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               caption,
-              style: AppTextStyles.mono10(color: AppColors.textMuted),
+              style: AppTextStyles.body13(color: AppColors.textMuted),
             ),
           ],
         ),

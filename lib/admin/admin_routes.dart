@@ -15,7 +15,9 @@
 import 'package:flutter/material.dart';
 
 import 'admin_auth_gate.dart';
+import 'admin_route_handoff.dart';
 import 'models/corpus_admin_models.dart';
+import 'models/debug_console_admin_models.dart';
 import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
@@ -203,7 +205,23 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
 
 Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
-  return OperatorLocationAdminScreen(gateway: gateway);
+  final handoff = AdminRouteHandoff.maybeOf(context);
+  return OperatorLocationAdminScreen(
+    gateway: gateway,
+    onOpenSupportLogs: handoff == null
+        ? null
+        : (operatorId, locationId) {
+            handoff.onSelectRoute(
+              AdminRouteIntent(
+                routeId: kAdminDebugConsoleRouteId,
+                supportLogFilter: AdminSupportLogFilterIntent(
+                  operatorId: operatorId,
+                  locationId: locationId,
+                ),
+              ),
+            );
+          },
+  );
 }
 
 Widget _buildPricing(BuildContext context) {
@@ -362,8 +380,16 @@ Widget _buildDebugConsole(BuildContext context) {
   // request meta.
   final gateway = AdminConsoleServicesScope.debugConsoleGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  final supportLogFilter = AdminRouteHandoff.maybeOf(context)?.supportLogFilter;
+  final initialFilter = RequestLogFilter(
+    operatorId: supportLogFilter?.operatorId,
+    locationId: supportLogFilter?.locationId,
+  );
   if (source == null) {
-    return DebugConsoleAdminScreen(gateway: gateway);
+    return DebugConsoleAdminScreen(
+      gateway: gateway,
+      initialFilter: initialFilter,
+    );
   }
   return StreamBuilder<AdminAuthState>(
     stream: source.stream,
@@ -372,7 +398,11 @@ Widget _buildDebugConsole(BuildContext context) {
       final state = snapshot.data;
       final session = state is AdminAuthAuthenticated ? state.session : null;
       final canEdit = session != null && session.roles.contains('super_admin');
-      return DebugConsoleAdminScreen(gateway: gateway, editingEnabled: canEdit);
+      return DebugConsoleAdminScreen(
+        gateway: gateway,
+        editingEnabled: canEdit,
+        initialFilter: initialFilter,
+      );
     },
   );
 }
@@ -827,8 +857,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: true,
           kind: kFeatureFlagKindDestructive,
           description:
-              'B.2 fan-out gate: routes auth events into the hash-chained '
-              'audit_logs chain. Toggle off only as a one-shot rollback.',
+              'Routes sign-in and admin changes into the permanent audit log. '
+              'Turn off only for a rollback.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 1, 10, 0),
           updatedAt: DateTime.utc(2026, 5, 1, 10, 0),
@@ -841,8 +871,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: false,
           kind: kFeatureFlagKindDestructive,
           description:
-              '11A.4c per-lane KMS rollout gate. Off = stub provider; '
-              'on = GCP Secret Manager + Cloud Run revision push.',
+              'Uses secure cloud storage for Anthropic service keys instead '
+              'of demo storage.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 2, 2, 0),
           updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
@@ -854,7 +884,9 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           locationId: null,
           enabled: false,
           kind: kFeatureFlagKindDestructive,
-          description: '11A.4c per-lane KMS rollout gate (Voyage embeddings).',
+          description:
+              'Uses secure cloud storage for Voyage service keys instead of '
+              'demo storage.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 2, 2, 0),
           updatedAt: DateTime.utc(2026, 5, 2, 2, 0),
@@ -867,8 +899,8 @@ final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
           enabled: true,
           kind: kFeatureFlagKindStandard,
           description:
-              '11b advisor surface kill switch. Off = advisor returns '
-              "501 'feature_unavailable' across the app.",
+              'Controls whether the advisor experience is available in the '
+              'app.',
           updatedBy: 'demo-super-admin',
           createdAt: DateTime.utc(2026, 5, 1, 10, 0),
           updatedAt: DateTime.utc(2026, 5, 1, 10, 0),

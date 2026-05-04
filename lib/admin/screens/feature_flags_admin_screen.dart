@@ -30,6 +30,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
 
@@ -256,7 +257,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Turn staged features on or off. High-impact changes require typed confirmation and an audit record.',
+          'Turn staged features on or off. High-impact changes need typed confirmation and are logged.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -390,20 +391,17 @@ class _FeatureFlagTile extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Key: ${row.flagName}',
+                  'Control ID: ${row.flagName}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 4),
-                if (row.description != null && row.description!.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: Text(
-                      row.description!,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textSecondary,
-                      ),
-                    ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    _friendlyFlagDescription(row.flagName, row.description),
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
+                ),
                 Text(
                   'Status: ${row.enabled ? 'On' : 'Off'}',
                   key: Key('admin_feature_flag_value_${row.flagId}'),
@@ -417,7 +415,7 @@ class _FeatureFlagTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   'Last changed by ${row.updatedBy ?? 'unknown'} on '
-                  '${row.updatedAt.toUtc().toIso8601String()}',
+                  '${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                 ),
               ],
@@ -534,7 +532,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This control can affect live behavior, audit routing, secret rollout, or emergency shutoff. Type the exact key to continue:',
+              'This can affect live behavior, service keys, or emergency shutoff. Type the control ID to continue:',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -588,8 +586,8 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
 String _friendlyFlagName(String flagName) {
   return switch (flagName) {
     'audit_logs_cutover_enabled' => 'Audit log routing',
-    'kms_real_provider_anthropic_enabled' => 'Anthropic secret manager rollout',
-    'kms_real_provider_voyage_enabled' => 'Voyage secret manager rollout',
+    'kms_real_provider_anthropic_enabled' => 'Anthropic key storage',
+    'kms_real_provider_voyage_enabled' => 'Voyage key storage',
     'advisor_enabled' => 'Advisor access',
     _ =>
       flagName
@@ -600,6 +598,23 @@ String _friendlyFlagName(String flagName) {
           .where((part) => part.isNotEmpty)
           .map((part) => part[0].toUpperCase() + part.substring(1))
           .join(' '),
+  };
+}
+
+String _friendlyFlagDescription(String flagName, String? fallback) {
+  return switch (flagName) {
+    'audit_logs_cutover_enabled' =>
+      'Routes sign-in and admin changes into the permanent audit log. Turn off only for a rollback.',
+    'kms_real_provider_anthropic_enabled' =>
+      'Uses secure cloud storage for Anthropic service keys instead of demo storage.',
+    'kms_real_provider_voyage_enabled' =>
+      'Uses secure cloud storage for Voyage service keys instead of demo storage.',
+    'advisor_enabled' =>
+      'Controls whether the advisor experience is available in the app.',
+    _ =>
+      (fallback == null || fallback.trim().isEmpty)
+          ? 'Controls a staged release setting.'
+          : fallback.trim(),
   };
 }
 

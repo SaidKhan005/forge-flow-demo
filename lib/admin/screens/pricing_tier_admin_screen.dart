@@ -26,6 +26,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -621,7 +622,7 @@ class _UsageCapRowTile extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Updated by ${row.updatedBy ?? 'Unknown'} - '
-                  '${row.updatedAt.toUtc().toIso8601String()}',
+                  '${adminHumanDateTime(row.updatedAt)}',
                   style: AppTextStyles.mono8(color: AppColors.textMuted),
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -723,7 +724,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                     ),
                   ),
                 _LabelledField(
-                  label: 'Use case key',
+                  label: 'Use case ID',
                   controller: _usageClass,
                   fieldKey: const Key('admin_pricing_cap_usage_class'),
                   validator: _requiredValidator,

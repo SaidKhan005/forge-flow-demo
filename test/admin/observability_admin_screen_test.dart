@@ -128,6 +128,14 @@ void main() {
       find.byKey(const Key('admin_observability_as_of_strip')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('admin_observability_metrics_key')),
+      findsOneWidget,
+    );
+    expect(find.text('Metrics key'), findsOneWidget);
+    expect(find.textContaining('Losing money'), findsWidgets);
+    expect(find.text('Limit events'), findsWidgets);
+    expect(find.textContaining('reached a usage limit'), findsOneWidget);
   });
 
   testWidgets('cost telemetry rows render across the full axis tuple', (
@@ -148,6 +156,11 @@ void main() {
     await runCheck(tester);
 
     // Cost tab is selected by default.
+    expect(
+      find.byKey(const Key('admin_observability_request_group_key')),
+      findsOneWidget,
+    );
+    expect(find.text('Advisor answers'), findsWidgets);
     // Per-(operator, location, query_class) row.
     expect(
       find.byKey(
@@ -196,6 +209,90 @@ void main() {
     );
     expect(
       find.byKey(const Key('admin_observability_batch_mode_share_wf_pl')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('column labels expose plain-language tooltip help across tabs', (
+    tester,
+  ) async {
+    setLargeViewport(tester);
+    final gateway = InMemoryObservabilityAdminGateway(
+      envelope: kObservabilityAdminDemoEnvelope,
+    );
+    await tester.pumpWidget(
+      wrap(
+        ObservabilityAdminScreen(
+          gateway: gateway,
+          now: () => DateTime.utc(2026, 5, 3, 12),
+        ),
+      ),
+    );
+    await runCheck(tester);
+
+    expect(
+      find.byTooltip(
+        'Operator, location, staff, and workflow scope for this cost row.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('admin_observability_tab_top')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip(
+        'Whether this row is an operator, staff member, or workflow.',
+      ),
+      findsWidgets,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_operators')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip(
+        'Whether the operator has been active recently or needs follow-up.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('Plan revenue minus estimated AI cost for this window.'),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_cap_events')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip(
+        'Operator, request group, and time that hit a usage limit.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(find.byKey(const Key('admin_observability_tab_graph')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip(
+        'Knowledge items that are not connected to a confirmed relationship yet.',
+      ),
+      findsOneWidget,
+    );
+
+    await tester.tap(
+      find.byKey(const Key('admin_observability_tab_cloud_run')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byTooltip('API route or service path being measured.'),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip(
+        'Current active instances plus configured minimum and maximum capacity.',
+      ),
       findsOneWidget,
     );
   });

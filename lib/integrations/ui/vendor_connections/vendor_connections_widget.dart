@@ -23,6 +23,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../../../admin/admin_human_labels.dart';
 import 'in_memory_vendor_connections_gateway.dart';
 import 'vendor_connections_gateway.dart';
 import 'vendor_connections_models.dart';
@@ -300,7 +301,7 @@ class _Header extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Vendor connections',
+          'Vendor integrations',
           style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 4),
@@ -1001,7 +1002,7 @@ class _SyncLogsDialog extends StatelessWidget {
                 separatorBuilder: (_, __) => const Divider(height: 1),
                 itemBuilder: (context, index) {
                   final entry = entries[index];
-                  final ts = entry.occurredAt.toIso8601String();
+                  final ts = adminHumanDateTime(entry.occurredAt);
                   final body = entry.errorMessage != null
                       ? '${entry.eventKind} - ${entry.errorMessage}'
                       : entry.recordsCount != null

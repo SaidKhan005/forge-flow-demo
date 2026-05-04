@@ -32,6 +32,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -82,8 +83,14 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
       _SectionSpec(
         title: 'Relationship graph',
         tiles: <_TileSpec>[
-          _TileSpec('graph_traversal_latency_ms', shortLabel: 'AGE p95'),
-          _TileSpec('graph_traversal_p99_latency_ms', shortLabel: 'AGE p99'),
+          _TileSpec(
+            'graph_traversal_latency_ms',
+            shortLabel: 'Relationship lookup p95',
+          ),
+          _TileSpec(
+            'graph_traversal_p99_latency_ms',
+            shortLabel: 'Relationship lookup p99',
+          ),
           _TileSpec('graph_traversal_timeout_rate'),
           _TileSpec('graph_node_count'),
           _TileSpec('graph_edge_count'),
@@ -93,8 +100,8 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
       _SectionSpec(
         title: 'Search index',
         tiles: <_TileSpec>[
-          _TileSpec('vector_query_latency_ms', shortLabel: 'Vector p50'),
-          _TileSpec('vector_query_p99_latency_ms', shortLabel: 'Vector p99'),
+          _TileSpec('vector_query_latency_ms', shortLabel: 'Search p50'),
+          _TileSpec('vector_query_p99_latency_ms', shortLabel: 'Search p99'),
           _TileSpec('vector_query_timeout_rate'),
           _TileSpec('vector_recall'),
           _TileSpec('vector_index_size_per_corpus'),
@@ -104,11 +111,11 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     ],
   ),
   _TabSpec(
-    label: 'API service',
+    label: 'App service',
     keySuffix: 'proxy',
     sections: <_SectionSpec>[
       _SectionSpec(
-        title: 'Provider protection',
+        title: 'Provider safeguards',
         tiles: <_TileSpec>[
           _TileSpec('circuit_breaker_anthropic_state'),
           _TileSpec('circuit_breaker_voyage_state'),
@@ -124,7 +131,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Model routing and cost controls',
+        title: 'Model and cost controls',
         tiles: <_TileSpec>[
           _TileSpec('cost_per_query_class_haiku'),
           _TileSpec('cost_per_query_class_sonnet'),
@@ -150,7 +157,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     keySuffix: 'infra',
     sections: <_SectionSpec>[
       _SectionSpec(
-        title: 'Database jobs',
+        title: 'Database background work',
         tiles: <_TileSpec>[
           _TileSpec('azure_extensions_present'),
           _TileSpec('pg_cron_scheduler_alive'),
@@ -162,7 +169,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
         ],
       ),
       _SectionSpec(
-        title: 'Audit trail and event queue',
+        title: 'Audit and notifications',
         tiles: <_TileSpec>[
           _TileSpec('audit_chain_lag_seconds'),
           _TileSpec('audit_chain_anchor_age_seconds'),
@@ -263,7 +270,7 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _loadError = 'Could not load health envelope: $error';
+        _loadError = 'Could not load system health: $error';
         _loading = false;
         _lastRefreshed = _clockNow();
       });
@@ -343,6 +350,8 @@ class _HealthAdminScreenState extends State<HealthAdminScreen>
               key: const Key('admin_health_tier1_banner'),
               envelope: envelope,
             ),
+          const _HealthPriorityKey(),
+          const SizedBox(height: 12),
           _DependenciesStrip(envelope: envelope),
           const SizedBox(height: 12),
           _OverallSeverityChip(envelope: envelope),
@@ -398,7 +407,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'System health',
       subtitle:
-          'Run a read-only check of advisor data, the API, and platform services.',
+          'Run a read-only check of advisor data, app service, and platform services.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -422,8 +431,7 @@ class _Header extends StatelessWidget {
             Text(
               lastRefreshed == null
                   ? 'Last checked: -'
-                  : 'Last checked: '
-                        '${lastRefreshed!.toUtc().toIso8601String()}',
+                  : 'Last checked: ${adminHumanDateTime(lastRefreshed!)}',
               key: const Key('admin_health_last_refreshed'),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -466,7 +474,7 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
             foregroundColor: AppColors.backgroundSurface,
           ),
           icon: const Icon(Icons.play_arrow, size: 16),
-          label: const Text('Run check'),
+          label: const Text('Run system check'),
         ),
       ],
     );
@@ -542,7 +550,7 @@ class _DependenciesUnavailableBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'A required backend check is failing, so the results below may be stale.',
+              'A required service check is failing, so the results below may be stale.',
               style: AppTextStyles.mono11(color: AppColors.negative),
             ),
           ),
@@ -565,12 +573,12 @@ class _Tier1FailureBanner extends StatelessWidget {
               d.status == HealthSeverity.red ||
               d.status == HealthSeverity.yellow,
         )
-        .map((d) => d.name)
+        .map(_dependencyLabel)
         .toList(growable: false);
     final failingTier1 = envelope
         .metricsAtTier(1)
         .where((m) => m.isFailing)
-        .map((m) => m.key)
+        .map((m) => _healthMetricLabel(m.key))
         .toList(growable: false);
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -590,20 +598,112 @@ class _Tier1FailureBanner extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Critical system checks are failing. Investigate before shipping.',
-                  style: AppTextStyles.mono11(color: AppColors.negative),
+                  'Critical checks are failing. Fix the cause before relying on this environment.',
+                  style: AppTextStyles.body13(color: AppColors.negative),
                 ),
                 if (failingDeps.isNotEmpty)
                   Text(
-                    'Failing dependencies: ${failingDeps.join(", ")}',
-                    style: AppTextStyles.mono10(color: AppColors.textSecondary),
+                    'Services affected: ${failingDeps.join(", ")}',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
                 if (failingTier1.isNotEmpty)
                   Text(
-                    'Failing tier-1 metrics: ${failingTier1.join(", ")}',
-                    style: AppTextStyles.mono10(color: AppColors.textSecondary),
+                    'Critical checks affected: ${failingTier1.join(", ")}',
+                    style: AppTextStyles.body13(color: AppColors.textSecondary),
                   ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HealthPriorityKey extends StatelessWidget {
+  const _HealthPriorityKey();
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        return Container(
+          key: const Key('admin_health_priority_key'),
+          padding: EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: compact ? 8 : 12,
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.backgroundSurface,
+            border: Border.all(color: AppColors.borderSubtle, width: 1),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: compact
+              ? Text(
+                  'Critical = core checks | Important = reliability/freshness | Info = context',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                )
+              : Wrap(
+                  spacing: 16,
+                  runSpacing: 10,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: const <Widget>[
+                    _PriorityKeyItem(
+                      label: 'Critical',
+                      description: 'Core service and data-safety checks.',
+                      color: AppColors.negative,
+                    ),
+                    _PriorityKeyItem(
+                      label: 'Important',
+                      description: 'Reliability, freshness, and cost signals.',
+                      color: AppColors.warning,
+                    ),
+                    _PriorityKeyItem(
+                      label: 'Info',
+                      description: 'Helpful context for support follow-up.',
+                      color: AppColors.neutral,
+                    ),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
+class _PriorityKeyItem extends StatelessWidget {
+  const _PriorityKeyItem({
+    required this.label,
+    required this.description,
+    required this.color,
+  });
+
+  final String label;
+  final String description;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 220, maxWidth: 340),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              border: Border.all(color: color, width: 1),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              description,
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
         ],
@@ -636,10 +736,8 @@ class _DependenciesStrip extends StatelessWidget {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: <Widget>[
           Text(
-            'Dependencies',
-            style: AppTextStyles.mono11(
-              color: AppColors.textMuted,
-            ).copyWith(fontWeight: FontWeight.w600),
+            'Service checks',
+            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
           ),
           for (final dep in envelope.dependencies)
             _DependencyChip(
@@ -668,10 +766,8 @@ class _DependencyChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
-        '${dep.name} - ${dep.check} - ${_severityLabel(dep.status)}',
-        style: AppTextStyles.mono10(
-          color: color,
-        ).copyWith(fontWeight: FontWeight.w600),
+        '${_dependencyLabel(dep)}: ${_severityLabel(dep.status)}',
+        style: AppTextStyles.chipLabel(color: color),
       ),
     );
   }
@@ -704,12 +800,9 @@ class _OverallSeverityChip extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Overall severity: ${_severityLabel(severity)}'
-              '${envelope.status.isEmpty ? '' : ' - status ${envelope.status}'}',
+              _overallStatusLabel(envelope),
               overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.mono11(
-                color: AppColors.textPrimary,
-              ).copyWith(fontWeight: FontWeight.w600),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
             ),
           ),
         ],
@@ -768,10 +861,7 @@ class _Section extends StatelessWidget {
           children: <Widget>[
             Text(
               section.title,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w700,
-              ),
+              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 12),
             Wrap(
@@ -830,10 +920,8 @@ class _MetricTile extends StatelessWidget {
               children: <Widget>[
                 Expanded(
                   child: Text(
-                    tile.shortLabel ?? tile.metricKey,
-                    style: AppTextStyles.mono11(
-                      color: AppColors.textPrimary,
-                    ).copyWith(fontWeight: FontWeight.w600),
+                    tile.shortLabel ?? _healthMetricLabel(tile.metricKey),
+                    style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -856,15 +944,15 @@ class _MetricTile extends StatelessWidget {
             if (threshold != null) ...[
               const SizedBox(height: 4),
               Text(
-                'thresholds: $threshold',
+                'limits: $threshold',
                 style: AppTextStyles.mono8(color: AppColors.textMuted),
               ),
             ],
             const SizedBox(height: 4),
             Text(
               observed == null
-                  ? 'Observed: no data'
-                  : 'Observed: ${observed.toUtc().toIso8601String()}',
+                  ? 'Checked: no data'
+                  : 'Checked: ${adminHumanDateTime(observed)}',
               style: AppTextStyles.mono8(color: AppColors.textMuted),
             ),
           ],
@@ -888,7 +976,7 @@ class _TierChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = 'Tier $tier - ${_severityLabel(severity)}';
+    final label = '${_tierLabel(tier)}: ${_compactSeverityLabel(severity)}';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
@@ -896,12 +984,7 @@ class _TierChip extends StatelessWidget {
         border: Border.all(color: color, width: 1),
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono8(
-          color: color,
-        ).copyWith(fontWeight: FontWeight.w700),
-      ),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
     );
   }
 }
@@ -945,14 +1028,126 @@ Color _severityColor(HealthSeverity severity) {
 String _severityLabel(HealthSeverity severity) {
   switch (severity) {
     case HealthSeverity.green:
-      return 'green';
+      return 'Good';
     case HealthSeverity.yellow:
-      return 'yellow';
+      return 'Needs attention';
     case HealthSeverity.red:
-      return 'red';
+      return 'Failing';
     case HealthSeverity.unknown:
-      return 'unknown';
+      return 'No data';
   }
+}
+
+String _compactSeverityLabel(HealthSeverity severity) {
+  switch (severity) {
+    case HealthSeverity.green:
+      return 'Good';
+    case HealthSeverity.yellow:
+      return 'Check';
+    case HealthSeverity.red:
+      return 'Fail';
+    case HealthSeverity.unknown:
+      return 'No data';
+  }
+}
+
+String _tierLabel(int tier) {
+  return switch (tier) {
+    1 => 'Critical',
+    2 => 'Important',
+    _ => 'Info',
+  };
+}
+
+String _friendlyEnvelopeStatus(String status) {
+  return switch (status.trim().toLowerCase()) {
+    'ok' => 'all clear',
+    'degraded' => 'needs attention',
+    'down' => 'failing',
+    _ => status,
+  };
+}
+
+String _overallStatusLabel(HealthEnvelope envelope) {
+  final severity = _severityLabel(envelope.severity);
+  final status = _friendlyEnvelopeStatus(envelope.status);
+  if (status.isEmpty || status == severity.toLowerCase()) {
+    return 'Overall status: $severity';
+  }
+  if (status == 'all clear' && envelope.severity == HealthSeverity.green) {
+    return 'Overall status: Good';
+  }
+  if (status == 'needs attention' &&
+      envelope.severity == HealthSeverity.yellow) {
+    return 'Overall status: Needs attention';
+  }
+  if (status == 'failing' && envelope.severity == HealthSeverity.red) {
+    return 'Overall status: Failing';
+  }
+  return 'Overall status: $severity - $status';
+}
+
+String _dependencyLabel(HealthDependency dep) {
+  return switch (dep.name.trim().toLowerCase()) {
+    'postgres' => 'Database',
+    'age' => 'Relationship graph',
+    'pgvector' => 'Search index',
+    'firebase' => 'Sign-in',
+    'cloud_run' => 'Hosting',
+    _ => dep.name,
+  };
+}
+
+String _healthMetricLabel(String key) {
+  return switch (key) {
+    'rollup_freshness_per_grain' => 'Data freshness',
+    'rollup_refresh_lag_seconds' => 'Refresh delay',
+    'graph_traversal_latency_ms' => 'Relationship lookup p95',
+    'graph_traversal_p99_latency_ms' => 'Relationship lookup p99',
+    'graph_traversal_timeout_rate' => 'Relationship lookup timeouts',
+    'graph_node_count' => 'Approved items',
+    'graph_edge_count' => 'Approved relationships',
+    'graph_projection_age_seconds' => 'Relationship search age',
+    'vector_query_latency_ms' => 'Search p50',
+    'vector_query_p99_latency_ms' => 'Search p99',
+    'vector_query_timeout_rate' => 'Search timeouts',
+    'vector_recall' => 'Search quality',
+    'vector_index_size_per_corpus' => 'Search index size',
+    'vector_index_build_age_seconds' => 'Search rebuild age',
+    'circuit_breaker_anthropic_state' => 'Anthropic safeguard',
+    'circuit_breaker_voyage_state' => 'Voyage safeguard',
+    'circuit_breaker_open_count_total' => 'Safeguard activations',
+    'prompt_cache_hit_rate' => 'Prompt reuse',
+    'response_cache_hit_rate' => 'Saved answer reuse',
+    'semantic_cache_hit_rate' => 'Similar answer reuse',
+    'cost_per_query_class_haiku' => 'Fast model cost',
+    'cost_per_query_class_sonnet' => 'Detailed model cost',
+    'cost_per_query_class_voyage' => 'Search model cost',
+    'batch_api_pending_count' => 'Queued lower-cost work',
+    'fallback_chain_usage_count_anthropic' => 'Anthropic fallback use',
+    'fallback_chain_usage_count_voyage' => 'Voyage fallback use',
+    'proxy_idempotency_cache_alive' => 'Retry protection',
+    'usage_caps_breach_count' => 'Limit reached count',
+    'proxy_request_p99_latency_ms' => 'App request p99',
+    'proxy_request_5xx_rate' => 'Server error rate',
+    'azure_extensions_present' => 'Database extensions',
+    'pg_cron_scheduler_alive' => 'Scheduled jobs',
+    'pg_cron_jobs_failed_24h' => 'Failed scheduled jobs',
+    'partition_count_active' => 'Active data partitions',
+    'partition_maintenance_last_run_age_seconds' => 'Partition maintenance age',
+    'partition_default_row_count' => 'Unsorted partition rows',
+    'migration_apply_drift_count' => 'Database drift',
+    'audit_chain_lag_seconds' => 'Audit log delay',
+    'audit_chain_anchor_age_seconds' => 'Audit anchor age',
+    'event_outbox_undelivered_count' => 'Waiting notifications',
+    'event_outbox_lag_seconds' => 'Notification delay',
+    'event_outbox_publish_error_rate' => 'Notification errors',
+    'notify_queue_usage_ratio' => 'Notification queue usage',
+    'firebase_jwks_fetch_alive' => 'Sign-in key check',
+    'service_principal_jwt_alive' => 'Service sign-in check',
+    'cloud_run_instance_count' => 'Hosting instances',
+    _ => key.replaceAll('_', ' ').trim(),
+  };
 }
 
 /// Tier coloring rule from the F.1 prompt:

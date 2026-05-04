@@ -29,9 +29,11 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     super.key,
     required this.gateway,
     this.idempotencyKeyFactory,
+    this.onOpenSupportLogs,
   });
 
   final OperatorLocationAdminGateway gateway;
+  final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
 
   /// Factory for the idempotency key the gateway attaches to each
   /// mutating call. Production binds this to a UUID-shaped generator;
@@ -245,6 +247,7 @@ class _OperatorLocationAdminScreenState
               onEditLocation: _openEditLocationDialog,
               onRemoveLocation: _removeLocation,
               onSetPrimary: _setPrimaryLocation,
+              onOpenSupportLogs: widget.onOpenSupportLogs,
             ),
     );
   }
@@ -556,9 +559,8 @@ class _OperatorTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     operator.businessName,
-                    style: AppTextStyles.mono15(
+                    style: AppTextStyles.sectionTitle(
                       color: AppColors.textPrimary,
-                      weight: FontWeight.w700,
                     ),
                     overflow: TextOverflow.ellipsis,
                     maxLines: 2,
@@ -602,6 +604,7 @@ class _OperatorDetail extends StatelessWidget {
     required this.onEditLocation,
     required this.onRemoveLocation,
     required this.onSetPrimary,
+    required this.onOpenSupportLogs,
   });
 
   final OperatorAdminBundle bundle;
@@ -612,6 +615,7 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<LocationAdminRecord> onEditLocation;
   final ValueChanged<LocationAdminRecord> onRemoveLocation;
   final void Function(OperatorAdminBundle, LocationAdminRecord) onSetPrimary;
+  final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -644,7 +648,7 @@ class _OperatorDetail extends StatelessWidget {
                       ),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 AdminDetailRow(
                   label: 'Owner email',
                   value: operator.ownerEmail,
@@ -673,6 +677,16 @@ class _OperatorDetail extends StatelessWidget {
                       onPressed: () => onEditOperator(bundle),
                       icon: const Icon(Icons.edit_outlined, size: 14),
                       label: const Text('Edit operator'),
+                    ),
+                    OutlinedButton.icon(
+                      key: Key(
+                        'admin_operator_support_logs_${operator.operatorId}',
+                      ),
+                      onPressed: onOpenSupportLogs == null
+                          ? null
+                          : () => onOpenSupportLogs!(operator.operatorId, null),
+                      icon: const Icon(Icons.bug_report_outlined, size: 14),
+                      label: const Text('View support logs'),
                     ),
                     if (operator.isSuspended)
                       OutlinedButton.icon(
@@ -716,9 +730,8 @@ class _OperatorDetail extends StatelessWidget {
                     children: [
                       Text(
                         'Locations',
-                        style: AppTextStyles.mono15(
+                        style: AppTextStyles.sectionTitle(
                           color: AppColors.textPrimary,
-                          weight: FontWeight.w700,
                         ),
                       ),
                       OutlinedButton.icon(
@@ -740,6 +753,12 @@ class _OperatorDetail extends StatelessWidget {
                       onEdit: () => onEditLocation(location),
                       onRemove: () => onRemoveLocation(location),
                       onMakePrimary: () => onSetPrimary(bundle, location),
+                      onOpenSupportLogs: onOpenSupportLogs == null
+                          ? null
+                          : () => onOpenSupportLogs!(
+                              operator.operatorId,
+                              location.locationId,
+                            ),
                     ),
                   ),
                 ],
@@ -760,6 +779,7 @@ class _LocationRow extends StatelessWidget {
     required this.onEdit,
     required this.onRemove,
     required this.onMakePrimary,
+    required this.onOpenSupportLogs,
   });
 
   final LocationAdminRecord location;
@@ -767,6 +787,7 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onRemove;
   final VoidCallback onMakePrimary;
+  final VoidCallback? onOpenSupportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -781,10 +802,7 @@ class _LocationRow extends StatelessWidget {
           children: [
             Text(
               location.name,
-              style: AppTextStyles.mono14(
-                color: AppColors.textPrimary,
-                weight: FontWeight.w600,
-              ),
+              style: AppTextStyles.body14(color: AppColors.textPrimary),
               overflow: TextOverflow.ellipsis,
             ),
             if (isPrimary)
@@ -794,7 +812,7 @@ class _LocationRow extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           '${location.timezone} - business day starts ${rolloverHour.toString().padLeft(2, '0')}:00',
-          style: AppTextStyles.mono11(color: AppColors.textSecondary),
+          style: AppTextStyles.body13(color: AppColors.textSecondary),
           overflow: TextOverflow.ellipsis,
         ),
       ],
@@ -805,6 +823,7 @@ class _LocationRow extends StatelessWidget {
       onEdit: onEdit,
       onRemove: onRemove,
       onMakePrimary: onMakePrimary,
+      onOpenSupportLogs: onOpenSupportLogs,
     );
 
     return Padding(
@@ -838,6 +857,7 @@ class _LocationActionWrap extends StatelessWidget {
     required this.onEdit,
     required this.onRemove,
     required this.onMakePrimary,
+    required this.onOpenSupportLogs,
   });
 
   final LocationAdminRecord location;
@@ -845,6 +865,7 @@ class _LocationActionWrap extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onRemove;
   final VoidCallback onMakePrimary;
+  final VoidCallback? onOpenSupportLogs;
 
   @override
   Widget build(BuildContext context) {
@@ -865,6 +886,14 @@ class _LocationActionWrap extends StatelessWidget {
             minWidth: 172,
             onPressed: onMakePrimary,
           ),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_support_logs_${location.locationId}'),
+          label: 'View logs',
+          icon: Icons.bug_report_outlined,
+          tooltip: 'View support logs for this location',
+          minWidth: 116,
+          onPressed: onOpenSupportLogs,
+        ),
         _LocationActionButton(
           buttonKey: Key('admin_location_edit_${location.locationId}'),
           label: 'Edit',
@@ -959,9 +988,9 @@ class _LocationActionButton extends StatelessWidget {
           disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
           side: BorderSide(color: borderColor, width: emphasized ? 1.2 : 1),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          textStyle: AppTextStyles.mono11(
+          textStyle: AppTextStyles.chipLabel(
             color: enabled ? activeColor : AppColors.textMuted,
-          ).copyWith(fontWeight: FontWeight.w600),
+          ),
         ),
         icon: Icon(icon, size: 15),
         label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
@@ -985,7 +1014,7 @@ class _StatusPill extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(label, style: AppTextStyles.mono8(color: color)),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
     );
   }
 }
@@ -1125,7 +1154,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                 const SizedBox(height: 16),
                 Text(
                   'Primary location',
-                  style: AppTextStyles.mono11(color: AppColors.textMuted),
+                  style: AppTextStyles.uiLabel(color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 6),
                 _DialogField(
@@ -1498,8 +1527,8 @@ class _DialogField extends StatelessWidget {
       style: AppTextStyles.body14(color: AppColors.textPrimary),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
-        floatingLabelStyle: AppTextStyles.mono11(color: AppColors.sunsetDark),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
+        floatingLabelStyle: AppTextStyles.uiLabel(color: AppColors.sunsetDark),
         filled: true,
         fillColor: AppColors.backgroundSurface,
         contentPadding: const EdgeInsets.symmetric(
@@ -1544,7 +1573,7 @@ class _SubscriptionTierDropdown extends StatelessWidget {
           initialValue: value,
           decoration: InputDecoration(
             labelText: 'Forge & Flow AI plan',
-            labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+            labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(6),
               borderSide: const BorderSide(
@@ -1585,7 +1614,7 @@ class _CurrencyDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Preferred currency',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
@@ -1674,7 +1703,7 @@ class _TimezoneDropdown extends StatelessWidget {
           child: InputDecorator(
             decoration: InputDecoration(
               labelText: 'IANA timezone',
-              labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+              labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
               errorText: field.errorText,
               suffixIcon: const Icon(
                 Icons.search,
@@ -1886,7 +1915,7 @@ class _RolloverHourDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Business-day rollover hour (0-23)',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),
@@ -1924,7 +1953,7 @@ class _PrimaryLocationDropdown extends StatelessWidget {
       initialValue: value,
       decoration: InputDecoration(
         labelText: 'Primary location',
-        labelStyle: AppTextStyles.mono11(color: AppColors.textMuted),
+        labelStyle: AppTextStyles.uiLabel(color: AppColors.textMuted),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(6),
           borderSide: const BorderSide(color: AppColors.borderSubtle, width: 1),

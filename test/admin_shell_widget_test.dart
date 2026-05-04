@@ -76,7 +76,7 @@ void main() {
     expect(find.text('AI'), findsOneWidget);
     expect(find.text('Work in progress'), findsOneWidget);
     expect(find.byKey(const Key('admin_nav_section_dev')), findsOneWidget);
-    expect(find.text('Dev'), findsOneWidget);
+    expect(find.text('Platform'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_nav_section_operations')),
       findsOneWidget,
@@ -182,6 +182,50 @@ void main() {
     // ~124 px at the normal shell viewport. The ListView refactor
     // + tightened header copy must keep the embed clean.
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('operator support action opens logs with exact filters', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1024);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+
+    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+    addTearDown(source.dispose);
+
+    await tester.pumpWidget(
+      wrap(AdminShell(session: superAdmin, authSource: source)),
+    );
+    await tester.pumpAndSettle();
+
+    final logsButton = find.byKey(
+      const Key(
+        'admin_operator_support_logs_00000000-0000-4000-8000-000000000001',
+      ),
+    );
+    await tester.ensureVisible(logsButton);
+    await tester.pumpAndSettle();
+    await tester.tap(logsButton);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_debug_console_screen')), findsOneWidget);
+    expect(
+      find.text('Operator: 00000000-0000-4000-8000-000000000001'),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(
+        const Key(
+          'admin_debug_console_row_req-00000000-0000-4000-8000-000000000a01',
+        ),
+      ),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
   });
 
   testWidgets('operators route renders the live admin surface (11A.1)', (

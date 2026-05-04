@@ -58,7 +58,7 @@ void main() {
   Future<void> openGraphCandidatesTab(WidgetTester tester) async {
     final tabFinder = find.descendant(
       of: find.byKey(const Key('admin_corpus_tab_bar')),
-      matching: find.text('Graph review'),
+      matching: find.text('Relationship review'),
     );
     await tester.tap(tabFinder);
     await tester.pumpAndSettle();

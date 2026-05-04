@@ -110,6 +110,49 @@ void main() {
     expect(find.text('Beta Bistro'), findsWidgets);
   });
 
+  testWidgets('operator detail opens support logs for operator and location', (
+    tester,
+  ) async {
+    final supportLogRequests = <List<String?>>[];
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-support',
+          primaryLocationId: 'loc-support',
+          businessName: 'Support Cafe',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(
+          gateway: gateway,
+          onOpenSupportLogs: (operatorId, locationId) {
+            supportLogRequests.add(<String?>[operatorId, locationId]);
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('admin_operator_support_logs_op-support')),
+    );
+    await tester.pumpAndSettle();
+    expect(supportLogRequests, hasLength(1));
+    expect(supportLogRequests.single, <String?>['op-support', null]);
+
+    final locationLogs = find.byKey(
+      const Key('admin_location_support_logs_loc-support'),
+    );
+    await tester.ensureVisible(locationLogs);
+    await tester.pumpAndSettle();
+    await tester.tap(locationLogs);
+    await tester.pumpAndSettle();
+    expect(supportLogRequests, hasLength(2));
+    expect(supportLogRequests.last, <String?>['op-support', 'loc-support']);
+  });
+
   testWidgets('search filters operators by operator and location text', (
     tester,
   ) async {
