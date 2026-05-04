@@ -128,6 +128,22 @@ End-to-end onboarding walkthrough captures:
 
 This walkthrough is the V1 launch acceptance gate.
 
+2026-05-04 closeout clarification:
+
+- After Wave B adapter work lands, run `8.integration-mobile-proof` before
+  accepting Phase 8 / 8R / 8.S as product-complete engineering. It may use
+  fixtures, but must travel through real adapters, canonical facts, and mobile
+  business read paths. This is proof-only: do not change app logic, business
+  logic, mobile UI, adapter behavior, schema, migrations, or cloud/runtime
+  behavior.
+- After full live setup is ready, run `8.live.connected-device-smoke` on a
+  connected device with one complete POS + reservation + labor/scheduling trio.
+  This is the live counterpart to the fixture proof and should precede any
+  all-17-vendor live rollout sweep. It is also proof-only; live findings become
+  follow-up slices, not same-prompt fixes.
+- Evidence and vendor-source context live in
+  `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
+
 ## Cross-references
 
 - `docs/phases/phase_11W/phase_11W_operator_web_console_plan.md` — Operator Web Console plan; `11W.0` shell.

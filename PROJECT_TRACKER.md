@@ -124,8 +124,10 @@ may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees". Phase Board above is canonical state; the list
 below is sequencing intent.
 
-Wave B closes Phase 8 / 8R / 8.S engineering in one push. 20
-file-disjoint parallel lanes. Locked 2026-05-03 per
+Wave B builds all Phase 8 / 8R / 8.S documented adapters in one push. 20
+file-disjoint parallel lanes, followed by the `8.integration-mobile-proof`
+closeout gate before product-complete engineering acceptance. Locked
+2026-05-03 per
 `memory/project_phase_8_engineer_all_17_doctrine.md`. Authority for
 grading every adapter slice: `docs/contracts/vendor_adapter_slice_contract.md`
 + `docs/contracts/per_vendor_doc_pack_contract.md`. Wave plan rows:
@@ -156,6 +158,23 @@ Total: 20 lanes. Shared seam (adapter registry under
 `tool/advisor_proxy/`) handled by 3 category-scoped registry files
 updated on a single integration commit after worktrees merge.
 
+**Wave B closeout gate - `8.integration-mobile-proof`:**
+
+- Runs immediately after the 20 Wave B lanes and adapter registry merge.
+- Reads `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
+- Proof-only lane: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
+  limited to fixtures, test harnesses, and evidence/docs. If a product gap is
+  found, record it and create a follow-up slice instead of fixing it here.
+- Uses realistic POS + reservation + labor fixtures through real adapters,
+  canonical fact writes, and real mobile/business read paths.
+- Proves Shift, benchmark/baseline inputs, DemandForecastContext, SchedulePlan,
+  Variance provenance, History, Learn, refresh/cache, and demo-mode behavior.
+- Acceptance requires no phantom zeros; missing facts must show fallback or
+  unavailable, and History/Learn must consume only closed trustworthy facts.
+- This gate can run before live vendor accounts. `8.live.connected-device-smoke`
+  follows after full setup and real credentials/device are ready.
+
 **Wave D — rolling `*.live.*` slices (fire as credentials arrive):**
 
 - Per vendor: `<vendor_id>.live.sandbox` (~200 LOC + walkthrough,
@@ -173,10 +192,12 @@ inbound-vendor T&Cs draft; Production1 unfreeze decision. None blocks
 Wave B engineering — `*.live.prod` slices fire when each credential
 arrives.
 
-**After Wave B lands:** Phase 8 / 8R / 8.S engineering closes. Open
-work: `cutover.0b` Tier-M perf gate (needs `cutover.1` corpus seed
-first), Phase 11A `8`/`9`/`10`, post-pause AI/outward/Barrio when
-unfrozen.
+**After Wave B lands:** do not declare Phase 8 / 8R / 8.S accepted until
+`8.integration-mobile-proof` passes and records evidence. After that closeout
+gate, open work moves to `8.live.connected-device-smoke`, rolling
+`*.live.sandbox` / `*.live.prod` slices, `cutover.0b` Tier-M perf gate (needs
+`cutover.1` corpus seed first), Phase 11A `8`/`9`/`10`, and post-pause
+AI/outward/Barrio when unfrozen.
 
 **Barrio-paused (skip until unfreeze):** `9.5.UX.*`, `9.75`.
 
@@ -213,6 +234,20 @@ gates), `cutover.0b`–`5`.
   authoritative; 10 Hard Promises in `CLAUDE.md` durable.
 
 ## Notes
+
+2026-05-04 vendor API access / product-proof addendum:
+
+- Primary research and Oracle payment-orchestrator evidence are preserved in
+  `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
+- The 20 Wave B lanes prove documented adapter implementation. They do not, by
+  themselves, prove the full mobile product spine.
+- Required next prompt after Wave B: `8.integration-mobile-proof` using
+  contract fixtures through real adapters and real mobile/business read paths.
+- Required live prompt after full setup: `8.live.connected-device-smoke` using
+  one complete POS + reservation + labor trio on a connected device before
+  expanding to all 17 vendors.
+- Both prompts are proof-only: no app logic changes. They may add fixtures,
+  tests, harness glue, and evidence docs only.
 
 - `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the
   canonical private env loader (outside repo, never commit).

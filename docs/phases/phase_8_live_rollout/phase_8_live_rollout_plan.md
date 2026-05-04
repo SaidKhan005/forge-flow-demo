@@ -1,6 +1,6 @@
 # Phase 8.live — Vendor Live Rollout
 
-Updated: 2026-05-03
+Updated: 2026-05-04
 Status: Open — rolling. Closes when the last `production_credentialed` vendor reaches `live_with_operators` OR a vendor is permanently abandoned (e.g., partnership denial documented in `partnership_status.md`).
 Owner: Phase 8 framework lane (engineering) + Ops (partnership lane)
 
@@ -13,12 +13,64 @@ Owner: Phase 8 framework lane (engineering) + Ops (partnership lane)
 > Authority: `docs/contracts/vendor_adapter_slice_contract.md`
 > (lifecycle promotion rules), `docs/contracts/per_vendor_doc_pack_contract.md`
 > (per-vendor doc pack references below), `memory/project_phase_8_engineer_all_17_doctrine.md`.
+>
+> 2026-05-04 closeout clarification:
+> `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`
+> is the current vendor API access / Oracle evidence memo. Wave B produces
+> documented adapters; `8.integration-mobile-proof` must pass before Phase 8 /
+> 8R / 8.S are accepted as product-complete engineering. `8.live` remains the
+> lifecycle promotion lane once real credentials arrive.
 
 ## Goal
 
 Promote each of the 17 INTEGRATE vendor adapters through the lifecycle
 states as their sandbox / production credentials arrive. Each vendor
 moves at its own pace; this phase never sprints.
+
+## Pre-live Product Proof
+
+Before rolling live credential slices, run `8.integration-mobile-proof` after
+the 20 Wave B lanes and adapter registry merge. This gate does not require live
+vendor accounts. It uses realistic POS + reservation + labor fixtures through
+the real adapters, canonical facts, and mobile/business read paths to prove:
+
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
+  limited to fixtures, test harnesses, and evidence/docs. If a product gap is
+  found, record it and create a follow-up slice instead of fixing it here.
+- Shift, baseline/benchmark, DemandForecastContext, SchedulePlan, Variance,
+  History, and Learn respond to vendor facts.
+- Missing fields produce honest fallback/unavailable states, not phantom zeros.
+- Demo mode, refresh/invalidation, and local/offline cache behave correctly.
+
+Evidence belongs under `docs/_execution/` and should reference the
+2026-05-04 vendor API access memo.
+
+## First Connected-Device Live Proof
+
+After full setup is available, run `8.live.connected-device-smoke` before
+trying to verify all 17 vendors live.
+
+Preconditions:
+
+- A connected physical device or approved emulator is available.
+- The mobile app flavor/environment is known and points at the intended backend.
+- Vendor credentials are present through the approved secret path.
+- Vendor-location mapping is confirmed.
+- At least one live-ready POS + reservation + labor/scheduling trio exists.
+
+Scope:
+
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Live findings become
+  bounded follow-up slices, not same-prompt fixes.
+- Start with the smallest complete trio, not all 17 vendors.
+- Prove connect -> test connection -> bounded backfill -> poll/resume ->
+  canonical facts -> mobile UI on the connected device.
+- Do not post payments, tenders, orders, shifts, or reservations unless the
+  operator explicitly approves that mutation.
+- Convert findings into the rolling per-vendor `*.live.sandbox` /
+  `*.live.prod` matrix.
 
 ## Per-vendor rollout shape
 
@@ -190,6 +242,8 @@ After closeout, the rolling lifecycle promotion to
 without slice work. This phase doc archives to `docs/archive/phases/`.
 
 ## Cross-references
+
+- `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` - vendor API access matrix, Oracle payment-orchestrator evidence, and product-proof gates.
 
 - `docs/contracts/vendor_adapter_slice_contract.md` — lifecycle
   promotion rules + verdict table.
