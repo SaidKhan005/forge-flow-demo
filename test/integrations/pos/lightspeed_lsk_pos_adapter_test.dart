@@ -94,7 +94,7 @@ void main() {
         expect(profile.grantScope, VendorGrantScope.perLocation);
         expect(profile.webhookSupport, VendorWebhookSupport.autoRegister);
         expect(profile.coversFieldExposed, true);
-        expect(profile.partnershipGated, false);
+        expect(profile.lifecycle, VendorLifecycle.documented);
         expect(profile.modules, isEmpty);
         expect(
           profile.timestampPolicyDocId,

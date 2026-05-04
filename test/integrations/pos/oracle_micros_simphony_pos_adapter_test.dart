@@ -40,13 +40,13 @@ void main() {
       expect(profile.grantScope, VendorGrantScope.perLocation);
       expect(profile.webhookSupport, VendorWebhookSupport.pollOnly);
       expect(profile.coversFieldExposed, isTrue);
-      expect(profile.partnershipGated, isTrue);
       expect(profile.modules, isEmpty);
       expect(profile.timestampPolicyDocId, 'oracle_micros_simphony.asUtc');
     });
 
     test('lifecycle locked at documented at slice close', () {
       final adapter = _buildAdapter();
+      expect(adapter.capabilityProfile.lifecycle, VendorLifecycle.documented);
       expect(adapter.lifecycle, VendorLifecycle.documented);
     });
   });

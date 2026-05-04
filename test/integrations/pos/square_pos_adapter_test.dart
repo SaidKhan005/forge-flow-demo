@@ -451,7 +451,7 @@ void main() {
 
     test(
         '10. capability profile: lifecycle = documented, '
-        'coversFieldExposed = false, partnershipGated = false, '
+        'coversFieldExposed = false, '
         'grantScope = operatorWide', () {
       final profile = adapter.capabilityProfile;
       expect(profile.vendorId, 'square');
@@ -461,7 +461,7 @@ void main() {
       expect(profile.grantScope, VendorGrantScope.operatorWide);
       expect(profile.webhookSupport, VendorWebhookSupport.autoRegister);
       expect(profile.coversFieldExposed, isFalse);
-      expect(profile.partnershipGated, isFalse);
+      expect(profile.lifecycle, VendorLifecycle.documented);
       expect(profile.modules, isEmpty);
       expect(adapter.lifecycle, VendorLifecycle.documented);
       // Documented field-mapping constant exists and references covers

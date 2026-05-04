@@ -26,38 +26,6 @@ import 'package:flutter/foundation.dart';
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';
 
-/// Transitional lifecycle enum local to this adapter file.
-///
-/// Slice `8.0.lifecycle` (the framework-amendment item that opens
-/// Wave B) extends `VendorCapabilityProfile` to carry a
-/// `lifecycle: VendorLifecycle` field directly. Until that lands, this
-/// adapter exposes its lifecycle via [OracleMicrosSimphonyPosAdapter.lifecycle]
-/// so the engineering slice can assert
-/// `adapter.lifecycle == VendorLifecycle.documented` without modifying
-/// `lib/services/integration/*` (out of scope for the per-vendor lane).
-///
-/// When `8.0.lifecycle` lands, this enum migrates to
-/// `integration_adapter_common.dart` and the adapter's getter becomes
-/// a pass-through to `capabilityProfile.lifecycle`.
-enum VendorLifecycle {
-  /// Engineering slice landed; adapter compiles + fixture-tested; doc
-  /// pack populated. Vendor picker shows "Coming soon" pill, no
-  /// Connect button.
-  documented,
-
-  /// `*.live.sandbox` slice ran; sandbox verification checklist filled.
-  /// Picker shows "Coming soon — sandbox verified" pill.
-  sandboxVerified,
-
-  /// `*.live.prod` slice ran; partnership cleared; production keys
-  /// issued. Connect button live.
-  productionCredentialed,
-
-  /// First operator connected (auto-promote, no slice). Connected-
-  /// operator chip in F&F Ops Console.
-  liveWithOperators,
-}
-
 /// Stable vendor identifier — matches `connector_connection.vendor_id`.
 const String oracleMicrosSimphonyVendorId = 'oracle_micros_simphony';
 
@@ -215,17 +183,16 @@ class OracleMicrosSimphonyPosAdapter implements PosAdapter {
         grantScope: VendorGrantScope.perLocation,
         webhookSupport: VendorWebhookSupport.pollOnly,
         coversFieldExposed: true,
-        partnershipGated: true,
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         timestampPolicyDocId: 'oracle_micros_simphony.asUtc',
       );
 
-  /// Transitional lifecycle exposure (see [VendorLifecycle] doc). The
-  /// engineering slice locks this at `documented`; the
-  /// `8.OR.live.sandbox` slice promotes to `sandboxVerified`; the
-  /// `8.OR.live.prod` slice promotes to `productionCredentialed`;
-  /// first-operator-connect auto-promotes to `liveWithOperators`.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  /// Convenience pass-through to [capabilityProfile.lifecycle]. Locked
+  /// at `documented` by the engineering slice; promoted by the
+  /// `8.OR.live.sandbox` and `8.OR.live.prod` rolling slices, and
+  /// auto-promoted to `liveWithOperators` on first operator connect.
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   Future<ConnectResult> connect(ConnectCommand command) async {

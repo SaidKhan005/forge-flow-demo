@@ -122,19 +122,6 @@ const String kSquareSandboxBaseUrl = 'https://connect.squareupsandbox.com';
 /// Square production base URL.
 const String kSquareProductionBaseUrl = 'https://connect.squareup.com';
 
-/// Adapter lifecycle states — local enum until `8.0.lifecycle` lands
-/// the canonical `VendorLifecycle` enum on `VendorCapabilityProfile`.
-/// At slice ship the adapter is `documented`; `*.live.sandbox` /
-/// `*.live.prod` slices promote to `sandbox_verified` /
-/// `production_credentialed` and the first operator connect flips to
-/// `live_with_operators`.
-enum VendorLifecycle {
-  documented,
-  sandboxVerified,
-  productionCredentialed,
-  liveWithOperators,
-}
-
 /// Webhook events the adapter subscribes to. Square emits `order.created`
 /// when a new order opens (POS check opened) and `order.updated` when
 /// any field on the order changes — including `closed_at` being set.
@@ -365,7 +352,7 @@ class SquarePosAdapter implements PosAdapter {
   /// Lifecycle accessor — read by the operator-facing vendor picker
   /// chrome and the F&F Ops Console. Set to `documented` at slice
   /// ship; `*.live.sandbox` / `*.live.prod` slices promote.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   VendorCapabilityProfile get capabilityProfile => const VendorCapabilityProfile(
@@ -382,12 +369,10 @@ class SquarePosAdapter implements PosAdapter {
         // `covers_source = forecast_fallback` on every canonical
         // fact and the dashboard pulls the forecast number instead.
         coversFieldExposed: false,
-        // Lifecycle = `documented` (the framework's existing
-        // `partnershipGated` slot stays false because Square is
-        // public OAuth — no commercial gate). When `8.0.lifecycle`
-        // lands the canonical `VendorLifecycle` enum on the profile,
-        // this getter will move there.
-        partnershipGated: false,
+        // Lifecycle = `documented`. Square is public OAuth — no
+        // commercial gate. Promoted by `*.live.sandbox` /
+        // `*.live.prod` slices.
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         timestampPolicyDocId: 'square.created_at_utc_iso8601_with_z',
       );

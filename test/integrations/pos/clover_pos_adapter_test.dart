@@ -46,10 +46,9 @@ void main() {
       expect(profile.coversFieldExposed, isFalse,
           reason: 'Clover does not expose a guests/covers field; '
               'covers_source must be forecast_fallback');
-      expect(profile.partnershipGated, isTrue,
-          reason: 'Clover production credentials require App Market approval');
       expect(profile.modules, isEmpty);
       expect(profile.timestampPolicyDocId, isNotNull);
+      expect(profile.lifecycle, VendorLifecycle.documented);
       expect(adapter.lifecycle, VendorLifecycle.documented);
     });
   });
