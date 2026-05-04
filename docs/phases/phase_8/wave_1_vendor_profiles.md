@@ -1,12 +1,14 @@
-# Wave 1 Vendor Capability Profiles
+# Wave B Reference Adapter Profiles (LSK / Libro / QBT)
 
 Updated: 2026-05-03
-Status: Locked for Wave 1 reference adapters
+Status: Locked for the three Wave B reference adapter lanes (`8.LSK`, `8R.LB`, `8.S.QBT`)
 Owner: Phase 8 framework lane
 
-These are the per-vendor capability profiles for the three Wave 1 reference adapters (Lightspeed K-Series, Libro, QuickBooks Time). Format follows `docs/archive/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`.
+> File retains the legacy `wave_1_vendor_profiles.md` filename so memory + tracker links remain stable; content is the Wave B reference set.
 
-The remaining 14 INTEGRATE vendors get their own capability profiles when their adapter slice spawns.
+These are the per-vendor capability profiles for the three Wave B reference adapters — Lightspeed K-Series (POS), Libro (Reservations), QuickBooks Time (Scheduling). They seed the category-template lanes that the other 14 Wave B adapters mirror. Format follows `docs/archive/phases/7_55j/phase_7_55j_3_vendor_endpoint_checklist_template.md`.
+
+The remaining 14 INTEGRATE vendors populate their per-vendor doc pack inside their own Wave B slice per `docs/contracts/per_vendor_doc_pack_contract.md` (engineer-all-17 doctrine — see `memory/project_phase_8_engineer_all_17_doctrine.md`).
 
 ---
 

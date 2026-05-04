@@ -15,6 +15,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../../widgets/iana_timezone_dropdown.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
@@ -778,7 +779,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
   final _ownerEmail = TextEditingController();
   final _adminEmail = TextEditingController();
   final _locationName = TextEditingController();
-  final _locationTimezone = TextEditingController(text: 'America/Toronto');
+  String _locationTimezone = 'America/Toronto';
   String _subscriptionTier = 'launch';
   String _preferredCurrency = 'CAD';
   int _rolloverHour = 4;
@@ -789,7 +790,6 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
     _ownerEmail.dispose();
     _adminEmail.dispose();
     _locationName.dispose();
-    _locationTimezone.dispose();
     super.dispose();
   }
 
@@ -802,7 +802,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         subscriptionTier: _subscriptionTier,
         preferredCurrency: _preferredCurrency,
         primaryLocationName: _locationName.text.trim(),
-        primaryLocationTimezone: _locationTimezone.text.trim(),
+        primaryLocationTimezone: _locationTimezone.trim(),
         primaryLocationRolloverHour: _rolloverHour,
         adminUserEmail: _adminEmail.text.trim(),
         idempotencyKey: widget.idempotencyKey,
@@ -873,11 +873,11 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
                   validator: _requiredValidator,
                 ),
                 const SizedBox(height: 12),
-                _DialogField(
+                IanaTimezoneDropdown(
                   fieldKey: const Key('admin_onboard_location_timezone'),
-                  controller: _locationTimezone,
+                  value: _locationTimezone,
                   label: 'IANA timezone (e.g. America/Toronto)',
-                  validator: _timezoneValidator,
+                  onChanged: (v) => setState(() => _locationTimezone = v),
                 ),
                 const SizedBox(height: 12),
                 _RolloverHourDropdown(
@@ -1060,7 +1060,7 @@ class _LocationDialog extends StatefulWidget {
 
 class _LocationDialogState extends State<_LocationDialog> {
   late final TextEditingController _name;
-  late final TextEditingController _timezone;
+  late String _timezone;
   late int _rolloverHour;
   final _formKey = GlobalKey<FormState>();
 
@@ -1068,16 +1068,13 @@ class _LocationDialogState extends State<_LocationDialog> {
   void initState() {
     super.initState();
     _name = TextEditingController(text: widget.existing?.name ?? '');
-    _timezone = TextEditingController(
-      text: widget.existing?.timezone ?? 'America/Toronto',
-    );
+    _timezone = widget.existing?.timezone ?? 'America/Toronto';
     _rolloverHour = widget.existing?.businessDayRolloverHour ?? 4;
   }
 
   @override
   void dispose() {
     _name.dispose();
-    _timezone.dispose();
     super.dispose();
   }
 
@@ -1088,7 +1085,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         LocationCreateCommand(
           operatorId: widget.operatorId,
           name: _name.text.trim(),
-          timezone: _timezone.text.trim(),
+          timezone: _timezone.trim(),
           businessDayRolloverHour: _rolloverHour,
           idempotencyKey: widget.idempotencyKey,
         ),
@@ -1098,7 +1095,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         LocationPatchCommand(
           locationId: widget.existing!.locationId,
           name: _name.text.trim(),
-          timezone: _timezone.text.trim(),
+          timezone: _timezone.trim(),
           businessDayRolloverHour: _rolloverHour,
           idempotencyKey: widget.idempotencyKey,
         ),
@@ -1133,11 +1130,11 @@ class _LocationDialogState extends State<_LocationDialog> {
                 validator: _requiredValidator,
               ),
               const SizedBox(height: 12),
-              _DialogField(
+              IanaTimezoneDropdown(
                 fieldKey: const Key('admin_location_timezone_field'),
-                controller: _timezone,
+                value: _timezone,
                 label: 'IANA timezone',
-                validator: _timezoneValidator,
+                onChanged: (v) => setState(() => _timezone = v),
               ),
               const SizedBox(height: 12),
               _RolloverHourDropdown(
@@ -1415,13 +1412,5 @@ class _PrimaryLocationDropdown extends StatelessWidget {
 
 String? _requiredValidator(String? value) {
   if (value == null || value.trim().isEmpty) return 'Required';
-  return null;
-}
-
-String? _timezoneValidator(String? value) {
-  if (value == null || value.trim().isEmpty) return 'Required';
-  if (!isLikelyIanaTimezone(value)) {
-    return 'Use an IANA name like America/Toronto';
-  }
   return null;
 }

@@ -7,8 +7,8 @@
 //   * Empty state renders when no operators are seeded.
 //   * Onboarding flow creates an operator + primary location.
 //   * Suspend / reactivate buttons flip the badge.
-//   * Add location dialog rejects an invalid IANA timezone before
-//     reaching the gateway.
+//   * Location timezone fields are catalog-backed dropdowns, not
+//     free-text inputs.
 //   * Remove-location button is disabled on the primary location.
 //   * Non-admin user cannot reach the screen via the admin shell
 //     (forbidden-card path through `AdminAuthGate`).
@@ -30,6 +30,17 @@ void main() {
     theme: AppTheme.themeData,
     home: child,
   );
+
+  Future<void> chooseTimezone(
+    WidgetTester tester, {
+    required Key fieldKey,
+    required String timezone,
+  }) async {
+    await tester.tap(find.byKey(fieldKey));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(timezone).last);
+    await tester.pumpAndSettle();
+  }
 
   OperatorAdminBundle seedBundle({
     String operatorId = 'op-seed-1',
@@ -159,9 +170,9 @@ void main() {
       find.byKey(const Key('admin_onboard_location_name')),
       'Main',
     );
-    await tester.enterText(
+    expect(
       find.byKey(const Key('admin_onboard_location_timezone')),
-      'America/Toronto',
+      findsOneWidget,
     );
     await tester.tap(find.byKey(const Key('admin_onboard_submit_button')));
     await tester.pumpAndSettle();
@@ -196,7 +207,7 @@ void main() {
     expect(find.text('suspended'), findsNothing);
   });
 
-  testWidgets('add location dialog rejects an invalid IANA timezone', (
+  testWidgets('add location dialog uses an IANA timezone dropdown', (
     tester,
   ) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
@@ -218,16 +229,20 @@ void main() {
       find.byKey(const Key('admin_location_name_field')),
       'Bad Zone',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_location_timezone_field')),
-      'not a zone',
+    await chooseTimezone(
+      tester,
+      fieldKey: const Key('admin_location_timezone_field'),
+      timezone: 'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
     await tester.pumpAndSettle();
 
-    // Form-level validator blocks submit; dialog stays open.
-    expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
-    expect(find.text('Use an IANA name like America/Toronto'), findsOneWidget);
+    final operators = await gateway.listOperators();
+    expect(operators.single.locations, hasLength(2));
+    expect(
+      operators.single.locations.last.timezone,
+      equals('America/Vancouver'),
+    );
   });
 
   testWidgets('remove button is disabled on the primary location', (
@@ -270,9 +285,10 @@ void main() {
       find.byKey(const Key('admin_location_name_field')),
       'West Coast',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_location_timezone_field')),
-      'America/Vancouver',
+    await chooseTimezone(
+      tester,
+      fieldKey: const Key('admin_location_timezone_field'),
+      timezone: 'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
     await tester.pumpAndSettle();
