@@ -106,11 +106,12 @@ void main() {
       await tapKey(tester, const Key('operator_web_tos_agreement_checkbox'));
       await tapKey(tester, const Key('operator_web_tos_submit'));
 
-      // Completed — post-onboarding shell with Account placeholder.
+      // Completed — post-onboarding shell with the real Account screen
+      // (11W.7 retired the placeholder).
       expect(source.current, isA<OperatorWebCompleted>());
       expect(find.byKey(const Key('operator_web_shell_scaffold')),
           findsOneWidget);
-      expect(find.byKey(const Key('operator_web_account_placeholder')),
+      expect(find.byKey(const Key('operator_web_account_screen')),
           findsOneWidget);
     });
 
