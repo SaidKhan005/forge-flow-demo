@@ -32,6 +32,7 @@
 // and renders a read-only banner; the proxy enforces the same gate
 // server-side.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -171,8 +172,20 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
         keyKind: kind,
         plaintextValue: result!.plaintextValue,
         onCopied: _onPlaintextCopied,
+        onCopyFailed: _onPlaintextCopyFailed,
       ),
     );
+  }
+
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    if (messenger == null) return;
+    try {
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {
+      // Some isolated widget harnesses mount the screen without a Scaffold.
+      // Browser/runtime copy failures should still be contained.
+    }
   }
 
   void _onPlaintextCopied(ProviderKeyKind kind) {
@@ -180,11 +193,11 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
     // expose the audit-write endpoint outside rotation). Surface a
     // SnackBar so the operator knows the copy event happened — the
     // real audit hook plugs in here once the audit endpoint lands.
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Copied ${kind.displayName} secret value to clipboard.'),
-      ),
-    );
+    _showSnackBar('Copied ${kind.displayName} secret value to clipboard.');
+  }
+
+  void _onPlaintextCopyFailed(ProviderKeyKind kind) {
+    _showSnackBar('Could not copy ${kind.displayName} secret value.');
   }
 
   @override
@@ -652,11 +665,13 @@ class _OneTimeRevealDialog extends StatefulWidget {
     required this.keyKind,
     required this.plaintextValue,
     required this.onCopied,
+    required this.onCopyFailed,
   });
 
   final ProviderKeyKind keyKind;
   final String plaintextValue;
   final void Function(ProviderKeyKind) onCopied;
+  final void Function(ProviderKeyKind) onCopyFailed;
 
   @override
   State<_OneTimeRevealDialog> createState() => _OneTimeRevealDialogState();
@@ -664,6 +679,23 @@ class _OneTimeRevealDialog extends StatefulWidget {
 
 class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
   bool _copied = false;
+
+  Future<void> _copyPlaintext() async {
+    if (kIsWeb) {
+      widget.onCopyFailed(widget.keyKind);
+      return;
+    }
+    try {
+      await Clipboard.setData(ClipboardData(text: widget.plaintextValue));
+    } catch (_) {
+      if (!mounted) return;
+      widget.onCopyFailed(widget.keyKind);
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _copied = true);
+    widget.onCopied(widget.keyKind);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -707,14 +739,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
                     backgroundColor: AppColors.sunset,
                     foregroundColor: AppColors.backgroundSurface,
                   ),
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      ClipboardData(text: widget.plaintextValue),
-                    );
-                    if (!mounted) return;
-                    setState(() => _copied = true);
-                    widget.onCopied(widget.keyKind);
-                  },
+                  onPressed: _copyPlaintext,
                   icon: Icon(
                     _copied ? Icons.check : Icons.content_copy,
                     size: 14,

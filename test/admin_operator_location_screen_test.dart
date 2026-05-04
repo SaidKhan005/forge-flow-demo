@@ -9,6 +9,7 @@
 //   * Suspend / reactivate buttons flip the badge.
 //   * Add location dialog rejects an invalid IANA timezone before
 //     reaching the gateway.
+//   * Edit location dialog patches the selected location.
 //   * Remove-location button is disabled on the primary location.
 //   * Non-admin user cannot reach the screen via the admin shell
 //     (forbidden-card path through `AdminAuthGate`).
@@ -228,6 +229,40 @@ void main() {
     // Form-level validator blocks submit; dialog stays open.
     expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
     expect(find.text('Use an IANA name like America/Toronto'), findsOneWidget);
+  });
+
+  testWidgets('edit location dialog patches the selected location', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('admin_location_edit_loc-seed-1')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_location_edit_dialog')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('admin_location_name_field')),
+      'Harbour HQ',
+    );
+    await tester.enterText(
+      find.byKey(const Key('admin_location_timezone_field')),
+      'America/St_Johns',
+    );
+    await tester.tap(find.byKey(const Key('admin_location_submit_button')));
+    await tester.pumpAndSettle();
+
+    final operators = await gateway.listOperators();
+    final location = operators.single.locations.single;
+    expect(location.name, equals('Harbour HQ'));
+    expect(location.timezone, equals('America/St_Johns'));
+    expect(find.text('Harbour HQ'), findsWidgets);
   });
 
   testWidgets('remove button is disabled on the primary location', (

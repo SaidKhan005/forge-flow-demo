@@ -30,18 +30,16 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   group('Integration admin screen — Gemini key', () {
     testWidgets('renders gemini tile with display name + no-credential note '
         'when the gateway is empty', (tester) async {
       final gateway = InMemoryIntegrationAdminGateway();
-      await tester.pumpWidget(
-        wrap(IntegrationAdminScreen(gateway: gateway)),
-      );
+      await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
       // The lane tile and masked-display node both exist for gemini.
@@ -59,17 +57,16 @@ void main() {
 
       // No active credential → the empty-state copy is shown.
       expect(
-        find.text('No active credential. Rotate to seed the lane.'),
+        find.text('No active key yet. Rotate to add one.'),
         findsAtLeastNWidgets(1),
       );
     });
 
-    testWidgets('rotate button is visible when editing is enabled',
-        (tester) async {
+    testWidgets('rotate button is visible when editing is enabled', (
+      tester,
+    ) async {
       final gateway = InMemoryIntegrationAdminGateway();
-      await tester.pumpWidget(
-        wrap(IntegrationAdminScreen(gateway: gateway)),
-      );
+      await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
       expect(
@@ -78,16 +75,12 @@ void main() {
       );
     });
 
-    testWidgets('rotate button is hidden when editing is disabled',
-        (tester) async {
+    testWidgets('rotate button is hidden when editing is disabled', (
+      tester,
+    ) async {
       final gateway = InMemoryIntegrationAdminGateway();
       await tester.pumpWidget(
-        wrap(
-          IntegrationAdminScreen(
-            gateway: gateway,
-            editingEnabled: false,
-          ),
-        ),
+        wrap(IntegrationAdminScreen(gateway: gateway, editingEnabled: false)),
       );
       await tester.pumpAndSettle();
 
@@ -97,15 +90,14 @@ void main() {
       );
     });
 
-    testWidgets('rotate flow seeds a new gemini row on the gateway',
-        (tester) async {
+    testWidgets('rotate flow seeds a new gemini row on the gateway', (
+      tester,
+    ) async {
       final gateway = InMemoryIntegrationAdminGateway(
         actorUserId: 'demo-super-admin',
         kmsProvider: KmsStubProvider(idGenerator: () => 'fixed-uuid'),
       );
-      await tester.pumpWidget(
-        wrap(IntegrationAdminScreen(gateway: gateway)),
-      );
+      await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
       await tester.pumpAndSettle();
 
       // Tap Rotate on Gemini.
@@ -117,9 +109,7 @@ void main() {
         find.byKey(const Key('admin_integrations_confirm_dialog')),
         findsOneWidget,
       );
-      await tester.tap(
-        find.byKey(const Key('admin_integrations_confirm_ok')),
-      );
+      await tester.tap(find.byKey(const Key('admin_integrations_confirm_ok')));
       await tester.pumpAndSettle();
 
       // Plaintext entry dialog renders.
@@ -145,10 +135,7 @@ void main() {
         find.byKey(const Key('admin_integrations_reveal_plaintext')),
         findsOneWidget,
       );
-      expect(
-        find.text('AIzaSy-newGeminiPlaintextSecret9999'),
-        findsOneWidget,
-      );
+      expect(find.text('AIzaSy-newGeminiPlaintextSecret9999'), findsOneWidget);
 
       // Close the reveal modal and confirm plaintext is gone.
       await tester.tap(
@@ -160,10 +147,7 @@ void main() {
         find.byKey(const Key('admin_integrations_reveal_dialog')),
         findsNothing,
       );
-      expect(
-        find.text('AIzaSy-newGeminiPlaintextSecret9999'),
-        findsNothing,
-      );
+      expect(find.text('AIzaSy-newGeminiPlaintextSecret9999'), findsNothing);
 
       // Gateway now exposes a masked-only gemini row.
       final bundle = await gateway.list();

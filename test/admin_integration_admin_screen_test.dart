@@ -16,6 +16,7 @@
 //     read-only branch end-to-end.
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:forge_and_flow/admin/admin_app.dart';
@@ -29,10 +30,10 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: child,
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: child,
+  );
 
   ProviderKeyRow seedRow({
     String credentialId = 'cred-anthropic',
@@ -51,20 +52,18 @@ void main() {
     );
   }
 
-  testWidgets('renders provider-key tiles and vendor-status rows',
-      (tester) async {
+  testWidgets('renders provider-key tiles and vendor-status rows', (
+    tester,
+  ) async {
     final gateway = InMemoryIntegrationAdminGateway(
       seed: <ProviderKeyRow>[seedRow()],
     );
     await tester.pumpWidget(
-      wrap(IntegrationAdminScreen(gateway: gateway)),
+      wrap(Scaffold(body: IntegrationAdminScreen(gateway: gateway))),
     );
     await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_integrations_screen')),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_integrations_screen')), findsOneWidget);
     expect(
       find.byKey(const Key('admin_integrations_provider_anthropic')),
       findsOneWidget,
@@ -87,15 +86,14 @@ void main() {
     );
   });
 
-  testWidgets('rotate flow: confirm → plaintext → reveal modal → close',
-      (tester) async {
+  testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (
+    tester,
+  ) async {
     final gateway = InMemoryIntegrationAdminGateway(
       actorUserId: 'demo-super-admin',
       kmsProvider: KmsStubProvider(idGenerator: () => 'fixed-uuid'),
     );
-    await tester.pumpWidget(
-      wrap(IntegrationAdminScreen(gateway: gateway)),
-    );
+    await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     // Tap Rotate on Anthropic.
@@ -107,9 +105,7 @@ void main() {
       find.byKey(const Key('admin_integrations_confirm_dialog')),
       findsOneWidget,
     );
-    await tester.tap(
-      find.byKey(const Key('admin_integrations_confirm_ok')),
-    );
+    await tester.tap(find.byKey(const Key('admin_integrations_confirm_ok')));
     await tester.pumpAndSettle();
 
     // Rotate dialog renders.
@@ -152,24 +148,75 @@ void main() {
 
     // The masked tile now shows the new masked display.
     final bundle = await gateway.list();
-    final anthropic = bundle.providerKeys
-        .firstWhere((r) => r.keyKind == ProviderKeyKind.anthropic);
+    final anthropic = bundle.providerKeys.firstWhere(
+      (r) => r.keyKind == ProviderKeyKind.anthropic,
+    );
     expect(anthropic.maskedValue, equals('sk-a***9999'));
     expect(anthropic.kmsSecretName, equals('kms://stub/fixed-uuid'));
   });
 
-  testWidgets('editingEnabled: false hides rotate buttons + renders banner',
-      (tester) async {
+  testWidgets('reveal copy failure is contained without marking copied', (
+    tester,
+  ) async {
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (MethodCall call) async {
+        if (call.method == 'Clipboard.setData') {
+          throw PlatformException(code: 'clipboard_denied');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    final gateway = InMemoryIntegrationAdminGateway(
+      actorUserId: 'demo-super-admin',
+      kmsProvider: KmsStubProvider(idGenerator: () => 'fixed-uuid'),
+    );
+    await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('admin_integrations_rotate_anthropic')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('admin_integrations_confirm_ok')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('admin_integrations_rotate_plaintext_field')),
+      'sk-ant-newPlaintextSecret9999',
+    );
+    await tester.tap(
+      find.byKey(const Key('admin_integrations_rotate_submit_button')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const Key('admin_integrations_reveal_copy_button')),
+    );
+    await tester.pump();
+
+    expect(tester.takeException(), isNull);
+    expect(
+      find.byKey(const Key('admin_integrations_reveal_dialog')),
+      findsOneWidget,
+    );
+    expect(find.text('Copied'), findsNothing);
+  });
+
+  testWidgets('editingEnabled: false hides rotate buttons + renders banner', (
+    tester,
+  ) async {
     final gateway = InMemoryIntegrationAdminGateway(
       seed: <ProviderKeyRow>[seedRow()],
     );
     await tester.pumpWidget(
-      wrap(
-        IntegrationAdminScreen(
-          gateway: gateway,
-          editingEnabled: false,
-        ),
-      ),
+      wrap(IntegrationAdminScreen(gateway: gateway, editingEnabled: false)),
     );
     await tester.pumpAndSettle();
 
@@ -192,98 +239,97 @@ void main() {
   });
 
   testWidgets(
-      'admin shell with ff_support source renders integrations in read-only mode',
-      (tester) async {
-    final gateway = InMemoryIntegrationAdminGateway(
-      seed: <ProviderKeyRow>[seedRow()],
-    );
-    final source = DemoAdminAuthSource(
-      initial: const AdminAuthAuthenticated(
-        AdminAuthSession(
-          uid: 'demo-ff-support',
-          email: 'support@forgeflow.test',
-          displayName: 'Demo F&F Support',
-          roles: <String>['ff_support'],
+    'admin shell with ff_support source renders integrations in read-only mode',
+    (tester) async {
+      final gateway = InMemoryIntegrationAdminGateway(
+        seed: <ProviderKeyRow>[seedRow()],
+      );
+      final source = DemoAdminAuthSource(
+        initial: const AdminAuthAuthenticated(
+          AdminAuthSession(
+            uid: 'demo-ff-support',
+            email: 'support@forgeflow.test',
+            displayName: 'Demo F&F Support',
+            roles: <String>['ff_support'],
+          ),
         ),
-      ),
-    );
-    addTearDown(source.dispose);
-    await tester.pumpWidget(
-      AdminConsoleServicesScope(
-        integrationGateway: gateway,
-        adminAuthSource: source,
-        child: AdminConsoleApp(authSource: source),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          integrationGateway: gateway,
+          adminAuthSource: source,
+          child: AdminConsoleApp(authSource: source),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_integrations_screen')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_integrations_readonly_banner')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_integrations_rotate_anthropic')),
-      findsNothing,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_integrations_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_integrations_readonly_banner')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_integrations_rotate_anthropic')),
+        findsNothing,
+      );
+    },
+  );
 
   testWidgets(
-      'admin shell with super_admin source renders integrations with rotate buttons',
-      (tester) async {
-    final gateway = InMemoryIntegrationAdminGateway(
-      seed: <ProviderKeyRow>[seedRow()],
-    );
-    final source = DemoAdminAuthSource.signedInAsSuperAdmin();
-    addTearDown(source.dispose);
-    await tester.pumpWidget(
-      AdminConsoleServicesScope(
-        integrationGateway: gateway,
-        adminAuthSource: source,
-        child: AdminConsoleApp(authSource: source),
-      ),
-    );
-    await tester.pumpAndSettle();
+    'admin shell with super_admin source renders integrations with rotate buttons',
+    (tester) async {
+      final gateway = InMemoryIntegrationAdminGateway(
+        seed: <ProviderKeyRow>[seedRow()],
+      );
+      final source = DemoAdminAuthSource.signedInAsSuperAdmin();
+      addTearDown(source.dispose);
+      await tester.pumpWidget(
+        AdminConsoleServicesScope(
+          integrationGateway: gateway,
+          adminAuthSource: source,
+          child: AdminConsoleApp(authSource: source),
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.byKey(const Key('admin_integrations_screen')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const Key('admin_integrations_readonly_banner')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const Key('admin_integrations_rotate_anthropic')),
-      findsOneWidget,
-    );
-  });
+      expect(
+        find.byKey(const Key('admin_integrations_screen')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_integrations_readonly_banner')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_integrations_rotate_anthropic')),
+        findsOneWidget,
+      );
+    },
+  );
 
-  testWidgets('forced KMS failure renders the action error banner',
-      (tester) async {
+  testWidgets('forced KMS failure renders the action error banner', (
+    tester,
+  ) async {
     final kms = KmsStubProvider(failNextWrite: true);
     final gateway = InMemoryIntegrationAdminGateway(kmsProvider: kms);
-    await tester.pumpWidget(
-      wrap(IntegrationAdminScreen(gateway: gateway)),
-    );
+    await tester.pumpWidget(wrap(IntegrationAdminScreen(gateway: gateway)));
     await tester.pumpAndSettle();
 
     await tester.tap(
       find.byKey(const Key('admin_integrations_rotate_azure_db')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const Key('admin_integrations_confirm_ok')),
-    );
+    await tester.tap(find.byKey(const Key('admin_integrations_confirm_ok')));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('admin_integrations_rotate_plaintext_field')),
