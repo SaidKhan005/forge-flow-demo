@@ -37,6 +37,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/integration_admin_models.dart';
 import '../services/integration_admin_gateway.dart';
@@ -377,7 +379,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: platform admin access is required to manage service keys.',
+              'View only: ecosystem admin access is required to manage service keys.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
           ),
@@ -458,10 +460,7 @@ class _ProviderKeyTile extends StatelessWidget {
           if (editingEnabled)
             FilledButton.icon(
               key: Key('admin_integrations_rotate_${kind.wireName}'),
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.sunset,
-                foregroundColor: AppColors.backgroundSurface,
-              ),
+              style: AdminButtonStyles.primary,
               onPressed: rotating ? null : onRotate,
               icon: rotating
                   ? const SizedBox(
@@ -632,10 +631,7 @@ class _RotatePlaintextDialogState extends State<_RotatePlaintextDialog> {
         ),
         FilledButton(
           key: const Key('admin_integrations_rotate_submit_button'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             Navigator.of(context).pop(
@@ -728,10 +724,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
               children: [
                 FilledButton.icon(
                   key: const Key('admin_integrations_reveal_copy_button'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
+                  style: AdminButtonStyles.primary,
                   onPressed: _copyPlaintext,
                   icon: Icon(
                     _copied ? Icons.check : Icons.content_copy,
@@ -829,10 +822,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_integrations_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),

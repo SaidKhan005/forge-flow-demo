@@ -29,6 +29,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/corpus_admin_models.dart';
 import '../services/corpus_admin_gateway.dart';
@@ -491,10 +493,7 @@ class _VersionsTab extends StatelessWidget {
                   FilledButton.icon(
                     key: const Key('admin_corpus_first_upload_button'),
                     onPressed: busy ? null : onUploadPressed,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
+                    style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.upload_file_outlined, size: 16),
                     label: const Text('Upload markdown'),
                   ),
@@ -915,10 +914,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                 ? FilledButton.icon(
                     key: const Key('admin_corpus_graph_bulk_approve_extracted'),
                     onPressed: _busy ? null : _bulkApproveExtracted,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.sunset,
-                      foregroundColor: AppColors.backgroundSurface,
-                    ),
+                    style: AdminButtonStyles.primary,
                     icon: const Icon(Icons.done_all, size: 16),
                     label: const Text('Bulk approve all'),
                   )
@@ -1009,10 +1005,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       onPressed: (widget.onPickOperator == null || _busy)
                           ? null
                           : widget.onPickOperator,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.sunset,
-                        foregroundColor: AppColors.backgroundSurface,
-                      ),
+                      style: AdminButtonStyles.primary,
                       icon: const Icon(Icons.swap_horiz, size: 16),
                       label: const Text('Choose operator'),
                     ),
@@ -1070,10 +1063,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       (!_hasQueuedDecisions || _busy || !widget.hasTarget)
                       ? null
                       : _onCommitBatch,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
+                  style: AdminButtonStyles.primary,
                   icon: const Icon(Icons.check_circle_outline, size: 16),
                   label: Text(
                     'Apply decisions (${_approveQueue.length + _rejectQueue.length + _editQueue.length} '
@@ -1362,11 +1352,8 @@ class _GraphCandidateRow extends StatelessWidget {
                       '${candidate.candidateId}',
                     ),
                     onPressed: busy ? null : onApprove,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: queuedForApprove
-                          ? AppColors.positive
-                          : AppColors.positive.withValues(alpha: 0.85),
-                      foregroundColor: AppColors.backgroundSurface,
+                    style: AdminButtonStyles.approval(
+                      selected: queuedForApprove,
                     ),
                     icon: Icon(
                       queuedForApprove ? Icons.check : Icons.check_outlined,
@@ -1380,14 +1367,7 @@ class _GraphCandidateRow extends StatelessWidget {
                     '${candidate.candidateId}',
                   ),
                   onPressed: busy ? null : onReject,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.negative,
-                    side: BorderSide(
-                      color: queuedForReject
-                          ? AppColors.negative
-                          : AppColors.negative.withValues(alpha: 0.6),
-                    ),
-                  ),
+                  style: AdminButtonStyles.reject(selected: queuedForReject),
                   icon: Icon(
                     queuedForReject ? Icons.close : Icons.close_outlined,
                     size: 14,
@@ -1608,10 +1588,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
         ),
         FilledButton(
           key: const Key('admin_corpus_graph_candidates_edit_dialog_submit'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             final editedType = _typeController.text.trim();
             final reason = _reasonController.text.trim();
@@ -1725,7 +1702,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: uploads, approvals, and restores require platform admin access.',
+              'View only: uploads, approvals, and restores require ecosystem admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -1772,10 +1749,7 @@ class _VersionList extends StatelessWidget {
               child: FilledButton.icon(
                 key: const Key('admin_corpus_upload_button'),
                 onPressed: busy ? null : onUploadPressed,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.upload_file_outlined, size: 16),
                 label: const Text('Upload markdown'),
               ),
@@ -2060,10 +2034,7 @@ class _StagedDiffCard extends StatelessWidget {
               FilledButton(
                 key: const Key('admin_corpus_commit_button'),
                 onPressed: busy ? null : onCommit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 child: const Text('Publish content'),
               ),
               OutlinedButton(
@@ -2340,10 +2311,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_corpus_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),
@@ -2431,10 +2399,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
           ),
           FilledButton(
             key: const Key('admin_corpus_demo_picker_submit'),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.sunset,
-              foregroundColor: AppColors.backgroundSurface,
-            ),
+            style: AdminButtonStyles.primary,
             onPressed: () {
               final fileName = fileNameController.text.trim();
               final body = controller.text;

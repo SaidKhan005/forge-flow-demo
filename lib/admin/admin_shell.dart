@@ -14,6 +14,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import 'admin_auth_gate.dart';
+import 'admin_button_styles.dart';
 import 'admin_route_handoff.dart';
 import 'admin_routes.dart';
 
@@ -185,15 +186,21 @@ class _AdminHeaderBar extends StatelessWidget {
           const SizedBox(width: 12),
           Flexible(child: _IdentityChip(session: session)),
           const SizedBox(width: 8),
-          IconButton(
+          OutlinedButton.icon(
             key: const Key('admin_header_signout'),
-            tooltip: 'Sign out',
+            style: AdminButtonStyles.secondary(
+              foregroundColor: AppColors.textSecondary,
+              borderColor: AppColors.borderSubtle,
+              minWidth: 116,
+              minHeight: 44,
+            ),
             onPressed: onSignOut,
             icon: const Icon(
               Icons.logout_outlined,
               size: 18,
               color: AppColors.textSecondary,
             ),
+            label: const Text('Sign out'),
           ),
         ],
       ),
@@ -213,7 +220,7 @@ class _RolePill extends StatelessWidget {
       orElse: () => roles.isEmpty ? 'unknown' : roles.first,
     );
     final roleLabel = switch (adminRole) {
-      'super_admin' => 'Platform admin',
+      'super_admin' => 'Ecosystem admin',
       'ff_support' => 'Support access',
       'unknown' => 'Unknown role',
       _ => adminRole.replaceAll('_', ' '),
@@ -272,7 +279,7 @@ class _AdminSideNav extends StatelessWidget {
       label: 'AI',
       badge: 'Work in progress',
     ),
-    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Platform'),
+    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Ecosystem'),
   ];
 
   @override

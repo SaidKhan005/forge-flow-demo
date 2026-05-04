@@ -576,6 +576,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     // `scoped_org_unit_id` NOT NULL columns.
     pricingTierAdminGateway: RepositoryPricingTierAdminProxyGateway(
       operatorsRepository: OperatorsRepository(adminWrapper),
+      locationsRepository: LocationsRepository(adminWrapper),
       usageCapsRepository: UsageCapsRepository(adminWrapper),
       orgUnitsRepository: OrgUnitsRepository(adminWrapper),
       auditRepository: adminAudit,
@@ -1597,15 +1598,18 @@ class RepositoryPricingTierAdminProxyGateway
     implements PricingTierAdminProxyGateway {
   RepositoryPricingTierAdminProxyGateway({
     required OperatorsRepository operatorsRepository,
+    required LocationsRepository locationsRepository,
     required UsageCapsRepository usageCapsRepository,
     required OrgUnitsRepository orgUnitsRepository,
     required AuthEventsAuditRepository auditRepository,
   }) : _operators = operatorsRepository,
+       _locations = locationsRepository,
        _caps = usageCapsRepository,
        _orgUnits = orgUnitsRepository,
        _auditRepository = auditRepository;
 
   final OperatorsRepository _operators;
+  final LocationsRepository _locations;
   final UsageCapsRepository _caps;
   final OrgUnitsRepository _orgUnits;
   final AuthEventsAuditRepository _auditRepository;
@@ -1641,6 +1645,12 @@ class RepositoryPricingTierAdminProxyGateway
     required String adminReason,
   }) async {
     final operators = await _operators.listOperators(adminReason: adminReason);
+    final allLocations = await _locations.listAllLocations(
+      adminReason: '$adminReason:locations',
+    );
+    final locationNamesById = <String, String>{
+      for (final location in allLocations) location.locationId: location.name,
+    };
     final allCaps = await _caps.listAllCaps(adminReason: adminReason);
     final capsByOperator = <String, List<UsageCapAdminRow>>{};
     for (final cap in allCaps) {
@@ -1657,6 +1667,9 @@ class RepositoryPricingTierAdminProxyGateway
             'subscription_tier': op.subscriptionTier,
             'preferred_currency': op.preferredCurrency,
             'primary_location_id': op.primaryLocationId,
+            'primary_location_name': op.primaryLocationId == null
+                ? null
+                : locationNamesById[op.primaryLocationId],
             'suspended': op.suspendedAt != null,
           },
           'caps': <Map<String, Object?>>[
@@ -1821,6 +1834,13 @@ class RepositoryPricingTierAdminProxyGateway
       operatorId: operator.operatorId,
       adminReason: '$adminReason:bundle:${operator.operatorId}',
     );
+    final locations = await _locations.listForOperator(
+      operatorId: operator.operatorId,
+      adminReason: '$adminReason:bundle_locations:${operator.operatorId}',
+    );
+    final locationNamesById = <String, String>{
+      for (final location in locations) location.locationId: location.name,
+    };
     return <String, Object?>{
       'operator': <String, Object?>{
         'operator_id': operator.operatorId,
@@ -1828,6 +1848,9 @@ class RepositoryPricingTierAdminProxyGateway
         'subscription_tier': operator.subscriptionTier,
         'preferred_currency': operator.preferredCurrency,
         'primary_location_id': operator.primaryLocationId,
+        'primary_location_name': operator.primaryLocationId == null
+            ? null
+            : locationNamesById[operator.primaryLocationId],
         'suspended': operator.suspendedAt != null,
       },
       'caps': <Map<String, Object?>>[for (final cap in caps) cap.toJson()],

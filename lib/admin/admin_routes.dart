@@ -652,6 +652,7 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
           subscriptionTier: 'launch',
           preferredCurrency: 'CAD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000a1',
+          primaryLocationName: 'Toronto Yorkville',
           suspended: false,
           caps: <UsageCapRow>[],
         ),
@@ -661,6 +662,7 @@ final PricingTierAdminGateway _defaultPricingDemoGateway =
           subscriptionTier: 'pilot',
           preferredCurrency: 'USD',
           primaryLocationId: '00000000-0000-4000-8000-0000000000b1',
+          primaryLocationName: 'Brooklyn Williamsburg',
           suspended: false,
           caps: <UsageCapRow>[
             UsageCapRow(

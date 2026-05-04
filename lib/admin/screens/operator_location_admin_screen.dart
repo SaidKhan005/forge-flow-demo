@@ -15,6 +15,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
@@ -158,13 +160,7 @@ class _OperatorLocationAdminScreenState
               trailing: FilledButton.icon(
                 key: const Key('admin_operators_new_button'),
                 onPressed: _openOnboardingDialog,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.add, size: 16),
                 label: const Text('New operator'),
               ),
@@ -567,23 +563,18 @@ class _OperatorTile extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                OutlinedButton.icon(
+                OutlinedButton(
                   key: Key('admin_operator_manage_${operator.operatorId}'),
                   onPressed: onSelect,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(112, 42),
+                  style: AdminButtonStyles.secondary(
+                    minWidth: 132,
+                    minHeight: 42,
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 12,
                     ),
-                    foregroundColor: AppColors.sunsetDark,
-                    side: const BorderSide(color: AppColors.sunset, width: 1),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
-                    ),
                   ),
-                  icon: const Icon(Icons.open_in_new, size: 16),
-                  label: const Text('Manage'),
+                  child: const Text('Click to manage'),
                 ),
               ],
             ),
@@ -701,13 +692,7 @@ class _OperatorDetail extends StatelessWidget {
                         onPressed: () => onSuspend(bundle),
                         icon: const Icon(Icons.pause_outlined, size: 14),
                         label: const Text('Suspend'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.negative,
-                          side: const BorderSide(
-                            color: AppColors.negative,
-                            width: 1,
-                          ),
-                        ),
+                        style: AdminButtonStyles.dangerSecondary(),
                       ),
                   ],
                 ),
@@ -919,6 +904,7 @@ class _LocationActionWrap extends StatelessWidget {
                   builder: (_) => VendorConnectionsAdminMount(
                     operatorId: location.operatorId,
                     locationId: location.locationId,
+                    locationName: location.name,
                   ),
                 ),
               );
@@ -981,16 +967,12 @@ class _LocationActionButton extends StatelessWidget {
       child: OutlinedButton.icon(
         key: buttonKey,
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          minimumSize: Size(minWidth, 40),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        style: AdminButtonStyles.secondary(
           foregroundColor: activeColor,
-          disabledForegroundColor: AppColors.textMuted.withValues(alpha: 0.55),
-          side: BorderSide(color: borderColor, width: emphasized ? 1.2 : 1),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          textStyle: AppTextStyles.chipLabel(
-            color: enabled ? activeColor : AppColors.textMuted,
-          ),
+          borderColor: borderColor,
+          minWidth: minWidth,
+          emphasized: emphasized,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         ),
         icon: Icon(icon, size: 15),
         label: Text(label, overflow: TextOverflow.ellipsis, softWrap: false),
@@ -1188,10 +1170,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
         FilledButton(
           key: const Key('admin_onboard_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: const Text('Onboard operator'),
         ),
       ],
@@ -1317,10 +1296,7 @@ class _EditOperatorDialogState extends State<_EditOperatorDialog> {
         FilledButton(
           key: const Key('admin_edit_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: const Text('Save'),
         ),
       ],
@@ -1440,10 +1416,7 @@ class _LocationDialogState extends State<_LocationDialog> {
         FilledButton(
           key: const Key('admin_location_submit_button'),
           onPressed: _submit,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           child: Text(isEdit ? 'Save' : 'Add'),
         ),
       ],
@@ -1487,10 +1460,7 @@ class _ConfirmDialog extends StatelessWidget {
         FilledButton(
           key: const Key('admin_confirm_confirm_button'),
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.negative,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.danger,
           child: Text(confirmLabel),
         ),
       ],

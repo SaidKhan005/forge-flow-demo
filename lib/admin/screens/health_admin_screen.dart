@@ -32,6 +32,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
@@ -153,7 +155,7 @@ const List<_TabSpec> _kTabs = <_TabSpec>[
     ],
   ),
   _TabSpec(
-    label: 'Platform',
+    label: 'Ecosystem',
     keySuffix: 'infra',
     sections: <_SectionSpec>[
       _SectionSpec(
@@ -469,10 +471,7 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
         FilledButton.icon(
           key: const Key('admin_health_confirm_run'),
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           icon: const Icon(Icons.play_arrow, size: 16),
           label: const Text('Run system check'),
         ),
@@ -516,10 +515,7 @@ class _ManualHealthPrompt extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('admin_health_manual_run_button'),
                 onPressed: () => onRunHealthCheck(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.health_and_safety_outlined, size: 16),
                 label: const Text('Run system check'),
               ),

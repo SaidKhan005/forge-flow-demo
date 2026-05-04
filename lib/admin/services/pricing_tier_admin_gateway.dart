@@ -423,6 +423,7 @@ class _MutableBundle {
     required this.subscriptionTier,
     required this.preferredCurrency,
     required this.primaryLocationId,
+    required this.primaryLocationName,
     required this.suspended,
     required List<UsageCapRow> caps,
     required this.updatedAt,
@@ -435,6 +436,7 @@ class _MutableBundle {
       subscriptionTier: bundle.subscriptionTier,
       preferredCurrency: bundle.preferredCurrency,
       primaryLocationId: bundle.primaryLocationId,
+      primaryLocationName: bundle.primaryLocationName,
       suspended: bundle.suspended,
       caps: bundle.caps,
       updatedAt: DateTime.now().toUtc(),
@@ -446,6 +448,7 @@ class _MutableBundle {
   String subscriptionTier;
   final String preferredCurrency;
   final String? primaryLocationId;
+  final String? primaryLocationName;
   final bool suspended;
   final List<UsageCapRow> caps;
   DateTime updatedAt;
@@ -456,6 +459,7 @@ class _MutableBundle {
     subscriptionTier: subscriptionTier,
     preferredCurrency: preferredCurrency,
     primaryLocationId: primaryLocationId,
+    primaryLocationName: primaryLocationName,
     suspended: suspended,
     caps: List<UsageCapRow>.unmodifiable(caps),
   );

@@ -19,12 +19,14 @@ class VendorConnectionsAdminMount extends StatelessWidget {
     super.key,
     required this.operatorId,
     required this.locationId,
+    required this.locationName,
     this.gateway,
     this.canMutate = true,
   });
 
   final String operatorId;
   final String locationId;
+  final String locationName;
 
   /// Production wires the HTTP gateway above the auth gate; demo +
   /// widget tests inject a seeded in-memory gateway.
@@ -42,6 +44,7 @@ class VendorConnectionsAdminMount extends StatelessWidget {
       body: VendorConnectionsWidget(
         operatorId: operatorId,
         locationId: locationId,
+        locationNameOverride: locationName,
         gateway: gateway,
         canMutate: canMutate,
       ),

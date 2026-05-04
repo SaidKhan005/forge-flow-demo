@@ -26,6 +26,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/pricing_tier_admin_models.dart';
 import '../services/pricing_tier_admin_gateway.dart';
@@ -339,7 +341,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: pricing edits require platform admin access.',
+              'View only: pricing edits require ecosystem admin access.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -471,7 +473,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                 ),
                 AdminDetailRow(
                   label: 'Primary location',
-                  value: bundle.primaryLocationId ?? 'No primary location',
+                  value: _primaryLocationLabel(bundle),
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
@@ -555,6 +557,12 @@ class _OperatorPricingDetail extends StatelessWidget {
       ),
     );
   }
+}
+
+String _primaryLocationLabel(PricingOperatorBundle bundle) {
+  final name = bundle.primaryLocationName?.trim();
+  if (name != null && name.isNotEmpty) return name;
+  return bundle.primaryLocationId ?? 'No primary location';
 }
 
 class _UsageCapRowTile extends StatelessWidget {
@@ -786,10 +794,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
         ),
         FilledButton(
           key: const Key('admin_pricing_cap_submit_button'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () {
             if (!(_formKey.currentState?.validate() ?? false)) return;
             final locationId =
@@ -926,10 +931,7 @@ class _ConfirmDialog extends StatelessWidget {
         ),
         FilledButton(
           key: const Key('admin_pricing_confirm_ok'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           onPressed: () => Navigator.of(context).pop(true),
           child: Text(confirmLabel),
         ),

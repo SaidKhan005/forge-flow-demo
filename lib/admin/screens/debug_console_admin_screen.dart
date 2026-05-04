@@ -42,6 +42,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/debug_console_admin_models.dart';
 import '../services/debug_console_admin_gateway.dart';
@@ -917,8 +919,6 @@ class _KeyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final borderColor = active ? AppColors.sunset : AppColors.borderSubtle;
-    final foreground = active ? AppColors.sunsetDark : AppColors.textPrimary;
     return Tooltip(
       message: active
           ? 'Clear $label filter'
@@ -926,16 +926,7 @@ class _KeyChip extends StatelessWidget {
       child: OutlinedButton(
         key: Key('admin_debug_console_use_case_filter_$id'),
         onPressed: onPressed,
-        style: OutlinedButton.styleFrom(
-          backgroundColor: active
-              ? AppColors.sunset.withValues(alpha: 0.12)
-              : AppColors.backgroundSurface,
-          foregroundColor: foreground,
-          side: BorderSide(color: borderColor, width: active ? 1.2 : 1),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          textStyle: AppTextStyles.body12(color: foreground),
-        ),
+        style: AdminButtonStyles.filter(active: active),
         child: Text.rich(
           TextSpan(
             text: label,
@@ -1278,7 +1269,7 @@ class _FullContentLockedBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reason = !editingEnabled
-        ? 'This support role cannot reveal full request content. Use platform admin access to view it.'
+        ? 'This support role cannot reveal full request content. Use ecosystem admin access to view it.'
         : !optInOn
         ? 'This operator has not allowed full request content. Enable the full-content opt-in in Launch controls to view it.'
         : 'Full request content was not saved for this request.';
@@ -1430,10 +1421,7 @@ class _EmptyState extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('admin_debug_console_empty_refresh_button'),
                 onPressed: refreshing ? null : () => onRunRefresh(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.refresh, size: 16),
                 label: const Text('Refresh'),
               ),

@@ -40,7 +40,7 @@ void main() {
     expect(find.byKey(const Key('admin_shell_scaffold')), findsOneWidget);
     expect(find.byKey(const Key('admin_header_bar')), findsOneWidget);
     expect(find.byKey(const Key('admin_header_role_pill')), findsOneWidget);
-    expect(find.text('Platform admin'), findsOneWidget);
+    expect(find.text('Ecosystem admin'), findsOneWidget);
     expect(find.byKey(const Key('admin_header_identity')), findsOneWidget);
     expect(find.text(superAdmin.email), findsOneWidget);
     // Brand wordmark from AppTextStyles.display20.
@@ -76,7 +76,7 @@ void main() {
     expect(find.text('AI'), findsOneWidget);
     expect(find.text('Work in progress'), findsOneWidget);
     expect(find.byKey(const Key('admin_nav_section_dev')), findsOneWidget);
-    expect(find.text('Platform'), findsOneWidget);
+    expect(find.text('Ecosystem'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_nav_section_operations')),
       findsOneWidget,

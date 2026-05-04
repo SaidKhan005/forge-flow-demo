@@ -21,9 +21,11 @@
 // next; empty states explain context and suggest the next step;
 // confirmations explain consequences as bullets.
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../../admin/admin_human_labels.dart';
+import '../../../theme/app_theme.dart';
 import 'in_memory_vendor_connections_gateway.dart';
 import 'vendor_connections_gateway.dart';
 import 'vendor_connections_models.dart';
@@ -43,12 +45,14 @@ class VendorConnectionsWidget extends StatefulWidget {
     super.key,
     required this.operatorId,
     required this.locationId,
+    this.locationNameOverride,
     this.gateway,
     this.canMutate = true,
   });
 
   final String operatorId;
   final String locationId;
+  final String? locationNameOverride;
 
   /// Production wires the HTTP gateway; demo + tests fall back to
   /// [_defaultDemoGateway].
@@ -120,61 +124,69 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
       );
     }
     final bundle = _bundle!;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _Header(locationName: bundle.locationName),
-          const SizedBox(height: 16),
-          _CategorySection(
-            key: const Key('vendor_connections_section_pos'),
-            label: 'Point-of-sale (POS)',
-            categoryDescription:
-                'Forge & Flow needs to read sales and order data from your POS to '
-                'power your dashboard, baseline math, and Shift live view.',
-            row: bundle.posConnection,
-            isDemo: bundle.demoFlags[VendorCategory.pos] ?? true,
-            category: VendorCategory.pos,
-            canMutate: widget.canMutate,
-            onConnect: _onConnect,
-            onTest: _onTestConnection,
-            onDisconnect: _onDisconnect,
-            onLogs: _onViewLogs,
+    return ColoredBox(
+      color: AppColors.backgroundDeep,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 920),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _Header(
+                  locationName:
+                      widget.locationNameOverride ?? bundle.locationName,
+                ),
+                const SizedBox(height: 16),
+                _CategorySection(
+                  key: const Key('vendor_connections_section_pos'),
+                  label: 'Point-of-sale',
+                  categoryDescription:
+                      'Sales, checks, covers, and closed-order timing feed the dashboard and baseline math.',
+                  row: bundle.posConnection,
+                  isDemo: bundle.demoFlags[VendorCategory.pos] ?? true,
+                  category: VendorCategory.pos,
+                  canMutate: widget.canMutate,
+                  onConnect: _onConnect,
+                  onTest: _onTestConnection,
+                  onDisconnect: _onDisconnect,
+                  onLogs: _onViewLogs,
+                ),
+                const SizedBox(height: 14),
+                _CategorySection(
+                  key: const Key('vendor_connections_section_reservation'),
+                  label: 'Reservations',
+                  categoryDescription:
+                      'Bookings and party sizes help forecast covers and compare actual pacing against expected demand.',
+                  row: bundle.reservationConnection,
+                  isDemo: bundle.demoFlags[VendorCategory.reservation] ?? true,
+                  category: VendorCategory.reservation,
+                  canMutate: widget.canMutate,
+                  onConnect: _onConnect,
+                  onTest: _onTestConnection,
+                  onDisconnect: _onDisconnect,
+                  onLogs: _onViewLogs,
+                ),
+                const SizedBox(height: 14),
+                _CategorySection(
+                  key: const Key('vendor_connections_section_labor'),
+                  label: 'Scheduling and labor',
+                  categoryDescription:
+                      'Schedules, punches, and roles power labor variance and week-to-date operating views.',
+                  row: bundle.laborConnection,
+                  isDemo: bundle.demoFlags[VendorCategory.labor] ?? true,
+                  category: VendorCategory.labor,
+                  canMutate: widget.canMutate,
+                  onConnect: _onConnect,
+                  onTest: _onTestConnection,
+                  onDisconnect: _onDisconnect,
+                  onLogs: _onViewLogs,
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 16),
-          _CategorySection(
-            key: const Key('vendor_connections_section_reservation'),
-            label: 'Reservations',
-            categoryDescription:
-                'Forge & Flow uses reservation data to forecast covers when your '
-                'POS does not record them and to align Shift with confirmed pacing.',
-            row: bundle.reservationConnection,
-            isDemo: bundle.demoFlags[VendorCategory.reservation] ?? true,
-            category: VendorCategory.reservation,
-            canMutate: widget.canMutate,
-            onConnect: _onConnect,
-            onTest: _onTestConnection,
-            onDisconnect: _onDisconnect,
-            onLogs: _onViewLogs,
-          ),
-          const SizedBox(height: 16),
-          _CategorySection(
-            key: const Key('vendor_connections_section_labor'),
-            label: 'Scheduling and labor',
-            categoryDescription:
-                'Forge & Flow reads punches and roles from your scheduling system '
-                'to drive labor variance and the WTD picture.',
-            row: bundle.laborConnection,
-            isDemo: bundle.demoFlags[VendorCategory.labor] ?? true,
-            category: VendorCategory.labor,
-            canMutate: widget.canMutate,
-            onConnect: _onConnect,
-            onTest: _onTestConnection,
-            onDisconnect: _onDisconnect,
-            onLogs: _onViewLogs,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -297,21 +309,30 @@ class _Header extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Vendor integrations',
-          style: Theme.of(context).textTheme.headlineSmall,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Connect $locationName to your point-of-sale, reservations, and '
-          'scheduling vendors. We read your data and never push changes back '
-          'to your vendor systems.',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      ],
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _CategoryIcon(category: null, size: 34),
+          const SizedBox(height: 10),
+          Text(
+            'Vendor integrations',
+            style: AppTextStyles.pageTitle(color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Manage the services connected to $locationName. Forge & Flow reads data for reporting and forecasting; it does not push changes back to vendor systems.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -344,26 +365,30 @@ class _CategorySection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: row == null
-            ? _EmptyState(
-                label: label,
-                categoryDescription: categoryDescription,
-                isDemo: isDemo,
-                category: category,
-                canMutate: canMutate,
-                onConnect: () => onConnect(category),
-              )
-            : _ConnectedCard(
-                row: row!,
-                canMutate: canMutate,
-                onTest: () => onTest(row!),
-                onDisconnect: () => onDisconnect(row!),
-                onLogs: () => onLogs(row!),
-              ),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.backgroundSurface,
+        border: Border.all(color: AppColors.borderSubtle, width: 1),
+        borderRadius: BorderRadius.circular(8),
       ),
+      padding: const EdgeInsets.all(16),
+      child: row == null
+          ? _EmptyState(
+              label: label,
+              categoryDescription: categoryDescription,
+              isDemo: isDemo,
+              category: category,
+              canMutate: canMutate,
+              onConnect: () => onConnect(category),
+            )
+          : _ConnectedCard(
+              category: category,
+              row: row!,
+              canMutate: canMutate,
+              onTest: () => onTest(row!),
+              onDisconnect: () => onDisconnect(row!),
+              onLogs: () => onLogs(row!),
+            ),
     );
   }
 }
@@ -387,48 +412,61 @@ class _EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Text(label, style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(width: 8),
-            if (isDemo)
-              Tooltip(
-                message:
-                    'This category is in demo mode. Live data only flows after '
-                    'a vendor is connected for this location.',
-                child: Chip(
-                  key: Key('vendor_connections_demo_chip_${category.name}'),
-                  label: const Text('Demo'),
-                  visualDensity: VisualDensity.compact,
-                ),
+        _CategoryIcon(category: category),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    label,
+                    style: AppTextStyles.sectionTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  if (isDemo)
+                    Tooltip(
+                      message:
+                          'This category is showing demo data until a vendor is connected for this location.',
+                      child: _StatusChip(
+                        key: Key(
+                          'vendor_connections_demo_chip_${category.name}',
+                        ),
+                        label: 'Demo mode',
+                        color: AppColors.sunset,
+                      ),
+                    ),
+                ],
               ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'Connect your $label system',
-          style: Theme.of(context).textTheme.bodyLarge,
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '$categoryDescription Pick yours and we walk you through connecting it.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-        const SizedBox(height: 12),
-        if (canMutate)
-          FilledButton.icon(
-            key: Key('vendor_connections_connect_${category.name}'),
-            onPressed: onConnect,
-            icon: const Icon(Icons.link, size: 16),
-            label: Text('Choose your ${_categoryShortLabel(category)}'),
-          )
-        else
-          const Text(
-            'You do not have permission to connect a vendor for this category.',
+              const SizedBox(height: 6),
+              Text(
+                categoryDescription,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+              if (canMutate)
+                FilledButton.icon(
+                  key: Key('vendor_connections_connect_${category.name}'),
+                  onPressed: onConnect,
+                  icon: const Icon(Icons.link, size: 16),
+                  label: Text('Connect ${_categoryShortLabel(category)}'),
+                )
+              else
+                Text(
+                  'You do not have permission to connect a vendor for this category.',
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+            ],
           ),
+        ),
       ],
     );
   }
@@ -447,6 +485,7 @@ class _EmptyState extends StatelessWidget {
 
 class _ConnectedCard extends StatelessWidget {
   const _ConnectedCard({
+    required this.category,
     required this.row,
     required this.canMutate,
     required this.onTest,
@@ -454,6 +493,7 @@ class _ConnectedCard extends StatelessWidget {
     required this.onLogs,
   });
 
+  final VendorCategory category;
   final VendorConnectionRow row;
   final bool canMutate;
   final VoidCallback onTest;
@@ -462,79 +502,127 @@ class _ConnectedCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                row.displayName,
-                style: Theme.of(context).textTheme.titleMedium,
+        _VendorLogo(vendorId: row.vendorId, displayName: row.displayName),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  Text(
+                    row.displayName,
+                    style: AppTextStyles.sectionTitle(
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  _StatusBadge(
+                    status: row.status,
+                    message: row.lastErrorMessage,
+                  ),
+                ],
               ),
-            ),
-            _StatusBadge(status: row.status, message: row.lastErrorMessage),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Text(_summaryLine(row), style: Theme.of(context).textTheme.bodySmall),
-        if (row.webhookUrl != null) ...<Widget>[
-          const SizedBox(height: 4),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: SelectableText(
-                  'Webhook URL: ${row.webhookUrl}',
-                  style: Theme.of(context).textTheme.bodySmall,
+              const SizedBox(height: 6),
+              Text(
+                _categoryConnectedLine(category),
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _summaryLine(row),
+                style: AppTextStyles.body12(color: AppColors.textSecondary),
+              ),
+              if (row.webhookUrl != null) ...<Widget>[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.backgroundDeep.withValues(alpha: 0.65),
+                    border: Border.all(color: AppColors.borderSubtle),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: <Widget>[
+                      Expanded(
+                        child: SelectableText(
+                          'Webhook URL: ${row.webhookUrl}',
+                          style: AppTextStyles.mono11(
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        key: Key(
+                          'vendor_connections_copy_webhook_${row.vendorId}',
+                        ),
+                        tooltip:
+                            'Copy the webhook URL into your ${row.displayName} portal',
+                        onPressed: () {
+                          // Copy is a no-op stub at the widget layer; production
+                          // wires Clipboard.setData behind a feature plug.
+                        },
+                        icon: const Icon(Icons.copy, size: 16),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              IconButton(
-                key: Key('vendor_connections_copy_webhook_${row.vendorId}'),
-                tooltip:
-                    'Copy the webhook URL into your '
-                    '${row.displayName} portal',
-                onPressed: () {
-                  // Copy is a no-op stub at the widget layer; production
-                  // wires Clipboard.setData behind a feature plug.
-                },
-                icon: const Icon(Icons.copy, size: 16),
+              ],
+              if (row.lastErrorMessage != null) ...<Widget>[
+                const SizedBox(height: 8),
+                _ErrorRemediation(message: row.lastErrorMessage!),
+              ],
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: <Widget>[
+                  if (canMutate)
+                    OutlinedButton.icon(
+                      key: Key('vendor_connections_test_${row.vendorId}'),
+                      onPressed: onTest,
+                      icon: const Icon(Icons.fact_check_outlined, size: 16),
+                      label: const Text('Test connection'),
+                    ),
+                  OutlinedButton.icon(
+                    key: Key('vendor_connections_logs_${row.vendorId}'),
+                    onPressed: onLogs,
+                    icon: const Icon(Icons.list_alt, size: 16),
+                    label: const Text('View logs'),
+                  ),
+                  if (canMutate)
+                    OutlinedButton.icon(
+                      key: Key('vendor_connections_disconnect_${row.vendorId}'),
+                      onPressed: onDisconnect,
+                      icon: const Icon(Icons.link_off, size: 16),
+                      label: const Text('Disconnect'),
+                    ),
+                ],
               ),
             ],
           ),
-        ],
-        if (row.lastErrorMessage != null) ...<Widget>[
-          const SizedBox(height: 8),
-          _ErrorRemediation(message: row.lastErrorMessage!),
-        ],
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: <Widget>[
-            if (canMutate)
-              OutlinedButton.icon(
-                key: Key('vendor_connections_test_${row.vendorId}'),
-                onPressed: onTest,
-                icon: const Icon(Icons.fact_check_outlined, size: 16),
-                label: const Text('Test connection'),
-              ),
-            OutlinedButton.icon(
-              key: Key('vendor_connections_logs_${row.vendorId}'),
-              onPressed: onLogs,
-              icon: const Icon(Icons.list_alt, size: 16),
-              label: const Text('View logs'),
-            ),
-            if (canMutate)
-              OutlinedButton.icon(
-                key: Key('vendor_connections_disconnect_${row.vendorId}'),
-                onPressed: onDisconnect,
-                icon: const Icon(Icons.link_off, size: 16),
-                label: const Text('Disconnect'),
-              ),
-          ],
         ),
       ],
     );
+  }
+
+  String _categoryConnectedLine(VendorCategory category) {
+    switch (category) {
+      case VendorCategory.pos:
+        return 'Sales and order data are connected for this location.';
+      case VendorCategory.reservation:
+        return 'Reservation and cover pacing data are connected for this location.';
+      case VendorCategory.labor:
+        return 'Schedule, punch, and role data are connected for this location.';
+    }
   }
 
   String _summaryLine(VendorConnectionRow row) {
@@ -550,7 +638,167 @@ class _ConnectedCard extends StatelessWidget {
         : '${ago.inDays} days ago';
     final records = row.recordsLast24h ?? 0;
     final errors = row.errorsLast24h ?? 0;
-    return 'Last sync: $unit · $records records · $errors errors (24h)';
+    return 'Last sync: $unit - $records records - $errors errors (24h)';
+  }
+}
+
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({required this.category, this.size = 44});
+
+  final VendorCategory? category;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = switch (category) {
+      VendorCategory.pos => Icons.point_of_sale_outlined,
+      VendorCategory.reservation => Icons.event_seat_outlined,
+      VendorCategory.labor => Icons.schedule_outlined,
+      null => Icons.hub_outlined,
+    };
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.peacock.withValues(alpha: 0.34)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(icon, color: AppColors.peacockDark, size: size * 0.48),
+    );
+  }
+}
+
+class _VendorLogo extends StatelessWidget {
+  const _VendorLogo({required this.vendorId, required this.displayName});
+
+  final String vendorId;
+  final String displayName;
+
+  @override
+  Widget build(BuildContext context) {
+    final brand = _vendorBrand(vendorId, displayName);
+    final fallback = _VendorInitials(brand: brand);
+    return Tooltip(
+      message: brand.iconUrl == null
+          ? '${brand.displayName} logo'
+          : 'Official ${brand.displayName} icon from ${brand.sourceHost}',
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: brand.iconUrl == null || !kIsWeb
+            ? fallback
+            : ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  brand.iconUrl!,
+                  fit: BoxFit.cover,
+                  webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                  errorBuilder: (_, __, ___) => fallback,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _VendorInitials extends StatelessWidget {
+  const _VendorInitials({required this.brand});
+
+  final _VendorBrand brand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        color: brand.color.withValues(alpha: 0.13),
+        border: Border.all(color: brand.color.withValues(alpha: 0.44)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        brand.initials,
+        style: AppTextStyles.chipLabel(color: brand.color),
+      ),
+    );
+  }
+}
+
+class _VendorBrand {
+  const _VendorBrand({
+    required this.displayName,
+    required this.initials,
+    required this.color,
+    this.iconUrl,
+    this.sourceHost,
+  });
+
+  final String displayName;
+  final String initials;
+  final Color color;
+  final String? iconUrl;
+  final String? sourceHost;
+}
+
+_VendorBrand _vendorBrand(String vendorId, String displayName) {
+  switch (vendorId) {
+    case 'lightspeed_lsk':
+      return const _VendorBrand(
+        displayName: 'Lightspeed',
+        initials: 'LS',
+        color: Color(0xFFE21B2D),
+        iconUrl: 'https://www.lightspeedhq.com/favicon.ico',
+        sourceHost: 'lightspeedhq.com',
+      );
+    case 'libro':
+      return const _VendorBrand(
+        displayName: 'Libro',
+        initials: 'Li',
+        color: Color(0xFF006C5B),
+        iconUrl: 'https://librorez.com/favicon.ico',
+        sourceHost: 'librorez.com',
+      );
+    case 'quickbooks_time':
+      return const _VendorBrand(
+        displayName: 'QuickBooks Time',
+        initials: 'QB',
+        color: Color(0xFF2CA01C),
+        sourceHost: 'quickbooks.intuit.com',
+      );
+    default:
+      final words = displayName
+          .split(RegExp(r'\s+'))
+          .where((word) => word.trim().isNotEmpty)
+          .take(2)
+          .toList();
+      final initials = words.isEmpty
+          ? '?'
+          : words.map((word) => word.substring(0, 1)).join();
+      return _VendorBrand(
+        displayName: displayName,
+        initials: initials,
+        color: AppColors.sunsetDark,
+      );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({super.key, required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.42)),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+    );
   }
 }
 
@@ -567,11 +815,10 @@ class _StatusBadge extends StatelessWidget {
     final label = _labelFor(status);
     return Tooltip(
       message: tip,
-      child: Chip(
+      child: _StatusChip(
         key: Key('vendor_connections_status_$label'),
-        label: Text(label),
-        backgroundColor: color.withValues(alpha: 0.12),
-        side: BorderSide(color: color),
+        label: label,
+        color: color,
       ),
     );
   }
@@ -603,11 +850,11 @@ class _StatusBadge extends StatelessWidget {
   Color _colorFor(BuildContext context, VendorConnectionStatus status) {
     switch (status) {
       case VendorConnectionStatus.connected:
-        return Colors.green;
+        return AppColors.positive;
       case VendorConnectionStatus.disconnected:
-        return Colors.grey;
+        return AppColors.textMuted;
       case VendorConnectionStatus.error:
-        return Colors.red;
+        return AppColors.negative;
     }
   }
 }
@@ -622,34 +869,43 @@ class _ErrorRemediation extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.red.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.red.withValues(alpha: 0.4)),
+        color: AppColors.negative.withValues(alpha: 0.06),
+        border: Border.all(color: AppColors.negative.withValues(alpha: 0.34)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Text(
-            'Vendor revoked our access',
-            style: Theme.of(context).textTheme.titleSmall,
+          Row(
+            children: [
+              const Icon(
+                Icons.error_outline,
+                size: 18,
+                color: AppColors.negative,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Vendor access needs attention',
+                style: AppTextStyles.sectionTitle(color: AppColors.negative),
+              ),
+            ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
-            'This usually means someone changed the vendor password or revoked '
-            "an integration in your vendor's portal. Your historical data is "
-            'safe.',
-            style: Theme.of(context).textTheme.bodySmall,
+            'The vendor may have revoked access or changed credentials. '
+            'Historical data stays safe.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
-            'Click Reconnect and sign in with your current password. We will '
-            'fill any gap from when sync broke.',
-            style: Theme.of(context).textTheme.bodySmall,
+            'Reconnect with the current vendor account to resume sync and fill '
+            'any missing window.',
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
           Text(
             'Vendor message: $message',
-            style: Theme.of(context).textTheme.bodySmall,
+            style: AppTextStyles.mono11(color: AppColors.textSecondary),
           ),
         ],
       ),
@@ -665,9 +921,26 @@ class _ErrorBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(12),
-      color: Colors.red.withValues(alpha: 0.1),
-      child: Text(message, style: Theme.of(context).textTheme.bodyMedium),
+      margin: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.negative.withValues(alpha: 0.06),
+        border: Border.all(color: AppColors.negative.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: AppColors.negative),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -687,33 +960,53 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final selected = _picked == null
+        ? null
+        : widget.entries.firstWhere((entry) => entry.vendorId == _picked);
     return AlertDialog(
       key: const Key('vendor_connections_picker_dialog'),
       title: Text(_titleFor(widget.category)),
       content: SizedBox(
-        width: 380,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            DropdownButtonFormField<String>(
-              key: const Key('vendor_connections_picker_dropdown'),
-              initialValue: _picked,
-              items: <DropdownMenuItem<String>>[
-                for (final entry in widget.entries)
-                  DropdownMenuItem<String>(
-                    value: entry.vendorId,
-                    child: Text(_labelFor(entry)),
-                  ),
-              ],
-              onChanged: (v) => setState(() => _picked = v),
-              decoration: const InputDecoration(labelText: 'Vendor'),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Some vendors are still being onboarded with us. We mark those '
-              "as 'coming soon' in the dropdown — the Connect button activates "
-              'as soon as production credentials are live.',
-              style: Theme.of(context).textTheme.bodySmall,
+              Text(
+                _introFor(widget.category),
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'Vendors marked Coming soon are visible before production '
+                'credentials are live.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 12),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: widget.entries.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final entry = widget.entries[index];
+                  return _DialogChoiceTile(
+                    key: Key(
+                      'vendor_connections_picker_choice_${entry.vendorId}',
+                    ),
+                    leading: _VendorLogo(
+                      vendorId: entry.vendorId,
+                      displayName: entry.displayName,
+                    ),
+                    title: entry.displayName,
+                    subtitle: _vendorSummaryFor(entry),
+                    tags: _tagsFor(entry),
+                    selected: entry.vendorId == _picked,
+                    onTap: () => setState(() => _picked = entry.vendorId),
+                  );
+                },
+              ),
             ),
           ],
         ),
@@ -729,10 +1022,7 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
           onPressed: _picked == null
               ? null
               : () {
-                  final entry = widget.entries.firstWhere(
-                    (e) => e.vendorId == _picked,
-                  );
-                  Navigator.of(context).pop(entry);
+                  Navigator.of(context).pop(selected);
                 },
           child: const Text('Continue'),
         ),
@@ -743,34 +1033,71 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
   String _titleFor(VendorCategory category) {
     switch (category) {
       case VendorCategory.pos:
-        return 'Which POS does this location use?';
+        return 'Choose the POS vendor';
       case VendorCategory.labor:
-        return 'Which scheduling system does this location use?';
+        return 'Choose the scheduling vendor';
       case VendorCategory.reservation:
-        return 'Which reservation system does this location use?';
+        return 'Choose the reservations vendor';
     }
   }
 
-  String _labelFor(VendorPickerEntry entry) {
+  String _introFor(VendorCategory category) {
+    switch (category) {
+      case VendorCategory.pos:
+        return 'Pick the system that owns sales, checks, and cover counts for this location.';
+      case VendorCategory.labor:
+        return 'Pick the system that owns schedules, punches, and role data for this location.';
+      case VendorCategory.reservation:
+        return 'Pick the system that owns bookings, party sizes, and reservation pacing for this location.';
+    }
+  }
+
+  String _vendorSummaryFor(VendorPickerEntry entry) {
+    switch (entry.category) {
+      case VendorCategory.pos:
+        return entry.coversFieldExposed
+            ? 'Reads closed checks, sales, timing, and cover counts.'
+            : 'Reads sales data. Cover counts may need a separate source.';
+      case VendorCategory.labor:
+        return 'Reads schedules, time punches, and team role data.';
+      case VendorCategory.reservation:
+        return 'Reads bookings, party sizes, and reservation timing.';
+    }
+  }
+
+  List<String> _tagsFor(VendorPickerEntry entry) {
     final tags = <String>[];
-    switch (entry.lifecycle) {
+    final lifecycleTag = _lifecycleTagFor(entry.lifecycle);
+    if (lifecycleTag != null) tags.add(lifecycleTag);
+    if (entry.requiresModule) tags.add('Pick a product');
+    if (!entry.coversFieldExposed && entry.category == VendorCategory.pos) {
+      tags.add('No cover count');
+    }
+    tags.add(_authModeLabel(entry.authMode));
+    return tags;
+  }
+
+  String? _lifecycleTagFor(VendorLifecycle lifecycle) {
+    switch (lifecycle) {
       case VendorLifecycle.documented:
-        tags.add('coming soon');
-        break;
+        return 'Coming soon';
       case VendorLifecycle.sandboxVerified:
-        tags.add('coming soon — sandbox verified');
-        break;
+        return 'Sandbox verified';
       case VendorLifecycle.productionCredentialed:
       case VendorLifecycle.liveWithOperators:
-        break;
+        return null;
     }
-    if (entry.requiresModule) tags.add('asks for module');
-    if (!entry.coversFieldExposed && entry.category == VendorCategory.pos) {
-      tags.add('no covers');
+  }
+
+  String _authModeLabel(VendorAuthMode mode) {
+    switch (mode) {
+      case VendorAuthMode.oauth:
+        return 'Secure sign-in';
+      case VendorAuthMode.keyPaste:
+        return 'API key';
+      case VendorAuthMode.oauthOrKeyPaste:
+        return 'Sign-in or API key';
     }
-    return tags.isEmpty
-        ? entry.displayName
-        : '${entry.displayName} (${tags.join(' · ')})';
   }
 }
 
@@ -783,22 +1110,40 @@ class _ModuleDisambiguationDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('vendor_connections_module_dialog'),
-      title: Text('Which ${entry.displayName} product does this location use?'),
+      title: Text('Choose the ${entry.displayName} product'),
       content: SizedBox(
-        width: 360,
+        width: 440,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
+            Text(
+              'This vendor has more than one product. Pick the one that owns scheduling and labor data for this location.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
             for (final module in entry.modules)
-              TextButton(
+              Padding(
                 key: Key('vendor_connections_module_${entry.vendorId}_$module'),
-                onPressed: () => Navigator.of(context).pop(
-                  _isSupportedModule(entry.vendorId, module)
-                      ? module
-                      : 'unsupported',
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _DialogChoiceTile(
+                  leading: Icon(
+                    _moduleIcon(entry.vendorId, module),
+                    color: _isSupportedModule(entry.vendorId, module)
+                        ? AppColors.peacockDark
+                        : AppColors.textMuted,
+                  ),
+                  title: _moduleLabel(entry.vendorId, module),
+                  subtitle: _moduleHelp(entry.vendorId, module),
+                  tags: _isSupportedModule(entry.vendorId, module)
+                      ? const <String>['Supported']
+                      : const <String>['Coming soon'],
+                  onTap: () => Navigator.of(context).pop(
+                    _isSupportedModule(entry.vendorId, module)
+                        ? module
+                        : 'unsupported',
+                  ),
                 ),
-                child: Text(_moduleLabel(entry.vendorId, module)),
               ),
           ],
         ),
@@ -817,6 +1162,20 @@ class _ModuleDisambiguationDialog extends StatelessWidget {
     if (vendorId == 'quickbooks_time') return module == 'time';
     if (vendorId == 'adp') return module != 'run';
     return true;
+  }
+
+  IconData _moduleIcon(String vendorId, String module) {
+    if (vendorId == 'quickbooks_time') {
+      switch (module) {
+        case 'time':
+          return Icons.schedule_outlined;
+        case 'accounting':
+          return Icons.receipt_long_outlined;
+        case 'payroll':
+          return Icons.payments_outlined;
+      }
+    }
+    return Icons.account_tree_outlined;
   }
 
   String _moduleLabel(String vendorId, String module) {
@@ -842,6 +1201,30 @@ class _ModuleDisambiguationDialog extends StatelessWidget {
     }
     return module;
   }
+
+  String _moduleHelp(String vendorId, String module) {
+    if (vendorId == 'quickbooks_time') {
+      switch (module) {
+        case 'time':
+          return 'Use this for timesheets, punches, and labor timing.';
+        case 'accounting':
+          return 'Accounting data belongs in the internal connected services area.';
+        case 'payroll':
+          return 'Payroll setup is not part of the current vendor integration flow.';
+      }
+    }
+    if (vendorId == 'adp') {
+      switch (module) {
+        case 'workforce_now':
+          return 'Use this for ADP scheduling and workforce data.';
+        case 'workforce_manager':
+          return 'Use this for ADP manager scheduling and time data.';
+        case 'run':
+          return 'ADP RUN is not supported in this flow yet.';
+      }
+    }
+    return 'Use this product for the selected vendor connection.';
+  }
 }
 
 class _UnsupportedModuleDialog extends StatelessWidget {
@@ -852,10 +1235,12 @@ class _UnsupportedModuleDialog extends StatelessWidget {
     return AlertDialog(
       key: const Key('vendor_connections_unsupported_module_dialog'),
       title: const Text('That module is not supported'),
-      content: const Text(
-        'Forge & Flow does not support that vendor module today. '
-        'Pick a different scheduling vendor or contact support if you '
-        'need help mapping your data.',
+      content: _DialogNotice(
+        icon: Icons.info_outline,
+        title: 'Choose a supported product for now',
+        body:
+            'Forge & Flow cannot connect that module yet. Pick a supported scheduling product, or contact support if this operator needs a custom mapping.',
+        color: AppColors.warning,
       ),
       actions: <Widget>[
         TextButton(
@@ -872,12 +1257,27 @@ class _TestConnectionLoadingDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const AlertDialog(
-      key: Key('vendor_connections_test_loading_dialog'),
-      title: Text('Testing connection...'),
+    return AlertDialog(
+      key: const Key('vendor_connections_test_loading_dialog'),
+      title: const Text('Testing connection'),
       content: SizedBox(
-        height: 60,
-        child: Center(child: CircularProgressIndicator()),
+        width: 320,
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 28,
+              height: 28,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                'Checking credentials and pulling a small sample.',
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -893,30 +1293,56 @@ class _TestConnectionResultDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('vendor_connections_test_result_dialog'),
-      title: Text('Test connection - ${row.displayName}'),
+      title: Text('Connection test: ${row.displayName}'),
       content: SizedBox(
-        width: 400,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(
-              result.authValid
-                  ? '✓ Auth valid'
-                  : '✗ Auth invalid - reconnect to fix',
+            _DialogStatusRow(
+              icon: result.authValid
+                  ? Icons.check_circle_outline
+                  : Icons.error_outline,
+              color: result.authValid ? AppColors.positive : AppColors.negative,
+              title: result.authValid
+                  ? 'Credentials are working'
+                  : 'Credentials need reconnecting',
+              body: result.authValid
+                  ? 'Forge & Flow can still read from this vendor.'
+                  : 'Reconnect this vendor before relying on fresh data.',
             ),
-            const SizedBox(height: 4),
-            Text('✓ Sample pulled in ${result.elapsedMs}ms'),
-            const SizedBox(height: 8),
-            const Text('Sample:'),
-            Text(result.sampleSummary),
-            const SizedBox(height: 8),
-            const Text('Field mapping:'),
+            const SizedBox(height: 10),
+            _DialogStatusRow(
+              icon: Icons.download_done_outlined,
+              color: AppColors.peacockDark,
+              title: 'Sample read completed',
+              body:
+                  'The vendor returned a sample in ${result.elapsedMs}ms so mapping can be checked.',
+            ),
+            const SizedBox(height: 14),
+            Text(
+              'Sample from vendor',
+              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            _DialogSurface(child: Text(result.sampleSummary)),
+            const SizedBox(height: 12),
+            Text(
+              'Field mapping',
+              style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
             for (final entry in result.fieldMapping.entries)
-              Text('  ${entry.key} -> ${entry.value}'),
+              _MappingRow(source: entry.key, target: entry.value),
             if (result.note != null) ...<Widget>[
               const SizedBox(height: 8),
-              Text(result.note!),
+              _DialogNotice(
+                icon: Icons.info_outline,
+                title: 'Note',
+                body: result.note!,
+                color: AppColors.peacockDark,
+              ),
             ],
           ],
         ),
@@ -943,24 +1369,37 @@ class _DisconnectConfirmDialog extends StatelessWidget {
       key: const Key('vendor_connections_disconnect_dialog'),
       title: Text('Disconnect ${row.displayName}?'),
       content: SizedBox(
-        width: 400,
+        width: 460,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const <Widget>[
-            Text('When you confirm:'),
-            SizedBox(height: 4),
+          children: <Widget>[
             Text(
-              '• Your historical data stays in Forge & Flow. Nothing is deleted.',
+              'This only stops the live integration for this location. It does not delete historical Forge & Flow data.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
-            Text(
-              '• Live sync stops immediately. New events from the vendor will not appear in your dashboard.',
+            const SizedBox(height: 12),
+            const _DialogBullet(
+              icon: Icons.history_outlined,
+              title: 'Historical data stays',
+              body: 'Reports keep the data that was already imported.',
             ),
-            Text(
-              '• We wipe the credentials we have for this vendor and tell the vendor to stop sending us your data.',
+            const _DialogBullet(
+              icon: Icons.sync_disabled_outlined,
+              title: 'New vendor events stop',
+              body: 'Fresh sales, booking, or labor records will stop syncing.',
             ),
-            Text(
-              '• If you reconnect later, we resume from where we left off, so you do not need to re-pull 60 days.',
+            const _DialogBullet(
+              icon: Icons.key_off_outlined,
+              title: 'Stored credentials are removed',
+              body:
+                  'Forge & Flow forgets the connection token for this vendor.',
+            ),
+            const _DialogBullet(
+              icon: Icons.restart_alt_outlined,
+              title: 'Reconnect later if needed',
+              body:
+                  'A future reconnect resumes from the latest safe checkpoint.',
             ),
           ],
         ),
@@ -971,10 +1410,11 @@ class _DisconnectConfirmDialog extends StatelessWidget {
           onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Cancel'),
         ),
-        FilledButton(
+        FilledButton.icon(
           key: const Key('vendor_connections_disconnect_confirm'),
           onPressed: () => Navigator.of(context).pop(true),
-          child: Text('Yes, disconnect ${row.displayName}'),
+          icon: const Icon(Icons.link_off, size: 16),
+          label: const Text('Disconnect vendor'),
         ),
       ],
     );
@@ -991,27 +1431,65 @@ class _SyncLogsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AlertDialog(
       key: const Key('vendor_connections_logs_dialog'),
-      title: Text('Sync logs - ${row.displayName}'),
+      title: Text('Activity for ${row.displayName}'),
       content: SizedBox(
-        width: 480,
-        height: 360,
+        width: 520,
+        height: 380,
         child: entries.isEmpty
-            ? const Center(child: Text('No sync events recorded yet.'))
+            ? const _DialogNotice(
+                icon: Icons.info_outline,
+                title: 'No activity yet',
+                body: 'This connection has not recorded a sync event yet.',
+                color: AppColors.peacockDark,
+              )
             : ListView.separated(
                 itemCount: entries.length,
-                separatorBuilder: (_, __) => const Divider(height: 1),
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
                 itemBuilder: (context, index) {
                   final entry = entries[index];
-                  final ts = adminHumanDateTime(entry.occurredAt);
-                  final body = entry.errorMessage != null
-                      ? '${entry.eventKind} - ${entry.errorMessage}'
-                      : entry.recordsCount != null
-                      ? '${entry.eventKind} - ${entry.recordsCount} records'
-                      : entry.eventKind;
-                  return ListTile(
-                    dense: true,
-                    title: Text(ts),
-                    subtitle: Text(body),
+                  final color = _eventColor(entry.eventKind);
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.backgroundSurface,
+                      border: Border.all(color: AppColors.borderSubtle),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(_eventIcon(entry.eventKind), color: color),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _eventLabel(entry.eventKind),
+                                style: AppTextStyles.sectionTitle(
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                adminHumanDateTime(entry.occurredAt),
+                                style: AppTextStyles.body12(
+                                  color: AppColors.textSecondary,
+                                  style: FontStyle.normal,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _logBody(entry),
+                                style: AppTextStyles.body13(
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -1023,6 +1501,333 @@ class _SyncLogsDialog extends StatelessWidget {
           child: const Text('Close'),
         ),
       ],
+    );
+  }
+
+  String _logBody(VendorSyncLogEntry entry) {
+    if (entry.errorMessage != null) return entry.errorMessage!;
+    if (entry.recordsCount != null) {
+      return '${entry.recordsCount} vendor records were processed.';
+    }
+    return 'The vendor connection recorded this activity.';
+  }
+
+  String _eventLabel(String eventKind) {
+    switch (eventKind) {
+      case 'poll_success':
+        return 'Sync completed';
+      case 'poll_error':
+        return 'Sync failed';
+      case 'rate_limit_retry':
+        return 'Vendor asked us to slow down';
+      case 'sanity_drop':
+        return 'Record skipped for safety';
+      default:
+        return eventKind
+            .split('_')
+            .where((part) => part.isNotEmpty)
+            .map(
+              (part) =>
+                  '${part.substring(0, 1).toUpperCase()}${part.substring(1)}',
+            )
+            .join(' ');
+    }
+  }
+
+  IconData _eventIcon(String eventKind) {
+    switch (eventKind) {
+      case 'poll_success':
+        return Icons.check_circle_outline;
+      case 'poll_error':
+        return Icons.error_outline;
+      case 'rate_limit_retry':
+        return Icons.hourglass_bottom_outlined;
+      case 'sanity_drop':
+        return Icons.rule_outlined;
+      default:
+        return Icons.info_outline;
+    }
+  }
+
+  Color _eventColor(String eventKind) {
+    switch (eventKind) {
+      case 'poll_success':
+        return AppColors.positive;
+      case 'poll_error':
+        return AppColors.negative;
+      case 'rate_limit_retry':
+        return AppColors.warning;
+      case 'sanity_drop':
+        return AppColors.peacockDark;
+      default:
+        return AppColors.textMuted;
+    }
+  }
+}
+
+class _DialogChoiceTile extends StatelessWidget {
+  const _DialogChoiceTile({
+    super.key,
+    this.leading,
+    required this.title,
+    required this.subtitle,
+    this.tags = const <String>[],
+    this.selected = false,
+    required this.onTap,
+  });
+
+  final Widget? leading;
+  final String title;
+  final String subtitle;
+  final List<String> tags;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final borderColor = selected ? AppColors.sunset : AppColors.borderSubtle;
+    return Material(
+      color: selected
+          ? AppColors.sunset.withValues(alpha: 0.08)
+          : AppColors.backgroundSurface,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: borderColor, width: selected ? 1.2 : 1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (leading != null) ...[
+                SizedBox(width: 48, height: 48, child: Center(child: leading)),
+                const SizedBox(width: 12),
+              ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: AppTextStyles.sectionTitle(
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: AppTextStyles.body13(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                    if (tags.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: [
+                          for (final tag in tags)
+                            _StatusChip(
+                              label: tag,
+                              color: tag == 'Coming soon' ||
+                                      tag == 'Sandbox verified'
+                                  ? AppColors.textMuted
+                                  : AppColors.peacockDark,
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                selected ? Icons.radio_button_checked : Icons.radio_button_off,
+                color: selected ? AppColors.sunsetDark : AppColors.textMuted,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DialogSurface extends StatelessWidget {
+  const _DialogSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.backgroundDeep.withValues(alpha: 0.55),
+        border: Border.all(color: AppColors.borderSubtle),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: DefaultTextStyle.merge(
+        style: AppTextStyles.body13(color: AppColors.textSecondary),
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DialogStatusRow extends StatelessWidget {
+  const _DialogStatusRow({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: color, size: 20),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: AppTextStyles.sectionTitle(color: color)),
+              const SizedBox(height: 2),
+              Text(
+                body,
+                style: AppTextStyles.body13(color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MappingRow extends StatelessWidget {
+  const _MappingRow({required this.source, required this.target});
+
+  final String source;
+  final String target;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: _DialogSurface(
+        child: Row(
+          children: [
+            Expanded(child: Text(source)),
+            const Icon(Icons.arrow_forward, size: 14),
+            const SizedBox(width: 8),
+            Expanded(child: Text(target)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DialogNotice extends StatelessWidget {
+  const _DialogNotice({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: AppTextStyles.sectionTitle(color: color)),
+                const SizedBox(height: 3),
+                Text(
+                  body,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DialogBullet extends StatelessWidget {
+  const _DialogBullet({
+    required this.icon,
+    required this.title,
+    required this.body,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: AppColors.peacockDark, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: AppTextStyles.sectionTitle(
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  body,
+                  style: AppTextStyles.body13(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

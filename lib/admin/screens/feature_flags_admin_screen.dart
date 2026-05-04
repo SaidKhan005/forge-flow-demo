@@ -30,6 +30,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/feature_flags_admin_models.dart';
 import '../services/feature_flags_admin_gateway.dart';
@@ -284,7 +286,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: platform admin access is required to change launch controls.',
+              'View only: ecosystem admin access is required to change launch controls.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -426,14 +428,7 @@ class _FeatureFlagTile extends StatelessWidget {
             FilledButton.tonal(
               key: Key('admin_feature_flag_toggle_${row.flagId}'),
               onPressed: toggling ? null : onToggle,
-              style: FilledButton.styleFrom(
-                backgroundColor: row.isDestructive
-                    ? AppColors.negative.withValues(alpha: 0.15)
-                    : AppColors.sunset.withValues(alpha: 0.15),
-                foregroundColor: row.isDestructive
-                    ? AppColors.negative
-                    : AppColors.sunsetDark,
-              ),
+              style: AdminButtonStyles.tonal(destructive: row.isDestructive),
               child: toggling
                   ? const SizedBox(
                       width: 14,
@@ -571,10 +566,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
         ),
         FilledButton(
           key: const Key('admin_feature_flag_danger_confirm'),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.negative,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.danger,
           onPressed: _matches ? () => Navigator.of(context).pop(true) : null,
           child: const Text('Update'),
         ),

@@ -30,6 +30,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
@@ -356,10 +358,7 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
         FilledButton.icon(
           key: const Key('admin_observability_confirm_run'),
           onPressed: () => Navigator.of(context).pop(true),
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.sunset,
-            foregroundColor: AppColors.backgroundSurface,
-          ),
+          style: AdminButtonStyles.primary,
           icon: const Icon(Icons.play_arrow, size: 16),
           label: const Text('Run metrics check'),
         ),
@@ -403,10 +402,7 @@ class _ManualRunPrompt extends StatelessWidget {
               FilledButton.icon(
                 key: const Key('admin_observability_manual_run_button'),
                 onPressed: () => onRunCheck(),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.sunset,
-                  foregroundColor: AppColors.backgroundSurface,
-                ),
+                style: AdminButtonStyles.primary,
                 icon: const Icon(Icons.insights_outlined, size: 16),
                 label: const Text('Run metrics check'),
               ),

@@ -38,6 +38,7 @@ import '../screens/auth/totp_challenge_view.dart';
 import '../services/auth/firebase_auth_client.dart';
 import '../services/auth/firebase_auth_client_sdk.dart';
 import '../theme/app_theme.dart';
+import 'admin_button_styles.dart';
 
 /// Roles that are admitted to the admin console. Mirrors the
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
@@ -603,7 +604,7 @@ class _AdminMfaChallengeScreenState extends State<_AdminMfaChallengeScreen> {
   Future<void> _requestHelp() async {
     setState(() {
       _helpMessage =
-          'Contact the F&F platform admin for a factor reset or recovery review.';
+          'Contact the F&F ecosystem admin for a factor reset or recovery review.';
     });
   }
 
@@ -951,19 +952,7 @@ class _SignInButton extends StatelessWidget {
       child: FilledButton(
         key: const Key('admin_signin_submit'),
         onPressed: onPressed,
-        style: FilledButton.styleFrom(
-          backgroundColor: AppColors.sunset,
-          foregroundColor: AppColors.backgroundSurface,
-          disabledBackgroundColor: AppColors.sunset.withValues(alpha: 0.55),
-          disabledForegroundColor: AppColors.backgroundSurface.withValues(
-            alpha: 0.85,
-          ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-          textStyle: AppTextStyles.mono14(
-            color: AppColors.backgroundSurface,
-            weight: FontWeight.w600,
-          ),
-        ),
+        style: AdminButtonStyles.primary,
         child: submitting
             ? const SizedBox(
                 height: 18,
@@ -1078,16 +1067,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         child: OutlinedButton(
                           key: const Key('admin_forbidden_signout'),
                           onPressed: () => source.signOut(),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.sunsetDark,
-                            side: const BorderSide(
-                              color: AppColors.sunsetDark,
-                              width: 1,
-                            ),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                          ),
+                          style: AdminButtonStyles.secondary(),
                           child: const Text('Sign out'),
                         ),
                       ),

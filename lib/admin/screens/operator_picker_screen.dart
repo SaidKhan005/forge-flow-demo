@@ -23,6 +23,8 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+
+import '../admin_button_styles.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 
@@ -386,10 +388,7 @@ class _OperatorPickerBodyState extends State<_OperatorPickerBody> {
                 FilledButton.icon(
                   key: const Key('admin_operator_picker_confirm'),
                   onPressed: canConfirm ? _onConfirm : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.sunset,
-                    foregroundColor: AppColors.backgroundSurface,
-                  ),
+                  style: AdminButtonStyles.primary,
                   icon: const Icon(Icons.check, size: 16),
                   label: const Text('Use selection'),
                 ),
