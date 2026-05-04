@@ -48,24 +48,6 @@ import '../../services/integration/iana_timezone_converter.dart';
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';
 
-// ─── Lifecycle enum (FORWARD DECLARATION) ───────────────────────────
-//
-// `VendorLifecycle` will live in
-// `lib/services/integration/integration_adapter_common.dart` once
-// `8.0.lifecycle` (Wave B's first slice) merges. Until then, every
-// adapter slice in Wave B forward-declares the enum locally so that
-// each adapter compiles against the same shape; the integration commit
-// at Wave B close folds the duplicates into the framework. Do not
-// rename or extend the variants here — they MUST mirror the contract
-// in `docs/contracts/vendor_adapter_slice_contract.md` table 1.
-
-enum VendorLifecycle {
-  documented,
-  sandboxVerified,
-  productionCredentialed,
-  liveWithOperators,
-}
-
 // ─── Documented-API constants (cite source URL + retrieval date) ────
 
 /// Vendor id matching `connector_connection.vendor_id`.
@@ -412,7 +394,7 @@ class LightspeedLskPosAdapter implements PosAdapter {
   /// onto [VendorCapabilityProfile]). The contract bar in
   /// `vendor_adapter_slice_contract.md` is satisfied by both surfaces
   /// declaring `documented` at slice ship.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   VendorCapabilityProfile get capabilityProfile => const VendorCapabilityProfile(
@@ -427,7 +409,7 @@ class LightspeedLskPosAdapter implements PosAdapter {
         // K-Series exposes `nbCovers` directly; covers source = direct.
         coversFieldExposed: true,
         // Public OAuth, no partnership review required.
-        partnershipGated: false,
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         // The vendor-timestamp policy entry lives in the framework
         // catalog and declares `asUtc` for K-Series.

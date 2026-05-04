@@ -48,34 +48,6 @@ import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';
 import 'toast_webhook_signature_verifier.dart';
 
-/// Engineering-vs-live lifecycle for one vendor adapter. Mirrors the
-/// 4-state ladder in `docs/contracts/vendor_adapter_slice_contract.md`.
-///
-/// The framework will eventually carry this enum on
-/// `VendorCapabilityProfile.lifecycle` (slice `8.0.lifecycle`, the
-/// first item in Wave B). Until that slice ships, the enum lives in
-/// the per-vendor adapter file and is exposed as a separate getter on
-/// the adapter — Codex grades acceptance against the getter.
-enum VendorLifecycle {
-  /// Engineering slice landed; adapter compiles + fixture-tested; doc
-  /// pack populated. Vendor picker shows "Coming soon" pill, no
-  /// Connect button.
-  documented,
-
-  /// `*.live.sandbox` slice ran; field mapping confirmed against
-  /// vendor sandbox. Picker shows "Coming soon — sandbox verified"
-  /// pill.
-  sandboxVerified,
-
-  /// `*.live.prod` slice ran; partnership cleared; production keys
-  /// issued. Connect button live.
-  productionCredentialed,
-
-  /// First operator connected (auto-promote, no slice). Connected-
-  /// operator chip in F&F Ops Console activated.
-  liveWithOperators,
-}
-
 /// Documented-per-Toast field-mapping constants (api version
 /// `orders/v2`, retrieved 2026-05-03 from
 /// https://doc.toasttab.com/openapi/orders/orders-bulk-v2). Keeping
@@ -278,7 +250,7 @@ class ToastPosAdapter implements PosAdapter {
   /// Promotion to `sandboxVerified` / `productionCredentialed` /
   /// `liveWithOperators` is the job of the corresponding `*.live.*`
   /// slice — this getter is the assertion seam Codex grades.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   String get vendorId => kToastVendorId;
@@ -300,13 +272,11 @@ class ToastPosAdapter implements PosAdapter {
         // Toast `numberOfGuests` is a first-class direct covers field —
         // see docs/integrations/toast/field_mapping.md.
         coversFieldExposed: true,
-        // Partnership-gated detail is captured in
-        // docs/integrations/toast/partnership_status.md, NOT via a
-        // boolean here. Per the engineer-all-17 doctrine,
-        // `partnershipGated: false` lets the adapter ship at lifecycle
-        // = `documented` without coupling to commercial-lane state.
-        // Picker chrome reads lifecycle, not this flag.
-        partnershipGated: false,
+        // Lifecycle = `documented`. Partnership-gated detail is captured
+        // in docs/integrations/toast/partnership_status.md (commercial
+        // lane state); picker chrome reads lifecycle. Promoted by the
+        // `*.live.sandbox` / `*.live.prod` slices.
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         // Toast emits ISO 8601 UTC timestamps with the `Z` suffix on
         // all `openedDate` / `closedDate` / `modifiedDate` fields per

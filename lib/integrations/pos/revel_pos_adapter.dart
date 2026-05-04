@@ -37,30 +37,6 @@ import '../../services/integration/vendor_timestamp_policy.dart';
 
 /// Vendor lifecycle states.
 ///
-/// Local declaration in this adapter file. Slice `8.0.lifecycle`
-/// (the first item in Wave B per `docs/phases/phase_8/vendor_master_list.md`)
-/// folds this enum into `lib/services/integration/integration_adapter_common.dart`
-/// alongside `VendorCapabilityProfile`. Until the integration commit
-/// collapses the parallel-lane copies, every adapter declares its own
-/// — the contract grades by name + arity, not by import path
-/// (`docs/contracts/vendor_adapter_slice_contract.md`).
-enum VendorLifecycle {
-  /// Adapter shipped with framework engineering + doc pack; no live
-  /// HTTP verification yet.
-  documented,
-
-  /// `*.live.sandbox` slice has run; field mapping confirmed against
-  /// vendor sandbox.
-  sandboxVerified,
-
-  /// `*.live.prod` slice has run with production credentials issued by
-  /// partnership.
-  productionCredentialed,
-
-  /// First operator has connected; auto-promoted, no slice required.
-  liveWithOperators,
-}
-
 // ─── Vendor key + display name ──────────────────────────────────────
 
 /// Stable vendor identifier matching `connector_connection.vendor_id`.
@@ -358,7 +334,7 @@ class RevelPosAdapter implements PosAdapter {
   final DateTime Function() _now;
 
   /// Lifecycle pin for this adapter. See [VendorLifecycle].
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   /// Local timestamp policy (deferred-merged into framework catalog).
   TimestampPolicy get timestampPolicy => revelTimestampPolicy;
@@ -383,7 +359,7 @@ class RevelPosAdapter implements PosAdapter {
         // Self-serve OAuth — no partnership gating. Production
         // credentials are operator-issued via the Revel admin portal,
         // not partner-issued.
-        partnershipGated: false,
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         timestampPolicyDocId: 'docs/integrations/revel/field_mapping.md',
       );

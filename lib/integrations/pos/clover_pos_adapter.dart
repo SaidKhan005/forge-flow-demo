@@ -42,34 +42,6 @@ import 'dart:convert';
 import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';
 
-/// Adapter-side lifecycle enum for Wave B engineer-all-17 doctrine.
-///
-/// This enum is duplicated locally so vendor adapter slices can ship
-/// without blocking on the framework lane (`8.0.lifecycle`) that lifts
-/// `lifecycle` onto [VendorCapabilityProfile]. When the framework
-/// lane lands, this declaration migrates to the profile in a small
-/// follow-up (one-line change per adapter).
-///
-/// Locked 2026-05-03 — see
-/// `memory/project_phase_8_engineer_all_17_doctrine.md` and
-/// `docs/contracts/vendor_adapter_slice_contract.md`.
-enum VendorLifecycle {
-  /// Engineering slice landed; doc pack populated; no live
-  /// verification yet.
-  documented,
-
-  /// `*.live.sandbox` slice ran;
-  /// `live_verification_checklist.md` checkboxes filled for sandbox.
-  sandboxVerified,
-
-  /// `*.live.prod` slice ran; partnership cleared; production keys
-  /// issued; checklist re-verified.
-  productionCredentialed,
-
-  /// First operator connected; activated automatically.
-  liveWithOperators,
-}
-
 /// Stable adapter API-version pin matching
 /// `test/integrations/pos/fixtures/clover_orders_fixture.dart`.
 const String kCloverApiVersion = 'v3_2026_05_03';
@@ -302,14 +274,14 @@ class CloverPosAdapter implements PosAdapter {
         grantScope: VendorGrantScope.perLocation,
         webhookSupport: VendorWebhookSupport.autoRegister,
         coversFieldExposed: false,
-        partnershipGated: true,
+        lifecycle: VendorLifecycle.documented,
         timestampPolicyDocId: 'vendor_timestamp_policy.clover.asUtc',
       );
 
   /// Locked at slice ship per
   /// `docs/contracts/vendor_adapter_slice_contract.md` lifecycle table.
   /// Promoted by `8.CL.live.sandbox` / `8.CL.live.prod`.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   Future<ConnectResult> connect(ConnectCommand command) async {

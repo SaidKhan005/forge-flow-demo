@@ -86,8 +86,9 @@ void main() {
       expect(adapter.lifecycle, VendorLifecycle.documented);
     });
 
-    test('partnershipGated = false (Revel is self-serve OAuth)', () {
-      expect(adapter.capabilityProfile.partnershipGated, false);
+    test('lifecycle = documented (Revel is self-serve OAuth, '
+        'no commercial gate)', () {
+      expect(adapter.capabilityProfile.lifecycle, VendorLifecycle.documented);
     });
 
     test('modules empty (no module disambiguation)', () {
