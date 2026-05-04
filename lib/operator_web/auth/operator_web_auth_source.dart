@@ -51,6 +51,8 @@ class OperatorWebSession {
     required this.primaryLocationId,
     required this.primaryLocationName,
     this.roles = const <String>[],
+    this.phone,
+    this.mfaEnrolled = false,
   });
 
   /// Firebase user UID (or a synthetic id under demo mode).
@@ -80,6 +82,18 @@ class OperatorWebSession {
   /// `console.web` permission is gated on these roles via the proxy;
   /// the client uses them for read-only UI affordances.
   final List<String> roles;
+
+  /// Optional phone-on-file for the operator user. Null when the
+  /// proxy has no phone for the account; `11W.7` Account screen
+  /// renders "Not on file" with a copy pointer to the operator
+  /// mobile app for edits. Read-only at V1 per the lean cut.
+  final String? phone;
+
+  /// Whether the operator has an active MFA factor enrolled. Drives
+  /// the `11W.7` Account screen's MFA section CTA: false → "Enroll
+  /// MFA"; true → "View backup codes". Mirrored from the proxy's
+  /// `auth.users.mfa_enrolled` projection on the session payload.
+  final bool mfaEnrolled;
 }
 
 /// Onboarding stage the screen-router keys off. Linear progression
@@ -362,6 +376,18 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
     initial: OperatorWebCompleted(session: kDemoOperatorWebSession),
   );
 
+  /// Convenience factory: starts on the post-onboarding surface as a
+  /// `location_manager` so the `11W.7` Account screen walkthrough +
+  /// permission-gate tests can exercise the read-only branch (Profile
+  /// + T&Cs visible; MFA + Password CTAs disabled with friendly-
+  /// error tooltip copy).
+  factory DemoOperatorWebAuthSource.completedAsLocationManager() =>
+      DemoOperatorWebAuthSource(
+        initial: const OperatorWebCompleted(
+          session: kDemoOperatorWebLocationManagerSession,
+        ),
+      );
+
   /// Convenience factory: starts on the forbidden surface so router
   /// tests can assert the fail-closed branch.
   factory DemoOperatorWebAuthSource.forbidden() => DemoOperatorWebAuthSource(
@@ -635,6 +661,22 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
   primaryLocationId: 'demo-location',
   primaryLocationName: 'Demo Main Street',
   roles: <String>['operator_owner'],
+);
+
+/// Demo session for the `location_manager` read-only branch. Drives
+/// the `11W.7` Account screen permission-gate walkthrough — same
+/// operator + location as the owner session so the walkthrough's
+/// "switch sessions" step lands on the same business in the side nav.
+const OperatorWebSession kDemoOperatorWebLocationManagerSession =
+    OperatorWebSession(
+  uid: 'demo-location-manager',
+  email: 'manager@demo.forgeflow.test',
+  displayName: 'Demo Location Manager',
+  operatorId: 'demo-operator',
+  businessName: 'Demo Restaurant Group',
+  primaryLocationId: 'demo-location',
+  primaryLocationName: 'Demo Main Street',
+  roles: <String>['location_manager'],
 );
 
 String _maskPhoneNumber(String raw) {

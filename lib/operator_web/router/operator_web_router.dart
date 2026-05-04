@@ -25,7 +25,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
-import '../screens/account_placeholder_screen.dart';
+import '../screens/account_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/tos_accept_screen.dart';
@@ -217,7 +217,6 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         id: kOperatorWebNavAccount,
         title: 'Account',
         icon: Icons.business_outlined,
-        placeholder: true,
       ),
       OperatorWebNavItem(
         id: kOperatorWebNavVendorConnections,
@@ -231,7 +230,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
             session: session,
             locationId: session.primaryLocationId,
           )
-        : AccountPlaceholderScreen(session: session);
+        : AccountScreen(session: session);
     return WebAppShell(
       session: session,
       navItems: navItems,

@@ -140,8 +140,8 @@ void main() {
         find.byKey(const Key('operator_web_nav_item_vendor_connections')),
         findsOneWidget,
       );
-      // Default body is the Account placeholder.
-      expect(find.byKey(const Key('operator_web_account_placeholder')),
+      // Default body is the real Account screen (11W.7).
+      expect(find.byKey(const Key('operator_web_account_screen')),
           findsOneWidget);
       expect(
         find.byKey(const Key('operator_web_vendor_connections_placeholder')),
@@ -167,7 +167,7 @@ void main() {
         find.byKey(const Key('operator_web_vendor_connections_placeholder')),
         findsOneWidget,
       );
-      expect(find.byKey(const Key('operator_web_account_placeholder')),
+      expect(find.byKey(const Key('operator_web_account_screen')),
           findsNothing);
     });
 
