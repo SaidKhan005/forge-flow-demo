@@ -50,34 +50,6 @@ import '../../services/integration/integration_adapter_common.dart';
 import '../../services/integration/pos_adapter.dart';
 import 'aloha_ncr_voyix_webhook_signature_verifier.dart';
 
-/// Engineering-vs-live lifecycle for one vendor adapter. Mirrors the
-/// 4-state ladder in `docs/contracts/vendor_adapter_slice_contract.md`.
-///
-/// The framework will eventually carry this enum on
-/// `VendorCapabilityProfile.lifecycle` (slice `8.0.lifecycle`, the
-/// first item in Wave B). Until that slice ships, the enum lives in
-/// the per-vendor adapter file and is exposed as a separate getter on
-/// the adapter — Codex grades acceptance against the getter.
-enum VendorLifecycle {
-  /// Engineering slice landed; adapter compiles + fixture-tested; doc
-  /// pack populated. Vendor picker shows "Coming soon" pill, no
-  /// Connect button.
-  documented,
-
-  /// `*.live.sandbox` slice ran; field mapping confirmed against
-  /// vendor sandbox. Picker shows "Coming soon — sandbox verified"
-  /// pill.
-  sandboxVerified,
-
-  /// `*.live.prod` slice ran; partnership cleared; production keys
-  /// issued. Connect button live.
-  productionCredentialed,
-
-  /// First operator connected (auto-promote, no slice). Connected-
-  /// operator chip in F&F Ops Console activated.
-  liveWithOperators,
-}
-
 /// Documented-per-Aloha (NCR Voyix) field-mapping constants (api
 /// version `aloha-v1-2026-05`, retrieved 2026-05-04 from
 /// https://developer.ncrvoyix.com/portals/dev-portal/api-explorer).
@@ -299,8 +271,11 @@ class AlohaNcrVoyixPosAdapter implements PosAdapter {
   /// 4-state lifecycle. The engineering slice ships at `documented`.
   /// Promotion to `sandboxVerified` / `productionCredentialed` /
   /// `liveWithOperators` is the job of the corresponding `*.live.*`
-  /// slice — this getter is the assertion seam Codex grades.
-  VendorLifecycle get lifecycle => VendorLifecycle.documented;
+  /// slice. The canonical truth lives on
+  /// [VendorCapabilityProfile.lifecycle] (8.0.lifecycle migration);
+  /// this getter is a convenience surface that mirrors the profile
+  /// so call sites can read `adapter.lifecycle` directly.
+  VendorLifecycle get lifecycle => capabilityProfile.lifecycle;
 
   @override
   String get vendorId => kAlohaNcrVoyixVendorId;
@@ -328,14 +303,13 @@ class AlohaNcrVoyixPosAdapter implements PosAdapter {
         // Aloha exposes guest count via the documented `numberOfGuests`
         // field — see docs/integrations/aloha_ncr_voyix/field_mapping.md.
         coversFieldExposed: true,
-        // Partnership-gated detail is captured in
-        // docs/integrations/aloha_ncr_voyix/partnership_status.md, NOT
-        // via this boolean. Per the engineer-all-17 doctrine,
-        // `partnershipGated: false` lets the adapter ship at lifecycle
-        // = `documented` without coupling to commercial-lane state.
-        // Picker chrome reads `lifecycle`, not this flag. The 8.0.
-        // lifecycle slice retires this boolean entirely.
-        partnershipGated: false,
+        // Engineering slice ships at lifecycle = `documented`.
+        // `*.live.sandbox` / `*.live.prod` slices promote per the
+        // contract. Partnership-gated detail (NCR Voyix Developer
+        // Program intake) lives in
+        // docs/integrations/aloha_ncr_voyix/partnership_status.md;
+        // picker chrome reads this enum, not a boolean.
+        lifecycle: VendorLifecycle.documented,
         modules: <String>[],
         // NCR Voyix Aloha-module timestamps are documented as ISO 8601
         // UTC. The vendor-timestamp policy entry lives in the
