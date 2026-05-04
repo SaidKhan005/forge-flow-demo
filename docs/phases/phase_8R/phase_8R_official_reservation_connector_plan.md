@@ -1,8 +1,14 @@
 # Phase 8R — Official Reservation Connectors
 
 Updated: 2026-05-03
-Status: Planned (opens after Phase 8 `8.0` framework)
-Owner: Reservation connector lane
+Status: Framework `8.0` accepted on master 2026-05-03; Wave B engineers all 4 reservation adapters in one push (lifecycle = `documented`). **Engineering closes when Wave B lands.** Lifecycle promotion tracked in `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`.
+Owner: Reservation connector lane (engineering); Phase 8.live (rolling lifecycle)
+
+> **Doctrine lock (2026-05-03):** Engineer all 4 INTEGRATE reservation vendors against documented APIs in Wave B. See `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` "Per-slice doctrine" section for the 3-step pattern (online API check → framework engineering → docs synthesis) and `docs/contracts/vendor_adapter_slice_contract.md` for the rules every adapter is graded against. Memory: `memory/project_phase_8_engineer_all_17_doctrine.md`.
+
+> **Review contracts.** Every adapter slice in this phase is graded by Codex against:
+> - `docs/contracts/vendor_adapter_slice_contract.md` — framework rules.
+> - `docs/contracts/per_vendor_doc_pack_contract.md` — the 6-file folder shape.
 
 > **Scope rewrite (2026-05-03):** This phase was previously scoped to a single reservation vendor (OpenTable preferred). Scope is now four INTEGRATE reservation vendors per `docs/phases/phase_8/vendor_master_list.md`. The Resy market gap is documented explicitly.
 
@@ -107,18 +113,16 @@ Slices are sequenced reference-first per `docs/phases/phase_8/vendor_master_list
 
 ## Acceptance Criteria (per vendor slice)
 
-Per `docs/contracts/slice_runtime_acceptance_contract.md`:
+Per `docs/contracts/vendor_adapter_slice_contract.md` (binding contract — see file for full rules + verdict table):
 
-- Adapter passes contract tests against vendor sandbox (or production with throttled volumes).
-- OAuth (or key-issued partner credentials) round-trip works through admin-console connect flow.
-- Heavy test-connection returns within 5s with a real sample reservation showing party size + status + business date.
-- Webhook signature verification correctly rejects invalid signatures.
-- Sync watermark + 60-day backfill complete on first connect for at least one test (operator, location).
-- Disconnect preserves historical facts; reconnect resumes from preserved watermark.
-- IANA Scenarios A-F re-verified with vendor-specific timestamp shapes.
-- Raw-payload retention populated.
+- All 6 mandatory framework calls present and tested (sanity hook on poll/backfill, idempotency UNIQUE, watermark per batch, signature verifier with 24h replay window + constant-time compare, `OperatorScopedRepository.withTenant`, capability profile fully declared).
+- Zero banned items per V1 lean cut 2 (no KMS code path, no `parse_warnings`, no 5-min strict replay window, no advisory locks, no SIGTERM handler, no DLQ tile, no raw-payload sibling partitions, no 5s test-connection SLA, no 3-strike auto-disable email wiring).
+- Per-vendor doc pack populated at `docs/integrations/<vendor_id>/` per `docs/contracts/per_vendor_doc_pack_contract.md` (6 files).
+- Walkthrough at `docs/_walkthroughs/<slice-id>.md` matches click-path bar set by `docs/_walkthroughs/7.58.UX.5.md`.
+- Lifecycle field on `VendorCapabilityProfile` set to `documented` at slice close (promotion to `sandbox_verified` happens in `*.live.sandbox` follow-up).
+- Heavy test-connection returns under 30s on the offline path with `fieldMapping` populated (live HTTP path is deferred to `*.live.sandbox`).
 - COVERS card renders aggregate count + freshness indicator; demo-mode banner renders correctly when no reservation vendor connected.
-- Demo-mode walkthrough green per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+- Operator dashboard chrome honors `docs/contracts/metric_card_honesty_contract.md` (one top-left pill, no per-card chrome).
 
 ## Capability Questions
 

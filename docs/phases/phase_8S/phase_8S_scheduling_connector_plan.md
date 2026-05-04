@@ -1,8 +1,14 @@
 # Phase 8.S — Scheduling Connectors
 
 Updated: 2026-05-03
-Status: Planned (opens after Phase 8 `8.0` framework)
-Owner: Scheduling connector lane
+Status: Framework `8.0` accepted on master 2026-05-03; Wave B engineers all 6 scheduling adapters in one push (lifecycle = `documented`). **Engineering closes when Wave B lands.** Lifecycle promotion tracked in `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`.
+Owner: Scheduling connector lane (engineering); Phase 8.live (rolling lifecycle)
+
+> **Doctrine lock (2026-05-03):** Engineer all 6 INTEGRATE scheduling vendors against documented APIs in Wave B. See `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` "Per-slice doctrine" section for the 3-step pattern (online API check → framework engineering → docs synthesis) and `docs/contracts/vendor_adapter_slice_contract.md` for the rules every adapter is graded against. Memory: `memory/project_phase_8_engineer_all_17_doctrine.md`.
+
+> **Review contracts.** Every adapter slice in this phase is graded by Codex against:
+> - `docs/contracts/vendor_adapter_slice_contract.md` — framework rules.
+> - `docs/contracts/per_vendor_doc_pack_contract.md` — the 6-file folder shape.
 
 ## Goal
 
@@ -152,14 +158,17 @@ The app-owned wage fallback (`lib/services/wage_authority_service.dart` and the 
 
 ## Acceptance Criteria (per vendor slice)
 
-- Adapter passes contract tests against vendor sandbox (or production with throttled volumes if no sandbox exists).
-- OAuth (or legacy auth) round-trip works end-to-end through the admin-console connect flow.
-- Test-connection diagnostic returns within 5s and surfaces a real sample shift/punch/role row.
-- Sync watermark + 60-day backfill complete on first connect for at least one test location.
+Per `docs/contracts/vendor_adapter_slice_contract.md` (binding contract — see file for full rules + verdict table):
+
+- All 6 mandatory framework calls present and tested (sanity hook on poll/backfill, idempotency UNIQUE, watermark per batch, signature verifier with 24h replay window where vendor supports webhooks, `OperatorScopedRepository.withTenant`, capability profile fully declared with module disambiguation for ADP / QuickBooks).
+- Zero banned items per V1 lean cut 2.
+- Per-vendor doc pack populated at `docs/integrations/<vendor_id>/` per `docs/contracts/per_vendor_doc_pack_contract.md` (6 files; ADP carries module-level subsections inside each file).
+- Walkthrough at `docs/_walkthroughs/<slice-id>.md` matches click-path bar set by `docs/_walkthroughs/7.58.UX.5.md`.
+- Lifecycle field on `VendorCapabilityProfile` set to `documented` at slice close (promotion to `sandbox_verified` happens in `*.live.sandbox` follow-up).
+- Heavy test-connection returns under 30s on the offline path with `fieldMapping` populated.
 - Role-mapping override flow works in admin UI; FOH/BOH classification persists.
-- Wage-source classification correct (vendor-data when available, app-fallback when not).
-- IANA timezone conversion (Phase 8 `8.0` framework) handles vendor timestamps correctly — Scenarios A-F bound at framework level, vendor-specific edge cases bound here.
-- Demo-mode walkthrough green per `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
+- Wage-source classification correct (vendor-data when available, app-fallback when not). When vendor data is the source, `MetricProvenance.live`; when app-fallback, `MetricProvenance.fallback` (per `docs/contracts/metric_card_honesty_contract.md`).
+- Operator dashboard chrome honors `docs/contracts/metric_card_honesty_contract.md` (one top-left pill, no per-card chrome).
 
 ## Dependencies
 

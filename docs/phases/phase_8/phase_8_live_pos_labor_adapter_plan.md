@@ -1,8 +1,37 @@
 # Phase 8 — Live POS Adapters + Inbound Integration Framework
 
 Updated: 2026-05-03
-Status: Planned (framework + 7 POS adapters; reference-first wave plan; partnership applications kicked off in parallel)
-Owner: POS connector lane
+Status: Framework `8.0` accepted on master 2026-05-03 (PR #90 + master-side hardening at `4f2dc85`); Wave B engineers all 7 POS adapters in one push (lifecycle = `documented`). **Engineering closes when Wave B lands.** Lifecycle promotion to `sandbox_verified` / `production_credentialed` / `live_with_operators` tracked in `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md`.
+Owner: POS connector lane (engineering); Phase 8.live (rolling lifecycle)
+
+> **Doctrine lock (2026-05-03):** Engineer all 17 INTEGRATE vendors against documented APIs in one push (Wave B), lock each adapter at lifecycle = `documented`, then fire `*.live.sandbox` / `*.live.prod` slices when credentials arrive. The wave-1-through-wave-5 staggering from the prior plan is collapsed. Memory: `memory/project_phase_8_engineer_all_17_doctrine.md`.
+
+> **Review contracts.** Every adapter slice in this phase is graded by Codex against:
+> - `docs/contracts/vendor_adapter_slice_contract.md` — framework rules (mandatory calls, banned items, test discipline, walkthrough bar, lifecycle promotion).
+> - `docs/contracts/per_vendor_doc_pack_contract.md` — the 6-file folder Codex compares the adapter code to.
+>
+> A slice that violates either contract is `FOLLOW-UP NEEDED` or `REJECT` per the contract's verdict table.
+
+## Per-slice doctrine (binding)
+
+Every adapter slice in Phase 8 / 8R / 8.S ships in a **single PR** that performs all three steps. None is optional:
+
+1. **Online API check.** Verify the vendor's developer documentation is current; capture URL + retrieval date in the per-vendor `api_consumed.md`. CI lint warns if older than 180 days.
+2. **Framework engineering.** Implement the adapter against the documented API shape; bind to every framework seam in `vendor_adapter_slice_contract.md`; ship fixture-based tests that prove every framework call.
+3. **Docs synthesis.** Populate `docs/integrations/<vendor_id>/` with the 6-file doc pack per `per_vendor_doc_pack_contract.md`. Every assumption the adapter makes about vendor shape is captured here so the `*.live` slice can diff documented vs observed.
+
+A slice that ships steps 1+2 but skips step 3 is incomplete; the doc pack is the contract the `*.live` slice grades against.
+
+## 4-state vendor lifecycle (binding)
+
+Every adapter lives in one of these states. State is canonical truth on `VendorCapabilityProfile.lifecycle`:
+
+- `documented` — engineering slice landed; adapter compiles + fixture-tested; doc pack populated. Vendor picker shows "Coming soon" pill, no Connect button.
+- `sandbox_verified` — `*.live.sandbox` slice ran; sandbox verification checklist filled. Picker shows "Coming soon — sandbox verified" pill.
+- `production_credentialed` — `*.live.prod` slice ran; partnership cleared; production keys issued. Connect button live.
+- `live_with_operators` — first operator connected (auto-promote, no slice). Connected-operator chip in F&F Ops Console.
+
+The lifecycle field replaces the boolean `partnershipGated` on `VendorCapabilityProfile`. Slice `8.0.lifecycle` (first item in Wave B) extends the existing boolean to the enum.
 
 > **Scope rewrite (2026-05-03):** This phase was previously titled "Phase 8 - Live POS + Labor Adapters" and lumped POS + 7shifts into one doc. Scheduling is now its own phase (`phase_8S`) covering all 6 scheduling vendors. Phase 8 is POS-focused — framework slice plus 7 POS adapters. The file path stays stable to minimize citation churn.
 

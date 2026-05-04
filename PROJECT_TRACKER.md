@@ -100,9 +100,10 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | `11A` foundation | `0`–`5`/`6`/`7`/`UX.health` accepted; B44/B45/B47 producers delivered; `8`/`9`/`10` not started; cross-operator parity (`11A.12`/`13`/`14`) deferred per V1 lean cut until 20+ operators justify it | `phase_11A_operations_console/*` |
 | `11W` Operator Web Console (NEW) | `11W.0` shell + onboarding accepted on master 2026-05-03 (PR #87); `11W.7` Account + `11W.8` Vendor connections mount queued; remaining 7 slices (Members/Roles/Hierarchy/Sessions/Audit/Security/Outbound) deferred per `project_v1_lean_scope_cut.md` | `phase_11W/*` |
 | `9.75` | **paused (Barrio)** per 2026-05-03 operator direction (Barrio Staff Daily Companion frozen until unfreeze) | `phase_9_75/*` |
-| `8` (POS) | `8.0` framework accepted on master 2026-05-03 (PR #90) + 3 master-side fixes 2026-05-03 (sync-worker sanity hook, 24h replay window, ~30s test-connection); Wave 1 reference adapter `8.LSK` queued | `phase_8/*` + `vendor_master_list.md` + `vendor_connections_admin_surface.md` |
-| `8R` (Reservations) | queued — 4 reservation adapters; Wave 1 reference is Libro; Resy uncovered (15% market gap) | `phase_8R/*` |
-| `8.S` (Scheduling) | queued — 6 scheduling adapters; Wave 1 reference is QuickBooks Time; ADP/QuickBooks module disambiguation at connect | `phase_8S/*` |
+| `8` (POS) | `8.0` framework + master-side hardening accepted on master 2026-05-03 (PR #90 + `4f2dc85`); 7 POS adapters queued in Wave B (engineer-all-17 doctrine). **Closes as engineering-complete when Wave B lands.** Lifecycle rollout in `phase_8_live_rollout/`. | `phase_8/*` + `vendor_master_list.md` + `vendor_connections_admin_surface.md` |
+| `8R` (Reservations) | queued — 4 reservation adapters in Wave B; Resy uncovered (15% market gap). **Closes as engineering-complete when Wave B lands.** Lifecycle rollout in `phase_8_live_rollout/`. | `phase_8R/*` |
+| `8.S` (Scheduling) | queued — 6 scheduling adapters in Wave B; ADP/QuickBooks module disambiguation at connect. **Closes as engineering-complete when Wave B lands.** Lifecycle rollout in `phase_8_live_rollout/`. | `phase_8S/*` |
+| `8.live` (Vendor lifecycle rollout) | open — rolling. Tracks 17 `*.live.sandbox` + 17 `*.live.prod` slices that promote lifecycle as credentials arrive. Closes when last vendor reaches `production_credentialed` (Resy permanently abandoned per partnership_status). | `phase_8_live_rollout/phase_8_live_rollout_plan.md` |
 | `8.5` (Outbound finance) | **paused (outward-vendor focus pivot 2026-05-03)** — QBO Accounting/Xero/Bill.com/Plaid; sibling lane to 8/8R/8.S; resumes after inbound integration push | `phase_8_5_external_integrations/*` |
 | `11b`/`11b.1`/`11b.2` | **paused (AI focus pivot 2026-05-03)** — operator-facing advisor; gated on B43 prod anchor; resumes post-pause | `phase_11b/*` |
 | `12.0`–`12.5` | **paused (AI focus pivot 2026-05-03)** — workflow platform AI-driven; gated by B41 live apply; resumes post-pause | `phase_12_workflow_platform/*` |
@@ -123,50 +124,59 @@ may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 "Parallel Worktrees". Phase Board above is canonical state; the list
 below is sequencing intent.
 
-Next candidates by readiness (post-2026-05-03 audit; 4 lanes from prior
-sprint accepted on master):
+Wave B closes Phase 8 / 8R / 8.S engineering in one push. 20
+file-disjoint parallel lanes. Locked 2026-05-03 per
+`memory/project_phase_8_engineer_all_17_doctrine.md`. Authority for
+grading every adapter slice: `docs/contracts/vendor_adapter_slice_contract.md`
++ `docs/contracts/per_vendor_doc_pack_contract.md`. Wave plan rows:
+`docs/phases/phase_8/vendor_master_list.md` "Wave B".
 
-1. **Phase 8 `8.LSK` Lightspeed K-Series POS reference adapter** —
-   Wave 1 reference for the framework that landed in `8.0`. Implements
-   `PosAdapter` for Lightspeed K-Series; exercises sanity hook,
-   idempotency, OAuth refresh, webhook handler, demo→live flip. THIS
-   IS THE FIRST REAL TEST OF THE FRAMEWORK end-to-end. Owns
-   `lib/integrations/pos/lightspeed_lsk_pos_adapter.dart` NEW + tests.
-   Plan: `docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md`
-   + `docs/phases/phase_8/vendor_master_list.md` (Wave 1 row).
-2. **Phase 8.S `8.S.QBT` QuickBooks Time labor reference adapter** —
-   Wave 1 sibling. Implements `LaborAdapter` for QuickBooks Time;
-   exercises module disambiguation (Time vs Accounting vs Payroll),
-   sanity hook on punches. Owns
-   `lib/integrations/labor/quickbooks_time_labor_adapter.dart` NEW +
-   tests. Plan: `docs/phases/phase_8S/*`.
-3. **Phase 8R `8R.LB` Libro reservation reference adapter** — Wave 1
-   sibling. Implements `ReservationAdapter` for Libro; exercises
-   sanity hook on reservations, perLocation grant scope. Owns
-   `lib/integrations/reservation/libro_reservation_adapter.dart` NEW +
-   tests. Plan: `docs/phases/phase_8R/*`.
-4. **Phase `11W.7` Operator Web Account screen** — replaces
-   `account_placeholder_screen.dart` with the live Account surface:
-   profile fields, MFA factor management, password change,
-   T&Cs version history. File-disjoint from the 3 vendor adapters.
-   Plan: `docs/phases/phase_11W/*`.
-5. **Phase `11W.8` Operator Web Vendor Connections mount** — replaces
-   `vendor_connections_placeholder_screen.dart` with the live admin
-   `VendorConnectionsWidget` mount on the operator web console (the
-   widget already shipped in `8.0`; this slice mounts it on web).
-   Plan: `docs/phases/phase_11W/*`.
+**Wave B — engineer all 17 vendors at lifecycle = `documented` + Web Console:**
 
-Operator parallel critical path (no engineering): sandbox provisioning
-(Lightspeed K-Series API access / Libro venue test creds / QuickBooks
-Time sandbox), DNS+TLS for `app.forgeflow.app` + `mail.forgeflow.app`,
-SendGrid account + DKIM/SPF/DMARC, partnership applications kickoff
-(Toast / OpenTable / Oracle / NCR Voyix / ADP Marketplace /
-SevenRooms / Push Operations), legal review of inbound-vendor T&Cs
-draft, Production1 unfreeze decision.
+1. **`8.0.lifecycle`** — micro-amendment: replace
+   `partnershipGated: bool` with `lifecycle: VendorLifecycle` enum on
+   `VendorCapabilityProfile`. Ships first; other lanes consume.
+2. **POS (7 lanes)** — `8.LSK` (reference), `8.SQ`, `8.TS`, `8.CL`,
+   `8.RV`, `8.AL`, `8.OR`. Each ships
+   `lib/integrations/pos/<vendor>_pos_adapter.dart` NEW +
+   `docs/integrations/<vendor_id>/` (6-file doc pack) + tests +
+   walkthrough.
+3. **Reservations (4 lanes)** — `8R.LB` (reference), `8R.OT`,
+   `8R.SR`, `8R.TC`. Same shape under
+   `lib/integrations/reservation/`.
+4. **Scheduling (6 lanes)** — `8.S.QBT` (reference), `8.S.7S`,
+   `8.S.ADP` (module disambiguation), `8.S.HM`, `8.S.AG`, `8.S.PU`.
+   Same shape under `lib/integrations/labor/`.
+5. **`11W.7`** — Operator Web Account screen replaces placeholder.
+   File-disjoint from adapter lanes.
+6. **`11W.8`** — Operator Web Vendor Connections mount. Reuses the
+   `VendorConnectionsWidget` already in `8.0`. File-disjoint.
 
-After Wave 1 lands: `8.SQ` (Square — covers fallback), `8.S.7S`
-(7shifts), Phase 11A `8`/`9`/`10`, `cutover.0b` perf gate (depends on
-`cutover.1` corpus seed first).
+Total: 20 lanes. Shared seam (adapter registry under
+`tool/advisor_proxy/`) handled by 3 category-scoped registry files
+updated on a single integration commit after worktrees merge.
+
+**Wave D — rolling `*.live.*` slices (fire as credentials arrive):**
+
+- Per vendor: `<vendor_id>.live.sandbox` (~200 LOC + walkthrough,
+  promotes lifecycle to `sandbox_verified`) and `<vendor_id>.live.prod`
+  (~200 LOC + walkthrough, promotes to `production_credentialed`).
+- Wave D never sprints; each slice fires individually when a credential
+  arrives. Order is whichever credential lands first.
+
+**Operator parallel critical path (no engineering):** sandbox
+provisioning across 17 vendors; DNS+TLS for `app.forgeflow.app` +
+`mail.forgeflow.app`; SendGrid account + DKIM/SPF/DMARC; partnership
+applications kickoff (Toast / OpenTable / Oracle / NCR Voyix / ADP
+Marketplace / SevenRooms / Tock / Push Operations); legal review of
+inbound-vendor T&Cs draft; Production1 unfreeze decision. None blocks
+Wave B engineering — `*.live.prod` slices fire when each credential
+arrives.
+
+**After Wave B lands:** Phase 8 / 8R / 8.S engineering closes. Open
+work: `cutover.0b` Tier-M perf gate (needs `cutover.1` corpus seed
+first), Phase 11A `8`/`9`/`10`, post-pause AI/outward/Barrio when
+unfrozen.
 
 **Barrio-paused (skip until unfreeze):** `9.5.UX.*`, `9.75`.
 

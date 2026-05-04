@@ -112,6 +112,42 @@ Codex returns `FOLLOW-UP NEEDED` if the walkthrough is vague (e.g., references
 the standard without giving the click-path), missing expected states, or skips
 a non-trivial UX surface introduced by the slice.
 
+## Vendor Adapter Slices (Phase 8 / 8R / 8.S)
+
+Vendor adapter slices have a stricter shape than ordinary slices. Each
+slice ships in **one PR** that performs three steps:
+
+1. **Online API check** — verify the vendor's developer documentation
+   is current; capture URL + retrieval date.
+2. **Framework engineering** — implement the adapter against the
+   documented API shape; bind to every framework seam in
+   `docs/contracts/vendor_adapter_slice_contract.md`.
+3. **Docs synthesis** — populate `docs/integrations/<vendor_id>/`
+   with the 6-file doc pack per
+   `docs/contracts/per_vendor_doc_pack_contract.md`.
+
+The prompt's Authority block MUST cite both contracts. A slice that
+ships steps 1+2 but skips step 3 is `FOLLOW-UP NEEDED`.
+
+The prompt's acceptance criteria MUST cite the specific verdict gates
+in `vendor_adapter_slice_contract.md`:
+- All 6 mandatory framework calls present and tested.
+- Zero banned items (V1 lean cut 2 list).
+- Per-vendor doc pack populated (6 files; cite source URLs).
+- Walkthrough at click-path bar (7.58.UX.5 reference).
+- Lifecycle = `documented` set on `VendorCapabilityProfile`.
+
+The slice's walkthrough at `docs/_walkthroughs/<slice-id>.md` MUST
+cover the anchor scenarios from
+`docs/phases/phase_8/phase_8_live_pos_labor_adapter_plan.md` Walkthrough
+section (forged signature, malformed payload, future-dated event,
+OAuth near-expiry).
+
+`*.live.sandbox` and `*.live.prod` follow-up slices are separate prompts
+fired individually when sandbox / production credentials arrive. They
+promote lifecycle and fill in `live_verification_checklist.md`. They
+are NEVER bundled into the engineering slice.
+
 ## Runtime Work
 
 If a slice exposes runtime behavior, browser/admin/operator UX, migrations,

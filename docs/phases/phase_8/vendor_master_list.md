@@ -1,8 +1,13 @@
 # Forge & Flow Vendor Master List
 
 Updated: 2026-05-03
-Status: Locked scope for Phase 8 / 8R / 8.S inbound integrations
+Status: Locked scope for Phase 8 / 8R / 8.S inbound integrations. Wave B doctrine locked 2026-05-03 — engineer all 17 INTEGRATE vendors in one push; `*.live.*` slices roll as credentials arrive.
 Operator-supplied scope sheet: `docs/phases/phase_8/SOFTWARE SYSTEMS.xlsx` (classified 2026-05-03)
+
+**Authority for grading adapter slices:**
+- `docs/contracts/vendor_adapter_slice_contract.md` — framework rules.
+- `docs/contracts/per_vendor_doc_pack_contract.md` — the 6-file doc pack.
+- `memory/project_phase_8_engineer_all_17_doctrine.md` — engineer-all-17 decision lock.
 
 ## Scope
 
@@ -146,70 +151,77 @@ When the operator connects QuickBooks, the connect flow MUST disambiguate:
 
 If a target operator runs **only** vendors from these two lists, they cannot be onboarded via the standard inbound integration framework. The product would need to fall back to operator-supplied CSV / fixture mode (existing demo-mode-style transport) — that decision is launch-strategy, not engineering, and should be raised explicitly with the operator before contracting.
 
-## Wave Plan (API-readiness first, share-weighted; partnership reframe locked 2026-05-03)
+## Wave Plan (engineer-all-17 doctrine, locked 2026-05-03)
 
-**Partnership programs unlock production credentials. They never block adapter shipping.** Build all 17 adapters against documented APIs and sandboxes now. Operators on a partnership-gated vendor stay in demo mode for that category until production credentials land via the parallel commercial lane. The engineering work and the partnership work proceed independently and rendezvous at production cutover for that vendor.
+**Engineer all 17 INTEGRATE vendors in one push (Wave B). Lock each adapter at lifecycle = `documented`. Fire `*.live.sandbox` / `*.live.prod` slices when credentials arrive (Wave D, rolling).**
 
-This reframe was applied 2026-05-03 after the prior posture (partnership approval gates the slice) was identified as a months-long delay risk for engineering work that doesn't actually depend on partnership status. See `memory/project_v1_lean_cut_2_2026_05_03.md` for the durable decision.
+The prior plan (Wave 1-5 staggered by partnership readiness) is collapsed. Rationale:
+- The framework is the depth; per-vendor adapters are mostly capability-profile + field-mapping + per-vendor signature shape. ~150-300 LOC each.
+- Partnership timelines are weeks-to-months; engineering is days. Sequencing engineering after partnerships ships V1 with 2-3 live vendors and a weak operator-share story.
+- Building 17 against documented shapes surfaces framework limitations far faster than building 3.
+- Per-vendor doc pack (`docs/contracts/per_vendor_doc_pack_contract.md`) makes `*.live.*` slices small and predictable when creds arrive.
+- Vendor picker chrome surfaces the lifecycle: "Coming soon" / "Coming soon — sandbox verified" / Connect-button-live / connected-operator chip. Operator first-impression matches partnership state without the engineering staircase.
 
-Wave 1 ships the framework + three "cleanest API" reference adapters that prove the architecture end-to-end. Subsequent waves are sequenced by API readiness (sandbox availability + doc completeness + vendor responsiveness), not partnership status.
+Memory: `memory/project_phase_8_engineer_all_17_doctrine.md`.
 
-**Wave 1 + 2 + 3 = MVP launch state** — the engineering work is complete and operators on those vendors connect via sandbox or production credentials depending on whether the partnership has cleared. Demo-mode banner on the operator app correctly reflects which (operator, location, category) tuples are live vs sandbox vs demo.
+### Wave A — Framework (LANDED 2026-05-03)
 
-### Wave 1 — Framework + reference adapters (start now, ~6-10 weeks)
-
-| Slice | Vendor / Scope | Why this wave |
+| Slice | Vendor / Scope | Status |
 |---|---|---|
-| `8.0` | Adapter framework + admin surface | Blocks every adapter slice. Interfaces, IANA timezone (Scenarios A-F), `vendor_credentials`, `connector_*` schemas, raw-payload retention, admin-console "Vendor connections" surface, Cloud Run admin endpoints, webhook ingestion endpoints. |
-| `8.LSK` | Lightspeed K-Series (POS) | Cleanest POS API + 15% share. Reference adapter that proves the framework. |
-| `8R.LB` | Libro (Reservations) | Cleanest reservation API + Canadian-relevant. Reference adapter for reservations. |
-| `8.S.QBT` | QuickBooks Time (Scheduling) | Cleanest scheduling API + 25% share. Reference adapter for scheduling. |
+| `8.0` | Adapter framework + admin surface | Accepted on master 2026-05-03 (PR #90 + master-side hardening at `4f2dc85`). |
+| `4f2dc85` | Master-side fix: sanity hook plumbed to PollIncrementalCommand + BackfillCommand; replay window 24h; ~30s test-conn timeout | Landed. |
 
-### Wave 2 — High-share, no partnership gate (~2-4 weeks after Wave 1)
+### Wave B — Engineer all 17 vendors + lifecycle enum + 11W.7/11W.8 (next sprint, one shot to close Phase 8 / 8R / 8.S engineering)
 
-| Slice | Vendor | Why this wave |
-|---|---|---|
-| `8.SQ` | Square (POS) | 20% share, self-serve OAuth, no gate. Covers degrades to forecast fallback. |
-| `8.S.7S` | 7shifts (Scheduling) | 35% share, already audited, easy onboarding. |
+Lifecycle column at slice close = `documented` for all. Each slice ships adapter + tests + per-vendor doc pack at `docs/integrations/<vendor_id>/`.
 
-### Wave 3 — High-share, sandbox-or-doc available, partnership-unlocking-production (engineering ships now)
+| Slice | Vendor | Category | Lifecycle target | Notes |
+|---|---|---|---|---|
+| `8.0.lifecycle` | Framework micro-amendment | n/a | n/a | Replaces `partnershipGated: bool` with `lifecycle: VendorLifecycle` enum on `VendorCapabilityProfile`. Ships first; other lanes consume. |
+| `8.LSK` | Lightspeed K-Series | POS | `documented` | Reference POS adapter. Public OAuth, 15% share. |
+| `8.SQ` | Square | POS | `documented` | 20% share. Public OAuth. Covers fallback. |
+| `8.TS` | Toast | POS | `documented` | 35% share. Partnership-gated for prod; public docs + Standard sandbox available. |
+| `8.CL` | Clover | POS | `documented` | 12% share. App-Market approval gate for prod. |
+| `8.RV` | Revel | POS | `documented` | 5% share. Self-serve OAuth. |
+| `8.AL` | Aloha (NCR Voyix) | POS | `documented` | 8% share. NCR Voyix partnership for prod. |
+| `8.OR` | Oracle MICROS Simphony | POS | `documented` | 5% share. Oracle partnership for prod. Poll-only. |
+| `8R.LB` | Libro | Reservations | `documented` | Reference reservation adapter. Public OAuth. |
+| `8R.OT` | OpenTable | Reservations | `documented` | 55% share. Partnership-gated. |
+| `8R.SR` | SevenRooms | Reservations | `documented` | 15% share. Account-rep onboarding. |
+| `8R.TC` | Tock | Reservations | `documented` | 10% share. Premium-tier gate. |
+| `8.S.QBT` | QuickBooks Time | Scheduling | `documented` | Reference scheduling adapter. Public OAuth. 25% share. |
+| `8.S.7S` | 7shifts | Scheduling | `documented` | 35% share. Already audited. |
+| `8.S.ADP` | ADP Workforce Now / Manager | Scheduling | `documented` | 15% share. ADP Marketplace DPA gate for prod. Module disambiguation. |
+| `8.S.HM` | Humanity (TCP) | Scheduling | `documented` | 10% share. Legacy username/password auth. |
+| `8.S.AG` | Agendrix | Scheduling | `documented` | 7% share. Self-serve OAuth. |
+| `8.S.PU` | Push Operations | Scheduling | `documented` | 8% share. Partner approval for prod. |
+| `11W.7` | Operator Web — Account screen | Web UX | n/a | Replaces placeholder. File-disjoint from adapter lanes. |
+| `11W.8` | Operator Web — Vendor Connections mount | Web UX | n/a | Replaces placeholder. Reuses VendorConnectionsWidget; file-disjoint. |
 
-These vendors require partnership for **production data access**. Their **sandbox or developer docs** are accessible enough to build the adapter against now. Engineering ships the adapter; operators on the vendor stay in sandbox/demo mode until the parallel commercial lane unlocks production credentials.
+20 file-disjoint lanes. Wave B closes Phase 8 / 8R / 8.S engineering in one push. The only shared seam is the adapter registry under `tool/advisor_proxy/`, handled by 3 category-scoped registry files (`pos_registry.dart`, `labor_registry.dart`, `reservation_registry.dart`) updated on a single integration commit after all worktrees merge.
 
-| Slice | Vendor | Engineering ready | Production access |
+### Wave D — Rolling `*.live.*` slices (fire as credentials arrive)
+
+Two slices per vendor:
+
+- **`<vendor_id>.live.sandbox`** — runs the adapter against vendor sandbox credentials; fills in `live_verification_checklist.md` sandbox section; promotes lifecycle to `sandbox_verified`. ~200 LOC + walkthrough.
+- **`<vendor_id>.live.prod`** — runs the adapter against production credentials issued by the cleared partnership; fills in `live_verification_checklist.md` prod section; promotes lifecycle to `production_credentialed`; activates Connect button in admin widget. ~200 LOC + walkthrough.
+
+Wave D never sprints; each slice fires individually as a credential arrives. Order is determined by which credentials land first, not by share-weight.
+
+## Coverage progression
+
+After Wave B (engineering complete): all 17 vendors are at lifecycle = `documented`. Vendor picker shows every vendor; gates on lifecycle for the Connect button.
+
+After Wave D rolling completion (target ~6-24 weeks across vendors):
+
+| End of state | POS coverage | Reservation coverage | Scheduling coverage |
 |---|---|---|---|
-| `8.TS` | Toast (POS) | Public dev docs + Standard API tier sandbox | Partnership review (~6-12 weeks) — parallel commercial lane |
-| `8R.OT` | OpenTable (Reservations) | Partnership-only docs; build against published reservation-data field shape | Partnership review (~6-12 weeks) — parallel commercial lane. Until cleared, OpenTable operators stay in demo mode for reservations. |
-| `8.S.ADP` | ADP Workforce Now/Manager (Scheduling) | ADP Marketplace dev portal + sandbox | ADP Marketplace DPA (~12-24 weeks) — parallel commercial lane |
+| Engineering (Wave B closed) | **100% engineered** | **100% engineered (85% pre-Resy)** | **100% engineered** |
+| Self-serve / quick-approval prod credentials (~Wave D weeks 1-4) | 40% live (Lightspeed + Square + Revel) | 5% live (Libro) | 32% live (QBT + Agendrix) |
+| Partnership prod credentials cleared (~Wave D weeks 6-24) | 100% live | 85% live (Resy permanently uncovered) | 100% live |
 
-### Wave 4 — Mid-share self-serve / quick approval
-
-| Slice | Vendor | Why this wave |
-|---|---|---|
-| `8.CL` | Clover (POS) | 12% share, App-Market approval (~1-3 weeks). |
-| `8.RV` | Revel (POS) | 5% share, self-serve OAuth. |
-| `8.S.AG` | Agendrix (Scheduling) | 7% share, self-serve OAuth. |
-| `8.S.HM` | Humanity (Scheduling) | 10% share, legacy auth (quick once contract). |
-| `8R.SR` | SevenRooms (Reservations) | 15% share, account-rep onboarding (~4-8 weeks). |
-
-### Wave 5 — Long-lead partnerships and lower-priority
-
-| Slice | Vendor | Why deferred |
-|---|---|---|
-| `8.AL` | Aloha (NCR Voyix) (POS) | 8% share, NCR Voyix partnership — multi-month. |
-| `8.OR` | Oracle Simphony (POS) | 5% share, Oracle partnership — multi-month. Enterprise-only. |
-| `8R.TC` | Tock (Reservations) | 10% share, Premium-tier negotiation. |
-| `8.S.PU` | Push Operations (Scheduling) | 8% share, partner approval. |
-
-## Coverage progression by wave
-
-| End of wave | POS coverage | Reservation coverage | Scheduling coverage |
-|---|---|---|---|
-| Wave 1 | 15% (Lightspeed) | 5% (Libro) | 25% (QBT) |
-| Wave 1+2 | 35% (+Square) | 5% | 60% (+7shifts) |
-| Wave 1+2+3 (**MVP**) | **70% (+Toast)** | **60% (+OpenTable)** | **75% (+ADP)** |
-| Wave 1-4 | 87% (+Clover, Revel) | 75% (+SevenRooms) | 92% (+Humanity, Agendrix) |
-| Wave 1-5 | 100% | 85% (Resy permanently uncovered) | 100% |
+The "engineered" row is what closes Phase 8 / 8R / 8.S engineering. The "live" rows progress as commercial lane clears.
 
 ## Partnership Applications (kick off at Wave 1 start)
 

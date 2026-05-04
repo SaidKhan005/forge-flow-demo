@@ -116,9 +116,35 @@ Engineering must include the operator-facing copy in the slice that ships the sc
 **Action row**: Test / Reconnect / Disconnect / View logs.
 **Configuration drawer** (collapsed): poll interval, backfill window, vendor-specific knobs (revenue centers, role mappings, module selection).
 
-## Status states
+## Two state axes (binding)
 
-V1 keeps the state machine simple: 3 states plus a demo-mode display state. Each badge has a tooltip explaining what the state means and what the operator should do, written in plain English so the operator does not need engineering glossary support.
+This surface tracks **two independent state axes** that the operator must not confuse:
+
+1. **Vendor lifecycle** — Is the vendor adapter ready for operators to connect? Owned at vendor level (one state per vendor across all operators). Surfaced in the **vendor picker dialog**. Per `docs/contracts/vendor_adapter_slice_contract.md`.
+2. **Connection status** — Is THIS operator's connection healthy? Owned at `connector_connection` row level (one state per operator+location+vendor). Surfaced on the **vendor card** after a connection exists.
+
+Operators see lifecycle BEFORE they connect (in the picker), connection status AFTER (on the card). The two never share visual chrome.
+
+## Vendor lifecycle (4-state, surfaced in picker)
+
+Every vendor sits at one of these states. State is canonical truth on `VendorCapabilityProfile.lifecycle`. The vendor picker dialog renders a different chrome per state:
+
+| Lifecycle | Picker chrome | Connect button | F&F Ops Console-only chip |
+|---|---|---|---|
+| `documented` | Vendor row visible with "Coming soon" pill (slate-grey, 10pt). Tooltip: "We've built the integration; we're working with <vendor> on production access." | Hidden. Row is read-only. | "Engineering: documented" badge, no operator chip. |
+| `sandbox_verified` | "Coming soon — sandbox verified" pill (slate-grey, 10pt, with dashed underline indicating sandbox verification). Tooltip: "We've verified the integration end-to-end against <vendor>'s sandbox. Production access pending partnership clearance." | Hidden. Row is read-only. | "Engineering: sandbox-verified <date>" badge. |
+| `production_credentialed` | No pill. Vendor row renders with full color logo. | **Live.** Operator can click. | "Production credentials live <date>" badge. |
+| `live_with_operators` | No pill (same as `production_credentialed`). | **Live.** | "<N> operators connected" chip. Auto-promoted on first operator connect. |
+
+Hover behavior:
+- `documented` / `sandbox_verified` rows show a subtle "i" icon next to the pill. Tap → dialog explains the lifecycle in plain English: "We've built this integration but we're still in the partnership process with <vendor>. As soon as <vendor> issues us production credentials, the Connect button activates here. We'll email your operator admin when that happens." (UX writing standard.)
+- `production_credentialed` / `live_with_operators` rows show the standard Connect button + capability hints (auth mode, grant scope).
+
+Lifecycle promotion is owned by `*.live.sandbox` / `*.live.prod` slices per `docs/contracts/vendor_adapter_slice_contract.md`. Engineers do NOT mutate lifecycle on `connector_connection` writes; lifecycle is on `VendorCapabilityProfile`, not `connector_connection`.
+
+## Connection status (3-state, surfaced on the card)
+
+After an operator connects a vendor, the card surfaces the per-(operator, location, vendor) connection state. V1 keeps this simple: 3 states plus a demo-mode display state. Each badge has a tooltip explaining what the state means and what the operator should do, written in plain English so the operator does not need engineering glossary support.
 
 | State | Badge | What it means | What the operator should do |
 |---|---|---|---|
@@ -181,6 +207,92 @@ The first-time connect for an empty section:
 ### Pick-then-show vs browse-then-pick
 
 **Pick-then-show.** Operator clicks "Connect a POS" → vendor picker dialog → choose one → that vendor's card renders. This avoids cluttering the page with 7 disconnected POS cards. To switch vendor later, "Switch vendor" action in the configuration drawer.
+
+### Vendor picker rendering rules (binding)
+
+The vendor picker dialog renders ALL vendors (regardless of lifecycle), but Connect-button activation depends on lifecycle. This honors the engineer-all-17 doctrine: operators see every vendor F&F supports + lifecycle messaging tells them when each will be live.
+
+```
+[Vendor picker — POS]
+  Which POS does this location use?
+  
+  ▸ Lightspeed Restaurant K-Series           [Connect]    ← production_credentialed
+  ▸ Square                                    [Connect]    ← production_credentialed
+  ▸ Toast                  Coming soon       [grey]       ← documented
+                          (sandbox verified) [grey]       ← sandbox_verified, distinct subline
+  ▸ Clover                 Coming soon       [grey]       ← documented
+  ▸ Revel                                     [Connect]    ← production_credentialed
+  ▸ Aloha (NCR Voyix)      Coming soon       [grey]       ← documented
+  ▸ Oracle MICROS Simphony Coming soon       [grey]       ← documented
+  
+  My POS isn't listed →   [contact us]
+```
+
+Tapping a `Coming soon` row opens an info dialog (UX writing standard) that:
+- Explains the lifecycle state in plain English.
+- Shows the partnership timeline if available (from `partnership_status.md`).
+- Offers a "Notify me" button that captures email so the operator gets a one-click email when the Connect button activates for them.
+
+Engineering MUST NOT hide vendors below `production_credentialed` from the picker. Hiding them undermines the engineer-all-17 doctrine and leaves operators thinking F&F doesn't support their POS when in fact F&F does — just not yet live.
+
+## Backend UX exposure (binding — both consoles)
+
+Two backend apps surface vendor lifecycle. They do NOT share UI; they share the underlying lifecycle data on `VendorCapabilityProfile`.
+
+### Operator Web Console (`app.forgeflow.app`, Phase 11W)
+
+**Mounted by `11W.8`.** Operator-facing — single-operator scope; reads lifecycle for picker chrome.
+
+- Vendor picker dialog renders all 17 vendors per the rules above. Lifecycle gates Connect-button activation; never hides rows.
+- **"Notify me when ready" capture** on `documented` and `sandbox_verified` rows:
+
+```
+[Vendor row — Toast (lifecycle = documented)]
+  Toast                    Coming soon       [grey, no Connect]
+                          Tell me when this is ready  →  [Notify me]
+
+  ↓ (tap)
+
+[Notify me dialog]
+  We'll email you the moment Toast goes live for connecting.
+  
+  Email: [pre-filled with operator email]   [Notify me]
+  
+  → On submit: row inserted into vendor_lifecycle_notification
+    (operator_id, vendor_id, email, requested_at). Toast button
+    flips to "We'll email <email> when Toast is ready" with [Cancel].
+```
+
+When the vendor's `*.live.prod` slice promotes lifecycle to `production_credentialed`, the slice fans out a `vendor_now_available` email (template: `tool/advisor_proxy/email_templates/vendor_now_available.md`) to every row in `vendor_lifecycle_notification` matching the vendor_id. UX writing standard applies — email reads as training:
+
+> **Toast is now ready to connect in Forge & Flow**
+> You signed up to know when Toast was ready. It is. Click the link below to start the connect flow. Takes about 3 minutes; you'll need to sign in to your Toast account once.
+> [Connect Toast]
+
+The notification table + cron + email template land as part of `8.0.lifecycle` (table) + `9.8.email` follow-up (cron + template wiring).
+
+### F&F Operations Console (`admin.forgeflow.app`, Phase 11A)
+
+**At V1: PR-driven, no admin UI tile.** Cross-operator scope; F&F internal staff (`forge_admin` / `ff_support`).
+
+V1 truth:
+- Vendor lifecycle on `VendorCapabilityProfile` is mutated only by `*.live.*` slices (engineering PR commits).
+- `partnership_status.md` per vendor at `docs/integrations/<vendor_id>/partnership_status.md` is the canonical commercial-lane status; ops updates it via PR (1-line edit per change).
+- The existing F&F Ops Console "Vendor connections" tab (cross-operator view) renders the lifecycle field as it exists on `VendorCapabilityProfile` — no admin write surface.
+- Cross-operator visibility into lifecycle is the markdown rollout tracker at `docs/phases/phase_8_live_rollout/phase_8_live_rollout_plan.md` — single source of truth, 17-row table, updated as slices land.
+
+V1 explicit non-goal: a `11A.vendor_lifecycle` admin tile (form-driven partnership status updates + lifecycle promotion buttons). Add post-V1 when:
+- The number of partnership status updates per week exceeds what a PR-per-change cadence can handle, OR
+- F&F support volume requires non-engineering staff to update the rollout tracker without a PR.
+
+Until then, the markdown tracker + per-vendor `partnership_status.md` are sufficient and keep change history in git.
+
+The F&F Ops Console tab DOES surface, per (operator, location, vendor) connection:
+- The 3-state connection status (Connected / Disconnected / Error / Demo).
+- The "Engineering: documented" / "Engineering: sandbox-verified" / "Production credentials live <date>" / "<N> operators connected" badge from lifecycle (read-only).
+- The "View logs" modal (sync events for that connection).
+
+Cross-operator filtering is the existing Phase 11A pattern (filter by operator_id / location_id / vendor_id / status). No additional Wave B work required.
 
 ## Test connection (heavy on-demand)
 
