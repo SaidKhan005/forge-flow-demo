@@ -144,12 +144,12 @@ void main() {
       expect(find.byKey(const Key('operator_web_account_screen')),
           findsOneWidget);
       expect(
-        find.byKey(const Key('operator_web_vendor_connections_placeholder')),
+        find.byKey(const Key('operator_web_vendor_connections_screen')),
         findsNothing,
       );
     });
 
-    testWidgets('side nav switches body to vendor-connections placeholder', (
+    testWidgets('side nav switches body to vendor-connections screen', (
       tester,
     ) async {
       await sizeViewport(tester);
@@ -164,7 +164,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('operator_web_vendor_connections_placeholder')),
+        find.byKey(const Key('operator_web_vendor_connections_screen')),
         findsOneWidget,
       );
       expect(find.byKey(const Key('operator_web_account_screen')),
@@ -186,9 +186,10 @@ void main() {
           ),
         ),
       );
+      await tester.pumpAndSettle();
 
       expect(
-        find.byKey(const Key('operator_web_vendor_connections_placeholder')),
+        find.byKey(const Key('operator_web_vendor_connections_screen')),
         findsOneWidget,
       );
     });

@@ -29,7 +29,7 @@ import '../screens/account_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/tos_accept_screen.dart';
-import '../screens/vendor_connections_placeholder_screen.dart';
+import '../screens/vendor_connections_screen.dart';
 import '../screens/welcome_screen.dart';
 import '../widgets/web_app_shell.dart';
 import '../../theme/app_theme.dart';
@@ -222,11 +222,10 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         id: kOperatorWebNavVendorConnections,
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
-        placeholder: true,
       ),
     ];
     final body = _selectedNavId == kOperatorWebNavVendorConnections
-        ? VendorConnectionsPlaceholderScreen(
+        ? VendorConnectionsScreen(
             session: session,
             locationId: session.primaryLocationId,
           )
