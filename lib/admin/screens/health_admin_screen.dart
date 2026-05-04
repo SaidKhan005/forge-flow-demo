@@ -398,7 +398,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'System health',
       subtitle:
-          'Run a read-only check of advisor data, the API service, and platform dependencies before investigating live issues.',
+          'Run a read-only check of advisor data, the API, and platform services.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -449,7 +449,7 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: Text(
-        'This can take 15-30+ seconds because staging checks real backend dependencies, advisor freshness, the audit trail, the event queue, and API metrics. It is read-only, and red or yellow results may reflect real backend state rather than a console issue.',
+        'This checks real staging dependencies and can take 15-30+ seconds. It is read-only; red or yellow results may reflect backend state rather than a console issue.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
       actions: [
@@ -496,12 +496,12 @@ class _ManualHealthPrompt extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'No system check run in this session',
+                'Run the first system check',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               Text(
-                'Run a live diagnostic when you need the current staging state. The request is read-only and may take 15-30+ seconds because it checks real backend dependencies.',
+                'Use this when you need the current staging state. The check is read-only and may take 15-30+ seconds.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
@@ -542,7 +542,7 @@ class _DependenciesUnavailableBanner extends StatelessWidget {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Dependencies unavailable. A required backend check is failing, so the metrics below may be stale.',
+              'A required backend check is failing, so the results below may be stale.',
               style: AppTextStyles.mono11(color: AppColors.negative),
             ),
           ),

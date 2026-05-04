@@ -43,7 +43,7 @@ class _TabSpec {
 const List<_TabSpec> _kTabs = <_TabSpec>[
   _TabSpec(label: 'Cost', keySuffix: 'cost'),
   _TabSpec(label: 'Highest spend', keySuffix: 'top'),
-  _TabSpec(label: 'Customers', keySuffix: 'operators'),
+  _TabSpec(label: 'Operators', keySuffix: 'operators'),
   _TabSpec(label: 'Limit events', keySuffix: 'cap_events'),
   _TabSpec(label: 'Knowledge graph', keySuffix: 'graph'),
   _TabSpec(label: 'Hosting', keySuffix: 'cloud_run'),
@@ -283,7 +283,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'System metrics',
       subtitle:
-          'Review costs, usage limits, customer activity, relationship data, and hosting signals. System health checks live on the Health page.',
+          'Review cost, usage limits, operator activity, relationships, and hosting signals.',
       compactBreakpoint: 720,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 360),
@@ -342,7 +342,7 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
       content: Text(
-        'This scans recent usage, estimates margins, and summarizes hosting activity. It is read-only, but can take 10-30+ seconds against a real staging dataset, so confirmation prevents accidental load.',
+        'This scans recent usage, estimates margin, and summarizes hosting activity. It is read-only and can take 10-30+ seconds against staging data.',
         style: AppTextStyles.body13(color: AppColors.textSecondary),
       ),
       actions: [
@@ -389,12 +389,12 @@ class _ManualRunPrompt extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'No metrics check yet',
+                'Run the first metrics check',
                 style: AppTextStyles.display20(color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               Text(
-                'Cost, activity, margin, and hosting rows are computed on demand. The first run is manual because it can scan recent usage.',
+                'Cost, activity, margin, and hosting rows load on demand because the check scans recent usage.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),
@@ -543,9 +543,9 @@ class _CostTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_cost_telemetry',
-            title: 'Cost by customer and use case',
+            title: 'Cost by operator and use case',
             subtitle:
-                'Total spend grouped by customer, location, staff member, workflow, and request type. Use the request-type filter when the table reaches its result limit.',
+                'Spend grouped by operator, location, staff member, workflow, and request type. Use the filter when the table reaches its result limit.',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
@@ -798,7 +798,7 @@ class _CostTelemetryTable extends StatelessWidget {
               Expanded(
                 flex: 4,
                 child: Text(
-                  'customer / location / staff / workflow',
+                  'operator / location / staff / workflow',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
               ),
@@ -1111,9 +1111,9 @@ class _OperatorsTab extends StatelessWidget {
         children: <Widget>[
           _SectionCard(
             keyName: 'admin_observability_section_dormancy',
-            title: 'Inactive customers',
+            title: 'Inactive operators',
             subtitle:
-                'Customers with no recent activity are flagged so support can follow up and background work can stay efficient.',
+                'Operators with no recent activity are flagged so support can follow up and background work can stay efficient.',
             child: envelope.dormancy.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_dormancy_empty',
@@ -1137,7 +1137,7 @@ class _OperatorsTab extends StatelessWidget {
             keyName: 'admin_observability_section_margin',
             title: 'Per-tier margin estimate',
             subtitle:
-                'Plan revenue minus recent cost. Customers below margin target appear in red.',
+                'Plan revenue minus recent cost. Operators below margin target appear in red.',
             child: envelope.margins.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_margin_empty',
@@ -1214,7 +1214,7 @@ class _DormancyRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Customer ID: ${entry.operatorId} - plan: '
+                  'Operator ID: ${entry.operatorId} - plan: '
                   '${entry.subscriptionTier ?? 'Unknown'}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
@@ -1278,7 +1278,7 @@ class _MarginRow extends StatelessWidget {
                   style: AppTextStyles.mono14(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Plan: ${entry.subscriptionTier} - customer ID: '
+                  'Plan: ${entry.subscriptionTier} - operator ID: '
                   '${entry.operatorId}',
                   style: AppTextStyles.mono10(color: AppColors.textMuted),
                 ),
@@ -1342,7 +1342,7 @@ class _CapEventsTab extends StatelessWidget {
             keyName: 'admin_observability_section_cap_events',
             title: 'Usage limit events',
             subtitle:
-                'Requests refused because a usage limit was reached. This helps explain when a customer has hit a monthly or per-request limit.',
+                'Requests refused because a usage limit was reached. Use this to explain when an operator hits a monthly or per-request limit.',
             child: envelope.capEvents.isEmpty
                 ? const _EmptyState(
                     keyName: 'admin_observability_cap_events_empty',

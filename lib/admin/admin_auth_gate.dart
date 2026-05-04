@@ -703,7 +703,7 @@ class _AdminSignInScreenState extends State<_AdminSignInScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _AdminBrandMark(subtitle: 'Operations Console'),
+                    const _AdminBrandMark(subtitle: 'Admin Console'),
                     const SizedBox(height: 28),
                     _AdminSignInCard(
                       key: const Key('admin_signin_card'),
@@ -1067,7 +1067,7 @@ class _AdminForbiddenScreen extends StatelessWidget {
                         'Signed in as ${session.email.isEmpty ? session.uid : session.email}, '
                         'but your account does not carry an admin role claim '
                         '(${kAdminConsoleRoles.join(' / ')}). The Forge & Flow '
-                        'Operations Console is internal F&F access only.',
+                        'Admin Console is internal F&F access only.',
                         style: AppTextStyles.body13(
                           color: AppColors.textSecondary,
                         ),

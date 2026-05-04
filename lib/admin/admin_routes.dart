@@ -131,8 +131,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/operators',
     icon: Icons.business_outlined,
     section: AdminRouteSection.operations,
-    subtitle:
-        'Create operator accounts, manage locations, and pause or restore access.',
+    subtitle: 'Add operators, manage locations, and pause access when needed.',
     builder: _buildOperators,
   ),
   AdminRoute(
@@ -141,8 +140,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/pricing',
     icon: Icons.tune_outlined,
     section: AdminRouteSection.ai,
-    subtitle:
-        'Set Forge & Flow plan templates and spending limits for each operator and location.',
+    subtitle: 'Review AI plans and set usage limits by operator and location.',
     builder: _buildPricing,
   ),
   AdminRoute(
@@ -151,7 +149,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/corpus',
     icon: Icons.menu_book_outlined,
     section: AdminRouteSection.ai,
-    subtitle: 'Review and publish the knowledge content the advisor uses.',
+    subtitle: 'Upload, review, publish, and restore advisor knowledge content.',
     builder: _buildCorpus,
   ),
   AdminRoute(
@@ -160,7 +158,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/integrations',
     icon: Icons.extension_outlined,
     section: AdminRouteSection.dev,
-    subtitle: 'Check connected services and rotate provider keys safely.',
+    subtitle: 'Check provider status and rotate service keys safely.',
     builder: _buildIntegrations,
   ),
   AdminRoute(
@@ -169,8 +167,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/health',
     icon: Icons.monitor_heart_outlined,
     section: AdminRouteSection.dev,
-    subtitle:
-        'Run a manual backend health check before investigating live issues.',
+    subtitle: 'Run a read-only system check before investigating live issues.',
     builder: _buildHealth,
   ),
   AdminRoute(
@@ -179,7 +176,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     path: '/feature-flags',
     icon: Icons.flag_outlined,
     section: AdminRouteSection.dev,
-    subtitle: 'Turn staged features on or off without a new deploy.',
+    subtitle: 'Control staged features without shipping a new build.',
     builder: _buildFeatureFlags,
   ),
   AdminRoute(
@@ -189,7 +186,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.bug_report_outlined,
     section: AdminRouteSection.dev,
     subtitle:
-        'Search recent customer requests and inspect support-safe details.',
+        'Search recent operator requests and inspect support-safe details.',
     builder: _buildDebugConsole,
   ),
   AdminRoute(
@@ -199,7 +196,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     icon: Icons.insights_outlined,
     section: AdminRouteSection.dev,
     subtitle:
-        'Review costs, usage limits, customer activity, graph health, and hosting signals.',
+        'Review cost, usage limits, operator activity, graph health, and hosting.',
     builder: _buildObservability,
   ),
 ];

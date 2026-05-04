@@ -26,7 +26,7 @@
 //     as the cross-surface convention; the proxy `/health` contract
 //     bans raw payloads from public health, and the same posture
 //     extends here so a less-privileged role cannot reveal
-//     customer-visible content.
+//     operator-visible content.
 //
 // The screen is performance-disciplined per
 // `docs/contracts/slice_runtime_acceptance_contract.md`:
@@ -318,13 +318,13 @@ class _DebugConsoleAdminScreenState extends State<DebugConsoleAdminScreen>
                     key: Key('admin_debug_console_stub_$_kGraphDebugTab'),
                     title: 'Graph help',
                     body:
-                        'Relationship troubleshooting will let support inspect an approved item, nearby relationships, the shortest approved path, and whether a relationship was found directly, suggested by the system, edited, or rejected.',
+                        'Use this to trace approved relationships, nearby matches, and why the system found, suggested, edited, or rejected a relationship.',
                   ),
                   const _StubTab(
                     key: Key('admin_debug_console_stub_$_kMfaDiagnosticsTab'),
                     title: 'Sign-in help',
                     body:
-                        'Sign-in support will show authenticator apps, pending removal requests, notification status, and account drift checks. Repair actions will use safe backend routes.',
+                        'Use this to review authenticator apps, pending removal requests, notifications, and account drift before using safe repair routes.',
                   ),
                 ],
               ),
@@ -354,7 +354,7 @@ class _Header extends StatelessWidget {
     return AdminPageHeader(
       title: 'Support logs',
       subtitle:
-          'Search recent customer requests, filter by outcome, and inspect support-safe details. Full message content stays protected unless the customer has opted in.',
+          'Search recent operator requests, filter by outcome, and inspect support-safe details. Full message content stays locked unless the operator has opted in.',
       compactBreakpoint: 640,
       trailing: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 320),
@@ -570,7 +570,7 @@ class _FilterBar extends StatelessWidget {
                 keyName: const Key('admin_debug_console_filter_operator'),
                 label: 'Operator',
                 value: filter.operatorId,
-                hint: 'Customer ID',
+                hint: 'Operator ID',
                 onChanged: (next) =>
                     onFilterChanged(filter.copyWith(operatorId: next)),
               ),
@@ -952,7 +952,7 @@ class _RequestRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  _MetaRow(label: 'Customer ID', value: entry.operatorId),
+                  _MetaRow(label: 'Operator ID', value: entry.operatorId),
                   _MetaRow(
                     label: 'Location ID',
                     value: entry.locationId ?? 'Unknown',
@@ -1104,8 +1104,8 @@ class _FullContentLockedBlock extends StatelessWidget {
               'Sign in as super_admin to debug payloads.'
         : !optInOn
         ? "This operator's full-content opt-in is OFF. Toggle "
-              '"$kDebugConsoleFullContentFlagName" on the Feature '
-              'Flags admin surface to reveal payloads.'
+              '"$kDebugConsoleFullContentFlagName" on Launch controls '
+              'to reveal payloads.'
         : 'Proxy did not project a full content payload for this '
               'request.';
     return Container(
@@ -1222,11 +1222,10 @@ class _EmptyState extends StatelessWidget {
               Text(
                 filterIsEmpty
                     ? 'The console fetches a bounded window of recent '
-                          'requests on demand to keep the page cheap. '
+                          'requests on demand to keep the page fast. '
                           'Press Refresh to load the latest page.'
                     : 'Adjust or clear the filter chips above. The '
-                          'launch surface fetches a bounded window per '
-                          'refresh to stay performance-disciplined.',
+                          'console fetches a bounded window on each refresh.',
                 style: AppTextStyles.body13(color: AppColors.textSecondary),
               ),
               const SizedBox(height: 14),

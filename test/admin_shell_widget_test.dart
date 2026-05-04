@@ -45,7 +45,7 @@ void main() {
     expect(find.text(superAdmin.email), findsOneWidget);
     // Brand wordmark from AppTextStyles.display20.
     expect(find.text('Forge & Flow'), findsOneWidget);
-    expect(find.text('Operations Console'), findsOneWidget);
+    expect(find.text('Admin Console'), findsOneWidget);
   });
 
   testWidgets('side nav lists every route in kAdminRoutes', (tester) async {

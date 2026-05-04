@@ -152,7 +152,7 @@ class _OperatorLocationAdminScreenState
             AdminPageHeader(
               title: 'Operators',
               subtitle:
-                  'Create operator accounts, manage locations, and pause or restore access when needed.',
+                  'Add operators, manage their locations, and pause access when needed.',
               trailing: FilledButton.icon(
                 key: const Key('admin_operators_new_button'),
                 onPressed: _openOnboardingDialog,
@@ -217,7 +217,7 @@ class _OperatorLocationAdminScreenState
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Select "New operator" to create the first account, primary location, and admin assignment.',
+                  'Use "New operator" to add the operator, primary location, and first admin user.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -715,7 +715,7 @@ class _OperatorDetail extends StatelessWidget {
                     runSpacing: 8,
                     children: [
                       Text(
-                        'Restaurant locations',
+                        'Locations',
                         style: AppTextStyles.mono15(
                           color: AppColors.textPrimary,
                           weight: FontWeight.w700,
@@ -788,7 +788,7 @@ class _LocationRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
             ),
             if (isPrimary)
-              _StatusPill(label: 'primary', color: AppColors.peacock),
+              _StatusPill(label: 'primary location', color: AppColors.peacock),
           ],
         ),
         const SizedBox(height: 2),
@@ -859,10 +859,10 @@ class _LocationActionWrap extends StatelessWidget {
             buttonKey: Key(
               'admin_location_make_primary_${location.locationId}',
             ),
-            label: 'Make primary',
+            label: 'Make primary location',
             icon: Icons.star_outline,
             tooltip: 'Make primary location',
-            minWidth: 128,
+            minWidth: 172,
             onPressed: onMakePrimary,
           ),
         _LocationActionButton(
@@ -1045,7 +1045,7 @@ class _OnboardOperatorDialogState extends State<_OnboardOperatorDialog> {
   final _adminEmail = TextEditingController();
   final _locationName = TextEditingController();
   String _locationTimezone = 'America/Toronto';
-  String _subscriptionTier = 'launch';
+  final String _subscriptionTier = 'launch';
   String _preferredCurrency = 'CAD';
   int _rolloverHour = 4;
 

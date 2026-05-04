@@ -214,7 +214,7 @@ class _FeatureFlagsAdminScreenState extends State<FeatureFlagsAdminScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'No staged feature controls are available yet. Add them during the release setup before using this page.',
+                  'Add staged feature controls during release setup before using this page.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -256,7 +256,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Turn staged features on or off without a deploy. Sensitive changes require typed confirmation and are always audited.',
+          'Turn staged features on or off. High-impact changes require typed confirmation and an audit record.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -283,7 +283,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View-only: changing launch controls requires platform admin access.',
+              'View only: platform admin access is required to change launch controls.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -534,7 +534,7 @@ class _DangerConfirmDialogState extends State<_DangerConfirmDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This control can affect production behavior, audit routing, secret rollout, or emergency shutoff. Type the exact key to continue:',
+              'This control can affect live behavior, audit routing, secret rollout, or emergency shutoff. Type the exact key to continue:',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 8),
@@ -613,8 +613,8 @@ String _friendlyFlagKind(String kind) {
 
 String _friendlyScope(String scope) {
   return switch (scope.toLowerCase()) {
-    'global' => 'All customers',
-    'operator' => 'Customer',
+    'global' => 'All operators',
+    'operator' => 'Operator',
     'location' => 'Location',
     _ => scope.replaceAll('_', ' '),
   };

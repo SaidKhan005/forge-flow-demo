@@ -158,7 +158,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
             const AdminPageHeader(
               title: 'Plans and limits',
               subtitle:
-                  'Set each operator\'s Forge & Flow plan and the spending limits that keep advisor usage predictable.',
+                  'Review each operator\'s Forge & Flow AI plan and the limits that keep advisor spend predictable.',
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -212,7 +212,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Create an operator first, then return here to choose a Forge & Flow plan and usage limits.',
+                  'Create an operator first, then return here to review the AI plan and usage limits.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -249,11 +249,11 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       builder: (_) => _ConfirmDialog(
         title: 'Apply ${template.displayName} template?',
         message:
-            'Sets the Forge & Flow plan to ${template.subscriptionTier} and '
-            'replaces ${template.caps.length} cap row'
+            'Sets the Forge & Flow AI plan to ${template.subscriptionTier} and '
+            'replaces ${template.caps.length} usage limit'
             '${template.caps.length == 1 ? '' : 's'} '
-            'on ${bundle.businessName}. Existing rows for the same '
-            'usage class will be overwritten; other rows are preserved.',
+            'on ${bundle.businessName}. Existing limits for the same '
+            'use case are overwritten; other limits are preserved.',
         confirmLabel: 'Apply',
       ),
     );
@@ -284,7 +284,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           idempotencyKey: key,
         ),
       );
-    }, successHint: 'Forge & Flow plan set to $newTier.');
+    }, successHint: 'Forge & Flow AI plan set to $newTier.');
   }
 
   Future<void> _onEditCap(PricingOperatorBundle bundle, UsageCapRow row) async {
@@ -403,7 +403,7 @@ class _OperatorList extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Forge & Flow plan: ${bundle.subscriptionTier}',
+                      'Forge & Flow AI plan: ${bundle.subscriptionTier}',
                       style: AppTextStyles.mono11(
                         color: AppColors.textSecondary,
                       ),
@@ -461,7 +461,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 AdminDetailRow(
-                  label: 'Forge & Flow plan',
+                  label: 'Forge & Flow AI plan',
                   value: bundle.subscriptionTier,
                 ),
                 AdminDetailRow(
@@ -475,7 +475,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
                   Text(
-                    'Plan templates',
+                    'Plan presets',
                     style: AppTextStyles.mono14(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
@@ -532,7 +532,7 @@ class _OperatorPricingDetail extends StatelessWidget {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Text(
-                      'No usage limits yet. Apply a plan template or add a limit individually.',
+                      'No usage limits yet. Start with a plan preset or add one limit.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),

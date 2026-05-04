@@ -149,7 +149,7 @@ class _AdminHeaderBar extends StatelessWidget {
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 Text(
-                  'Operations Console',
+                  'Admin Console',
                   overflow: TextOverflow.ellipsis,
                   style: AppTextStyles.mono8(color: AppColors.sunsetDark),
                 ),

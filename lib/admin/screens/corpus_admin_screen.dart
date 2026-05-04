@@ -482,7 +482,7 @@ class _VersionsTab extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Upload the first methodology file to create the advisor knowledge base.',
+                  'Upload a markdown file to create the first advisor knowledge version.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
                 if (editingEnabled) ...[
@@ -989,10 +989,10 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Choose the customer and location before applying '
+                          'Choose the operator and location before applying '
                           'relationship decisions. This keeps approvals '
-                          'attached to the right workspace for the rest of '
-                          'this session.',
+                          'attached to the right operator workspace for this '
+                          'session.',
                           style: AppTextStyles.body13(
                             color: AppColors.textSecondary,
                           ),
@@ -1013,7 +1013,7 @@ class _GraphCandidatesTabState extends State<_GraphCandidatesTab> {
                         foregroundColor: AppColors.backgroundSurface,
                       ),
                       icon: const Icon(Icons.swap_horiz, size: 16),
-                      label: const Text('Choose customer'),
+                      label: const Text('Choose operator'),
                     ),
                   ),
                 ],
@@ -1697,7 +1697,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Manage the advisor content your team can search. Upload new files, review changes, and restore earlier versions when needed.',
+          'Upload advisor knowledge, review changes, publish approved content, and restore earlier versions.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -2383,7 +2383,7 @@ Future<UploadCommand?> _defaultDemoPicker(BuildContext context) async {
         '## Daypart\n\n'
         'Daypart guidance lives alongside whole-day truth.\n\n'
         '## Operator review\n\n'
-        'Customers should review advisor content changes before publishing.\n',
+        'Operators should review advisor content changes before publishing.\n',
   );
   final fileNameController = TextEditingController(text: 'methodology_seed.md');
   final result = await showDialog<UploadCommand>(

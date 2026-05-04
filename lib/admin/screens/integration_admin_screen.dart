@@ -123,8 +123,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
       builder: (_) => _ConfirmDialog(
         title: 'Rotate ${kind.displayName} key?',
         message:
-            'A confirmation row will be written to the audit log. The new '
-            'secret value is shown once in a follow-up modal. After you close it, this screen only shows the hidden key preview.',
+            'This writes an audit record. The new secret is shown once after rotation; after you close it, only the hidden preview remains.',
         confirmLabel: 'Continue',
       ),
     );
@@ -261,7 +260,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Service keys',
+                  'Provider keys',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -285,7 +284,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Connected services',
+                  'Vendor connections',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -296,7 +295,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 6),
                     child: Text(
-                      'No connected providers are configured yet. This will appear in a future connected-services release.',
+                      'Vendor connection status will appear here after providers are configured.',
                       style: AppTextStyles.body13(
                         color: AppColors.textSecondary,
                       ),
@@ -313,7 +312,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Other services',
+                  'Platform services',
                   style: AppTextStyles.mono15(
                     color: AppColors.textPrimary,
                     weight: FontWeight.w700,
@@ -353,7 +352,7 @@ class _Header extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         Text(
-          'Rotate service keys safely and check whether connected providers are ready. Secret values are shown once, then hidden.',
+          'Check provider status and rotate service keys. Secret values show once, then stay hidden.',
           style: AppTextStyles.body13(color: AppColors.textSecondary),
         ),
       ],
@@ -380,7 +379,7 @@ class _ReadOnlyBanner extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Text(
-              'View only: rotating service keys requires platform admin access.',
+              'View only: platform admin access is required to rotate service keys.',
               style: AppTextStyles.mono11(color: AppColors.textSecondary),
             ),
           ),
@@ -713,7 +712,7 @@ class _OneTimeRevealDialogState extends State<_OneTimeRevealDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'This is the only time the secret value is shown. Store it now because the hidden grid cannot reveal it again.',
+              'This is the only time this secret is shown. Store it now; the console cannot reveal it again.',
               style: AppTextStyles.body13(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
