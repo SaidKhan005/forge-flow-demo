@@ -13,17 +13,23 @@ Open items below are the current remainder.
 
 ## P0 - Production1 Migration Apply Gap
 
-**1 migration pending Production1 apply**:
-`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+**2 migrations pending Production1 apply**:
+`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` and
+`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`.
 It restores read-only Debug Console request-log inspection by granting
 `forge_admin` explicit `SELECT` on `public.proxy_requests`. The migration
 was applied to staging and Browser Use verified on 2026-05-03; it was not
 part of the 27-file Production1 apply completed earlier the same day.
+The operator/location admin grant restores `forge_admin` DML on
+`public.operators`, `public.locations`, and `public.operator_admins`; it was
+applied and Browser Use verified on staging on 2026-05-04 after operator and
+location edit routes returned live 200s.
 
-**Action:** include this file in the next Production1 apply event under
+**Action:** include these files in the next Production1 apply event under
 `runbooks/phase_9_production1_migration_apply_runbook.md`. Until that apply
-and direct grant verification complete, Debug Console request-log inspection is
-staging-ready only and must not be described as production-ready.
+and direct grant verification complete, Debug Console request-log inspection
+and operator/location admin writes are staging-ready only and must not be
+described as production-ready.
 
 ## P1 - Live Admin Operational Gates
 

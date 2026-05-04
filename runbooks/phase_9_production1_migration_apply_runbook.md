@@ -6,8 +6,8 @@ Purpose: govern and record Production1 migration applies. The second
 migration batch covered 27 files spanning Phase 9 follow-ups, Phase 11A
 advisor surfaces, and the HARD-B/HARD-F/HARD-H hardening pack through cutoff
 `202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`; it was
-applied 2026-05-03. The current one-file follow-up cutoff is
-`202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`. This
+applied 2026-05-03. The current follow-up cutoff is
+`202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`. This
 runbook must be reviewed before any Production1 mutation. The first batch
 (Phase 9.0 Sigma slices b-k plus auth/recovery patches) was applied
 2026-04-29. See the Apply History section for results.
@@ -49,10 +49,11 @@ In scope (27 migrations applied 2026-05-03, lex order):
 - `db/migrations/202605021800_hardening_auth_login_attempts_index_rekey.sql`
 - `db/migrations/202605021900_phase_11A_3a_corpus_versions_seed_existing_chunks.sql`
 
-Pending follow-up scope (1 migration; staging applied/verified 2026-05-03,
+Pending follow-up scope (2 migrations; staging applied/verified,
 Production1 pending):
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+- `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
 
 Out of scope:
 
@@ -61,18 +62,23 @@ Out of scope:
 - Operator data import.
 - Any migration outside the cutoff range above (anything with a lex prefix
   earlier than `202604280014` is already in production from the first batch;
-  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
-  belongs to the next follow-up batch; anything later than `202605031430`
+  the two pending follow-up migrations belong to the next follow-up batch;
+  anything later than `202605041930`
   belongs to a future apply event and is gated by
   `tool/migration_cutoff_lint.dart`).
 
-Current known post-cutoff staging addition:
+Current known post-cutoff staging additions:
 
 - `db/migrations/202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
   restores read-only Debug Console request-log inspection for `forge_admin`.
   It is applied/verified on staging, was not part of the 27-file Production1
   apply, and belongs to the next Production1 migration batch unless superseded
   by later staging additions.
+- `db/migrations/202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
+  restores `forge_admin` DML for operator/location admin-console writes. It is
+  applied/verified on staging from 2026-05-04 live-admin E2E evidence, was not
+  part of the 27-file Production1 apply, and belongs to the next Production1
+  migration batch unless superseded by later staging additions.
 
 Migration drift automation:
 
@@ -135,6 +141,7 @@ Run in this exact lex order:
 Current pending follow-up order:
 
 1. `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
+2. `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
 
 Dependency notes:
 
@@ -487,18 +494,22 @@ until the post-tuning monitor window is clean.
   `build/phase_9_production1_apply/2026-05-03_second_batch/` and intentionally
   stay uncommitted.
 
-### Next follow-up - pending (cutoff `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`)
+### Next follow-up - pending (cutoff `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`)
 
 - `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` is
   applied and Browser Use verified on staging. Apply it to Production1 under
   the Live-Mutation Gate before calling Debug Console request-log inspection
   production-ready.
-- One-shot apply plan once approved: confirm staging parity for the same file,
+- `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` is
+  applied and Browser Use verified on staging. Apply it to Production1 under
+  the Live-Mutation Gate before calling operator/location admin writes
+  production-ready.
+- One-shot apply plan once approved: confirm staging parity for the same files,
   confirm fresh backup/restore point, run analyzer/lints/focused tests, apply
-  the one file to Production1, verify the `forge_admin` `proxy_requests`
-  `SELECT` privilege directly, run RLS lint, update this history and the
-  production cutoff docs. Do not perform production runtime setup as part of
-  this database apply.
+  the two files to Production1, verify the `forge_admin` `proxy_requests`
+  `SELECT` privilege plus operator/location/admin-grant DML privileges
+  directly, run RLS lint, update this history and the production cutoff docs.
+  Do not perform production runtime setup as part of this database apply.
 
 ## Apply Report Template
 

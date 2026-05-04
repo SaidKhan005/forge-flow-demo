@@ -65,10 +65,13 @@ Do not re-open stale findings unless the repo regresses:
 - The first and second Production1 migration apply batches are no longer
   queued. Production1 is current through `202605021900`. The
   `202605031430` Debug Console request-log grant is applied/verified on
-  staging and is the only migration currently pending Production1; use the
-  same runbook/drift scanner pattern for that follow-up, and do not mark the
-  Production1 Debug Console request-log path ready until the grant is directly
-  verified there.
+  staging and pending Production1; use the same runbook/drift scanner pattern
+  for that follow-up, and do not mark the Production1 Debug Console
+  request-log path ready until the grant is directly verified there. Staging
+  live-admin E2E on 2026-05-04 also applied and verified
+  `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql` for
+  operator/location admin writes; those writes stay staging-ready only until
+  the grant is applied and verified on Production1.
 
 ## Remaining Live-Closeout Gates
 

@@ -33,7 +33,11 @@ Routing map only. Slice scopes live in their phase docs.
   staging-only first; Production1 unfreeze becomes a parallel critical
   path before V1 launch. Baseline:
   `docs/phases/phase_production_cutover/production1_staging_parity_baseline_2026-05-03.md`.
-  Pending Production1 apply: `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`.
+  Pending Production1 apply:
+  `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql` and
+  `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`.
+  The latter was applied and Browser Use verified on staging on 2026-05-04
+  after live-admin E2E found `forge_admin` lacked operator/location DML.
 - **Staging runtime/perf carry-forward** (2026-05-03):
   `docs/_execution/2026-05-03_runtime_acceptance_and_perf_carry_forward.md`;
   durable rules in `docs/contracts/slice_runtime_acceptance_contract.md`.

@@ -7,7 +7,7 @@ Architectural index of `db/migrations/` for the knowledge graph.
 The `.sql` files are not extension-supported by graphify; this
 summary stands in for them so the graph captures migration shape.
 
-Migration count: **60**
+Migration count: **66**
 
 ## `202604250000_advisor_roles.sql`
 
@@ -1566,8 +1566,8 @@ Migration count: **60**
   Re-applying this migration is a no-op (`on conflict do nothing`
   for catalog rows, `do $$` guards on role grants).
 
-  * Live apply status: applied and verified on staging + Production1 on
-  2026-05-03 as part of the second Production1 batch.
+  * No live database mutation. Live apply on staging + Production1
+  is queued under the Phase 9 live-mutation gate.
 
 ## `202604290000_phase_9_b41_service_principal_issue_permission.sql`
 
@@ -1584,9 +1584,10 @@ Migration count: **60**
   replaying the foundation migration.
 
   Live apply note:
-  * Applied and verified on staging + Production1 on 2026-05-03 as part of
-  the second Production1 batch. Runtime/live issuance evidence remains before
-  Phase 12 depends on service-principal JWT issuance in live environments.
+  * Phase 9 closeout evidence only covers staging + Production1 through
+  `202604280013`. Apply this additive seed under a fresh live-mutation
+  gate before Phase 12 depends on service-principal JWT issuance in live
+  environments.
 
 ## `202604290100_phase_11A_1_operators_suspended_at.sql`
 
@@ -1972,9 +1973,9 @@ Migration count: **60**
   shape post-migration.
 
   Live apply status:
-  * Applied and verified on staging + Production1 on 2026-05-03 as part of
-  the second Production1 batch. The migration drops existing policies before
-  recreating them so partial/replay applies are safe.
+  * Will land on staging + Production1 alongside the rest of the
+  11A.3b slice. The migration is guarded by `create table if not
+  exists` + idempotent GRANT/REVOKE so a re-run is a no-op.
 
 ## `202605020001_phase_11A_4b_gemini_provider_kind.sql`
 
@@ -2397,6 +2398,75 @@ Migration count: **60**
   "No corpus versions yet" even though retrieval data exists. This
   one-time seed creates a baseline ledger row only for that state.
 
+## `202605030000_phase_9_5_0_leaderboard_schema_rls.sql`
+
+- **Applied:** 2026-05-03 00:00
+- **Title:** phase 9 5 0 leaderboard schema rls
+- **Description:**
+
+  Phase 9.5.0 — El Podio leaderboard schema + per-tenant RLS.
+
+  Backend skeleton for the El Podio learning leaderboard. The phase 9.5
+  plan replaces the demo-only `el_podio_demo_data.dart` consumer with a
+  real authenticated multi-user board sourced from durable Postgres
+  truth. UX (operator/staff-facing leaderboard surfaces) lands in the
+  9.5.UX slice; this slice owns ONLY the table + RLS posture + thin
+  repository skeleton so 9.5.x consumers have a stable shape to bind
+  against.
+
+  Hard rules carried verbatim from CLAUDE.md (Authority Order item 5):
+
+  1. **RLS-Ready Schema (CLAUDE.md).** The fact table includes
+  `(operator_id, location_id)` from creation; single-location
+  operators run with the operator's `primary_location_id` injected
+  as the default `location_id`. Scaffolding is NOT retrofitted
+  later.
+
+  2. **OperatorScopedRepository is the primary defense; RLS is the
+  backup.** This migration ships the secondary defense. The
+  repository (lib/infrastructure/persistence/postgres/repositories/
+  leaderboard_score_repository.dart) carries the SET LOCAL ordering
+  and the tenant-scoped INSERT/SELECT shape so a missing or
+  malformed RLS policy cannot leak rows even before the policy is
+  evaluated.
+
+  3. **Wrapper-only RLS posture (Phase 9.0Σ.b item 4).** Every policy
+  body calls the locked
+  `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions
+  (`app_current_operator()`, `app_current_location()`,
+  `app_current_actor_user()`). No bare
+  `current_setting('app.<name>', true)::uuid` reads — the
+  `tool/rls_policy_lint.dart` rule rejects them.
+
+  4. **Tenant-leading B-tree indexes (CLAUDE.md / 9.0Σ.b item 4).**
+  Every B-tree index leads with `operator_id` (or `(operator_id,
+  location_id)`) so the planner can fold the per-tenant policy
+  into the index probe. CI lint enforces.
+
+  5. **Time guardrails (CLAUDE.md, phase_7_55_time_boundary_contract).**
+  `occurred_at` is `timestamptz` (UTC source-truth instant);
+  `business_date` is a denormalized `date` computed at write from
+  the operator's location timezone + `business_day_rollover_hour`.
+  The repository derives `business_date` from the same instant so
+  the DB does not need to read `locations` in the hot path; a
+  CHECK constraint guards against malformed dates (1900-01-01 or
+  later) without recomputing the projection in SQL.
+
+  6. **Append-only fact-table grants.** `service_role` and
+  `forge_admin` get INSERT and SELECT on `leaderboard_scores`;
+  UPDATE/DELETE are explicitly REVOKEd. Score events are
+  immutable history — re-ranking is a read-side projection over
+  the append log, not a row-level mutation. Retention sweeps are
+  a Phase 9.5.x follow-up (the Operations El Podio phase will
+  decide retention windows by score_event_type).
+
+  Live apply status:
+  * NOT YET APPLIED. The Phase 9.5 launch lane will apply this on
+  staging + Production1 once 9.5.UX has shipped enough surface to
+  justify a board-level migration apply window. The migration is
+  idempotent (`if not exists` on table + indexes; `drop policy if
+  exists` before `create policy`) so re-running it is safe.
+
 ## `202605031430_phase_11A_5_debug_proxy_requests_forge_admin_grant.sql`
 
 - **Applied:** 2026-05-03 14:30
@@ -2412,8 +2482,274 @@ Migration count: **60**
   could not SELECT from public.proxy_requests after the Phase 9.0Sigma.l RLS
   hardening policy flip.
 
-  Live apply status:
-  * Applied and Browser Use verified on staging on 2026-05-03.
-  * Not applied to Production1 in the 2026-05-03 second batch; this is the
-  current one-file pending Production1 migration batch unless superseded by
-  later staging additions.
+## `202605040000_phase_8_0_integration_framework.sql`
+
+- **Applied:** 2026-05-04 00:00
+- **Title:** phase 8 0 integration framework
+- **Description:**
+
+  Phase 8.0 — Inbound integration framework schema (V1 lean cut 2).
+
+  The framework slice for Phase 8 / 8R / 8.S. Adds the per-vendor
+  credential storage, connection state, watermark, sync log, webhook
+  idempotency + dead-letter, demo-mode state, and raw-payload
+  retention pattern. The first concrete vendor adapter (8.LSK,
+  8R.LB, 8.S.QBT) plugs in via subsequent slices.
+
+  Hard rules carried verbatim from CLAUDE.md / phase docs:
+
+  1. **HP #1 transport-only.** No business-logic table is touched
+  here. We add a single `raw_payload JSONB` column to existing
+  canonical fact tables (sales / covers / punches /
+  reservations) and the new framework tables. No formula, no
+  read-service contract.
+
+  2. **HP #4 RLS-Ready Schema.** Every operator-scoped fact table
+  added here carries `(operator_id, location_id)` from creation.
+  Operator-leading B-tree indexes drive planner pushdown
+  (CLAUDE.md / 9.0Σ.b item 4); CI lint enforces.
+
+  3. **HP #7 server-side secrets.** `vendor_credentials` stores
+  the access/refresh-token envelope encrypted with `pgcrypto`
+  (`pgp_sym_encrypt`/`pgp_sym_decrypt`) using the symmetric key
+  stored in Cloud Run env. Production-grade KMS rollout is a
+  separate Production1 hardening lane, not part of Phase 8.0
+  V1 lean cut 2. Plaintext tokens never appear in the column or
+  in any read path; the Flutter clients never see them.
+
+  4. **Wrapper-only RLS posture (Phase 9.0Σ.b item 4).** Every
+  policy body calls the locked `STABLE LEAKPROOF PARALLEL SAFE`
+  wrappers (`app_current_operator`, `app_current_location`).
+
+  5. **Time guardrails (CLAUDE.md / 7.55 Rule 11).** UTC instants
+  are stored as `TIMESTAMPTZ`; denormalized `business_date`
+  `DATE` columns are computed at write from `location.timezone`
+  + `location.business_day_rollover_hour` via the IANA converter
+  in Dart. `TIMESTAMP WITHOUT TIME ZONE` is banned.
+
+  6. **3-state machine for `connector_connection.status`.** V1
+  lean cut: `connected` / `disconnected` / `error`. `connecting`
+  and `degraded` are explicit non-goals.
+
+  7. **V1 lean cut 2 (locked 2026-05-03,
+  `memory/project_v1_lean_cut_2_2026_05_03.md`).** No KMS
+  provider, no webhook signing-key rotation UI, no
+  `parse_warnings`/`parse_partial` columns, no per-(operator,
+  vendor) advisory lock on the OAuth cron, no 3-strike
+  `email_outbox` emit (cron writes audit_logs + flips status to
+  `error`), no SIGTERM graceful drain handler, no DLQ tile
+  surfaced in observability, single `raw_payload` JSONB column
+  with no per-month partitioning, no fixed-second
+  test-connection SLA. The `disconnect_reason` enum carries
+  only the four reasons that have a real-life trigger at V1.
+
+  8. **Idempotent migration.** `if not exists` on every CREATE,
+  `drop policy if exists` before `create policy`.
+
+## `202605040100_phase_9_8_tos_versions.sql`
+
+- **Applied:** 2026-05-04 01:00
+- **Title:** phase 9 8 tos versions
+- **Description:**
+
+  Phase 9.8 — Inbound-vendor T&Cs schema (minimum two tables).
+
+  Backs the click-through flow specified in
+  `docs/phases/phase_9_8/phase_9_8_inbound_vendor_tcs_draft.md`. The
+  draft asks for two tables:
+
+  * `tos_versions`     — versioned legal text the operator agrees to.
+  Scope-aware so the universal click-through
+  (`inbound_vendor_universal`) and the
+  per-vendor click-throughs
+  (`inbound_vendor_<vendor_id>`) live in the
+  same table.
+  * `tos_acceptances`  — append-only acceptance log keyed by
+  (operator_id, user_id, version_id) with the
+  IP + UA captured at the moment of click.
+
+  This slice (`11W.0` shell) only ships the schema so the click-through
+  screen has a write target. The T&Cs versioning admin UI lives behind
+  a later Phase 11A slice; this migration does not back-fill any
+  versions and does not add admin grants beyond the standard
+  `forge_admin` insert/select.
+
+  Existing `public.tncs_acceptances` (Phase 9.0 auth foundation) stays
+  in place — it tracks the legacy app-T&Cs acceptance shape (text
+  version string only). The Phase 9.8 inbound-vendor flow needs the
+  richer scope + version_id model the draft specifies, so we add a new
+  table rather than evolve the legacy one. A future Phase 9.8 slice
+  will reconcile the two; for `11W.0` we only need write targets.
+
+  Hard rules carried verbatim from CLAUDE.md (Authority Order item 5):
+
+  1. **RLS-Ready Schema (CLAUDE.md).** Operator-scoped fact tables
+  include `(operator_id, location_id)` from creation. T&Cs
+  acceptances are operator-scoped (no location dimension — T&Cs
+  acceptance is operator-wide), so `(operator_id)` leads.
+  `tos_versions` is corpus-scoped (operator-agnostic legal text)
+  and stays unscoped at the row level — it carries no
+  `operator_id` column; reads are public to authenticated roles.
+
+  2. **OperatorScopedRepository is the primary defense; RLS is the
+  backup.** This migration ships the secondary defense via
+  wrapper-only RLS policies on `tos_acceptances`.
+
+  3. **Wrapper-only RLS posture (Phase 9.0Σ.b item 4).** Every policy
+  body calls the locked
+  `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions
+  (`app_current_operator()`, `app_current_actor_user()`).
+
+  4. **Tenant-leading B-tree indexes (CLAUDE.md / 9.0Σ.b item 4).**
+  Every B-tree index on `tos_acceptances` leads with
+  `operator_id` so the planner can fold the per-tenant policy
+  into the index probe.
+
+  5. **Append-only fact-table grants.** `service_role` and
+  `forge_admin` get INSERT and SELECT on `tos_acceptances`;
+  UPDATE/DELETE are explicitly REVOKEd. Acceptance is a legal
+  record — it must never be silently mutated. Corrections land
+  as a fresh acceptance row referencing a superseding version.
+
+## `202605040200_phase_9_8_email_provider.sql`
+
+- **Applied:** 2026-05-04 02:00
+- **Title:** phase 9 8 email provider
+- **Description:**
+
+  Phase 9.8 — Email provider durable queue + delivery event log.
+
+  Owns three tables and one pg_cron job:
+
+  * `public.email_credentials` — single-row, F&F-platform-wide
+  SendGrid API key. The plaintext is encrypted at rest with
+  pgcrypto envelope on staging; production swaps in Cloud KMS
+  when 8.0's KMS rollout lands. Mirrors the
+  `provider_credentials` pattern (Phase 11A.4) but keeps the
+  SendGrid key in its own table because the rotation contract is
+  identical and the F&F platform-wide scope rules out the
+  operator-scoped tables.
+
+  * `public.email_outbox` — durable transactional queue. Producers
+  enqueue rows in the same transaction as the business write
+  (operator invite, password reset, vendor sync alert, etc.).
+  The `email_outbox_dispatcher` (lib/services/email) drains
+  pending rows on a 1-minute cadence, advances the status state
+  machine, and stamps `provider_message_id` on success.
+
+  * `public.email_event` — webhook delivery log. SendGrid event
+  webhooks (delivered, opened, clicked, bounced, complaint,
+  unsubscribe) land here so the admin "Test connection" flow
+  can confirm a test email actually reached the recipient and
+  so the dispatcher's 3-strike alert path has audit context.
+
+  Hard rules carried from CLAUDE.md and the slice doc:
+  1. RLS performance discipline — operator-scoped fact-table
+  indexes lead with `(operator_id, …)`. `email_outbox` carries
+  a partial index keyed on `operator_id` for operator-scoped
+  rows (`operator_id IS NOT NULL`) and a system-only index for
+  F&F-internal rows (`operator_id IS NULL`).
+  2. RLS uses the wrapper functions from 9.0Σ.b
+  (`public.app_current_operator()`); bare `current_setting()`
+  is forbidden by the lint in `tool/rls_policy_lint.dart`.
+  3. `TIMESTAMPTZ` everywhere; `TIMESTAMP WITHOUT TIME ZONE` is
+  banned in operator-scoped tables.
+  4. Per Hard Promise #7 — server-side keys only — the plaintext
+  column is `bytea` and stores `pgp_sym_encrypt(plaintext,
+  <env-injected key>)`. The migration does NOT hard-code the
+  symmetric key; the proxy bootstrap reads it from
+  `EMAIL_CREDENTIALS_ENVELOPE_KEY` (Cloud Run env / Secret
+  Manager) at runtime and decrypts on read. Production swaps
+  in Cloud KMS when 8.0's KMS rollout lands.
+  5. The pg_cron tick is NOTIFY-only (matches the rollups pattern
+  from `phase_9_0sigma_k_pg_cron_jobs.sql`). The Dart
+  dispatcher subscribes to `email_outbox_tick` and drains the
+  queue; the SQL function never claims rows itself.
+
+  Live apply: lands on staging first; production cutover waits for
+  DNS records on `mail.forgeflow.app` (DKIM, SPF, DMARC) and a
+  production SendGrid key.
+
+## `202605040300_phase_10a_2_dead_letter.sql`
+
+- **Applied:** 2026-05-04 03:00
+- **Title:** phase 10a 2 dead letter
+- **Description:**
+
+  Phase 10a.2 — event_outbox dead-letter table.
+
+  Closes the only "queue can grow unbounded" gap in the Phase 10a
+  bridge worker pipeline. Without a dead-letter, a row whose publish
+  to Cloud Pub/Sub fails permanently (corrupt payload, gone topic,
+  subscriber-side schema drift) is recycled forever by the lease /
+  attempt_count retry path: the bridge's claim loop picks the row
+  up every `claimReclaimAfter` window, the publish fails again,
+  `attempt_count` increments, repeat. Q22 / item 33 in
+  `phase_9_scalability_decisions_2026-04-27.md` calls this out
+  explicitly — the contract requires a tunable attempt cap that
+  moves runaway rows OUT of the live queue so the live queue stays
+  drainable while operators triage the failures.
+
+  Authority:
+  * `docs/phases/phase_10a/phase_10a_shared_state_v1_plan.md` —
+  Scope "Dead-letter" subsection.
+  * `docs/contracts/event_outbox_contract.md` — "Worker
+  Responsibilities" `Dead-letter rows whose attempt_count
+  exceeds the tunable cap (Phase 10a defines the value;
+  expected ≥ 5) by writing the row to an
+  `event_outbox_dead_letter` table and removing it from
+  `event_outbox`. Dead-letter handling is alarmed.`
+
+  Hard rules carried from CLAUDE.md and the 4-27 lock:
+
+  1. RLS performance discipline — the dead-letter index leads with
+  `(operator_id, dead_lettered_at desc)` so the admin tile's
+  "depth + last 10 rows for this operator" query folds into the
+  tenant-leading index probe. The `tool/index_leading_column_lint`
+  gate enforces this on every B-tree index that touches the
+  table.
+  2. RLS uses the wrapper functions from 9.0Σ.b
+  (`public.app_current_operator()`); bare `current_setting()`
+  is forbidden by the lint in `tool/rls_policy_lint.dart`.
+  3. `TIMESTAMPTZ` everywhere; `TIMESTAMP WITHOUT TIME ZONE` is
+  banned in operator-scoped tables.
+  4. The MOVE that drops a row from `event_outbox` and inserts the
+  row into `event_outbox_dead_letter` MUST be transactional —
+  either both writes commit or neither does. The bridge worker
+  runs the move via a single `WITH dead AS (DELETE … RETURNING *)
+  INSERT … SELECT …` CTE inside a `runInTenantContext` so RLS
+  admits both writes and the operator's tenant transaction
+  bounds the atomicity guarantee.
+  5. `pg_partman` partitions the table by `dead_lettered_at_month`
+  with 90-day retention. Rows whose dead-letter window has
+  passed are dropped via `DETACH` + `DROP` partition-cadence;
+  operators triage live rows during the 90-day window.
+
+  Phase 10a.2 worker contract (locked here so the bridge worker has
+  a stable schema):
+  * The bridge claim loop partitions claimed rows by `attempt_count
+  > EVENT_OUTBOX_DLQ_CAP`. Rows past the cap MOVE here in a
+  single transaction; the live publish loop continues unchanged.
+  * `dead_lettered_at` is server-set at MOVE time; the bridge
+  does NOT pass a producer-supplied timestamp.
+  * `last_error` carries the most-recent failure string for
+  operator triage. `dead_letter_reason` carries a short
+  machine-readable code (`'attempt_cap_exceeded'`, `'forced_dlq'`)
+  so the admin tile can group by reason without parsing
+  free-form error text.
+  * No auto-replay job at V1 — operators trigger replay manually
+  after triage. Replay UX is a post-V1 lane.
+
+## `202605041930_phase_11A_operator_location_admin_forge_admin_grants.sql`
+
+- **Applied:** 2026-05-04 19:30
+- **Title:** phase 11A operator location admin forge admin grants
+- **Description:**
+
+  Phase 11A.1 follow-up -- operator/location admin runtime grants.
+
+  The F&F admin console runs operator, location, and operator-admin grant
+  writes through TenantTransactionWrapper.runAsSystem, which sets the
+  transaction role to forge_admin. BYPASSRLS skips tenant row policies, but it
+  does not grant table privileges, so live staging mutations fail before the
+  repository SQL can run unless forge_admin has explicit DML on these tables.
