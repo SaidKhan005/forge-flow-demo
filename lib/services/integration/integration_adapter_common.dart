@@ -14,10 +14,51 @@
 /// Stable category identifiers. Mirrors `connector_connection.category`.
 enum IntegrationCategory { pos, labor, reservation }
 
+/// Vendor adapter lifecycle — canonical truth on
+/// `VendorCapabilityProfile.lifecycle`. Drives the vendor picker
+/// chrome (per `docs/phases/phase_8/vendor_connections_admin_surface.md`)
+/// and the per-slice exit gate from `docs/contracts/vendor_adapter_slice_contract.md`.
+///
+/// The engineering slice (1-3 step doctrine) ships every adapter at
+/// [VendorLifecycle.documented]. `*.live.sandbox` slices promote to
+/// [VendorLifecycle.sandboxVerified]; `*.live.prod` slices promote to
+/// [VendorLifecycle.productionCredentialed]; first operator connect
+/// auto-promotes to [VendorLifecycle.liveWithOperators].
+enum VendorLifecycle {
+  /// Adapter shipped + fixture-tested + doc pack populated; partnership
+  /// not yet started OR in progress.
+  ///
+  /// Picker chrome: vendor row visible with "Coming soon" pill;
+  /// Connect button hidden. Operator can submit a "Notify me when
+  /// ready" capture via `vendor_lifecycle_notification`.
+  documented,
+
+  /// `*.live.sandbox` slice has run against the vendor sandbox; field
+  /// mapping confirmed.
+  ///
+  /// Picker chrome: "Coming soon — sandbox verified" pill (slate-grey,
+  /// dashed underline); Connect button hidden. "Notify me" capture
+  /// remains available.
+  sandboxVerified,
+
+  /// `*.live.prod` slice has run against production credentials issued
+  /// by partnership; commercial lane cleared.
+  ///
+  /// Picker chrome: no pill; full-color logo. Connect button live.
+  productionCredentialed,
+
+  /// Auto-promoted on first operator connect; unchanged engineering
+  /// state from [VendorLifecycle.productionCredentialed].
+  ///
+  /// Picker chrome: same as `productionCredentialed`. F&F Ops Console
+  /// adds a `"<N> operators connected"` chip.
+  liveWithOperators,
+}
+
 /// Vendor capability profile — declares what an adapter supports so
 /// the framework can drive the right connect-flow UX, webhook
 /// auto-registration, multi-location grant pattern, covers degrade,
-/// and partnership gating.
+/// and lifecycle gating.
 class VendorCapabilityProfile {
   const VendorCapabilityProfile({
     required this.vendorId,
@@ -27,7 +68,7 @@ class VendorCapabilityProfile {
     required this.grantScope,
     required this.webhookSupport,
     required this.coversFieldExposed,
-    required this.partnershipGated,
+    required this.lifecycle,
     this.modules = const <String>[],
     this.timestampPolicyDocId,
   });
@@ -58,10 +99,12 @@ class VendorCapabilityProfile {
   /// path.
   final bool coversFieldExposed;
 
-  /// Does the vendor require a partnership-program approval before
-  /// sandbox / production credentials can be issued? Toast / Aloha /
-  /// Oracle MICROS do; Square / Lightspeed-self-serve do not.
-  final bool partnershipGated;
+  /// Adapter lifecycle stage — set to [VendorLifecycle.documented] at
+  /// engineering-slice ship; promoted by `*.live.sandbox` /
+  /// `*.live.prod` slices per `docs/contracts/vendor_adapter_slice_contract.md`.
+  /// Drives picker chrome + Connect-button activation per
+  /// `docs/phases/phase_8/vendor_connections_admin_surface.md`.
+  final VendorLifecycle lifecycle;
 
   /// Pre-card module disambiguation list. Empty for most vendors;
   /// non-empty for ADP (Workforce Now / Workforce Manager / RUN) and

@@ -11,6 +11,12 @@
 // facing surface needs. Server-side rotation knobs live in the
 // gateway / proxy and never reach this layer.
 
+import '../../../services/integration/integration_adapter_common.dart'
+    show VendorLifecycle;
+
+export '../../../services/integration/integration_adapter_common.dart'
+    show VendorLifecycle;
+
 /// Stable category identifier matching `connector_connection.category`.
 enum VendorCategory { pos, labor, reservation }
 
@@ -52,14 +58,17 @@ class VendorConnectionRow {
   final int? errorsLast24h;
 }
 
-/// One vendor entry in the picker dialog.
+/// One vendor entry in the picker dialog. The picker renders ALL
+/// vendors regardless of [lifecycle]; chrome and Connect-button
+/// activation flow from the lifecycle stage per
+/// `docs/phases/phase_8/vendor_connections_admin_surface.md`.
 class VendorPickerEntry {
   const VendorPickerEntry({
     required this.vendorId,
     required this.displayName,
     required this.category,
     required this.authMode,
-    required this.partnershipGated,
+    required this.lifecycle,
     required this.coversFieldExposed,
     required this.requiresModule,
     this.modules = const <String>[],
@@ -69,7 +78,13 @@ class VendorPickerEntry {
   final String displayName;
   final VendorCategory category;
   final VendorAuthMode authMode;
-  final bool partnershipGated;
+
+  /// Vendor adapter lifecycle. Drives picker chrome
+  /// ("Coming soon" pill) + Connect-button activation. Mirrors
+  /// `VendorCapabilityProfile.lifecycle` from
+  /// `lib/services/integration/integration_adapter_common.dart`.
+  final VendorLifecycle lifecycle;
+
   final bool coversFieldExposed;
   final bool requiresModule;
   final List<String> modules;

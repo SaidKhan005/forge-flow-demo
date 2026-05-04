@@ -504,7 +504,7 @@ class _StubPosAdapter implements PosAdapter {
         grantScope: VendorGrantScope.perLocation,
         webhookSupport: VendorWebhookSupport.autoRegister,
         coversFieldExposed: true,
-        partnershipGated: false,
+        lifecycle: VendorLifecycle.documented,
       );
 
   HandleWebhookResult handleResult = const HandleWebhookResult(
