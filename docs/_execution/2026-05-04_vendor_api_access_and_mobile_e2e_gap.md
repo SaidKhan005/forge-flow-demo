@@ -336,6 +336,9 @@ Use two prompts after the 20 Wave B lanes complete.
 Prompt 1: `8.integration-mobile-proof`
 
 - Purpose: fixture/mobile E2E proof.
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
+  limited to fixtures, test harnesses, and evidence/docs.
 - Runs before live vendor accounts are required.
 - Audits the 20 adapter outputs, registry merge state, doc packs, and tests.
 - Forms or hardens realistic contract fixtures for one complete trio first:
@@ -344,10 +347,14 @@ Prompt 1: `8.integration-mobile-proof`
   models, and mobile/business logic.
 - Blocks Phase 8 / 8R / 8.S product-complete acceptance until evidence proves
   the app spine.
+- If the proof finds a product gap, record the failure and create a follow-up
+  slice instead of fixing it in this prompt.
 
 Prompt 2: `8.live.connected-device-smoke`
 
 - Purpose: live proof after full setup.
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior.
 - Runs only when the connected device/emulator, app flavor/environment,
   approved secret path, vendor-location mapping, and at least one live-ready
   POS + reservation + labor/scheduling trio are available.
@@ -357,6 +364,7 @@ Prompt 2: `8.live.connected-device-smoke`
   prompt.
 - Does not post payments, tenders, orders, shifts, or reservations unless the
   operator explicitly approves the mutation.
+- Live findings become bounded follow-up slices, not same-prompt fixes.
 
 ## Current Verdict
 

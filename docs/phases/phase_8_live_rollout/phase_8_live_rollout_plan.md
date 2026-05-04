@@ -34,6 +34,10 @@ the 20 Wave B lanes and adapter registry merge. This gate does not require live
 vendor accounts. It uses realistic POS + reservation + labor fixtures through
 the real adapters, canonical facts, and mobile/business read paths to prove:
 
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
+  limited to fixtures, test harnesses, and evidence/docs. If a product gap is
+  found, record it and create a follow-up slice instead of fixing it here.
 - Shift, baseline/benchmark, DemandForecastContext, SchedulePlan, Variance,
   History, and Learn respond to vendor facts.
 - Missing fields produce honest fallback/unavailable states, not phantom zeros.
@@ -57,6 +61,9 @@ Preconditions:
 
 Scope:
 
+- Proof-only rule: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Live findings become
+  bounded follow-up slices, not same-prompt fixes.
 - Start with the smallest complete trio, not all 17 vendors.
 - Prove connect -> test connection -> bounded backfill -> poll/resume ->
   canonical facts -> mobile UI on the connected device.

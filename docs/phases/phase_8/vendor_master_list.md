@@ -214,6 +214,12 @@ Lifecycle column at slice close = `documented` for all. Each slice ships adapter
 
 Run immediately after the 20 Wave B lanes and adapter registry merge.
 
+This is a proof-only lane. Do not change app logic, business logic, mobile UI,
+adapter behavior, schema, migrations, or cloud/runtime behavior. Allowed changes
+are limited to fixtures, test harnesses, and evidence/docs. If the proof finds a
+product gap, record the failure and create a follow-up slice instead of fixing
+the app while testing.
+
 This is the fixture/mobile E2E proof, not live vendor proof. It uses realistic
 contract fixtures for one complete trio first:
 
@@ -244,6 +250,10 @@ file and `PROJECT_TRACKER.md`.
 Run after full setup: connected device, app flavor/environment, approved secret
 path, vendor-location mapping, and at least one live-ready POS + reservation +
 labor/scheduling trio.
+
+This is also proof-only. Do not change app logic, business logic, mobile UI,
+adapter behavior, schema, migrations, or cloud/runtime behavior. Do not "fix"
+live findings in the same prompt; record them as bounded follow-up slices.
 
 This prompt proves live connect -> test connection -> bounded backfill ->
 poll/resume -> canonical facts -> mobile UI on a connected device. It should

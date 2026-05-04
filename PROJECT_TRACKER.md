@@ -162,6 +162,10 @@ updated on a single integration commit after worktrees merge.
 
 - Runs immediately after the 20 Wave B lanes and adapter registry merge.
 - Reads `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
+- Proof-only lane: do not change app logic, business logic, mobile UI, adapter
+  behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
+  limited to fixtures, test harnesses, and evidence/docs. If a product gap is
+  found, record it and create a follow-up slice instead of fixing it here.
 - Uses realistic POS + reservation + labor fixtures through real adapters,
   canonical fact writes, and real mobile/business read paths.
 - Proves Shift, benchmark/baseline inputs, DemandForecastContext, SchedulePlan,
@@ -242,6 +246,8 @@ gates), `cutover.0b`–`5`.
 - Required live prompt after full setup: `8.live.connected-device-smoke` using
   one complete POS + reservation + labor trio on a connected device before
   expanding to all 17 vendors.
+- Both prompts are proof-only: no app logic changes. They may add fixtures,
+  tests, harness glue, and evidence docs only.
 
 - `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the
   canonical private env loader (outside repo, never commit).
