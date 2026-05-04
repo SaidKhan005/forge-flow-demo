@@ -67,7 +67,8 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
   String? _error;
   VendorConnectionsBundle? _bundle;
 
-  VendorConnectionsGateway get _gateway => widget.gateway ?? _defaultDemoGateway;
+  VendorConnectionsGateway get _gateway =>
+      widget.gateway ?? _defaultDemoGateway;
 
   @override
   void initState() {
@@ -118,7 +119,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
       );
     }
     final bundle = _bundle!;
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -182,10 +183,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     if (!mounted) return;
     final picked = await showDialog<VendorPickerEntry>(
       context: context,
-      builder: (_) => _VendorPickerDialog(
-        category: category,
-        entries: entries,
-      ),
+      builder: (_) => _VendorPickerDialog(category: category, entries: entries),
     );
     if (picked == null || !mounted) return;
     String? module;
@@ -285,9 +283,7 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(
-          remediation == null ? message : '$message\n$remediation',
-        ),
+        content: Text(remediation == null ? message : '$message\n$remediation'),
       ),
     );
   }
@@ -403,8 +399,7 @@ class _EmptyState extends StatelessWidget {
                     'This category is in demo mode. Live data only flows after '
                     'a vendor is connected for this location.',
                 child: Chip(
-                  key: Key(
-                      'vendor_connections_demo_chip_${category.name}'),
+                  key: Key('vendor_connections_demo_chip_${category.name}'),
                   label: const Text('Demo'),
                   visualDensity: VisualDensity.compact,
                 ),
@@ -481,10 +476,7 @@ class _ConnectedCard extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 8),
-        Text(
-          _summaryLine(row),
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+        Text(_summaryLine(row), style: Theme.of(context).textTheme.bodySmall),
         if (row.webhookUrl != null) ...<Widget>[
           const SizedBox(height: 4),
           Row(
@@ -497,7 +489,8 @@ class _ConnectedCard extends StatelessWidget {
               ),
               IconButton(
                 key: Key('vendor_connections_copy_webhook_${row.vendorId}'),
-                tooltip: 'Copy the webhook URL into your '
+                tooltip:
+                    'Copy the webhook URL into your '
                     '${row.displayName} portal',
                 onPressed: () {
                   // Copy is a no-op stub at the widget layer; production
@@ -552,8 +545,8 @@ class _ConnectedCard extends StatelessWidget {
     final unit = ago.inMinutes < 60
         ? '${ago.inMinutes} min ago'
         : ago.inHours < 24
-            ? '${ago.inHours} hr ago'
-            : '${ago.inDays} days ago';
+        ? '${ago.inHours} hr ago'
+        : '${ago.inDays} days ago';
     final records = row.recordsLast24h ?? 0;
     final errors = row.errorsLast24h ?? 0;
     return 'Last sync: $unit · $records records · $errors errors (24h)';
@@ -708,15 +701,11 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
                 for (final entry in widget.entries)
                   DropdownMenuItem<String>(
                     value: entry.vendorId,
-                    child: Text(
-                      _labelFor(entry),
-                    ),
+                    child: Text(_labelFor(entry)),
                   ),
               ],
               onChanged: (v) => setState(() => _picked = v),
-              decoration: const InputDecoration(
-                labelText: 'Vendor',
-              ),
+              decoration: const InputDecoration(labelText: 'Vendor'),
             ),
             const SizedBox(height: 8),
             Text(
@@ -1016,8 +1005,8 @@ class _SyncLogsDialog extends StatelessWidget {
                   final body = entry.errorMessage != null
                       ? '${entry.eventKind} - ${entry.errorMessage}'
                       : entry.recordsCount != null
-                          ? '${entry.eventKind} - ${entry.recordsCount} records'
-                          : entry.eventKind;
+                      ? '${entry.eventKind} - ${entry.recordsCount} records'
+                      : entry.eventKind;
                   return ListTile(
                     dense: true,
                     title: Text(ts),

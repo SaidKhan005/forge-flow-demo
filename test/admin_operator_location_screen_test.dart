@@ -4,11 +4,11 @@
 // so the click path runs end-to-end without a backend. Coverage:
 //
 //   * Initial render lists every seeded operator.
+//   * Operator search filters the list by name, email, plan, and location.
 //   * Empty state renders when no operators are seeded.
 //   * Onboarding flow creates an operator + primary location.
 //   * Suspend / reactivate buttons flip the badge.
-//   * Add location dialog rejects an invalid IANA timezone before
-//     reaching the gateway.
+//   * Add/edit location dialogs submit IANA timezones from dropdowns.
 //   * Edit location dialog patches the selected location.
 //   * Remove-location button is disabled on the primary location.
 //   * Non-admin user cannot reach the screen via the admin shell
@@ -23,6 +23,7 @@ import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/admin_responsive_layout.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -66,6 +67,28 @@ void main() {
     );
   }
 
+  Future<void> chooseTimezone(
+    WidgetTester tester,
+    Key fieldKey,
+    String timezone,
+  ) async {
+    final field = find.byKey(fieldKey);
+    await tester.ensureVisible(field);
+    await tester.pumpAndSettle();
+    await tester.tap(field);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('admin_timezone_search_field')),
+      timezone,
+    );
+    await tester.pumpAndSettle();
+
+    final option = find.byKey(Key('admin_timezone_option_text_$timezone'));
+    await tester.tap(option);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('renders one row per seeded operator', (tester) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
       seed: <OperatorAdminBundle>[
@@ -85,6 +108,51 @@ void main() {
     // detail card; the unselected operator's name only in the list.
     expect(find.text('Alpha Cafe'), findsWidgets);
     expect(find.text('Beta Bistro'), findsWidgets);
+  });
+
+  testWidgets('search filters operators by operator and location text', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(operatorId: 'op-1', businessName: 'Alpha Cafe'),
+        seedBundle(
+          operatorId: 'op-2',
+          businessName: 'Beta Bistro',
+          primaryLocationId: 'loc-beta',
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const Key('admin_operators_search_field')),
+      'beta',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operator_row_op-1')), findsNothing);
+    expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('admin_operators_search_field')),
+      'toronto',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
+    expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('admin_operators_search_field')),
+      'zzzz',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operators_no_matches')), findsOneWidget);
   });
 
   testWidgets('stacks master/detail panes on compact widths', (tester) async {
@@ -124,7 +192,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_operators_empty')), findsOneWidget);
-    expect(find.text('No customers yet'), findsOneWidget);
+    expect(find.text('No operators yet'), findsOneWidget);
   });
 
   testWidgets('onboarding dialog creates a new operator end-to-end', (
@@ -160,9 +228,10 @@ void main() {
       find.byKey(const Key('admin_onboard_location_name')),
       'Main',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_onboard_location_timezone')),
-      'America/Toronto',
+    await chooseTimezone(
+      tester,
+      const Key('admin_onboard_location_timezone'),
+      'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_onboard_submit_button')));
     await tester.pumpAndSettle();
@@ -172,7 +241,7 @@ void main() {
     expect(operators.single.operator.businessName, equals('New Operator Inc'));
     expect(
       operators.single.locations.single.timezone,
-      equals('America/Toronto'),
+      equals('America/Vancouver'),
     );
     expect(find.text('New Operator Inc'), findsWidgets);
   });
@@ -197,7 +266,7 @@ void main() {
     expect(find.text('suspended'), findsNothing);
   });
 
-  testWidgets('add location dialog rejects an invalid IANA timezone', (
+  testWidgets('operator AI plan selection is read-only while coming soon', (
     tester,
   ) async {
     final gateway = InMemoryOperatorLocationAdminGateway(
@@ -208,27 +277,74 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const Key('admin_operator_add_location_button')),
+    expect(find.text('Forge & Flow AI plan'), findsOneWidget);
+    final detailRow = tester.widget<AdminDetailRow>(
+      find.byKey(const Key('admin_operator_ai_plan_detail_row')),
     );
+    expect(detailRow.muted, isTrue);
+
+    await tester.tap(find.byKey(const Key('admin_operator_edit_button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_edit_operator_dialog')), findsOneWidget);
+    expect(find.text('Forge & Flow AI plan'), findsWidgets);
+    expect(find.text('Coming soon'), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('Coming soon')).dy,
+      lessThan(
+        tester
+            .getTopLeft(
+              find.byKey(const Key('admin_subscription_tier_dropdown')),
+            )
+            .dy,
+      ),
+    );
+
+    final planField = tester.widget<DropdownButtonFormField<String>>(
+      find.byKey(const Key('admin_subscription_tier_dropdown')),
+    );
+    expect(planField.onChanged, isNull);
+  });
+
+  testWidgets('add location dialog submits the selected IANA timezone', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final addButton = find.byKey(
+      const Key('admin_operator_add_location_button'),
+    );
+    await tester.ensureVisible(addButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addButton);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
 
     await tester.enterText(
       find.byKey(const Key('admin_location_name_field')),
-      'Bad Zone',
+      'Harbour',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_location_timezone_field')),
-      'not a zone',
+    await chooseTimezone(
+      tester,
+      const Key('admin_location_timezone_field'),
+      'America/Halifax',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
     await tester.pumpAndSettle();
 
-    // Form-level validator blocks submit; dialog stays open.
-    expect(find.byKey(const Key('admin_location_add_dialog')), findsOneWidget);
-    expect(find.text('Use an IANA name like America/Toronto'), findsOneWidget);
+    final operators = await gateway.listOperators();
+    final added = operators.single.locations.firstWhere(
+      (l) => l.name == 'Harbour',
+    );
+    expect(added.timezone, equals('America/Halifax'));
+    expect(find.byKey(const Key('admin_location_add_dialog')), findsNothing);
   });
 
   testWidgets('edit location dialog patches the selected location', (
@@ -242,7 +358,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('admin_location_edit_loc-seed-1')));
+    final editButton = find.byKey(const Key('admin_location_edit_loc-seed-1'));
+    await tester.ensureVisible(editButton);
+    await tester.pumpAndSettle();
+    await tester.tap(editButton);
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('admin_location_edit_dialog')), findsOneWidget);
@@ -251,8 +370,9 @@ void main() {
       find.byKey(const Key('admin_location_name_field')),
       'Harbour HQ',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_location_timezone_field')),
+    await chooseTimezone(
+      tester,
+      const Key('admin_location_timezone_field'),
       'America/St_Johns',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));
@@ -277,10 +397,39 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final removeButton = tester.widget<IconButton>(
+    final removeButton = tester.widget<OutlinedButton>(
       find.byKey(const Key('admin_location_remove_loc-x')),
     );
     expect(removeButton.onPressed, isNull);
+  });
+
+  testWidgets('location vendor action is a manage integrations button', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final integrationsButton = find.byKey(
+      const Key('admin_location_vendor_connections_loc-seed-1'),
+    );
+    await tester.ensureVisible(integrationsButton);
+    await tester.pumpAndSettle();
+
+    expect(integrationsButton, findsOneWidget);
+    expect(find.text('Manage integrations'), findsOneWidget);
+
+    await tester.tap(integrationsButton);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_vendor_connections_screen')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('add and then remove a non-primary location', (tester) async {
@@ -297,16 +446,20 @@ void main() {
     await tester.pumpAndSettle();
 
     // Add a second location through the dialog.
-    await tester.tap(
-      find.byKey(const Key('admin_operator_add_location_button')),
+    final addButton = find.byKey(
+      const Key('admin_operator_add_location_button'),
     );
+    await tester.ensureVisible(addButton);
+    await tester.pumpAndSettle();
+    await tester.tap(addButton);
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('admin_location_name_field')),
       'West Coast',
     );
-    await tester.enterText(
-      find.byKey(const Key('admin_location_timezone_field')),
+    await chooseTimezone(
+      tester,
+      const Key('admin_location_timezone_field'),
       'America/Vancouver',
     );
     await tester.tap(find.byKey(const Key('admin_location_submit_button')));

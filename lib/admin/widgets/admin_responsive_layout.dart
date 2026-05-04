@@ -148,15 +148,17 @@ class AdminDetailRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.labelWidth = 160,
+    this.muted = false,
   });
 
   final String label;
   final String value;
   final double labelWidth;
+  final bool muted;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    final row = Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -186,5 +188,7 @@ class AdminDetailRow extends StatelessWidget {
         },
       ),
     );
+    if (!muted) return row;
+    return Opacity(opacity: 0.45, child: row);
   }
 }

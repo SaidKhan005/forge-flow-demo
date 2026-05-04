@@ -22,7 +22,7 @@ class AdminShell extends StatefulWidget {
     required this.session,
     required this.authSource,
     this.routes = kAdminRoutes,
-    this.initialRouteId = kAdminHomeRouteId,
+    this.initialRouteId = kAdminOperatorsRouteId,
   });
 
   final AdminAuthSession session;
@@ -241,6 +241,16 @@ class _AdminSideNav extends StatelessWidget {
   final String selectedRouteId;
   final ValueChanged<String> onSelect;
 
+  static const List<_NavSectionMeta> _sections = <_NavSectionMeta>[
+    _NavSectionMeta(section: AdminRouteSection.operations, label: 'Operations'),
+    _NavSectionMeta(
+      section: AdminRouteSection.ai,
+      label: 'AI',
+      badge: 'Work in progress',
+    ),
+    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Dev'),
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -256,18 +266,87 @@ class _AdminSideNav extends StatelessWidget {
         ),
       ),
       padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-      child: ListView.builder(
-        itemCount: routes.length,
-        itemBuilder: (context, index) {
-          final route = routes[index];
-          final selected = route.id == selectedRouteId;
-          return _NavItem(
-            key: Key('admin_nav_item_${route.id}'),
-            route: route,
-            selected: selected,
-            onTap: () => onSelect(route.id),
-          );
-        },
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            for (final section in _sections) ..._buildSection(context, section),
+          ],
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _buildSection(BuildContext context, _NavSectionMeta section) {
+    final sectionRoutes = routes
+        .where((route) => route.section == section.section)
+        .toList(growable: false);
+    if (sectionRoutes.isEmpty) return const <Widget>[];
+    return <Widget>[
+      _NavSectionHeader(section: section),
+      for (final route in sectionRoutes)
+        _NavItem(
+          key: Key('admin_nav_item_${route.id}'),
+          route: route,
+          selected: route.id == selectedRouteId,
+          onTap: () => onSelect(route.id),
+        ),
+      const SizedBox(height: 12),
+    ];
+  }
+}
+
+class _NavSectionMeta {
+  const _NavSectionMeta({
+    required this.section,
+    required this.label,
+    this.badge,
+  });
+
+  final AdminRouteSection section;
+  final String label;
+  final String? badge;
+}
+
+class _NavSectionHeader extends StatelessWidget {
+  const _NavSectionHeader({required this.section});
+
+  final _NavSectionMeta section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      key: Key('admin_nav_section_${section.section.name}'),
+      padding: const EdgeInsets.fromLTRB(10, 10, 8, 4),
+      child: Row(
+        children: [
+          Text(
+            section.label,
+            style: AppTextStyles.mono8(color: AppColors.textMuted),
+          ),
+          if (section.badge != null) ...[
+            const SizedBox(width: 8),
+            Flexible(
+              child: Container(
+                key: Key('admin_nav_section_badge_${section.section.name}'),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppColors.peacock.withValues(alpha: 0.10),
+                  border: Border.all(
+                    color: AppColors.peacock.withValues(alpha: 0.35),
+                    width: 1,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  section.badge!,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.mono8(color: AppColors.peacockDark),
+                ),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

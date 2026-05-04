@@ -158,7 +158,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
             const AdminPageHeader(
               title: 'Plans and limits',
               subtitle:
-                  'Set each customer plan and the spending limits that keep advisor usage predictable.',
+                  'Set each operator\'s Forge & Flow plan and the spending limits that keep advisor usage predictable.',
             ),
             const SizedBox(height: 14),
             if (!widget.editingEnabled)
@@ -207,12 +207,12 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'No customers on file',
+                  'No operators on file',
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Create a customer first, then return here to choose a plan and usage limits.',
+                  'Create an operator first, then return here to choose a Forge & Flow plan and usage limits.',
                   style: AppTextStyles.body13(color: AppColors.textSecondary),
                 ),
               ],
@@ -249,7 +249,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
       builder: (_) => _ConfirmDialog(
         title: 'Apply ${template.displayName} template?',
         message:
-            'Sets subscription tier to ${template.subscriptionTier} and '
+            'Sets the Forge & Flow plan to ${template.subscriptionTier} and '
             'replaces ${template.caps.length} cap row'
             '${template.caps.length == 1 ? '' : 's'} '
             'on ${bundle.businessName}. Existing rows for the same '
@@ -284,7 +284,7 @@ class _PricingTierAdminScreenState extends State<PricingTierAdminScreen> {
           idempotencyKey: key,
         ),
       );
-    }, successHint: 'Subscription tier set to $newTier.');
+    }, successHint: 'Forge & Flow plan set to $newTier.');
   }
 
   Future<void> _onEditCap(PricingOperatorBundle bundle, UsageCapRow row) async {
@@ -403,7 +403,7 @@ class _OperatorList extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Plan: ${bundle.subscriptionTier}',
+                      'Forge & Flow plan: ${bundle.subscriptionTier}',
                       style: AppTextStyles.mono11(
                         color: AppColors.textSecondary,
                       ),
@@ -460,19 +460,22 @@ class _OperatorPricingDetail extends StatelessWidget {
                   style: AppTextStyles.display20(color: AppColors.textPrimary),
                 ),
                 const SizedBox(height: 10),
-                AdminDetailRow(label: 'Plan', value: bundle.subscriptionTier),
+                AdminDetailRow(
+                  label: 'Forge & Flow plan',
+                  value: bundle.subscriptionTier,
+                ),
                 AdminDetailRow(
                   label: 'Currency',
                   value: bundle.preferredCurrency,
                 ),
                 AdminDetailRow(
-                  label: 'Main location',
-                  value: bundle.primaryLocationId ?? 'No main location',
+                  label: 'Primary location',
+                  value: bundle.primaryLocationId ?? 'No primary location',
                 ),
                 if (editingEnabled) ...[
                   const SizedBox(height: 14),
                   Text(
-                    'Tier templates',
+                    'Plan templates',
                     style: AppTextStyles.mono14(
                       color: AppColors.textPrimary,
                       weight: FontWeight.w700,
@@ -715,7 +718,7 @@ class _UsageCapDialogState extends State<_UsageCapDialog> {
                   Padding(
                     padding: const EdgeInsets.only(bottom: 10),
                     child: Text(
-                      'This customer needs a main location before you can edit usage limits.',
+                      'This operator needs a primary location before you can edit usage limits.',
                       style: AppTextStyles.mono11(color: AppColors.negative),
                     ),
                   ),

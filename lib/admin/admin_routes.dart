@@ -1,10 +1,8 @@
 // Phase 11A.0 - Admin route table.
 //
-// The admin console is a multi-surface back-office. 11A.0 lights up
-// the empty Home route only; later 11A.x slices fill in the rest.
-// Keeping the route catalog in a single typed list lets the shell
-// nav render placeholders for the surfaces that aren't online yet
-// without scattering `if (slice >= X)` flags across the UI.
+// The admin console is a multi-surface back-office. Keeping the route
+// catalog in a single typed list lets the shell nav render live
+// surfaces without scattering `if (slice >= X)` flags across the UI.
 //
 // 11A.1 - the Operators route flips from placeholder to live; its
 // builder reads the [OperatorLocationAdminGateway] from
@@ -22,7 +20,6 @@ import 'models/feature_flags_admin_models.dart';
 import 'models/integration_admin_models.dart';
 import 'models/operator_location_admin_models.dart';
 import 'models/pricing_tier_admin_models.dart';
-import 'screens/admin_home_screen.dart';
 import 'screens/corpus_admin_screen.dart';
 import 'screens/debug_console_admin_screen.dart';
 import 'screens/feature_flags_admin_screen.dart';
@@ -49,6 +46,7 @@ class AdminRoute {
     required this.title,
     required this.path,
     required this.icon,
+    required this.section,
     required this.builder,
     this.subtitle,
     this.placeholder = false,
@@ -68,6 +66,9 @@ class AdminRoute {
   /// Material icon shown in the side nav.
   final IconData icon;
 
+  /// High-level side-nav category.
+  final AdminRouteSection section;
+
   /// Optional one-line description for the empty-state body when the
   /// route is opened ahead of its slice landing.
   final String? subtitle;
@@ -84,9 +85,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-/// Canonical admin home route ID. Tests + the shell key off this so
-/// renaming the title can't accidentally drop the home surface.
-const String kAdminHomeRouteId = 'home';
+enum AdminRouteSection { ai, dev, operations }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -124,27 +123,16 @@ const String kAdminObservabilityRouteId = 'observability';
 /// the modal target.
 const String kAdminOperatorPickerRouteId = 'operator-picker';
 
-/// The admin route table. Order is the side-nav order. 11A.1 promotes
-/// `operators` from placeholder to live; the rest are deliberately
-/// marked `placeholder` so the surface area is visible to operators
-/// walking the shell without leaking incomplete UX.
+/// The admin route table. Order is the side-nav order.
 const List<AdminRoute> kAdminRoutes = <AdminRoute>[
   AdminRoute(
-    id: kAdminHomeRouteId,
-    title: 'Overview',
-    path: '/',
-    icon: Icons.home_outlined,
-    subtitle:
-        'Start here for customer setup, pricing, content, support, and system checks.',
-    builder: _buildHome,
-  ),
-  AdminRoute(
     id: kAdminOperatorsRouteId,
-    title: 'Customers',
+    title: 'Operators',
     path: '/operators',
     icon: Icons.business_outlined,
+    section: AdminRouteSection.operations,
     subtitle:
-        'Create customer accounts, manage locations, and pause or restore access.',
+        'Create operator accounts, manage locations, and pause or restore access.',
     builder: _buildOperators,
   ),
   AdminRoute(
@@ -152,8 +140,9 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Plans and limits',
     path: '/pricing',
     icon: Icons.tune_outlined,
+    section: AdminRouteSection.ai,
     subtitle:
-        'Set plan templates and spending limits for each customer and location.',
+        'Set Forge & Flow plan templates and spending limits for each operator and location.',
     builder: _buildPricing,
   ),
   AdminRoute(
@@ -161,6 +150,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Knowledge base',
     path: '/corpus',
     icon: Icons.menu_book_outlined,
+    section: AdminRouteSection.ai,
     subtitle: 'Review and publish the knowledge content the advisor uses.',
     builder: _buildCorpus,
   ),
@@ -169,6 +159,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
+    section: AdminRouteSection.dev,
     subtitle: 'Check connected services and rotate provider keys safely.',
     builder: _buildIntegrations,
   ),
@@ -177,6 +168,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
+    section: AdminRouteSection.dev,
     subtitle:
         'Run a manual backend health check before investigating live issues.',
     builder: _buildHealth,
@@ -186,6 +178,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
+    section: AdminRouteSection.dev,
     subtitle: 'Turn staged features on or off without a new deploy.',
     builder: _buildFeatureFlags,
   ),
@@ -194,6 +187,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
+    section: AdminRouteSection.dev,
     subtitle:
         'Search recent customer requests and inspect support-safe details.',
     builder: _buildDebugConsole,
@@ -203,13 +197,12 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
+    section: AdminRouteSection.dev,
     subtitle:
         'Review costs, usage limits, customer activity, graph health, and hosting signals.',
     builder: _buildObservability,
   ),
 ];
-
-Widget _buildHome(BuildContext context) => const AdminHomeScreen();
 
 Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);

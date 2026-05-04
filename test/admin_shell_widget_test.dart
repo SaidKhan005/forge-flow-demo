@@ -1,8 +1,8 @@
 // Phase 11A.0 — Admin shell widget tests.
 //
 // Verifies the brand-styled shell renders, the side nav surfaces
-// every route from `kAdminRoutes`, the home route renders its landing
-// card, live routes render their screens, and the header sign-out
+// every route from `kAdminRoutes`, the default route opens the live
+// operator surface, and the header sign-out
 // affordance routes through the auth source.
 
 import 'package:flutter/material.dart';
@@ -57,6 +57,57 @@ void main() {
     );
 
     expect(find.byKey(const Key('admin_side_nav')), findsOneWidget);
+    expect(
+      tester
+          .getTopLeft(find.byKey(const Key('admin_nav_section_operations')))
+          .dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('admin_nav_section_ai'))).dy,
+      ),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(const Key('admin_nav_section_ai'))).dy,
+      lessThan(
+        tester.getTopLeft(find.byKey(const Key('admin_nav_section_dev'))).dy,
+      ),
+    );
+    expect(find.byKey(const Key('admin_nav_section_ai')), findsOneWidget);
+    expect(find.byKey(const Key('admin_nav_section_badge_ai')), findsOneWidget);
+    expect(find.text('AI'), findsOneWidget);
+    expect(find.text('Work in progress'), findsOneWidget);
+    expect(find.byKey(const Key('admin_nav_section_dev')), findsOneWidget);
+    expect(find.text('Dev'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_nav_section_operations')),
+      findsOneWidget,
+    );
+    expect(find.text('Operations'), findsOneWidget);
+
+    expect(
+      kAdminRoutes
+          .where((route) => route.section == AdminRouteSection.ai)
+          .map((route) => route.id),
+      <String>[kAdminPricingRouteId, kAdminCorpusRouteId],
+    );
+    expect(
+      kAdminRoutes
+          .where((route) => route.section == AdminRouteSection.dev)
+          .map((route) => route.id),
+      <String>[
+        kAdminIntegrationsRouteId,
+        kAdminHealthRouteId,
+        kAdminFeatureFlagsRouteId,
+        kAdminDebugConsoleRouteId,
+        kAdminObservabilityRouteId,
+      ],
+    );
+    expect(
+      kAdminRoutes
+          .where((route) => route.section == AdminRouteSection.operations)
+          .map((route) => route.id),
+      <String>[kAdminOperatorsRouteId],
+    );
+
     for (final route in kAdminRoutes) {
       expect(
         find.byKey(Key('admin_nav_item_${route.id}')),
@@ -66,7 +117,7 @@ void main() {
     }
   });
 
-  testWidgets('home route renders its branded empty landing card', (
+  testWidgets('default route renders the live operator surface', (
     tester,
   ) async {
     final source = DemoAdminAuthSource.signedInAsSuperAdmin();
@@ -76,12 +127,10 @@ void main() {
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
 
-    expect(find.byKey(const Key('admin_home_card')), findsOneWidget);
-    expect(find.text('Operations console'), findsOneWidget);
-    expect(
-      find.text('Welcome to the Forge & Flow admin workspace.'),
-      findsOneWidget,
-    );
+    expect(find.byKey(const Key('admin_nav_item_home')), findsNothing);
+    expect(find.text('Overview'), findsNothing);
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('observability route renders the live metrics surface', (
@@ -106,8 +155,7 @@ void main() {
       find.byKey(const Key('admin_placeholder_observability')),
       findsNothing,
     );
-    // Home card should no longer be in the tree.
-    expect(find.byKey(const Key('admin_home_card')), findsNothing);
+    expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -121,6 +169,8 @@ void main() {
       wrap(AdminShell(session: superAdmin, authSource: source)),
     );
 
+    await tester.ensureVisible(find.byKey(const Key('admin_nav_item_debug')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('admin_nav_item_debug')));
     await tester.pumpAndSettle();
 
@@ -185,7 +235,7 @@ void main() {
     );
 
     expect(find.byKey(const Key('admin_observability_screen')), findsOneWidget);
-    expect(find.byKey(const Key('admin_home_card')), findsNothing);
+    expect(find.byKey(const Key('admin_operators_screen')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }
