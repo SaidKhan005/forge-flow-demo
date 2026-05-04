@@ -720,8 +720,9 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Some vendors require partner approval before you can sign in. '
-              'When that applies, we mark the vendor in the dropdown.',
+              'Some vendors are still being onboarded with us. We mark those '
+              "as 'coming soon' in the dropdown — the Connect button activates "
+              'as soon as production credentials are live.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
@@ -762,7 +763,17 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
 
   String _labelFor(VendorPickerEntry entry) {
     final tags = <String>[];
-    if (entry.partnershipGated) tags.add('requires partner approval');
+    switch (entry.lifecycle) {
+      case VendorLifecycle.documented:
+        tags.add('coming soon');
+        break;
+      case VendorLifecycle.sandboxVerified:
+        tags.add('coming soon — sandbox verified');
+        break;
+      case VendorLifecycle.productionCredentialed:
+      case VendorLifecycle.liveWithOperators:
+        break;
+    }
     if (entry.requiresModule) tags.add('asks for module');
     if (!entry.coversFieldExposed && entry.category == VendorCategory.pos) {
       tags.add('no covers');
