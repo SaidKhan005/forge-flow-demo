@@ -153,7 +153,7 @@ If a target operator runs **only** vendors from these two lists, they cannot be 
 
 ## Wave Plan (engineer-all-17 doctrine, locked 2026-05-03)
 
-**Engineer all 17 INTEGRATE vendors in one push (Wave B). Lock each adapter at lifecycle = `documented`. Fire `*.live.sandbox` / `*.live.prod` slices when credentials arrive (Wave D, rolling).**
+**Engineer all 17 INTEGRATE vendors in one push (Wave B). Lock each adapter at lifecycle = `documented`. Then run `8.integration-mobile-proof` before declaring Phase 8 / 8R / 8.S product-complete. Fire `*.live.sandbox` / `*.live.prod` slices when credentials arrive (Wave D, rolling).**
 
 The prior plan (Wave 1-5 staggered by partnership readiness) is collapsed. Rationale:
 - The framework is the depth; per-vendor adapters are mostly capability-profile + field-mapping + per-vendor signature shape. ~150-300 LOC each.
@@ -163,6 +163,16 @@ The prior plan (Wave 1-5 staggered by partnership readiness) is collapsed. Ratio
 - Vendor picker chrome surfaces the lifecycle: "Coming soon" / "Coming soon — sandbox verified" / Connect-button-live / connected-operator chip. Operator first-impression matches partnership state without the engineering staircase.
 
 Memory: `memory/project_phase_8_engineer_all_17_doctrine.md`.
+
+2026-05-04 research/update authority:
+
+- Deep vendor API access research and Oracle Simphony payment-orchestrator
+  evidence live in
+  `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
+- The research confirms that the 17 Wave B vendors remain viable for
+  documented/fixture adapters. The main residual gap is not vendor field
+  discovery; it is proving the full mobile/business product spine after
+  canonical facts land.
 
 ### Wave A — Framework (LANDED 2026-05-03)
 
@@ -198,7 +208,47 @@ Lifecycle column at slice close = `documented` for all. Each slice ships adapter
 | `11W.7` | Operator Web — Account screen | Web UX | n/a | Replaces placeholder. File-disjoint from adapter lanes. |
 | `11W.8` | Operator Web — Vendor Connections mount | Web UX | n/a | Replaces placeholder. Reuses VendorConnectionsWidget; file-disjoint. |
 
-20 file-disjoint lanes. Wave B closes Phase 8 / 8R / 8.S engineering in one push. The only shared seam is the adapter registry under `tool/advisor_proxy/`, handled by 3 category-scoped registry files (`pos_registry.dart`, `labor_registry.dart`, `reservation_registry.dart`) updated on a single integration commit after all worktrees merge.
+20 file-disjoint lanes. Wave B closes documented adapter implementation in one push. The only shared seam is the adapter registry under `tool/advisor_proxy/`, handled by 3 category-scoped registry files (`pos_registry.dart`, `labor_registry.dart`, `reservation_registry.dart`) updated on a single integration commit after all worktrees merge. Product-complete Phase 8 / 8R / 8.S engineering acceptance requires the Wave B closeout gate below.
+
+### Wave B Closeout - `8.integration-mobile-proof`
+
+Run immediately after the 20 Wave B lanes and adapter registry merge.
+
+This is the fixture/mobile E2E proof, not live vendor proof. It uses realistic
+contract fixtures for one complete trio first:
+
+- POS: Oracle Simphony, Lightspeed K-Series, or Square.
+- Reservation: Libro or Tock.
+- Labor/scheduling: QuickBooks Time or 7shifts.
+
+Acceptance:
+
+- Fixture payloads run through the real adapters.
+- Canonical POS, reservation, and labor facts are persisted with provenance.
+- Shift reads sales/covers/PPA/labor facts without phantom zeros.
+- 60-day backfill updates benchmark/baseline inputs.
+- TargetCycle and DemandForecastContext react to the facts.
+- SchedulePlan uses live demand/labor context where available and honest
+  fallback where not available.
+- Variance metric provenance is wired; missing facts show fallback or
+  unavailable, not fake zero.
+- History and Learn consume only closed, trustworthy facts.
+- Mobile refresh/invalidation and offline/local cache receive the new facts.
+- Demo mode flips per category after first successful backfill.
+
+Evidence must be written under `docs/_execution/` and cross-linked from this
+file and `PROJECT_TRACKER.md`.
+
+### First Live Proof - `8.live.connected-device-smoke`
+
+Run after full setup: connected device, app flavor/environment, approved secret
+path, vendor-location mapping, and at least one live-ready POS + reservation +
+labor/scheduling trio.
+
+This prompt proves live connect -> test connection -> bounded backfill ->
+poll/resume -> canonical facts -> mobile UI on a connected device. It should
+start with the smallest complete trio, then convert findings into the rolling
+per-vendor `*.live.sandbox` / `*.live.prod` matrix.
 
 ### Wave D — Rolling `*.live.*` slices (fire as credentials arrive)
 
@@ -211,17 +261,18 @@ Wave D never sprints; each slice fires individually as a credential arrives. Ord
 
 ## Coverage progression
 
-After Wave B (engineering complete): all 17 vendors are at lifecycle = `documented`. Vendor picker shows every vendor; gates on lifecycle for the Connect button.
+After Wave B + `8.integration-mobile-proof` (product-complete adapter engineering): all 17 vendors are at lifecycle = `documented`. Vendor picker shows every vendor; gates on lifecycle for the Connect button.
 
 After Wave D rolling completion (target ~6-24 weeks across vendors):
 
 | End of state | POS coverage | Reservation coverage | Scheduling coverage |
 |---|---|---|---|
-| Engineering (Wave B closed) | **100% engineered** | **100% engineered (85% pre-Resy)** | **100% engineered** |
+| Engineering (Wave B + `8.integration-mobile-proof` closed) | **100% engineered** | **100% engineered (85% pre-Resy)** | **100% engineered** |
 | Self-serve / quick-approval prod credentials (~Wave D weeks 1-4) | 40% live (Lightspeed + Square + Revel) | 5% live (Libro) | 32% live (QBT + Agendrix) |
 | Partnership prod credentials cleared (~Wave D weeks 6-24) | 100% live | 85% live (Resy permanently uncovered) | 100% live |
 
-The "engineered" row is what closes Phase 8 / 8R / 8.S engineering. The "live" rows progress as commercial lane clears.
+The "engineered" row closes only after documented adapters and the mobile
+fixture proof both pass. The "live" rows progress as commercial lane clears.
 
 ## Partnership Applications (kick off at Wave 1 start)
 
@@ -251,7 +302,7 @@ Operator (you) drives partnership applications. F&F engineering proceeds on Wave
 
 ## Source Material
 
-Research conducted 2026-05-03 by parallel agents against official vendor developer documentation. Primary doc URLs:
+Research conducted 2026-05-03 by parallel agents against official vendor developer documentation, then deepened on 2026-05-04 with primary-source checks and local payment-orchestrator Oracle evidence. Primary doc URLs:
 
 **POS:**
 
@@ -262,14 +313,16 @@ Research conducted 2026-05-03 by parallel agents against official vendor develop
 - Revel: https://developer.revelsystems.com/revelsystems/docs/webhooks
 - Aloha (NCR Voyix): https://developer.ncrvoyix.com/portals/dev-portal/api-explorer
 - Oracle MICROS Simphony: https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/authenticate.html
+- Oracle STS Gen2 endpoint index: https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/rest-endpoints.html
 - Shift4 / SkyTab: https://dev.shift4.com/docs/
 
 **Reservations:**
 
-- OpenTable: partnership-only, no public dev portal URL
+- OpenTable: https://www.opentable.com/restaurant-solutions/api-partners/
 - Libro: https://libroreserve.github.io/api-documentation/
 - SevenRooms: https://sevenrooms.com/platform/integrations-apis/
 - Tock: https://api.exploretock.com/docs/latest/reservation.html
+- Tock API FAQ: https://tock.zendesk.com/hc/en-us/articles/25447494175508-API-FAQ
 - Yelp Reservations: https://docs.developer.yelp.com/reference/v3_reservations
 - Resy: https://resy.com/join/integrations/ (no API spec)
 
@@ -281,6 +334,7 @@ Research conducted 2026-05-03 by parallel agents against official vendor develop
 - Humanity: https://platform.humanity.com/v1.0
 - Push Operations: https://developers.pushoperations.com/
 - ADP Workforce Now: https://developers.adp.com/articles/guides/adp-workforce-now-api-catalog
+- ADP API Central: https://apps.adp.com/en-US/apps/410612/ADP%C2%AE%20API%20Central%20for%20ADP%20Workforce%20Now%C2%AE/features
 
 **Architecture decision sources:**
 
