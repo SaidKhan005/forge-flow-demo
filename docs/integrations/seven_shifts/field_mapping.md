@@ -37,6 +37,10 @@ for any drift.
 | `time_punch.user_id` | int | `employee_id` | `to_string` | <https://developers.7shifts.com/reference/listusers> |
 | `time_punch.approved` | bool | **`is_approved`** | direct | <https://developers.7shifts.com/reference/listtimepunches> |
 | `payroll_period.closed_at` | ISO 8601 UTC | **`payroll_period_closed_at`** | direct UTC | <https://developers.7shifts.com/reference/listpayrollperiods> |
+| `time_punch.shift_id` | int | `shift_id` | `to_string` | <https://developers.7shifts.com/reference/listtimepunches> |
+| `reports.hours_and_wages.total_pay` | decimal | **`actual_labor_dollars`** | direct | <https://developers.7shifts.com/reference/get_reports-hours-and-wages> |
+| `reports.hours_and_wages.regular_pay` | decimal | `regular_pay` | direct | <https://developers.7shifts.com/reference/get_reports-hours-and-wages> |
+| `reports.hours_and_wages.overtime_pay` | decimal | `overtime_pay` | direct | <https://developers.7shifts.com/reference/get_reports-hours-and-wages> |
 
 The two bolded rows are load-bearing for the Phase 7.58 Primary
 Driver audit. The adapter sources `payroll_period_closed_at` from
@@ -49,6 +53,42 @@ This dual-source design is verified by the slice's
 backfill assertion that `gateway.canonicalPayrollPeriodFacts` is
 populated even on a Gourmet-plan connection (the polling path runs
 alongside webhooks for resilience).
+
+The wage rows source `total_pay` (mapped to canonical
+`actual_labor_dollars`), `regular_pay`, and `overtime_pay` from the
+`/reports/hours_and_wages` endpoint. That endpoint is **Gourmet-tier
+gated** — on HTTP 403/404 the adapter falls back to `/time_punches`-only
+emission and stamps `wage_provenance =
+vendor_seven_shifts_dollars_unavailable_target_wage_substituted`. When
+the report does return data, the merge into the canonical fact happens
+by `(employee_id, shift_id)` and `wage_provenance =
+vendor_seven_shifts_per_employee_actual_dollars`. This is what
+qualifies 7shifts as `LaborWageSourceClass.perEmployeeWithDollars` (the
+highest-fidelity wage class) per
+`docs/contracts/integration_spine_architecture_contract.md` 2026-05-05
+falsehood corrections #7.
+
+---
+
+## Wage source classification
+
+`perEmployeeWithDollars` (when the operator is on the Gourmet tier and
+the Hours & Wages report endpoint is unlocked) with fallback
+`target_wage_substituted` (when the operator is on a lower tier and the
+report endpoint returns HTTP 403/404). The adapter resolves the class
+at polling time via the `LaborWageSourceClass` sidecar lookup at
+`lib/services/integration/labor_wage_source_class.dart` (shipped by
+Lane `8.spine-bridge.2`). When the report is reachable, per-employee
+actual wage dollars merge onto each `(employee_id, shift_id)` punch and
+flow into the canonical `actual_labor_dollars` field; when the report
+is gated, the canonicalizer substitutes the operator's target wage and
+stamps the substituted-wage provenance for that polling tick. The
+classification is re-evaluated on every poll so a tier upgrade promotes
+the connection to `perEmployeeWithDollars` without operator
+intervention.
+
+Cite vendor doc:
+<https://developers.7shifts.com/reference/get_reports-hours-and-wages>
 
 ---
 
@@ -119,6 +159,9 @@ choice. The `*.live.sandbox` slice will verify these first.
   `payroll_period.closed`) per the webhook reference. The adapter
   registers the full set so a future event-name change forces an
   explicit subscription update rather than a silent drop.
+- **`time_punch.shift_id`**: documented as integer linking to a planned shift; nullable when the punch is unscheduled (operator clocked in without a planned shift). The adapter persists null in that case and provenance falls through to the substituted-wage branch.
+- **`reports.hours_and_wages.total_pay`**: documented as the gross per-shift wage. Decimal precision is preserved as `num`; vendor-side rounding (cent vs sub-cent) gets verified in `8.S.7S.live.sandbox`.
+- **Hours & Wages report tier gating**: the report endpoint returns HTTP 403 (or 404 — the developer reference is ambiguous about which) on lower plan tiers. The adapter catches both via `SevenShiftsHoursAndWagesReportGatedException` and switches to substituted-wage provenance for that polling tick.
 
 ---
 

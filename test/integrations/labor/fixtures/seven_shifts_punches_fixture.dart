@@ -76,6 +76,42 @@ const Map<String, Object?> documentedPerSevenShiftsV2FieldMappingFixture =
         'https://developers.7shifts.com/reference/listpayrollperiods',
     'verify_in_live_sandbox': true,
   },
+  // 8.spine-bridge.7S.upgrade (2026-05-05) — Hours & Wages report
+  // additions. Mirror of the new rows in
+  // `documentedPerSevenShiftsV2FieldMapping` so the *.live.sandbox
+  // diff stays bi-directional (per the walkthrough's "mirror"
+  // trace-summary line).
+  'shift_id': <String, Object?>{
+    'path': 'time_punch.shift_id',
+    'type': 'int',
+    'transform': 'to_string',
+    'doc_url': 'https://developers.7shifts.com/reference/listtimepunches',
+    'verify_in_live_sandbox': true,
+  },
+  'actual_labor_dollars': <String, Object?>{
+    'path': 'reports.hours_and_wages.total_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+  },
+  'regular_pay': <String, Object?>{
+    'path': 'reports.hours_and_wages.regular_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+  },
+  'overtime_pay': <String, Object?>{
+    'path': 'reports.hours_and_wages.overtime_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+  },
 };
 
 /// Sample test-connection time punch. Numbers are deliberately
