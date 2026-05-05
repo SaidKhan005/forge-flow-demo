@@ -3,6 +3,8 @@
 // dayparts to study against it.
 
 import '../data/app_defaults.dart';
+import '../data/cross_axis_pair_catalog.dart';
+import '../models/cross_axis_pair_record.dart';
 import '../models/history_pattern_record.dart';
 
 class HistoryTeachingSummary {
@@ -15,6 +17,20 @@ class HistoryTeachingSummary {
   final int mostCommonBenchmarkCount;
   final String mostCommonBenchmarkSideLabel;
 
+  /// 7.58.cross-axis.0 — recurring CPLH x SPLH pair patterns observed
+  /// across the closed-shift history window. Records are sorted by
+  /// `count` descending. Empty when no (week, daypart) bucket has both
+  /// a `cplh_*` lever and a `splh_*` lever firing. Single-axis-only
+  /// shifts never contribute to pair counts.
+  ///
+  /// Each `pairId` matches a `CrossAxisPairData.id` in
+  /// `lib/data/cross_axis_pair_catalog.dart`; consumers resolve through
+  /// `CrossAxisPairs.lookup`. The single-axis path
+  /// (`mostCommonLeakId` etc.) is unchanged by this field — the
+  /// cross-axis pair detector runs in parallel and only fires when
+  /// both axes appear in the same bucket.
+  final List<CrossAxisPairRecord> crossAxisPairs;
+
   const HistoryTeachingSummary({
     required this.mostCommonLeakId,
     required this.mostCommonLeakCount,
@@ -24,6 +40,7 @@ class HistoryTeachingSummary {
     required this.mostCommonBenchmarkId,
     required this.mostCommonBenchmarkCount,
     required this.mostCommonBenchmarkSideLabel,
+    this.crossAxisPairs = const [],
   });
 }
 
@@ -183,6 +200,8 @@ class HistoryTeachingAnalyzer {
       }
     }
 
+    final crossAxisPairs = _detectCrossAxisPairs(records);
+
     return HistoryTeachingSummary(
       mostCommonLeakId: mostCommonLeakId,
       mostCommonLeakCount: maxCount,
@@ -192,7 +211,104 @@ class HistoryTeachingAnalyzer {
       mostCommonBenchmarkId: mostCommonBenchmarkId,
       mostCommonBenchmarkCount: benchMaxCount,
       mostCommonBenchmarkSideLabel: mostCommonBenchmarkSideLabel,
+      crossAxisPairs: crossAxisPairs,
     );
+  }
+
+  // 7.58.cross-axis.0 — recurring CPLH x SPLH pair pattern detector.
+  //
+  // Bucket records by (weekId, daypart). A bucket contributes to a
+  // cell ONLY when both a `cplh_*` lever and a `splh_*` lever fired
+  // among its records. Single-axis-only buckets are ignored.
+  //
+  // Within a paired bucket the dominant CPLH and SPLH directions are
+  // the most-frequent lever ids on each axis (tie-break: `cplh_down`
+  // and `splh_down` win, mirroring the leak-side tie-break order so
+  // operationally impactful directions surface first). The directional
+  // pair maps to one of the locked catalog ids in
+  // `CrossAxisPairs.all`. Combinations outside the catalog (e.g. both
+  // axes above target) produce no record.
+  //
+  // The returned list is sorted by `count` descending, then by
+  // `pairId` ascending for determinism. `count` is the total number
+  // of contributing records (cplh_* + splh_*) across all paired
+  // buckets in the cell. `topDayparts` is the top 2 fullLabel entries
+  // by record frequency, sorted by count desc then label asc — same
+  // shape the single-axis `topLeakDayparts` field uses.
+  static List<CrossAxisPairRecord> _detectCrossAxisPairs(
+    List<HistoryPatternRecord> records,
+  ) {
+    if (records.isEmpty) return const [];
+
+    // Group records by (weekId, daypart).
+    final buckets = <String, List<HistoryPatternRecord>>{};
+    for (final r in records) {
+      final key = '${r.weekId}|${r.daypart}';
+      buckets.putIfAbsent(key, () => <HistoryPatternRecord>[]).add(r);
+    }
+
+    final cellRecords = <String, List<HistoryPatternRecord>>{};
+
+    for (final entry in buckets.entries) {
+      final bucket = entry.value;
+      final cplhRecs = bucket
+          .where((r) => r.leverId == 'cplh_down' || r.leverId == 'cplh_up')
+          .toList();
+      final splhRecs = bucket
+          .where((r) => r.leverId == 'splh_down' || r.leverId == 'splh_up')
+          .toList();
+
+      // Detection rule: both CPLH and SPLH lever ids must have fired
+      // for this (weekId, daypart). Single-axis-only buckets skip.
+      if (cplhRecs.isEmpty || splhRecs.isEmpty) continue;
+
+      final cplhDownCount =
+          cplhRecs.where((r) => r.leverId == 'cplh_down').length;
+      final cplhUpCount = cplhRecs.length - cplhDownCount;
+      final splhDownCount =
+          splhRecs.where((r) => r.leverId == 'splh_down').length;
+      final splhUpCount = splhRecs.length - splhDownCount;
+
+      // Tie-break: `cplh_down` / `splh_down` win on equality.
+      final cplhBelow = cplhDownCount >= cplhUpCount;
+      final splhBelow = splhDownCount >= splhUpCount;
+
+      String? cellId;
+      if (cplhBelow && !splhBelow) {
+        cellId = CrossAxisPairs.cplhBelowSplhAbove.id;
+      } else if (!cplhBelow && splhBelow) {
+        cellId = CrossAxisPairs.cplhAboveSplhBelow.id;
+      } else if (cplhBelow && splhBelow) {
+        cellId = CrossAxisPairs.bothBelow.id;
+      }
+      // Both-above (cplh_up + splh_up) is outside the locked V1
+      // catalog: no record emitted.
+
+      if (cellId == null) continue;
+
+      final cellList =
+          cellRecords.putIfAbsent(cellId, () => <HistoryPatternRecord>[]);
+      cellList.addAll(cplhRecs);
+      cellList.addAll(splhRecs);
+    }
+
+    final result = <CrossAxisPairRecord>[];
+    for (final entry in cellRecords.entries) {
+      final dpFreq = <String, int>{};
+      for (final r in entry.value) {
+        dpFreq[r.fullLabel] = (dpFreq[r.fullLabel] ?? 0) + 1;
+      }
+      result.add(CrossAxisPairRecord(
+        pairId: entry.key,
+        count: entry.value.length,
+        topDayparts: _topTwo(dpFreq),
+      ));
+    }
+    result.sort((a, b) {
+      final cmp = b.count.compareTo(a.count);
+      return cmp != 0 ? cmp : a.pairId.compareTo(b.pairId);
+    });
+    return result;
   }
 
   // Returns up to 2 entries sorted by count descending, then label ascending.

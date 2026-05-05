@@ -1,6 +1,8 @@
 // Phase 7.14 — Learn Teaching Summary
 // Immutable model combining History pattern analysis with active Baseline truth.
 
+import 'cross_axis_pair_record.dart';
+
 class LearnTeachingSummary {
   final int weekCount;
   final String benchmarkSourceLabel;
@@ -37,6 +39,14 @@ class LearnTeachingSummary {
   final int primaryBenchmarkCount;
   final bool hasBenchmarkPatterns;
 
+  /// 7.58.cross-axis.0 — recurring CPLH x SPLH pair patterns observed
+  /// across the closed-shift history window. Sorted by `count`
+  /// descending. Empty when no (week, daypart) bucket fired both axes.
+  /// Wave B (`7.58.UX.7+9`) consumes this to swap the Learn carousel
+  /// data source from `LeverCards` to `CrossAxisPairs` when a recurring
+  /// pair pattern is present.
+  final List<CrossAxisPairRecord> crossAxisPairs;
+
   const LearnTeachingSummary({
     required this.weekCount,
     required this.benchmarkSourceLabel,
@@ -60,5 +70,6 @@ class LearnTeachingSummary {
     required this.primaryBenchmarkSideLabel,
     required this.primaryBenchmarkCount,
     required this.hasBenchmarkPatterns,
+    this.crossAxisPairs = const [],
   });
 }

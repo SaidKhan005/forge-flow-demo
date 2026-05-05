@@ -6,6 +6,7 @@
 // source label and target metrics now come from injected
 // LearnBenchmarkContext, resolved by LearnBenchmarkContextService.
 
+import '../models/cross_axis_pair_record.dart';
 import '../models/history_pattern_record.dart';
 import '../models/learn_benchmark_context.dart';
 import '../models/learn_teaching_summary.dart';
@@ -56,6 +57,7 @@ class LearnTeachingAnalyzer {
     String primaryBenchmarkSideLabel;
     int primaryBenchmarkCount;
     bool hasBenchmarkPatterns;
+    List<CrossAxisPairRecord> crossAxisPairs;
 
     if (historySummary == null) {
       primaryLeakId = '';
@@ -70,6 +72,7 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkSideLabel = 'No benchmark pattern yet';
       primaryBenchmarkCount = 0;
       hasBenchmarkPatterns = false;
+      crossAxisPairs = const [];
     } else {
       primaryLeakId = historySummary.mostCommonLeakId;
       primaryLeakSideLabel = historySummary.mostCommonLeakSideLabel;
@@ -80,6 +83,7 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkSideLabel = historySummary.mostCommonBenchmarkSideLabel;
       primaryBenchmarkCount = historySummary.mostCommonBenchmarkCount;
       hasBenchmarkPatterns = historySummary.mostCommonBenchmarkCount > 0;
+      crossAxisPairs = historySummary.crossAxisPairs;
 
       if (topLeakDayparts.isEmpty) {
         primaryFixLine =
@@ -135,6 +139,7 @@ class LearnTeachingAnalyzer {
       primaryBenchmarkSideLabel: primaryBenchmarkSideLabel,
       primaryBenchmarkCount: primaryBenchmarkCount,
       hasBenchmarkPatterns: hasBenchmarkPatterns,
+      crossAxisPairs: crossAxisPairs,
     );
   }
 }
