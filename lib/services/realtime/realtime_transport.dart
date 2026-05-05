@@ -19,9 +19,23 @@ abstract class RealtimeTransport {
   /// subprotocol carrying the token; that fallback is a Phase 10a
   /// follow-up so the scaffold uses native HTTP-header auth).
   ///
+  /// The optional [lastEventId] is the last `event_id` the client has
+  /// observed on this scope (per `event_outbox_contract.md` "Payload
+  /// Shape"). It is forwarded to the server as a query parameter on
+  /// the upgrade URI so the route can replay any events the client
+  /// missed during a disconnect (Phase 10a.5; bounded by the contract
+  /// floor — `kRealtimeReplayWindow` on the server, default 5 min).
+  /// Null on the very first connect for a tenant scope (no events
+  /// have been observed yet); set on every subsequent reconnect by
+  /// [RealtimeSubscription].
+  ///
   /// Throws on connection failure so [RealtimeSubscription] can
   /// schedule a back-off.
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken});
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  });
 }
 
 abstract class RealtimeChannel {

@@ -339,7 +339,11 @@ class _ScriptedTransport implements RealtimeTransport {
   void queueSuccess() => _queue.add(true);
 
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) async {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) async {
     attempts += 1;
     lastTokenAttempted = authToken;
     if (_queue.isEmpty) {
