@@ -1,20 +1,20 @@
-// Phase 11A.5 — Debug console admin gateway.
+// Phase 11A.5 - Debug console admin gateway.
 //
 // Translates the screen's read intents into proxy
 // `/v1/admin/debug/*` HTTP calls. The admin Flutter client never
 // holds a Postgres connection string and never reaches the database
-// directly — every read flows through the F&F admin proxy. Writes are
+// directly - every read flows through the F&F admin proxy. Writes are
 // out of scope for this surface (it is read-only debugging).
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpDebugConsoleAdminGateway] — production. GET against the
+//   * [HttpDebugConsoleAdminGateway] - production. GET against the
 //     proxy with the signed-in admin's bearer token. Filters are
 //     query-string encoded; the request log list endpoint paginates
 //     by `started_at` desc but the launch surface fetches a bounded
 //     window (default 100 rows) per call.
 //
-//   * [InMemoryDebugConsoleAdminGateway] — demo + widget tests. Seed
+//   * [InMemoryDebugConsoleAdminGateway] - demo + widget tests. Seed
 //     a deterministic mix of operators / locations / usage classes /
 //     statuses / opt-ins so the screen can be driven end-to-end
 //     without a backend.
@@ -67,7 +67,9 @@ abstract class DebugConsoleAdminGateway {
   /// Returns the most recent N rows ordered by [RequestLogEntry.startedAt]
   /// descending. The screen polls this on a slow tick when the
   /// live-tail toggle is on.
-  Future<List<RequestLogEntry>> tailRecent({int limit = kDebugConsoleTailLimit});
+  Future<List<RequestLogEntry>> tailRecent({
+    int limit = kDebugConsoleTailLimit,
+  });
 
   /// Operator-level full-content opt-in projections. The admin shell
   /// renders one entry per operator the caller is allowed to
@@ -260,7 +262,7 @@ class HttpDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
-/// Persists nothing across runs — every construction starts from
+/// Persists nothing across runs - every construction starts from
 /// [seed] / [optInSeed]. Filtering mirrors [RequestLogFilter.matches]
 /// so the demo behaves identically to the proxy.
 class InMemoryDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
@@ -278,7 +280,7 @@ class InMemoryDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
   final List<RequestLogEntry> _entries;
   final Map<String, FullContentOptIn> _optIns;
 
-  /// Add an entry — used by the demo walkthrough to push a synthetic
+  /// Add an entry - used by the demo walkthrough to push a synthetic
   /// new row while the live-tail toggle is on.
   void appendEntry(RequestLogEntry entry) {
     _entries.add(entry);
@@ -309,7 +311,9 @@ class InMemoryDebugConsoleAdminGateway implements DebugConsoleAdminGateway {
         if (filter.matches(entry, now: reference)) entry,
     ];
     matched.sort((a, b) => b.startedAt.compareTo(a.startedAt));
-    final clamped = matched.length > limit ? matched.sublist(0, limit) : matched;
+    final clamped = matched.length > limit
+        ? matched.sublist(0, limit)
+        : matched;
     return List<RequestLogEntry>.unmodifiable(clamped);
   }
 

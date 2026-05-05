@@ -1,16 +1,16 @@
-// Phase 11A.7 — Feature flags admin screen.
+﻿// Phase 11A.7 - Feature flags admin screen.
 //
 // Replaces the 11A.0 placeholder. F&F internal-only surface that
 // lists every row in the `public.feature_flags` catalog and lets a
 // `super_admin` toggle them. `ff_support` lands on the read-only
-// branch — toggle buttons are disabled and the proxy enforces the
+// branch - toggle buttons are disabled and the proxy enforces the
 // same gate server-side.
 //
 // Destructive flag UX:
 //
 //   * Each row marked `kind = 'destructive'` (audit-logs cutover, KMS
 //     rollout lanes, etc.) renders a DANGER chip.
-//   * Toggling a destructive flag forces a confirm-by-typing dialog —
+//   * Toggling a destructive flag forces a confirm-by-typing dialog -
 //     the operator must enter the exact `flag_name` before the
 //     gateway POST fires. Standard flags toggle on a single click +
 //     SnackBar.
@@ -46,7 +46,7 @@ class FeatureFlagsAdminScreen extends StatefulWidget {
 
   final FeatureFlagsAdminGateway gateway;
 
-  /// When false, the screen hides every toggle affordance — used for
+  /// When false, the screen hides every toggle affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;

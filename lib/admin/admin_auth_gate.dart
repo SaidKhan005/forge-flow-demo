@@ -1,4 +1,4 @@
-// Phase 11A.0 — Admin auth gate.
+﻿// Phase 11A.0 - Admin auth gate.
 //
 // The admin console is F&F-internal back-office. Only Firebase users
 // whose ID token carries a `super_admin` or `ff_support` role claim
@@ -7,18 +7,18 @@
 //
 // Two auth sources ship with this slice:
 //
-//   * [FirebaseAdminAuthSource] — production. Wraps the shared
+//   * [FirebaseAdminAuthSource] - production. Wraps the shared
 //     `FirebaseAuthClient` adapter and reads custom claims from the
 //     returned credential. Phase 11A.x slices wire the Firebase web
 //     init step against the production admin project; the source is a
 //     thin adapter so that wiring is additive rather than
 //     restructuring this gate.
-//   * [DemoAdminAuthSource] — tests + the kDemoMode walkthrough. Lets
+//   * [DemoAdminAuthSource] - tests + the kDemoMode walkthrough. Lets
 //     a widget exercise both the admit path (super_admin / ff_support)
 //     and the fail-closed path (any other role list, or signed-out)
 //     without touching live Firebase Authentication.
 //
-// The gate widget itself is auth-source agnostic — it watches a
+// The gate widget itself is auth-source agnostic - it watches a
 // [Stream] of [AdminAuthState] and renders one of the auth surfaces
 // (loading / unauthenticated / MFA challenge / forbidden / admin shell). The same
 // shape works for both production and demo.
@@ -44,7 +44,7 @@ import 'admin_button_styles.dart';
 /// `_adminTierRoles` set in `lib/auth/mfa_policy.dart` for
 /// `super_admin` + `ff_support`. Operator roles
 /// (`operator_owner` / `operator_manager`) are explicitly NOT
-/// admitted here — the admin console is F&F-internal, not operator
+/// admitted here - the admin console is F&F-internal, not operator
 /// self-service.
 const Set<String> kAdminConsoleRoles = <String>{'super_admin', 'ff_support'};
 
@@ -197,7 +197,7 @@ class DemoAdminAuthSource implements AdminAuthSource {
       StreamController<AdminAuthState>.broadcast();
   AdminAuthState _state;
 
-  /// Demo registry — matches against the email submitted on the
+  /// Demo registry - matches against the email submitted on the
   /// sign-in card. Keeps the walkthrough deterministic without
   /// shipping live credentials.
   static const Map<String, AdminAuthSession> _demoUsers =

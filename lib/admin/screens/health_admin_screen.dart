@@ -1,12 +1,12 @@
-// Phase 11A.UX.health (F.1) — Health admin surface (HP #10 cleanup).
+﻿// Phase 11A.UX.health (F.1) - Health admin surface (HP #10 cleanup).
 //
 // Read-only operator-facing view of the proxy `/health` envelope.
 // Three tabs reflect the three D.1 metric tiers:
 //
-//   * Retrieval — graph (AGE) + vector + rollup freshness signals.
-//   * Proxy     — circuit breakers + cache hit ratios + tier routing
+//   * Retrieval - graph (AGE) + vector + rollup freshness signals.
+//   * Proxy     - circuit breakers + cache hit ratios + tier routing
 //                 + cost-discipline levers + idempotency / caps.
-//   * Infra     — postgres extensions, pg_cron, pg_partman, audit
+//   * Infra     - postgres extensions, pg_cron, pg_partman, audit
 //                 anchor, event_outbox, dependency probes, migration
 //                 drift.
 //
@@ -33,11 +33,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/health_admin_models.dart';
 import '../services/health_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_run_check_controls.dart';
 
 /// One tile entry in a tab section.
 class _TileSpec {
@@ -417,17 +417,15 @@ class _Header extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            OutlinedButton.icon(
+            AdminRunCheckButton(
               key: const Key('admin_health_refresh_button'),
-              onPressed: loading ? null : () => onRunHealthCheck(),
-              icon: loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.health_and_safety_outlined, size: 16),
-              label: Text(loading ? 'Running...' : 'Run system check'),
+              onPressed: () {
+                onRunHealthCheck();
+              },
+              icon: Icons.health_and_safety_outlined,
+              label: 'Run system check',
+              loadingLabel: 'Running...',
+              loading: loading,
             ),
             const SizedBox(height: 6),
             Text(
@@ -451,29 +449,30 @@ class _HealthCheckConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const Key('admin_health_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Run system check?',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        'This checks real staging dependencies and can take 15-30+ seconds. It is read-only; red or yellow results may reflect backend state rather than a console issue.',
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
-      actions: [
-        TextButton(
-          key: const Key('admin_health_confirm_cancel'),
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+    return const AdminRunCheckConfirmDialog(
+      dialogKey: Key('admin_health_confirm_dialog'),
+      cancelButtonKey: Key('admin_health_confirm_cancel'),
+      confirmButtonKey: Key('admin_health_confirm_run'),
+      icon: Icons.health_and_safety_outlined,
+      title: 'Run system check',
+      description:
+          'This reads live staging health and dependency status. It is read-only and can take 15-30 seconds.',
+      confirmLabel: 'Run system check',
+      facts: [
+        AdminRunCheckFact(
+          icon: Icons.visibility_outlined,
+          label: 'Read-only',
+          text: 'No settings or operator data are changed.',
         ),
-        FilledButton.icon(
-          key: const Key('admin_health_confirm_run'),
-          onPressed: () => Navigator.of(context).pop(true),
-          style: AdminButtonStyles.primary,
-          icon: const Icon(Icons.play_arrow, size: 16),
-          label: const Text('Run system check'),
+        AdminRunCheckFact(
+          icon: Icons.schedule_outlined,
+          label: 'Timing',
+          text: 'Some dependency checks take a few moments to answer.',
+        ),
+        AdminRunCheckFact(
+          icon: Icons.warning_amber_outlined,
+          label: 'Results',
+          text: 'Warnings usually mean backend state needs review.',
         ),
       ],
     );
@@ -487,42 +486,33 @@ class _ManualHealthPrompt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return AdminRunCheckPrompt(
       key: const Key('admin_health_manual_prompt'),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
-        child: Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Run the first system check',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Use this when you need the current staging state. The check is read-only and may take 15-30+ seconds.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                key: const Key('admin_health_manual_run_button'),
-                onPressed: () => onRunHealthCheck(),
-                style: AdminButtonStyles.primary,
-                icon: const Icon(Icons.health_and_safety_outlined, size: 16),
-                label: const Text('Run system check'),
-              ),
-            ],
-          ),
+      icon: Icons.health_and_safety_outlined,
+      title: 'Check system health',
+      description:
+          'Start with the current staging picture before investigating service or data issues.',
+      buttonLabel: 'Run system check',
+      onPressed: () {
+        onRunHealthCheck();
+      },
+      facts: const [
+        AdminRunCheckFact(
+          icon: Icons.visibility_outlined,
+          label: 'Read-only',
+          text: 'No settings or operator data are changed.',
         ),
-      ),
+        AdminRunCheckFact(
+          icon: Icons.account_tree_outlined,
+          label: 'Scope',
+          text: 'Dependency status, health signals, and producer freshness.',
+        ),
+        AdminRunCheckFact(
+          icon: Icons.schedule_outlined,
+          label: 'Timing',
+          text: 'Live staging checks can take 15-30 seconds.',
+        ),
+      ],
     );
   }
 }

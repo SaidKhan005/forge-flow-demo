@@ -1,17 +1,17 @@
-// Phase 11A.3a — Corpus admin gateway.
+﻿// Phase 11A.3a - Corpus admin gateway.
 //
 // Translates the corpus screen's commands into proxy
 // `/v1/admin/corpus/*` HTTP calls. The admin Flutter client never
 // holds a Postgres connection string and never reaches the database
-// directly — every read/write flows through the F&F admin proxy.
+// directly - every read/write flows through the F&F admin proxy.
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpCorpusAdminGateway] — production. GET/POST/PUT against the
+//   * [HttpCorpusAdminGateway] - production. GET/POST/PUT against the
 //     proxy with the signed-in admin's bearer token. Mutations carry
 //     an `Idempotency-Key` header so the proxy can dedupe retries.
 //
-//   * [InMemoryCorpusAdminGateway] — demo + widget tests. Mutates an
+//   * [InMemoryCorpusAdminGateway] - demo + widget tests. Mutates an
 //     in-memory ledger so the admin screen runs end-to-end in
 //     `kDemoMode` without Voyage / Anthropic / Postgres.
 //
@@ -68,13 +68,13 @@ abstract class CorpusAdminGateway {
   /// row pointing at the target.
   Future<CorpusVersionRef> rollbackToVersion(RollbackCommand command);
 
-  // ─── Phase 11A.3b — Graphify candidate review ──────────────────
+  // ─── Phase 11A.3b - Graphify candidate review ──────────────────
 
   /// Loads the current Graphify candidate diff. The proxy applies
   /// the corpus_manifest scope filter again as defense-in-depth, so
   /// every candidate returned here references an in-scope source
   /// document. Used by both super_admin (mutates) and ff_support
-  /// (read-only) — the role gate sits server-side.
+  /// (read-only) - the role gate sits server-side.
   Future<GraphCandidateDiff> listGraphCandidates();
 
   /// Commits a batch of approve/reject/edit decisions atomically.
@@ -122,7 +122,7 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
   static const String previewDiffPath = '/v1/admin/corpus/preview-diff';
   static const String commitPath = '/v1/admin/corpus/commit';
   static const String rollbackPath = '/v1/admin/corpus/rollback';
-  // Phase 11A.3b — Graphify candidate review routes.
+  // Phase 11A.3b - Graphify candidate review routes.
   static const String graphCandidatesPath = '/v1/admin/corpus/graph-candidates';
   static const String graphCandidatesCommitPath =
       '/v1/admin/corpus/graph-candidates/commit-batch';
@@ -316,7 +316,7 @@ class HttpCorpusAdminGateway implements CorpusAdminGateway {
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
-/// Persists nothing across runs — every construction starts from
+/// Persists nothing across runs - every construction starts from
 /// [seed]. Validation rules mirror the proxy:
 ///
 ///   * Upload rejected when [UploadCommand.bytes] exceeds the launch
@@ -353,7 +353,7 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
       <String, CorpusVersionRef>{};
   final Map<String, CorpusDiff> _idempotentDiffs = <String, CorpusDiff>{};
 
-  // Phase 11A.3b — Graph candidate state.
+  // Phase 11A.3b - Graph candidate state.
   GraphCandidateDiff _graphCandidates;
   // Decisions the demo gateway has consumed in prior commits;
   // approved → no longer in the diff; rejected → moved to the audit
@@ -475,7 +475,7 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
     final cached = _idempotentResults[command.idempotencyKey];
     if (cached != null) return cached;
     if (_seenIdempotencyKeys.contains(command.idempotencyKey)) {
-      // The key was used for a different operation (rollback) — proxy
+      // The key was used for a different operation (rollback) - proxy
       // would return 409. Same shape locally.
       throw const CorpusAdminGatewayError(
         statusCode: 409,
@@ -719,7 +719,7 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
   // Inspector hooks for the demo walkthrough + widget tests so they
   // can assert that approved candidates landed in canonical storage
   // and rejected candidates landed in the audit log only. Production
-  // never reads these — the proxy is the read path.
+  // never reads these - the proxy is the read path.
   List<Map<String, Object?>> get debugApprovedNodes =>
       List<Map<String, Object?>>.unmodifiable(_approvedNodes);
   List<Map<String, Object?>> get debugApprovedEdges =>
@@ -744,7 +744,7 @@ class InMemoryCorpusAdminGateway implements CorpusAdminGateway {
             'expected one of ${kCorpusUploadAcceptedContentTypes.join(', ')}',
       );
     }
-    // Cheap binary sniff — null bytes are a strong signal that this
+    // Cheap binary sniff - null bytes are a strong signal that this
     // is a PNG / PDF / random binary the user dropped by mistake.
     final scanLen = math.min(command.bytes.length, 4096);
     for (var i = 0; i < scanLen; i++) {
@@ -940,7 +940,7 @@ class _PendingUpload {
 Uint8List corpusUploadBytesFromString(String markdown) =>
     Uint8List.fromList(utf8.encode(markdown));
 
-/// Phase 11A.3b — deterministic demo seed for the Graph candidates
+/// Phase 11A.3b - deterministic demo seed for the Graph candidates
 /// tab. Mirrors the kind of payload the importer would produce from
 /// `graphify-out/graph.json` against the seeded methodology corpus.
 GraphCandidateDiff _defaultDemoGraphCandidates() {

@@ -194,12 +194,13 @@ class OperatorsRepository extends OperatorScopedRepository {
     }, reason: adminReason);
   }
 
-  /// Atomic operator + primary-location onboarding. Inserts the operator and
-  /// primary location inside a single `withSystem` transaction so a failure on
-  /// either step rolls back the prior insert. Phase 9 identity creation
-  /// (Firebase user, `users`, `user_roles`, invite, and audit) is orchestrated
-  /// by `RepositoryAuthOperationsGateway` after this returns; this repository
-  /// must not fabricate a partial `users` row.
+  /// Atomic operator + primary-location onboarding. Inserts the operator,
+  /// root org-unit, and primary location inside a single `withSystem`
+  /// transaction so a failure on any step rolls back the prior inserts.
+  /// Phase 9 identity creation (Firebase user, `users`, `user_roles`,
+  /// invite, and audit) is orchestrated by `RepositoryAuthOperationsGateway`
+  /// after this returns; this repository must not fabricate a partial `users`
+  /// row.
   ///
   /// All identifiers are generated server-side by Postgres
   /// (`default gen_random_uuid()` on each table's primary key) and
@@ -207,10 +208,12 @@ class OperatorsRepository extends OperatorScopedRepository {
   /// ordering load-bearing: `operators.primary_location_id`
   /// composite-FKs to `locations(operator_id, location_id)`, so
   /// the location must exist before the operator's primary-location
-  /// pointer can be set. Sequence: insert operator (no
-  /// primary_location_id) -> insert location -> UPDATE operator with
-  /// primary_location_id. The returning row is the final operator state with
-  /// its primary_location_id set.
+  /// pointer can be set. The post-hierarchy schema also requires every
+  /// location to attach to an `org_units` parent, so onboarding creates the
+  /// operator root before inserting the primary location. Sequence: insert
+  /// operator (no primary_location_id) -> insert root org_unit -> insert
+  /// location -> UPDATE operator with primary_location_id. The returning row
+  /// is the final operator state with its primary_location_id set.
   Future<OperatorOnboardingResult> onboardOperatorAtomically({
     required String businessName,
     required String ownerEmail,
@@ -244,12 +247,33 @@ class OperatorsRepository extends OperatorScopedRepository {
       }
       final operatorId = operatorInsertRows.single['operator_id']! as String;
 
+      final orgUnitRows = await exec.query(
+        'insert into org_units ('
+        'operator_id, parent_id, unit_type, path, name'
+        ') values ('
+        '@operator_id::uuid, null, '
+        "'corp', "
+        "coalesce(nullif(lower(regexp_replace(@business_name, "
+        "'[^A-Za-z0-9_]', '', 'g')), ''), 'root')::ltree, "
+        '@business_name'
+        ') '
+        'returning id::text as id',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'business_name': businessName,
+        },
+      );
+      if (orgUnitRows.isEmpty) {
+        throw StateError('org_units root insert returned no rows');
+      }
+      final rootOrgUnitId = orgUnitRows.single['id']! as String;
+
       final locationRows = await exec.query(
         'insert into locations ('
-        'operator_id, name, address, timezone, '
+        'operator_id, parent_org_unit_id, name, address, timezone, '
         'business_day_rollover_hour'
         ') values ('
-        '@operator_id::uuid, @name, @address, '
+        '@operator_id::uuid, @parent_org_unit_id::uuid, @name, @address, '
         '@timezone, @business_day_rollover_hour'
         ') '
         'returning location_id::text as location_id, '
@@ -257,6 +281,7 @@ class OperatorsRepository extends OperatorScopedRepository {
         'business_day_rollover_hour, created_at, updated_at',
         parameters: <String, Object?>{
           'operator_id': operatorId,
+          'parent_org_unit_id': rootOrgUnitId,
           'name': locationName,
           'address': locationAddress,
           'timezone': locationTimezone,

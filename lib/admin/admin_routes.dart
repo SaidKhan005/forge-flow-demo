@@ -1,4 +1,4 @@
-// Phase 11A.0 - Admin route table.
+﻿// Phase 11A.0 - Admin route table.
 //
 // The admin console is a multi-surface back-office. Keeping the route
 // catalog in a single typed list lets the shell nav render live
@@ -87,7 +87,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-enum AdminRouteSection { ai, dev, operations }
+enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -118,7 +118,7 @@ const String kAdminObservabilityRouteId = 'observability';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
 /// is reached via Navigator.push from the Corpus admin "Pick operator"
-/// button — it is intentionally NOT in [kAdminRoutes] (no side-nav
+/// button - it is intentionally NOT in [kAdminRoutes] (no side-nav
 /// item) because its purpose is "internal helper of the Corpus
 /// surface," not a standalone admin destination. The constant exists
 /// so audit logs and route observers have a stable name to refer to
@@ -159,7 +159,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Connected services',
     path: '/integrations',
     icon: Icons.extension_outlined,
-    section: AdminRouteSection.dev,
+    section: AdminRouteSection.serviceSetup,
     subtitle: 'Check provider status and rotate service keys safely.',
     builder: _buildIntegrations,
   ),
@@ -168,7 +168,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System health',
     path: '/health',
     icon: Icons.monitor_heart_outlined,
-    section: AdminRouteSection.dev,
+    section: AdminRouteSection.systemMonitoring,
     subtitle: 'Run a read-only system check before investigating live issues.',
     builder: _buildHealth,
   ),
@@ -177,7 +177,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Launch controls',
     path: '/feature-flags',
     icon: Icons.flag_outlined,
-    section: AdminRouteSection.dev,
+    section: AdminRouteSection.serviceSetup,
     subtitle: 'Control staged features without shipping a new build.',
     builder: _buildFeatureFlags,
   ),
@@ -186,7 +186,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'Support logs',
     path: '/debug',
     icon: Icons.bug_report_outlined,
-    section: AdminRouteSection.dev,
+    section: AdminRouteSection.systemMonitoring,
     subtitle:
         'Search recent operator requests and inspect support-safe details.',
     builder: _buildDebugConsole,
@@ -196,7 +196,7 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
     title: 'System metrics',
     path: '/observability',
     icon: Icons.insights_outlined,
-    section: AdminRouteSection.dev,
+    section: AdminRouteSection.systemMonitoring,
     subtitle:
         'Review cost, usage limits, operator activity, graph health, and hosting.',
     builder: _buildObservability,
@@ -228,7 +228,7 @@ Widget _buildPricing(BuildContext context) {
   final gateway = AdminConsoleServicesScope.pricingTierGatewayOf(context);
   final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
   if (source == null) {
-    // No source wired (typical widget-test path) — default to live
+    // No source wired (typical widget-test path) - default to live
     // edit affordances. Production wires `source` from main_admin so
     // `ff_support` lands on the read-only branch below.
     return PricingTierAdminScreen(gateway: gateway);
@@ -245,14 +245,14 @@ Widget _buildPricing(BuildContext context) {
   );
 }
 
-/// Phase 11A.3b — demo-mode tenant the Graph candidates tab targets
+/// Phase 11A.3b - demo-mode tenant the Graph candidates tab targets
 /// when the in-memory demo gateway is mounted. The IDs match the
 /// kDemoMode tenant seed in [_defaultDemoGateway] below so the
 /// 11A.3b walkthrough writes against the same demo operator the
 /// rest of the admin shell reads.
 ///
 /// Live mode (HTTP gateway) deliberately leaves both null until the
-/// operator-picker slice ships — the screen disables the Graph
+/// operator-picker slice ships - the screen disables the Graph
 /// candidates commit button with a banner in that case so a
 /// super_admin cannot accidentally write graph approvals against
 /// the demo IDs (which do not exist as real tenants in production).
@@ -294,7 +294,7 @@ Widget _buildCorpus(BuildContext context) {
   }
 
   if (source == null) {
-    // No source wired (test path) — default to live edit affordances.
+    // No source wired (test path) - default to live edit affordances.
     return CorpusAdminScreen(
       gateway: gateway,
       targetOperatorId: demoTargetOperatorId,
@@ -339,7 +339,7 @@ Widget _buildIntegrations(BuildContext context) {
 }
 
 Widget _buildHealth(BuildContext context) {
-  // F.1 — read-only for both `super_admin` and `ff_support`. The
+  // F.1 - read-only for both `super_admin` and `ff_support`. The
   // gateway is the only injection point; there is no editingEnabled
   // flag because the surface has no mutate affordances.
   final gateway = AdminConsoleServicesScope.healthGatewayOf(context);
@@ -347,7 +347,7 @@ Widget _buildHealth(BuildContext context) {
 }
 
 Widget _buildObservability(BuildContext context) {
-  // 11A.6 — read-only surface. Same admit posture as Health: both
+  // 11A.6 - read-only surface. Same admit posture as Health: both
   // `super_admin` and `ff_support` see the full cost-telemetry +
   // dormancy + margin + cap-event + graph + Cloud Run dashboard.
   // No editingEnabled flag because there are no mutate affordances.
@@ -374,7 +374,7 @@ Widget _buildFeatureFlags(BuildContext context) {
 }
 
 Widget _buildDebugConsole(BuildContext context) {
-  // 11A.5 — full-content reveal is gated on `super_admin`. `ff_support`
+  // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
   // affordance); the diff still renders so support can audit recent
   // request meta.
@@ -449,47 +449,47 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// fabricating a live gateway.
   final OperatorLocationAdminGateway? operatorLocationGateway;
 
-  /// Phase 11A.2 — pricing tier admin gateway. Optional so existing
+  /// Phase 11A.2 - pricing tier admin gateway. Optional so existing
   /// production wiring can light it up incrementally; the default
   /// fallback is a seeded in-memory demo gateway shared with the
   /// walkthrough.
   final PricingTierAdminGateway? pricingTierGateway;
 
-  /// Phase 11A.3a — corpus admin gateway. Optional for the same
+  /// Phase 11A.3a - corpus admin gateway. Optional for the same
   /// incremental-wiring reason. Default fallback is the seeded
   /// in-memory corpus demo gateway shared with the 11A.3a walkthrough.
   final CorpusAdminGateway? corpusAdminGateway;
 
-  /// Phase 11A.4 — integration management admin gateway. Optional;
+  /// Phase 11A.4 - integration management admin gateway. Optional;
   /// the default fallback is a seeded in-memory gateway sharing the
   /// `kDemoMode` walkthrough fixtures.
   final IntegrationAdminGateway? integrationGateway;
 
-  /// Phase 11A.UX.health (F.1) — proxy `/health` envelope gateway.
+  /// Phase 11A.UX.health (F.1) - proxy `/health` envelope gateway.
   /// Optional; the default fallback is the seeded in-memory demo
   /// envelope shared with the F.1 walkthrough.
   final HealthAdminGateway? healthGateway;
 
-  /// Phase 11A.6 — observability dashboard gateway. Optional; the
+  /// Phase 11A.6 - observability dashboard gateway. Optional; the
   /// default fallback is the seeded in-memory demo envelope so the
   /// 11A.6 walkthrough renders without the Cloud Run admin proxy.
-  /// The /health envelope is intentionally NOT consumed here — that
+  /// The /health envelope is intentionally NOT consumed here - that
   /// surface lives behind [healthGateway] / the Health route.
   final ObservabilityAdminGateway? observabilityGateway;
 
-  /// Phase 11A.7 — feature flags admin gateway. Optional; the default
+  /// Phase 11A.7 - feature flags admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the launch flag
   /// catalog so the walkthrough exercises the toggle / DANGER paths
   /// without hitting Postgres.
   final FeatureFlagsAdminGateway? featureFlagsGateway;
 
-  /// Phase 11A.5 — debug console admin gateway. Optional; the default
+  /// Phase 11A.5 - debug console admin gateway. Optional; the default
   /// fallback is a seeded in-memory gateway with the per-operator
   /// request log demo so the walkthrough exercises filters, search,
   /// live-tail, and the full-content opt-in paths without a backend.
   final DebugConsoleAdminGateway? debugConsoleGateway;
 
-  /// Phase 11A.2 — admin auth source. Optional for the same
+  /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
   /// (only `super_admin` may mutate caps; `ff_support` lands on the
@@ -842,10 +842,10 @@ final ObservabilityAdminGateway _defaultObservabilityDemoGateway =
 /// destructive-confirmation paths end-to-end. Mirrors the rows
 /// landed by the launch migrations:
 ///
-///   * `audit_logs_cutover_enabled` (destructive) — B.2 cutover flag.
-///   * `kms_real_provider_<kind>_enabled` (destructive) — per-lane
+///   * `audit_logs_cutover_enabled` (destructive) - B.2 cutover flag.
+///   * `kms_real_provider_<kind>_enabled` (destructive) - per-lane
 ///     KMS rollout gates.
-///   * `advisor_enabled` (standard) — example launch flag for the
+///   * `advisor_enabled` (standard) - example launch flag for the
 ///     advisor surface.
 final FeatureFlagsAdminGateway _defaultFeatureFlagsDemoGateway =
     InMemoryFeatureFlagsAdminGateway(

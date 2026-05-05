@@ -1,4 +1,4 @@
-// Phase 11A.2 — Pricing tier admin screen.
+﻿// Phase 11A.2 - Pricing tier admin screen.
 //
 // Admin-side editor over `usage_caps` per (operator, location,
 // usage_class, staff_id?, workflow_id?) plus subscription tier on
@@ -43,7 +43,7 @@ class PricingTierAdminScreen extends StatefulWidget {
 
   final PricingTierAdminGateway gateway;
 
-  /// When false, the screen hides every mutate affordance — used for
+  /// When false, the screen hides every mutate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;

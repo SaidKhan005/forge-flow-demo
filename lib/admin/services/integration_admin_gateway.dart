@@ -1,19 +1,19 @@
-// Phase 11A.4 — Integration management admin gateway.
+﻿// Phase 11A.4 - Integration management admin gateway.
 //
 // Translates the integrations screen's commands into proxy
 // `/v1/admin/integrations/*` HTTP calls. The Flutter admin client
-// never holds production keys and never reaches KMS directly — every
+// never holds production keys and never reaches KMS directly - every
 // rotation flows through the F&F admin proxy, which brokers the KMS
 // write and returns the masked-display ledger row.
 //
 // Two implementations ship in this slice:
 //
-//   * [HttpIntegrationAdminGateway] — production. GET + POST against
+//   * [HttpIntegrationAdminGateway] - production. GET + POST against
 //     the proxy with the signed-in admin's bearer token. The bearer
 //     source is injected so production can hand it the Firebase
 //     ID-token stream while tests can pin a fixed value.
 //
-//   * [InMemoryIntegrationAdminGateway] — demo + widget tests.
+//   * [InMemoryIntegrationAdminGateway] - demo + widget tests.
 //     Mutates an in-memory ledger so the admin screen can run
 //     end-to-end in `kDemoMode` without a backend or live KMS.
 
@@ -74,7 +74,7 @@ class HttpIntegrationAdminGateway implements IntegrationAdminGateway {
   static const String rotateAzureDbPath =
       '/v1/admin/integrations/rotate-azure-db';
   static const String rotateGeminiPath = '/v1/admin/integrations/rotate-gemini';
-  // Phase 9.8 — SendGrid rotation route. Mirrors the existing
+  // Phase 9.8 - SendGrid rotation route. Mirrors the existing
   // rotate-* path family.
   static const String rotateSendgridPath =
       '/v1/admin/integrations/rotate-sendgrid';
@@ -217,7 +217,7 @@ VendorConnectorStatus _statusFromJson(Map<String, Object?> json) {
 }
 
 /// In-memory gateway used by the demo walkthrough and widget tests.
-/// Persists nothing across runs — every construction starts from
+/// Persists nothing across runs - every construction starts from
 /// [seed]. Backed by a [KmsStubProvider] so a rotation can be
 /// exercised without a real KMS; setting
 /// `kmsProvider.failNextWrite = true` exercises the failure path.
@@ -254,7 +254,7 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
   final VendorConnectorStatus _emailProvider;
 
   /// Per-key cache so a retried rotation on the in-memory gateway
-  /// returns the prior result instead of writing a second KMS row —
+  /// returns the prior result instead of writing a second KMS row -
   /// mirrors the proxy's `admin_request_idempotency` backstop.
   final Map<String, RotateKeyResult> _idempotentResults =
       <String, RotateKeyResult>{};

@@ -1,4 +1,4 @@
-// Phase 11A.0 — Admin MaterialApp.
+﻿// Phase 11A.0 - Admin MaterialApp.
 //
 // Top-level Flutter Web app for the F&F Operations Console. Wraps
 // the AdminAuthGate so the entire surface area lives behind the

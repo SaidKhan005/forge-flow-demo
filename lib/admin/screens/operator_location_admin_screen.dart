@@ -1,4 +1,4 @@
-// Phase 11A.1 — Operator + location admin screen.
+﻿// Phase 11A.1 - Operator + location admin screen.
 //
 // Admin-side CRUD on operators (`operators` table) and their
 // locations (`locations` table). Supports onboarding a new operator
@@ -21,7 +21,7 @@ import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
-// Phase 8.0 — vendor connections mount (per-location admin sub-route).
+// Phase 8.0 - vendor connections mount (per-location admin sub-route).
 // Append-only addition; the existing Edit / Remove / Make-primary
 // affordances stay untouched.
 import 'vendor_connections/vendor_connections_admin_mount.dart';
@@ -562,20 +562,22 @@ class _OperatorTile extends StatelessWidget {
                     maxLines: 2,
                   ),
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton(
-                  key: Key('admin_operator_manage_${operator.operatorId}'),
-                  onPressed: onSelect,
-                  style: AdminButtonStyles.secondary(
-                    minWidth: 132,
-                    minHeight: 42,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
+                if (!selected) ...[
+                  const SizedBox(width: 12),
+                  OutlinedButton(
+                    key: Key('admin_operator_manage_${operator.operatorId}'),
+                    onPressed: onSelect,
+                    style: AdminButtonStyles.secondary(
+                      minWidth: 132,
+                      minHeight: 42,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 12,
+                      ),
                     ),
+                    child: const Text('Click to manage'),
                   ),
-                  child: const Text('Click to manage'),
-                ),
+                ],
               ],
             ),
           ),
@@ -677,7 +679,7 @@ class _OperatorDetail extends StatelessWidget {
                           ? null
                           : () => onOpenSupportLogs!(operator.operatorId, null),
                       icon: const Icon(Icons.bug_report_outlined, size: 14),
-                      label: const Text('View support logs'),
+                      label: const Text('View logs'),
                     ),
                     if (operator.isSuspended)
                       OutlinedButton.icon(
@@ -732,6 +734,7 @@ class _OperatorDetail extends StatelessWidget {
                     (location) => _LocationRow(
                       key: Key('admin_location_row_${location.locationId}'),
                       location: location,
+                      muted: operator.isSuspended,
                       isPrimary:
                           bundle.operator.primaryLocationId ==
                           location.locationId,
@@ -760,6 +763,7 @@ class _LocationRow extends StatelessWidget {
   const _LocationRow({
     super.key,
     required this.location,
+    required this.muted,
     required this.isPrimary,
     required this.onEdit,
     required this.onRemove,
@@ -768,6 +772,7 @@ class _LocationRow extends StatelessWidget {
   });
 
   final LocationAdminRecord location;
+  final bool muted;
   final bool isPrimary;
   final VoidCallback onEdit;
   final VoidCallback onRemove;
@@ -811,25 +816,29 @@ class _LocationRow extends StatelessWidget {
       onOpenSupportLogs: onOpenSupportLogs,
     );
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          if (constraints.maxWidth < 620) {
-            return Column(
+    return Opacity(
+      key: Key('admin_location_suspended_fade_${location.locationId}'),
+      opacity: muted ? 0.52 : 1,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 620) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [summary, const SizedBox(height: 10), actions],
+              );
+            }
+            return Row(
               crossAxisAlignment: CrossAxisAlignment.start,
-              children: [summary, const SizedBox(height: 10), actions],
+              children: [
+                Expanded(child: summary),
+                const SizedBox(width: 18),
+                Flexible(child: actions),
+              ],
             );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: summary),
-              const SizedBox(width: 18),
-              Flexible(child: actions),
-            ],
-          );
-        },
+          },
+        ),
       ),
     );
   }
@@ -875,7 +884,7 @@ class _LocationActionWrap extends StatelessWidget {
           buttonKey: Key('admin_location_support_logs_${location.locationId}'),
           label: 'View logs',
           icon: Icons.bug_report_outlined,
-          tooltip: 'View support logs for this location',
+          tooltip: 'View logs for this location',
           minWidth: 116,
           onPressed: onOpenSupportLogs,
         ),
@@ -1041,7 +1050,7 @@ class _OnboardOperatorDialog extends StatefulWidget {
   const _OnboardOperatorDialog({required this.idempotencyKey});
 
   /// Per-action idempotency key minted by the screen and threaded
-  /// down so the proxy dedups on retries — see `_nextIdempotencyKey`
+  /// down so the proxy dedups on retries - see `_nextIdempotencyKey`
   /// in `_OperatorLocationAdminScreenState`.
   final String idempotencyKey;
 

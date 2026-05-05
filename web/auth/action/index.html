@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -260,7 +260,7 @@
       message.removeAttribute("data-tone");
     }
 
-    // Phase 9.UX.7 — stable Idempotency-Key for this confirm
+    // Phase 9.UX.7 - stable Idempotency-Key for this confirm
     // attempt. The proxy requires the header on /confirm; a retry
     // of the same submit must reuse the same key so the cached
     // 200 replays instead of burning the (single-use) oobCode and
@@ -402,7 +402,7 @@
           return;
         }
 
-        // Phase 9.UX.7 — hand mobile clients off to the in-app
+        // Phase 9.UX.7 - hand mobile clients off to the in-app
         // confirm screen via the `forgeflow://reset-password?...`
         // deep link. The PasswordResetDeepLinkHandler in the app
         // pushes PasswordResetConfirmScreen with the oobCode parsed
@@ -476,7 +476,7 @@
             });
             const body = await response.json().catch(() => ({}));
             if (!response.ok) {
-              // Policy / oobCode rejections are terminal — let the
+              // Policy / oobCode rejections are terminal - let the
               // operator pick a new password (which will rotate the
               // idempotency key on next submit because the password
               // input changes).
@@ -492,7 +492,7 @@
             showMessage("Password updated. Please sign in.", "success");
             showContinueLink();
           } catch (_) {
-            // Network/transport failure — keep the key so a retry
+            // Network/transport failure - keep the key so a retry
             // of the same submit replays the cached response.
             showMessage("Password could not be updated. Request a new reset link and try again.", "error");
           } finally {

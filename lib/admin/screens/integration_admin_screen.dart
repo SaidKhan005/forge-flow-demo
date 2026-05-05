@@ -1,4 +1,4 @@
-// Phase 11A.4 — Integration management admin screen.
+﻿// Phase 11A.4 - Integration management admin screen.
 //
 // F&F internal Integrations surface. Reads the masked-display
 // ledger via [IntegrationAdminGateway] and renders one row per
@@ -8,7 +8,7 @@
 //
 // Phase 9.8 extension: SendGrid joins the rotatable provider lanes
 // alongside the existing four. The lane lights up automatically
-// because the screen iterates `ProviderKeyKind.values` — adding
+// because the screen iterates `ProviderKeyKind.values` - adding
 // `sendgrid` to the enum at `lib/admin/models/integration_admin_models.dart`
 // is the only change needed for the visual surface. The rotate
 // flow reuses the shared `RotateKeyCommand` pattern so no per-kind
@@ -53,7 +53,7 @@ class IntegrationAdminScreen extends StatefulWidget {
 
   final IntegrationAdminGateway gateway;
 
-  /// When false, the screen hides every rotate affordance — used for
+  /// When false, the screen hides every rotate affordance - used for
   /// the `ff_support` walkthrough path. The proxy enforces the same
   /// gate server-side; this flag keeps the UI honest about it.
   final bool editingEnabled;
@@ -77,7 +77,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
   int _idempotencyCounter = 0;
 
   /// Mints a fresh idempotency key per rotation submit so the proxy
-  /// dedups in `admin_request_idempotency` — a network-timeout retry
+  /// dedups in `admin_request_idempotency` - a network-timeout retry
   /// collapses to one KMS write + one audit row.
   String _nextIdempotencyKey() {
     final factory = widget.idempotencyKeyFactory;
@@ -193,7 +193,7 @@ class _IntegrationAdminScreenState extends State<IntegrationAdminScreen> {
   void _onPlaintextCopied(ProviderKeyKind kind) {
     // Audit-on-copy lands as a separate slice (the proxy does not
     // expose the audit-write endpoint outside rotation). Surface a
-    // SnackBar so the operator knows the copy event happened — the
+    // SnackBar so the operator knows the copy event happened - the
     // real audit hook plugs in here once the audit endpoint lands.
     _showSnackBar('Copied ${kind.displayName} key to clipboard.');
   }

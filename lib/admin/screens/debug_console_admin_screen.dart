@@ -1,16 +1,16 @@
-// Phase 11A.5 — Debug console admin surface (per-operator request log).
+﻿// Phase 11A.5 - Debug console admin surface (per-operator request log).
 //
 // Read-only operator-facing console for the proxy `proxy_requests`
 // projection. Three tabs reflect the launch-slice scope and the two
 // future plug-ins:
 //
-//   * Request log — live filterable / searchable view of recent
+//   * Request log - live filterable / searchable view of recent
 //                   proxy requests. Meta-only by default; expand-row
 //                   reveals the full content payload only when the
 //                   operator's `feature_flags` opt-in is on AND the
 //                   actor holds `super_admin`.
-//   * Graph debug — stub for 11A.3.x. Shows the 501-style banner.
-//   * MFA diagnostics — stub for 9.UX.1a. Shows the 501-style banner.
+//   * Graph debug - stub for 11A.3.x. Shows the 501-style banner.
+//   * MFA diagnostics - stub for 9.UX.1a. Shows the 501-style banner.
 //
 // Live-tail is OFF by default. When toggled on, the screen polls
 // `tailRecent` every [kDebugConsoleTailPollInterval] seconds and
@@ -21,7 +21,7 @@
 //   * `super_admin` lands with `editingEnabled = true`. Full-content
 //     reveal is gated by the operator's `feature_flags` opt-in row.
 //   * `ff_support` lands with `editingEnabled = false`. The diff
-//     renders read-only meta — full content stays hidden even when
+//     renders read-only meta - full content stays hidden even when
 //     the opt-in is on. The graphify walkthrough establishes this
 //     as the cross-surface convention; the proxy `/health` contract
 //     bans raw payloads from public health, and the same posture
@@ -30,7 +30,7 @@
 //
 // The screen is performance-disciplined per
 // `docs/contracts/slice_runtime_acceptance_contract.md`:
-//   * cheap initial render — a manual fetch button surfaces the first
+//   * cheap initial render - a manual fetch button surfaces the first
 //     request-log page rather than auto-polling on mount;
 //   * the live-tail toggle is opt-in and does not stack in-flight
 //     requests;
@@ -66,7 +66,7 @@ class DebugConsoleAdminScreen extends StatefulWidget {
   final DebugConsoleAdminGateway gateway;
 
   /// `true` when the signed-in actor is `super_admin`. Drives the
-  /// expand-row full-content reveal — `false` (ff_support) hides the
+  /// expand-row full-content reveal - `false` (ff_support) hides the
   /// expand affordance entirely so the meta view is the only path.
   final bool editingEnabled;
 
@@ -641,7 +641,7 @@ class _FilterBar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Tip: choose View support logs from an operator or location to fill the exact filters automatically.',
+            'Tip: choose View logs from an operator or location to fill the exact filters automatically.',
             style: AppTextStyles.body12(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 10),

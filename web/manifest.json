@@ -1,11 +1,11 @@
-{
-    "name": "Forge & Flow — Operations Console",
+﻿{
+    "name": "Forge & Flow - Operations Console",
     "short_name": "F&F Admin",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#F8EDE6",
     "theme_color": "#CC7A3E",
-    "description": "Forge & Flow Operations Console — F&F internal admin surface.",
+    "description": "Forge & Flow Operations Console - F&F internal admin surface.",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [

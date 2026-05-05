@@ -1,4 +1,4 @@
-// Phase 8.0 — F&F Ops Console host shell for the shared Vendor
+﻿// Phase 8.0 - F&F Ops Console host shell for the shared Vendor
 // Connections widget tree.
 //
 // Hosts `VendorConnectionsWidget` (lib/integrations/ui/vendor_connections/)

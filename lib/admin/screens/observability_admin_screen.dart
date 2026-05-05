@@ -1,18 +1,18 @@
-// Phase 11A.6 — Observability dashboard surface.
+﻿// Phase 11A.6 - Observability dashboard surface.
 //
 // Read-only operator-facing view of the cost-telemetry, dormancy,
 // margin, cap-event, graph, latency, and Cloud Run rows the
 // observability proxy assembles. Tabs:
 //
-//   * Cost      — cost telemetry by axis, cache hit rate, model mix,
+//   * Cost      - cost telemetry by axis, cache hit rate, model mix,
 //                 batch-mode share.
-//   * Top-N     — most-expensive operators / staff / workflows over
+//   * Top-N     - most-expensive operators / staff / workflows over
 //                 1d / 7d / 30d rolling windows.
-//   * Operators — dormancy + per-tier margin estimates.
-//   * Cap events — refused requests when usage_caps was reached.
-//   * Graph     — approved / inferred / rejected / isolated counts,
+//   * Operators - dormancy + per-tier margin estimates.
+//   * Cap events - refused requests when usage_caps was reached.
+//   * Graph     - approved / inferred / rejected / isolated counts,
 //                 projection freshness, traversal p95.
-//   * Cloud Run — per-route latency p50/p95/p99 + error rate, plus
+//   * Cloud Run - per-route latency p50/p95/p99 + error rate, plus
 //                 active Cloud Run instances by service.
 //
 // The /health envelope (dependency probes, tier-1 / tier-2 / tier-3
@@ -31,11 +31,11 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-import '../admin_button_styles.dart';
 import '../admin_human_labels.dart';
 import '../models/observability_admin_models.dart';
 import '../services/observability_admin_gateway.dart';
 import '../widgets/admin_responsive_layout.dart';
+import '../widgets/admin_run_check_controls.dart';
 
 class _TabSpec {
   const _TabSpec({required this.label, required this.keySuffix});
@@ -296,17 +296,15 @@ class _Header extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
           children: [
-            OutlinedButton.icon(
+            AdminRunCheckButton(
               key: const Key('admin_observability_refresh_button'),
-              onPressed: loading ? null : () => onRunCheck(),
-              icon: loading
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.insights_outlined, size: 16),
-              label: Text(loading ? 'Running...' : 'Run metrics check'),
+              onPressed: () {
+                onRunCheck();
+              },
+              icon: Icons.insights_outlined,
+              label: 'Run metrics check',
+              loadingLabel: 'Running...',
+              loading: loading,
             ),
             const SizedBox(height: 6),
             Text(
@@ -338,29 +336,30 @@ class _ObservabilityConfirmDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const Key('admin_observability_confirm_dialog'),
-      backgroundColor: AppColors.backgroundSurface,
-      title: Text(
-        'Run metrics check?',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
-      ),
-      content: Text(
-        'This scans recent usage, estimates margin, and summarizes hosting activity. It is read-only and can take 10-30+ seconds against staging data.',
-        style: AppTextStyles.body13(color: AppColors.textSecondary),
-      ),
-      actions: [
-        TextButton(
-          key: const Key('admin_observability_confirm_cancel'),
-          onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
+    return const AdminRunCheckConfirmDialog(
+      dialogKey: Key('admin_observability_confirm_dialog'),
+      cancelButtonKey: Key('admin_observability_confirm_cancel'),
+      confirmButtonKey: Key('admin_observability_confirm_run'),
+      icon: Icons.insights_outlined,
+      title: 'Run metrics check',
+      description:
+          'This reads recent usage, cost, limits, activity, and hosting data. It is read-only and can take 10-30 seconds.',
+      confirmLabel: 'Run metrics check',
+      facts: [
+        AdminRunCheckFact(
+          icon: Icons.visibility_outlined,
+          label: 'Read-only',
+          text: 'No plans, limits, or records are changed.',
         ),
-        FilledButton.icon(
-          key: const Key('admin_observability_confirm_run'),
-          onPressed: () => Navigator.of(context).pop(true),
-          style: AdminButtonStyles.primary,
-          icon: const Icon(Icons.play_arrow, size: 16),
-          label: const Text('Run metrics check'),
+        AdminRunCheckFact(
+          icon: Icons.query_stats_outlined,
+          label: 'Scope',
+          text: 'Cost, usage, operator activity, graph, and hosting rows.',
+        ),
+        AdminRunCheckFact(
+          icon: Icons.schedule_outlined,
+          label: 'Timing',
+          text: 'Live staging metrics can take a few moments to load.',
         ),
       ],
     );
@@ -374,42 +373,33 @@ class _ManualRunPrompt extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
+    return AdminRunCheckPrompt(
       key: const Key('admin_observability_manual_prompt'),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 540),
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppColors.backgroundSurface,
-            border: Border.all(color: AppColors.borderSubtle, width: 1),
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Run the first metrics check',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Cost, activity, margin, and hosting rows load on demand because the check reads recent usage.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.icon(
-                key: const Key('admin_observability_manual_run_button'),
-                onPressed: () => onRunCheck(),
-                style: AdminButtonStyles.primary,
-                icon: const Icon(Icons.insights_outlined, size: 16),
-                label: const Text('Run metrics check'),
-              ),
-            ],
-          ),
+      icon: Icons.insights_outlined,
+      title: 'Check system metrics',
+      description:
+          'Load the current staging view before comparing cost, usage, limits, and hosting signals.',
+      buttonLabel: 'Run metrics check',
+      onPressed: () {
+        onRunCheck();
+      },
+      facts: const [
+        AdminRunCheckFact(
+          icon: Icons.visibility_outlined,
+          label: 'Read-only',
+          text: 'No plans, limits, or records are changed.',
         ),
-      ),
+        AdminRunCheckFact(
+          icon: Icons.query_stats_outlined,
+          label: 'Scope',
+          text: 'Usage, cost, operator activity, graph, and hosting metrics.',
+        ),
+        AdminRunCheckFact(
+          icon: Icons.schedule_outlined,
+          label: 'Timing',
+          text: 'Recent usage reads can take 10-30 seconds.',
+        ),
+      ],
     );
   }
 }
@@ -869,7 +859,7 @@ class _CostTelemetryFilterBar extends StatelessWidget {
   }
 }
 
-/// "Showing N of M (truncated — refine the filter)" hint above the
+/// "Showing N of M (truncated - refine the filter)" hint above the
 /// cost-telemetry table. Always rendered so the operator knows the
 /// surface count even when the result is exhaustive.
 class _RequestGroupKey extends StatelessWidget {
@@ -1448,7 +1438,7 @@ class _DormancyRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final dormant = entry.isDormant;
     final neverActive = entry.neverActive;
-    // Never-active is the strongest "skip-precompute" signal — render
+    // Never-active is the strongest "skip-precompute" signal - render
     // negative so the F&F admin can spot a row the producer has never
     // had data for. Known-silent dormants (>= 30d) stay warning;
     // active operators stay positive.

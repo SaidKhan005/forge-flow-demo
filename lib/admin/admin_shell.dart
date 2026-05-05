@@ -1,11 +1,11 @@
-// Phase 11A.0 — Admin shell.
+﻿// Phase 11A.0 - Admin shell.
 //
 // Branded scaffold that wraps the admin route surface. Renders a
 // fixed left-side nav (icon + label) for desktop / wide web layouts
 // and a brand header strip across the top with the signed-in admin
 // identity and a sign-out affordance.
 //
-// The shell is intentionally render-only on a [List<AdminRoute>] —
+// The shell is intentionally render-only on a [List<AdminRoute>] -
 // it does not own the route catalog. That lives in
 // `admin_routes.dart` so later 11A.x slices add surfaces by
 // extending the const list, not by editing the shell.
@@ -279,7 +279,14 @@ class _AdminSideNav extends StatelessWidget {
       label: 'AI',
       badge: 'Work in progress',
     ),
-    _NavSectionMeta(section: AdminRouteSection.dev, label: 'Ecosystem'),
+    _NavSectionMeta(
+      section: AdminRouteSection.systemMonitoring,
+      label: 'System monitoring',
+    ),
+    _NavSectionMeta(
+      section: AdminRouteSection.serviceSetup,
+      label: 'Service setup',
+    ),
   ];
 
   @override
@@ -351,9 +358,13 @@ class _NavSectionHeader extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(10, 10, 8, 4),
       child: Row(
         children: [
-          Text(
-            section.label,
-            style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+          Flexible(
+            child: Text(
+              section.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
+            ),
           ),
           if (section.badge != null) ...[
             const SizedBox(width: 8),

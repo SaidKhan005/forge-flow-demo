@@ -104,6 +104,8 @@ void main() {
     expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_row_op-1')), findsOneWidget);
     expect(find.byKey(const Key('admin_operator_row_op-2')), findsOneWidget);
+    expect(find.byKey(const Key('admin_operator_manage_op-1')), findsNothing);
+    expect(find.byKey(const Key('admin_operator_manage_op-2')), findsOneWidget);
     // The selected operator's name shows in both the list row and the
     // detail card; the unselected operator's name only in the list.
     expect(find.text('Alpha Cafe'), findsWidgets);
@@ -307,6 +309,35 @@ void main() {
     await tester.tap(find.byKey(const Key('admin_operator_reactivate_button')));
     await tester.pumpAndSettle();
     expect(find.text('suspended'), findsNothing);
+  });
+
+  testWidgets('suspended operator fades the location rows', (tester) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[
+        seedBundle(
+          operatorId: 'op-paused',
+          primaryLocationId: 'loc-paused',
+          suspended: true,
+        ),
+      ],
+    );
+    await tester.pumpWidget(
+      wrap(OperatorLocationAdminScreen(gateway: gateway)),
+    );
+    await tester.pumpAndSettle();
+
+    final fadedLocation = tester.widget<Opacity>(
+      find.byKey(const Key('admin_location_suspended_fade_loc-paused')),
+    );
+    expect(fadedLocation.opacity, lessThan(1));
+
+    await tester.tap(find.byKey(const Key('admin_operator_reactivate_button')));
+    await tester.pumpAndSettle();
+
+    final activeLocation = tester.widget<Opacity>(
+      find.byKey(const Key('admin_location_suspended_fade_loc-paused')),
+    );
+    expect(activeLocation.opacity, equals(1));
   });
 
   testWidgets('operator AI plan selection is read-only while coming soon', (

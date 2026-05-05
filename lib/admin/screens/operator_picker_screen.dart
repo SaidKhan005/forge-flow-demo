@@ -1,4 +1,4 @@
-// Phase 11A.3a follow-up — Operator + location picker.
+﻿// Phase 11A.3a follow-up - Operator + location picker.
 //
 // The Corpus admin "Graph candidates" tab needs a real
 // (operator_id, location_id) target before it can commit graph
@@ -8,7 +8,7 @@
 // over the existing [OperatorLocationAdminGateway]; pop with the
 // resolved pair on confirm, null on cancel.
 //
-// Caching is in-memory only — keyed by admin UID — so the next
+// Caching is in-memory only - keyed by admin UID - so the next
 // picker open inside the same session pre-selects the most-
 // recently-confirmed pair. Durable cookie / shared-prefs
 // persistence is intentionally out of scope; that lands in a
@@ -60,7 +60,7 @@ class OperatorPickerScreen extends StatelessWidget {
   /// test path).
   final String? adminUid;
 
-  // In-memory only by design — durable persistence is a future
+  // In-memory only by design - durable persistence is a future
   // slice. The map outlives the screen instance so subsequent
   // opens can hydrate from it.
   static final Map<String, OperatorPickerResult> _cache =

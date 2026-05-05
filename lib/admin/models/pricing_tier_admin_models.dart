@@ -1,4 +1,4 @@
-// Phase 11A.2 — Pricing tier admin value objects.
+﻿// Phase 11A.2 - Pricing tier admin value objects.
 //
 // Carries the operator + usage_caps shape the admin pricing screen
 // needs to render and edit. Mirrors the `usage_caps` Postgres columns

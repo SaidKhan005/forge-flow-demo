@@ -1,4 +1,4 @@
-// Phase 11A.3a — Corpus admin screen.
+﻿// Phase 11A.3a - Corpus admin screen.
 //
 // Admin-side editor over the `corpus_versions` ledger plus the
 // per-chunk `version_id` / `superseded_at` pointers. Replaces the
@@ -45,7 +45,7 @@ import 'operator_picker_screen.dart';
 typedef CorpusUploadPicker =
     Future<UploadCommand?> Function(BuildContext context);
 
-/// Phase 11A.3a follow-up — opens [OperatorPickerScreen] (or a stub
+/// Phase 11A.3a follow-up - opens [OperatorPickerScreen] (or a stub
 /// in tests) and resolves to the picked (operator, location) pair, or
 /// null if the admin cancels. Wired by `admin_routes.dart`'s
 /// `_buildCorpus`; tests can pass a deterministic stub.
@@ -79,10 +79,10 @@ class CorpusAdminScreen extends StatefulWidget {
   /// deterministic.
   final String Function()? idempotencyKeyGenerator;
 
-  /// Phase 11A.3b — destination (operator, location) for approved
+  /// Phase 11A.3b - destination (operator, location) for approved
   /// graph candidates. Super_admin is cross-tenant, so the Graph
   /// candidates commit must name an operator explicitly. The screen
-  /// itself does NOT default these — the host wiring in
+  /// itself does NOT default these - the host wiring in
   /// [lib/admin/admin_routes.dart] picks the targets explicitly:
   /// the demo path passes the kDemoMode tenant seed; the live path
   /// leaves them null until the admin uses the "Pick operator"
@@ -92,7 +92,7 @@ class CorpusAdminScreen extends StatefulWidget {
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up — opens the operator picker modal. When
+  /// Phase 11A.3a follow-up - opens the operator picker modal. When
   /// the admin confirms a pair, the screen state takes over the
   /// effective target so the commit button enables. Null disables
   /// the picker affordance (pre-follow-up tests; the banner still
@@ -115,10 +115,10 @@ class _CorpusAdminScreenState extends State<CorpusAdminScreen> {
   bool _busy = false;
   int _idempotencyCounter = 0;
 
-  // Phase 11A.3a follow-up — once the admin confirms a pair through
+  // Phase 11A.3a follow-up - once the admin confirms a pair through
   // the operator picker, these override [widget.targetOperatorId] /
   // [widget.targetLocationId] for the rest of the admin session. They
-  // are intentionally session-scoped (not durable) — durable
+  // are intentionally session-scoped (not durable) - durable
   // persistence is a future slice.
   String? _pickedOperatorId;
   String? _pickedLocationId;
@@ -582,7 +582,7 @@ class _LazyGraphCandidatesTabState extends State<_LazyGraphCandidatesTab> {
   }
 }
 
-// ─── Phase 11A.3b — Graphify candidate review tab ────────────────────
+// ─── Phase 11A.3b - Graphify candidate review tab ────────────────────
 
 class _GraphCandidatesTab extends StatefulWidget {
   const _GraphCandidatesTab({
@@ -607,12 +607,12 @@ class _GraphCandidatesTab extends StatefulWidget {
   final String? targetOperatorId;
   final String? targetLocationId;
 
-  /// Phase 11A.3a follow-up — opens the operator picker. Null when
+  /// Phase 11A.3a follow-up - opens the operator picker. Null when
   /// the host did not wire a picker (legacy test path); the banner
   /// still renders, the button stays disabled.
   final VoidCallback? onPickOperator;
 
-  /// "Business name — Location name" for the actively-picked target,
+  /// "Business name - Location name" for the actively-picked target,
   /// when the admin resolved it through the picker this session.
   /// Null when no pick has occurred yet (or the target came from a
   /// host-supplied default).
@@ -1162,7 +1162,7 @@ class _GraphCandidateSection extends StatelessWidget {
 
   /// Spec line 249: AMBIGUOUS relationships are debug-only until
   /// edited. The AMBIGUOUS section passes `allowApprove: false` so
-  /// the row never renders an Approve button — only Edit + Reject.
+  /// the row never renders an Approve button - only Edit + Reject.
   /// EXTRACTED + INFERRED keep `allowApprove: true`.
   final bool allowApprove;
   final Widget? trailing;
@@ -1596,7 +1596,7 @@ class _GraphCandidateEditDialogState extends State<_GraphCandidateEditDialog> {
             // decision that arrives without an `edited_payload`
             // (`missing_edited_payload` 400). The launch slice does
             // not yet expose a per-property edit form, so we forward
-            // the original candidate payload verbatim — the
+            // the original candidate payload verbatim - the
             // structural change the admin made is only the
             // `edited_candidate_type`. This keeps the wire contract
             // satisfied and lets a follow-up slice add full payload

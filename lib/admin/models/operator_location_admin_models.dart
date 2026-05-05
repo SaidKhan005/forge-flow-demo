@@ -1,4 +1,4 @@
-// Phase 11A.1 — Operator + location admin value objects.
+﻿// Phase 11A.1 - Operator + location admin value objects.
 //
 // Carry only the fields the F&F admin console needs to render and
 // edit. Mirror the Postgres column shapes from
@@ -13,7 +13,7 @@
 // even though the foundation migration does not yet declare the
 // column; the repository persists it as an additive `null`-default
 // column the 11A.1 repository's UPDATE statements treat as optional.
-// Suspension lives only in the admin console UI in this slice — Phase
+// Suspension lives only in the admin console UI in this slice - Phase
 // 9 enforcement will read it later.
 
 import 'package:flutter/foundation.dart';

@@ -68,15 +68,39 @@ void main() {
     expect(
       tester.getTopLeft(find.byKey(const Key('admin_nav_section_ai'))).dy,
       lessThan(
-        tester.getTopLeft(find.byKey(const Key('admin_nav_section_dev'))).dy,
+        tester
+            .getTopLeft(
+              find.byKey(const Key('admin_nav_section_systemMonitoring')),
+            )
+            .dy,
+      ),
+    );
+    expect(
+      tester
+          .getTopLeft(
+            find.byKey(const Key('admin_nav_section_systemMonitoring')),
+          )
+          .dy,
+      lessThan(
+        tester
+            .getTopLeft(find.byKey(const Key('admin_nav_section_serviceSetup')))
+            .dy,
       ),
     );
     expect(find.byKey(const Key('admin_nav_section_ai')), findsOneWidget);
     expect(find.byKey(const Key('admin_nav_section_badge_ai')), findsOneWidget);
     expect(find.text('AI'), findsOneWidget);
     expect(find.text('Work in progress'), findsOneWidget);
-    expect(find.byKey(const Key('admin_nav_section_dev')), findsOneWidget);
-    expect(find.text('Ecosystem'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_nav_section_systemMonitoring')),
+      findsOneWidget,
+    );
+    expect(find.text('System monitoring'), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_nav_section_serviceSetup')),
+      findsOneWidget,
+    );
+    expect(find.text('Service setup'), findsOneWidget);
     expect(
       find.byKey(const Key('admin_nav_section_operations')),
       findsOneWidget,
@@ -91,15 +115,19 @@ void main() {
     );
     expect(
       kAdminRoutes
-          .where((route) => route.section == AdminRouteSection.dev)
+          .where((route) => route.section == AdminRouteSection.systemMonitoring)
           .map((route) => route.id),
       <String>[
-        kAdminIntegrationsRouteId,
         kAdminHealthRouteId,
-        kAdminFeatureFlagsRouteId,
         kAdminDebugConsoleRouteId,
         kAdminObservabilityRouteId,
       ],
+    );
+    expect(
+      kAdminRoutes
+          .where((route) => route.section == AdminRouteSection.serviceSetup)
+          .map((route) => route.id),
+      <String>[kAdminIntegrationsRouteId, kAdminFeatureFlagsRouteId],
     );
     expect(
       kAdminRoutes
