@@ -17,6 +17,7 @@ import '../../models/week_record.dart';
 import '../../services/daypart_evidence_visibility_policy.dart';
 import '../../services/history_benchmark_daypart_read_service.dart';
 import '../../services/history_teaching_analyzer.dart';
+import '../../services/variance_driver_pattern_read_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/sticky_section_delegate.dart';
 import '../../widgets/week_history_tile.dart';
@@ -444,9 +445,18 @@ class _HistoryTabState extends State<HistoryTab>
         LeverCardData? leakCard;
         if (patternRecords.isNotEmpty) {
           teachingSummary = HistoryTeachingAnalyzer.summarize(patternRecords);
-          // 7.58.UX.5 (F-1): explicit lookup; null → suppress leak card
-          // rather than fabricating a coversDown leak from an unknown id.
-          leakCard = LeverCards.lookup(teachingSummary.mostCommonLeakId);
+          // 7.58.2 — single source of truth for the leak driver. Same
+          // service Variance > Learn consults; pins parity per
+          // `docs/contracts/phase_7_58_primary_driver_contract.md`
+          // Single Source of Truth so the History leak evidence card
+          // and the Learn three-card teaching shape resolve the same
+          // lever id + LeverCardData.metric copy for the same scope.
+          // 7.58.UX.5 (F-1): the service returns a null card for
+          // unknown ids / empty sets, so an unknown leak id still
+          // suppresses the leak evidence card rather than fabricating
+          // a coversDown leak.
+          const driverService = VarianceDriverPatternReadService();
+          leakCard = driverService.resolveLeakDriver(patternRecords).card;
         }
 
         // Benchmark daypart evidence (7.55k.5).

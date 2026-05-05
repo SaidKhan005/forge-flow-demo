@@ -20,6 +20,7 @@ import '../../models/week_record.dart';
 import '../../services/daypart_evidence_visibility_policy.dart';
 import '../../services/learn_repeatable_wins_read_service.dart';
 import '../../services/learn_teaching_analyzer.dart';
+import '../../services/variance_driver_pattern_read_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/learn/learn_carousel.dart';
 import '../../widgets/learn/learn_chapter_rail.dart';
@@ -67,6 +68,14 @@ class _LearnTabState extends State<LearnTab>
             benchmarkContext: benchmarkContext,
             coverageCount: closedShifts.length,
           );
+          // 7.58.2 — single source of truth for the leak driver. Same
+          // service Variance > History consults; pins parity per
+          // `docs/contracts/phase_7_58_primary_driver_contract.md`
+          // Single Source of Truth so the Learn three-card teaching
+          // shape and the History leak evidence card resolve the same
+          // lever id + LeverCardData.metric copy for the same scope.
+          const driverService = VarianceDriverPatternReadService();
+          final leakDriver = driverService.resolveLeakDriver(patternRecords);
           const winsService = LearnRepeatableWinsReadService();
           final allWins = winsService.build(closedShifts);
           // Apply visibility policy: only truly repeated wins pass (7.55k.7).
@@ -79,7 +88,11 @@ class _LearnTabState extends State<LearnTab>
                     EvidenceTier.strong,
               )
               .toList();
-          return _LearnData(summary: summary, repeatableWins: repeatableWins);
+          return _LearnData(
+            summary: summary,
+            repeatableWins: repeatableWins,
+            leakDriver: leakDriver,
+          );
         });
   }
 
@@ -114,6 +127,7 @@ class _LearnTabState extends State<LearnTab>
         return _LearnContent(
           summary: data.summary,
           repeatableWins: data.repeatableWins,
+          leakDriver: data.leakDriver,
         );
       },
     );
@@ -123,13 +137,23 @@ class _LearnTabState extends State<LearnTab>
 class _LearnData {
   final LearnTeachingSummary summary;
   final List<LearnRepeatableWinSummary> repeatableWins;
-  const _LearnData({required this.summary, required this.repeatableWins});
+  final VarianceDriverPattern leakDriver;
+  const _LearnData({
+    required this.summary,
+    required this.repeatableWins,
+    required this.leakDriver,
+  });
 }
 
 class _LearnContent extends StatefulWidget {
   final LearnTeachingSummary summary;
   final List<LearnRepeatableWinSummary> repeatableWins;
-  const _LearnContent({required this.summary, required this.repeatableWins});
+  final VarianceDriverPattern leakDriver;
+  const _LearnContent({
+    required this.summary,
+    required this.repeatableWins,
+    required this.leakDriver,
+  });
 
   @override
   State<_LearnContent> createState() => _LearnContentState();
@@ -155,8 +179,16 @@ class _LearnContentState extends State<_LearnContent> {
     // 7.58.UX.5 (F-1): explicit lookup; null → fall back to the existing
     // "no patterns yet" branch instead of fabricating a coversDown / ppaUp
     // card from an unknown id.
+    // 7.58.2 — leak card comes from the shared
+    // `VarianceDriverPatternReadService`, the same service the History
+    // tab consults. Both tabs end up rendering off the same
+    // LeverCardData for the same closed-shift scope.
+    // 7.58.UX.5 (F-1): the service returns a null card for unknown
+    // ids / empty sets / `on_model` sentinel — Learn falls back to
+    // the existing "no patterns yet" branch instead of fabricating a
+    // coversDown / ppaUp card.
     final leakCard = summary.hasHistoryPatterns
-        ? LeverCards.lookup(summary.primaryLeakId)
+        ? widget.leakDriver.card
         : null;
     final LearnRepeatableWinSummary? topWin = wins.isNotEmpty
         ? wins.first
