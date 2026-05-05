@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 
 import '../../state/active_target_profile_notifier.dart';
 import '../../data/app_defaults.dart';
+import '../../services/labor_model.dart';
 import '../../services/restaurant_timing_config_read_service.dart';
 import '../../services/shift_data_source.dart';
 import '../../services/shift_service_period_read_service.dart';
@@ -114,6 +115,38 @@ class _ThisWeekContentState extends State<_ThisWeekContent> {
     // the degraded `LeverCardNotYetAvailable` instead of silently falling
     // through to coversDown. See phase_7_58_primary_driver_contract.md.
     final lever = LeverCards.lookup(weekData.primaryLeverId);
+    // 7.58.UX.1: per-axis dollar attribution. Wages come from the same
+    // active target profile that built `weekData`; FOH/BOH blended actuals
+    // are derived from `storedTotalFohLaborDollar` / `storedTotalBohLaborDollar`
+    // when both are present. When the profile is unavailable (legacy widget
+    // tests) the attribution map is null and the card renders unchanged.
+    final activeProfile =
+        context.watch<ActiveTargetProfileNotifier?>()?.profile;
+    Map<String, double>? primaryDriverDollarImpactByAxis;
+    if (lever != null && activeProfile != null) {
+      final fohDollars = weekData.storedTotalFohLaborDollar;
+      final bohDollars = weekData.storedTotalBohLaborDollar;
+      primaryDriverDollarImpactByAxis = LaborModel.attributeDollarImpactByAxis(
+        actualCovers: weekData.totalCovers,
+        forecastCovers: weekData.wtdForecastCovers,
+        actualFohHours: weekData.totalFohHours,
+        actualBohHours: weekData.totalBohHours,
+        avgPPA: weekData.avgPPA,
+        targetCPLH: weekData.targetCPLH,
+        targetSPLH: weekData.targetSPLH,
+        targetPPA: weekData.targetPPA,
+        targetFohWage: activeProfile.fohWage,
+        targetBohWage: activeProfile.bohWage,
+        avgCPLH: weekData.avgCPLH,
+        avgSPLH: weekData.avgSPLH,
+        avgFohBlendedWage: (fohDollars != null && weekData.totalFohHours > 0)
+            ? fohDollars / weekData.totalFohHours
+            : null,
+        avgBohBlendedWage: (bohDollars != null && weekData.totalBohHours > 0)
+            ? bohDollars / weekData.totalBohHours
+            : null,
+      );
+    }
 
     return CustomScrollView(
       // Build all slivers eagerly so section labels below the fold are
@@ -211,7 +244,11 @@ class _ThisWeekContentState extends State<_ThisWeekContent> {
             SliverToBoxAdapter(
               child: lever == null
                   ? const LeverCardNotYetAvailable()
-                  : LeverCardWidget(data: lever),
+                  : LeverCardWidget(
+                      data: lever,
+                      dollarImpactByAxis:
+                          primaryDriverDollarImpactByAxis,
+                    ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),
           ],
