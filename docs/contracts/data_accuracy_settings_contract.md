@@ -19,13 +19,13 @@ When this doc and a slice doc conflict, this doc wins.
 The architecture exposes three operator-controlled accuracy seams that
 sit at the canonical-fact resolution boundary in the integration spine:
 
-1. **Covers source** — when the POS vendor doesn't expose covers, the
+1. **Covers source** - when the POS vendor doesn't expose covers, the
    operator chooses between (a) F&F-derived forecast covers
    substitution and (b) manual entry per (business_date, daypart).
-2. **Wage source** — when the labor vendor doesn't expose dollars, the
+2. **Wage source** - when the labor vendor doesn't expose dollars, the
    operator chooses between (a) target wage × hours substitution and
    (b) manual wage-mix from `wage_role_rows`.
-3. **Polling cadence + costing** — operator sets per-(operator,
+3. **Polling cadence + costing** - operator sets per-(operator,
    location, vendor) polling cadence above the framework default, with
    cost projection surfaced before commit.
 
@@ -35,7 +35,7 @@ can't trust their own dashboard). This contract makes the seams
 first-class: schema-backed, RLS-isolated, surfaced through dedicated UI
 on both the operator web console and the F&F Ops Console.
 
-## Polling cadence — F&F-controlled tier model (binding)
+## Polling cadence - F&F-controlled tier model (binding)
 
 **REVERSAL 2026-05-05.** Earlier drafts of this contract framed polling
 cadence as a pure "cost pass-through" with operator-controlled cadence
@@ -46,7 +46,7 @@ assignment.** F&F is the unit-economics arbiter. Vendor API costs are
 absorbed by F&F and packaged into F&F's own tier pricing. The operator
 sees tier names + tier prices, NOT vendor API per-call costs.
 
-Per-location is normative — `connector_connection` rows are per
+Per-location is normative - `connector_connection` rows are per
 `(operator, location)`, so polling tier assignment is too. An operator
 with three locations can have three different tiers (e.g., flagship
 downtown on Premium, two satellite locations on Standard).
@@ -60,7 +60,7 @@ not by the polling setting:
 
 - **Webhook vendors** (Toast, Square, Clover, Lightspeed K-Series,
   Revel, Aloha NCR Voyix, 7shifts, ADP, Libro, OpenTable, SevenRooms,
-  Tock — i.e. every vendor with `webhookSupport in {autoRegister,
+  Tock - i.e. every vendor with `webhookSupport in {autoRegister,
   manualPaste}`) push updates in real time. Polling cadence is
   **irrelevant** for these vendors. Note: ADP is `autoRegister` per
   the Wave B adapter capability profile (verified 2026-05-04 against
@@ -69,7 +69,7 @@ not by the polling setting:
   webhook arrives (seconds, typically).
 
 - **Poll-only vendors** (Oracle MICROS Simphony, QuickBooks Time,
-  Humanity, Agendrix, Push Operations — i.e. every vendor with
+  Humanity, Agendrix, Push Operations - i.e. every vendor with
   `webhookSupport == pollOnly`; **5 vendors total**, not 6) update only
   at the polling interval.
   The dashboard lags by up to that cadence. Set Oracle to 5 minutes
@@ -131,7 +131,7 @@ $/month formula live ONLY on Lane `.C`'s F&F Ops Console
 invoice; vendor per-call costs are never operator-facing.
 
 `data_accuracy_settings` carries no `polling_cost_acknowledged_at`
-column. The acknowledgement model is gone — there is no operator
+column. The acknowledgement model is gone - there is no operator
 cadence to acknowledge.
 
 ### Vendor min/max clamping
@@ -147,7 +147,7 @@ range:
   resolver receives this via the `vendorMinimumCadenceSeconds`
   parameter; production wiring sources it from the per-vendor
   capability index.
-- **Framework maximum** is 3600s (1 hour) — beyond this the dashboard
+- **Framework maximum** is 3600s (1 hour) - beyond this the dashboard
   feels broken. Resolver constant `kFrameworkMaximumCadenceSeconds`.
 - A value outside the allowed range is clamped, NOT rejected. The
   resolver emits a `cadence_clamped` sync_log row carrying the
@@ -160,7 +160,7 @@ assignment; the floor is the vendor's, not F&F's.
 
 ## Surface scope
 
-### Operator Web Console — "Data Accuracy" tab
+### Operator Web Console - "Data Accuracy" tab
 
 Mounted at `/data-accuracy` on `app.forgeflow.app` (the operator web
 console; Phase 11W). Lives alongside Account / Vendor Connections in
@@ -168,14 +168,14 @@ the side nav.
 
 The tab carries four cards in this order:
 
-1. **Wage source card** — surfaces the existing wage adjuster (currently
+1. **Wage source card** - surfaces the existing wage adjuster (currently
    in mobile Settings) on web. Operator picks: "Use labor vendor's
    reported wages and dollars when available" (default) OR "Use my
    manual wage mix from Settings (the same rates the wage generator
    uses)". Vendor relativity label: "This setting applies when your
    labor vendor (currently: <vendor_displayname>) does not expose
    per-shift dollars. Vendors that do not expose dollars at V1: <list>."
-2. **Covers source card** — per-daypart toggle. Three states: vendor /
+2. **Covers source card** - per-daypart toggle. Three states: vendor /
    forecast / manual. When `manual` is chosen for a daypart, an inline
    sub-card opens for entering today's manual covers (lunch / dinner /
    late_night). Operator can copy yesterday's manual entry to today as
@@ -183,38 +183,38 @@ The tab carries four cards in this order:
    when your POS vendor (currently: <vendor_displayname>) does not
    expose covers as a first-class field. POS vendors that do not
    expose covers at V1: Square, Clover."
-3. **Polling cadence card** — display-only summary + request-tier-change
+3. **Polling cadence card** - display-only summary + request-tier-change
    flow. The card shows the operator's current tier name + tier price
    (read from `forge_flow_polling_tier_assignment` via Lane `.A`'s
    `ForgeFlowPollingTierRepository`) and the resolved per-vendor
    cadence for the (operator, location)'s connected poll-only vendors
-   (e.g., "Standard tier — $X/month per location. Oracle Simphony
+   (e.g., "Standard tier - $X/month per location. Oracle Simphony
    polled every 5 minutes; QuickBooks Time polled every 5 minutes.").
    Webhook vendors are filtered out per the transport-bounded
-   live-ness rule above. There is NO cadence picker — operators do
+   live-ness rule above. There is NO cadence picker - operators do
    not set cadences. To change tier, the card surfaces a "Request
    tier change" button that opens a support ticket / billing-upgrade
    flow consumed by Lane `.C`'s admin queue. Plain-English framing:
    "F&F sets polling frequency at the tier level. Faster cadence is
-   available on premium / custom plans — request a change and we'll
+   available on premium / custom plans - request a change and we'll
    reach out." Vendor relativity label: "Polling cadence applies to
    vendors that do not push real-time webhooks (currently: Oracle
    MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push
    Operations). Your webhook vendors update in real time regardless
    of this tier."
-4. **What this means card** — a brief inline explainer (per the UX
+4. **What this means card** - a brief inline explainer (per the UX
    writing standard `memory/project_ux_writing_standard.md`) that
    walks the operator through each setting in plain English with one
    example per setting.
 
-### F&F Ops Console — per-location admin surface
+### F&F Ops Console - per-location admin surface
 
 Mounted at `/data-accuracy` on `admin.forgeflow.app` (Phase 11A).
 Cross-operator visibility for support; per-location override capability
 gated by `forge_admin` role + audit logged.
 
 The admin surface has **two top-level tabs**: Data Accuracy
-(operator-controlled overrides — covers source / wage source / walk-in
+(operator-controlled overrides - covers source / wage source / walk-in
 handling / 60-day seed) and Polling & Pricing (F&F-controlled tier
 assignment + cost / margin rollup).
 
@@ -228,20 +228,20 @@ assignment + cost / margin rollup).
 #### Tab 2: Polling & Pricing (F&F-controlled, well-labeled)
 
 The pricing surface is the F&F-internal control plane for the polling
-tier model. Operators NEVER see this tab — `forge_admin` role only.
+tier model. Operators NEVER see this tab - `forge_admin` role only.
 
 **Plain-English explainer card (always visible at top):**
 
 > Polling cadence is how often F&F checks each vendor for new data.
 > Webhook vendors (Toast, Square, Clover, Lightspeed, Revel, Aloha,
 > 7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) push updates in
-> real time — cadence doesn't apply. Poll-only vendors (Oracle MICROS
+> real time - cadence doesn't apply. Poll-only vendors (Oracle MICROS
 > Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations)
 > update only at the cadence we set here.
 >
 > F&F absorbs vendor API costs and packages them into operator-facing
 > tier prices. Operators see a tier name and a tier price on their
-> bill — they don't see vendor per-call costs. This panel is where
+> bill - they don't see vendor per-call costs. This panel is where
 > we set the cadences, the prices, and the cost basis.
 
 **Card 1: Tier definitions (F&F-engineering presets)**
@@ -283,10 +283,10 @@ band (positive / break-even / negative).
 
 | Metric | Label |
 |---|---|
-| Total monthly tier revenue | "Total monthly tier revenue (USD)" — sum across all assignments |
+| Total monthly tier revenue | "Total monthly tier revenue (USD)" - sum across all assignments |
 | Total monthly vendor API cost basis | "Total monthly vendor API cost basis (USD)" |
-| Net monthly margin | "Net monthly margin (USD)" — green if positive, red if negative |
-| Margin % | "Margin %" — net / revenue |
+| Net monthly margin | "Net monthly margin (USD)" - green if positive, red if negative |
+| Margin % | "Margin %" - net / revenue |
 | Per-tier breakdown | small table: tier name, count of assignments, revenue, cost, margin |
 | Per-vendor cost breakdown | small table: vendor name, total monthly cost basis across all locations, % of total cost |
 
@@ -303,8 +303,8 @@ Lists operator "Request tier change" tickets from Lane `.B`.
 | Requested tier | "Requested tier" |
 | Operator note | "Operator's reason" |
 | Submitted at | "Submitted" |
-| Status | "Status" — pending / approved / denied / negotiating |
-| Action | "Approve" / "Deny" / "Open negotiation" — writes audit row + closes the ticket |
+| Status | "Status" - pending / approved / denied / negotiating |
+| Action | "Approve" / "Deny" / "Open negotiation" - writes audit row + closes the ticket |
 
 **Card 5: Audit history**
 
@@ -343,7 +343,7 @@ create table if not exists public.data_accuracy_settings (
 
   -- Manual entries per (business_date, daypart) when covers_source = 'manual'.
   -- jsonb shape: {"2026-05-04": {"lunch": 87, "dinner": 187, "late_night": 12}, ...}
-  -- Sparse — only populated dates need entries. Missing date + manual setting =
+  -- Sparse - only populated dates need entries. Missing date + manual setting =
   -- aggregator returns null for that daypart (no ShiftRecord written).
   covers_manual_entries jsonb not null default '{}'::jsonb
     check (jsonb_typeof(covers_manual_entries) = 'object'),
@@ -360,7 +360,7 @@ create table if not exists public.data_accuracy_settings (
   -- `forge_flow_polling_tier_assignment` (see schema below). This row
   -- carries no polling-cadence fields. The earlier
   -- `polling_cadence_override_seconds` + `polling_cost_acknowledged_at`
-  -- columns are NOT shipped — F&F admin controls cadence directly.
+  -- columns are NOT shipped - F&F admin controls cadence directly.
 
   -- ── Audit ──────────────────────────────────────────────────────────
   created_at timestamptz not null default now(),
@@ -381,7 +381,7 @@ create unique index if not exists data_accuracy_settings_unique_idx
 create index if not exists data_accuracy_settings_operator_idx
   on public.data_accuracy_settings (operator_id, location_id);
 
--- RLS — wrapper-only per Phase 9.0Σ.b item 4.
+-- RLS - wrapper-only per Phase 9.0Σ.b item 4.
 alter table public.data_accuracy_settings enable row level security;
 
 drop policy if exists "data_accuracy_settings_per_tenant"
@@ -404,7 +404,7 @@ grant select, insert, update on public.data_accuracy_settings to forge_admin;
 
 ### Polling tier assignment table (NEW 2026-05-05)
 
-Per the F&F-controlled tier model. Per (operator, location) — same
+Per the F&F-controlled tier model. Per (operator, location) - same
 key as `data_accuracy_settings`.
 
 ```sql
@@ -432,7 +432,7 @@ create table if not exists public.forge_flow_polling_tier_assignment (
     check (monthly_price_cents is null or monthly_price_cents >= 0),
 
   -- F&F's internal vendor API cost basis for this assignment, in cents
-  -- per month. Null when not yet measured. NOT operator-facing —
+  -- per month. Null when not yet measured. NOT operator-facing -
   -- internal margin analysis only.
   vendor_api_cost_estimate_cents_monthly integer
     check (vendor_api_cost_estimate_cents_monthly is null
@@ -458,7 +458,7 @@ create unique index if not exists forge_flow_polling_tier_current_idx
 create index if not exists forge_flow_polling_tier_operator_idx
   on public.forge_flow_polling_tier_assignment (operator_id, location_id, effective_at desc);
 
--- RLS — wrapper-only; service_role + forge_admin only (operator never reads
+-- RLS - wrapper-only; service_role + forge_admin only (operator never reads
 -- this table directly; operator-facing tier name comes through
 -- data_accuracy_settings join).
 alter table public.forge_flow_polling_tier_assignment enable row level security;
@@ -482,7 +482,7 @@ grant select, insert, update on public.forge_flow_polling_tier_assignment to for
 ```
 
 The tier-definition presets (cadence-per-vendor for `standard` and
-`premium`) live in code as a const lookup — they are F&F engineering
+`premium`) live in code as a const lookup - they are F&F engineering
 decisions, not operator-set state. F&F admin can override per
 assignment via tier_key='custom' + explicit JSONB.
 
@@ -504,7 +504,7 @@ Given (operator, location, business_date, daypart):
     manual_value = covers_manual_entries[business_date][daypart]
     if manual_value is null:
       // Operator chose manual but did not enter a value for this date.
-      // Aggregator returns null — no ShiftRecord written; dashboard
+      // Aggregator returns null - no ShiftRecord written; dashboard
       // renders MetricCardNotYetAvailable until the operator enters
       // the value or switches the source.
       return null
@@ -534,14 +534,14 @@ Given (operator, location, business_date, daypart):
 ```
 
 The forecast itself is **F&F-app-computed** per
-`core_app_architecture.md` Layer 6 — never vendor-supplied. The
+`core_app_architecture.md` Layer 6 - never vendor-supplied. The
 provenance string makes the substitution path explicit.
 
 ### Wage source resolution
 
 Resolution is 4-way per the 2026-05-04 amendment. The operator's
 binary toggle (`vendor` | `manual_mix`) sits on top of a vendor
-capability classification (per Jim Taylor's wage model — per-position
+capability classification (per Jim Taylor's wage model - per-position
 is closer to model truth than per-employee because `wage_role_rows`
 is per-role-weighted-up):
 
@@ -581,7 +581,7 @@ Given (operator, location):
     laborDollars = null  // ShiftFactBuilder sets state = unavailable
 ```
 
-The operator-facing toggle stays binary (`vendor` | `manual_mix`) — the
+The operator-facing toggle stays binary (`vendor` | `manual_mix`) - the
 4-way classification is internal. The Data Accuracy tab's wage source
 card surfaces the active class via the vendor relativity label:
 
@@ -589,7 +589,7 @@ card surfaces the active class via the vendor relativity label:
   reports per-employee labor dollars. F&F uses those directly."
 - `perPositionWithRates`: "Your scheduling system (Humanity) reports
   per-position pay rates. F&F multiplies those by scheduled hours.
-  This is what the wage model needs — your wage editor's role rows
+  This is what the wage model needs - your wage editor's role rows
   reflect what your scheduler reports."
 - `hoursOnly` / `noLaborData`: "Your scheduling system doesn't expose
   dollars or rates. F&F substitutes target wage × hours from your
@@ -637,13 +637,13 @@ Tier presets (`lib/services/integration/polling_tier_presets.dart`)
 are F&F-engineering-controlled defaults the resolver consults when the
 JSONB carries no entry for `vendor_id`:
 
-- `kStandardTierPresets` — every poll-only vendor at the vendor
+- `kStandardTierPresets` - every poll-only vendor at the vendor
   minimum (Oracle 300s; QBT/Humanity/Agendrix/Push 300s).
-- `kPremiumTierPresets` — Oracle stays at 300s (vendor minimum); the
+- `kPremiumTierPresets` - Oracle stays at 300s (vendor minimum); the
   other four run at 60s ("60s where vendor allows; vendor minimum
   where not" rule).
 
-Webhook vendors are not in either presets map — the dispatch hook
+Webhook vendors are not in either presets map - the dispatch hook
 gates the resolver call on `pollOnlyVendorIds`, so the resolver is
 never invoked for `autoRegister` / `manualPaste` vendors.
 
@@ -691,7 +691,7 @@ ADP is webhook-driven (`autoRegister` per
 does not apply.
 
 When a per-vendor `api_consumed.md` lacks the pricing reference, the
-F&F admin cost panel renders "Pricing pending — confirm with partner"
+F&F admin cost panel renders "Pricing pending - confirm with partner"
 instead of fabricating a number. Operators never see this surface.
 
 ## Vendor relativity rules
@@ -704,12 +704,12 @@ affects. Reference data (sourced from `docs/integrations/<vendor_id>/`):
 |---|---|---|
 | Covers source = manual | Square, Clover | Toast, Lightspeed K-Series, Revel, Aloha NCR Voyix, Oracle MICROS Simphony |
 | Wage source = manual_mix | QuickBooks Time, Humanity, Agendrix | 7shifts, ADP Workforce Now, ADP Workforce Manager, Push Operations |
-| Polling cadence applies (F&F-set, not operator-set) | Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations | N/A — webhook vendors ignore polling cadence (Toast, Square, Clover, Lightspeed, Revel, Aloha NCR Voyix, 7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) |
+| Polling cadence applies (F&F-set, not operator-set) | Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations | N/A - webhook vendors ignore polling cadence (Toast, Square, Clover, Lightspeed, Revel, Aloha NCR Voyix, 7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) |
 
 The vendor-relativity label updates dynamically based on which vendors
 the operator has actually connected. If an operator has connected
 Toast (POS), the covers source card surfaces: "Toast exposes covers
-directly — this setting only applies if you switch to a POS that does
+directly - this setting only applies if you switch to a POS that does
 not (Square, Clover)."
 
 ## Acceptance criteria for slices touching data accuracy
@@ -726,7 +726,7 @@ A slice that touches any data accuracy seam ships only when:
 - [ ] Operator Web Console card renders + writes back via repository
       (covers/wage cards). Polling cadence card is display-only +
       request-tier-change flow per section "F&F controls cadence;
-      operator sees tiers, not vendor calls" — no operator cadence
+      operator sees tiers, not vendor calls" - no operator cadence
       picker, no `polling_cost_acknowledged_at` write.
 - [ ] Vendor relativity label dynamically reflects the operator's
       connected vendors.
@@ -741,18 +741,18 @@ A slice that touches any data accuracy seam ships only when:
 
 ## Cross-references
 
-- `docs/contracts/core_app_architecture.md` — Layer 2 (canonical
+- `docs/contracts/core_app_architecture.md` - Layer 2 (canonical
   facts), Layer 6 (forecast is F&F-computed), the operator-controlled
   accuracy seam section
-- `docs/contracts/metric_card_honesty_contract.md` — provenance string
+- `docs/contracts/metric_card_honesty_contract.md` - provenance string
   rules; renderer chrome rules
-- `docs/contracts/integration_spine_architecture_contract.md` — spine
+- `docs/contracts/integration_spine_architecture_contract.md` - spine
   resolution + Concern A/B/C
-- `docs/contracts/hardening_rls_and_repository_pattern_contract.md` —
+- `docs/contracts/hardening_rls_and_repository_pattern_contract.md` -
   RLS-Ready Schema rules this table honors
-- `docs/contracts/auth_permission_key_catalog.md` — `forge_admin` role
+- `docs/contracts/auth_permission_key_catalog.md` - `forge_admin` role
   for F&F Ops Console overrides
-- `memory/project_ux_writing_standard.md` — UX writing rules every
+- `memory/project_ux_writing_standard.md` - UX writing rules every
   card label honors
-- `docs/integrations/<vendor_id>/api_consumed.md` — per-vendor pricing
+- `docs/integrations/<vendor_id>/api_consumed.md` - per-vendor pricing
   + minimum poll cadence reference data

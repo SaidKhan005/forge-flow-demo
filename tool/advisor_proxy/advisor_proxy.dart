@@ -3338,7 +3338,7 @@ const Map<String, ProxyHealthSurface> _legacyReservedProxyHealthSurfaces =
       ),
     };
 
-/// Full B42 producer catalog — 57 reserved metric slots covering every
+/// Full B42 producer catalog — 58 reserved metric slots covering every
 /// signal the producer registry knows how to fill. Slots without a live
 /// producer simply render with `status: 'unknown'`, `value: null`.
 const Map<String, ProxyHealthMetric>
@@ -3485,6 +3485,16 @@ proxyHealthReservedMetrics = <String, ProxyHealthMetric>{
     source: 'event_outbox_publish_metrics',
     owner: 'Phase 10a',
     thresholds: <String, Object?>{'yellow': 0.01, 'red': 0.05},
+    metadata: <String, Object?>{'tier': 2},
+  ),
+  'event_outbox_dlq_depth': ProxyHealthMetric(
+    status: 'unknown',
+    value: null,
+    unit: 'count',
+    description: 'Dead-lettered event_outbox rows awaiting operator review.',
+    source: 'event_outbox_dead_letter',
+    owner: 'Phase 10a',
+    thresholds: <String, Object?>{'yellow': 1, 'red': 100},
     metadata: <String, Object?>{'tier': 2},
   ),
   'notify_queue_usage_ratio': ProxyHealthMetric(
@@ -3961,6 +3971,7 @@ const Map<String, ProxyHealthSurface> proxyHealthReservedSurfaces =
           'event_outbox_undelivered_count',
           'event_outbox_lag_seconds',
           'event_outbox_publish_error_rate',
+          'event_outbox_dlq_depth',
           'notify_queue_usage_ratio',
         ],
         owner: 'Phase 10a',
@@ -5851,6 +5862,38 @@ const String adminPricingOperatorsPath = '/v1/admin/pricing/operators';
 const String adminPricingOperatorsPrefix = '$adminPricingOperatorsPath/';
 const String adminPricingUsageCapsPath = '/v1/admin/pricing/usage-caps';
 
+// Phase 8 spine-bridge .C -- Data Accuracy + Polling & Pricing admin
+// routes. This surface is separate from 11A.2 pricing caps: it exposes
+// per-location data accuracy settings, polling tier assignments, and
+// internal margin rollups for F&F operators.
+const String adminDataAccuracyRowsPath = '/v1/admin/data-accuracy/rows';
+const String adminDataAccuracySettingsPath = '/v1/admin/data-accuracy/settings';
+const String adminDataAccuracySettingsPrefix =
+    '$adminDataAccuracySettingsPath/';
+const String adminDataAccuracyAuditHistoryPath =
+    '/v1/admin/data-accuracy/audit-history';
+const String adminPollingPricingTierDefinitionsPath =
+    '/v1/admin/polling-pricing/tier-definitions';
+const String adminPollingPricingTierDefinitionsPrefix =
+    '$adminPollingPricingTierDefinitionsPath/';
+const String adminPollingPricingAssignmentsPath =
+    '/v1/admin/polling-pricing/assignments';
+const String adminPollingPricingAssignmentsPrefix =
+    '$adminPollingPricingAssignmentsPath/';
+const String adminPollingPricingMarginPath = '/v1/admin/polling-pricing/margin';
+const String adminPollingPricingMarginExportPath =
+    '/v1/admin/polling-pricing/margin/export-csv';
+const String adminPollingPricingChangeRequestsPath =
+    '/v1/admin/polling-pricing/change-requests';
+const String adminPollingPricingChangeRequestsPrefix =
+    '$adminPollingPricingChangeRequestsPath/';
+
+const Set<String> kFfDataAccuracyAdminWriteRoles = <String>{'super_admin'};
+const Set<String> kFfDataAccuracyAdminReadRoles = <String>{
+  'super_admin',
+  'ff_support',
+};
+
 /// Roles that admit a caller to the pricing admin **write** surface
 /// (PATCH / PUT / POST). Super-admin-only by design; pricing
 /// decisions sit on the billing posture so support roles do not get
@@ -5955,6 +5998,106 @@ abstract class PricingTierAdminProxyGateway {
     required String actorUserId,
     required String operatorId,
     required String tierKey,
+    required String adminReason,
+  });
+}
+
+class DataAccuracyAdminGatewayValidationError implements Exception {
+  const DataAccuracyAdminGatewayValidationError({
+    required this.statusCode,
+    required this.code,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String code;
+  final String message;
+
+  @override
+  String toString() =>
+      'DataAccuracyAdminGatewayValidationError($statusCode/$code): $message';
+}
+
+abstract class DataAccuracyAdminProxyGateway {
+  Future<List<Map<String, Object?>>> listDataAccuracyRows({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listAuditHistory({
+    required String actorUserId,
+    String? operatorId,
+    String? locationId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> overrideDataAccuracy({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listTierDefinitions({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> updateTierDefinition({
+    required String actorUserId,
+    required String tierKey,
+    String? descriptionMd,
+    Map<String, int>? pollingCadencePerVendorSeconds,
+    int? defaultMonthlyPriceCents,
+    int? vendorApiCostEstimateCentsMonthly,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listTierAssignments({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> assignTier({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>> summarizeMargin({
+    required String actorUserId,
+    String? tierKey,
+    required String adminReason,
+  });
+
+  Future<String> exportMarginRollupCsv({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<List<Map<String, Object?>>> listTierChangeRequests({
+    required String actorUserId,
+    required String adminReason,
+  });
+
+  Future<Map<String, Object?>?> resolveTierChangeRequest({
+    required String actorUserId,
+    required String requestId,
+    required String status,
+    String? reasonNote,
     required String adminReason,
   });
 }
@@ -6691,6 +6834,7 @@ Future<void> routeRequest(
   MfaRecoveryRequestGateway? mfaRecoveryRequestGateway,
   OperatorLocationAdminProxyGateway? operatorLocationAdminGateway,
   PricingTierAdminProxyGateway? pricingTierAdminGateway,
+  DataAccuracyAdminProxyGateway? dataAccuracyAdminGateway,
   CorpusAdminProxyGateway? corpusAdminGateway,
   GraphCandidatesProxyGateway? graphCandidatesGateway,
   IntegrationAdminProxyGateway? integrationAdminGateway,
@@ -6748,6 +6892,7 @@ Future<void> routeRequest(
           path,
         );
         final isAdminPricingPath = _isAdminPricingPath(path);
+        final isAdminDataAccuracyPath = _isAdminDataAccuracyPath(path);
         final isAdminCorpusPath = _isAdminCorpusPath(path);
         final isAdminIntegrationsPath = _isAdminIntegrationsPath(path);
         final isAdminFeatureFlagsPath = _isAdminFeatureFlagsPath(path);
@@ -6759,6 +6904,8 @@ Future<void> routeRequest(
             ? kAdminOperatorLocationCorsMethods
             : isAdminPricingPath
             ? kAdminPricingCorsMethods
+            : isAdminDataAccuracyPath
+            ? kAdminDataAccuracyCorsMethods
             : isAdminCorpusPath
             ? kAdminCorpusCorsMethods
             : isAdminIntegrationsPath
@@ -9544,6 +9691,108 @@ Future<void> routeRequest(
           return;
         }
 
+        if (_isAdminDataAccuracyOperation(path, request.method)) {
+          if (dataAccuracyAdminGateway == null) {
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'data_accuracy_admin_not_configured',
+              'message':
+                  'route requires a DataAccuracyAdminProxyGateway to be installed',
+            });
+            return;
+          }
+
+          final actor = await _resolveVerifiedClaimsOrWrite(
+            request,
+            response,
+            authGuard,
+          );
+          if (actor == null) return;
+
+          final dataAccuracyMethod = request.method;
+          final dataAccuracyRoles = dataAccuracyMethod == 'GET'
+              ? kFfDataAccuracyAdminReadRoles
+              : kFfDataAccuracyAdminWriteRoles;
+          if (!_callerHasAnyRole(actor, dataAccuracyRoles)) {
+            _writeJson(response, 403, <String, Object?>{
+              'error': 'permission_denied',
+              'message': 'admin role claim required',
+              'required_roles': dataAccuracyRoles.toList(),
+            });
+            return;
+          }
+
+          Map<String, Object?> body;
+          try {
+            body = await _readJsonBody(request, allowEmpty: true);
+          } on _MalformedJsonBodyError catch (error) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'malformed_json_body',
+              'message': error.message,
+            });
+            return;
+          }
+
+          final idempotencyKey =
+              (request.headers.value('Idempotency-Key') ?? '').trim();
+          if (idempotencyKey.length > 200) {
+            _writeJson(response, 400, <String, Object?>{
+              'error': 'idempotency_key_too_long',
+              'message':
+                  'Idempotency-Key header must be 200 characters or fewer',
+            });
+            return;
+          }
+
+          try {
+            await _routeDataAccuracyAdmin(
+              request: request,
+              response: response,
+              path: path,
+              gateway: dataAccuracyAdminGateway,
+              actorUserId: actor.userId,
+              body: body,
+              idempotencyKey: idempotencyKey,
+              idempotencyStore: adminRequestIdempotencyStore,
+            );
+          } catch (error, stackTrace) {
+            if (_maybeWriteDependencyTimeout(response, error)) return;
+            if (error is _AdminInputError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is DataAccuracyAdminGatewayValidationError) {
+              _writeJson(response, error.statusCode, <String, Object?>{
+                'error': error.code,
+                'message': error.message,
+              });
+              return;
+            }
+            if (error is AdminIdempotencyKeyConflict) {
+              _writeJson(response, 409, <String, Object?>{
+                'error': 'idempotency_key_conflict',
+                'message': error.message,
+              });
+              return;
+            }
+            _logProxyUnhandled(
+              surface: 'data_accuracy_admin',
+              method: request.method,
+              path: path,
+              error: error,
+              stackTrace: stackTrace,
+            );
+            _writeJson(response, 503, <String, Object?>{
+              'error': 'data_accuracy_admin_unavailable',
+              'message':
+                  'data accuracy admin operation is unavailable; please retry',
+            });
+          }
+          return;
+        }
+
         if (_isAdminCorpusOperation(path, request.method)) {
           if (corpusAdminGateway == null) {
             _writeJson(response, 503, <String, Object?>{
@@ -10538,6 +10787,29 @@ bool _isAdminPricingPath(String path) {
   return false;
 }
 
+bool _isAdminDataAccuracyPath(String path) {
+  if (path == adminDataAccuracyRowsPath) return true;
+  if (path == adminDataAccuracyAuditHistoryPath) return true;
+  if (path.startsWith(adminDataAccuracySettingsPrefix)) return true;
+  if (path == adminPollingPricingTierDefinitionsPath ||
+      path.startsWith(adminPollingPricingTierDefinitionsPrefix)) {
+    return true;
+  }
+  if (path == adminPollingPricingAssignmentsPath ||
+      path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    return true;
+  }
+  if (path == adminPollingPricingMarginPath ||
+      path == adminPollingPricingMarginExportPath) {
+    return true;
+  }
+  if (path == adminPollingPricingChangeRequestsPath ||
+      path.startsWith(adminPollingPricingChangeRequestsPrefix)) {
+    return true;
+  }
+  return false;
+}
+
 bool _isAdminIntegrationsPath(String path) {
   return path == adminIntegrationsListPath ||
       path == adminIntegrationsRotateAnthropicPath ||
@@ -10656,6 +10928,328 @@ bool _isAdminPricingOperation(String path, String method) {
   }
   if (method == 'PUT' && path == adminPricingUsageCapsPath) return true;
   return false;
+}
+
+bool _isAdminDataAccuracyOperation(String path, String method) {
+  if (method == 'GET' &&
+      (path == adminDataAccuracyRowsPath ||
+          path == adminDataAccuracyAuditHistoryPath ||
+          path == adminPollingPricingTierDefinitionsPath ||
+          path == adminPollingPricingAssignmentsPath ||
+          path == adminPollingPricingMarginPath ||
+          path == adminPollingPricingChangeRequestsPath)) {
+    return true;
+  }
+  if (method == 'PATCH' &&
+      (path.startsWith(adminDataAccuracySettingsPrefix) ||
+          path.startsWith(adminPollingPricingTierDefinitionsPrefix) ||
+          path.startsWith(adminPollingPricingChangeRequestsPrefix))) {
+    return true;
+  }
+  if (method == 'PUT' &&
+      path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    return true;
+  }
+  if (method == 'POST' && path == adminPollingPricingMarginExportPath) {
+    return true;
+  }
+  return false;
+}
+
+Future<void> _routeDataAccuracyAdmin({
+  required HttpRequest request,
+  required HttpResponse response,
+  required String path,
+  required DataAccuracyAdminProxyGateway gateway,
+  required String actorUserId,
+  required Map<String, Object?> body,
+  String idempotencyKey = '',
+  AdminRequestIdempotencyStore? idempotencyStore,
+}) async {
+  final method = request.method;
+  final reasonPrefix = 'admin.data_accuracy.$method:$actorUserId';
+  final params = request.uri.queryParameters;
+
+  if (method == 'GET' && path == adminDataAccuracyRowsPath) {
+    final rows = await gateway.listDataAccuracyRows(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:rows',
+    );
+    _writeJson(response, 200, <String, Object?>{'rows': rows});
+    return;
+  }
+
+  if (method == 'GET' && path == adminDataAccuracyAuditHistoryPath) {
+    final events = await gateway.listAuditHistory(
+      actorUserId: actorUserId,
+      operatorId: _nonBlankString(params['operator_id']),
+      locationId: _nonBlankString(params['location_id']),
+      adminReason: '$reasonPrefix:audit_history',
+    );
+    _writeJson(response, 200, <String, Object?>{'events': events});
+    return;
+  }
+
+  if (method == 'PATCH' && path.startsWith(adminDataAccuracySettingsPrefix)) {
+    final pair = _pathPairSuffix(path, adminDataAccuracySettingsPrefix);
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final coversLunch = _optionalBodyString(body, 'covers_source_lunch');
+    final coversDinner = _optionalBodyString(body, 'covers_source_dinner');
+    final coversLateNight = _optionalBodyString(
+      body,
+      'covers_source_late_night',
+    );
+    final wageSource = _optionalBodyString(body, 'wage_source');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.data_accuracy.override',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final row = await gateway.overrideDataAccuracy(
+          actorUserId: actorUserId,
+          operatorId: pair.operatorId,
+          locationId: pair.locationId,
+          coversSourceLunch: coversLunch,
+          coversSourceDinner: coversDinner,
+          coversSourceLateNight: coversLateNight,
+          wageSource: wageSource,
+          reasonNote: reasonNote,
+          adminReason:
+              '$reasonPrefix:settings:${pair.operatorId}:${pair.locationId}',
+        );
+        if (row == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator_location',
+              'message': 'operator/location pair not found',
+            },
+          );
+        }
+        return (statusCode: 200, payload: <String, Object?>{'row': row});
+      },
+    );
+    return;
+  }
+
+  if (method == 'GET' && path == adminPollingPricingTierDefinitionsPath) {
+    final definitions = await gateway.listTierDefinitions(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:tier_definitions',
+    );
+    _writeJson(response, 200, <String, Object?>{'definitions': definitions});
+    return;
+  }
+
+  if (method == 'PATCH' &&
+      path.startsWith(adminPollingPricingTierDefinitionsPrefix)) {
+    final tierKey = _pathSuffix(path, adminPollingPricingTierDefinitionsPrefix);
+    if (tierKey == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final cadence = _optionalBodyPositiveIntMap(
+      body,
+      'polling_cadence_per_vendor_seconds',
+    );
+    final descriptionMd = _optionalBodyString(body, 'description_md');
+    final price = _optionalBodyNonNegativeInt(
+      body,
+      'default_monthly_price_cents',
+    );
+    final cost = _optionalBodyNonNegativeInt(
+      body,
+      'vendor_api_cost_estimate_cents_monthly',
+    );
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.update_tier_definition',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final definition = await gateway.updateTierDefinition(
+          actorUserId: actorUserId,
+          tierKey: tierKey,
+          descriptionMd: descriptionMd,
+          pollingCadencePerVendorSeconds: cadence,
+          defaultMonthlyPriceCents: price,
+          vendorApiCostEstimateCentsMonthly: cost,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:tier_definition:$tierKey',
+        );
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'definition': definition},
+        );
+      },
+    );
+    return;
+  }
+
+  if (method == 'GET' && path == adminPollingPricingAssignmentsPath) {
+    final assignments = await gateway.listTierAssignments(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:tier_assignments',
+    );
+    _writeJson(response, 200, <String, Object?>{'assignments': assignments});
+    return;
+  }
+
+  if (method == 'PUT' &&
+      path.startsWith(adminPollingPricingAssignmentsPrefix)) {
+    final pair = _pathPairSuffix(path, adminPollingPricingAssignmentsPrefix);
+    if (pair == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final tierKey = _requireBodyString(body, 'tier_key');
+    final cadence = _optionalBodyPositiveIntMap(
+      body,
+      'custom_cadence_per_vendor_seconds',
+    );
+    final price = _optionalBodyNonNegativeInt(
+      body,
+      'monthly_price_cents_override',
+    );
+    final cost = _optionalBodyNonNegativeInt(
+      body,
+      'vendor_api_cost_estimate_cents_monthly_override',
+    );
+    final adminNotes = _optionalBodyString(body, 'admin_notes');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.assign_tier',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final assignment = await gateway.assignTier(
+          actorUserId: actorUserId,
+          operatorId: pair.operatorId,
+          locationId: pair.locationId,
+          tierKey: tierKey,
+          customCadencePerVendorSeconds: cadence,
+          monthlyPriceCentsOverride: price,
+          vendorApiCostEstimateCentsMonthlyOverride: cost,
+          adminNotes: adminNotes,
+          reasonNote: reasonNote,
+          adminReason:
+              '$reasonPrefix:assignment:${pair.operatorId}:${pair.locationId}',
+        );
+        if (assignment == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_operator_location',
+              'message': 'operator/location pair not found',
+            },
+          );
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'assignment': assignment},
+        );
+      },
+    );
+    return;
+  }
+
+  if (method == 'GET' && path == adminPollingPricingMarginPath) {
+    final rollup = await gateway.summarizeMargin(
+      actorUserId: actorUserId,
+      tierKey: _nonBlankString(params['tier_key']),
+      adminReason: '$reasonPrefix:margin',
+    );
+    _writeJson(response, 200, <String, Object?>{'rollup': rollup});
+    return;
+  }
+
+  if (method == 'POST' && path == adminPollingPricingMarginExportPath) {
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.export_margin_csv',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final csv = await gateway.exportMarginRollupCsv(
+          actorUserId: actorUserId,
+          adminReason: '$reasonPrefix:margin_export_csv',
+        );
+        return (statusCode: 200, payload: <String, Object?>{'csv': csv});
+      },
+    );
+    return;
+  }
+
+  if (method == 'GET' && path == adminPollingPricingChangeRequestsPath) {
+    final requests = await gateway.listTierChangeRequests(
+      actorUserId: actorUserId,
+      adminReason: '$reasonPrefix:change_requests',
+    );
+    _writeJson(response, 200, <String, Object?>{'requests': requests});
+    return;
+  }
+
+  if (method == 'PATCH' &&
+      path.startsWith(adminPollingPricingChangeRequestsPrefix)) {
+    final requestId = _pathSuffix(
+      path,
+      adminPollingPricingChangeRequestsPrefix,
+    );
+    if (requestId == null) {
+      _writeNotFound(response, request);
+      return;
+    }
+    final status = _requireBodyString(body, 'status');
+    final reasonNote = _optionalBodyString(body, 'reason_note');
+    await _runAdminIdempotent(
+      response: response,
+      store: idempotencyStore,
+      idempotencyKey: idempotencyKey,
+      requestType: 'admin.polling_pricing.resolve_change_request',
+      actorUserId: actorUserId,
+      requestBody: body,
+      compute: () async {
+        final resolved = await gateway.resolveTierChangeRequest(
+          actorUserId: actorUserId,
+          requestId: requestId,
+          status: status,
+          reasonNote: reasonNote,
+          adminReason: '$reasonPrefix:change_request:$requestId',
+        );
+        if (resolved == null) {
+          return (
+            statusCode: 404,
+            payload: <String, Object?>{
+              'error': 'unknown_change_request',
+              'message': 'tier change request not found',
+            },
+          );
+        }
+        return (
+          statusCode: 200,
+          payload: <String, Object?>{'request': resolved},
+        );
+      },
+    );
+    return;
+  }
+
+  _writeNotFound(response, request);
 }
 
 Future<void> _routePricingAdmin({
@@ -11652,6 +12246,71 @@ String? _optionalBodyString(Map<String, Object?> body, String field) {
   return raw.trim();
 }
 
+int? _optionalBodyNonNegativeInt(Map<String, Object?> body, String field) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  int? parsed;
+  if (raw is int) {
+    parsed = raw;
+  } else if (raw is num && raw == raw.roundToDouble()) {
+    parsed = raw.toInt();
+  } else if (raw is String && raw.trim().isNotEmpty) {
+    parsed = int.tryParse(raw.trim());
+  }
+  if (parsed == null || parsed < 0) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an integer >= 0',
+    );
+  }
+  return parsed;
+}
+
+Map<String, int>? _optionalBodyPositiveIntMap(
+  Map<String, Object?> body,
+  String field,
+) {
+  if (!body.containsKey(field)) return null;
+  final raw = body[field];
+  if (raw == null) return null;
+  if (raw is! Map) {
+    throw _AdminInputError(
+      statusCode: 400,
+      code: 'invalid_$field',
+      message: '$field must be an object of positive integer values',
+    );
+  }
+  final out = <String, int>{};
+  raw.forEach((key, value) {
+    if (key is! String || key.trim().isEmpty) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field keys must be non-empty strings',
+      );
+    }
+    int? parsed;
+    if (value is int) {
+      parsed = value;
+    } else if (value is num && value == value.roundToDouble()) {
+      parsed = value.toInt();
+    } else if (value is String && value.trim().isNotEmpty) {
+      parsed = int.tryParse(value.trim());
+    }
+    if (parsed == null || parsed <= 0) {
+      throw _AdminInputError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field values must be positive integers',
+      );
+    }
+    out[key.trim()] = parsed;
+  });
+  return out;
+}
+
 String _requireBodyCurrency(Map<String, Object?> body, String field) {
   final raw = _requireBodyString(body, field).toUpperCase();
   if (!RegExp(r'^[A-Z]{3}$').hasMatch(raw)) {
@@ -11941,6 +12600,22 @@ String? _pathSuffix(String path, String prefix) {
   final suffix = path.substring(prefix.length);
   if (suffix.isEmpty || suffix.contains('/')) return null;
   return Uri.decodeComponent(suffix);
+}
+
+({String operatorId, String locationId})? _pathPairSuffix(
+  String path,
+  String prefix,
+) {
+  if (!path.startsWith(prefix)) return null;
+  final suffix = path.substring(prefix.length);
+  final parts = suffix.split('/');
+  if (parts.length != 2 || parts.any((part) => part.isEmpty)) {
+    return null;
+  }
+  return (
+    operatorId: Uri.decodeComponent(parts[0]),
+    locationId: Uri.decodeComponent(parts[1]),
+  );
 }
 
 Map<String, Object?> _teamRoleToJson(TeamRoleCatalogEntry role) {
@@ -12356,6 +13031,13 @@ const List<String> kAdminPricingCorsMethods = <String>[
   'PUT',
   'PATCH',
   'DELETE',
+  'OPTIONS',
+];
+const List<String> kAdminDataAccuracyCorsMethods = <String>[
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
   'OPTIONS',
 ];
 const List<String> kAdminCorpusCorsMethods = <String>['GET', 'POST', 'OPTIONS'];
