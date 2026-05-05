@@ -37,8 +37,21 @@ class DollarImpactCard extends StatelessWidget {
   /// Required. Footer text shown below the rows. The card does not derive
   /// or interpret this — owners pass exactly what should render. Examples:
   /// "Through Tuesday", "As of close, Mar 29", or a static fallback for
-  /// legacy rows.
+  /// legacy rows. Used as the honest fallback when [theoreticalLaborPct]
+  /// is null.
   final String footerText;
+
+  /// Optional. The week's mathematical labor floor at the locked target
+  /// rates and wages (Jim Taylor ch. 8). When non-null and paired with
+  /// [actualLaborPct], the footer renders the
+  /// `Best Possible / Actual / Closable Gap` triplet instead of [footerText].
+  /// Null on legacy rows where the floor was not preserved at close.
+  final double? theoreticalLaborPct;
+
+  /// Optional. The week's actual labor percentage. Pairs with
+  /// [theoreticalLaborPct] in the triplet line. Null when the triplet is
+  /// not being rendered.
+  final double? actualLaborPct;
 
   const DollarImpactCard({
     super.key,
@@ -47,6 +60,8 @@ class DollarImpactCard extends StatelessWidget {
     this.sixtyDayImpact,
     this.annualizedImpact,
     required this.footerText,
+    this.theoreticalLaborPct,
+    this.actualLaborPct,
   });
 
   @override
@@ -95,12 +110,57 @@ class DollarImpactCard extends StatelessWidget {
             _ImpactRow(value: annualizedImpact!, label: 'annualized'),
           ],
           const SizedBox(height: 12),
-          Text(
-            footerText,
-            style: AppTextStyles.body13(color: AppColors.textMuted),
+          _DepthFooter(
+            theoreticalLaborPct: theoreticalLaborPct,
+            actualLaborPct: actualLaborPct,
+            footerText: footerText,
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Footer renderer. Shows the `Best Possible / Actual / Closable Gap`
+/// triplet when the math floor is known; honest fallback to [footerText]
+/// otherwise. Phase 7.58.UX.6: theoretical labor % is named as the
+/// mathematical floor at the locked target rates and wages — not a
+/// corporate target above the floor.
+class _DepthFooter extends StatelessWidget {
+  final double? theoreticalLaborPct;
+  final double? actualLaborPct;
+  final String footerText;
+
+  const _DepthFooter({
+    required this.theoreticalLaborPct,
+    required this.actualLaborPct,
+    required this.footerText,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theo = theoreticalLaborPct;
+    final actual = actualLaborPct;
+    if (theo == null || actual == null) {
+      return Text(
+        footerText,
+        style: AppTextStyles.body13(color: AppColors.textMuted),
+      );
+    }
+    final closableGap = actual - theo;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        Flexible(
+          child: Text(
+            'Best Possible: ${theo.toStringAsFixed(1)}%'
+            '  ·  Actual: ${actual.toStringAsFixed(1)}%'
+            '  ·  Closable Gap: ${Fmt.varPts(closableGap)}',
+            style: AppTextStyles.body13(color: AppColors.textMuted),
+          ),
+        ),
+      ],
     );
   }
 }
