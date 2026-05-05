@@ -55,10 +55,17 @@ class _LearnTabState extends State<LearnTab>
           final patternRecords = results[1] as List<HistoryPatternRecord>;
           final benchmarkContext = results[2] as LearnBenchmarkContext;
           final closedShifts = results[3] as List<ShiftRecord>;
+          // 7.58.3 — coverage denominator for the leak repeat counter.
+          // `closedShifts` is the same closed `shift_records` population
+          // `HistoryPatternBuilder` consumes upstream, so repeats and
+          // coverage read from the same source. See Sub-Slice Family
+          // `.3` row in
+          // `docs/contracts/phase_7_58_primary_driver_contract.md`.
           final summary = LearnTeachingAnalyzer.summarize(
             patternRecords: patternRecords,
             weekCount: weeks.length,
             benchmarkContext: benchmarkContext,
+            coverageCount: closedShifts.length,
           );
           const winsService = LearnRepeatableWinsReadService();
           final allWins = winsService.build(closedShifts);

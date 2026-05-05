@@ -13,6 +13,19 @@ class LearnTeachingSummary {
   final String primaryLeakId;
   final String primaryLeakSideLabel;
   final int primaryLeakCount;
+
+  /// 7.58.3 — denominator for [primaryLeakCount].
+  ///
+  /// Total count of closed `shift_records` rows in the same retention
+  /// window the repeat-counter scopes to (restaurant + daypart +
+  /// day-of-week universe). Adds the missing "out of how many" so a
+  /// claim like "leak repeated 6 times" can be read against the
+  /// population it was drawn from.
+  ///
+  /// Invariant (enforced by [LearnTeachingAnalyzer.summarize]):
+  /// `coverageCount >= primaryLeakCount`. See Sub-Slice Family `.3`
+  /// row in `docs/contracts/phase_7_58_primary_driver_contract.md`.
+  final int coverageCount;
   final List<String> topLeakDayparts;
   final List<String> benchmarkDayparts;
   final String primaryFixLine;
@@ -36,6 +49,7 @@ class LearnTeachingSummary {
     required this.primaryLeakId,
     required this.primaryLeakSideLabel,
     required this.primaryLeakCount,
+    required this.coverageCount,
     required this.topLeakDayparts,
     required this.benchmarkDayparts,
     required this.primaryFixLine,
