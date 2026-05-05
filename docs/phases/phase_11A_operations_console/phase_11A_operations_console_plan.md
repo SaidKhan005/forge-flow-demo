@@ -1,8 +1,8 @@
 # Phase 11A - F&F Operations Console
 
-Updated: 2026-05-03 (`11A.5` Debug Console + `11A.6` observability dashboard accepted)
+Updated: 2026-05-05 (`11A.12`/`13`/`14` cross-operator parity un-deferred per `project_role_hierarchy_web_migration_sequencing.md`; sequenced after Phase 7 + Phase 10 close, in lockstep with `11W.1`–`11W.6`)
 Status: Active. Foundation slices `11A.0`/`1`/`2`/`3a`/`3b`/`4`/`4b`/`4c`/`5`/`6`/`7`/`UX.health` accepted.
-Remaining: `11A.8`/`9`/`10` not started.
+Remaining: `11A.8`/`9`/`10` not started; `11A.12`/`13`/`14` un-deferred and queued behind Phase 7 + Phase 10 close.
 Owner: F&F admin / operations lane
 
 ## Phase 9 Foundation Dependencies (status as of 2026-05-03)
@@ -434,9 +434,27 @@ Acceptance:
   re-run it against current corpus + model, compare to original
   answer. Lights up if a real customer dispute ever surfaces.
 
-### Cross-operator parity (deferred per V1 lean scope cut, 2026-05-03)
+### Cross-operator parity (un-deferred 2026-05-05; ships in lockstep with `11W.1`–`11W.6`)
 
-Phase 11W gives operators desktop self-service for their own data. F&F support staff need cross-operator inspect and audited edit views over operator-managed data, but at V1 with 5 to 20 operators, F&F has shell access for support escalations. The slice family for cross-operator parity (`11A.12` member view, `11A.13` hierarchy and session inspect, `11A.14` audited support actions) is deferred until operator volume justifies the engineering work, typically around 20 plus operators when shell-access support load becomes operationally painful. See `project_v1_lean_scope_cut.md` for the rationale.
+Phase 11W gives operators desktop self-service for their own data via `11W.1`–`11W.6` (Members / Roles / Hierarchy / Sessions / Audit / Security). F&F support staff need cross-operator inspect + audited edit views over the same data so support escalations don't require shell access. The slice family lands in lockstep with the operator-side parity block per `project_role_hierarchy_web_migration_sequencing.md`. Both sides bind to the parity contract `docs/contracts/team_roles_hierarchy_console_parity_contract.md`.
+
+#### `11A.12` Members + Invites parity (cross-operator)
+
+Cross-operator member view + invite admin. F&F super-admin / `ff_support` selects an operator via the existing operator picker (`lib/admin/screens/operator_picker_screen.dart`); the screen lists that operator's users with the same filter set as `11W.1` Members and exposes the same row actions plus support-only actions (`Restore soft-deleted`, `Override role grant`). All writes flow through `/v1/admin/auth/users` + `/v1/admin/auth/invites` + `/v1/admin/auth/role-grants` (admin path; gates on `admin.users.*` + `admin.invites.*` + `admin.roles.*`). Every write writes the calling F&F admin's UID into `created_by` / `updated_by` and the operator's audit log via `audit_logs` (B27 hash-chained). RLS-bypass via `forge_admin` Postgres role; no operator `team.*` keys inspected.
+
+Files this slice owns: `lib/admin/services/members_admin_gateway.dart`, `lib/admin/screens/members_admin_screen.dart`, `lib/admin/screens/invite_member_admin_dialog.dart`, route entry in `lib/admin/admin_routes.dart`, gateway resolver in `lib/main_admin.dart`. Walkthrough at acceptance: sign in to admin console as `super.admin@forgeflow.test` → pick a fixture operator → land on Members → filter by `mfa_enrolled=false` → invite a fixture user → restore a soft-deleted user → screenshot trace per `docs/_walkthroughs/11A.5.md` bar.
+
+#### `11A.13` Roles + Hierarchy + Sessions inspect (cross-operator)
+
+Cross-operator inspect for role catalog + org hierarchy + active sessions. After operator-picker, the screen renders three tabs: `Roles` (seeded + custom roles for that operator, view-only by default; edit gated on `admin.roles.edit_seeded` for seeded roles, `admin.roles.create_custom` / `delete_custom` for custom roles); `Hierarchy` (org tree + locations, read-mostly with audited edit gated on `admin.users.create` analog for hierarchy mutations — note `11A.1` already covers location admin edits; this slice adds the org-unit tree visualization and audited move actions); `Sessions` (every active session for every user in the operator, with cross-actor force-logout gated on `admin.session.force_logout`). Reads through `/v1/admin/auth/roles?operator_id=...` + `/v1/admin/auth/org-units?operator_id=...` + `/v1/admin/auth/sessions?operator_id=...`; writes via the same admin path. Every write audits with the F&F admin's UID + a mandatory `admin_reason` text field (free-form, audited).
+
+Files this slice owns: `lib/admin/services/roles_hierarchy_sessions_admin_gateway.dart`, `lib/admin/screens/roles_hierarchy_sessions_admin_screen.dart`, route entry. Walkthrough at acceptance: sign in to admin console → pick a fixture operator → tab through Roles / Hierarchy / Sessions → force-logout a fixture session with `admin_reason="walkthrough verification"` → screenshot trace.
+
+#### `11A.14` Audited support actions
+
+Cross-operator audit log review + support-side MFA / password operations + hierarchy-touches-grants escalations. After operator-picker, the screen renders the operator's audit log (filters identical to `11W.5` Audit Log; export gated on `admin.audit_log.export`), plus an `Actions` panel with: `Reset member MFA` (gated on a future `admin.users.reset_mfa_factors` key — must be added to the catalog as part of this slice via additive migration), `Initiate password reset` (gated on `admin.users.reset_password`), `Issue paired-approval erasure` (gated on `admin.users.erase_pii`, MFA-required, paired-approval workflow). Every action requires a free-form `admin_reason` and writes both `audit_logs` + an `admin_action_log` provenance row capturing reader / target / records-touched.
+
+Files this slice owns: `lib/admin/services/audited_support_actions_admin_gateway.dart`, `lib/admin/screens/audited_support_actions_admin_screen.dart`, route entry, plus the additive migration `db/migrations/<timestamp>_phase_11A_14_admin_users_reset_mfa_factors_key.sql` and the corresponding `lib/auth/permission_keys.dart` + `docs/contracts/auth_permission_key_catalog.md` updates per the catalog keep-in-sync rule. Walkthrough at acceptance: sign in to admin console → pick a fixture operator → review audit log → reset a fixture member's MFA with `admin_reason="walkthrough verification"` → confirm audit row appears with the F&F admin's UID + the reason → screenshot trace.
 
 ## Sequencing in the Build Cadence
 
@@ -495,16 +513,22 @@ explicit per Hard Promise #10.
 - `11A.8` API version management
 - `11A.9` audit log review (consumes B27 / B37)
 - `11A.10` status page management
+- `11A.12` Members + Invites parity (cross-operator) — un-deferred 2026-05-05
+- `11A.13` Roles + Hierarchy + Sessions inspect (cross-operator) — un-deferred 2026-05-05
+- `11A.14` Audited support actions (audit log review + MFA reset + password reset + paired-approval erasure) — un-deferred 2026-05-05
 
 **Operator-facing surfaces this phase requires:** **none**. By
 design, 11A never surfaces to operators. Cross-checks: any operator-
 visible feature must NOT live under `admin.forgeflow.app` or
 `/v1/admin/*`; those surfaces are F&F super-admin only. Operator-side
 self-service for the same operator-managed data lives in Phase 11W
-(Operator Web Console) with the same backend routes and a different
-host shell, operator-scope only. The cross-operator parity slice
-family (`11A.12`, `11A.13`, `11A.14`) is deferred until operator
-volume justifies it, typically around 20 plus operators.
+(Operator Web Console) with peer backend routes (`/v1/auth/*` for
+operator self-service vs `/v1/admin/auth/*` for F&F admin) and a
+different host shell, operator-scope only. The cross-operator parity
+slice family (`11A.12`, `11A.13`, `11A.14`) is un-deferred (2026-05-05)
+and ships in lockstep with `11W.1`–`11W.6` after Phase 7 + Phase 10
+close. Both sides bind to the parity contract
+`docs/contracts/team_roles_hierarchy_console_parity_contract.md`.
 
 **UX sub-slice family:** owned inline by existing `11A.x` slices —
 each `11A.x` IS a UX surface. Each slice adds the `Operator
