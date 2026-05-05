@@ -69,8 +69,9 @@ class _PerLocationTierAssignmentTableState
   @override
   void initState() {
     super.initState();
-    _opNameController =
-        TextEditingController(text: widget.operatorNameFilter ?? '');
+    _opNameController = TextEditingController(
+      text: widget.operatorNameFilter ?? '',
+    );
   }
 
   @override
@@ -130,16 +131,19 @@ class _PerLocationTierAssignmentTableState
         }
         break;
       case _SortColumn.priceOverride:
-        cmp = (a.assignment?.monthlyPriceCents ?? 0)
-            .compareTo(b.assignment?.monthlyPriceCents ?? 0);
+        cmp = (a.assignment?.monthlyPriceCents ?? 0).compareTo(
+          b.assignment?.monthlyPriceCents ?? 0,
+        );
         break;
       case _SortColumn.costOverride:
-        cmp = (a.assignment?.vendorApiCostEstimateCentsMonthly ?? 0)
-            .compareTo(b.assignment?.vendorApiCostEstimateCentsMonthly ?? 0);
+        cmp = (a.assignment?.vendorApiCostEstimateCentsMonthly ?? 0).compareTo(
+          b.assignment?.vendorApiCostEstimateCentsMonthly ?? 0,
+        );
         break;
       case _SortColumn.netMargin:
-        cmp = (a.assignment?.netMarginCents ?? 0)
-            .compareTo(b.assignment?.netMarginCents ?? 0);
+        cmp = (a.assignment?.netMarginCents ?? 0).compareTo(
+          b.assignment?.netMarginCents ?? 0,
+        );
         break;
     }
     return _ascending ? cmp : -cmp;
@@ -159,6 +163,12 @@ class _PerLocationTierAssignmentTableState
             Text(
               'Tier assignments',
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Use the filters to narrow operator locations. Scroll sideways '
+              'for price, cost, margin, notes, and assignment actions.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
             ),
             const SizedBox(height: 12),
             _FilterBar(
@@ -210,9 +220,7 @@ class _PerLocationTierAssignmentTableState
                   const DataColumn(label: Text('Notes')),
                   const DataColumn(label: Text('Action')),
                 ],
-                rows: <DataRow>[
-                  for (final row in sorted) _buildRow(row),
-                ],
+                rows: <DataRow>[for (final row in sorted) _buildRow(row)],
               ),
             ),
           ],
@@ -245,7 +253,9 @@ class _PerLocationTierAssignmentTableState
         : '${cadences.length} vendor(s) set';
     final notes = row.adminNotes ?? '';
     final notesLabel = notes.length > 30 ? '${notes.substring(0, 30)}…' : notes;
-    final tierLabel = assignment?.tierKey.wire ?? '—';
+    final tierLabel = assignment?.tierKey == null
+        ? '—'
+        : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
         ? '—'
         : adminHumanDateTime(assignment.effectiveAt);
@@ -262,42 +272,57 @@ class _PerLocationTierAssignmentTableState
         '${row.operatorRef.locationId}',
       ),
       cells: <DataCell>[
-        DataCell(Text(
-          row.operatorRef.businessName,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          row.operatorRef.locationName,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          tierLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          activeSinceLabel,
-          style: AppTextStyles.mono11(color: AppColors.textMuted),
-        )),
-        DataCell(Text(
-          cadenceLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          priceLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          costLabel,
-          style: AppTextStyles.mono12(color: AppColors.textPrimary),
-        )),
-        DataCell(Text(
-          marginLabel,
-          style: AppTextStyles.mono14(color: marginColor),
-        )),
-        DataCell(Text(
-          notesLabel.isEmpty ? '—' : notesLabel,
-          style: AppTextStyles.body13(color: AppColors.textSecondary),
-        )),
+        DataCell(
+          Text(
+            row.operatorRef.businessName,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(
+            row.operatorRef.locationName,
+            style: AppTextStyles.body13(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(
+            tierLabel,
+            style: AppTextStyles.mono12(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(
+            activeSinceLabel,
+            style: AppTextStyles.mono11(color: AppColors.textMuted),
+          ),
+        ),
+        DataCell(
+          Text(
+            cadenceLabel,
+            style: AppTextStyles.mono12(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(
+            priceLabel,
+            style: AppTextStyles.mono12(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(
+            costLabel,
+            style: AppTextStyles.mono12(color: AppColors.textPrimary),
+          ),
+        ),
+        DataCell(
+          Text(marginLabel, style: AppTextStyles.mono14(color: marginColor)),
+        ),
+        DataCell(
+          Text(
+            notesLabel.isEmpty ? '—' : notesLabel,
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
+          ),
+        ),
         DataCell(
           widget.editingEnabled
               ? OutlinedButton(
@@ -320,6 +345,17 @@ class _PerLocationTierAssignmentTableState
         ),
       ],
     );
+  }
+}
+
+String _tierLabel(PollingTierKey tier) {
+  switch (tier) {
+    case PollingTierKey.standard:
+      return 'Standard';
+    case PollingTierKey.premium:
+      return 'Premium';
+    case PollingTierKey.custom:
+      return 'Custom';
   }
 }
 
@@ -370,7 +406,7 @@ class _FilterBar extends StatelessWidget {
               for (final tier in PollingTierKey.values)
                 DropdownMenuItem<PollingTierKey?>(
                   value: tier,
-                  child: Text(tier.wire),
+                  child: Text(_tierLabel(tier)),
                 ),
             ],
             onChanged: onTierChanged,
@@ -406,28 +442,28 @@ class _FilterBar extends StatelessWidget {
           ),
         ),
         SizedBox(
-          width: 260,
+          width: 280,
           child: DropdownButtonFormField<LocationCountFilter?>(
             key: const Key('admin_location_count_dropdown'),
             initialValue: locationCountFilter,
             isExpanded: true,
             decoration: const InputDecoration(
-              labelText: 'Location count',
+              labelText: 'Operator location count',
               isDense: true,
               border: OutlineInputBorder(),
             ),
             items: const <DropdownMenuItem<LocationCountFilter?>>[
               DropdownMenuItem<LocationCountFilter?>(
                 value: null,
-                child: Text('All operators'),
+                child: Text('All location counts'),
               ),
               DropdownMenuItem<LocationCountFilter?>(
                 value: 'single',
-                child: Text('Single-location'),
+                child: Text('Single-location operators'),
               ),
               DropdownMenuItem<LocationCountFilter?>(
                 value: 'multi',
-                child: Text('Multi-location'),
+                child: Text('Multi-location operators'),
               ),
             ],
             onChanged: onLocationCountChanged,

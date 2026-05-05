@@ -58,8 +58,9 @@ class _PerLocationDataAccuracyTableState
         cmp = a.settings.wageSource.wire.compareTo(b.settings.wageSource.wire);
         break;
       case _SortColumn.modifiedBy:
-        cmp = (a.settings.updatedBy ?? '')
-            .compareTo(b.settings.updatedBy ?? '');
+        cmp = (a.settings.updatedBy ?? '').compareTo(
+          b.settings.updatedBy ?? '',
+        );
         break;
       case _SortColumn.modifiedAt:
         cmp = a.settings.updatedAt.compareTo(b.settings.updatedAt);
@@ -70,9 +71,9 @@ class _PerLocationDataAccuracyTableState
 
   static String _coversSummary(DataAccuracyAdminRow row) {
     final s = row.settings;
-    return '${s.coversSourceLunch.wire} / '
-        '${s.coversSourceDinner.wire} / '
-        '${s.coversSourceLateNight.wire}';
+    return '${_coversLabel(s.coversSourceLunch)} / '
+        '${_coversLabel(s.coversSourceDinner)} / '
+        '${_coversLabel(s.coversSourceLateNight)}';
   }
 
   @override
@@ -90,6 +91,12 @@ class _PerLocationDataAccuracyTableState
               'Per-location data accuracy',
               style: AppTextStyles.sectionTitle(color: AppColors.textPrimary),
             ),
+            const SizedBox(height: 6),
+            Text(
+              'Covers are shown as lunch / dinner / late night. '
+              'Scroll sideways for override history and actions.',
+              style: AppTextStyles.body12(color: AppColors.textMuted),
+            ),
             const SizedBox(height: 12),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
@@ -106,7 +113,7 @@ class _PerLocationDataAccuracyTableState
                     onSort: (_, __) => _toggleSort(_SortColumn.location),
                   ),
                   DataColumn(
-                    label: const Text('Covers (L/D/Late)'),
+                    label: const Text('Covers source'),
                     onSort: (_, __) => _toggleSort(_SortColumn.covers),
                   ),
                   DataColumn(
@@ -127,47 +134,63 @@ class _PerLocationDataAccuracyTableState
                   for (final row in sorted)
                     DataRow(
                       cells: <DataCell>[
-                        DataCell(Text(
-                          key: Key(
-                            'admin_data_accuracy_row_'
-                            '${row.operatorRef.operatorId}_'
-                            '${row.operatorRef.locationId}',
+                        DataCell(
+                          Text(
+                            key: Key(
+                              'admin_data_accuracy_row_'
+                              '${row.operatorRef.operatorId}_'
+                              '${row.operatorRef.locationId}',
+                            ),
+                            row.operatorRef.businessName,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                          row.operatorRef.businessName,
-                          style: AppTextStyles.body13(
-                            color: AppColors.textPrimary,
+                        ),
+                        DataCell(
+                          Text(
+                            row.operatorRef.locationName,
+                            style: AppTextStyles.body13(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                        )),
-                        DataCell(Text(
-                          row.operatorRef.locationName,
-                          style: AppTextStyles.body13(
-                            color: AppColors.textPrimary,
+                        ),
+                        DataCell(
+                          Text(
+                            _coversSummary(row),
+                            style: AppTextStyles.body13(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                        )),
-                        DataCell(Text(
-                          _coversSummary(row),
-                          style: AppTextStyles.mono12(
-                            color: AppColors.textPrimary,
+                        ),
+                        DataCell(
+                          Text(
+                            _wageLabel(row.settings.wageSource),
+                            style: AppTextStyles.body13(
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                        )),
-                        DataCell(Text(
-                          _wageLabel(row.settings.wageSource),
-                          style: AppTextStyles.mono12(
-                            color: AppColors.textPrimary,
+                        ),
+                        DataCell(
+                          Text(
+                            row.settings.updatedBy ?? '-',
+                            style: AppTextStyles.body13(
+                              color: AppColors.textSecondary,
+                            ),
                           ),
-                        )),
-                        DataCell(Text(
-                          row.settings.updatedBy ?? '—',
-                          style: AppTextStyles.body13(
-                            color: AppColors.textSecondary,
+                        ),
+                        DataCell(
+                          Text(
+                            _modifiedAtLabel(row),
+                            style: row.settings.updatedBy == null
+                                ? AppTextStyles.body13(
+                                    color: AppColors.textSecondary,
+                                  )
+                                : AppTextStyles.mono11(
+                                    color: AppColors.textMuted,
+                                  ),
                           ),
-                        )),
-                        DataCell(Text(
-                          adminHumanDateTime(row.settings.updatedAt),
-                          style: AppTextStyles.mono11(
-                            color: AppColors.textMuted,
-                          ),
-                        )),
+                        ),
                         DataCell(
                           widget.editingEnabled
                               ? OutlinedButton(
@@ -204,9 +227,25 @@ class _PerLocationDataAccuracyTableState
   static String _wageLabel(WageSource source) {
     switch (source) {
       case WageSource.vendor:
-        return 'vendor';
+        return 'Vendor';
       case WageSource.manualMix:
-        return 'manual_mix';
+        return 'Manual mix';
     }
+  }
+
+  static String _coversLabel(CoversSource source) {
+    switch (source) {
+      case CoversSource.vendor:
+        return 'Vendor';
+      case CoversSource.forecast:
+        return 'Forecast';
+      case CoversSource.manual:
+        return 'Manual';
+    }
+  }
+
+  static String _modifiedAtLabel(DataAccuracyAdminRow row) {
+    if (row.settings.updatedBy == null) return 'No override yet';
+    return adminHumanDateTime(row.settings.updatedAt);
   }
 }
