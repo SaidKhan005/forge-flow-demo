@@ -1,4 +1,4 @@
-// Phase 8 spine-bridge Lane .C — F&F Ops Console gateway for the
+// Phase 8 spine-bridge Lane .C - F&F Ops Console gateway for the
 // per-location Data Accuracy admin surface (Tab 1) AND the
 // Polling & Pricing surface (Tab 2).
 //
@@ -9,11 +9,11 @@
 // gateway abstraction in production (HTTP gateway → admin proxy →
 // repo) and short-circuited to an in-memory implementation for the
 // `kDemoMode` walkthrough + widget tests. Per `Files to LEAVE ALONE`
-// the lane does NOT modify the .A repository — the gateway is the
+// the lane does NOT modify the .A repository - the gateway is the
 // only seam this slice introduces alongside the screen + widgets.
 //
 // Authority: `docs/contracts/data_accuracy_settings_contract.md`
-// "Surface scope → F&F Ops Console — per-location admin surface".
+// "Surface scope → F&F Ops Console - per-location admin surface".
 //
 // Hard rules from the contract honoured here:
 //
@@ -24,7 +24,7 @@
 //   * forge_admin role is required for every write. The screen layer
 //     hides the affordances when the signed-in admin is not super_admin
 //     (mirrors the pricing tier admin pattern); the gateway is the
-//     defence-in-depth — calls without `actorIsForgeAdmin: true`
+//     defence-in-depth - calls without `actorIsForgeAdmin: true`
 //     throw [DataAccuracyAdminForbiddenException].
 
 import 'dart:async';
@@ -101,7 +101,7 @@ class OperatorLocationRef {
   final String locationName;
 }
 
-/// Tab 1 row — the per-location data accuracy override view. Mirrors
+/// Tab 1 row - the per-location data accuracy override view. Mirrors
 /// the contract's "Tab 1: Data Accuracy" table columns.
 class DataAccuracyAdminRow {
   const DataAccuracyAdminRow({
@@ -113,7 +113,7 @@ class DataAccuracyAdminRow {
   final DataAccuracySettings settings;
 }
 
-/// Tab 2 → Card 1 — F&F-engineering tier preset.
+/// Tab 2 → Card 1 - F&F-engineering tier preset.
 class TierDefinition {
   TierDefinition({
     required this.tierKey,
@@ -160,7 +160,7 @@ class TierDefinition {
   }
 }
 
-/// Tab 2 → Card 4 — operator-submitted tier change request.
+/// Tab 2 → Card 4 - operator-submitted tier change request.
 enum TierChangeRequestStatus { pending, approved, denied, negotiating }
 
 extension TierChangeRequestStatusWire on TierChangeRequestStatus {
@@ -210,7 +210,7 @@ class TierChangeRequest {
   }
 }
 
-/// Margin-rollup payload — Tab 2 Card 3.
+/// Margin-rollup payload - Tab 2 Card 3.
 class TierMarginRollup {
   const TierMarginRollup({
     required this.totalMonthlyPriceCents,
@@ -264,7 +264,7 @@ class TierMarginPerVendor {
 /// in-memory gateway buffers them so widget tests + the Tab 1 audit
 /// history panel can render the trail without a backend.
 ///
-/// `actorKind` mirrors the Postgres `audit_logs.actor_kind` column —
+/// `actorKind` mirrors the Postgres `audit_logs.actor_kind` column -
 /// every Lane .C write is by definition a `forge_admin` action because
 /// the gateway throws [DataAccuracyAdminForbiddenException] on any
 /// other actor; the field is explicit so downstream proxy / log
@@ -400,7 +400,7 @@ abstract class DataAccuracyAdminGateway {
     String? reasonNote,
   });
 
-  /// Tab 2 Card 3 export — CSV of the margin rollup. forge_admin only.
+  /// Tab 2 Card 3 export - CSV of the margin rollup. forge_admin only.
   /// Mirrors the audit-log CSV pattern: every export emits an audit
   /// event of its own.
   Future<String> exportMarginRollupCsv({
@@ -1127,7 +1127,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         'to': wageSource.wire,
       };
     }
-    // Skip the audit insert when the override was a no-op — every
+    // Skip the audit insert when the override was a no-op - every
     // write to `audit_logs` is meant to capture a real diff. A
     // forge_admin opening the dialog and submitting without changes
     // would otherwise produce empty audit rows that dilute the trail.
@@ -1212,7 +1212,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     // Skip the audit insert when the only change was the tier_key
     // pointer (i.e., admin opened the dialog, typed a reason note,
     // hit save without altering anything). Symmetric with
-    // overrideDataAccuracy's empty-diff skip — keeps the audit trail
+    // overrideDataAccuracy's empty-diff skip - keeps the audit trail
     // clean of no-op writes.
     if (diff.isNotEmpty) {
       _record(
@@ -1230,7 +1230,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   Future<List<TierAssignmentAdminRow>> listTierAssignments() async {
     // Contract: "Admin browses every operator-location and sees /
     // edits assignments." Return one row per operator-location even
-    // when no assignment exists yet — the row's `assignment` field is
+    // when no assignment exists yet - the row's `assignment` field is
     // null and the table renders an "Assign" affordance instead of
     // "Update". Without this, the very first assignment would be
     // un-creatable from the table because the row wouldn't exist.
@@ -1378,7 +1378,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
       // cadence (custom tier with empty map), the cost is bucketed
       // under the synthetic `__unallocated__` key so the per-vendor
       // sum still equals `totalCost`. The display shows it as
-      // "(no vendor cadence set)" — see [kUnallocatedVendorId].
+      // "(no vendor cadence set)" - see [kUnallocatedVendorId].
       final vendorIds = entry.pollingCadencePerVendorSeconds.keys.toList()
         ..sort();
       if (vendorIds.isEmpty) {
@@ -1512,7 +1512,7 @@ class _PerTierAccumulator {
 }
 
 /// Default tier presets used by the `kDemoMode` walkthrough + widget
-/// tests. The contract names "Three reference tiers" — `standard`,
+/// tests. The contract names "Three reference tiers" - `standard`,
 /// `premium`, `custom`. The demo numbers are illustrative; F&F billing
 /// will lock real numbers separately. Vendor cadences match the
 /// "Polling cadence per vendor (poll-only vendors only)" table in
@@ -1522,7 +1522,7 @@ class _PerTierAccumulator {
 TierDefinition kDemoStandardTierDefinition({DateTime? at}) => TierDefinition(
   tierKey: PollingTierKey.standard,
   descriptionMd:
-      'Standard tier — webhook vendors update in real time; '
+      'Standard tier - webhook vendors update in real time; '
       'poll-only vendors update at the vendor minimum cadence.',
   pollingCadencePerVendorSeconds: const <String, int>{
     'oracle_micros_simphony': 300,
@@ -1540,7 +1540,7 @@ TierDefinition kDemoStandardTierDefinition({DateTime? at}) => TierDefinition(
 TierDefinition kDemoPremiumTierDefinition({DateTime? at}) => TierDefinition(
   tierKey: PollingTierKey.premium,
   descriptionMd:
-      'Premium tier — webhook vendors update in real time; '
+      'Premium tier - webhook vendors update in real time; '
       'poll-only vendors poll every 60 seconds where the vendor '
       'allows it (Oracle MICROS Simphony stays at the 5-minute '
       'vendor minimum).',
@@ -1560,7 +1560,7 @@ TierDefinition kDemoPremiumTierDefinition({DateTime? at}) => TierDefinition(
 TierDefinition kDemoCustomTierDefinition({DateTime? at}) => TierDefinition(
   tierKey: PollingTierKey.custom,
   descriptionMd:
-      'Custom tier — F&F admin sets cadence per vendor for this '
+      'Custom tier - F&F admin sets cadence per vendor for this '
       '(operator, location). Negotiated; uncommon.',
   pollingCadencePerVendorSeconds: const <String, int>{},
   defaultMonthlyPriceCents: 0,

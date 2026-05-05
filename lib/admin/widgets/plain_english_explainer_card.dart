@@ -6,21 +6,21 @@ import 'admin_responsive_layout.dart';
 class PlainEnglishExplainerCard extends StatelessWidget {
   const PlainEnglishExplainerCard({super.key});
 
-  // Verbatim contract text — pinned by tests so that any future edit to
+  // Verbatim contract text - pinned by tests so that any future edit to
   // `data_accuracy_settings_contract.md` Tab 2 explainer is reflected
   // here (or vice versa) before merge.
   static const String kExplainerParagraph1 =
       'Polling cadence is how often F&F checks each vendor for new data. '
       'Webhook vendors (Toast, Square, Clover, Lightspeed, Revel, Aloha, '
       '7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) push updates in '
-      "real time — cadence doesn't apply. Poll-only vendors (Oracle "
+      "real time - cadence doesn't apply. Poll-only vendors (Oracle "
       'MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push '
       'Operations) update only at the cadence we set here.';
 
   static const String kExplainerParagraph2 =
       'F&F absorbs vendor API costs and packages them into operator-facing '
       'tier prices. Operators see a tier name and a tier price on their '
-      "bill — they don't see vendor per-call costs. This panel is "
+      "bill - they don't see vendor per-call costs. This panel is "
       'where we set the cadences, the prices, and the cost basis.';
 
   @override

@@ -1,0 +1,319 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+import 'package:forge_and_flow/admin/admin_auth_gate.dart';
+import 'package:forge_and_flow/admin/admin_route_handoff.dart';
+import 'package:forge_and_flow/admin/admin_routes.dart';
+import 'package:forge_and_flow/admin/admin_shell.dart';
+import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
+import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
+import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
+import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
+import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
+import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
+import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/theme/app_theme.dart';
+
+void main() {
+  Widget wrap(Widget child) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: SingleChildScrollView(child: child)),
+  );
+
+  const ref = OperatorLocationRef(
+    operatorId: 'op-1',
+    businessName: 'Barrio Legado',
+    locationId: 'loc-1',
+    locationName: '95 Water Street',
+  );
+
+  group('Data Accuracy / Polling UX framework polish', () {
+    testWidgets('Data accuracy moves under Operations with a WIP route badge', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          home: AdminShell(
+            session: const AdminAuthSession(
+              uid: 'demo-super-admin',
+              email: 'super.admin@forgeflow.test',
+              displayName: 'Demo Super Admin',
+              roles: <String>['super_admin'],
+            ),
+            authSource: DemoAdminAuthSource.signedInAsSuperAdmin(),
+            initialRouteId: 'ai-placeholder',
+            routes: <AdminRoute>[
+              AdminRoute(
+                id: 'ai-placeholder',
+                title: 'Plans and limits',
+                path: '/plans',
+                icon: Icons.tune,
+                section: AdminRouteSection.ai,
+                placeholder: true,
+                builder: (_) => const SizedBox.shrink(),
+              ),
+              AdminRoute(
+                id: 'data-placeholder',
+                title: 'Data accuracy',
+                path: '/data-accuracy',
+                icon: Icons.fact_check_outlined,
+                section: AdminRouteSection.operations,
+                badge: 'Work in progress',
+                placeholder: true,
+                builder: (_) => const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_nav_section_badge_ai')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_section_dataAccuracy')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_item_badge_data-placeholder')),
+        findsOneWidget,
+      );
+      expect(find.text('Work in progress'), findsNWidgets(2));
+    });
+
+    testWidgets(
+      'audit rows lead with human labels and keep raw keys secondary',
+      (tester) async {
+        await tester.pumpWidget(
+          wrap(
+            DataAccuracyAuditHistoryPanel(
+              events: <DataAccuracyAdminAuditEvent>[
+                DataAccuracyAdminAuditEvent(
+                  eventId: 'audit-1',
+                  eventType: 'admin.data_accuracy.override',
+                  occurredAt: DateTime.utc(2026, 5, 5, 12),
+                  actorUserId: '90000000-0000-0000-0000-000000000003',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  diff: const <String, Object?>{
+                    'covers_source_lunch': <String, String>{
+                      'from': 'vendor',
+                      'to': 'manual',
+                    },
+                    'wage_source': <String, String>{
+                      'from': 'vendor',
+                      'to': 'manual_mix',
+                    },
+                  },
+                  reasonNote: 'Corrected a stale vendor import.',
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('1 event'), findsOneWidget);
+        expect(find.text('Show history'), findsOneWidget);
+        expect(find.text('Applied data accuracy override'), findsNothing);
+        expect(
+          find.text('Event key: admin.data_accuracy.override'),
+          findsNothing,
+        );
+        expect(
+          find.text('User ID: 90000000-0000-0000-0000-000000000003'),
+          findsNothing,
+        );
+
+        await tester.tap(
+          find.byKey(const Key('admin_data_accuracy_audit_toggle')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('Applied data accuracy override'), findsOneWidget);
+        expect(find.text('Actor: Forge & Flow admin'), findsOneWidget);
+        expect(
+          find.text('Event key: admin.data_accuracy.override'),
+          findsNothing,
+        );
+        expect(
+          find.text('User ID: 90000000-0000-0000-0000-000000000003'),
+          findsNothing,
+        );
+        expect(
+          find.text(
+            'Changed Covers source - lunch from Vendor feed to Manual entry',
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Changed Wage source from Vendor wage data to Manual mix'),
+          findsOneWidget,
+        );
+      },
+    );
+
+    testWidgets('data accuracy table does not show epoch dates for empty rows', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationDataAccuracyTable(
+            rows: <DataAccuracyAdminRow>[
+              DataAccuracyAdminRow(
+                operatorRef: ref,
+                settings: DataAccuracySettings(
+                  settingId: 'default:op-1:loc-1',
+                  operatorId: 'op-1',
+                  locationId: 'loc-1',
+                  coversSourceLunch: CoversSource.vendor,
+                  coversSourceDinner: CoversSource.vendor,
+                  coversSourceLateNight: CoversSource.vendor,
+                  coversManualEntries: const <String, Map<String, int>>{},
+                  wageSource: WageSource.vendor,
+                  createdAt: DateTime.utc(1970),
+                  updatedAt: DateTime.utc(1970),
+                ),
+              ),
+            ],
+            editingEnabled: false,
+            onEditRow: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Lunch'), findsOneWidget);
+      expect(find.text('Dinner'), findsOneWidget);
+      expect(find.text('Late night'), findsOneWidget);
+      expect(
+        find.text(
+          'Covers are shown as lunch, dinner, and late night so support can scan each location without moving sideways.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Vendor'), findsWidgets);
+      expect(find.text('No override yet'), findsOneWidget);
+      expect(find.textContaining('1969'), findsNothing);
+      expect(find.textContaining('1970'), findsNothing);
+    });
+
+    testWidgets('tier assignment filters use operator-safe wording', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      await tester.pumpWidget(
+        wrap(
+          PerLocationTierAssignmentTable(
+            rows: const <TierAssignmentAdminRow>[
+              TierAssignmentAdminRow(operatorRef: ref, assignment: null),
+            ],
+            tierDefinitions: <TierDefinition>[
+              kDemoStandardTierDefinition(),
+              kDemoPremiumTierDefinition(),
+              kDemoCustomTierDefinition(),
+            ],
+            editingEnabled: false,
+            onAssign: (_) {},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Operator location count'), findsOneWidget);
+      expect(find.text('All location counts'), findsOneWidget);
+      expect(find.text('Location count'), findsNothing);
+      expect(find.text('All operators'), findsNothing);
+      expect(
+        find.text(
+          'Use filters to narrow operator locations. Each row keeps tier, cadence, pricing, margin, and notes together.',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets(
+      'Operators can hand off a location to the new Operations tabs',
+      (tester) async {
+        await tester.binding.setSurfaceSize(const Size(1400, 1000));
+        addTearDown(() => tester.binding.setSurfaceSize(null));
+
+        final scopes = <AdminOperatorLocationScopeIntent>[];
+        final gateway = InMemoryOperatorLocationAdminGateway(
+          seed: <OperatorAdminBundle>[
+            OperatorAdminBundle(
+              operator: OperatorAdminRecord(
+                operatorId: 'op-1',
+                businessName: 'Barrio Legado',
+                ownerEmail: 'owner@barrio.test',
+                subscriptionTier: 'launch',
+                preferredCurrency: 'CAD',
+                primaryLocationId: 'loc-1',
+                suspendedAt: null,
+                createdAt: DateTime.utc(2026, 1, 1),
+                updatedAt: DateTime.utc(2026, 1, 1),
+              ),
+              locations: <LocationAdminRecord>[
+                LocationAdminRecord(
+                  locationId: 'loc-1',
+                  operatorId: 'op-1',
+                  name: '95 Water Street',
+                  address: '',
+                  timezone: 'America/St_Johns',
+                  businessDayRolloverHour: 4,
+                  createdAt: DateTime.utc(2026, 1, 1),
+                  updatedAt: DateTime.utc(2026, 1, 1),
+                ),
+              ],
+            ),
+          ],
+        );
+
+        await tester.pumpWidget(
+          MaterialApp(
+            debugShowCheckedModeBanner: false,
+            theme: AppTheme.themeData,
+            home: Scaffold(
+              body: OperatorLocationAdminScreen(
+                gateway: gateway,
+                onOpenDataAccuracy: scopes.add,
+                onOpenPollingPricing: scopes.add,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('admin_location_data_accuracy_loc-1')),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.tap(
+          find.byKey(const Key('admin_location_polling_pricing_loc-1')),
+        );
+        await tester.pumpAndSettle();
+
+        expect(scopes, hasLength(2));
+        expect(scopes.first.operatorId, 'op-1');
+        expect(scopes.first.locationId, 'loc-1');
+        expect(scopes.first.displayLabel, 'Barrio Legado / 95 Water Street');
+        expect(scopes.last.locationId, 'loc-1');
+      },
+    );
+  });
+}
