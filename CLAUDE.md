@@ -5,11 +5,19 @@
 When sources conflict, earlier wins:
 
 1. The active prompt.
-2. `docs/contracts/**`.
-3. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`,
+2. `docs/contracts/core_app_architecture.md` — canonical re-assembly
+   of Phase 7.55 architecture contract + plain-english explainer +
+   archived flowchart. Binds Layers 1–12 (Source / Canonical Facts /
+   Benchmark / TargetCycle / ActiveTargetProfile / DemandForecastContext
+   / SchedulePlan / WeeklyPlanSnapshot / Shift / Variance / History /
+   Learn) every implementation contract must honor.
+3. `docs/contracts/**` (other Tier-2 contracts, including the source
+   `phase_7_55_architecture_contract.md` + plain-english companion that
+   #2 re-assembles).
+4. `PROJECT_TRACKER.md`, `docs/DATA_ALIGNMENT_TRACKER.md`,
    `docs/POST_HARDENING_FOLLOWUPS.md`.
-4. The active phase doc named in the prompt (`docs/phases/**`).
-5. This file.
+5. The active phase doc named in the prompt (`docs/phases/**`).
+6. This file.
 
 `docs/archive/**` is history — ignore unless the prompt names it.
 `docs/KNOWN_FAILING_TESTS.md` lists pre-existing failures; treat them
@@ -32,13 +40,13 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 ## Workflow
 
-- **Phase loop**: graph refresh → Claude proposes prompts → parallel worktrees implement → Codex reviews against contracts/phase docs → Claude fixes until approved → Codex updates docs → Claude handles requested git actions.
+- **Phase loop**: graph refresh → Claude proposes prompts → worktrees implement → Codex reviews → Claude fixes → Codex updates docs.
 - **Parallel lanes**: Codex on master; Claude in `.claude/worktrees/<lane>`. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md`.
-- **Between batches**: Claude on master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, and emit next prompts.
-- **Migration drift**: after `db/migrations/*.sql` changes, run `dart run tool/migration_drift_scanner.dart --fix --strict-docs` then `dart run tool/migration_cutoff_lint.dart`.
-- **Runtime acceptance**: runtime-exposed slices follow `docs/contracts/slice_runtime_acceptance_contract.md`. Browser-exposed slices use Browser Use per `runbooks/browser_use_acceptance_harness_runbook.md`.
-- **Main chat is read-only across worktrees** when worktrees are running (observe/diff/review only). Tracker/memory/coordination edits on master OK.
-- Don't broaden scope. Don't update trackers during implementation unless asked. If docs move, update touched links and report `Links updated: yes/no`.
+- **Between batches**: master runs `docs/BETWEEN_SPRINT_AUDIT_PROMPT.md` to audit, lean docs, archive, emit next prompts.
+- **Migration drift**: after `db/migrations/*.sql` changes, run `tool/migration_drift_scanner.dart --fix --strict-docs` then `tool/migration_cutoff_lint.dart`.
+- **Runtime acceptance**: `docs/contracts/slice_runtime_acceptance_contract.md`; browser slices use `runbooks/browser_use_acceptance_harness_runbook.md`.
+- **Main chat is read-only across worktrees** when worktrees are running. Tracker/memory/coordination edits on master OK.
+- Don't broaden scope. Don't update trackers during implementation unless asked. Report `Links updated: yes/no` if docs move.
 
 ## Review Loop (user pastes an Execution Report)
 
@@ -58,43 +66,32 @@ Every slice respects these. Origin: `docs/archive/phases/post_11a7_stabilization
 
 ## Architecture Guardrails
 
-- `LaborModel` is the formula source.
-- `TargetCycle` locks 60-day standards; `ActiveTargetProfile` is its runtime projection. `DemandForecastContext` is rolling demand. `WeeklyPlanSnapshot` is the locked week-in-force comparison plan.
-- Source facts, derived metrics, and teaching summaries stay separate.
-- Widgets do not own source-truth or service-period bucketing.
+- Layer authority + ownership rules + separation rules live in `docs/contracts/core_app_architecture.md` (Layers 1–12).
+- `LaborModel` is the formula source; `TargetCycle` locks 60-day standards; `WeeklyPlanSnapshot` is the locked week-in-force comparison plan.
+- Source facts, derived metrics, and teaching summaries stay separate. Widgets do not own source-truth or service-period bucketing.
 - Shift's whole-day view is authoritative; `10.5` adds daypart alongside, never replacing.
 
 ## Time Guardrails
 
-- Restaurant-local timing wins. Business date is the anchor.
-- Week start, business-day rollover, and service periods are restaurant-owned.
-- Closed truth is not rewritten by later cycles or weekly plans.
-- **Storage rule**: operator-scoped Postgres fact tables store source-truth instants as `TIMESTAMPTZ` (UTC) plus a denormalized `business_date` `DATE` computed at write from `location.timezone` (IANA) + `business_day_rollover_hour`. `TIMESTAMP WITHOUT TIME ZONE` is banned in operator-scoped tables. Detail: `docs/contracts/phase_7_55_time_boundary_contract.md`.
+- Restaurant-local timing wins; business date is the anchor; closed truth is not rewritten by later cycles or weekly plans.
+- Operator-scoped Postgres fact tables store `TIMESTAMPTZ` (UTC) plus denormalized `business_date` `DATE`. `TIMESTAMP WITHOUT TIME ZONE` is banned in operator-scoped tables.
+- Detail: `docs/contracts/phase_7_55_time_boundary_contract.md`.
 
 ## RLS-Ready Schema
 
-- Operator-scoped fact tables include `(operator_id, location_id)` + RLS policy stub from creation. Single-location operators run with default `location_id`. Corpus/methodology stays `operator_id`-scoped. Scaffolding is not retrofitted later.
-- App code uses `OperatorScopedRepository<T>` (primary defense); Postgres RLS is the backup.
+- Operator-scoped fact tables include `(operator_id, location_id)` + RLS policy stub from creation. App code uses `OperatorScopedRepository<T>` (primary defense); RLS is backup.
 - Every fact-table B-tree index leads with `operator_id` (or `(operator_id, location_id)`); CI lint enforces.
-- Proxy uses `SET LOCAL` (transaction-scoped), never `SET`. Pooled connections must not carry tenant context across requests.
-- RLS policies use four `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions; bare `current_setting()` reads forbidden, CI lint enforces.
+- Proxy uses `SET LOCAL` (transaction-scoped). RLS policies use four `STABLE LEAKPROOF PARALLEL SAFE` wrapper functions; bare `current_setting()` reads forbidden.
 - Detail: `docs/contracts/hardening_rls_and_repository_pattern_contract.md`.
 
 ## Proxy & API Conventions
 
-- API URL versioning: `/v1/...` today; `/v2/...` when breaking changes ship; old paths stay live until explicit deprecation.
-- Every proxy write is idempotent. Clients carry an idempotency key per request; proxy stores keys in `proxy_requests` (UNIQUE).
-- Every AI surface plugs into `11a.10` infra (proxy + provider abstractions + counter/caps + feature flags). No parallel stacks.
-- **Postgres**: Azure DB Flexible Server, `Canada Central`, PG 16. Extensions: `AGE`, `pgvector`, `pg_diskann`, `pg_cron`, `pg_partman`, `pg_stat_statements`, `pgcrypto`. Migrations in `db/migrations/`.
-- **`pgmq` is NOT an Azure extension.** In-DB queues use `SELECT ... FOR UPDATE SKIP LOCKED`; HTTP-delivery queues use Cloud Tasks.
-- **Retrieval**: Modular Adaptive Agentic RAG (Haiku classifier → SQL / Contextual Retrieval / AGE → Sonnet synthesis with prompt cache).
-- **Real-time**: `NOTIFY` → Pub/Sub → WebSocket bridge (Phase 10a). `event_outbox` is the durable backbone.
-- **Service principals**: non-human actors authenticate with `sp:`-prefixed JWTs; `audit_logs.actor_kind` never NULL.
-- **Hash-chained audit log**: SHA-256 chain via `pgcrypto`, `pg_partman` per-operator/day, daily Azure Blob immutable anchor.
-- **Cost-discipline levers default-on**: prompt caching `"ttl":"1h"` pin, tier routing, response cache, precomputed summaries, Batch API.
-
-Architecture detail: `docs/phases/phase_11a/phase_11a_decision_register.md`.
-35 scalability locks: `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`.
+- API URL versioning: `/v1/...` today; `/v2/...` for breaking changes; old paths stay live until explicit deprecation.
+- Every proxy write is idempotent. Clients carry an idempotency key; proxy stores keys in `proxy_requests` (UNIQUE).
+- Every AI surface plugs into `11a.10` infra (proxy + provider abstractions + counter/caps + flags). No parallel stacks.
+- **Postgres**: Azure DB Flexible Server, `Canada Central`, PG 16. Extensions: `AGE`, `pgvector`, `pg_diskann`, `pg_cron`, `pg_partman`, `pg_stat_statements`, `pgcrypto`. `pgmq` is NOT available — use `FOR UPDATE SKIP LOCKED` or Cloud Tasks.
+- **Service principals**: non-human actors authenticate with `sp:`-prefixed JWTs; `audit_logs.actor_kind` never NULL. Hash-chained audit log: SHA-256 via `pgcrypto`, `pg_partman` per-operator/day, daily Azure Blob anchor.
+- Detail: `docs/phases/phase_11a/phase_11a_decision_register.md`. Scalability locks: `docs/phases/phase_9/phase_9_scalability_decisions_2026-04-27.md`.
 
 ## Testing
 
@@ -112,7 +109,7 @@ Architecture detail: `docs/phases/phase_11a/phase_11a_decision_register.md`.
 
 - Codex `$forge-flow` skill at `~/.codex/skills/forge-flow` mirrors this file's authority order, phase routing, live-mutation boundaries, migration/runtime gates, walkthrough expectations, tracker closeout rules.
 - `.mcp.json` registers `forgeflow_docs` (read-only docs/contracts/runbooks search), `forgeflow_sqlite_schema` (read-only local SQLite schema), `graphify` (code/docs graph).
-- `rg` first when symbol/filename/import path/literal text is known. Use `graphify` (`shortest_path` / `query_graph`) for orientation only. Skip god-nodes/community exploration unless Codex requests.
+- `rg` first when symbol/filename/import path/literal text is known. Use `graphify` (`shortest_path` / `query_graph`) for orientation only.
 
 ## Knowledge Graph Refresh
 

@@ -29,10 +29,36 @@ moves at its own pace; this phase never sprints.
 
 ## Pre-live Product Proof
 
-Before rolling live credential slices, run `8.integration-mobile-proof` after
-the 20 Wave B lanes and adapter registry merge. This gate does not require live
-vendor accounts. It uses realistic POS + reservation + labor fixtures through
-the real adapters, canonical facts, and mobile/business read paths to prove:
+`8.integration-mobile-proof` ran 2026-05-04 against master @ `07184d2` and
+**FAILED** with bounded follow-up:
+`docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md`. Wave B
+left half (vendor fixture → real adapter → canonical-fact `Map` + sanity hook
++ idempotency + watermark + signature reject + module disambiguation +
+demo-mode flip policy + metric honesty plumbing) is fully proven by 279
+fixture-based tests across 17 adapters + 51+ framework / dashboard / 11W
+tests. Wave B right half (canonical-fact dict → `ClosedShiftInput` →
+`ShiftFact` → Shift dashboard → benchmark / baseline / `DemandForecastContext`
+/ `SchedulePlan` / Variance / History / Learn / mobile refresh) is
+structurally absent: no concrete `OperatorScopedRepository`-backed
+`*CanonicalSink` implementations, no canonical-fact-dict → `ClosedShiftInput`
+aggregator service, no runtime adapter registry under `tool/advisor_proxy/`,
+no `tool/integration_sync_worker/`.
+
+Phase 8 / 8R / 8.S engineering-complete acceptance is now gated on a new
+`8.spine-bridge` follow-up sprint (6 file-disjoint APP-LOGIC sub-lanes +
+1 sequential proof re-run — see `PROJECT_TRACKER.md` "Active Lanes" and
+the binding contract `docs/contracts/integration_spine_architecture_contract.md`)
+followed by `8.integration-mobile-proof.v2` against the enriched surface.
+
+Architecture target (from 2026-05-04 mobile drill-down): server pre-
+aggregates per-vendor canonical-fact dicts into `ShiftRecord` rows on
+operator-scoped Postgres; mobile SQLite is the read store; new sync
+service pulls aggregated rows into mobile SQLite via the existing
+`SqliteShiftRecordRepository.replaceShiftForSlot`. Existing
+`ShiftFactBuilder` (pure) + `AppRuntimeInvalidationBus` (refresh signal)
++ dashboard read path stay unchanged.
+
+The fixture-based gate's intent stays the same:
 
 - Proof-only rule: do not change app logic, business logic, mobile UI, adapter
   behavior, schema, migrations, or cloud/runtime behavior. Allowed changes are
@@ -42,6 +68,10 @@ the real adapters, canonical facts, and mobile/business read paths to prove:
   History, and Learn respond to vendor facts.
 - Missing fields produce honest fallback/unavailable states, not phantom zeros.
 - Demo mode, refresh/invalidation, and local/offline cache behave correctly.
+
+Wave D `*.live.sandbox` slices below MAY fire individual sandbox auth +
+field-mapping diff portions in parallel with `8.integration-spine-bridge`,
+but they cannot exercise the full mobile spine until that follow-up lands.
 
 Evidence belongs under `docs/_execution/` and should reference the
 2026-05-04 vendor API access memo.

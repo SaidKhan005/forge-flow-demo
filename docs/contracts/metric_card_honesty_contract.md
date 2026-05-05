@@ -56,7 +56,22 @@ Every metric value carries two pieces of data alongside the number, populated in
 
 ### `provenance` (open enum)
 
-A free-form short string identifying the data source. Examples: `vendor_toast`, `vendor_lightspeed_lsk`, `vendor_square_with_forecast_covers`, `app_forecast_60_day_avg`, `target_snapshot`, `none`. Used by Codex review, debugging tools, and the future advisor (Phase 11b) — not rendered on the operator dashboard except inside the dashboard pill detail sheet.
+A free-form short string identifying the data source. Examples (renamed 2026-05-04 for code-level accuracy):
+
+- `vendor_toast` — POS vendor exposed and supplied this metric directly.
+- `vendor_lightspeed_lsk` — POS vendor exposed and supplied this metric directly.
+- `vendor_square_covers_unavailable_app_forecast_substituted` — POS vendor (Square) does not expose covers; F&F substituted its own app-derived forecast covers. The forecast itself is F&F-computed (per `core_app_architecture.md` Layer 6), never vendor-supplied. This naming makes that explicit.
+- `vendor_quickbooks_time_dollars_unavailable_target_wage_substituted` — labor vendor exposed hours but neither dollars nor pay rates; F&F substituted target wage × hours from the operator's locked TargetSnapshot.
+- `vendor_quickbooks_time_per_employee_actual_dollars` — labor vendor exposed per-employee actual labor dollars per shift (7shifts, QBT, ADP, Push Operations source class); aggregator summed those directly.
+- `vendor_humanity_per_position_actual_dollars` — labor vendor exposed per-position pay rates + observed schedule hours (Humanity, Agendrix source class); aggregator computed actual dollars via rate × hours per role. Per Jim Taylor's model the per-position shape is exactly what `wage_role_rows` consumes — closer to model truth than per-employee, which has to aggregate down to roles anyway.
+- `operator_manual_entry_per_daypart` — operator entered the value via the Data Accuracy tab on the operator web console (per `data_accuracy_settings_contract.md`).
+- `app_forecast_60_day_avg` — F&F-derived forecast covers from the 60-day historical weekly average.
+- `target_snapshot` — value sourced from the locked TargetSnapshot (target wages, target CPLH, etc.).
+- `none` — sentinel; required when state == unavailable.
+
+Used by Codex review, debugging tools, and the future advisor (Phase 11b) — not rendered on the operator dashboard except inside the dashboard pill detail sheet.
+
+**Naming rule:** when a metric's value comes from a fallback substitution (vendor doesn't expose the field), the provenance string MUST name the vendor + the unavailable field + the substitution source explicitly. The pattern is: `vendor_<id>_<field>_unavailable_<substitution_source>_substituted`. This prevents future engineers from misreading the string (e.g., `vendor_square_with_forecast_covers` was misread as "Square pushed a forecast" before the rename).
 
 ### Required pairing
 
@@ -117,11 +132,15 @@ class MetricValue {
 Concrete file changes (lands in `8.0`):
 
 - `lib/domain/models/metric_provenance.dart` NEW — `MetricState` enum + `MetricProvenance` helper.
-- `lib/domain/services/shift_fact_builder.dart` — populate state + provenance on every metric the builder emits. Rules:
+- `lib/domain/services/shift_fact_builder.dart` — populate state + provenance on every metric the builder emits. Rules (provenance strings updated 2026-05-04 per the naming rule above):
   - Covers null OR covers == 0 with no vendor coverage → state = `unavailable` for PPA; provenance = `none`.
-  - Covers from forecast fallback (vendor doesn't expose) → state = `fallback`; provenance = `vendor_<id>_with_forecast_covers`.
+  - Covers from forecast fallback (vendor doesn't expose) → state = `fallback`; provenance = `vendor_<id>_covers_unavailable_app_forecast_substituted`. The forecast is F&F-computed (per `core_app_architecture.md` Layer 6), never vendor-supplied.
+  - Covers from operator manual entry (Data Accuracy tab override per `data_accuracy_settings_contract.md`) → state = `fallback`; provenance = `operator_manual_entry_per_daypart`.
   - Actual labor dollars null → labor-derived metrics (CPLH, blended wage) state = `unavailable`; provenance = `none`.
   - Actual labor dollars present but partial sync → state = `partial`; provenance = `vendor_<id>_partial_sync`.
+  - Labor dollars from labor vendor that exposes per-employee actuals (7shifts, QBT, ADP, Push Operations) → state = `live`; provenance = `vendor_<id>_per_employee_actual_dollars`.
+  - Labor dollars from labor vendor that exposes per-position rates (Humanity, Agendrix) → aggregator computes actual dollars = rate × scheduled hours per role → state = `live`; provenance = `vendor_<id>_per_position_actual_dollars`. Per-position is closer to the Jim Taylor model truth than per-employee — `wage_role_rows` is per-role-weighted-up, so per-position vendor data populates `wage_role_rows` directly. The wage editor (`settings_wage_authority_section.dart` on mobile + the wage source card on the operator web Data Accuracy tab) surfaces vendor-populated rows for review/override; the post-spine-bridge follow-up `8.wage-editor-seed` ships the review/override UX.
+  - Labor dollars derived from target wage × hours fallback (vendor exposes neither dollars nor rates) → state = `fallback`; provenance = `vendor_<id>_dollars_unavailable_target_wage_substituted`.
   - All inputs present → state = `live`; provenance = `vendor_<id>`.
 - `lib/models/shift_dashboard_read_model.dart` — same population rules at the dashboard read level.
 - `lib/widgets/metric_card_not_yet_available.dart` NEW — empty-state widget. Mirrors `LeverCardNotYetAvailable`.

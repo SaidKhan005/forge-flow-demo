@@ -1,0 +1,795 @@
+# Integration Spine Architecture Contract
+
+Status: Active
+Updated: 2026-05-04
+Owner: Phase 8 spine-bridge sprint
+Authority: Tier-2 contract (binds every `8.spine-bridge.*` sub-lane and the
+`8.integration-mobile-proof` re-run)
+Companions:
+
+- `docs/contracts/vendor_adapter_slice_contract.md` — adapter rules (left half)
+- `docs/contracts/per_vendor_doc_pack_contract.md` — per-vendor doc folder
+- `docs/contracts/metric_card_honesty_contract.md` — renderer chrome
+- `docs/contracts/phase_7_55_time_boundary_contract.md` — UTC + business_date storage
+- `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS + OperatorScopedRepository
+- `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin
+- `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
+
+This contract closes the gap between Wave B's "vendor adapter ships at
+lifecycle = `documented`" and Phase 8 / 8R / 8.S engineering-complete
+acceptance. It defines the spine — the run-time path that takes a
+vendor payload, produces operator-scoped canonical facts, aggregates
+them into `ClosedShiftInput`, builds `ShiftFact` via the existing
+domain pipeline, lands the resulting `ShiftRecord` on operator-scoped
+Postgres, and syncs it into mobile SQLite where the existing dashboard
+read path consumes it.
+
+When this contract and a slice doc conflict, this contract wins. When this
+contract and `core_app_architecture.md` conflict, `core_app_architecture.md`
+wins — this contract is the implementation layer that binds to the
+core architecture's Layers 1–12.
+
+## 2026-05-05 falsehood corrections (binding) — supersedes 2026-05-04
+
+The 2026-05-04 corrections were partially wrong. Vendor-research pass
+on 2026-05-05 produced these binding corrections:
+
+1. **ADP is webhook-driven, not poll-only.** Wave B
+   `adp_labor_adapter.dart` line 561 declares `autoRegister`. ADP does
+   NOT appear in the polling cadence list. ✅ confirmed.
+
+2. **Square `coversFieldExposed: false` is CORRECT — REVERSE the
+   2026-05-04 "configurable" amendment.** Square Developer Relations
+   confirmed (open feature request since Dec 2021, re-acknowledged May
+   2024 + May 2025): cover count is NOT available through Square APIs.
+   Square for Restaurants UI tracks covers, but the data does NOT
+   surface through the Orders API. Wave B `coversFieldExposed: false`
+   is the truth. The earlier "tri-state configurable" framing was
+   built on a misread of operator-side UI evidence.
+
+3. **Clover `coversFieldExposed: false` is CORRECT — REVERSE the
+   2026-05-04 "configurable" amendment.** Clover Dining App displays
+   guest count, but it lives in a private schema NOT reachable via
+   `/v3/merchants/.../orders`. Clover docs explicitly state Dining-
+   specific metadata is not recognized through external order
+   creation. The public Orders REST API has no `numberOfGuests`,
+   `guestCount`, `partySize`, or `coverCount` field. Wave B
+   `coversFieldExposed: false` is the truth.
+
+4. **Aloha NCR Voyix `coversFieldExposed: true` is RISKY — likely
+   tri-state in reality.** Aloha is the strongest candidate for a
+   genuine tri-state `configurable` enum. Aloha's QSR vs full-service
+   tier split likely makes `numberOfGuests` exposure conditional. The
+   developer portal is auth-gated; cannot verify. The Wave B doc-pack
+   already hedges this in narrative; the boolean flag does not.
+   **Recommended action:** flip to `false` until `8.AL.live.sandbox`
+   verifies, OR adopt the tri-state enum (`always` / `configurable` /
+   `never`) on `VendorCapabilityProfile`.
+
+5. **Oracle Simphony covers field path is WRONG.** Doc pack says
+   `guestChecks[].numOfGst`; adapter constant says `numberOfGuests`;
+   Gen2 reality is `items[].header.guestCount`. **Three-way
+   disagreement guaranteed to fail at first live payload.** This is
+   the highest-risk falsehood in the audit. Must fix before
+   `8.OR.live.sandbox`. Action: update
+   `docs/integrations/oracle_micros_simphony/field_mapping.md` to
+   `items[].header.guestCount` + audit other timestamp paths
+   (`opnUTC` / `clsdUTC` likely also legacy Gen1 names).
+
+6. **QuickBooks Time labor wage class WRONG.** Claimed
+   `perEmployeeWithDollars`; actual is `perEmployeeWithRates`. QBT's
+   Timesheets endpoint returns hours only; wage rate lives on
+   `Users.pay_rate`. The aggregator must compute dollars via rate ×
+   duration, NOT sum vendor-supplied dollars.
+
+7. **7shifts labor wage class PARTIAL.** `perEmployeeWithDollars`
+   is correct ONLY IF the adapter consumes `/reports/hours_and_wages`
+   (which exposes `total_pay`). The current Wave B mapping does NOT
+   include that endpoint. Today the lived classification is
+   `perEmployeeWithRates` (`hourly_wage` on time-punches). Action:
+   either downgrade classification OR add the report endpoint to the
+   adapter as a follow-up.
+
+8. **ADP labor wage class V1 = `hoursOnly`.** Wave B
+   `adp/field_mapping.md` explicitly defers wage ingestion. Reclassify
+   `perEmployeeWithDollars` → `hoursOnly` for V1; revisit
+   post-partnership.
+
+9. **Push Operations labor wage class WRONG.** Claimed
+   `perEmployeeWithDollars`; the documented Wave B mapping has zero
+   wage rows. Today's lived classification is `hoursOnly`. Push's
+   primary docs are inaccessible (developer portal landing-page only),
+   so higher capability cannot be verified. Reclassify to `hoursOnly`
+   until primary doc confirms.
+
+10. **Tock `seated_at` claim REFUTED.** Tock's public reference
+    documents only `createdTimestamp`, `lastUpdatedTimestamp`,
+    `serviceDateTimestamp`. There is NO seated_at timestamp. The
+    Wave B doc-pack already correctly flags this gap. The
+    "reservation + walk-in handling" path (`8.spine-bridge.2`
+    aggregator) MUST handle Tock's missing seated_at gracefully —
+    either fall through to "reservations as forecast lower bound
+    only" or skip Tock from Pattern A's seated-time-based confirmation
+    flow.
+
+11. **`target_profile_version_id` preservation rule is NOT new.**
+    Verified via grep: the rule already exists in
+    `core_app_architecture.md` lines 192, 526 and
+    `integration_spine_architecture_contract.md` lines 201, 560,
+    571, 599-600. It was always there. Earlier drafts that called it
+    "Concern A — proposed new rule" were wrong; the rule was already
+    binding.
+
+12. **Layer count is 13, not 12.** Phase 7.55 architecture contract
+    has 5A as a distinct sub-layer (Benchmark range-state contract).
+    Earlier framings of "Layers 1–12" undercount by one. Update to
+    "Layers 1–13" or "Layers 1–12 plus Layer 5A."
+
+13. **Oracle Simphony pricing class CANNOT VERIFY.** Reclassify from
+    "per-call" to `pricing_unverified_partner_gated`. F&F's polling
+    tier price estimate for Simphony is speculative until Wave D
+    activates partner credentials. (This is moot if F&F adopts the
+    tier-pricing model below — F&F absorbs vendor cost; operator
+    sees tier price only.)
+
+The actual Square Restaurants + Clover Dining truth is now confirmed:
+**both vendors expose covers in operator UI but NOT through their
+public REST APIs.** The earlier "configurable" hypothesis is dead.
+Square + Clover stay `coversFieldExposed: false` per Wave B.
+
+## Out of scope (binding)
+
+The spine bridge wires the **closed-shift** truth path: vendor → adapter
+→ canonical fact → aggregator → `ShiftRecord` → operator-scoped Postgres
+`shift_records` → mobile SQLite → existing dashboard read path.
+
+Explicitly **out of scope** for this sprint and the
+`8.integration-mobile-proof.v2` proof gate:
+
+- **`OpenShiftSnapshot` (Layer 2 + Layer 9 in-progress canonical fact).**
+  The Shift dashboard's live in-progress card stays demo-seeded until
+  `8.spine-bridge-live` (separate follow-up sprint) wires real-time vendor
+  webhook + poll streams into `open_shift_snapshots` with current_covers /
+  current_ppa / current_cplh / current_splh.
+- **`ReservationBookSnapshot`** mid-service updates (handled by the same
+  separate sprint).
+- **Service-period live view** (Phase 10.5 additive surface) — wired
+  alongside whole-day in `8.spine-bridge-live`, not here.
+
+This sprint's proof gate (`8.integration-mobile-proof.v2`) verifies
+closed-shift behavior only.
+
+## Why this exists
+
+Wave B proved 17 vendor adapters in fixture isolation. The
+`8.integration-mobile-proof` lane (FAIL 2026-05-04) showed the
+right-half spine — adapter output → operator dashboard — is
+structurally absent. Three concrete seams are missing, plus a sharper
+architectural realisation that the mobile app reads SQLite, not
+Postgres directly. This contract names the seams, the file boundaries,
+and the per-sub-lane acceptance gates.
+
+## The two-store architecture
+
+| Store | Path | Job | Phase 8.0 status |
+|---|---|---|---|
+| Postgres (server-side) | `lib/infrastructure/persistence/postgres/**` | Canonical truth across an operator. Operator-scoped via RLS + `OperatorScopedRepository.withTenant`. Vendor adapter writes land here. | ✅ Migration `202605040000` added vendor columns to `shift_records` / `cover_facts` / `labor_punches` / `reservation_facts`. |
+| SQLite (mobile-side) | `lib/infrastructure/persistence/sqlite/**` | Read store for the operator phone app. Holds aggregated `shift_records` / `week_records` / snapshots / locked targets. Demo seed lives here. | ❌ No vendor-column parity yet; vendor provenance threads via existing `source_system` until parity migration lands. |
+
+**Hard rule.** Mobile SQLite never speaks to vendors and never speaks
+to Postgres directly. All vendor → mobile flow goes through
+server-side Postgres + the proxy. CLAUDE.md Hard Promise #4 +
+`hardening_rls_and_repository_pattern_contract.md`.
+
+## The canonical chain (binding)
+
+The spine has exactly these stages, in this order. Every sub-lane
+binds to this shape:
+
+```text
+─── server ─────────────────────────────────────────────────────────────
+1. Vendor payload arrives at adapter
+   - Webhook: InboundWebhookHandler dispatch (existing 8.0 framework)
+   - Poll tick: integration sync worker dispatch (NEW — 8.spine-bridge.0)
+
+2. Adapter produces canonical-fact Map<String, Object?> per vendor entity
+   - One POS check / one labor punch / one reservation per Map
+   - Schema captured per `documented_per_<vendor>_<api_version>` constants
+   - Existing 17 Wave B adapters do this correctly today
+
+3. Postgres-backed CanonicalSink writes canonical fact rows
+   - lib/infrastructure/persistence/postgres/<vendor>_postgres_sink.dart (NEW per trio)
+   - OperatorScopedRepository.withTenant(operatorId, locationId, ...)
+   - Idempotency UNIQUE (vendor_id, operator_id, vendor_entity_id, vendor_modified_at)
+   - business_date denormalized at write via IANA converter
+   - raw_payload JSONB for forensic re-derivation
+
+4. Watermark advance after each batch commit
+   - connector_sync_watermark.cursor_token + last_modified_seen
+   - Cloud Run Job restart resilience
+
+5. DemoModeFlipPolicy.evaluateFlip invoked after first successful batch
+   - Gates: connectionStatus=connected ∧ firstBackfillCommitted ∧ recordsWritten >= 1
+   - Idempotent: subsequent flips are no-ops
+   - Disconnect does NOT auto-revert
+
+6. Daypart-complete signal triggers aggregator
+   - Trigger: poll tick / webhook batch finalises a (business_date, daypart) bucket
+   - Aggregator file: lib/services/integration/canonical_fact_to_closed_shift_input.dart (NEW — 8.spine-bridge.2)
+   - Walks operator-scoped Postgres cover_facts + labor_punches + reservation_facts
+   - Resolves covers source via 4-way decision per
+     `data_accuracy_settings_contract.md` (Concern B — sanctioned
+     concession to core_app_architecture.md Layer 2):
+       1. operator manual entry for this (business_date, daypart) ->
+          covers source = `operator_manual_entry_per_daypart`
+       2. else, POS adapter declared coversFieldExposed=true AND vendor
+          fact populated -> covers source = `vendor_<id>` (live truth)
+       3. else, fall back to F&F-derived forecast covers from
+          DemandForecastContext for that daypart -> covers source =
+          `vendor_<id>_covers_unavailable_app_forecast_substituted`.
+          The forecast itself is F&F-computed (Layer 6), never vendor-
+          supplied; the provenance string makes that explicit.
+       4. else, no covers source available -> the aggregator returns
+          null (no ShiftRecord written; dashboard renders
+          MetricCardNotYetAvailable per metric_card_honesty_contract.md).
+   - Resolves labor dollars source via 4-way decision (per the Jim
+     Taylor wage-model amendment 2026-05-04 — per-position vendor data
+     is closer to model truth than per-employee):
+       1. operator wage source = manual mix (Data Accuracy override) ->
+          dollars source = `target_wage_substituted` using the operator-
+          set wage_role_rows mix unconditionally.
+       2. else, vendor in `LaborWageSourceClass.perEmployeeWithDollars`
+          (7shifts, QBT, ADP, Push Operations) AND adapter populated
+          per-shift dollars -> aggregator sums to FOH/BOH dollars;
+          provenance = `vendor_<id>_per_employee_actual_dollars`.
+       3. else, vendor in `LaborWageSourceClass.perPositionWithRates`
+          (Humanity, Agendrix) AND vendor exposed per-position pay
+          rates + scheduled hours -> aggregator computes actual dollars
+          via rate × scheduled_hours per role; provenance =
+          `vendor_<id>_per_position_actual_dollars`. Per-position data
+          maps 1:1 to `wage_role_rows` (the Jim Taylor model's
+          weighted-up FOH/BOH input). Wage editor "review/override" UX
+          is post-spine-bridge follow-up `8.wage-editor-seed`.
+       4. else, vendor exposes neither dollars nor rates -> fall back
+          to target wage × hours; provenance =
+          `vendor_<id>_dollars_unavailable_target_wage_substituted`.
+   - Resolves daypart per restaurant_timing_configs.service_period_definitions
+
+7. ShiftFactBuilder.fromClosedShiftInput runs (existing pure function; do not modify)
+   - Pure, deterministic; no I/O
+
+8. PostgresShiftRecordWriter persists ShiftRecord
+   - lib/infrastructure/persistence/postgres/postgres_shift_record_writer.dart (NEW — 8.spine-bridge.2)
+   - OperatorScopedRepository.withTenant
+   - replace-for-slot semantics matching existing close-shift contract
+   - sourceSystem = vendor_id (e.g. "oracle_micros_simphony"), NOT "demo"
+   - **Binding rule (Concern A — protects core_app_architecture.md
+     Layer 4 + Layer 11 + Layer 12 + the "What never rewrites" non-
+     negotiables):** on re-aggregation (when a corrected vendor fact
+     arrives and the aggregator overwrites a previously-written
+     ShiftRecord for the same slot), the writer MUST read the existing
+     row's `target_profile_version_id` and re-use it. Only a first-
+     time aggregation for a brand-new daypart mints a fresh
+     `TargetProfileVersion` from the current `ActiveTargetProfile`.
+     Vendor corrections never re-grade closed history under a newer
+     cycle. The aggregator surfaces `priorTargetProfileVersionId` (or
+     null for first-time) on its return value so the writer can apply
+     this rule deterministically.
+
+9. NOTIFY emits change row → Pub/Sub → WebSocket bridge
+   - Existing Phase 10a infrastructure
+   - Topic: shift_record_changed; payload: { operator_id, location_id, business_date, daypart }
+
+─── mobile ─────────────────────────────────────────────────────────────
+10. Mobile WebSocket consumer receives signal
+    - Existing infrastructure
+
+11. ServerToMobileShiftRecordSync pulls fresh row(s) via proxy
+    - lib/services/sync/postgres_shift_record_to_mobile_sync.dart (NEW — 8.spine-bridge.3)
+    - GET /v1/operators/<op>/locations/<loc>/shift_records?modified_since=<cursor>
+    - Bounded pull (no whole-table sweeps)
+    - Proxy enforces RLS via OperatorScopedRepository.withTenant
+
+12. SqliteShiftRecordRepository.replaceShiftForSlot persists locally
+    - Existing repository; row shape unchanged
+    - sourceSystem column carries the vendor_id
+
+13. AppRuntimeInvalidationBus.notifyRuntimeWriteCompleted fires
+    - Existing signal
+
+14. Dashboard / variance / history / learn / metric honesty pill refresh
+    - Existing read path
+    - MetricProvenance state derives from sourceSystem (live vs demo) + per-metric input availability (covers / labor dollars)
+    - MetricCardNotYetAvailable renders when state == unavailable
+```
+
+## Sub-lane shape (binding)
+
+The `8.spine-bridge` sprint ships **9 lanes file-disjoint** (was 6 before
+the 2026-05-04 Data Accuracy + provenance + Concerns A/B/C amendments),
+plus a sequential proof re-run. Codex grades each lane against this
+contract plus the cited companions.
+
+Wave layout:
+
+- Lane 1 (`.0`) ships first as the seam. **Already running on a
+  worktree as of 2026-05-04.** The 2026-05-04 amendments are additive
+  for `.0` — see Lane `.0a` below.
+- Lane `.0a` (NEW, sequential after `.0`) — small additive lane that
+  gives the running sync worker a per-(operator, location, vendor)
+  polling cadence override hook. Reads from the new
+  `data_accuracy_settings` table (created by Lane `.A`). File-disjoint
+  with everything else.
+- Lanes `.1.OR` / `.1.QBT` / `.1.LB` / `.2` / `.3` / `.A` / `.B` / `.C`
+  run in parallel (file-disjoint) after `.0` lands.
+- Lane `.4` (`8.integration-mobile-proof.v2`) runs sequentially after
+  Lanes `.0` / `.0a` / `.1.*` / `.2` / `.3` / `.A` / `.B` / `.C` all
+  land.
+
+Sub-lanes `.A` / `.B` / `.C` add the Data Accuracy surface per
+`docs/contracts/data_accuracy_settings_contract.md`.
+
+### `8.spine-bridge.0` — Seam definition (ships first; consumes nothing)
+
+Shared seam every later lane consumes. Must land before lanes 1.* /
+2 / 3 start.
+
+**Files NEW.**
+
+- `tool/advisor_proxy/pos_adapter_registry.dart`
+- `tool/advisor_proxy/labor_adapter_registry.dart`
+- `tool/advisor_proxy/reservation_adapter_registry.dart`
+- `tool/integration_sync_worker/main.dart`
+- `tool/integration_sync_worker/dispatch.dart`
+- `lib/services/integration/canonical_sink.dart` — the unified sink
+  interface every `*_postgres_sink.dart` implements.
+
+**Files MODIFY.**
+
+- None. The Wave B adapters do not change. The bespoke per-vendor
+  sink interfaces inside each adapter (e.g. `OracleMicrosSimphonyCanonicalSink`)
+  stay; the new `CanonicalSink` wraps them via per-trio sub-lanes.
+
+**Contract bindings.**
+
+- Registry consumes every Wave B adapter's `vendorId` →
+  `Adapter` mapping.
+- Sync worker dispatch reads `connector_connection` rows for
+  `status = connected`; calls `pollIncremental` per cadence
+  (vendor-defined; default 60s); routes webhook events through the
+  existing `InboundWebhookHandler` to the registered adapter.
+- `CanonicalSink` interface declares: `Future<bool> upsertCoverFact(...)`,
+  `Future<bool> upsertLaborPunch(...)`, `Future<bool> upsertReservationFact(...)`,
+  `Future<void> advanceWatermark(...)`, `Future<void> appendSyncLog(...)`,
+  `Future<void> evaluateDemoFlip(...)`. Per-vendor sinks compose on
+  this.
+
+**Tests required.**
+
+- Registry binds 17 adapters by `vendorId`; missing adapter returns
+  null + logs.
+- Sync worker dispatches one tick per `connected` connection;
+  watermark advances after each batch.
+- Webhook router calls `handleWebhook` on the registered adapter,
+  not on others.
+- Banned-items grep: registry / worker source contains zero banned
+  items per `project_v1_lean_cut_2_2026_05_03.md`.
+
+### `8.spine-bridge.1.OR` — Oracle MICROS Simphony Postgres sink
+
+**Files NEW.**
+
+- `lib/infrastructure/persistence/postgres/oracle_micros_simphony_postgres_sink.dart`
+- `test/infrastructure/persistence/postgres/oracle_micros_simphony_postgres_sink_test.dart`
+
+**Contract bindings.**
+
+- Implements `OracleMicrosSimphonyCanonicalSink` (existing) AND
+  `CanonicalSink` (from `.0`).
+- Writes canonical fact dicts to operator-scoped Postgres
+  `cover_facts` rows via `OperatorScopedRepository.withTenant`.
+- Idempotency UNIQUE on `(vendor_id, operator_id, vendor_entity_id, vendor_modified_at)`
+  per the framework migration.
+- raw_payload column populated.
+- DemoModeFlipPolicy.evaluateFlip invoked on first commit with
+  records >= 1; Postgres `demo_mode_state` row updated.
+
+**Tests required.**
+
+- Round-trip canonical fact dict → Postgres row → re-read dict.
+- Idempotency replay: same dict twice → 1 INSERT + 1 conflict-do-nothing.
+- Watermark advance after batch.
+- Demo-mode flip on first batch with records >= 1; idempotent on
+  second flip.
+- RLS enforcement: write under operator A's tenant cannot be read
+  under operator B's tenant.
+
+### `8.spine-bridge.1.QBT` — QuickBooks Time Postgres sink
+
+Same shape as `.1.OR`. Files NEW:
+
+- `lib/infrastructure/persistence/postgres/quickbooks_time_postgres_sink.dart`
+- `test/infrastructure/persistence/postgres/quickbooks_time_postgres_sink_test.dart`
+
+Writes to `labor_punches` instead of `cover_facts`. Module
+disambiguation respected: only writes when adapter accepted module =
+`time`.
+
+### `8.spine-bridge.1.LB` — Libro Postgres sink
+
+Same shape as `.1.OR`. Files NEW:
+
+- `lib/infrastructure/persistence/postgres/libro_postgres_sink.dart`
+- `test/infrastructure/persistence/postgres/libro_postgres_sink_test.dart`
+
+Writes to `reservation_facts`. Webhook + poll inputs both supported
+(Libro has autoRegister webhooks).
+
+### `8.spine-bridge.A` — Data Accuracy schema + per-location settings repository
+
+**Files NEW.**
+
+- `db/migrations/<YYYYMMDD>_phase_8_data_accuracy_settings.sql` —
+  creates `data_accuracy_settings` table per
+  `data_accuracy_settings_contract.md` schema section.
+- `lib/services/data_accuracy/data_accuracy_settings_repository.dart` —
+  read/write seam over the new table. RLS-scoped via
+  `OperatorScopedRepository.withTenant`.
+- `lib/domain/models/data_accuracy_settings.dart` — typed shape.
+- `test/services/data_accuracy/data_accuracy_settings_repository_test.dart`.
+- `test/domain/models/data_accuracy_settings_test.dart`.
+
+**Contract bindings.**
+
+- Schema honors RLS-Ready Schema rules
+  (`hardening_rls_and_repository_pattern_contract.md`): per-tenant on
+  `(operator_id, location_id)`; B-tree index leads with `operator_id`;
+  4 wrapper-only RLS policies.
+- Schema columns per `data_accuracy_settings_contract.md`:
+    * covers_source_per_daypart (enum: vendor / forecast / manual)
+    * covers_manual_per_daypart (jsonb: {lunch, dinner, late_night})
+    * wage_source (enum: vendor / manual_mix)
+    * polling_cadence_override_seconds (per-vendor json map)
+    * polling_cost_acknowledged_at (timestamp)
+- Repository: idempotent upsert on (operator_id, location_id);
+  per-daypart partial updates supported.
+
+**Tests required.**
+
+- A. RLS round-trip: operator A write isolated from operator B reads.
+- B. Per-daypart partial update: writing `lunch=manual` does not affect
+  `dinner` setting.
+- C. Polling cadence override JSON validation: invalid vendor id ->
+  rejection at repository boundary.
+- D. Banned-items grep.
+
+### `8.spine-bridge.B` — Operator Web Console: Data Accuracy tab
+
+**Files NEW.**
+
+- `lib/operator_web/screens/data_accuracy_screen.dart` — the new tab.
+- `lib/operator_web/widgets/covers_source_toggle.dart` — per-daypart
+  picker (vendor / forecast / manual).
+- `lib/operator_web/widgets/covers_manual_entry_card.dart` — daypart-
+  shaped manual entry (lunch / dinner / late_night per business date).
+- `lib/operator_web/widgets/wage_source_toggle.dart` — surfaces the
+  existing wage adjuster (currently in mobile Settings) on web.
+- `lib/operator_web/widgets/polling_cadence_picker.dart` — per-vendor
+  cadence picker with cost projection.
+- `lib/operator_web/widgets/vendor_relativity_label.dart` — labels each
+  setting with the vendors it applies to (e.g., "covers manual entry
+  applies to: Square, Clover").
+- `test/operator_web/screens/data_accuracy_screen_test.dart`.
+- `test/operator_web/widgets/covers_source_toggle_test.dart`.
+- `test/operator_web/widgets/wage_source_toggle_test.dart`.
+- `test/operator_web/widgets/polling_cadence_picker_test.dart`.
+
+Files MODIFY:
+
+- `lib/operator_web/router/operator_web_router.dart` — add the
+  `/data-accuracy` nav id + route. (Single line addition; file-
+  disjoint with all sibling lanes.)
+
+**Contract bindings.**
+
+- Reads/writes via the Lane `.A` repository.
+- UX writing standard per `memory/project_ux_writing_standard.md` —
+  every setting reads as if training the user.
+- Vendor relativity labels per
+  `data_accuracy_settings_contract.md` (covers settings apply to
+  Square + Clover; wage settings apply to QBT + Humanity + Agendrix +
+  any labor vendor not exposing dollars; polling cadence applies per
+  vendor).
+- Cost projection on polling cadence picker per
+  `data_accuracy_settings_contract.md` "Costing surface" section.
+
+**Tests required.**
+
+- A. Render with default settings (vendor source, no overrides).
+- B. Toggle covers source from vendor -> manual; assert manual entry
+  card appears with three daypart slots.
+- C. Manual entry validates non-negative integers per daypart.
+- D. Wage source toggle round-trips with the repository.
+- E. Polling cadence picker shows cost projection in dollars/month.
+- F. Vendor relativity label correctly names the affected vendors.
+- G. Banned-items grep.
+
+### `8.spine-bridge.C` — F&F Ops Console: per-location data accuracy admin surface
+
+**Files NEW.**
+
+- `lib/admin/screens/per_location_data_accuracy_screen.dart` — admin
+  surface for support-driven adjustments + cross-operator visibility.
+- `lib/admin/widgets/per_location_polling_cost_panel.dart` — cost
+  rollup across all operator locations.
+- `test/admin/screens/per_location_data_accuracy_screen_test.dart`.
+
+Files MODIFY:
+
+- `lib/admin/admin_router.dart` — add `/data-accuracy` admin route.
+  (Single line addition; file-disjoint with all sibling lanes.)
+
+**Contract bindings.**
+
+- Admin surface per
+  `data_accuracy_settings_contract.md` "F&F Ops Console" section.
+- Reads via Lane `.A` repository under `forge_admin` role.
+- Audit row written on every admin override per
+  `auth_permission_key_catalog.md`.
+
+**Tests required.**
+
+- A. Render with multi-location operator.
+- B. Admin override writes audit row.
+- C. Cost panel rolls up across locations.
+- D. Banned-items grep.
+
+### `8.spine-bridge.0a` — Sync worker polling cadence override consumer (additive after `.0`)
+
+**Files NEW.**
+
+- `lib/services/integration/polling_cadence_resolver.dart` — pure logic
+  that takes a `connector_connection` row + DataAccuracySettings -> the
+  resolved poll cadence in seconds.
+- `test/services/integration/polling_cadence_resolver_test.dart`.
+
+Files MODIFY:
+
+- `tool/integration_sync_worker/dispatch.dart` — the dispatch picked
+  up by Lane `.0` reads the resolver to decide cadence per connection
+  instead of using a single hardcoded default. **Single function call
+  added inside `dispatchPollTick`; no interface change.**
+
+**Why this is additive (not stale-making for Lane `.0`):** Lane `.0`
+ships with a hardcoded default cadence. Lane `.0a` adds the resolver
+read inside `dispatchPollTick` without changing any of Lane `.0`'s
+public surfaces or interfaces. The running Lane `.0` worktree does
+NOT need to re-roll.
+
+**Tests required.**
+
+- A. Resolver returns default cadence (60s) when no override exists.
+- B. Resolver returns operator override when set and within bounds.
+- C. Out-of-bounds override (too fast / too slow) is clamped to the
+  framework-allowed range with a `connector_sync_log` warning row.
+- D. Resolver respects vendor-specific minimum cadence (Oracle
+  Simphony documents 5min minimum).
+- E. Banned-items grep.
+
+### `8.spine-bridge.2` — Server-side aggregator + ShiftRecord writer
+
+**Files NEW.**
+
+- `lib/services/integration/canonical_fact_to_closed_shift_input.dart`
+- `lib/infrastructure/persistence/postgres/postgres_shift_record_writer.dart`
+- `lib/services/integration/labor_wage_source_class.dart` — sidecar
+  lookup keyed by `vendorId` returning the wage source class enum
+  `{ perEmployeeWithDollars, perPositionWithRates, hoursOnly,
+    noLaborData }`. NOT a modification to the frozen
+  `integration_adapter_common.dart` capability profile; the lookup
+  preserves Wave B file-disjoint guarantees.
+- `lib/domain/models/aggregator_provenance_context.dart`
+- `test/services/integration/canonical_fact_to_closed_shift_input_test.dart`
+- `test/services/integration/labor_wage_source_class_test.dart`
+- `test/infrastructure/persistence/postgres/postgres_shift_record_writer_test.dart`
+- `test/domain/models/aggregator_provenance_context_test.dart`
+
+**Contract bindings.**
+
+- Aggregator walks operator-scoped Postgres `cover_facts` +
+  `labor_punches` + `reservation_facts` for
+  `(operator_id, location_id, business_date, daypart)`.
+- Resolves daypart per `restaurant_timing_configs`.
+- **Reads `data_accuracy_settings` via Lane `.A` repository** for the
+  (operator, location) — covers source preference per daypart, wage
+  source preference, polling cadence override.
+- Resolves covers source via 4-way decision (per Concern B + Layer 6
+  in `core_app_architecture.md`):
+    * `operator_manual_entry_per_daypart` -> use the manual value;
+      provenance string = `operator_manual_entry_per_daypart`.
+    * `vendor_<id>` -> use vendor canonical fact rows; provenance =
+      `vendor_<id>` (live).
+    * `vendor_<id>_covers_unavailable_app_forecast_substituted` ->
+      use F&F-derived forecast covers from
+      `DemandForecastContext.resolvedWeeklyForecastCovers` allocated
+      to this daypart per the existing daypart split rule; provenance
+      string makes vendor-unavailable + F&F-substituted explicit.
+    * No source available -> aggregator returns null; no ShiftRecord
+      written; dashboard renders MetricCardNotYetAvailable.
+- Resolves labor dollars source via 3-way decision (per
+  metric honesty contract):
+    * `target_wage_substituted` (operator wage source = manual mix) ->
+      use operator-set wage_role_rows mix.
+    * `vendor_<id>` -> use vendor canonical fact rows.
+    * `vendor_<id>_dollars_unavailable_target_wage_substituted` ->
+      use target wage × hours from active TargetSnapshot.
+- Emits `ClosedShiftInput` matching the existing typed shape, plus a
+  sibling `ProvenanceContext` carrying the per-metric provenance
+  strings the writer attaches to ShiftRecord.
+- Aggregator returns `priorTargetProfileVersionId`: the
+  `target_profile_version_id` of the prior ShiftRecord at this slot if
+  one exists; null if first-time aggregation.
+- Calls existing `ShiftFactBuilder.fromClosedShiftInput` (pure).
+- Persists `ShiftFact → ShiftRecord` row to operator-scoped Postgres
+  `shift_records` via `OperatorScopedRepository.withTenant`.
+- `sourceSystem` = vendor_id of the dominant POS source (one of the
+  17 vendor ids), OR `operator_manual_entry` when covers source =
+  manual.
+- **Concern A (binding):** Replace-for-slot semantics — re-aggregation
+  overwrites the prior `ShiftRecord` for the same
+  `(operator_id, location_id, business_date, daypart)` AND **preserves
+  the prior `target_profile_version_id`** when the aggregator's
+  `priorTargetProfileVersionId` is non-null. Only first-time
+  aggregations mint a fresh `TargetProfileVersion`. This is a hard
+  rule that protects `core_app_architecture.md` Layer 4 + Layer 11 +
+  Layer 12 + the "What never rewrites" non-negotiables.
+
+**Tests required.**
+
+- A. Single-vendor trio (Oracle + QBT + Libro): canonical-fact dicts in
+  → ShiftRecord written with correct numeric values.
+- B. Multi-vendor merge: same daypart fed by two POS adapters fails
+  loudly (one POS per daypart per V1 contract).
+- C. Covers source = vendor when POS adapter exposed covers (Toast).
+- D. Covers source = forecast substitution when POS adapter declared
+  `coversFieldExposed = false` (Square); provenance string =
+  `vendor_square_covers_unavailable_app_forecast_substituted`.
+- E. Covers source = manual entry when DataAccuracySettings has
+  `covers_source_per_daypart[dinner] == 'manual'` AND
+  `covers_manual_per_daypart.dinner == 187` for the date; assert
+  ShiftRecord.covers == 187; provenance = `operator_manual_entry_per_daypart`.
+- F. Labor dollars source = vendor when labor adapter populated
+  `actual_foh_labor_dollars` AND wage source preference = vendor.
+- G. Labor dollars source = target wage substitution when adapter did
+  not populate dollars; provenance =
+  `vendor_<id>_dollars_unavailable_target_wage_substituted`.
+- H. Labor dollars source = manual mix when wage source preference =
+  manual_mix; provenance = `target_wage_substituted` using operator-
+  set wage_role_rows mix.
+- I. **Concern A test (target_profile_version_id preservation).**
+  First-time aggregation writes ShiftRecord with target_profile_version_id="tpv_X".
+  TargetCycle rolls; ActiveTargetProfile points at "tpv_Y". Corrected
+  vendor fact arrives; aggregator re-runs; assert: aggregator returns
+  `priorTargetProfileVersionId == "tpv_X"`; writer reuses "tpv_X" on
+  the overwrite, NOT "tpv_Y"; re-read row carries "tpv_X".
+- J. Re-aggregation idempotent: same input set twice → same output row.
+- K. Banned-items grep.
+
+### `8.spine-bridge.3` — Server→mobile ShiftRecord sync
+
+**Files NEW.**
+
+- `lib/services/sync/postgres_shift_record_to_mobile_sync.dart`
+- `test/services/sync/postgres_shift_record_to_mobile_sync_test.dart`
+- (Optional, defer if scope permits) `lib/infrastructure/persistence/sqlite/sqlite_database_migrations.dart`
+  edit adding migration vN+1 for vendor provenance columns on mobile
+  `shift_records`.
+
+**Contract bindings.**
+
+- Pulls `ShiftRecord` rows from server via proxy
+  `GET /v1/operators/<op>/locations/<loc>/shift_records?modified_since=<cursor>`.
+- Bounded pull (max N rows per page; cursor advance per page).
+- Writes to mobile SQLite `shift_records` via existing
+  `SqliteShiftRecordRepository.replaceShiftForSlot`.
+- `sourceSystem` carries vendor_id (live) or `"demo"` (demo path).
+- Fires `AppRuntimeInvalidationBus.notifyRuntimeWriteCompleted` per
+  ShiftRecord write so dashboard / variance / history refresh.
+- Idempotent on `(restaurant_id, week_id, day_label, daypart)` —
+  matches existing replace-for-slot contract.
+- Pulls `demo_mode_state` rows in the same sweep so the operator app
+  sees the flip without redeploy.
+
+**Tests required.**
+
+- Server-side fixture rows pull → mobile SQLite row written → DAO
+  read returns the row.
+- Cursor advance: second pull only fetches rows modified after the
+  cursor.
+- Replace-for-slot: re-pulling the same `(week_id, day_label, daypart)`
+  overwrites the prior row.
+- Refresh signal: `AppRuntimeInvalidationBus` notification observed
+  per write.
+- Demo-mode flip propagation: server-side `demo_mode_state.is_demo = false`
+  → mobile sees the flip on next sync sweep.
+
+### `8.integration-mobile-proof.v2` — Re-run (sequential after 1-6 land)
+
+Same lane shape as the 2026-05-04 proof. Now exercises the full
+chain:
+
+```
+fixture vendor payload
+  → Wave B adapter
+  → Postgres-backed CanonicalSink (.1.*)
+  → operator-scoped Postgres canonical fact rows
+  → aggregator + PostgresShiftRecordWriter (.2)
+  → operator-scoped Postgres shift_records
+  → server→mobile sync (.3)
+  → mobile SQLite shift_records
+  → ShiftService.getShiftDashboard
+  → dashboard / variance / history / learn / metric honesty pill
+  → demo-mode banner clears
+```
+
+PASS criterion: every one of the 12 acceptance items in the original
+mobile-proof prompt resolves to ✅. Below ✅: declare a follow-up.
+
+## File-disjoint guarantee
+
+| Lane | NEW files | MODIFY files |
+|---|---|---|
+| `.0` | 6 (registry × 3 + worker × 2 + sink interface × 1) | 0 |
+| `.1.OR` | 2 (sink + test) | 0 |
+| `.1.QBT` | 2 | 0 |
+| `.1.LB` | 2 | 0 |
+| `.2` | 4 (aggregator + writer + tests) | 0 |
+| `.3` | 2-3 (sync service + test + optional SQLite migration) | 0-2 (DAO edits if vendor columns parity) |
+
+`.3` is the only lane that may modify existing files
+(`sqlite_database_migrations.dart` + DAO edits). The decision to
+include or defer SQLite vendor-column parity is a sub-lane scope
+question — the V1 spine does not require it. Default: defer; ship
+parity in a follow-up if and when raw-fact drilldowns are needed on
+mobile.
+
+## Banned items (V1 lean cut 2 — REJECT if present)
+
+Same banned list as `vendor_adapter_slice_contract.md` Section "Banned
+items" applies to every spine-bridge file. In particular:
+
+- No KMS / production-key rotation logic in any sink.
+- No `parse_warnings` / `parse_partial` columns on canonical fact
+  tables.
+- No 5-minute strict replay window.
+- No OAuth advisory locks.
+- No SIGTERM graceful drain handler.
+- No DLQ tile widget.
+- No raw-payload sibling tables / pg_partman registration.
+- No 5-second test-connection SLA.
+
+## Acceptance verdicts
+
+Same shape as `vendor_adapter_slice_contract.md`:
+
+- **ACCEPT** — every sub-lane's `Tests required` section passes;
+  zero banned items; file-disjoint guarantee honored; canonical
+  chain stages bound exactly to this contract.
+- **FOLLOW-UP NEEDED** — bounded miss (e.g. one test absent; one
+  contract binding skipped).
+- **REJECT** — sink bypasses `OperatorScopedRepository`; aggregator
+  emits a `ShiftRecord` for an operator without their tenant context;
+  mobile sync writes outside `replace-for-slot` semantics; demo-mode
+  flip auto-reverts.
+
+## Cross-references
+
+- `docs/contracts/vendor_adapter_slice_contract.md` — left-half rules
+- `docs/contracts/per_vendor_doc_pack_contract.md` — per-vendor folder
+- `docs/contracts/metric_card_honesty_contract.md` — renderer chrome
+- `docs/contracts/phase_7_55_time_boundary_contract.md` — UTC + business_date
+- `docs/contracts/hardening_rls_and_repository_pattern_contract.md` — RLS pattern
+- `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md` — origin proof + SQLite addendum
+- `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md` — gap memo
+- `memory/project_phase_8_engineer_all_17_doctrine.md` — Wave B doctrine
+- `memory/project_v1_lean_cut_2_2026_05_03.md` — banned items list
