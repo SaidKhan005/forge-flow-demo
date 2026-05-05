@@ -31,9 +31,13 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 
 import '../../domain/models/data_accuracy_settings.dart';
 import '../../domain/models/forge_flow_polling_tier_assignment.dart';
+import 'admin_http_timeout.dart';
+
+typedef DataAccuracyAdminBearerTokenProvider = Future<String> Function();
 
 /// Vendor IDs the polling-tier model knows about. Mirrors the five
 /// poll-only vendors named in the contract; webhook vendors do not
@@ -147,7 +151,8 @@ class TierDefinition {
           pollingCadencePerVendorSeconds ?? this.pollingCadencePerVendorSeconds,
       defaultMonthlyPriceCents:
           defaultMonthlyPriceCents ?? this.defaultMonthlyPriceCents,
-      vendorApiCostEstimateCentsMonthly: vendorApiCostEstimateCentsMonthly ??
+      vendorApiCostEstimateCentsMonthly:
+          vendorApiCostEstimateCentsMonthly ??
           this.vendorApiCostEstimateCentsMonthly,
       lastEditedAt: lastEditedAt ?? this.lastEditedAt,
       lastEditedBy: lastEditedBy ?? this.lastEditedBy,
@@ -241,8 +246,7 @@ class TierMarginPerTier {
   final int totalMonthlyPriceCents;
   final int totalMonthlyVendorCostCents;
 
-  int get marginCents =>
-      totalMonthlyPriceCents - totalMonthlyVendorCostCents;
+  int get marginCents => totalMonthlyPriceCents - totalMonthlyVendorCostCents;
 }
 
 class TierMarginPerVendor {
@@ -320,6 +324,22 @@ class DataAccuracyAdminForbiddenException implements Exception {
   String toString() => 'DataAccuracyAdminForbiddenException: $message';
 }
 
+class DataAccuracyAdminGatewayError implements Exception {
+  const DataAccuracyAdminGatewayError({
+    required this.statusCode,
+    required this.errorCode,
+    required this.message,
+  });
+
+  final int statusCode;
+  final String errorCode;
+  final String message;
+
+  @override
+  String toString() =>
+      'DataAccuracyAdminGatewayError($statusCode/$errorCode): $message';
+}
+
 abstract class DataAccuracyAdminGateway {
   // ── Tab 1 reads ──────────────────────────────────────────────────────
   Future<List<DataAccuracyAdminRow>> listDataAccuracyRows();
@@ -389,6 +409,513 @@ abstract class DataAccuracyAdminGateway {
   });
 }
 
+class HttpDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
+  HttpDataAccuracyAdminGateway({
+    required this.baseUri,
+    required this.bearerTokenProvider,
+    http.Client? httpClient,
+    Duration timeout = kAdminHttpRequestTimeout,
+  }) : _httpClient = httpClient ?? http.Client(),
+       _timeout = timeout;
+
+  final Uri baseUri;
+  final DataAccuracyAdminBearerTokenProvider bearerTokenProvider;
+  final http.Client _httpClient;
+  final Duration _timeout;
+
+  static const String dataRowsPath = '/v1/admin/data-accuracy/rows';
+  static const String dataSettingsPrefix = '/v1/admin/data-accuracy/settings/';
+  static const String auditHistoryPath =
+      '/v1/admin/data-accuracy/audit-history';
+  static const String tierDefinitionsPath =
+      '/v1/admin/polling-pricing/tier-definitions';
+  static const String tierDefinitionsPrefix =
+      '/v1/admin/polling-pricing/tier-definitions/';
+  static const String tierAssignmentsPath =
+      '/v1/admin/polling-pricing/assignments';
+  static const String tierAssignmentsPrefix =
+      '/v1/admin/polling-pricing/assignments/';
+  static const String marginPath = '/v1/admin/polling-pricing/margin';
+  static const String marginExportPath =
+      '/v1/admin/polling-pricing/margin/export-csv';
+  static const String changeRequestsPath =
+      '/v1/admin/polling-pricing/change-requests';
+  static const String changeRequestsPrefix =
+      '/v1/admin/polling-pricing/change-requests/';
+
+  @override
+  Future<List<DataAccuracyAdminRow>> listDataAccuracyRows() async {
+    final body = await _send(method: 'GET', path: dataRowsPath);
+    final rows = (body['rows'] as List?) ?? const [];
+    return <DataAccuracyAdminRow>[
+      for (final row in rows)
+        _dataAccuracyRowFromJson((row as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<List<DataAccuracyAdminAuditEvent>> listAuditHistory({
+    String? operatorId,
+    String? locationId,
+  }) async {
+    final body = await _send(
+      method: 'GET',
+      path: auditHistoryPath,
+      queryParameters: <String, String>{
+        if (operatorId != null && operatorId.isNotEmpty)
+          'operator_id': operatorId,
+        if (locationId != null && locationId.isNotEmpty)
+          'location_id': locationId,
+      },
+    );
+    final events = (body['events'] as List?) ?? const [];
+    return <DataAccuracyAdminAuditEvent>[
+      for (final event in events)
+        _auditEventFromJson((event as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<DataAccuracyAdminRow> overrideDataAccuracy({
+    required String operatorId,
+    required String locationId,
+    CoversSource? coversSourceLunch,
+    CoversSource? coversSourceDinner,
+    CoversSource? coversSourceLateNight,
+    WageSource? wageSource,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'overrideDataAccuracy');
+    final body = await _send(
+      method: 'PATCH',
+      path:
+          '$dataSettingsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+      idempotencyKey: _newIdempotencyKey('data-accuracy-override'),
+      jsonBody: <String, Object?>{
+        if (coversSourceLunch != null)
+          'covers_source_lunch': coversSourceLunch.wire,
+        if (coversSourceDinner != null)
+          'covers_source_dinner': coversSourceDinner.wire,
+        if (coversSourceLateNight != null)
+          'covers_source_late_night': coversSourceLateNight.wire,
+        if (wageSource != null) 'wage_source': wageSource.wire,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _dataAccuracyRowFromJson(_asMap(body['row']));
+  }
+
+  @override
+  Future<List<TierDefinition>> listTierDefinitions() async {
+    final body = await _send(method: 'GET', path: tierDefinitionsPath);
+    final definitions = (body['definitions'] as List?) ?? const [];
+    return <TierDefinition>[
+      for (final definition in definitions)
+        _tierDefinitionFromJson((definition as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<List<TierAssignmentAdminRow>> listTierAssignments() async {
+    final body = await _send(method: 'GET', path: tierAssignmentsPath);
+    final assignments = (body['assignments'] as List?) ?? const [];
+    return <TierAssignmentAdminRow>[
+      for (final assignment in assignments)
+        _tierAssignmentRowFromJson((assignment as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<TierMarginRollup> summarizeMargin({PollingTierKey? tierFilter}) async {
+    final body = await _send(
+      method: 'GET',
+      path: marginPath,
+      queryParameters: <String, String>{
+        if (tierFilter != null) 'tier_key': tierFilter.wire,
+      },
+    );
+    return _marginRollupFromJson(_asMap(body['rollup']));
+  }
+
+  @override
+  Future<List<TierChangeRequest>> listTierChangeRequests() async {
+    final body = await _send(method: 'GET', path: changeRequestsPath);
+    final requests = (body['requests'] as List?) ?? const [];
+    return <TierChangeRequest>[
+      for (final request in requests)
+        _tierChangeRequestFromJson((request as Map).cast<String, Object?>()),
+    ];
+  }
+
+  @override
+  Future<TierDefinition> updateTierDefinition({
+    required PollingTierKey tierKey,
+    String? descriptionMd,
+    Map<String, int>? pollingCadencePerVendorSeconds,
+    int? defaultMonthlyPriceCents,
+    int? vendorApiCostEstimateCentsMonthly,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'updateTierDefinition');
+    final body = await _send(
+      method: 'PATCH',
+      path: '$tierDefinitionsPrefix${tierKey.wire}',
+      idempotencyKey: _newIdempotencyKey('tier-definition'),
+      jsonBody: <String, Object?>{
+        if (descriptionMd != null) 'description_md': descriptionMd,
+        if (pollingCadencePerVendorSeconds != null)
+          'polling_cadence_per_vendor_seconds': pollingCadencePerVendorSeconds,
+        if (defaultMonthlyPriceCents != null)
+          'default_monthly_price_cents': defaultMonthlyPriceCents,
+        if (vendorApiCostEstimateCentsMonthly != null)
+          'vendor_api_cost_estimate_cents_monthly':
+              vendorApiCostEstimateCentsMonthly,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _tierDefinitionFromJson(_asMap(body['definition']));
+  }
+
+  @override
+  Future<TierAssignmentAdminRow> assignTier({
+    required String operatorId,
+    required String locationId,
+    required PollingTierKey tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'assignTier');
+    final body = await _send(
+      method: 'PUT',
+      path:
+          '$tierAssignmentsPrefix${Uri.encodeComponent(operatorId)}/'
+          '${Uri.encodeComponent(locationId)}',
+      idempotencyKey: _newIdempotencyKey('tier-assignment'),
+      jsonBody: <String, Object?>{
+        'tier_key': tierKey.wire,
+        if (customCadencePerVendorSeconds != null)
+          'custom_cadence_per_vendor_seconds': customCadencePerVendorSeconds,
+        if (monthlyPriceCentsOverride != null)
+          'monthly_price_cents_override': monthlyPriceCentsOverride,
+        if (vendorApiCostEstimateCentsMonthlyOverride != null)
+          'vendor_api_cost_estimate_cents_monthly_override':
+              vendorApiCostEstimateCentsMonthlyOverride,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _tierAssignmentRowFromJson(_asMap(body['assignment']));
+  }
+
+  @override
+  Future<TierChangeRequest> resolveTierChangeRequest({
+    required String requestId,
+    required TierChangeRequestStatus newStatus,
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+    String? reasonNote,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'resolveTierChangeRequest');
+    final body = await _send(
+      method: 'PATCH',
+      path: '$changeRequestsPrefix${Uri.encodeComponent(requestId)}',
+      idempotencyKey: _newIdempotencyKey('tier-change-request'),
+      jsonBody: <String, Object?>{
+        'status': newStatus.wire,
+        if (reasonNote != null && reasonNote.trim().isNotEmpty)
+          'reason_note': reasonNote.trim(),
+      },
+    );
+    return _tierChangeRequestFromJson(_asMap(body['request']));
+  }
+
+  @override
+  Future<String> exportMarginRollupCsv({
+    required String actorUserId,
+    required bool actorIsForgeAdmin,
+  }) async {
+    _requireEditable(actorIsForgeAdmin, 'exportMarginRollupCsv');
+    final body = await _send(
+      method: 'POST',
+      path: marginExportPath,
+      idempotencyKey: _newIdempotencyKey('margin-rollup-csv'),
+    );
+    final csv = body['csv'];
+    return csv is String ? csv : '';
+  }
+
+  void _requireEditable(bool actorIsForgeAdmin, String operation) {
+    if (!actorIsForgeAdmin) {
+      throw DataAccuracyAdminForbiddenException(
+        '$operation requires forge_admin role',
+      );
+    }
+  }
+
+  Future<Map<String, Object?>> _send({
+    required String method,
+    required String path,
+    Map<String, String> queryParameters = const <String, String>{},
+    Map<String, Object?>? jsonBody,
+    String? idempotencyKey,
+  }) async {
+    final token = await bearerTokenProvider();
+    var uri = baseUri.resolve(path);
+    if (queryParameters.isNotEmpty) {
+      uri = uri.replace(queryParameters: queryParameters);
+    }
+    final request = http.Request(method, uri)
+      ..headers['authorization'] = 'Bearer $token'
+      ..headers['accept'] = 'application/json';
+    if (idempotencyKey != null && idempotencyKey.isNotEmpty) {
+      request.headers['Idempotency-Key'] = idempotencyKey;
+    }
+    if (jsonBody != null) {
+      request.headers['content-type'] = 'application/json';
+      request.bodyBytes = utf8.encode(jsonEncode(jsonBody));
+    }
+    late final http.Response response;
+    try {
+      response = await sendAdminHttpRequest(
+        _httpClient,
+        request,
+        timeout: _timeout,
+      );
+    } on AdminHttpTimeoutException {
+      throw DataAccuracyAdminGatewayError(
+        statusCode: 408,
+        errorCode: 'timeout',
+        message:
+            'admin data accuracy proxy timed out after ${_timeout.inSeconds}s',
+      );
+    }
+    final raw = utf8.decode(response.bodyBytes);
+    Map<String, Object?> parsed = const <String, Object?>{};
+    if (raw.isNotEmpty) {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) parsed = decoded.cast<String, Object?>();
+    }
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return parsed;
+    }
+    final message =
+        (parsed['message'] as String?) ??
+        'admin data accuracy proxy returned an error';
+    if (response.statusCode == 403) {
+      throw DataAccuracyAdminForbiddenException(message);
+    }
+    throw DataAccuracyAdminGatewayError(
+      statusCode: response.statusCode,
+      errorCode: (parsed['error'] as String?) ?? 'unknown_error',
+      message: message,
+    );
+  }
+
+  static String _newIdempotencyKey(String prefix) =>
+      '$prefix-${DateTime.now().toUtc().microsecondsSinceEpoch}';
+}
+
+DataAccuracyAdminRow _dataAccuracyRowFromJson(Map<String, Object?> json) {
+  return DataAccuracyAdminRow(
+    operatorRef: _operatorRefFromJson(_asMap(json['operator_ref'])),
+    settings: _settingsFromJson(_asMap(json['settings'])),
+  );
+}
+
+OperatorLocationRef _operatorRefFromJson(Map<String, Object?> json) {
+  return OperatorLocationRef(
+    operatorId: _stringField(json, 'operator_id'),
+    businessName: _stringField(json, 'business_name'),
+    locationId: _stringField(json, 'location_id'),
+    locationName: _stringField(json, 'location_name'),
+  );
+}
+
+DataAccuracySettings _settingsFromJson(Map<String, Object?> json) {
+  return DataAccuracySettings.fromRow(<String, Object?>{
+    ...json,
+    'created_at': _dateTimeField(json, 'created_at'),
+    'updated_at': _dateTimeField(json, 'updated_at'),
+  });
+}
+
+DataAccuracyAdminAuditEvent _auditEventFromJson(Map<String, Object?> json) {
+  return DataAccuracyAdminAuditEvent(
+    eventId: _stringField(json, 'event_id'),
+    eventType: _stringField(json, 'event_type'),
+    occurredAt: _dateTimeField(json, 'occurred_at'),
+    actorUserId: _optionalString(json['actor_user_id']) ?? '',
+    actorKind: _optionalString(json['actor_kind']) ?? 'forge_admin',
+    operatorId: _optionalString(json['operator_id']) ?? '',
+    locationId: _optionalString(json['location_id']),
+    diff: _asMap(json['diff']),
+    reasonNote: _optionalString(json['reason_note']),
+  );
+}
+
+TierDefinition _tierDefinitionFromJson(Map<String, Object?> json) {
+  return TierDefinition(
+    tierKey: PollingTierKeyWire.fromWire(_stringField(json, 'tier_key')),
+    descriptionMd: _stringField(json, 'description_md'),
+    pollingCadencePerVendorSeconds: _intMap(
+      _asMap(json['polling_cadence_per_vendor_seconds']),
+    ),
+    defaultMonthlyPriceCents: _intField(json, 'default_monthly_price_cents'),
+    vendorApiCostEstimateCentsMonthly: _intField(
+      json,
+      'vendor_api_cost_estimate_cents_monthly',
+    ),
+    lastEditedAt: _dateTimeField(json, 'last_edited_at'),
+    lastEditedBy: _optionalString(json['last_edited_by']),
+  );
+}
+
+TierAssignmentAdminRow _tierAssignmentRowFromJson(Map<String, Object?> json) {
+  final assignmentRaw = json['assignment'];
+  return TierAssignmentAdminRow(
+    operatorRef: _operatorRefFromJson(_asMap(json['operator_ref'])),
+    assignment: assignmentRaw is Map
+        ? _assignmentFromJson(assignmentRaw.cast<String, Object?>())
+        : null,
+    adminNotes: _optionalString(json['admin_notes']),
+  );
+}
+
+ForgeFlowPollingTierAssignment _assignmentFromJson(Map<String, Object?> json) {
+  return ForgeFlowPollingTierAssignment.fromRow(<String, Object?>{
+    ...json,
+    'effective_at': _dateTimeField(json, 'effective_at'),
+    'effective_until': _optionalDateTime(json['effective_until']),
+    'created_at': _dateTimeField(json, 'created_at'),
+  });
+}
+
+TierMarginRollup _marginRollupFromJson(Map<String, Object?> json) {
+  final perTier = (json['per_tier'] as List?) ?? const [];
+  final perVendor = (json['per_vendor'] as List?) ?? const [];
+  return TierMarginRollup(
+    totalMonthlyPriceCents: _intField(json, 'total_monthly_price_cents'),
+    totalMonthlyVendorCostCents: _intField(
+      json,
+      'total_monthly_vendor_cost_cents',
+    ),
+    perTier: <TierMarginPerTier>[
+      for (final entry in perTier)
+        _marginPerTierFromJson((entry as Map).cast<String, Object?>()),
+    ],
+    perVendor: <TierMarginPerVendor>[
+      for (final entry in perVendor)
+        _marginPerVendorFromJson((entry as Map).cast<String, Object?>()),
+    ],
+  );
+}
+
+TierMarginPerTier _marginPerTierFromJson(Map<String, Object?> json) {
+  return TierMarginPerTier(
+    tierKey: PollingTierKeyWire.fromWire(_stringField(json, 'tier_key')),
+    assignmentCount: _intField(json, 'assignment_count'),
+    totalMonthlyPriceCents: _intField(json, 'total_monthly_price_cents'),
+    totalMonthlyVendorCostCents: _intField(
+      json,
+      'total_monthly_vendor_cost_cents',
+    ),
+  );
+}
+
+TierMarginPerVendor _marginPerVendorFromJson(Map<String, Object?> json) {
+  return TierMarginPerVendor(
+    vendorId: _stringField(json, 'vendor_id'),
+    totalMonthlyVendorCostCents: _intField(
+      json,
+      'total_monthly_vendor_cost_cents',
+    ),
+  );
+}
+
+TierChangeRequest _tierChangeRequestFromJson(Map<String, Object?> json) {
+  return TierChangeRequest(
+    requestId: _stringField(json, 'request_id'),
+    operatorRef: _operatorRefFromJson(_asMap(json['operator_ref'])),
+    currentTier: PollingTierKeyWire.fromWire(
+      _stringField(json, 'current_tier'),
+    ),
+    requestedTier: PollingTierKeyWire.fromWire(
+      _stringField(json, 'requested_tier'),
+    ),
+    operatorNote: _stringField(json, 'operator_note'),
+    submittedAt: _dateTimeField(json, 'submitted_at'),
+    status: _tierChangeStatusFromWire(_stringField(json, 'status')),
+  );
+}
+
+TierChangeRequestStatus _tierChangeStatusFromWire(String value) {
+  for (final status in TierChangeRequestStatus.values) {
+    if (status.wire == value) return status;
+  }
+  throw ArgumentError.value(value, 'status', 'unknown tier change status');
+}
+
+Map<String, Object?> _asMap(Object? value) {
+  if (value is Map<String, Object?>) return value;
+  if (value is Map) return value.cast<String, Object?>();
+  return const <String, Object?>{};
+}
+
+Map<String, int> _intMap(Map<String, Object?> json) {
+  return <String, int>{
+    for (final entry in json.entries) entry.key: _asInt(entry.value),
+  };
+}
+
+String _stringField(Map<String, Object?> json, String key) {
+  final value = json[key];
+  if (value is String && value.isNotEmpty) return value;
+  throw StateError('missing string field $key');
+}
+
+String? _optionalString(Object? value) {
+  if (value is! String) return null;
+  final trimmed = value.trim();
+  return trimmed.isEmpty ? null : trimmed;
+}
+
+int _intField(Map<String, Object?> json, String key) => _asInt(json[key]);
+
+int _asInt(Object? value) {
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  if (value is String) return int.parse(value);
+  throw StateError('missing int field');
+}
+
+DateTime _dateTimeField(Map<String, Object?> json, String key) {
+  final value = _optionalDateTime(json[key]);
+  if (value == null) throw StateError('missing datetime field $key');
+  return value;
+}
+
+DateTime? _optionalDateTime(Object? value) {
+  if (value == null) return null;
+  if (value is DateTime) return value.toUtc();
+  if (value is String && value.isNotEmpty) {
+    return DateTime.parse(value).toUtc();
+  }
+  return null;
+}
+
 /// In-memory gateway powering kDemoMode + widget tests. Mirrors the
 /// shape of the production HTTP gateway: every write goes through a
 /// single `_record` helper that buffers an audit event and updates
@@ -403,23 +930,19 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     Map<String, String>? initialAdminNotes,
     List<TierChangeRequest>? initialChangeRequests,
     DateTime Function()? clock,
-  })  : _clock = clock ?? DateTime.now,
-        _operatorLocations = List<OperatorLocationRef>.unmodifiable(
-          operatorLocations,
-        ),
-        _settings = <String, DataAccuracySettings>{
-          ...?initialSettings,
-        },
-        _tierDefinitions = <PollingTierKey, TierDefinition>{
-          ...?initialTierDefinitions,
-        },
-        _assignments = <String, ForgeFlowPollingTierAssignment>{
-          ...?initialAssignments,
-        },
-        _adminNotes = <String, String>{...?initialAdminNotes},
-        _changeRequests = <TierChangeRequest>[
-          ...?initialChangeRequests,
-        ];
+  }) : _clock = clock ?? DateTime.now,
+       _operatorLocations = List<OperatorLocationRef>.unmodifiable(
+         operatorLocations,
+       ),
+       _settings = <String, DataAccuracySettings>{...?initialSettings},
+       _tierDefinitions = <PollingTierKey, TierDefinition>{
+         ...?initialTierDefinitions,
+       },
+       _assignments = <String, ForgeFlowPollingTierAssignment>{
+         ...?initialAssignments,
+       },
+       _adminNotes = <String, String>{...?initialAdminNotes},
+       _changeRequests = <TierChangeRequest>[...?initialChangeRequests];
 
   final DateTime Function() _clock;
   final List<OperatorLocationRef> _operatorLocations;
@@ -462,10 +985,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   /// key is reserved for the per-vendor cost rollup's "no vendor
   /// cadence" bucket; allowing it as a real cadence-vendor key would
   /// silently merge real vendor cost into that bucket on display.
-  void _rejectUnallocatedKey(
-    Map<String, int>? cadence,
-    String operation,
-  ) {
+  void _rejectUnallocatedKey(Map<String, int>? cadence, String operation) {
     if (cadence == null) return;
     if (cadence.containsKey(kUnallocatedVendorId)) {
       throw ArgumentError.value(
@@ -750,9 +1270,10 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
         customCadencePerVendorSeconds ??
         tierDefaults?.pollingCadencePerVendorSeconds ??
         const <String, int>{};
-    final price = monthlyPriceCentsOverride ??
-        tierDefaults?.defaultMonthlyPriceCents;
-    final cost = vendorApiCostEstimateCentsMonthlyOverride ??
+    final price =
+        monthlyPriceCentsOverride ?? tierDefaults?.defaultMonthlyPriceCents;
+    final cost =
+        vendorApiCostEstimateCentsMonthlyOverride ??
         tierDefaults?.vendorApiCostEstimateCentsMonthly;
     final key = _key(operatorId, locationId);
     final prev = _assignments[key];
@@ -832,14 +1353,11 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
   }
 
   @override
-  Future<TierMarginRollup> summarizeMargin({
-    PollingTierKey? tierFilter,
-  }) async {
+  Future<TierMarginRollup> summarizeMargin({PollingTierKey? tierFilter}) async {
     var totalPrice = 0;
     var totalCost = 0;
     final perTierAcc = <PollingTierKey, _PerTierAccumulator>{
-      for (final tier in PollingTierKey.values)
-        tier: _PerTierAccumulator(tier),
+      for (final tier in PollingTierKey.values) tier: _PerTierAccumulator(tier),
     };
     final perVendorAcc = <String, int>{};
     for (final entry in _assignments.values) {
@@ -919,9 +1437,7 @@ class InMemoryDataAccuracyAdminGateway implements DataAccuracyAdminGateway {
     _ensureForgeAdmin(actorIsForgeAdmin, 'resolveTierChangeRequest');
     final idx = _changeRequests.indexWhere((r) => r.requestId == requestId);
     if (idx < 0) {
-      throw StateError(
-        'resolveTierChangeRequest: unknown request $requestId',
-      );
+      throw StateError('resolveTierChangeRequest: unknown request $requestId');
     }
     final prev = _changeRequests[idx];
     final next = prev.copyWith(status: newStatus);
@@ -1004,54 +1520,54 @@ class _PerTierAccumulator {
 /// the four subscription vendors per the contract default), premium
 /// = 60s where allowed, custom = empty (admin sets per assignment).
 TierDefinition kDemoStandardTierDefinition({DateTime? at}) => TierDefinition(
-      tierKey: PollingTierKey.standard,
-      descriptionMd:
-          'Standard tier — webhook vendors update in real time; '
-          'poll-only vendors update at the vendor minimum cadence.',
-      pollingCadencePerVendorSeconds: const <String, int>{
-        'oracle_micros_simphony': 300,
-        'quickbooks_time': 300,
-        'humanity': 300,
-        'agendrix': 300,
-        'push_operations': 300,
-      },
-      defaultMonthlyPriceCents: 9900,
-      vendorApiCostEstimateCentsMonthly: 1200,
-      lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
-      lastEditedBy: 'demo-super-admin',
-    );
+  tierKey: PollingTierKey.standard,
+  descriptionMd:
+      'Standard tier — webhook vendors update in real time; '
+      'poll-only vendors update at the vendor minimum cadence.',
+  pollingCadencePerVendorSeconds: const <String, int>{
+    'oracle_micros_simphony': 300,
+    'quickbooks_time': 300,
+    'humanity': 300,
+    'agendrix': 300,
+    'push_operations': 300,
+  },
+  defaultMonthlyPriceCents: 9900,
+  vendorApiCostEstimateCentsMonthly: 1200,
+  lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
+  lastEditedBy: 'demo-super-admin',
+);
 
 TierDefinition kDemoPremiumTierDefinition({DateTime? at}) => TierDefinition(
-      tierKey: PollingTierKey.premium,
-      descriptionMd:
-          'Premium tier — webhook vendors update in real time; '
-          'poll-only vendors poll every 60 seconds where the vendor '
-          'allows it (Oracle MICROS Simphony stays at the 5-minute '
-          'vendor minimum).',
-      pollingCadencePerVendorSeconds: const <String, int>{
-        'oracle_micros_simphony': 300,
-        'quickbooks_time': 60,
-        'humanity': 60,
-        'agendrix': 60,
-        'push_operations': 60,
-      },
-      defaultMonthlyPriceCents: 19900,
-      vendorApiCostEstimateCentsMonthly: 4800,
-      lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
-      lastEditedBy: 'demo-super-admin',
-    );
+  tierKey: PollingTierKey.premium,
+  descriptionMd:
+      'Premium tier — webhook vendors update in real time; '
+      'poll-only vendors poll every 60 seconds where the vendor '
+      'allows it (Oracle MICROS Simphony stays at the 5-minute '
+      'vendor minimum).',
+  pollingCadencePerVendorSeconds: const <String, int>{
+    'oracle_micros_simphony': 300,
+    'quickbooks_time': 60,
+    'humanity': 60,
+    'agendrix': 60,
+    'push_operations': 60,
+  },
+  defaultMonthlyPriceCents: 19900,
+  vendorApiCostEstimateCentsMonthly: 4800,
+  lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
+  lastEditedBy: 'demo-super-admin',
+);
 
 TierDefinition kDemoCustomTierDefinition({DateTime? at}) => TierDefinition(
-      tierKey: PollingTierKey.custom,
-      descriptionMd:
-          'Custom tier — F&F admin sets cadence per vendor for this '
-          '(operator, location). Negotiated; uncommon.',
-      pollingCadencePerVendorSeconds: const <String, int>{},
-      defaultMonthlyPriceCents: 0,
-      vendorApiCostEstimateCentsMonthly: 0,
-      lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
-      lastEditedBy: 'demo-super-admin',
-    );
+  tierKey: PollingTierKey.custom,
+  descriptionMd:
+      'Custom tier — F&F admin sets cadence per vendor for this '
+      '(operator, location). Negotiated; uncommon.',
+  pollingCadencePerVendorSeconds: const <String, int>{},
+  defaultMonthlyPriceCents: 0,
+  vendorApiCostEstimateCentsMonthly: 0,
+  lastEditedAt: at ?? DateTime.utc(2026, 5, 1),
+  lastEditedBy: 'demo-super-admin',
+);
 
 /// Helper used by the screen + tests to format cents as `$X.XX`.
 String formatCents(int cents) {
@@ -1064,9 +1580,7 @@ String formatCents(int cents) {
 /// JSONB iteration order.
 String stableEncodeCadence(Map<String, int> cadence) {
   final keys = cadence.keys.toList()..sort();
-  return jsonEncode(<String, int>{
-    for (final k in keys) k: cadence[k]!,
-  });
+  return jsonEncode(<String, int>{for (final k in keys) k: cadence[k]!});
 }
 
 /// Returned by the CSV-export action; widget tests assert on the
