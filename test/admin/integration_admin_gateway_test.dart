@@ -72,60 +72,86 @@ void main() {
       }
     });
 
-    test('includes default vendor connectors and FX-rate / email status',
-        () async {
-      final gateway = InMemoryIntegrationAdminGateway();
-      final bundle = await gateway.list();
-      expect(bundle.vendorConnectors, isNotEmpty);
-      expect(bundle.fxRateSource.id, equals('fx_rate'));
-      expect(bundle.emailProvider.id, equals('email'));
-      expect(
-        bundle.emailProvider.detailMessage,
-        contains('Phase 9.8'),
-      );
-    });
+    test(
+      'includes default vendor connectors and FX-rate / email status',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway();
+        final bundle = await gateway.list();
+        expect(bundle.vendorConnectors, hasLength(17));
+        expect(
+          bundle.vendorConnectors.map((status) => status.id),
+          containsAll(<String>[
+            'aloha_ncr_voyix',
+            'clover',
+            'lightspeed_lsk',
+            'oracle_micros_simphony',
+            'revel',
+            'square',
+            'toast',
+            'libro',
+            'opentable',
+            'sevenrooms',
+            'tock',
+            'adp',
+            'agendrix',
+            'humanity',
+            'push_operations',
+            'quickbooks_time',
+            'seven_shifts',
+          ]),
+        );
+        expect(bundle.fxRateSource.id, equals('fx_rate'));
+        expect(bundle.emailProvider.id, equals('email'));
+        expect(bundle.emailProvider.detailMessage, contains('Phase 9.8'));
+      },
+    );
   });
 
   group('InMemoryIntegrationAdminGateway — rotate', () {
-    test('rotate appends a new row, masks plaintext, preserves invariant',
-        () async {
-      final gateway = InMemoryIntegrationAdminGateway(
-        actorUserId: 'rotator-x',
-        seed: <ProviderKeyRow>[
-          ProviderKeyRow(
-            credentialId: 'cred-anthropic',
+    test(
+      'rotate appends a new row, masks plaintext, preserves invariant',
+      () async {
+        final gateway = InMemoryIntegrationAdminGateway(
+          actorUserId: 'rotator-x',
+          seed: <ProviderKeyRow>[
+            ProviderKeyRow(
+              credentialId: 'cred-anthropic',
+              keyKind: ProviderKeyKind.anthropic,
+              maskedValue: 'sk-a***Q9aB',
+              kmsSecretName: 'kms://stub/seed-anthropic',
+              createdBy: 'demo-actor',
+              updatedBy: 'demo-actor',
+              rotatedAt: DateTime.utc(2026, 4, 1, 14),
+            ),
+          ],
+        );
+        final result = await gateway.rotateKey(
+          const RotateKeyCommand(
             keyKind: ProviderKeyKind.anthropic,
-            maskedValue: 'sk-a***Q9aB',
-            kmsSecretName: 'kms://stub/seed-anthropic',
-            createdBy: 'demo-actor',
-            updatedBy: 'demo-actor',
-            rotatedAt: DateTime.utc(2026, 4, 1, 14),
+            plaintextValue: 'sk-ant-thisIsTheNewPlaintext1234',
+            idempotencyKey: 'k-rotate-anthropic',
           ),
-        ],
-      );
-      final result = await gateway.rotateKey(
-        const RotateKeyCommand(
-          keyKind: ProviderKeyKind.anthropic,
-          plaintextValue: 'sk-ant-thisIsTheNewPlaintext1234',
-          idempotencyKey: 'k-rotate-anthropic',
-        ),
-      );
-      // The rotation response carries plaintext ONCE.
-      expect(result.plaintextValue, equals('sk-ant-thisIsTheNewPlaintext1234'));
-      expect(result.row.maskedValue, equals('sk-a***1234'));
-      expect(result.row.kmsSecretName, startsWith('kms://stub/'));
-      expect(result.row.updatedBy, equals('rotator-x'));
+        );
+        // The rotation response carries plaintext ONCE.
+        expect(
+          result.plaintextValue,
+          equals('sk-ant-thisIsTheNewPlaintext1234'),
+        );
+        expect(result.row.maskedValue, equals('sk-a***1234'));
+        expect(result.row.kmsSecretName, startsWith('kms://stub/'));
+        expect(result.row.updatedBy, equals('rotator-x'));
 
-      // Subsequent list calls return only the masked value.
-      final bundle = await gateway.list();
-      final anthropic = bundle.providerKeys
-          .firstWhere((r) => r.keyKind == ProviderKeyKind.anthropic);
-      expect(anthropic.maskedValue, equals('sk-a***1234'));
-      expect(anthropic.maskedValue, isNot(contains('thisIsTheNew')));
-    });
+        // Subsequent list calls return only the masked value.
+        final bundle = await gateway.list();
+        final anthropic = bundle.providerKeys.firstWhere(
+          (r) => r.keyKind == ProviderKeyKind.anthropic,
+        );
+        expect(anthropic.maskedValue, equals('sk-a***1234'));
+        expect(anthropic.maskedValue, isNot(contains('thisIsTheNew')));
+      },
+    );
 
-    test('rejects an empty plaintext_value at the gateway boundary',
-        () async {
+    test('rejects an empty plaintext_value at the gateway boundary', () async {
       final gateway = InMemoryIntegrationAdminGateway();
       Object? thrown;
       try {
@@ -145,73 +171,73 @@ void main() {
       expect(err.statusCode, equals(400));
     });
 
-    test('forced KMS failure surfaces a kms_write_failed gateway error',
-        () async {
-      final kms = KmsStubProvider(failNextWrite: true);
-      final gateway = InMemoryIntegrationAdminGateway(kmsProvider: kms);
-      Object? thrown;
-      try {
-        await gateway.rotateKey(
-          const RotateKeyCommand(
-            keyKind: ProviderKeyKind.azureDb,
-            plaintextValue: 'azure-superuser-Pa55word!',
-            idempotencyKey: 'k-rotate-kms-fail',
-          ),
-        );
-      } catch (error) {
-        thrown = error;
-      }
-      expect(thrown, isA<IntegrationAdminGatewayError>());
-      final err = thrown! as IntegrationAdminGatewayError;
-      expect(err.errorCode, equals('kms_write_failed'));
-      expect(err.statusCode, equals(503));
+    test(
+      'forced KMS failure surfaces a kms_write_failed gateway error',
+      () async {
+        final kms = KmsStubProvider(failNextWrite: true);
+        final gateway = InMemoryIntegrationAdminGateway(kmsProvider: kms);
+        Object? thrown;
+        try {
+          await gateway.rotateKey(
+            const RotateKeyCommand(
+              keyKind: ProviderKeyKind.azureDb,
+              plaintextValue: 'azure-superuser-Pa55word!',
+              idempotencyKey: 'k-rotate-kms-fail',
+            ),
+          );
+        } catch (error) {
+          thrown = error;
+        }
+        expect(thrown, isA<IntegrationAdminGatewayError>());
+        final err = thrown! as IntegrationAdminGatewayError;
+        expect(err.errorCode, equals('kms_write_failed'));
+        expect(err.statusCode, equals(503));
 
-      // Prior list stays intact (Azure DB seed is empty by default;
-      // the failed rotation must NOT have appended a row).
-      final bundle = await gateway.list();
-      expect(
-        bundle.providerKeys.where((r) => r.keyKind == ProviderKeyKind.azureDb),
-        isEmpty,
-      );
-    });
+        // Prior list stays intact (Azure DB seed is empty by default;
+        // the failed rotation must NOT have appended a row).
+        final bundle = await gateway.list();
+        expect(
+          bundle.providerKeys.where(
+            (r) => r.keyKind == ProviderKeyKind.azureDb,
+          ),
+          isEmpty,
+        );
+      },
+    );
   });
 
   // HARD-H — admin idempotency parcel. The InMemory gateway caches
   // per-key like the proxy does against `admin_request_idempotency`.
   group('InMemoryIntegrationAdminGateway — idempotency replay', () {
-    test(
-      'second rotateKey with same key returns cached row + plaintext '
-      'without performing a second KMS write',
-      () async {
-        final kms = KmsStubProvider();
-        final gateway = InMemoryIntegrationAdminGateway(kmsProvider: kms);
-        final command = const RotateKeyCommand(
+    test('second rotateKey with same key returns cached row + plaintext '
+        'without performing a second KMS write', () async {
+      final kms = KmsStubProvider();
+      final gateway = InMemoryIntegrationAdminGateway(kmsProvider: kms);
+      final command = const RotateKeyCommand(
+        keyKind: ProviderKeyKind.anthropic,
+        plaintextValue: 'sk-ant-original-key-PlaintextHere',
+        idempotencyKey: 'idem-rotate',
+      );
+      final first = await gateway.rotateKey(command);
+      // Replay with a DIFFERENT plaintext under the same key — the
+      // cached result wins (matches the proxy's
+      // `idempotency_payload_mismatch` envelope by ignoring the
+      // replay payload).
+      final second = await gateway.rotateKey(
+        const RotateKeyCommand(
           keyKind: ProviderKeyKind.anthropic,
-          plaintextValue: 'sk-ant-original-key-PlaintextHere',
+          plaintextValue: 'sk-ant-different-key-2nd-attempt',
           idempotencyKey: 'idem-rotate',
-        );
-        final first = await gateway.rotateKey(command);
-        // Replay with a DIFFERENT plaintext under the same key — the
-        // cached result wins (matches the proxy's
-        // `idempotency_payload_mismatch` envelope by ignoring the
-        // replay payload).
-        final second = await gateway.rotateKey(
-          const RotateKeyCommand(
-            keyKind: ProviderKeyKind.anthropic,
-            plaintextValue: 'sk-ant-different-key-2nd-attempt',
-            idempotencyKey: 'idem-rotate',
-          ),
-        );
-        expect(
-          second.row.credentialId,
-          equals(first.row.credentialId),
-          reason:
-              'Replay must hit the cached row, not allocate a fresh one',
-        );
-        expect(second.row.maskedValue, equals(first.row.maskedValue));
-        expect(second.plaintextValue, equals(first.plaintextValue));
-      },
-    );
+        ),
+      );
+      expect(
+        second.row.credentialId,
+        equals(first.row.credentialId),
+        reason: 'Replay must hit the cached row, not allocate a fresh one',
+      );
+      expect(second.row.maskedValue, equals(first.row.maskedValue));
+      expect(second.plaintextValue, equals(first.plaintextValue));
+    });
   });
 
   // HARD-H — Http variant attaches the Idempotency-Key header on
@@ -254,10 +280,7 @@ void main() {
         );
         final req = captured.single;
         expect(req.method, equals('POST'));
-        expect(
-          req.uri.path,
-          equals('/v1/admin/integrations/rotate-anthropic'),
-        );
+        expect(req.uri.path, equals('/v1/admin/integrations/rotate-anthropic'));
         expect(
           req.headers['idempotency-key'] ?? req.headers['Idempotency-Key'],
           equals('idem-http-rotate'),

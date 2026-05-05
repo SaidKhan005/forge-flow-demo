@@ -306,7 +306,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('suspended'), findsWidgets);
 
-    await tester.tap(find.byKey(const Key('admin_operator_reactivate_button')));
+    final reactivateButton = find.byKey(
+      const Key('admin_operator_reactivate_button'),
+    );
+    await tester.ensureVisible(reactivateButton);
+    await tester.pumpAndSettle();
+    await tester.tap(reactivateButton);
     await tester.pumpAndSettle();
     expect(find.text('suspended'), findsNothing);
   });
@@ -506,6 +511,47 @@ void main() {
     );
   });
 
+  testWidgets('editingEnabled false hides operator and location mutations', (
+    tester,
+  ) async {
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle()],
+    );
+    await tester.pumpWidget(
+      wrap(
+        OperatorLocationAdminScreen(gateway: gateway, editingEnabled: false),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('admin_operators_readonly_banner')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_operators_new_button')), findsNothing);
+    expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
+    expect(
+      find.byKey(const Key('admin_operator_suspend_button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_operator_add_location_button')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_location_edit_loc-seed-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_location_remove_loc-seed-1')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const Key('admin_location_vendor_connections_loc-seed-1')),
+      findsOneWidget,
+    );
+  });
+
   testWidgets('add and then remove a non-primary location', (tester) async {
     final bundle = seedBundle(
       operatorId: 'op-rem',
@@ -608,4 +654,43 @@ void main() {
       );
     },
   );
+
+  testWidgets('admin shell with ff_support renders operators read-only', (
+    tester,
+  ) async {
+    final source = DemoAdminAuthSource(
+      initial: const AdminAuthAuthenticated(
+        AdminAuthSession(
+          uid: 'demo-ff-support',
+          email: 'support@forgeflow.test',
+          displayName: 'Demo F&F Support',
+          roles: <String>['ff_support'],
+        ),
+      ),
+    );
+    addTearDown(source.dispose);
+    final gateway = InMemoryOperatorLocationAdminGateway(
+      seed: <OperatorAdminBundle>[seedBundle(operatorId: 'op-support-shell')],
+    );
+
+    await tester.pumpWidget(
+      AdminConsoleServicesScope(
+        operatorLocationGateway: gateway,
+        adminAuthSource: source,
+        child: AdminConsoleApp(authSource: source),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('admin_nav_item_operators')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('admin_operators_screen')), findsOneWidget);
+    expect(
+      find.byKey(const Key('admin_operators_readonly_banner')),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('admin_operators_new_button')), findsNothing);
+    expect(find.byKey(const Key('admin_operator_edit_button')), findsNothing);
+  });
 }

@@ -1,4 +1,4 @@
-﻿// Phase 11A.4 - Integration management admin gateway.
+// Phase 11A.4 - Integration management admin gateway.
 //
 // Translates the integrations screen's commands into proxy
 // `/v1/admin/integrations/*` HTTP calls. The Flutter admin client
@@ -319,21 +319,128 @@ class InMemoryIntegrationAdminGateway implements IntegrationAdminGateway {
     return result;
   }
 
-  static const List<VendorConnectorStatus> _defaultVendorConnectors =
-      <VendorConnectorStatus>[
-        VendorConnectorStatus(
-          id: 'connector_compeat',
-          displayName: 'Compeat connector',
-          statusLabel: 'placeholder',
-          detailMessage: 'Vendor connector lights up in Phase 8.',
-        ),
-        VendorConnectorStatus(
-          id: 'connector_mp',
-          displayName: 'Marketman connector',
-          statusLabel: 'placeholder',
-          detailMessage: 'Vendor connector lights up in Phase 8.',
-        ),
-      ];
+  static const List<VendorConnectorStatus>
+  _defaultVendorConnectors = <VendorConnectorStatus>[
+    VendorConnectorStatus(
+      id: 'aloha_ncr_voyix',
+      displayName: 'Aloha (NCR Voyix)',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: vendor covers field.',
+    ),
+    VendorConnectorStatus(
+      id: 'clover',
+      displayName: 'Clover',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: forecast fallback.',
+    ),
+    VendorConnectorStatus(
+      id: 'lightspeed_lsk',
+      displayName: 'Lightspeed Restaurant K-Series',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: vendor covers field.',
+    ),
+    VendorConnectorStatus(
+      id: 'oracle_micros_simphony',
+      displayName: 'Oracle MICROS Simphony',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: poll-only. Covers: vendor covers field.',
+    ),
+    VendorConnectorStatus(
+      id: 'revel',
+      displayName: 'Revel Systems',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: vendor covers field.',
+    ),
+    VendorConnectorStatus(
+      id: 'square',
+      displayName: 'Square',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: forecast fallback.',
+    ),
+    VendorConnectorStatus(
+      id: 'toast',
+      displayName: 'Toast',
+      statusLabel: 'Documented',
+      detailMessage:
+          'POS adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Covers: vendor covers field.',
+    ),
+    VendorConnectorStatus(
+      id: 'libro',
+      displayName: 'Libro Reserve',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Reservations adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register.',
+    ),
+    VendorConnectorStatus(
+      id: 'opentable',
+      displayName: 'OpenTable',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Reservations adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register.',
+    ),
+    VendorConnectorStatus(
+      id: 'sevenrooms',
+      displayName: 'SevenRooms',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Reservations adapter implemented. Setup state: production credentials pending. Cadence: manual webhook paste.',
+    ),
+    VendorConnectorStatus(
+      id: 'tock',
+      displayName: 'Tock',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Reservations adapter implemented. Setup state: production credentials pending. Cadence: manual webhook paste.',
+    ),
+    VendorConnectorStatus(
+      id: 'adp',
+      displayName: 'ADP Workforce Now / Workforce Manager',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register. Product pick required.',
+    ),
+    VendorConnectorStatus(
+      id: 'agendrix',
+      displayName: 'Agendrix',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: poll-only.',
+    ),
+    VendorConnectorStatus(
+      id: 'humanity',
+      displayName: 'Humanity',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: poll-only.',
+    ),
+    VendorConnectorStatus(
+      id: 'push_operations',
+      displayName: 'Push Operations',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: poll-only.',
+    ),
+    VendorConnectorStatus(
+      id: 'quickbooks_time',
+      displayName: 'QuickBooks Time',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: poll-only. Product pick required.',
+    ),
+    VendorConnectorStatus(
+      id: 'seven_shifts',
+      displayName: '7shifts',
+      statusLabel: 'Documented',
+      detailMessage:
+          'Scheduling and labor adapter implemented. Setup state: production credentials pending. Cadence: webhook auto-register.',
+    ),
+  ];
 
   static const VendorConnectorStatus _defaultFxRateSource =
       VendorConnectorStatus(

@@ -58,7 +58,7 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 | Phase | Status | Plan |
 | --- | --- | --- |
 | `9` framework + `9.0Σ.b-l` + `9.UX.*` | accepted; phase 9 stays open until `9.8` lands | `phase_9/*` |
-| `7.58` | `.0`/`.5`/`.UX.5` accepted; `.1`/`.2`/`.3`/`.4` queued | `phase_7_58/*` |
+| `7.58` | `.0`/`.5`/`.1`/`.2`/`.3`/`.4`/`.UX.1`/`.UX.5` accepted 2026-05-05; depth wave `.UX.6`/`.UX.7+9`/`.UX.8`/`.cross-axis.0` + sibling `10.5.6` queued | `phase_7_58/phase_7_58_depth_wave_plan.md` |
 | `7.61` (closed) | all 4 non-deferred slices accepted | `docs/archive/phases/phase_7_61/` |
 | `10.5` (closed) | all 4 slices accepted | `docs/archive/phases/phase_10_5/` |
 | `10a` | `.0`/`.1`/`.2` + `UX.0`/`UX.1` accepted; `.3`/`.4`/`.5` queued | `phase_10a/*` |
@@ -88,15 +88,15 @@ Accepted phases retire to `docs/archive/trackers/PROJECT_TRACKER_ARCHIVE.md`.
 
 Codex on master; Claude in `.claude/worktrees/<lane>`. Multiple phases may run in parallel. Rules: `docs/CODEX_PROMPT_GENERATION_STANDARD.md` "Parallel Worktrees".
 
-**Current sprint — `8.spine-bridge` ACCEPTED 2026-05-05.** All 11 sub-lanes (`.0`, `.0a`, `.1.OR`, `.1.QBT`, `.1.LB`, `.2`, `.3`, `.A`, `.B`, `.C`, `.7S.upgrade`) landed on master. The `.4` proof gate (`8.integration-mobile-proof.v2`) PASSED 27/27 on 2026-05-05; evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`. Phase 8 / 8R / 8.S close as engineering-complete on master. Next lane up: `8.spine-bridge-sink-fanout` (14 file-disjoint Postgres-backed sink lanes for the remaining Wave B vendors).
+**Current sprint — Phase 7.58 depth wave (queued 2026-05-05).** Five renderer + analyzer slices that surface Bold by Design + Jim Taylor depth inside existing chrome. **Core app logic is preserved** — `LaborModel.determineLever`, `LaborModel.attributeDollarImpactByAxis`, `ShiftFactBuilder`, persistence, sync, Concern A all unchanged. Slices: `7.58.UX.6` (DOLLAR IMPACT relabel) · `7.58.UX.8` (OPZ-aware row adornment) · `7.58.cross-axis.0` (engine analyzer + sibling catalog) · `10.5.6` (Shift Dashboard OPZ matrix grid + cross-axis sub-label) run in parallel; `7.58.UX.7+9` (Learn coverage caption + carousel swap) ships sequentially after `.cross-axis.0` lands. Plan: `docs/phases/phase_7_58/phase_7_58_depth_wave_plan.md`. Contract: `docs/contracts/phase_7_58_primary_driver_contract.md` "Depth Surfaces" section.
 
-Detail: `docs/phases/phase_8/phase_8_spine_bridge_plan.md` (sub-lane file ownership, scope, falsehood corrections, out-of-scope items). Authority: `docs/contracts/integration_spine_architecture_contract.md` + `docs/contracts/core_app_architecture.md` + `docs/contracts/data_accuracy_settings_contract.md` + `docs/contracts/metric_card_honesty_contract.md`.
+Prior sprint — `8.spine-bridge` ACCEPTED 2026-05-05. All 11 sub-lanes landed; `.4` proof gate PASSED 27/27. Phase 8 / 8R / 8.S engineering-complete on master. Evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`. `8.spine-bridge-sink-fanout` paused 2026-05-05 per operator decision; resume via explicit prompt.
 
 **Wave D — rolling `*.live.*` slices** fire individually as credentials arrive (`<vendor_id>.live.sandbox` → `sandbox_verified`; `<vendor_id>.live.prod` → `production_credentialed`). Tracker: `phase_8_live_rollout/phase_8_live_rollout_plan.md`.
 
 **Operator parallel critical path (no engineering)**: sandbox provisioning across 17 vendors; DNS+TLS for `app.forgeflow.app` + `mail.forgeflow.app`; SendGrid + DKIM/SPF/DMARC; partnership applications; legal review of inbound T&Cs; Production1 unfreeze decision. None blocks Wave B engineering.
 
-**Queued (in-scope, sequencing intent)**: `8.spine-bridge-sink-fanout` (cleared 2026-05-05); `8.live.connected-device-smoke` (cleared 2026-05-05); `10a.3`/`.4`/`.5`; `7.58.1`/`.2`/`.3`/`.4`; Phase 11W Waves B/C (deferred); Phase 11A `10`; `9.8` inbound T&Cs (legal-gated); `cutover.0b`–`5`.
+**Queued (in-scope, sequencing intent)**: Phase 7.58 depth wave (active sprint above); `8.live.connected-device-smoke` (cleared 2026-05-05; trio credentials gating); `cutover.0b`–`5`; Phase 11W Waves B/C (deferred); Phase 11A `10`; `9.8` inbound T&Cs (legal-gated); `8.spine-bridge-sink-fanout` (paused 2026-05-05).
 
 **Skip until unfreeze**: see Now block paused lists.
 
@@ -112,16 +112,11 @@ Detail: `docs/phases/phase_8/phase_8_spine_bridge_plan.md` (sub-lane file owners
 
 ## Notes
 
-2026-05-04 / 2026-05-05 spine-bridge addendum:
+2026-05-05 closeout:
 
-- Primary research + Oracle payment-orchestrator evidence: `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`.
-- Wave B (20 lanes) proves documented adapter implementation only; not the full mobile spine.
-- `8.integration-mobile-proof` FAILED 2026-05-04 against master @ `07184d2`. Evidence: `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md`.
-- Mobile architecture: server pre-aggregates per-vendor canonical-fact dicts → `ShiftRecord` on operator-scoped Postgres; mobile SQLite is the read store; new sync service pulls aggregated rows. Binding contract: `docs/contracts/integration_spine_architecture_contract.md`.
-- 2026-05-05 vendor research caught 13 falsehoods across the spine-bridge contracts. Highest-impact fixes: Oracle Simphony field path corrected (`items[].header.guestCount`); Square + Clover stay `coversFieldExposed: false` (UI tracks; API does not); ADP webhook (autoRegister, not pollOnly); QBT/ADP/Push wage classes corrected; Tock seated_at refuted; F&F-controlled polling tier model adopted (operator picker → admin tier assignment). All corrections in `integration_spine_architecture_contract.md` "2026-05-05 falsehood corrections" section.
-- **2026-05-05 PASS verdict.** `8.integration-mobile-proof.v2` re-run against master with all 11 spine-bridge sub-lanes landed: 27/27 acceptance items resolve to ✅; 686/686 tests PASS across spine-bridge unit suites + Wave B regression + dashboard regression + new E2E smoke harness (`test/_execution/spine_bridge_v2_smoke_test.dart`); architectural compliance audit (Layers 4/6/9/11/12 + provenance naming) clean. Evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`. Phase 8 / 8R / 8.S engineering-complete acceptance reached.
-- Sink fanout follow-up wave (`8.spine-bridge-sink-fanout`) cleared to land 14 remaining vendor sinks.
-- Required live prompt after full setup: `8.live.connected-device-smoke` (one POS + reservation + labor trio); cleared 2026-05-05 by `mobile-proof.v2` PASS.
-- `mobile-proof` and `connected-device-smoke` are proof-only (no app logic); `spine-bridge` is APP LOGIC.
+- **Phase 8 / 8R / 8.S engineering-complete** via `8.integration-mobile-proof.v2` PASS. Evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md` (27/27; 686/686 tests). Sink-fanout paused; live trio smoke cleared but operator-credential-gated.
+- **Phase 7.58 advisor depth wave queued** post 8-slice merge (PRs #125–#136). Origin audit: `docs/_execution/2026-05-05_outcome_engineering_depth_audit.md`. Wave honors core-logic-preserved posture: renderer-side + analyzer-additive only; engine math, persistence, sync, Concern A all unchanged.
+- 2026-05-05 vendor-research falsehoods captured in `integration_spine_architecture_contract.md` "2026-05-05 falsehood corrections" section.
+- Mobile architecture (canonical-fact dicts → operator-scoped Postgres `shift_records` → mobile SQLite via proxy sync) bound by `integration_spine_architecture_contract.md`.
 - `$HOME/.forge_flow/secrets/runtime/forge_flow.secrets.ps1` is the canonical private env loader (outside repo).
 - If a prompt requires a key, account, cloud project, billing setup, or infrastructure choice, surface it in Block 1.

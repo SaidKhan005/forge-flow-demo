@@ -35,12 +35,14 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     this.onOpenSupportLogs,
     this.onOpenDataAccuracy,
     this.onOpenPollingPricing,
+    this.editingEnabled = true,
   });
 
   final OperatorLocationAdminGateway gateway;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final bool editingEnabled;
 
   /// Factory for the idempotency key the gateway attaches to each
   /// mutating call. Production binds this to a UUID-shaped generator;
@@ -162,15 +164,19 @@ class _OperatorLocationAdminScreenState
               title: 'Operators',
               subtitle:
                   'Add operators, manage their locations, and pause access when needed.',
-              trailing: FilledButton.icon(
-                key: const Key('admin_operators_new_button'),
-                onPressed: _openOnboardingDialog,
-                style: AdminButtonStyles.primary,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('New operator'),
-              ),
+              trailing: widget.editingEnabled
+                  ? FilledButton.icon(
+                      key: const Key('admin_operators_new_button'),
+                      onPressed: _openOnboardingDialog,
+                      style: AdminButtonStyles.primary,
+                      icon: const Icon(Icons.add, size: 16),
+                      label: const Text('New operator'),
+                    )
+                  : null,
             ),
             const SizedBox(height: 14),
+            if (!widget.editingEnabled) const _ReadOnlyBanner(),
+            if (!widget.editingEnabled) const SizedBox(height: 12),
             if (_actionError != null)
               _ErrorBanner(
                 key: const Key('admin_operators_action_error'),
@@ -251,11 +257,13 @@ class _OperatorLocationAdminScreenState
               onOpenSupportLogs: widget.onOpenSupportLogs,
               onOpenDataAccuracy: widget.onOpenDataAccuracy,
               onOpenPollingPricing: widget.onOpenPollingPricing,
+              editingEnabled: widget.editingEnabled,
             ),
     );
   }
 
   Future<void> _openOnboardingDialog() async {
+    if (!widget.editingEnabled) return;
     final command = await showDialog<OperatorOnboardCommand>(
       context: context,
       builder: (_) =>
@@ -268,6 +276,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _openEditOperatorDialog(OperatorAdminBundle bundle) async {
+    if (!widget.editingEnabled) return;
     final patch = await showDialog<OperatorPatchCommand>(
       context: context,
       builder: (_) => _EditOperatorDialog(
@@ -282,6 +291,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _suspend(OperatorAdminBundle bundle) async {
+    if (!widget.editingEnabled) return;
     final key = _nextIdempotencyKey();
     await _runAndRefresh(() async {
       await widget.gateway.suspendOperator(
@@ -292,6 +302,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _reactivate(OperatorAdminBundle bundle) async {
+    if (!widget.editingEnabled) return;
     final key = _nextIdempotencyKey();
     await _runAndRefresh(() async {
       await widget.gateway.reactivateOperator(
@@ -302,6 +313,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _openAddLocationDialog(OperatorAdminBundle bundle) async {
+    if (!widget.editingEnabled) return;
     final command = await showDialog<LocationCreateCommand>(
       context: context,
       builder: (_) => _LocationDialog(
@@ -316,6 +328,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _openEditLocationDialog(LocationAdminRecord location) async {
+    if (!widget.editingEnabled) return;
     final command = await showDialog<LocationPatchCommand>(
       context: context,
       builder: (_) => _LocationDialog(
@@ -331,6 +344,7 @@ class _OperatorLocationAdminScreenState
   }
 
   Future<void> _removeLocation(LocationAdminRecord location) async {
+    if (!widget.editingEnabled) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => _ConfirmDialog(
@@ -356,6 +370,7 @@ class _OperatorLocationAdminScreenState
     OperatorAdminBundle bundle,
     LocationAdminRecord location,
   ) async {
+    if (!widget.editingEnabled) return;
     final key = _nextIdempotencyKey();
     await _runAndRefresh(() async {
       await widget.gateway.patchOperator(
@@ -639,6 +654,7 @@ class _OperatorDetail extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.editingEnabled,
   });
 
   final OperatorAdminBundle bundle;
@@ -652,6 +668,7 @@ class _OperatorDetail extends StatelessWidget {
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
   final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
+  final bool editingEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -708,12 +725,13 @@ class _OperatorDetail extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    OutlinedButton.icon(
-                      key: const Key('admin_operator_edit_button'),
-                      onPressed: () => onEditOperator(bundle),
-                      icon: const Icon(Icons.edit_outlined, size: 14),
-                      label: const Text('Edit operator'),
-                    ),
+                    if (editingEnabled)
+                      OutlinedButton.icon(
+                        key: const Key('admin_operator_edit_button'),
+                        onPressed: () => onEditOperator(bundle),
+                        icon: const Icon(Icons.edit_outlined, size: 14),
+                        label: const Text('Edit operator'),
+                      ),
                     OutlinedButton.icon(
                       key: Key(
                         'admin_operator_support_logs_${operator.operatorId}',
@@ -754,14 +772,14 @@ class _OperatorDetail extends StatelessWidget {
                       icon: const Icon(Icons.payments_outlined, size: 14),
                       label: const Text('Polling & pricing'),
                     ),
-                    if (operator.isSuspended)
+                    if (editingEnabled && operator.isSuspended)
                       OutlinedButton.icon(
                         key: const Key('admin_operator_reactivate_button'),
                         onPressed: () => onReactivate(bundle),
                         icon: const Icon(Icons.play_arrow_outlined, size: 14),
                         label: const Text('Reactivate'),
-                      )
-                    else
+                      ),
+                    if (editingEnabled && !operator.isSuspended)
                       OutlinedButton.icon(
                         key: const Key('admin_operator_suspend_button'),
                         onPressed: () => onSuspend(bundle),
@@ -794,12 +812,13 @@ class _OperatorDetail extends StatelessWidget {
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      OutlinedButton.icon(
-                        key: const Key('admin_operator_add_location_button'),
-                        onPressed: () => onAddLocation(bundle),
-                        icon: const Icon(Icons.add, size: 14),
-                        label: const Text('Add location'),
-                      ),
+                      if (editingEnabled)
+                        OutlinedButton.icon(
+                          key: const Key('admin_operator_add_location_button'),
+                          onPressed: () => onAddLocation(bundle),
+                          icon: const Icon(Icons.add, size: 14),
+                          label: const Text('Add location'),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 18),
@@ -840,6 +859,7 @@ class _OperatorDetail extends StatelessWidget {
                                 locationName: location.name,
                               ),
                             ),
+                      editingEnabled: editingEnabled,
                     ),
                   ),
                 ],
@@ -864,6 +884,7 @@ class _LocationRow extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.editingEnabled,
   });
 
   final LocationAdminRecord location;
@@ -875,6 +896,7 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final bool editingEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -913,6 +935,7 @@ class _LocationRow extends StatelessWidget {
       onOpenSupportLogs: onOpenSupportLogs,
       onOpenDataAccuracy: onOpenDataAccuracy,
       onOpenPollingPricing: onOpenPollingPricing,
+      editingEnabled: editingEnabled,
     );
 
     return Opacity(
@@ -953,6 +976,7 @@ class _LocationActionWrap extends StatelessWidget {
     required this.onOpenSupportLogs,
     required this.onOpenDataAccuracy,
     required this.onOpenPollingPricing,
+    required this.editingEnabled,
   });
 
   final LocationAdminRecord location;
@@ -963,6 +987,7 @@ class _LocationActionWrap extends StatelessWidget {
   final VoidCallback? onOpenSupportLogs;
   final VoidCallback? onOpenDataAccuracy;
   final VoidCallback? onOpenPollingPricing;
+  final bool editingEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -972,7 +997,7 @@ class _LocationActionWrap extends StatelessWidget {
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        if (!isPrimary)
+        if (editingEnabled && !isPrimary)
           _LocationActionButton(
             buttonKey: Key(
               'admin_location_make_primary_${location.locationId}',
@@ -1009,14 +1034,15 @@ class _LocationActionWrap extends StatelessWidget {
           minWidth: 148,
           onPressed: onOpenPollingPricing,
         ),
-        _LocationActionButton(
-          buttonKey: Key('admin_location_edit_${location.locationId}'),
-          label: 'Edit',
-          icon: Icons.edit_outlined,
-          tooltip: 'Edit location',
-          minWidth: 90,
-          onPressed: onEdit,
-        ),
+        if (editingEnabled)
+          _LocationActionButton(
+            buttonKey: Key('admin_location_edit_${location.locationId}'),
+            label: 'Edit',
+            icon: Icons.edit_outlined,
+            tooltip: 'Edit location',
+            minWidth: 90,
+            onPressed: onEdit,
+          ),
         Builder(
           builder: (subContext) => _LocationActionButton(
             buttonKey: Key(
@@ -1035,21 +1061,23 @@ class _LocationActionWrap extends StatelessWidget {
                     operatorId: location.operatorId,
                     locationId: location.locationId,
                     locationName: location.name,
+                    canMutate: editingEnabled,
                   ),
                 ),
               );
             },
           ),
         ),
-        _LocationActionButton(
-          buttonKey: Key('admin_location_remove_${location.locationId}'),
-          label: 'Remove',
-          icon: Icons.delete_outline,
-          tooltip: 'Remove location',
-          minWidth: 108,
-          destructive: true,
-          onPressed: isPrimary ? null : onRemove,
-        ),
+        if (editingEnabled)
+          _LocationActionButton(
+            buttonKey: Key('admin_location_remove_${location.locationId}'),
+            label: 'Remove',
+            icon: Icons.delete_outline,
+            tooltip: 'Remove location',
+            minWidth: 108,
+            destructive: true,
+            onPressed: isPrimary ? null : onRemove,
+          ),
       ],
     );
   }
@@ -1127,6 +1155,44 @@ class _StatusPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(label, style: AppTextStyles.chipLabel(color: color)),
+    );
+  }
+}
+
+class _ReadOnlyBanner extends StatelessWidget {
+  const _ReadOnlyBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('admin_operators_readonly_banner'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.peacock.withValues(alpha: 0.08),
+        border: Border.all(
+          color: AppColors.peacock.withValues(alpha: 0.34),
+          width: 1,
+        ),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.visibility_outlined,
+            size: 16,
+            color: AppColors.peacockDark,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Support access is read-only. Operator, location, and vendor connection changes are hidden for this role.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
