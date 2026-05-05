@@ -9,6 +9,18 @@
 // `documentedPerSevenShiftsV2FieldMapping` and asserted in the
 // fixtures.
 //
+// `8.spine-bridge.7S.upgrade` (2026-05-05): the adapter additively
+// composes the `/reports/hours_and_wages` report alongside the
+// `/time_punches` poll/backfill so 7shifts qualifies as
+// `LaborWageSourceClass.perEmployeeWithDollars` (the highest-fidelity
+// wage class — vendor exposes per-shift dollar totals via this
+// report). The endpoint is Gourmet-tier-gated; on 403/404 the adapter
+// logs and falls through to the existing `/time_punches`-only output
+// with provenance =
+// `vendor_seven_shifts_dollars_unavailable_target_wage_substituted`
+// so non-Gourmet operators still land canonical facts (sans dollars).
+// Existing punches-only behavior is preserved unchanged.
+//
 // Per the engineer-all-17 doctrine
 // (`memory/project_phase_8_engineer_all_17_doctrine.md`) this slice
 // ships at lifecycle = `documented`. Live HTTP wiring is the
@@ -73,6 +85,24 @@ const String kSevenShiftsGourmetPlanTier = 'gourmet';
 /// in plain English, no engineering jargon.
 const String kSevenShiftsNonGourmetNote =
     'Webhooks require Gourmet plan; falling back to polling-only.';
+
+/// Wage provenance string emitted on the canonical fact when the
+/// `/reports/hours_and_wages` endpoint returned per-shift dollar
+/// totals for the (employee_id, shift_id) lookup. Lane `.2`'s
+/// aggregator routes this provenance into the
+/// `vendor_seven_shifts_per_employee_actual_dollars` branch of the
+/// 4-way wage decision (Concern C).
+const String kSevenShiftsProvenancePerEmployeeActualDollars =
+    'vendor_seven_shifts_per_employee_actual_dollars';
+
+/// Wage provenance string emitted when the report endpoint returned
+/// `403 Payment Required` / `404 Not Found` (lower plan tier — the
+/// report is a Gourmet-tier feature) OR returned a row set that did
+/// not cover this (employee_id, shift_id) tuple. The aggregator
+/// substitutes target wage × hours per
+/// `integration_spine_architecture_contract.md` step 6, decision 4.
+const String kSevenShiftsProvenanceDollarsUnavailableTargetSubstituted =
+    'vendor_seven_shifts_dollars_unavailable_target_wage_substituted';
 
 // ─── Documented-per-7shifts field mapping (assumption snapshot) ──────
 
@@ -179,6 +209,57 @@ const Map<String, Object?> documentedPerSevenShiftsV2FieldMapping =
         'whether the operator is on Gourmet (webhook) or a lower tier '
         '(poll).',
   },
+  // Hours & Wages report (8.spine-bridge.7S.upgrade) ─────────────
+  // Per-shift dollar totals exposed via `/reports/hours_and_wages`.
+  // Gourmet-tier-gated; on 403/404 the adapter falls back to
+  // `/time_punches`-only emission with `target_wage_substituted`
+  // provenance (see [_resolveWageProvenance]).
+  'shift_id': <String, Object?>{
+    'path': 'time_punch.shift_id',
+    'type': 'int',
+    'transform': 'to_string',
+    'doc_url': 'https://developers.7shifts.com/reference/listtimepunches',
+    'verify_in_live_sandbox': true,
+    'note': '7shifts time-punch rows reference the planned shift via '
+        'shift_id; the adapter persists it stringified so the wage '
+        'merge by (employee_id, shift_id) lines up against the '
+        '/reports/hours_and_wages output.',
+  },
+  'actual_labor_dollars': <String, Object?>{
+    'path': 'reports.hours_and_wages.total_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+    'note': 'Per-shift gross wage from the Hours & Wages report; '
+        'merged onto the canonical fact via (employee_id, shift_id). '
+        'Powers the `perEmployeeWithDollars` wage class.',
+  },
+  'regular_pay': <String, Object?>{
+    'path': 'reports.hours_and_wages.regular_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+    'note': 'Regular-time wage component (excludes overtime). '
+        'Persisted alongside total_pay so the wage editor (post-V1) '
+        'can show the operator the breakdown.',
+  },
+  'overtime_pay': <String, Object?>{
+    'path': 'reports.hours_and_wages.overtime_pay',
+    'type': 'decimal',
+    'transform': 'direct',
+    'doc_url':
+        'https://developers.7shifts.com/reference/get_reports-hours-and-wages',
+    'verify_in_live_sandbox': true,
+    'note': 'Overtime wage component. total_pay = regular_pay + '
+        'overtime_pay (modulo any vendor-side rounding the live '
+        'sandbox slice diffs against).',
+  },
+  'hours_and_wages_report_endpoint':
+      '/v2/company/{company_id}/reports/hours_and_wages',
   // Forbidden — read these but do NOT persist ─────────────────────
   'forbidden_employee_email_path': 'user.email',
   'forbidden_employee_phone_path': 'user.phone',
@@ -281,6 +362,72 @@ class SevenShiftsCompanyInfo {
   bool get supportsWebhooks => planTier == kSevenShiftsGourmetPlanTier;
 }
 
+/// One row of the `/reports/hours_and_wages` report. Keyed by
+/// `(employeeId, shiftId)`; merged onto the canonical time-punch fact
+/// in [SevenShiftsLaborAdapter._enrichWithWageReport].
+class SevenShiftsHoursAndWagesRow {
+  const SevenShiftsHoursAndWagesRow({
+    required this.employeeId,
+    required this.shiftId,
+    required this.totalPay,
+    this.regularPay,
+    this.overtimePay,
+  });
+
+  /// 7shifts `user_id` stringified — matches the canonical fact's
+  /// `employeeId`.
+  final String employeeId;
+
+  /// 7shifts `shift_id` stringified — matches the canonical fact's
+  /// `shiftId`.
+  final String shiftId;
+
+  /// Per-shift gross wage (regular_pay + overtime_pay before vendor
+  /// rounding). Ingested as USD with adapter-side decimal precision
+  /// preserved as `num`.
+  final num totalPay;
+
+  /// Regular-time component. Null when the report does not split.
+  final num? regularPay;
+
+  /// Overtime component. Null when the report does not split.
+  final num? overtimePay;
+}
+
+/// One page of `/reports/hours_and_wages` rows returned by the
+/// transport. Mirrors [SevenShiftsTimePunchPage] cursor-pagination.
+class SevenShiftsHoursAndWagesPage {
+  const SevenShiftsHoursAndWagesPage({
+    required this.rows,
+    required this.nextCursor,
+  });
+
+  final List<SevenShiftsHoursAndWagesRow> rows;
+  final String? nextCursor;
+}
+
+/// Sentinel exception thrown by the transport's
+/// `fetchHoursAndWagesReport` when the operator's 7shifts plan tier
+/// does not unlock the report endpoint. Caught by the adapter to
+/// trigger the `target_wage_substituted` provenance fallback + a
+/// single `connector_sync_log` row keyed
+/// [kSevenShiftsHoursAndWagesReportGatedSyncLogKind].
+class SevenShiftsHoursAndWagesReportGatedException implements Exception {
+  const SevenShiftsHoursAndWagesReportGatedException({
+    required this.statusCode,
+    this.message,
+  });
+
+  /// HTTP status code observed (403 or 404).
+  final int statusCode;
+  final String? message;
+
+  @override
+  String toString() =>
+      'SevenShiftsHoursAndWagesReportGatedException(statusCode=$statusCode, '
+      'message=$message)';
+}
+
 /// One page of time-punch history returned by the 7shifts list
 /// endpoint. The adapter walks pages during backfill + poll.
 class SevenShiftsTimePunchPage {
@@ -348,6 +495,24 @@ abstract class SevenShiftsTransport {
   Future<DateTime?> fetchLatestPayrollPeriodClosedAt({
     required String accessToken,
     required String companyId,
+  });
+
+  /// `GET /v2/company/{company_id}/reports/hours_and_wages` (Gourmet
+  /// tier only) — paginated; the adapter walks pages and merges the
+  /// per-shift dollar totals onto the canonical time-punch fact via
+  /// (employee_id, shift_id). Implementations MUST throw
+  /// [SevenShiftsHoursAndWagesReportGatedException] on HTTP 403/404
+  /// (lower plan tier) so the adapter can switch to the
+  /// `target_wage_substituted` provenance fallback. Other transport
+  /// errors (network, 5xx, parse) propagate; the framework's existing
+  /// retry/backoff handles them.
+  Future<SevenShiftsHoursAndWagesPage> fetchHoursAndWagesReport({
+    required String accessToken,
+    required String companyId,
+    required DateTime modifiedSince,
+    required DateTime modifiedUntil,
+    required bool isDeliberateBackfill,
+    String? cursor,
   });
 
   /// `POST /v2/company/{company_id}/webhooks` (Gourmet plan only).
@@ -451,6 +616,11 @@ class SevenShiftsCanonicalTimePunchFact {
     required this.shiftEnd,
     required this.isApproved,
     required this.rawPayload,
+    required this.wageProvenance,
+    this.shiftId,
+    this.actualLaborDollars,
+    this.regularPay,
+    this.overtimePay,
   });
 
   final String operatorId;
@@ -471,6 +641,54 @@ class SevenShiftsCanonicalTimePunchFact {
   final bool isApproved;
 
   final Map<String, Object?> rawPayload;
+
+  /// 7shifts `time_punch.shift_id` stringified. Null when the punch
+  /// is unscheduled (operator clocked in without a planned shift) —
+  /// in that case the wage merge cannot resolve and provenance falls
+  /// through to the substituted-wage branch.
+  final String? shiftId;
+
+  /// Per-shift gross wage from the `/reports/hours_and_wages`
+  /// endpoint. Null when the report did not cover this
+  /// (employee_id, shift_id) tuple OR the endpoint was tier-gated;
+  /// in either case [wageProvenance] is the substituted-wage value.
+  final num? actualLaborDollars;
+
+  /// Regular-time component of [actualLaborDollars]. Null when the
+  /// vendor report did not split.
+  final num? regularPay;
+
+  /// Overtime component of [actualLaborDollars]. Null when the
+  /// vendor report did not split.
+  final num? overtimePay;
+
+  /// Wage provenance string. One of
+  /// [kSevenShiftsProvenancePerEmployeeActualDollars] /
+  /// [kSevenShiftsProvenanceDollarsUnavailableTargetSubstituted].
+  /// Lane `.2`'s aggregator routes on this value when computing the
+  /// 4-way wage decision.
+  final String wageProvenance;
+
+  /// Canonical-fact dict shape consumed by the Lane `.2` aggregator
+  /// + the (forthcoming) Postgres labor-punches sink. Keys mirror the
+  /// `documentedPerSevenShiftsV2FieldMapping` constant. Null-valued
+  /// keys are emitted explicitly so downstream consumers can branch
+  /// on presence vs. value.
+  Map<String, Object?> toCanonicalDict() => <String, Object?>{
+        'vendor_entity_id': vendorEntityId,
+        'vendor_modified_at': vendorModifiedAt.toIso8601String(),
+        'employee_id': employeeId,
+        'role_name': roleName,
+        'shift_start': shiftStart.toIso8601String(),
+        'shift_end': shiftEnd?.toIso8601String(),
+        'is_approved': isApproved,
+        'shift_id': shiftId,
+        'actual_labor_dollars': actualLaborDollars,
+        'regular_pay': regularPay,
+        'overtime_pay': overtimePay,
+        'wage_provenance': wageProvenance,
+        'raw_payload': rawPayload,
+      };
 }
 
 /// Canonical fact row for the latest closed payroll period. Sourced
@@ -557,6 +775,22 @@ abstract class SevenShiftsGateway {
   Future<String?> readCompanyId({
     required String operatorId,
     required String locationId,
+  });
+
+  /// Append one `connector_sync_log` row signalling that the
+  /// `/reports/hours_and_wages` endpoint returned HTTP 403 / 404 for
+  /// this connection — the operator's 7shifts plan tier does not
+  /// unlock per-shift dollar totals. Called once per polling tick or
+  /// backfill where the gating fires; the production gateway maps
+  /// `eventKind` to the `connector_sync_log.event_kind` column. The
+  /// log row is the operator-facing signal Lane `.B`'s Data Accuracy
+  /// tab surfaces ("Wage data unavailable on your current 7shifts
+  /// plan tier") and the substituted-wage provenance the aggregator
+  /// already routes on.
+  Future<void> recordHoursAndWagesReportGated({
+    required String operatorId,
+    required String locationId,
+    required int statusCode,
   });
 }
 
@@ -759,6 +993,20 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
     String? cursor = command.resumeFromCursor;
     var lastModifiedSeen = command.windowStart;
 
+    // Pull the Hours & Wages report ONCE for the backfill window
+    // before walking pages. Lookup is consulted per canonical fact;
+    // null lookup signals tier-gated → substituted-wage provenance.
+    final wageLookup = await _fetchHoursAndWagesLookup(
+          operatorId: command.operatorId,
+          locationId: command.locationId,
+          accessToken: accessToken,
+          companyId: companyId,
+          modifiedSince: command.windowStart,
+          modifiedUntil: command.windowEnd,
+          isDeliberateBackfill: true,
+        ) ??
+        const <String, SevenShiftsHoursAndWagesRow>{};
+
     while (true) {
       final page = await _transport.listTimePunches(
         accessToken: accessToken,
@@ -773,6 +1021,7 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
           operatorId: command.operatorId,
           locationId: command.locationId,
           payload: <String, Object?>{'time_punch': record},
+          wageLookup: wageLookup,
         );
         if (mapped == null) {
           continue;
@@ -856,6 +1105,19 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
     var lastModifiedSeen = command.lastModifiedSeen;
     final tickEnd = _now().toUtc();
 
+    // Pull the Hours & Wages report ONCE per polling tick before
+    // walking pages. Mirrors backfill — see [backfill] comment.
+    final wageLookup = await _fetchHoursAndWagesLookup(
+          operatorId: command.operatorId,
+          locationId: command.locationId,
+          accessToken: accessToken,
+          companyId: companyId,
+          modifiedSince: command.lastModifiedSeen,
+          modifiedUntil: tickEnd,
+          isDeliberateBackfill: false,
+        ) ??
+        const <String, SevenShiftsHoursAndWagesRow>{};
+
     while (true) {
       final page = await _transport.listTimePunches(
         accessToken: accessToken,
@@ -870,6 +1132,7 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
           operatorId: command.operatorId,
           locationId: command.locationId,
           payload: <String, Object?>{'time_punch': record},
+          wageLookup: wageLookup,
         );
         if (mapped == null) {
           continue;
@@ -1066,10 +1329,18 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
   /// Map one 7shifts time-punch envelope to a canonical fact. Returns
   /// null when the payload is missing required fields — the caller
   /// drops it at the adapter boundary.
+  ///
+  /// [wageLookup] is the map produced by [_fetchHoursAndWagesLookup]
+  /// keyed by `(employee_id, shift_id)`. Pass an empty map (the
+  /// default) when the wage report is unavailable (tier-gated, webhook
+  /// path, testConnection probe) — the canonical fact's
+  /// [wageProvenance] then resolves to the substituted-wage branch.
   SevenShiftsCanonicalTimePunchFact? _canonicalizePunch({
     required String operatorId,
     required String locationId,
     required Map<String, Object?> payload,
+    Map<String, SevenShiftsHoursAndWagesRow> wageLookup =
+        const <String, SevenShiftsHoursAndWagesRow>{},
   }) {
     final punchRaw = payload['time_punch'];
     if (punchRaw is! Map) return null;
@@ -1113,6 +1384,13 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
     final approvedRaw = punch['approved'];
     final isApproved = approvedRaw is bool ? approvedRaw : false;
 
+    final shiftIdRaw = punch['shift_id'];
+    final String? shiftId = shiftIdRaw?.toString();
+
+    final wageRow = (shiftId == null || shiftId.isEmpty)
+        ? null
+        : wageLookup[_wageLookupKey(employeeId, shiftId)];
+
     return SevenShiftsCanonicalTimePunchFact(
       operatorId: operatorId,
       locationId: locationId,
@@ -1124,7 +1402,73 @@ class SevenShiftsLaborAdapter implements LaborAdapter {
       shiftEnd: shiftEnd,
       isApproved: isApproved,
       rawPayload: punch,
+      shiftId: (shiftId == null || shiftId.isEmpty) ? null : shiftId,
+      actualLaborDollars: wageRow?.totalPay,
+      regularPay: wageRow?.regularPay,
+      overtimePay: wageRow?.overtimePay,
+      wageProvenance: wageRow == null
+          ? kSevenShiftsProvenanceDollarsUnavailableTargetSubstituted
+          : kSevenShiftsProvenancePerEmployeeActualDollars,
     );
+  }
+
+  /// Compose the (employee_id, shift_id) key the wage lookup map
+  /// uses. Single source of truth so the merge stays in sync between
+  /// build + read sites.
+  static String _wageLookupKey(String employeeId, String shiftId) =>
+      '$employeeId::$shiftId';
+
+  /// Walk every page of the `/reports/hours_and_wages` endpoint and
+  /// build a `(employee_id, shift_id) → wage row` lookup map. Returns
+  /// null when the endpoint is tier-gated (HTTP 403/404) so callers
+  /// can switch to the substituted-wage provenance branch. On gating
+  /// the adapter ALSO appends a `connector_sync_log` row via
+  /// [SevenShiftsGateway.recordHoursAndWagesReportGated] so Lane
+  /// `.B`'s Data Accuracy tab can surface the degradation note (per
+  /// `metric_card_honesty_contract.md` — provenance + an explicit
+  /// log row are the operator-facing signals).
+  Future<Map<String, SevenShiftsHoursAndWagesRow>?>
+      _fetchHoursAndWagesLookup({
+    required String operatorId,
+    required String locationId,
+    required String accessToken,
+    required String companyId,
+    required DateTime modifiedSince,
+    required DateTime modifiedUntil,
+    required bool isDeliberateBackfill,
+  }) async {
+    final lookup = <String, SevenShiftsHoursAndWagesRow>{};
+    String? cursor;
+    try {
+      while (true) {
+        final page = await _transport.fetchHoursAndWagesReport(
+          accessToken: accessToken,
+          companyId: companyId,
+          modifiedSince: modifiedSince,
+          modifiedUntil: modifiedUntil,
+          isDeliberateBackfill: isDeliberateBackfill,
+          cursor: cursor,
+        );
+        for (final row in page.rows) {
+          lookup[_wageLookupKey(row.employeeId, row.shiftId)] = row;
+        }
+        cursor = page.nextCursor;
+        if (cursor == null || cursor.isEmpty) break;
+      }
+      return lookup;
+    } on SevenShiftsHoursAndWagesReportGatedException catch (e) {
+      // Lower plan tier — fall back to /time_punches-only emission
+      // and append the gated event to connector_sync_log so the
+      // Data Accuracy tab can surface the degradation note. The
+      // canonical fact's substituted-wage provenance is the
+      // downstream aggregator signal (no second log path needed).
+      await _gateway.recordHoursAndWagesReportGated(
+        operatorId: operatorId,
+        locationId: locationId,
+        statusCode: e.statusCode,
+      );
+      return null;
+    }
   }
 
   /// Pull the closed instant out of an inbound `payroll_period.closed`

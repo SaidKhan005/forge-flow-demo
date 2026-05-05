@@ -114,55 +114,49 @@ price - vendor cost).
 This rule is binding. Any future surface that gives operators a
 direct cadence picker violates this contract.
 
-### Two cost buckets
+### Cost basis is F&F-internal (REVERSED 2026-05-05)
 
-When the operator picks a cadence, the cost projection card shows the
-$/month projection for that cadence in one of two buckets:
+**Old framing (DEAD).** Earlier drafts described an operator-facing
+"two cost buckets" projection (per-call vs subscription-included),
+backed by a per-cadence $/month formula and a `polling_cost_acknowledged_at`
+acknowledgement timestamp on `data_accuracy_settings`. **All of that
+is REPLACED.**
 
-| Bucket | Vendors | Cost projection shape |
-|---|---|---|
-| Per-call charge | Oracle MICROS Simphony | Real $/month: `polls_per_month × cost_per_poll_request`. Cited from `api_consumed.md` pricing. (ADP previously listed here was wrong — ADP is webhook-driven autoRegister; not subject to polling cadence.) |
-| Subscription-bucket | QuickBooks Time, Humanity, Agendrix, Push Operations | "$0/month additional — polling is included in your <vendor> subscription." Cited from the vendor's subscription pricing in `api_consumed.md`. |
-| Pricing pending verification | All 5 poll-only vendors | The exact per-vendor pricing classification is subject to a queued vendor-research pass (see `session_handoff.md` 2026-05-04 entry). The Data Accuracy tab MUST render "Pricing pending — confirm with your account rep" instead of an estimated dollar amount until each vendor's `api_consumed.md` "Pricing" section is populated by the research pass. |
+**New binding rule.** F&F absorbs vendor API costs into its own tier
+pricing. Cost projection per cadence is an F&F-internal margin tool,
+NOT an operator-facing card. The two-bucket classification + per-vendor
+$/month formula live ONLY on Lane `.C`'s F&F Ops Console
+"Polling & Pricing" tab (see "F&F Ops Console" section below) under
+`forge_admin` role. Operators see tier name + tier price on their
+invoice; vendor per-call costs are never operator-facing.
 
-The bucket classification per vendor lives in
-`docs/integrations/<vendor_id>/api_consumed.md` "Production environment
-→ Rate-limit policy" + "Pricing" sections. The Data Accuracy tab reads
-that classification at render time.
-
-### Acknowledgement model
-
-The resolver only honors a non-default cadence override after the
-operator explicitly stamps `polling_cost_acknowledged_at`. Mechanism:
-
-1. Operator picks a cadence in the picker.
-2. Cost projection updates inline.
-3. "Confirm and apply" button is the only path that writes both the
-   override AND the acknowledgement timestamp.
-4. If the operator changes the cadence later, the timestamp gets
-   re-stamped on the next "Confirm and apply" — no silent
-   reacknowledgement.
-5. Resolver behavior when the override exists but the timestamp is
-   null: ignore the override; use default; emit
-   `cadence_override_unacknowledged` sync log row. Defensive default
-   for any path that writes the override directly without going
-   through the picker.
+`data_accuracy_settings` carries no `polling_cost_acknowledged_at`
+column. The acknowledgement model is gone — there is no operator
+cadence to acknowledge.
 
 ### Vendor min/max clamping
 
-The resolver clamps every override to the vendor-allowed range:
+`PollingCadenceResolver` (`lib/services/integration/polling_cadence_resolver.dart`)
+clamps every per-vendor cadence value (whether from a tier preset or
+an admin-set `tier_key='custom'` JSONB override) to the vendor-allowed
+range:
 
 - **Vendor minimum** comes from each vendor's documented rate-limit
   policy (Oracle Simphony documents 5min minimum; cited in
-  `docs/integrations/oracle_micros_simphony/api_consumed.md`).
+  `docs/integrations/oracle_micros_simphony/api_consumed.md`). The
+  resolver receives this via the `vendorMinimumCadenceSeconds`
+  parameter; production wiring sources it from the per-vendor
+  capability index.
 - **Framework maximum** is 3600s (1 hour) — beyond this the dashboard
-  feels broken.
-- An override outside the allowed range is clamped, NOT rejected. The
-  resolver emits `cadence_override_clamped` sync log so the operator
-  + ops can see what actually applied.
+  feels broken. Resolver constant `kFrameworkMaximumCadenceSeconds`.
+- A value outside the allowed range is clamped, NOT rejected. The
+  resolver emits a `cadence_clamped` sync_log row carrying the
+  requested + clamped values + the bound name (`vendor_minimum` /
+  `framework_maximum`) so F&F admin sees which assignment edits
+  hit a floor or cap.
 
-The operator cannot set Oracle to 60s by being willing to pay more;
-the floor is the vendor's, not F&F's.
+F&F admin cannot set Oracle to 60s by editing a custom-tier
+assignment; the floor is the vendor's, not F&F's.
 
 ## Surface scope
 
@@ -189,22 +183,25 @@ The tab carries four cards in this order:
    when your POS vendor (currently: <vendor_displayname>) does not
    expose covers as a first-class field. POS vendors that do not
    expose covers at V1: Square, Clover."
-3. **Polling cadence card** — per-vendor cadence picker for poll-only
-   vendors only (webhook vendors are filtered out per the
-   transport-bounded live-ness rule above). Default cadence per vendor
-   displayed (e.g., "Oracle Simphony: 5 minutes (vendor minimum)").
-   Operator can pick faster or slower cadence within vendor-allowed
-   bounds. Cost projection per the two-bucket model: real $/month for
-   per-call vendors, "$0/month additional — included in your
-   subscription" for subscription-bucket vendors. **Plain-English
-   framing:** "F&F doesn't charge more for faster polling; this is
-   what your vendor will charge for the additional API calls. Pick
-   what feels right." Operator must hit "Confirm and apply" to stamp
-   `polling_cost_acknowledged_at`. Vendor relativity label: "Polling
-   cadence applies to vendors that do not push real-time webhooks
-   (currently: Oracle MICROS Simphony, QuickBooks Time, Humanity,
-   Agendrix, Push Operations). Your webhook vendors update in real
-   time regardless of this setting."
+3. **Polling cadence card** — display-only summary + request-tier-change
+   flow. The card shows the operator's current tier name + tier price
+   (read from `forge_flow_polling_tier_assignment` via Lane `.A`'s
+   `ForgeFlowPollingTierRepository`) and the resolved per-vendor
+   cadence for the (operator, location)'s connected poll-only vendors
+   (e.g., "Standard tier — $X/month per location. Oracle Simphony
+   polled every 5 minutes; QuickBooks Time polled every 5 minutes.").
+   Webhook vendors are filtered out per the transport-bounded
+   live-ness rule above. There is NO cadence picker — operators do
+   not set cadences. To change tier, the card surfaces a "Request
+   tier change" button that opens a support ticket / billing-upgrade
+   flow consumed by Lane `.C`'s admin queue. Plain-English framing:
+   "F&F sets polling frequency at the tier level. Faster cadence is
+   available on premium / custom plans — request a change and we'll
+   reach out." Vendor relativity label: "Polling cadence applies to
+   vendors that do not push real-time webhooks (currently: Oracle
+   MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push
+   Operations). Your webhook vendors update in real time regardless
+   of this tier."
 4. **What this means card** — a brief inline explainer (per the UX
    writing standard `memory/project_ux_writing_standard.md`) that
    walks the operator through each setting in plain English with one
@@ -599,57 +596,87 @@ card surfaces the active class via the vendor relativity label:
   TargetCycle. Switch to 'manual mix' to use your operator-set wage
   editor mix instead."
 
-### Polling cadence resolution
+### Polling cadence resolution (REVERSED 2026-05-05)
+
+Implemented by `lib/services/integration/polling_cadence_resolver.dart`
+(Lane `8.spine-bridge.0a`). Reads the F&F-controlled tier assignment;
+no `data_accuracy_settings` columns participate.
 
 ```text
 Given (operator, location, vendor_id):
 
-  override = data_accuracy_settings.polling_cadence_override_seconds[vendor_id]
-  framework_default = 60s
+  tier = forge_flow_polling_tier_assignment.readCurrent(operator, location)
   vendor_minimum = capabilityProfile.minimumPollCadenceSeconds (e.g., Oracle = 300s)
-  vendor_maximum = 3600s (1 hour, framework cap)
+  framework_maximum = 3600s (kFrameworkMaximumCadenceSeconds)
 
-  if override is null:
-    cadence = max(framework_default, vendor_minimum)
+  if tier is null:
+    // No tier assigned yet (new operator / onboarding gap).
+    cadence = kStandardTierPresets[vendor_id] ?? vendor_minimum
+    appendSyncLog('tier_assignment_missing', ...)
 
-  elif data_accuracy_settings.polling_cost_acknowledged_at is null:
-    // Operator set an override but never acknowledged the cost.
-    // Resolver IGNORES the override; uses default; logs a warning.
-    cadence = max(framework_default, vendor_minimum)
-    appendSyncLog('cadence_override_unacknowledged', ...)
-
-  else:
-    cadence = clamp(override, vendor_minimum, vendor_maximum)
+  elif tier.polling_cadence_per_vendor_seconds[vendor_id] is set:
+    // Explicit per-vendor JSONB override (custom tier or admin pin).
+    cadence = clamp(override, vendor_minimum, framework_maximum)
     if cadence != override:
-      appendSyncLog('cadence_override_clamped', ...)
+      appendSyncLog('cadence_clamped', { bound: 'vendor_minimum'|'framework_maximum' })
+
+  elif tier.tier_key == 'standard':
+    cadence = kStandardTierPresets[vendor_id] ?? vendor_minimum
+
+  elif tier.tier_key == 'premium':
+    cadence = kPremiumTierPresets[vendor_id] ?? vendor_minimum
+
+  elif tier.tier_key == 'custom':
+    // Custom tier with no JSONB entry for this vendor; fall back
+    // safely so dispatch never blocks.
+    cadence = vendor_minimum
+    appendSyncLog('custom_tier_vendor_unset', ...)
 ```
 
-## Costing surface
+Tier presets (`lib/services/integration/polling_tier_presets.dart`)
+are F&F-engineering-controlled defaults the resolver consults when the
+JSONB carries no entry for `vendor_id`:
 
-See "Polling cadence & cost pass-through model" section above for the
-binding framing — F&F does NOT tier its own pricing by cadence; this
-is a pass-through projection of the vendor's cost. The acknowledgement
-mechanism + two-bucket classification are normative there.
+- `kStandardTierPresets` — every poll-only vendor at the vendor
+  minimum (Oracle 300s; QBT/Humanity/Agendrix/Push 300s).
+- `kPremiumTierPresets` — Oracle stays at 300s (vendor minimum); the
+  other four run at 60s ("60s where vendor allows; vendor minimum
+  where not" rule).
 
-The cost projection card on the polling cadence picker reads:
+Webhook vendors are not in either presets map — the dispatch hook
+gates the resolver call on `pollOnlyVendorIds`, so the resolver is
+never invoked for `autoRegister` / `manualPaste` vendors.
 
-- `cost_per_poll_request` (per-vendor; cited from each vendor's API
-  pricing in `docs/integrations/<vendor_id>/api_consumed.md`
-  "Production environment → Pricing" section)
-- `cadence_seconds`
-- `hours_per_month` (730)
+The resolver's `event_kind` strings are pinned in the
+`connector_sync_log.event_kind` CHECK constraint by migration
+`db/migrations/202605050100_phase_8_0a_polling_event_kinds.sql`. A
+sibling `tier_assignment_lookup_failed` row is emitted by the
+dispatch hook (`tool/integration_sync_worker/dispatch.dart::
+_resolveCadenceForRow`) when the tier lookup itself throws.
 
-Formula (per-call vendors only):
+## F&F-internal cost basis (NOT operator-facing)
+
+Cost basis + margin live ONLY on Lane `.C`'s F&F Ops Console
+"Polling & Pricing" tab (`forge_admin` role; see "F&F Ops Console"
+section above). The pricing reference data:
+
+- `cost_per_poll_request` per vendor (cited from
+  `docs/integrations/<vendor_id>/api_consumed.md` "Production
+  environment → Pricing" section).
+- `cadence_seconds` (the resolved cadence per assignment).
+- `hours_per_month` (730).
+
+Formula (per-call vendors only) used in the F&F admin margin rollup:
 
 ```text
 polls_per_month = (3600 / cadence_seconds) * 730
 monthly_cost_dollars = polls_per_month * cost_per_poll_request
 ```
 
-Subscription-bucket vendors render "$0/month additional — polling is
-included in your <vendor> subscription" without invoking the formula.
-
-Per-vendor bucket classification:
+Subscription-bucket vendors contribute $0 to the cost basis (polling
+is included in the F&F-paid vendor subscription). Per-vendor bucket
+classification (F&F-internal reference; pricing pending vendor-
+research pass per `session_handoff.md`):
 
 | Vendor | Bucket | Source |
 |---|---|---|
@@ -659,15 +686,13 @@ Per-vendor bucket classification:
 | Agendrix | subscription-bucket (TBD) | `docs/integrations/agendrix/api_consumed.md` |
 | Push Operations | subscription-bucket (TBD) | `docs/integrations/push_operations/api_consumed.md` |
 
-ADP removed from this table: Wave B `lib/integrations/labor/adp_labor_adapter.dart` declares `webhookSupport: VendorWebhookSupport.autoRegister`. Polling cadence does not apply.
+ADP is webhook-driven (`autoRegister` per
+`lib/integrations/labor/adp_labor_adapter.dart`); polling cadence
+does not apply.
 
-All "TBD" classifications above are pending the vendor-research pass queued in `session_handoff.md`.
-
-When a per-vendor `api_consumed.md` lacks the pricing reference (Wave
-B doc packs may not have surfaced production pricing yet), the Data
-Accuracy tab renders "Pricing pending — confirm with your account
-rep" instead of an estimated dollar amount. The card does NOT
-fabricate a number.
+When a per-vendor `api_consumed.md` lacks the pricing reference, the
+F&F admin cost panel renders "Pricing pending — confirm with partner"
+instead of fabricating a number. Operators never see this surface.
 
 ## Vendor relativity rules
 
@@ -679,7 +704,7 @@ affects. Reference data (sourced from `docs/integrations/<vendor_id>/`):
 |---|---|---|
 | Covers source = manual | Square, Clover | Toast, Lightspeed K-Series, Revel, Aloha NCR Voyix, Oracle MICROS Simphony |
 | Wage source = manual_mix | QuickBooks Time, Humanity, Agendrix | 7shifts, ADP Workforce Now, ADP Workforce Manager, Push Operations |
-| Polling cadence override | Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations, ADP (all poll-only vendors) | N/A — webhook vendors ignore polling cadence |
+| Polling cadence applies (F&F-set, not operator-set) | Oracle MICROS Simphony, QuickBooks Time, Humanity, Agendrix, Push Operations | N/A — webhook vendors ignore polling cadence (Toast, Square, Clover, Lightspeed, Revel, Aloha NCR Voyix, 7shifts, ADP, Libro, OpenTable, SevenRooms, Tock) |
 
 The vendor-relativity label updates dynamically based on which vendors
 the operator has actually connected. If an operator has connected
@@ -696,12 +721,18 @@ A slice that touches any data accuracy seam ships only when:
       partial updates).
 - [ ] Resolver applies the rules above deterministically; tests cover
       every path (vendor / forecast / manual / unavailable for covers;
-      vendor / target_wage / manual_mix for wages; default / clamped /
-      unacknowledged for cadence).
-- [ ] Operator Web Console card renders + writes back via repository.
+      vendor / target_wage / manual_mix for wages; tier missing /
+      preset fallback / clamped / custom-vendor-unset for cadence).
+- [ ] Operator Web Console card renders + writes back via repository
+      (covers/wage cards). Polling cadence card is display-only +
+      request-tier-change flow per section "F&F controls cadence;
+      operator sees tiers, not vendor calls" — no operator cadence
+      picker, no `polling_cost_acknowledged_at` write.
 - [ ] Vendor relativity label dynamically reflects the operator's
       connected vendors.
-- [ ] Cost projection surfaces correct $/month per cadence.
+- [ ] F&F Ops Console "Polling & Pricing" tab surfaces cost basis +
+      margin per assignment under `forge_admin` (Lane `.C`); operator
+      surfaces never expose vendor per-call costs.
 - [ ] F&F Ops Console admin surface writes `audit_logs` row on every
       override.
 - [ ] No card-level chrome violates the metric honesty renderer rules

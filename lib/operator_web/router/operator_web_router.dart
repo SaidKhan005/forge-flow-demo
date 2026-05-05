@@ -29,6 +29,7 @@ import '../auth/operator_web_auth_source.dart';
 import '../account/operator_web_account_actions.dart';
 import '../services/operator_web_vendor_connections_gateway.dart';
 import '../screens/account_screen.dart';
+import '../screens/data_accuracy_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
 import '../screens/sign_in_screen.dart';
@@ -42,6 +43,7 @@ import '../../theme/app_theme.dart';
 /// links key off these.
 const String kOperatorWebNavAccount = 'account';
 const String kOperatorWebNavVendorConnections = 'vendor_connections';
+const String kOperatorWebNavDataAccuracy = 'data_accuracy';
 
 /// Default nav surface the shell lands on after onboarding completes.
 const String kOperatorWebDefaultNavId = kOperatorWebNavAccount;
@@ -261,14 +263,30 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         title: 'Vendor connections',
         icon: Icons.cable_outlined,
       ),
+      OperatorWebNavItem(
+        id: kOperatorWebNavDataAccuracy,
+        title: 'Data accuracy',
+        icon: Icons.tune_outlined,
+      ),
     ];
-    final body = _selectedNavId == kOperatorWebNavVendorConnections
-        ? VendorConnectionsScreen(
-            session: session,
-            locationId: session.primaryLocationId,
-            gateway: _vendorConnectionsGateway,
-          )
-        : AccountScreen(session: session, actions: _accountActions);
+    final Widget body;
+    switch (_selectedNavId) {
+      case kOperatorWebNavVendorConnections:
+        body = VendorConnectionsScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+          gateway: _vendorConnectionsGateway,
+        );
+        break;
+      case kOperatorWebNavDataAccuracy:
+        body = DataAccuracyScreen(
+          session: session,
+          locationId: session.primaryLocationId,
+        );
+        break;
+      default:
+        body = AccountScreen(session: session, actions: _accountActions);
+    }
     return WebAppShell(
       session: session,
       navItems: navItems,

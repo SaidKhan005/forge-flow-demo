@@ -45,6 +45,7 @@ import 'package:forge_and_flow/services/integration/pos_adapter.dart';
 import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 import 'package:forge_and_flow/services/integration/vendor_timestamp_policy.dart';
 
+import 'fixtures/seven_shifts_hours_and_wages_fixture.dart';
 import 'fixtures/seven_shifts_punches_fixture.dart';
 import 'fixtures/seven_shifts_webhook_fixture.dart';
 
@@ -133,6 +134,13 @@ void main() {
         'payroll_period_closed_at',
         'vendor_entity_id',
         'vendor_modified_at',
+        // 8.spine-bridge.7S.upgrade — Hours & Wages report rows must
+        // carry verify_in_live_sandbox:true so the *.live.sandbox
+        // diff covers them.
+        'shift_id',
+        'actual_labor_dollars',
+        'regular_pay',
+        'overtime_pay',
       ]) {
         final row = documentedPerSevenShiftsV2FieldMapping[key]
             as Map<String, Object?>?;
@@ -953,6 +961,487 @@ void main() {
     });
   });
 
+  group('Hours & Wages report (8.spine-bridge.7S.upgrade)', () {
+    final nowFixed = DateTime.utc(2026, 5, 4, 12, 0, 0);
+
+    _FakeSevenShiftsTransport transportWithReportRows({
+      required List<Map<String, Object?>> punches,
+      required List<SevenShiftsHoursAndWagesRow> reportRows,
+    }) {
+      return _FakeSevenShiftsTransport()
+        ..pages = <SevenShiftsTimePunchPage>[
+          SevenShiftsTimePunchPage(
+            records: punches,
+            nextCursor: null,
+            lastModifiedSeen: DateTime.utc(2026, 5, 3, 23, 35, 0),
+          ),
+        ]
+        ..companyInfo = const SevenShiftsCompanyInfo(
+          companyId: _companyId,
+          planTier: kSevenShiftsGourmetPlanTier,
+        )
+        ..hoursAndWagesRows = reportRows
+        ..latestPayrollPeriodClosedAt = sevenShiftsLatestPayrollPeriodClosedAt;
+    }
+
+    test(
+        'A — report returns 2 shifts → canonical fact dicts include '
+        'actual_labor_dollars + provenance = '
+        'vendor_seven_shifts_per_employee_actual_dollars', () async {
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: sevenShiftsHoursAndWagesReportRows,
+      );
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      final result = await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      expect(result.recordsWritten, 2);
+      expect(transport.fetchHoursAndWagesCalls, 1,
+          reason: 'pollIncremental MUST pull the report exactly once '
+              'per tick (before walking time-punch pages)');
+      expect(gateway.canonicalPunchFacts.length, 2);
+
+      for (final fact in gateway.canonicalPunchFacts) {
+        expect(
+          fact.wageProvenance,
+          kSevenShiftsProvenancePerEmployeeActualDollars,
+          reason: 'merged report data → per_employee_actual_dollars',
+        );
+        expect(fact.actualLaborDollars, isNotNull);
+        expect(fact.shiftId, isNotNull);
+        final dict = fact.toCanonicalDict();
+        expect(
+          dict['actual_labor_dollars'],
+          sevenShiftsExpectedTotalPayByVendorEntityId[fact.vendorEntityId],
+          reason: 'canonical fact dict carries total_pay from the report',
+        );
+        expect(
+          dict['wage_provenance'],
+          kSevenShiftsProvenancePerEmployeeActualDollars,
+        );
+      }
+    });
+
+    test(
+        'B — merge: time_punches + report return same '
+        '(employee_id, shift_id) → ONE canonical fact dict per shift',
+        () async {
+      // Two time-punches sharing distinct (employee_id, shift_id)
+      // pairs; the report returns ONE row per pair. After merge: 2
+      // canonical fact dicts, no duplicates.
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: sevenShiftsHoursAndWagesReportRows,
+      );
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      // Group by (employee_id, shift_id) — must be unique per group.
+      final shiftKeys = gateway.canonicalPunchFacts
+          .map((fact) => '${fact.employeeId}::${fact.shiftId}')
+          .toList();
+      expect(shiftKeys.toSet().length, shiftKeys.length,
+          reason: 'merge MUST emit one canonical fact per (employee_id, '
+              'shift_id) — no duplicates');
+      expect(gateway.canonicalPunchFacts.length,
+          sevenShiftsTimePunchesWithShiftIds.length);
+    });
+
+    test(
+        'C — tier-gated fallback: report 403 → canonical facts WITHOUT '
+        'actual_labor_dollars + provenance = '
+        'vendor_seven_shifts_dollars_unavailable_target_wage_substituted',
+        () async {
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: sevenShiftsHoursAndWagesReportRows,
+      )..hoursAndWagesGatedStatusCode = 403;
+
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      final result = await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      expect(result.recordsWritten, 2,
+          reason: 'tier gating must NOT block /time_punches emission');
+      for (final fact in gateway.canonicalPunchFacts) {
+        expect(fact.actualLaborDollars, isNull,
+            reason: 'tier-gated path → no dollars');
+        expect(fact.regularPay, isNull);
+        expect(fact.overtimePay, isNull);
+        expect(
+          fact.wageProvenance,
+          kSevenShiftsProvenanceDollarsUnavailableTargetSubstituted,
+          reason:
+              'gated → target_wage_substituted provenance (Lane .2 '
+              'aggregator falls back to target wage × hours)',
+        );
+      }
+      // Block 2 step 3 — the adapter MUST log the gating event so
+      // Lane .B's Data Accuracy tab can surface the degradation.
+      expect(gateway.hoursAndWagesGatedLog, <int>[403],
+          reason:
+              'gateway.recordHoursAndWagesReportGated MUST fire exactly '
+              'once per tick with the observed status code');
+    });
+
+    test(
+        'C — tier-gated fallback (404 variant): same substituted-wage '
+        'provenance as 403', () async {
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: const <SevenShiftsHoursAndWagesRow>[],
+      )..hoursAndWagesGatedStatusCode = 404;
+
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      for (final fact in gateway.canonicalPunchFacts) {
+        expect(
+          fact.wageProvenance,
+          kSevenShiftsProvenanceDollarsUnavailableTargetSubstituted,
+        );
+      }
+      // 404 variant must log just like 403.
+      expect(gateway.hoursAndWagesGatedLog, <int>[404]);
+    });
+
+    test('D — idempotency: same shifts arriving twice → single canonical write',
+        () async {
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: sevenShiftsHoursAndWagesReportRows,
+      );
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+      expect(gateway.canonicalPunchFacts.length, 2);
+
+      // Re-enqueue identical pages + report rows; second poll must
+      // short-circuit on the idempotency UNIQUE.
+      transport
+        ..pages = <SevenShiftsTimePunchPage>[
+          SevenShiftsTimePunchPage(
+            records: sevenShiftsTimePunchesWithShiftIds,
+            nextCursor: null,
+            lastModifiedSeen: DateTime.utc(2026, 5, 3, 23, 35, 0),
+          ),
+        ]
+        ..hoursAndWagesRows = sevenShiftsHoursAndWagesReportRows;
+
+      final secondResult = await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      expect(secondResult.recordsWritten, 0,
+          reason: 'replay → idempotency UNIQUE short-circuits');
+      expect(gateway.canonicalPunchFacts.length, 2);
+    });
+
+    test(
+        'E — backfill calls report ONCE with isDeliberateBackfill=true; '
+        'pollIncremental calls ONCE with false', () async {
+      final transport = transportWithReportRows(
+        punches: sevenShiftsTimePunchesWithShiftIds,
+        reportRows: sevenShiftsHoursAndWagesReportRows,
+      );
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      await adapter.backfill(
+        BackfillCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          windowStart: nowFixed.subtract(const Duration(days: 7)),
+          windowEnd: nowFixed,
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      expect(transport.fetchHoursAndWagesCalls, 1,
+          reason: 'backfill calls the report exactly once');
+      expect(transport.hoursAndWagesCallLog.single.backfill, true);
+
+      // Reset transport for a poll tick.
+      transport
+        ..pages = <SevenShiftsTimePunchPage>[
+          SevenShiftsTimePunchPage(
+            records: const <Map<String, Object?>>[],
+            nextCursor: null,
+            lastModifiedSeen: nowFixed,
+          ),
+        ]
+        ..hoursAndWagesRows = const <SevenShiftsHoursAndWagesRow>[]
+        ..fetchHoursAndWagesCalls = 0
+        ..hoursAndWagesCallLog.clear();
+
+      await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 1)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      expect(transport.fetchHoursAndWagesCalls, 1);
+      expect(transport.hoursAndWagesCallLog.single.backfill, false);
+    });
+
+    test(
+        'multi-page report walks every page; empty-string cursor on '
+        'final page terminates the loop (defensive vs bad transports)',
+        () async {
+      // Page 1: 1 row, cursor = 'page2'.
+      // Page 2: 1 row, cursor = '' (defensive — production transports
+      // are SUPPOSED to return null, but '' must not infinite-loop).
+      final transport = _FakeSevenShiftsTransport()
+        ..pages = <SevenShiftsTimePunchPage>[
+          SevenShiftsTimePunchPage(
+            records: sevenShiftsTimePunchesWithShiftIds,
+            nextCursor: null,
+            lastModifiedSeen: DateTime.utc(2026, 5, 3, 23, 35, 0),
+          ),
+        ]
+        ..companyInfo = const SevenShiftsCompanyInfo(
+          companyId: _companyId,
+          planTier: kSevenShiftsGourmetPlanTier,
+        )
+        ..multiPageHoursAndWages = <SevenShiftsHoursAndWagesPage>[
+          SevenShiftsHoursAndWagesPage(
+            rows: <SevenShiftsHoursAndWagesRow>[
+              sevenShiftsHoursAndWagesReportRows[0],
+            ],
+            nextCursor: 'page2',
+          ),
+          SevenShiftsHoursAndWagesPage(
+            rows: <SevenShiftsHoursAndWagesRow>[
+              sevenShiftsHoursAndWagesReportRows[1],
+            ],
+            nextCursor: '',
+          ),
+        ];
+      final gateway = _FakeSevenShiftsGateway()
+        ..accessToken = 'access-token-001'
+        ..companyId = _companyId;
+      final adapter = SevenShiftsLaborAdapter(
+        transport: transport,
+        gateway: gateway,
+        now: () => nowFixed,
+      );
+
+      await adapter.pollIncremental(
+        PollIncrementalCommand(
+          operatorId: _opId,
+          locationId: _locId,
+          actorUserId: _opId,
+          vendorId: 'seven_shifts',
+          lastModifiedSeen: nowFixed.subtract(const Duration(hours: 2)),
+          sanityHook: ({
+            required vendorEventId,
+            required payload,
+            required isDeliberateBackfill,
+          }) async =>
+              true,
+        ),
+      );
+
+      // 2 pages walked exactly — no extra fetch from empty-string
+      // cursor (the defensive `cursor.isEmpty` break in
+      // _fetchHoursAndWagesLookup).
+      expect(transport.fetchHoursAndWagesCalls, 2,
+          reason:
+              'empty-string nextCursor on the final page must terminate '
+              'the loop without an extra fetch');
+
+      // Both rows merged onto canonical facts.
+      for (final fact in gateway.canonicalPunchFacts) {
+        expect(fact.actualLaborDollars, isNotNull,
+            reason:
+                'multi-page merge must enrich both shifts with dollars');
+        expect(
+          fact.wageProvenance,
+          kSevenShiftsProvenancePerEmployeeActualDollars,
+        );
+      }
+    });
+
+    test(
+        'F — banned-items grep on the new wage code paths', () {
+      final adapterFile = File(
+        'lib/integrations/labor/seven_shifts_labor_adapter.dart',
+      );
+      final fixtureFile = File(
+        'test/integrations/labor/fixtures/'
+        'seven_shifts_hours_and_wages_fixture.dart',
+      );
+      const banned = <String>[
+        'parse_warnings',
+        'parse_partial',
+        'pg_try_advisory_lock',
+        'sigterm',
+        'kms.encrypt',
+        'rotate_signing_key',
+        'replay_strict_5min',
+      ];
+      final adapterBody = adapterFile.readAsStringSync().toLowerCase();
+      final fixtureBody = fixtureFile.readAsStringSync().toLowerCase();
+      for (final term in banned) {
+        expect(adapterBody.contains(term), false,
+            reason: 'banned substring "$term" leaked into adapter');
+        expect(fixtureBody.contains(term), false,
+            reason: 'banned substring "$term" leaked into fixture');
+      }
+      // Adapter must NOT import package:postgres directly even after
+      // the wage merge addition.
+      expect(
+        adapterFile.readAsStringSync().contains('package:postgres/'),
+        false,
+        reason: 'adapter still must not import package:postgres '
+            '(service-layer split per CLAUDE.md)',
+      );
+    });
+  });
+
   group('Banned items grep (Test 11)', () {
     final adapterFile = File(
       'lib/integrations/labor/seven_shifts_labor_adapter.dart',
@@ -1016,6 +1505,35 @@ class _FakeSevenShiftsTransport implements SevenShiftsTransport {
   int _pageCursor = 0;
   int registerWebhookCalls = 0;
   DateTime? latestPayrollPeriodClosedAt;
+
+  // Hours & Wages report (8.spine-bridge.7S.upgrade) ─────────────
+  /// Report rows the fake returns from `fetchHoursAndWagesReport`. A
+  /// single page when non-empty; pagination is exercised by the
+  /// dedicated `multiPageHoursAndWagesPages` setter below.
+  List<SevenShiftsHoursAndWagesRow> hoursAndWagesRows =
+      const <SevenShiftsHoursAndWagesRow>[];
+
+  /// When set, overrides `hoursAndWagesRows` and walks pages. Used by
+  /// the Hours & Wages multi-page test path.
+  List<SevenShiftsHoursAndWagesPage>? multiPageHoursAndWages;
+  int _hoursAndWagesPageCursor = 0;
+
+  /// When non-null, `fetchHoursAndWagesReport` throws
+  /// [SevenShiftsHoursAndWagesReportGatedException] with this status
+  /// code on every call (lower plan tier path).
+  int? hoursAndWagesGatedStatusCode;
+
+  /// Number of times `fetchHoursAndWagesReport` was invoked. Used by
+  /// the merge tests to assert the adapter pulled the report exactly
+  /// once per backfill / poll tick.
+  int fetchHoursAndWagesCalls = 0;
+
+  /// Records the (modifiedSince, modifiedUntil, isDeliberateBackfill)
+  /// triples passed to `fetchHoursAndWagesReport`. Polling vs.
+  /// backfill differentiation gets asserted via the boolean.
+  final List<({DateTime since, DateTime until, bool backfill})>
+      hoursAndWagesCallLog =
+      <({DateTime since, DateTime until, bool backfill})>[];
 
   set pages(List<SevenShiftsTimePunchPage> next) {
     _pages = next;
@@ -1100,6 +1618,46 @@ class _FakeSevenShiftsTransport implements SevenShiftsTransport {
   }
 
   @override
+  Future<SevenShiftsHoursAndWagesPage> fetchHoursAndWagesReport({
+    required String accessToken,
+    required String companyId,
+    required DateTime modifiedSince,
+    required DateTime modifiedUntil,
+    required bool isDeliberateBackfill,
+    String? cursor,
+  }) async {
+    fetchHoursAndWagesCalls += 1;
+    hoursAndWagesCallLog.add((
+      since: modifiedSince,
+      until: modifiedUntil,
+      backfill: isDeliberateBackfill,
+    ));
+    final gated = hoursAndWagesGatedStatusCode;
+    if (gated != null) {
+      throw SevenShiftsHoursAndWagesReportGatedException(
+        statusCode: gated,
+        message: 'fake plan tier does not unlock the report endpoint',
+      );
+    }
+    final pages = multiPageHoursAndWages;
+    if (pages != null) {
+      if (_hoursAndWagesPageCursor >= pages.length) {
+        return const SevenShiftsHoursAndWagesPage(
+          rows: <SevenShiftsHoursAndWagesRow>[],
+          nextCursor: null,
+        );
+      }
+      final page = pages[_hoursAndWagesPageCursor];
+      _hoursAndWagesPageCursor += 1;
+      return page;
+    }
+    return SevenShiftsHoursAndWagesPage(
+      rows: hoursAndWagesRows,
+      nextCursor: null,
+    );
+  }
+
+  @override
   Future<String> registerWebhook({
     required String accessToken,
     required String companyId,
@@ -1139,6 +1697,12 @@ class _FakeSevenShiftsGateway implements SevenShiftsGateway {
       <SevenShiftsCanonicalPayrollPeriodClosedFact>[];
   final Set<String> _idempotencyKeys = <String>{};
   DateTime? _lastWrittenPayrollPeriodClosedAt;
+
+  /// 8.spine-bridge.7S.upgrade — every call to
+  /// [recordHoursAndWagesReportGated] appends its (statusCode) here so
+  /// Test C can assert the adapter logged the gating event exactly
+  /// once per polling tick / backfill.
+  final List<int> hoursAndWagesGatedLog = <int>[];
 
   @override
   Future<SevenShiftsConnectionRow> upsertConnection({
@@ -1212,6 +1776,15 @@ class _FakeSevenShiftsGateway implements SevenShiftsGateway {
     required String locationId,
   }) async =>
       companyId;
+
+  @override
+  Future<void> recordHoursAndWagesReportGated({
+    required String operatorId,
+    required String locationId,
+    required int statusCode,
+  }) async {
+    hoursAndWagesGatedLog.add(statusCode);
+  }
 }
 
 // ─── Inbound webhook framework fake (mirrors Phase 8.0 tests) ────────

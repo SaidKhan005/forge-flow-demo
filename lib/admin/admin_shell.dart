@@ -287,6 +287,10 @@ class _AdminSideNav extends StatelessWidget {
       section: AdminRouteSection.serviceSetup,
       label: 'Service setup',
     ),
+    _NavSectionMeta(
+      section: AdminRouteSection.dataAccuracy,
+      label: 'Data accuracy',
+    ),
   ];
 
   @override

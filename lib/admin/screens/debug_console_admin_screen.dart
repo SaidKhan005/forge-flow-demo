@@ -1,4 +1,4 @@
-﻿// Phase 11A.5 - Debug console admin surface (per-operator request log).
+// Phase 11A.5 - Debug console admin surface (per-operator request log).
 //
 // Read-only operator-facing console for the proxy `proxy_requests`
 // projection. Three tabs reflect the launch-slice scope and the two
@@ -504,58 +504,72 @@ class _RequestLogTab extends StatelessWidget {
     // test viewport, which is too tight for a Column-based layout).
     final showLoading = initialLoading;
     final showEmpty = !initialLoading && entries.isEmpty && loadError == null;
-    return ListView(
+    return CustomScrollView(
       key: const Key('admin_debug_console_request_log_body'),
-      padding: EdgeInsets.zero,
-      children: <Widget>[
-        _FilterBar(
-          filter: filter,
-          searchController: searchController,
-          onFilterChanged: onFilterChanged,
-          onSearchChanged: onSearchChanged,
+      slivers: <Widget>[
+        SliverToBoxAdapter(
+          child: _FilterBar(
+            filter: filter,
+            searchController: searchController,
+            onFilterChanged: onFilterChanged,
+            onSearchChanged: onSearchChanged,
+          ),
         ),
-        const SizedBox(height: 12),
-        _LiveTailRow(
-          liveTailOn: liveTailOn,
-          onToggleLiveTail: onToggleLiveTail,
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        SliverToBoxAdapter(
+          child: _LiveTailRow(
+            liveTailOn: liveTailOn,
+            onToggleLiveTail: onToggleLiveTail,
+          ),
         ),
-        const SizedBox(height: 12),
+        const SliverToBoxAdapter(child: SizedBox(height: 12)),
         if (loadError != null)
-          _ErrorBanner(
-            key: const Key('admin_debug_console_load_error'),
-            message: loadError!,
+          SliverToBoxAdapter(
+            child: _ErrorBanner(
+              key: const Key('admin_debug_console_load_error'),
+              message: loadError!,
+            ),
           ),
         if (showLoading)
-          const Padding(
-            key: Key('admin_debug_console_loading'),
-            padding: EdgeInsets.symmetric(vertical: 28),
-            child: Center(
-              child: SizedBox(
-                width: 28,
-                height: 28,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: AppColors.sunsetDark,
+          const SliverToBoxAdapter(
+            child: Padding(
+              key: Key('admin_debug_console_loading'),
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.sunsetDark,
+                  ),
                 ),
               ),
             ),
           )
         else if (showEmpty)
-          _EmptyState(
-            filterIsEmpty: filter.isEmpty,
-            onRunRefresh: onRunRefresh,
-            refreshing: refreshing,
+          SliverToBoxAdapter(
+            child: _EmptyState(
+              filterIsEmpty: filter.isEmpty,
+              onRunRefresh: onRunRefresh,
+              refreshing: refreshing,
+            ),
           )
         else
-          for (final entry in entries)
-            _RequestRow(
-              key: Key('admin_debug_console_row_${entry.requestId}'),
-              entry: entry,
-              expanded: expanded.contains(entry.requestId),
-              optInOn: optInLookup(entry.operatorId),
-              editingEnabled: editingEnabled,
-              onToggle: () => onToggleExpanded(entry.requestId),
-            ),
+          SliverList.builder(
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              final entry = entries[index];
+              return _RequestRow(
+                key: Key('admin_debug_console_row_${entry.requestId}'),
+                entry: entry,
+                expanded: expanded.contains(entry.requestId),
+                optInOn: optInLookup(entry.operatorId),
+                editingEnabled: editingEnabled,
+                onToggle: () => onToggleExpanded(entry.requestId),
+              );
+            },
+          ),
       ],
     );
   }

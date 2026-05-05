@@ -33,6 +33,7 @@ Exact scope strings — minimum-privilege subset chosen per
 | `webhooks.write` | Auto-register webhook subscriptions | First-connect webhook setup (Gourmet plan only) |
 | `companies.read` | Read company metadata + plan tier | Plan-tier detection that gates webhook auto-registration |
 | `locations.read` | Read locations under the operator-wide grant | OperatorWide grant scope mapping |
+| `reports.read` | Read the `/reports/hours_and_wages` per-shift wage report (Gourmet tier only) | Per-shift `total_pay` / `regular_pay` / `overtime_pay` ingestion → `LaborWageSourceClass.perEmployeeWithDollars` (`8.spine-bridge.7S.upgrade`, 2026-05-05). Lower-tier OAuth grants either omit the scope OR the endpoint returns HTTP 403/404 — the adapter handles both via [SevenShiftsHoursAndWagesReportGatedException] and falls back to substituted-wage provenance. |
 
 Extra scopes the vendor offers but the adapter does NOT request:
 

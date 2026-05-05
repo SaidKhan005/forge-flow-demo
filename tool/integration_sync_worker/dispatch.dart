@@ -21,15 +21,19 @@
 // test/services/integration/canonical_sink_contract_test.dart; this
 // file's executable code holds none of those tokens.
 
+import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/services/integration/canonical_sink.dart';
 import 'package:forge_and_flow/services/integration/integration_adapter_common.dart';
 import 'package:forge_and_flow/services/integration/labor_adapter.dart';
+import 'package:forge_and_flow/services/integration/polling_cadence_resolver.dart';
+import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
 import 'package:forge_and_flow/services/integration/pos_adapter.dart';
 import 'package:forge_and_flow/services/integration/reservation_adapter.dart';
 
 import '../advisor_proxy/labor_adapter_registry.dart';
 import '../advisor_proxy/pos_adapter_registry.dart';
 import '../advisor_proxy/reservation_adapter_registry.dart';
+import '../advisor_proxy/vendor_capability_index.dart';
 
 // ─── Connector-connection row (worker view) ─────────────────────────
 
@@ -99,14 +103,50 @@ const Duration kDefaultPollCadence = Duration(seconds: 60);
 
 // ─── Dispatch ───────────────────────────────────────────────────────
 
+/// Lookup signature: returns the currently-effective F&F polling tier
+/// assignment for `(operatorId, locationId)`, or null when none has
+/// been assigned yet. Lane `.A`'s `ForgeFlowPollingTierRepository`
+/// satisfies this signature; tests inject an in-memory closure.
+typedef PollingTierAssignmentLookup
+    = Future<ForgeFlowPollingTierAssignment?> Function(
+  String operatorId,
+  String locationId,
+);
+
+/// Lookup signature: returns the vendor-documented minimum poll cadence
+/// (in seconds) for `vendorId`. Sourced from each vendor's
+/// `docs/integrations/<vendor_id>/api_consumed.md` "Production
+/// environment -> Rate-limit policy" section. Production wiring is the
+/// per-vendor capability profile; tests inject a small constant map.
+typedef VendorMinimumCadenceLookup = int Function(String vendorId);
+
 /// Pure-logic dispatcher exercised under fakes by
 /// `test/tool/integration_sync_worker/dispatch_test.dart`. The only
 /// I/O is whatever the supplied [CanonicalSink] performs.
 class IntegrationSyncWorkerDispatch {
-  IntegrationSyncWorkerDispatch({DateTime Function()? now})
-      : _now = now ?? DateTime.now;
+  IntegrationSyncWorkerDispatch({
+    DateTime Function()? now,
+    this.tierAssignmentLookup,
+    this.vendorMinimumCadenceLookup,
+  }) : _now = now ?? DateTime.now;
 
   final DateTime Function() _now;
+
+  /// Lane `.0a` wiring. When non-null, every poll tick consults
+  /// [PollingCadenceResolver] to surface tier-assignment-driven
+  /// cadence + emit `tier_assignment_missing` /
+  /// `cadence_clamped` / `custom_tier_vendor_unset` sync_log rows.
+  /// Default null keeps the surface backward-compatible: existing
+  /// callers (Lane `.0` tests, `runSyncWorkerOnce` in `main.dart`)
+  /// pass nothing and the resolver is never invoked. Lane `.C` wires
+  /// `ForgeFlowPollingTierRepository.readCurrentAssignment` here.
+  final PollingTierAssignmentLookup? tierAssignmentLookup;
+
+  /// Companion lookup for [tierAssignmentLookup]: vendor-documented
+  /// minimum poll cadence in seconds. Both must be supplied together
+  /// to enable the resolver call inside [dispatchPollTick]; either
+  /// being null leaves the resolver path inactive.
+  final VendorMinimumCadenceLookup? vendorMinimumCadenceLookup;
 
   /// One poll tick for one [ConnectorConnectionRow]. The dispatcher:
   ///
@@ -219,6 +259,8 @@ class IntegrationSyncWorkerDispatch {
         eventKind: 'poll_error',
         errorMessage: error.toString(),
       );
+    } finally {
+      await _resolveCadenceForRow(row, canonicalSink);
     }
   }
 
@@ -276,6 +318,75 @@ class IntegrationSyncWorkerDispatch {
   }
 
   // ─── Internals ────────────────────────────────────────────────────
+
+  /// Lane `.0a` resolver hook. When [tierAssignmentLookup] +
+  /// [vendorMinimumCadenceLookup] are both wired, this consults the
+  /// F&F-controlled tier assignment for `(operatorId, locationId)`,
+  /// resolves the per-vendor cadence (clamped to vendor min/framework
+  /// max), and forwards the resolver's `onSyncLog` events to the
+  /// canonical sink so `tier_assignment_missing` / `cadence_clamped` /
+  /// `custom_tier_vendor_unset` rows surface in the per-tenant audit
+  /// timeline. The cadence value itself is the scheduling layer's
+  /// concern (Lane `.3`); per-tick dispatch does not act on it.
+  ///
+  /// Three gates keep this hook quiet for callers that have not opted
+  /// in:
+  ///   * Either lookup is null (Lane `.0` baseline + existing tests)
+  ///     -> no-op, no log row.
+  ///   * The connection's vendor is NOT in [pollOnlyVendorIds]
+  ///     (webhook-driven vendors like Toast / 7shifts / ADP) ->
+  ///     no-op. Polling cadence is irrelevant for `autoRegister` /
+  ///     `manualPaste` vendors per
+  ///     `data_accuracy_settings_contract.md` "Transport-bounded
+  ///     live-ness" — emitting `tier_assignment_missing` for those
+  ///     vendors would create audit noise.
+  ///   * The lookup throws (DB connection lost, repository
+  ///     unavailable, etc.) -> a single
+  ///     `tier_assignment_lookup_failed` sync_log row is written and
+  ///     the poll proceeds with default scheduling. The exception
+  ///     does NOT bubble into the surrounding `try/catch` (which
+  ///     would mis-tag the failure as a `poll_error`).
+  Future<void> _resolveCadenceForRow(
+    ConnectorConnectionRow row,
+    CanonicalSink canonicalSink,
+  ) async {
+    final tierLookup = tierAssignmentLookup;
+    final vendorMinLookup = vendorMinimumCadenceLookup;
+    if (tierLookup == null || vendorMinLookup == null) return;
+    if (!pollOnlyVendorIds.contains(row.vendorId)) return;
+
+    ForgeFlowPollingTierAssignment? tierAssignment;
+    try {
+      tierAssignment = await tierLookup(row.operatorId, row.locationId);
+    } catch (error) {
+      await canonicalSink.appendSyncLog(
+        operatorId: row.operatorId,
+        locationId: row.locationId,
+        connectionId: row.connectionId,
+        eventKind: 'tier_assignment_lookup_failed',
+        errorMessage: error.toString(),
+      );
+      return;
+    }
+
+    final pendingLogs = <Future<void>>[];
+    PollingCadenceResolver.resolve(
+      vendorId: row.vendorId,
+      tierAssignment: tierAssignment,
+      vendorMinimumCadenceSeconds: vendorMinLookup(row.vendorId),
+      frameworkMaximumCadenceSeconds: kFrameworkMaximumCadenceSeconds,
+      onSyncLog: (eventKind, payload) {
+        pendingLogs.add(canonicalSink.appendSyncLog(
+          operatorId: row.operatorId,
+          locationId: row.locationId,
+          connectionId: row.connectionId,
+          eventKind: eventKind,
+          payloadPreview: payload,
+        ));
+      },
+    );
+    if (pendingLogs.isNotEmpty) await Future.wait(pendingLogs);
+  }
 
   bool _isVendorRegistered(String vendorId, IntegrationCategory category) {
     switch (category) {

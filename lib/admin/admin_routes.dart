@@ -30,8 +30,11 @@ import 'screens/integration_admin_screen.dart';
 import 'screens/observability_admin_screen.dart';
 import 'screens/operator_location_admin_screen.dart';
 import 'screens/operator_picker_screen.dart';
+import 'screens/per_location_data_accuracy_screen.dart';
+import 'screens/polling_and_pricing_admin_screen.dart';
 import 'screens/pricing_tier_admin_screen.dart';
 import 'services/corpus_admin_gateway.dart';
+import 'services/data_accuracy_admin_gateway.dart';
 import 'services/debug_console_admin_gateway.dart';
 import 'services/feature_flags_admin_gateway.dart';
 import 'services/health_admin_gateway.dart';
@@ -39,6 +42,7 @@ import 'services/integration_admin_gateway.dart';
 import 'services/observability_admin_gateway.dart';
 import 'services/operator_location_admin_gateway.dart';
 import 'services/pricing_tier_admin_gateway.dart';
+import '../domain/models/forge_flow_polling_tier_assignment.dart';
 
 /// One entry in the admin route catalog.
 @immutable
@@ -87,7 +91,7 @@ class AdminRoute {
   final Widget Function(BuildContext context) builder;
 }
 
-enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring }
+enum AdminRouteSection { ai, operations, serviceSetup, systemMonitoring, dataAccuracy }
 
 /// Canonical Operators route ID (11A.1).
 const String kAdminOperatorsRouteId = 'operators';
@@ -115,6 +119,12 @@ const String kAdminDebugConsoleRouteId = 'debug';
 /// graph / Cloud-Run dashboard. The /health envelope viewer is owned
 /// by [kAdminHealthRouteId] and is intentionally a different route.
 const String kAdminObservabilityRouteId = 'observability';
+
+/// Phase 8 spine-bridge Lane .C — Data Accuracy admin tab (Tab 1).
+const String kAdminDataAccuracyRouteId = 'data-accuracy';
+
+/// Phase 8 spine-bridge Lane .C — Polling & Pricing admin tab (Tab 2).
+const String kAdminPollingPricingRouteId = 'polling-pricing';
 
 /// Canonical operator-picker route ID (11A.3a follow-up). The picker
 /// is reached via Navigator.push from the Corpus admin "Pick operator"
@@ -201,6 +211,8 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
         'Review cost, usage limits, operator activity, graph health, and hosting.',
     builder: _buildObservability,
   ),
+  AdminRoute(id: kAdminDataAccuracyRouteId, title: 'Data accuracy', path: '/data-accuracy', icon: Icons.fact_check_outlined, section: AdminRouteSection.dataAccuracy, subtitle: 'Inspect and override per-location covers and wage source.', builder: _buildDataAccuracy),
+  AdminRoute(id: kAdminPollingPricingRouteId, title: 'Polling & pricing', path: '/polling-pricing', icon: Icons.payments_outlined, section: AdminRouteSection.dataAccuracy, subtitle: 'Set tier definitions, per-location assignments, and review margin.', builder: _buildPollingPricing),
 ];
 
 Widget _buildOperators(BuildContext context) {
@@ -373,6 +385,56 @@ Widget _buildFeatureFlags(BuildContext context) {
   );
 }
 
+Widget _buildDataAccuracy(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return PerLocationDataAccuracyScreen(
+      gateway: gateway,
+      actorUserId: 'demo-super-admin',
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return PerLocationDataAccuracyScreen(
+        gateway: gateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
+Widget _buildPollingPricing(BuildContext context) {
+  final gateway = AdminConsoleServicesScope.dataAccuracyAdminGatewayOf(context);
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return PollingAndPricingAdminScreen(
+      gateway: gateway,
+      actorUserId: 'demo-super-admin',
+    );
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return PollingAndPricingAdminScreen(
+        gateway: gateway,
+        actorUserId: session?.uid ?? 'unknown',
+        editingEnabled: canEdit,
+      );
+    },
+  );
+}
+
 Widget _buildDebugConsole(BuildContext context) {
   // 11A.5 - full-content reveal is gated on `super_admin`. `ff_support`
   // lands on the read-only meta view (no expand-to-full-content
@@ -423,6 +485,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
     this.observabilityGateway,
     this.featureFlagsGateway,
     this.debugConsoleGateway,
+    this.dataAccuracyAdminGateway,
     this.adminAuthSource,
   });
 
@@ -489,6 +552,12 @@ class AdminConsoleServicesScope extends InheritedWidget {
   /// live-tail, and the full-content opt-in paths without a backend.
   final DebugConsoleAdminGateway? debugConsoleGateway;
 
+  /// Phase 8 spine-bridge Lane .C - data accuracy + polling/pricing
+  /// admin gateway shared by Tab 1 and Tab 2. Optional; the default
+  /// fallback is the seeded in-memory gateway used by the kDemoMode
+  /// walkthrough.
+  final DataAccuracyAdminGateway? dataAccuracyAdminGateway;
+
   /// Phase 11A.2 - admin auth source. Optional for the same
   /// incremental-wiring reason. The Pricing route reads this to
   /// compute `editingEnabled` from the signed-in session's roles
@@ -549,6 +618,14 @@ class AdminConsoleServicesScope extends InheritedWidget {
     return scope?.debugConsoleGateway ?? _defaultDebugConsoleDemoGateway;
   }
 
+  static DataAccuracyAdminGateway dataAccuracyAdminGatewayOf(
+    BuildContext context,
+  ) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
+    return scope?.dataAccuracyAdminGateway ?? _defaultDataAccuracyDemoGateway;
+  }
+
   static AdminAuthSource? adminAuthSourceOf(BuildContext context) {
     final scope = context
         .dependOnInheritedWidgetOfExactType<AdminConsoleServicesScope>();
@@ -565,6 +642,7 @@ class AdminConsoleServicesScope extends InheritedWidget {
       observabilityGateway != oldWidget.observabilityGateway ||
       featureFlagsGateway != oldWidget.featureFlagsGateway ||
       debugConsoleGateway != oldWidget.debugConsoleGateway ||
+      dataAccuracyAdminGateway != oldWidget.dataAccuracyAdminGateway ||
       adminAuthSource != oldWidget.adminAuthSource;
 }
 
@@ -918,4 +996,57 @@ final DebugConsoleAdminGateway _defaultDebugConsoleDemoGateway =
     InMemoryDebugConsoleAdminGateway(
       seed: kDebugConsoleDemoEntries,
       optInSeed: kDebugConsoleDemoOptIns,
+    );
+
+/// Phase 8 spine-bridge Lane .C fallback data accuracy + polling/pricing
+/// admin gateway. Mirrors the two demo operators on `_defaultDemoGateway`
+/// so the walkthrough hops between Operators / Data Accuracy / Polling
+/// & Pricing without a backing service. Tier definitions are baked from
+/// `kDemoStandardTierDefinition` / `kDemoPremiumTierDefinition` /
+/// `kDemoCustomTierDefinition`. One illustrative tier change request
+/// drives the Tab 2 Card 4 demo path.
+final DataAccuracyAdminGateway _defaultDataAccuracyDemoGateway =
+    InMemoryDataAccuracyAdminGateway(
+      operatorLocations: const <OperatorLocationRef>[
+        OperatorLocationRef(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          businessName: 'Demo Diner Co.',
+          locationId: '00000000-0000-4000-8000-0000000000a1',
+          locationName: 'Toronto Yorkville',
+        ),
+        OperatorLocationRef(
+          operatorId: '00000000-0000-4000-8000-000000000001',
+          businessName: 'Demo Diner Co.',
+          locationId: '00000000-0000-4000-8000-0000000000a2',
+          locationName: 'Vancouver Robson',
+        ),
+        OperatorLocationRef(
+          operatorId: '00000000-0000-4000-8000-000000000002',
+          businessName: 'Sunset Cafe Group',
+          locationId: '00000000-0000-4000-8000-0000000000b1',
+          locationName: 'Brooklyn Williamsburg',
+        ),
+      ],
+      initialTierDefinitions: <PollingTierKey, TierDefinition>{
+        PollingTierKey.standard: kDemoStandardTierDefinition(),
+        PollingTierKey.premium: kDemoPremiumTierDefinition(),
+        PollingTierKey.custom: kDemoCustomTierDefinition(),
+      },
+      initialChangeRequests: <TierChangeRequest>[
+        TierChangeRequest(
+          requestId: 'demo-change-request-1',
+          operatorRef: const OperatorLocationRef(
+            operatorId: '00000000-0000-4000-8000-000000000001',
+            businessName: 'Demo Diner Co.',
+            locationId: '00000000-0000-4000-8000-0000000000a1',
+            locationName: 'Toronto Yorkville',
+          ),
+          currentTier: PollingTierKey.standard,
+          requestedTier: PollingTierKey.premium,
+          operatorNote:
+              'We need tighter mid-service awareness on dinner volume.',
+          submittedAt: DateTime.utc(2026, 5, 4, 14, 30),
+          status: TierChangeRequestStatus.pending,
+        ),
+      ],
     );

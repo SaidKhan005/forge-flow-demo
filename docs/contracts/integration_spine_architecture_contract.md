@@ -445,14 +445,28 @@ Writes to `reservation_facts`. Webhook + poll inputs both supported
   (`hardening_rls_and_repository_pattern_contract.md`): per-tenant on
   `(operator_id, location_id)`; B-tree index leads with `operator_id`;
   4 wrapper-only RLS policies.
-- Schema columns per `data_accuracy_settings_contract.md`:
-    * covers_source_per_daypart (enum: vendor / forecast / manual)
-    * covers_manual_per_daypart (jsonb: {lunch, dinner, late_night})
-    * wage_source (enum: vendor / manual_mix)
-    * polling_cadence_override_seconds (per-vendor json map)
-    * polling_cost_acknowledged_at (timestamp)
-- Repository: idempotent upsert on (operator_id, location_id);
-  per-daypart partial updates supported.
+- Schema columns per `data_accuracy_settings_contract.md` (REVERSED
+  2026-05-05 — operator-cadence-override columns NOT shipped; F&F
+  controls cadence via the sibling `forge_flow_polling_tier_assignment`
+  table):
+    * `data_accuracy_settings`: covers_source_lunch / _dinner /
+      _late_night (enum: vendor / forecast / manual);
+      covers_manual_entries (jsonb: per-business-date sparse map);
+      wage_source (enum: vendor / manual_mix).
+    * `forge_flow_polling_tier_assignment` (NEW table):
+      tier_key (enum: standard / premium / custom);
+      polling_cadence_per_vendor_seconds (jsonb);
+      monthly_price_cents; vendor_api_cost_estimate_cents_monthly;
+      effective_at / effective_until / assigned_by_admin_user_id.
+      One CURRENTLY-EFFECTIVE row per (operator, location) via
+      partial unique index `WHERE effective_until IS NULL`. RLS
+      policy admits `service_role` (read-only) +
+      `forge_admin` (read/write).
+- Repository: `DataAccuracySettingsRepository` — idempotent upsert
+  on (operator_id, location_id); per-daypart partial updates
+  supported. `ForgeFlowPollingTierRepository` — readCurrentAssignment
+  / assignTier (closes prior current row + inserts new in single tx)
+  / listAssignmentHistory / summarizeMargin.
 
 **Tests required.**
 
@@ -544,37 +558,59 @@ Files MODIFY:
 - C. Cost panel rolls up across locations.
 - D. Banned-items grep.
 
-### `8.spine-bridge.0a` — Sync worker polling cadence override consumer (additive after `.0`)
+### `8.spine-bridge.0a` — Sync worker polling cadence resolver (additive after `.0` + `.A`)
 
 **Files NEW.**
 
-- `lib/services/integration/polling_cadence_resolver.dart` — pure logic
-  that takes a `connector_connection` row + DataAccuracySettings -> the
+- `lib/services/integration/polling_cadence_resolver.dart` — pure
+  logic that takes (vendor_id, ForgeFlowPollingTierAssignment?,
+  vendor min, framework max, onSyncLog callback) and returns the
   resolved poll cadence in seconds.
+- `lib/services/integration/polling_tier_presets.dart` —
+  `kStandardTierPresets` + `kPremiumTierPresets` const maps + the
+  `kFrameworkMaximumCadenceSeconds` constant.
+- `db/migrations/202605050100_phase_8_0a_polling_event_kinds.sql` —
+  extends `connector_sync_log.event_kind` CHECK constraint to admit
+  the four resolver event kinds + closes a latent gap from `.0`
+  (`vendor_not_registered` was emitted by the dispatcher but missing
+  from the original CHECK).
 - `test/services/integration/polling_cadence_resolver_test.dart`.
+- `test/services/integration/polling_tier_presets_test.dart`.
 
 Files MODIFY:
 
-- `tool/integration_sync_worker/dispatch.dart` — the dispatch picked
-  up by Lane `.0` reads the resolver to decide cadence per connection
-  instead of using a single hardcoded default. **Single function call
-  added inside `dispatchPollTick`; no interface change.**
+- `tool/integration_sync_worker/dispatch.dart` — adds two optional
+  constructor lookups (`tierAssignmentLookup`,
+  `vendorMinimumCadenceLookup`) + a single resolver call inside
+  `dispatchPollTick` (placed in the trailing `finally` block so the
+  resolver telemetry follows the poll outcome in the audit timeline).
+  The call is gated three ways: both lookups must be wired, the
+  vendor must be in `pollOnlyVendorIds` (webhook vendors get no
+  cadence telemetry), and tier-lookup throws are caught + emit a
+  `tier_assignment_lookup_failed` row instead of mis-tagging the
+  failure as a `poll_error`. **No interface change to
+  `dispatchPollTick`; default null lookups preserve Lane `.0`
+  baseline.**
 
 **Why this is additive (not stale-making for Lane `.0`):** Lane `.0`
-ships with a hardcoded default cadence. Lane `.0a` adds the resolver
-read inside `dispatchPollTick` without changing any of Lane `.0`'s
-public surfaces or interfaces. The running Lane `.0` worktree does
-NOT need to re-roll.
+ships with a hardcoded default cadence and no resolver wiring. Lane
+`.0a` adds the resolver behind optional constructor lookups that
+default to null. The running Lane `.0` worktree + tests do NOT need
+to re-roll — they pass nothing and the resolver path stays inert.
 
 **Tests required.**
 
-- A. Resolver returns default cadence (60s) when no override exists.
-- B. Resolver returns operator override when set and within bounds.
-- C. Out-of-bounds override (too fast / too slow) is clamped to the
-  framework-allowed range with a `connector_sync_log` warning row.
-- D. Resolver respects vendor-specific minimum cadence (Oracle
-  Simphony documents 5min minimum).
-- E. Banned-items grep.
+- A. `tierAssignment == null` -> standard-tier presets used; resolver
+  emits `tier_assignment_missing` sync_log row.
+- B. JSONB override below vendor minimum -> clamped up; resolver
+  emits `cadence_clamped` (`bound: vendor_minimum`).
+- C. JSONB override within `[vendor_minimum, framework_maximum]` ->
+  returned as-is; no log row.
+- D. `tier_key='custom'` with vendor unset in JSONB -> vendor
+  minimum returned; resolver emits `custom_tier_vendor_unset`.
+- E. Oracle Simphony `vendor_minimum=300s`; assignment specifies 60s
+  -> clamped to 300s (binding contract example).
+- F. Banned-items grep across the two new lib files.
 
 ### `8.spine-bridge.2` — Server-side aggregator + ShiftRecord writer
 
