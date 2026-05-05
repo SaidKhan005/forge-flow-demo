@@ -6,33 +6,9 @@
 // Notify-me dialog (open / submit / cancel / pre-fill / duplicate
 // resubmit).
 //
-// What this file does NOT cover and why
-// -------------------------------------
-// Two pieces of the 11W.8 acceptance set depend on Phase 8.0
-// upstream changes that did not land before this lane started:
-//
-// 1. Picker rendering all 17 vendors at `lifecycle = documented`
-//    + Connect-button gating by lifecycle. The shared
-//    `VendorConnectionsWidget` from Phase 8.0 ships with a single
-//    `_VendorPickerDialog` dropdown whose Continue button activates
-//    for any picked vendor regardless of lifecycle, and the
-//    in-memory gateway under `lib/integrations/ui/vendor_connections/`
-//    seeds only 3 reference stubs (Lightspeed K-Series, Libro,
-//    QuickBooks Time). Wiring 17-row coverage + Connect-button
-//    gating requires a follow-up to the shared widget API; the
-//    11W.8 prompt's "Files to leave alone" rule forbids forking
-//    `lib/integrations/ui/vendor_connections/*`.
-//
-// 2. Notify-me CTA on `documented` / `sandbox_verified` rows. The
-//    same widget API does not expose an
-//    `onNotifyMeRequested(vendorId, vendorDisplayName, lifecycle)`
-//    callback prop, and the picker dialog has no per-row chrome
-//    to host the CTA. The dialog UI lands in this lane fully
-//    testable on its own (this file's `Notify-me dialog` group);
-//    wiring it onto vendor rows is an upstream Phase 8.0 follow-up.
-//
-// See `docs/_walkthroughs/11W.8.md` "Upstream blockers" section for
-// the exact widget-API delta needed.
+// The shared picker now renders the implemented 17-adapter catalog
+// and gates lifecycle states so documented and sandbox-verified
+// vendors stay visible but cannot start a connect flow.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -87,10 +63,7 @@ void main() {
       theme: AppTheme.themeData,
       home: MediaQuery(
         data: MediaQueryData(size: size),
-        child: Scaffold(
-          backgroundColor: AppColors.backgroundDeep,
-          body: child,
-        ),
+        child: Scaffold(backgroundColor: AppColors.backgroundDeep, body: child),
       ),
     );
   }
@@ -190,9 +163,7 @@ void main() {
       );
       // Friendly copy reads as training (per UX writing standard).
       expect(
-        find.byKey(
-          const Key('operator_web_vendor_connections_forbidden_body'),
-        ),
+        find.byKey(const Key('operator_web_vendor_connections_forbidden_body')),
         findsOneWidget,
       );
       expect(
@@ -255,9 +226,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.byKey(
-          const Key('operator_web_vendor_connections_widget_host'),
-        ),
+        find.byKey(const Key('operator_web_vendor_connections_widget_host')),
         findsOneWidget,
       );
       // The shared widget renders its category sections after the
@@ -291,9 +260,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(
-          'Configuring connections for location brio-other-location.',
-        ),
+        find.text('Configuring connections for location brio-other-location.'),
         findsOneWidget,
       );
     });
@@ -319,9 +286,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('renders cleanly at desktop 1024x768 viewport', (
-      tester,
-    ) async {
+    testWidgets('renders cleanly at desktop 1024x768 viewport', (tester) async {
       await sizeViewport(tester, const Size(1024, 768));
       await tester.pumpWidget(
         wrap(
@@ -373,6 +338,90 @@ void main() {
         );
       },
     );
+
+    test('in-memory catalog exposes all implemented adapter rows', () async {
+      final gateway = InMemoryVendorConnectionsGateway();
+      final pos = await gateway.listAvailableVendors(
+        category: VendorCategory.pos,
+      );
+      final reservations = await gateway.listAvailableVendors(
+        category: VendorCategory.reservation,
+      );
+      final labor = await gateway.listAvailableVendors(
+        category: VendorCategory.labor,
+      );
+
+      expect(pos, hasLength(7));
+      expect(reservations, hasLength(4));
+      expect(labor, hasLength(6));
+      expect(
+        <String>{
+          ...pos.map((entry) => entry.vendorId),
+          ...reservations.map((entry) => entry.vendorId),
+          ...labor.map((entry) => entry.vendorId),
+        },
+        containsAll(<String>[
+          'aloha_ncr_voyix',
+          'clover',
+          'lightspeed_lsk',
+          'oracle_micros_simphony',
+          'revel',
+          'square',
+          'toast',
+          'libro',
+          'opentable',
+          'sevenrooms',
+          'tock',
+          'adp',
+          'agendrix',
+          'humanity',
+          'push_operations',
+          'quickbooks_time',
+          'seven_shifts',
+        ]),
+      );
+    });
+
+    testWidgets('documented vendors are visible but cannot continue', (
+      tester,
+    ) async {
+      await sizeViewport(tester, const Size(1280, 800));
+      await tester.pumpWidget(
+        wrap(
+          VendorConnectionsScreen(
+            session: adminSession,
+            locationId: adminSession.primaryLocationId,
+            gateway: InMemoryVendorConnectionsGateway(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byKey(const Key('vendor_connections_connect_pos')));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const Key('vendor_connections_picker_choice_aloha_ncr_voyix'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Aloha (NCR Voyix)'), findsOneWidget);
+      expect(find.text('Coming soon'), findsWidgets);
+
+      await tester.tap(
+        find.byKey(
+          const Key('vendor_connections_picker_choice_aloha_ncr_voyix'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final continueButton = tester.widget<FilledButton>(
+        find.byKey(const Key('vendor_connections_picker_continue')),
+      );
+      expect(continueButton.onPressed, isNull);
+      expect(find.text('Not ready to connect'), findsOneWidget);
+    });
   });
 
   // ─── Notify-me dialog (standalone) ───────────────────────────────
@@ -415,9 +464,7 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text(
-          "We'll email you the moment Toast goes live for connecting.",
-        ),
+        find.text("We'll email you the moment Toast goes live for connecting."),
         findsOneWidget,
       );
       // Email pre-filled.
@@ -546,9 +593,9 @@ void main() {
       final repo = _FakeNotificationRepository();
       VendorLifecycleNotifyMeResult? result =
           const VendorLifecycleNotifyMeResult(
-        email: 'sentinel@example.com',
-        outcome: VendorLifecycleNotificationOutcome.inserted,
-      );
+            email: 'sentinel@example.com',
+            outcome: VendorLifecycleNotificationOutcome.inserted,
+          );
 
       await tester.pumpWidget(
         wrap(
@@ -621,10 +668,7 @@ void main() {
       expect(repo.insertCalls, isEmpty);
       // Inline error rendered (use textContaining to be tolerant of
       // wrapping at different widths).
-      expect(
-        find.textContaining('valid email address'),
-        findsOneWidget,
-      );
+      expect(find.textContaining('valid email address'), findsOneWidget);
     });
 
     test(
@@ -708,10 +752,11 @@ class _FakeNotificationRepository
     implements VendorLifecycleNotificationRepository {
   _FakeNotificationRepository({
     List<VendorLifecycleNotificationOutcome>? outcomes,
-  }) : _outcomes = outcomes ??
-            <VendorLifecycleNotificationOutcome>[
-              VendorLifecycleNotificationOutcome.inserted,
-            ];
+  }) : _outcomes =
+           outcomes ??
+           <VendorLifecycleNotificationOutcome>[
+             VendorLifecycleNotificationOutcome.inserted,
+           ];
 
   final List<VendorLifecycleNotificationOutcome> _outcomes;
   final List<_FakeInsertCall> insertCalls = <_FakeInsertCall>[];
@@ -725,11 +770,7 @@ class _FakeNotificationRepository
     required String email,
   }) async {
     insertCalls.add(
-      _FakeInsertCall(
-        operatorId: operatorId,
-        vendorId: vendorId,
-        email: email,
-      ),
+      _FakeInsertCall(operatorId: operatorId, vendorId: vendorId, email: email),
     );
     final outcome = _outcomes[_cursor.clamp(0, _outcomes.length - 1)];
     _cursor += 1;
@@ -743,11 +784,7 @@ class _FakeNotificationRepository
     required String email,
   }) async {
     cancelCalls.add(
-      _FakeInsertCall(
-        operatorId: operatorId,
-        vendorId: vendorId,
-        email: email,
-      ),
+      _FakeInsertCall(operatorId: operatorId, vendorId: vendorId, email: email),
     );
   }
 }
@@ -794,8 +831,7 @@ class _CaptureGateway implements VendorConnectionsGateway {
   @override
   Future<List<VendorPickerEntry>> listAvailableVendors({
     required VendorCategory category,
-  }) async =>
-      const <VendorPickerEntry>[];
+  }) async => const <VendorPickerEntry>[];
 
   @override
   Future<VendorConnectFlowStart> startConnect({
@@ -803,24 +839,22 @@ class _CaptureGateway implements VendorConnectionsGateway {
     required String locationId,
     required String vendorId,
     String? module,
-  }) async =>
-      const VendorConnectFlowStart(
-        redirectUrl: 'about:blank',
-        flowKind: VendorConnectFlowKind.oauthRedirect,
-      );
+  }) async => const VendorConnectFlowStart(
+    redirectUrl: 'about:blank',
+    flowKind: VendorConnectFlowKind.oauthRedirect,
+  );
 
   @override
   Future<VendorTestConnectionResult> testConnection({
     required String operatorId,
     required String locationId,
     required String vendorId,
-  }) async =>
-      const VendorTestConnectionResult(
-        authValid: true,
-        elapsedMs: 0,
-        sampleSummary: '',
-        fieldMapping: <String, String>{},
-      );
+  }) async => const VendorTestConnectionResult(
+    authValid: true,
+    elapsedMs: 0,
+    sampleSummary: '',
+    fieldMapping: <String, String>{},
+  );
 
   @override
   Future<void> disconnect({
@@ -836,6 +870,5 @@ class _CaptureGateway implements VendorConnectionsGateway {
     required String locationId,
     required String vendorId,
     int limit = 100,
-  }) async =>
-      const <VendorSyncLogEntry>[];
+  }) async => const <VendorSyncLogEntry>[];
 }

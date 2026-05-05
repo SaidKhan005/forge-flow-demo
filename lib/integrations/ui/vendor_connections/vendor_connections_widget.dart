@@ -968,9 +968,14 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final listMaxHeight = (MediaQuery.sizeOf(context).height * 0.40)
+        .clamp(220.0, 300.0)
+        .toDouble();
     final selected = _picked == null
         ? null
         : widget.entries.firstWhere((entry) => entry.vendorId == _picked);
+    final canContinue =
+        selected != null && _isConnectableLifecycle(selected.lifecycle);
     return AlertDialog(
       key: const Key('vendor_connections_picker_dialog'),
       title: Text(_titleFor(widget.category)),
@@ -992,7 +997,7 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
             ),
             const SizedBox(height: 12),
             ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 360),
+              constraints: BoxConstraints(maxHeight: listMaxHeight),
               child: ListView.separated(
                 shrinkWrap: true,
                 itemCount: widget.entries.length,
@@ -1016,6 +1021,15 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
                 },
               ),
             ),
+            if (selected != null && !canContinue) ...<Widget>[
+              const SizedBox(height: 12),
+              _DialogNotice(
+                icon: Icons.info_outline,
+                title: 'Not ready to connect',
+                body: _unavailableReasonFor(selected.lifecycle),
+                color: AppColors.warning,
+              ),
+            ],
           ],
         ),
       ),
@@ -1027,7 +1041,7 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
         ),
         FilledButton(
           key: const Key('vendor_connections_picker_continue'),
-          onPressed: _picked == null
+          onPressed: !canContinue
               ? null
               : () {
                   Navigator.of(context).pop(selected);
@@ -1036,6 +1050,29 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
         ),
       ],
     );
+  }
+
+  bool _isConnectableLifecycle(VendorLifecycle lifecycle) {
+    switch (lifecycle) {
+      case VendorLifecycle.documented:
+      case VendorLifecycle.sandboxVerified:
+        return false;
+      case VendorLifecycle.productionCredentialed:
+      case VendorLifecycle.liveWithOperators:
+        return true;
+    }
+  }
+
+  String _unavailableReasonFor(VendorLifecycle lifecycle) {
+    switch (lifecycle) {
+      case VendorLifecycle.documented:
+        return 'The adapter is implemented and documented, but production credentials are not live yet.';
+      case VendorLifecycle.sandboxVerified:
+        return 'Sandbox validation is complete, but production credentials are not live yet.';
+      case VendorLifecycle.productionCredentialed:
+      case VendorLifecycle.liveWithOperators:
+        return 'This vendor can be connected now.';
+    }
   }
 
   String _titleFor(VendorCategory category) {

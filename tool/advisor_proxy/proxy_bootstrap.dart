@@ -69,6 +69,8 @@ import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
+import 'package:forge_and_flow/services/integration/integration_adapter_common.dart'
+    as integration;
 import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
@@ -83,6 +85,7 @@ import 'advisor_proxy.dart';
 import 'anthropic_http_complete_fn.dart';
 import 'health_producers/producer_registry.dart';
 import 'log.dart';
+import 'vendor_admin_status_catalog.dart' as vendor_status;
 
 typedef PostgresPoolFactory = PostgresPool Function(String connectionString);
 
@@ -3638,26 +3641,95 @@ class _GraphCandidateBundle {
   final List<Map<String, Object?>> edges;
 }
 
-/// Stable status placeholders the Integrations screen renders for
-/// non-rotatable rows (vendor connectors, FX-rate source, email
-/// provider). The proxy answers `GET /v1/admin/integrations` with
-/// these unchanged for the launch slice; later phases swap them out
-/// for live status as those surfaces ship.
-const List<Map<String, Object?>> _kIntegrationDefaultVendorConnectors =
-    <Map<String, Object?>>[
+/// Adapter status rows rendered by the admin Connected services screen.
+///
+/// These are read-only projections from the implemented adapter
+/// registries. They do not imply that connect, rotate, or disconnect
+/// routes are live for a vendor; lifecycle and setup copy carry that
+/// distinction.
+List<Map<String, Object?>> _buildIntegrationVendorConnectorStatuses() {
+  final profiles = <integration.VendorCapabilityProfile>[
+    ...vendor_status.kAdminVisibleVendorCapabilityProfiles,
+  ];
+  return <Map<String, Object?>>[
+    for (final profile in profiles)
       <String, Object?>{
-        'id': 'connector_compeat',
-        'display_name': 'Compeat connector',
-        'status_label': 'placeholder',
-        'detail_message': 'Vendor connector lights up in Phase 8.',
+        'id': profile.vendorId,
+        'display_name': profile.displayName,
+        'status_label': _lifecycleStatusLabel(profile.lifecycle),
+        'detail_message': _vendorConnectorDetail(profile),
       },
-      <String, Object?>{
-        'id': 'connector_mp',
-        'display_name': 'Marketman connector',
-        'status_label': 'placeholder',
-        'detail_message': 'Vendor connector lights up in Phase 8.',
-      },
-    ];
+  ];
+}
+
+String _vendorConnectorDetail(integration.VendorCapabilityProfile profile) {
+  final pieces = <String>[
+    '${_categoryLabel(profile.category)} adapter implemented.',
+    'Setup state: ${_setupStateLabel(profile.lifecycle)}.',
+    'Cadence: ${_webhookSupportLabel(profile.webhookSupport)}.',
+  ];
+  final covers = _coversLabel(profile);
+  if (covers != null) pieces.add('Covers: $covers.');
+  if (profile.modules.isNotEmpty) pieces.add('Product pick required.');
+  return pieces.join(' ');
+}
+
+String _categoryLabel(integration.IntegrationCategory category) {
+  switch (category) {
+    case integration.IntegrationCategory.pos:
+      return 'POS';
+    case integration.IntegrationCategory.reservation:
+      return 'Reservations';
+    case integration.IntegrationCategory.labor:
+      return 'Scheduling and labor';
+  }
+}
+
+String _lifecycleStatusLabel(integration.VendorLifecycle lifecycle) {
+  switch (lifecycle) {
+    case integration.VendorLifecycle.documented:
+      return 'Documented';
+    case integration.VendorLifecycle.sandboxVerified:
+      return 'Sandbox verified';
+    case integration.VendorLifecycle.productionCredentialed:
+      return 'Ready to connect';
+    case integration.VendorLifecycle.liveWithOperators:
+      return 'Live';
+  }
+}
+
+String _setupStateLabel(integration.VendorLifecycle lifecycle) {
+  switch (lifecycle) {
+    case integration.VendorLifecycle.documented:
+      return 'production credentials pending';
+    case integration.VendorLifecycle.sandboxVerified:
+      return 'sandbox verified, production credentials pending';
+    case integration.VendorLifecycle.productionCredentialed:
+      return 'production credentials available';
+    case integration.VendorLifecycle.liveWithOperators:
+      return 'connected by at least one operator';
+  }
+}
+
+String _webhookSupportLabel(integration.VendorWebhookSupport support) {
+  switch (support) {
+    case integration.VendorWebhookSupport.autoRegister:
+      return 'webhook auto-register';
+    case integration.VendorWebhookSupport.manualPaste:
+      return 'manual webhook paste';
+    case integration.VendorWebhookSupport.pollOnly:
+      return 'poll-only';
+  }
+}
+
+String? _coversLabel(integration.VendorCapabilityProfile profile) {
+  if (profile.category != integration.IntegrationCategory.pos) {
+    return null;
+  }
+  return profile.coversFieldExposed
+      ? 'vendor covers field'
+      : 'forecast fallback';
+}
 
 const Map<String, Object?> _kIntegrationDefaultFxRateSource = <String, Object?>{
   'id': 'fx_rate',
@@ -3717,7 +3789,7 @@ class RepositoryIntegrationAdminProxyGateway
     );
     return <String, Object?>{
       'provider_keys': keysJson,
-      'vendor_connectors': _kIntegrationDefaultVendorConnectors,
+      'vendor_connectors': _buildIntegrationVendorConnectorStatuses(),
       'fx_rate_source': _kIntegrationDefaultFxRateSource,
       'email_provider': _kIntegrationDefaultEmailProvider,
     };

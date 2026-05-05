@@ -241,41 +241,59 @@ const List<AdminRoute> kAdminRoutes = <AdminRoute>[
 Widget _buildOperators(BuildContext context) {
   final gateway = AdminConsoleServicesScope.operatorLocationGatewayOf(context);
   final handoff = AdminRouteHandoff.maybeOf(context);
-  return OperatorLocationAdminScreen(
-    gateway: gateway,
-    onOpenSupportLogs: handoff == null
-        ? null
-        : (operatorId, locationId) {
-            handoff.onSelectRoute(
-              AdminRouteIntent(
-                routeId: kAdminDebugConsoleRouteId,
-                supportLogFilter: AdminSupportLogFilterIntent(
-                  operatorId: operatorId,
-                  locationId: locationId,
+  Widget buildScreen({required bool editingEnabled}) {
+    return OperatorLocationAdminScreen(
+      gateway: gateway,
+      editingEnabled: editingEnabled,
+      onOpenSupportLogs: handoff == null
+          ? null
+          : (operatorId, locationId) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminDebugConsoleRouteId,
+                  supportLogFilter: AdminSupportLogFilterIntent(
+                    operatorId: operatorId,
+                    locationId: locationId,
+                  ),
                 ),
-              ),
-            );
-          },
-    onOpenDataAccuracy: handoff == null
-        ? null
-        : (scope) {
-            handoff.onSelectRoute(
-              AdminRouteIntent(
-                routeId: kAdminDataAccuracyRouteId,
-                operatorLocationScope: scope,
-              ),
-            );
-          },
-    onOpenPollingPricing: handoff == null
-        ? null
-        : (scope) {
-            handoff.onSelectRoute(
-              AdminRouteIntent(
-                routeId: kAdminPollingPricingRouteId,
-                operatorLocationScope: scope,
-              ),
-            );
-          },
+              );
+            },
+      onOpenDataAccuracy: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminDataAccuracyRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+      onOpenPollingPricing: handoff == null
+          ? null
+          : (scope) {
+              handoff.onSelectRoute(
+                AdminRouteIntent(
+                  routeId: kAdminPollingPricingRouteId,
+                  operatorLocationScope: scope,
+                ),
+              );
+            },
+    );
+  }
+
+  final source = AdminConsoleServicesScope.adminAuthSourceOf(context);
+  if (source == null) {
+    return buildScreen(editingEnabled: true);
+  }
+  return StreamBuilder<AdminAuthState>(
+    stream: source.stream,
+    initialData: source.current,
+    builder: (context, snapshot) {
+      final state = snapshot.data;
+      final session = state is AdminAuthAuthenticated ? state.session : null;
+      final canEdit = session != null && session.roles.contains('super_admin');
+      return buildScreen(editingEnabled: canEdit);
+    },
   );
 }
 

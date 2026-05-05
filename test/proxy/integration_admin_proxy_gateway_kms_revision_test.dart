@@ -72,28 +72,69 @@ void main() {
       );
     }
 
-    test(
-      'rotating anthropic forces a new Cloud Run revision once with the '
-      'expected reason',
-      () async {
-        final harness = buildGateway(
-          credentialId: 'cred-anth-1',
-          keyKind: 'anthropic',
-        );
-        await harness.gateway.rotateProviderKey(
-          actorUserId: actorUserId,
-          keyKind: 'anthropic',
-          plaintextValue: plaintextValue,
-          adminReason: adminReason,
-        );
+    test('listBundle projects the implemented adapter catalog', () async {
+      final harness = buildGateway();
+      final bundle = await harness.gateway.listBundle(
+        actorUserId: actorUserId,
+        adminReason: adminReason,
+      );
 
-        expect(harness.cloudRun.calls, hasLength(1));
-        expect(
-          harness.cloudRun.calls.single,
-          'kms_rotation:anthropic:cred-anth-1',
-        );
-      },
-    );
+      final vendors = (bundle['vendor_connectors'] as List)
+          .cast<Map<String, Object?>>();
+      expect(vendors, hasLength(17));
+      expect(
+        vendors.map((vendor) => vendor['id']),
+        containsAll(<String>[
+          'aloha_ncr_voyix',
+          'clover',
+          'lightspeed_lsk',
+          'oracle_micros_simphony',
+          'revel',
+          'square',
+          'toast',
+          'libro',
+          'opentable',
+          'sevenrooms',
+          'tock',
+          'adp',
+          'agendrix',
+          'humanity',
+          'push_operations',
+          'quickbooks_time',
+          'seven_shifts',
+        ]),
+      );
+      expect(
+        vendors.firstWhere((vendor) => vendor['id'] == 'toast')['status_label'],
+        equals('Documented'),
+      );
+      expect(
+        vendors.firstWhere(
+          (vendor) => vendor['id'] == 'oracle_micros_simphony',
+        )['detail_message'],
+        contains('poll-only'),
+      );
+    });
+
+    test('rotating anthropic forces a new Cloud Run revision once with the '
+        'expected reason', () async {
+      final harness = buildGateway(
+        credentialId: 'cred-anth-1',
+        keyKind: 'anthropic',
+      );
+      await harness.gateway.rotateProviderKey(
+        actorUserId: actorUserId,
+        keyKind: 'anthropic',
+        plaintextValue: plaintextValue,
+        adminReason: adminReason,
+      );
+
+      expect(harness.cloudRun.calls, hasLength(1));
+      expect(
+        harness.cloudRun.calls.single,
+        'kms_rotation:anthropic:cred-anth-1',
+      );
+    });
 
     test('rotating voyage forces a new Cloud Run revision once', () async {
       final harness = buildGateway(
@@ -127,157 +168,145 @@ void main() {
       expect(harness.cloudRun.calls.single, 'kms_rotation:gemini:cred-gem-1');
     });
 
-    test(
-      'rotating azure_db does NOT force a Cloud Run revision (not a '
-      'runtime-read lane)',
-      () async {
-        final harness = buildGateway(
-          credentialId: 'cred-azdb-1',
-          keyKind: 'azure_db',
-        );
-        await harness.gateway.rotateProviderKey(
-          actorUserId: actorUserId,
-          keyKind: 'azure_db',
-          plaintextValue: plaintextValue,
-          adminReason: adminReason,
-        );
+    test('rotating azure_db does NOT force a Cloud Run revision (not a '
+        'runtime-read lane)', () async {
+      final harness = buildGateway(
+        credentialId: 'cred-azdb-1',
+        keyKind: 'azure_db',
+      );
+      await harness.gateway.rotateProviderKey(
+        actorUserId: actorUserId,
+        keyKind: 'azure_db',
+        plaintextValue: plaintextValue,
+        adminReason: adminReason,
+      );
 
-        expect(harness.cloudRun.calls, isEmpty);
-        // Sanity: rotation_success audit still landed even though the
-        // Cloud Run path was skipped.
-        final eventTypes = harness.audit.events
-            .map((e) => e.eventType)
-            .toList(growable: false);
-        expect(
-          eventTypes,
-          contains('admin.integrations.rotation_success'),
-        );
-        // Neither cloud_run audit row should have been recorded.
-        expect(
-          eventTypes,
-          isNot(contains('admin.integrations.cloud_run_revision_forced')),
-        );
-        expect(
-          eventTypes,
-          isNot(contains('admin.integrations.cloud_run_refresh_failed')),
-        );
-      },
-    );
+      expect(harness.cloudRun.calls, isEmpty);
+      // Sanity: rotation_success audit still landed even though the
+      // Cloud Run path was skipped.
+      final eventTypes = harness.audit.events
+          .map((e) => e.eventType)
+          .toList(growable: false);
+      expect(eventTypes, contains('admin.integrations.rotation_success'));
+      // Neither cloud_run audit row should have been recorded.
+      expect(
+        eventTypes,
+        isNot(contains('admin.integrations.cloud_run_revision_forced')),
+      );
+      expect(
+        eventTypes,
+        isNot(contains('admin.integrations.cloud_run_refresh_failed')),
+      );
+    });
 
-    test(
-      'rotating a runtime-read lane while its kms_real_provider_*_enabled '
-      'flag is OFF (router-routed-to-stub) does NOT force a Cloud Run '
-      'revision and does NOT emit cloud_run_revision_forced',
-      () async {
-        // Day 0 rollout scenario: the proxy is wired with the real
-        // GCP Cloud Run admin client (env vars set), but the
-        // `kms_real_provider_anthropic_enabled` flag is still false.
-        // The KmsLaneRouter dispatches to KmsStubProvider, which
-        // returns a `kms://stub/<uuid>` pointer. Without the
-        // pointer-prefix gate this would still PATCH Cloud Run and
-        // audit `cloud_run_revision_forced`, even though no Secret
-        // Manager version was created.
-        final harness = buildGateway(
-          credentialId: 'cred-anth-stub',
-          keyKind: 'anthropic',
-        );
-        harness.kms.secretNamePrefix = 'kms://stub/';
+    test('rotating a runtime-read lane while its kms_real_provider_*_enabled '
+        'flag is OFF (router-routed-to-stub) does NOT force a Cloud Run '
+        'revision and does NOT emit cloud_run_revision_forced', () async {
+      // Day 0 rollout scenario: the proxy is wired with the real
+      // GCP Cloud Run admin client (env vars set), but the
+      // `kms_real_provider_anthropic_enabled` flag is still false.
+      // The KmsLaneRouter dispatches to KmsStubProvider, which
+      // returns a `kms://stub/<uuid>` pointer. Without the
+      // pointer-prefix gate this would still PATCH Cloud Run and
+      // audit `cloud_run_revision_forced`, even though no Secret
+      // Manager version was created.
+      final harness = buildGateway(
+        credentialId: 'cred-anth-stub',
+        keyKind: 'anthropic',
+      );
+      harness.kms.secretNamePrefix = 'kms://stub/';
 
-        await harness.gateway.rotateProviderKey(
-          actorUserId: actorUserId,
-          keyKind: 'anthropic',
-          plaintextValue: plaintextValue,
-          adminReason: adminReason,
-        );
+      await harness.gateway.rotateProviderKey(
+        actorUserId: actorUserId,
+        keyKind: 'anthropic',
+        plaintextValue: plaintextValue,
+        adminReason: adminReason,
+      );
 
-        // The KMS write succeeded against the stub provider.
-        expect(harness.kms.calls, hasLength(1));
+      // The KMS write succeeded against the stub provider.
+      expect(harness.kms.calls, hasLength(1));
 
-        // But Cloud Run was NOT contacted, and no
-        // cloud_run_revision_forced audit row was emitted.
-        expect(harness.cloudRun.calls, isEmpty);
-        final eventTypes = harness.audit.events
-            .map((e) => e.eventType)
-            .toList(growable: false);
-        expect(
-          eventTypes,
-          contains('admin.integrations.rotation_success'),
-          reason: 'rotation itself succeeded; only the Cloud Run '
-              'restart should be skipped',
-        );
-        expect(
-          eventTypes,
-          isNot(contains('admin.integrations.cloud_run_revision_forced')),
-          reason: 'restart should be gated on a real Secret Manager '
-              'pointer, not on the lane kind alone',
-        );
-        expect(
-          eventTypes,
-          isNot(contains('admin.integrations.cloud_run_refresh_failed')),
-        );
+      // But Cloud Run was NOT contacted, and no
+      // cloud_run_revision_forced audit row was emitted.
+      expect(harness.cloudRun.calls, isEmpty);
+      final eventTypes = harness.audit.events
+          .map((e) => e.eventType)
+          .toList(growable: false);
+      expect(
+        eventTypes,
+        contains('admin.integrations.rotation_success'),
+        reason:
+            'rotation itself succeeded; only the Cloud Run '
+            'restart should be skipped',
+      );
+      expect(
+        eventTypes,
+        isNot(contains('admin.integrations.cloud_run_revision_forced')),
+        reason:
+            'restart should be gated on a real Secret Manager '
+            'pointer, not on the lane kind alone',
+      );
+      expect(
+        eventTypes,
+        isNot(contains('admin.integrations.cloud_run_refresh_failed')),
+      );
 
-        // The persisted ledger pointer reflects the stub write.
-        final ledgerCalls = harness.credentials.rotateCalls;
-        expect(ledgerCalls, hasLength(1));
-        expect(ledgerCalls.single.kmsSecretName, startsWith('kms://stub/'));
-      },
-    );
+      // The persisted ledger pointer reflects the stub write.
+      final ledgerCalls = harness.credentials.rotateCalls;
+      expect(ledgerCalls, hasLength(1));
+      expect(ledgerCalls.single.kmsSecretName, startsWith('kms://stub/'));
+    });
 
-    test(
-      'Cloud Run failure does NOT roll back the rotation; a '
-      'cloud_run_refresh_failed audit row is recorded',
-      () async {
-        final harness = buildGateway(
-          credentialId: 'cred-anth-2',
-          keyKind: 'anthropic',
-        );
-        harness.cloudRun.throwsOnNextCall = CloudRunAdminError(
-          message: 'simulated_patch_500',
-          statusCode: 500,
-        );
+    test('Cloud Run failure does NOT roll back the rotation; a '
+        'cloud_run_refresh_failed audit row is recorded', () async {
+      final harness = buildGateway(
+        credentialId: 'cred-anth-2',
+        keyKind: 'anthropic',
+      );
+      harness.cloudRun.throwsOnNextCall = CloudRunAdminError(
+        message: 'simulated_patch_500',
+        statusCode: 500,
+      );
 
-        final response = await harness.gateway.rotateProviderKey(
-          actorUserId: actorUserId,
-          keyKind: 'anthropic',
-          plaintextValue: plaintextValue,
-          adminReason: adminReason,
-        );
+      final response = await harness.gateway.rotateProviderKey(
+        actorUserId: actorUserId,
+        keyKind: 'anthropic',
+        plaintextValue: plaintextValue,
+        adminReason: adminReason,
+      );
 
-        // The rotation as a whole still succeeded — the response carries
-        // the freshly inserted row.
-        expect(response['row'], isA<Map<String, Object?>>());
-        final row = response['row'] as Map<String, Object?>;
-        expect(row['credential_id'], 'cred-anth-2');
-        expect(row['key_kind'], 'anthropic');
-        expect(row['is_active'], true);
-        expect(response['plaintext_value'], plaintextValue);
+      // The rotation as a whole still succeeded — the response carries
+      // the freshly inserted row.
+      expect(response['row'], isA<Map<String, Object?>>());
+      final row = response['row'] as Map<String, Object?>;
+      expect(row['credential_id'], 'cred-anth-2');
+      expect(row['key_kind'], 'anthropic');
+      expect(row['is_active'], true);
+      expect(response['plaintext_value'], plaintextValue);
 
-        // The Cloud Run client was called once (and threw), but the
-        // gateway swallowed the error and audited it.
-        expect(harness.cloudRun.calls, hasLength(1));
+      // The Cloud Run client was called once (and threw), but the
+      // gateway swallowed the error and audited it.
+      expect(harness.cloudRun.calls, hasLength(1));
 
-        final failureEvents = harness.audit.events
-            .where(
-              (e) =>
-                  e.eventType == 'admin.integrations.cloud_run_refresh_failed',
-            )
-            .toList(growable: false);
-        expect(failureEvents, hasLength(1));
-        final failurePayload = failureEvents.single.payload;
-        expect(failurePayload['key_kind'], 'anthropic');
-        expect(failurePayload['credential_id'], 'cred-anth-2');
-        final message = failurePayload['message'];
-        expect(message, isA<String>());
-        expect((message as String).contains('simulated_patch_500'), isTrue);
+      final failureEvents = harness.audit.events
+          .where(
+            (e) => e.eventType == 'admin.integrations.cloud_run_refresh_failed',
+          )
+          .toList(growable: false);
+      expect(failureEvents, hasLength(1));
+      final failurePayload = failureEvents.single.payload;
+      expect(failurePayload['key_kind'], 'anthropic');
+      expect(failurePayload['credential_id'], 'cred-anth-2');
+      final message = failurePayload['message'];
+      expect(message, isA<String>());
+      expect((message as String).contains('simulated_patch_500'), isTrue);
 
-        // No success audit row for the revision restart.
-        final successEvents = harness.audit.events.where(
-          (e) =>
-              e.eventType == 'admin.integrations.cloud_run_revision_forced',
-        );
-        expect(successEvents, isEmpty);
-      },
-    );
+      // No success audit row for the revision restart.
+      final successEvents = harness.audit.events.where(
+        (e) => e.eventType == 'admin.integrations.cloud_run_revision_forced',
+      );
+      expect(successEvents, isEmpty);
+    });
 
     test(
       'KMS write failure stops the flow before Cloud Run is contacted',
@@ -309,10 +338,7 @@ void main() {
         final eventTypes = harness.audit.events
             .map((e) => e.eventType)
             .toList(growable: false);
-        expect(
-          eventTypes,
-          contains('admin.integrations.rotation_failed'),
-        );
+        expect(eventTypes, contains('admin.integrations.rotation_failed'));
         expect(
           eventTypes,
           isNot(contains('admin.integrations.rotation_success')),
@@ -328,55 +354,52 @@ void main() {
       },
     );
 
-    test(
-      'successful runtime-read rotation records a cloud_run_revision_forced '
-      'audit row with the operation name returned by Cloud Run',
-      () async {
-        final harness = buildGateway(
-          credentialId: 'cred-voy-2',
-          keyKind: 'voyage',
-        );
-        harness.cloudRun.nextRevisionName =
-            'projects/test-proj/locations/us-east1/operations/op-rot-42';
+    test('successful runtime-read rotation records a cloud_run_revision_forced '
+        'audit row with the operation name returned by Cloud Run', () async {
+      final harness = buildGateway(
+        credentialId: 'cred-voy-2',
+        keyKind: 'voyage',
+      );
+      harness.cloudRun.nextRevisionName =
+          'projects/test-proj/locations/us-east1/operations/op-rot-42';
 
-        await harness.gateway.rotateProviderKey(
-          actorUserId: actorUserId,
-          keyKind: 'voyage',
-          plaintextValue: plaintextValue,
-          adminReason: adminReason,
-        );
+      await harness.gateway.rotateProviderKey(
+        actorUserId: actorUserId,
+        keyKind: 'voyage',
+        plaintextValue: plaintextValue,
+        adminReason: adminReason,
+      );
 
-        final successEvents = harness.audit.events
-            .where(
-              (e) =>
-                  e.eventType ==
-                  'admin.integrations.cloud_run_revision_forced',
-            )
-            .toList(growable: false);
-        expect(successEvents, hasLength(1));
-        final payload = successEvents.single.payload;
-        expect(payload['key_kind'], 'voyage');
-        expect(payload['credential_id'], 'cred-voy-2');
-        expect(
-          payload['operation_name'],
-          'projects/test-proj/locations/us-east1/operations/op-rot-42',
-        );
-        // The rotation_success row preceded the cloud_run_revision_forced
-        // row — verifies ordering matches the production flow (rotation
-        // success first, then revision restart).
-        final orderedTypes = harness.audit.events
-            .map((e) => e.eventType)
-            .toList(growable: false);
-        final successIdx =
-            orderedTypes.indexOf('admin.integrations.rotation_success');
-        final revisionIdx = orderedTypes.indexOf(
-          'admin.integrations.cloud_run_revision_forced',
-        );
-        expect(successIdx, isNonNegative);
-        expect(revisionIdx, isNonNegative);
-        expect(successIdx, lessThan(revisionIdx));
-      },
-    );
+      final successEvents = harness.audit.events
+          .where(
+            (e) =>
+                e.eventType == 'admin.integrations.cloud_run_revision_forced',
+          )
+          .toList(growable: false);
+      expect(successEvents, hasLength(1));
+      final payload = successEvents.single.payload;
+      expect(payload['key_kind'], 'voyage');
+      expect(payload['credential_id'], 'cred-voy-2');
+      expect(
+        payload['operation_name'],
+        'projects/test-proj/locations/us-east1/operations/op-rot-42',
+      );
+      // The rotation_success row preceded the cloud_run_revision_forced
+      // row — verifies ordering matches the production flow (rotation
+      // success first, then revision restart).
+      final orderedTypes = harness.audit.events
+          .map((e) => e.eventType)
+          .toList(growable: false);
+      final successIdx = orderedTypes.indexOf(
+        'admin.integrations.rotation_success',
+      );
+      final revisionIdx = orderedTypes.indexOf(
+        'admin.integrations.cloud_run_revision_forced',
+      );
+      expect(successIdx, isNonNegative);
+      expect(revisionIdx, isNonNegative);
+      expect(successIdx, lessThan(revisionIdx));
+    });
   });
 }
 
@@ -396,11 +419,11 @@ class _UnusedPool implements PostgresPool {
   }
 }
 
-final TenantTransactionWrapper _unusedWrapper =
-    TenantTransactionWrapper(_UnusedPool());
+final TenantTransactionWrapper _unusedWrapper = TenantTransactionWrapper(
+  _UnusedPool(),
+);
 
-class _FakeProviderCredentialsRepository
-    extends ProviderCredentialsRepository {
+class _FakeProviderCredentialsRepository extends ProviderCredentialsRepository {
   _FakeProviderCredentialsRepository() : super(_unusedWrapper);
 
   ProviderCredentialRow? rotateResult;
@@ -418,13 +441,11 @@ class _FakeProviderCredentialsRepository
     required String actorUserId,
     required String adminReason,
   }) async {
-    rotateCalls.add(
-      (
-        keyKind: keyKind,
-        maskedValue: maskedValue,
-        kmsSecretName: kmsSecretName,
-      ),
-    );
+    rotateCalls.add((
+      keyKind: keyKind,
+      maskedValue: maskedValue,
+      kmsSecretName: kmsSecretName,
+    ));
     final raise = rotateThrows;
     if (raise != null) throw raise;
     final template = rotateResult;
@@ -468,8 +489,7 @@ class _FakeKmsProvider implements KmsProvider {
   /// flag-ON / real-write path. The flag-OFF / stub-routed test
   /// flips this back to `kms://stub/` to verify the Cloud Run
   /// restart gate respects the persisted pointer.
-  String secretNamePrefix =
-      GcpSecretManagerKmsProvider.pointerPrefix;
+  String secretNamePrefix = GcpSecretManagerKmsProvider.pointerPrefix;
 
   final List<({String logicalKeyKind, String plaintext})> calls = [];
 
@@ -485,7 +505,8 @@ class _FakeKmsProvider implements KmsProvider {
       throw raise;
     }
     return KmsWriteResult(
-      secretName: '${secretNamePrefix}projects/p/secrets/forge-flow-'
+      secretName:
+          '${secretNamePrefix}projects/p/secrets/forge-flow-'
           '${logicalKeyKind.replaceAll('_', '-')}-api-key/versions/'
           '${calls.length}',
       maskedDisplay: maskedDisplay,
@@ -537,9 +558,7 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? geoCountry,
     String? requestId,
   }) async {
-    events.add(
-      _RecordedAuditEvent(eventType: eventType, payload: payload),
-    );
+    events.add(_RecordedAuditEvent(eventType: eventType, payload: payload));
     return 'event-${events.length}';
   }
 
@@ -559,9 +578,7 @@ class _RecordingAuditRepository extends AuthEventsAuditRepository {
     String? requestId,
     required String adminReason,
   }) async {
-    events.add(
-      _RecordedAuditEvent(eventType: eventType, payload: payload),
-    );
+    events.add(_RecordedAuditEvent(eventType: eventType, payload: payload));
     return 'event-${events.length}';
   }
 }

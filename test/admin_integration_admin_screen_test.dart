@@ -84,6 +84,14 @@ void main() {
       find.byKey(const Key('admin_integrations_status_email')),
       findsOneWidget,
     );
+    expect(
+      find.byKey(const Key('admin_integrations_status_toast')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('admin_integrations_status_quickbooks_time')),
+      findsOneWidget,
+    );
   });
 
   testWidgets('rotate flow: confirm → plaintext → reveal modal → close', (
@@ -264,7 +272,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
+      final navItem = find.byKey(const Key('admin_nav_item_integrations'));
+      await tester.ensureVisible(navItem);
+      await tester.pumpAndSettle();
+      await tester.tap(navItem);
       await tester.pumpAndSettle();
 
       expect(
@@ -299,7 +310,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byKey(const Key('admin_nav_item_integrations')));
+      final navItem = find.byKey(const Key('admin_nav_item_integrations'));
+      await tester.ensureVisible(navItem);
+      await tester.pumpAndSettle();
+      await tester.tap(navItem);
       await tester.pumpAndSettle();
 
       expect(

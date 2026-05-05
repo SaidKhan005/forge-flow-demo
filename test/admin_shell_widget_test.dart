@@ -90,7 +90,7 @@ void main() {
     expect(find.byKey(const Key('admin_nav_section_ai')), findsOneWidget);
     expect(find.byKey(const Key('admin_nav_section_badge_ai')), findsOneWidget);
     expect(find.text('AI'), findsOneWidget);
-    expect(find.text('Work in progress'), findsOneWidget);
+    expect(find.text('Work in progress'), findsWidgets);
     expect(
       find.byKey(const Key('admin_nav_section_systemMonitoring')),
       findsOneWidget,
@@ -133,7 +133,11 @@ void main() {
       kAdminRoutes
           .where((route) => route.section == AdminRouteSection.operations)
           .map((route) => route.id),
-      <String>[kAdminOperatorsRouteId],
+      <String>[
+        kAdminOperatorsRouteId,
+        kAdminDataAccuracyRouteId,
+        kAdminPollingPricingRouteId,
+      ],
     );
 
     for (final route in kAdminRoutes) {

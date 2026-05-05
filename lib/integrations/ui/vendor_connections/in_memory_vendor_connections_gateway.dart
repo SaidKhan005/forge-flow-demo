@@ -1,9 +1,8 @@
 // Phase 8.0 — In-memory Vendor Connections gateway.
 //
-// Used by the kDemoMode walkthrough and widget tests. Seeds the three
-// reference stub vendors (Lightspeed K-Series, Libro, QuickBooks
-// Time) so the connect / test / disconnect click paths run without
-// a live proxy or vendor sandbox.
+// Used by the kDemoMode walkthrough and widget tests. Seeds the full
+// implemented adapter catalog so setup surfaces can show every vendor
+// without a live proxy or vendor sandbox.
 //
 // The stub adapter responses mirror the docs/phases/phase_8/
 // wave_1_vendor_profiles.md + vendor_master_list.md spec exactly so
@@ -14,31 +13,148 @@ import 'vendor_connections_gateway.dart';
 import 'vendor_connections_models.dart';
 
 class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
-  InMemoryVendorConnectionsGateway({
-    Map<String, VendorConnectionsBundle>? seed,
-  }) : _bundles = seed != null
-            ? Map<String, VendorConnectionsBundle>.from(seed)
-            : <String, VendorConnectionsBundle>{};
+  InMemoryVendorConnectionsGateway({Map<String, VendorConnectionsBundle>? seed})
+    : _bundles = seed != null
+          ? Map<String, VendorConnectionsBundle>.from(seed)
+          : <String, VendorConnectionsBundle>{};
 
   final Map<String, VendorConnectionsBundle> _bundles;
 
   static const List<VendorPickerEntry> _vendorCatalog = <VendorPickerEntry>[
     VendorPickerEntry(
+      vendorId: 'aloha_ncr_voyix',
+      displayName: 'Aloha (NCR Voyix)',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: true,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'clover',
+      displayName: 'Clover',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
       vendorId: 'lightspeed_lsk',
       displayName: 'Lightspeed Restaurant K-Series',
       category: VendorCategory.pos,
       authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: true,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'oracle_micros_simphony',
+      displayName: 'Oracle MICROS Simphony',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: true,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'revel',
+      displayName: 'Revel Systems',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: true,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'square',
+      displayName: 'Square',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'toast',
+      displayName: 'Toast',
+      category: VendorCategory.pos,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
       coversFieldExposed: true,
       requiresModule: false,
     ),
     VendorPickerEntry(
       vendorId: 'libro',
-      displayName: 'Libro',
+      displayName: 'Libro Reserve',
       category: VendorCategory.reservation,
       authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
-      coversFieldExposed: true,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'opentable',
+      displayName: 'OpenTable',
+      category: VendorCategory.reservation,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'sevenrooms',
+      displayName: 'SevenRooms',
+      category: VendorCategory.reservation,
+      authMode: VendorAuthMode.oauthOrKeyPaste,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'tock',
+      displayName: 'Tock',
+      category: VendorCategory.reservation,
+      authMode: VendorAuthMode.keyPaste,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'adp',
+      displayName: 'ADP Workforce Now / Workforce Manager',
+      category: VendorCategory.labor,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: true,
+      modules: <String>['workforce_now', 'workforce_manager', 'run'],
+    ),
+    VendorPickerEntry(
+      vendorId: 'agendrix',
+      displayName: 'Agendrix',
+      category: VendorCategory.labor,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'humanity',
+      displayName: 'Humanity',
+      category: VendorCategory.labor,
+      authMode: VendorAuthMode.keyPaste,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
+    ),
+    VendorPickerEntry(
+      vendorId: 'push_operations',
+      displayName: 'Push Operations',
+      category: VendorCategory.labor,
+      authMode: VendorAuthMode.keyPaste,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
       requiresModule: false,
     ),
     VendorPickerEntry(
@@ -46,10 +162,19 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
       displayName: 'QuickBooks Time',
       category: VendorCategory.labor,
       authMode: VendorAuthMode.oauth,
-      lifecycle: VendorLifecycle.productionCredentialed,
+      lifecycle: VendorLifecycle.documented,
       coversFieldExposed: false,
       requiresModule: true,
       modules: <String>['time', 'accounting', 'payroll'],
+    ),
+    VendorPickerEntry(
+      vendorId: 'seven_shifts',
+      displayName: '7shifts',
+      category: VendorCategory.labor,
+      authMode: VendorAuthMode.oauth,
+      lifecycle: VendorLifecycle.documented,
+      coversFieldExposed: false,
+      requiresModule: false,
     ),
   ];
 
@@ -188,7 +313,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
         throw VendorConnectionsGatewayError(
           message: 'unknown demo vendor: $vendorId',
           remediation:
-              'Pick one of: Lightspeed Restaurant K-Series, Libro, '
+              'Pick one of: Lightspeed Restaurant K-Series, Libro Reserve, '
               'QuickBooks Time.',
           statusCode: 404,
         );
@@ -218,8 +343,8 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
           : bundle.laborConnection,
       reservationConnection:
           _matchesVendor(bundle.reservationConnection, vendorId)
-              ? null
-              : bundle.reservationConnection,
+          ? null
+          : bundle.reservationConnection,
       demoFlags: bundle.demoFlags,
     );
     _bundles[_key(operatorId, locationId)] = updated;
@@ -264,9 +389,7 @@ class InMemoryVendorConnectionsGateway implements VendorConnectionsGateway {
   Map<String, Object?> _stubMetadata(String vendorId) {
     switch (vendorId) {
       case 'lightspeed_lsk':
-        return const <String, Object?>{
-          'business_id': 'demo-lsk-business-7c2f',
-        };
+        return const <String, Object?>{'business_id': 'demo-lsk-business-7c2f'};
       case 'libro':
         return const <String, Object?>{'venue_id': 'demo-libro-venue-8821'};
       case 'quickbooks_time':
