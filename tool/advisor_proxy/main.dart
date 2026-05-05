@@ -400,6 +400,14 @@ Future<void> main(List<String> args) async {
   // bridge logs every dead-letter MOVE with attempt_count + cap so
   // log search can correlate cap changes with DLQ-rate changes.
   final realtimeDlqCap = resolveEventOutboxDlqCap(Platform.environment);
+  // Phase 10a.4 — UPSERT writer for the publish-metrics minute
+  // buckets. The bridge accumulates attempts/failures keyed by minute
+  // and flushes deltas every 30s through the admin pool; the proxy
+  // /health `event_outbox_publish_error_rate` producer reads the
+  // rolling 5-minute sum from the table this writer populates.
+  final realtimePublishMetricsWriter = _PostgresPublishMetricsWriter(
+    adminWrapper: realtimeAdminWrapper,
+  );
   final realtimeBridge = RealtimeBridgeWorker(
     listener: realtimeOutboxListener,
     outboxRepository: realtimeOutboxRepository,
@@ -412,6 +420,7 @@ Future<void> main(List<String> args) async {
       adminWrapper: realtimeAdminWrapper,
     ).discover,
     dlqCap: realtimeDlqCap,
+    publishMetricsWriter: realtimePublishMetricsWriter.write,
     logger: _logRealtimeBridgeEvent,
   );
   try {
@@ -730,6 +739,64 @@ class _PostgresOperatorDiscoverer {
   }
 }
 
+/// Phase 10a.4 — production writer for the bridge's publish-metrics
+/// minute buckets. Runs through the admin pool (`runAsSystem`)
+/// because `event_outbox_publish_metrics` is platform-wide
+/// bookkeeping (no per-tenant row, no RLS); the producer that reads
+/// it does the same.
+///
+/// The single-transaction batch UPSERT is intentional: a flush of N
+/// buckets ships in one round-trip, with a `DO UPDATE SET ... =
+/// table.col + EXCLUDED.col` so a slow flush followed by a fast
+/// flush in the same minute bucket sums correctly. The
+/// `failed_publish_count <= attempted_publish_count` CHECK at the
+/// migration level holds because the bridge always increments
+/// attempted before optionally incrementing failed.
+class _PostgresPublishMetricsWriter {
+  _PostgresPublishMetricsWriter({required TenantTransactionWrapper adminWrapper})
+      : _adminWrapper = adminWrapper;
+
+  final TenantTransactionWrapper _adminWrapper;
+
+  Future<void> write(
+    List<RealtimeBridgePublishMetricsBucket> buckets,
+  ) async {
+    if (buckets.isEmpty) return;
+    await _adminWrapper.runAsSystem<void>(
+      (exec) async {
+        for (final bucket in buckets) {
+          await exec.execute(
+            'insert into event_outbox_publish_metrics ('
+            '  window_start, attempted_publish_count, '
+            '  failed_publish_count, updated_at'
+            ') '
+            'values ('
+            '  @window_start::timestamptz, '
+            '  @attempted::bigint, '
+            '  @failed::bigint, '
+            '  now()'
+            ') '
+            'on conflict (window_start) do update set '
+            '  attempted_publish_count = '
+            '    event_outbox_publish_metrics.attempted_publish_count '
+            '    + excluded.attempted_publish_count, '
+            '  failed_publish_count = '
+            '    event_outbox_publish_metrics.failed_publish_count '
+            '    + excluded.failed_publish_count, '
+            '  updated_at = now()',
+            parameters: <String, Object?>{
+              'window_start': bucket.windowStart.toUtc().toIso8601String(),
+              'attempted': bucket.attemptedDelta,
+              'failed': bucket.failedDelta,
+            },
+          );
+        }
+      },
+      reason: 'realtime_bridge_publish_metrics_flush',
+    );
+  }
+}
+
 /// Phase 10a.0 — funnel bridge worker log events into the structured
 /// log() helper. Names only — the operator id is fine to log
 /// (already in the request log context elsewhere); errors are
@@ -738,6 +805,11 @@ class _PostgresOperatorDiscoverer {
 /// Phase 10a.2 — `deadLettered` + `deadLetterMoveFailed` carry
 /// attempt_count + cap so log search can spot rows that crossed the
 /// cap and rows whose MOVE failed transiently.
+///
+/// Phase 10a.4 — `publishMetricsFlushFailed` surfaces writer-side
+/// errors so log search can alarm when the
+/// `event_outbox_publish_error_rate` producer is stale because the
+/// writer (not the producer) is broken.
 void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
   final fields = <String, Object?>{
     if (event.operatorId != null) 'operator_id': event.operatorId,
@@ -792,6 +864,12 @@ void _logRealtimeBridgeEvent(RealtimeBridgeLogEvent event) {
       log(
         LogSeverity.warning,
         'realtime.bridge.dead_letter_move_failed',
+        fields: fields,
+      );
+    case RealtimeBridgeLogKind.publishMetricsFlushFailed:
+      log(
+        LogSeverity.warning,
+        'realtime.bridge.publish_metrics_flush_failed',
         fields: fields,
       );
   }
