@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import 'opz_matrix_grid.dart';
 
 class ZoneStatusCard extends StatelessWidget {
   final double currentCPLH;
@@ -11,6 +12,13 @@ class ZoneStatusCard extends StatelessWidget {
   final String opzLabel;
   final String opzSubLabel;
 
+  /// 7.58 depth wave (slice 10.5.6): SPLH band for the cross-axis matrix
+  /// grid rendered inside the OPZ tile. `'below'` / `'on'` / `'above'`
+  /// when BOH minutes are logged; null when BOH has not punched in yet,
+  /// which the matrix grid renders as nine dim cells with no active
+  /// marker.
+  final String? splhState;
+
   const ZoneStatusCard({
     super.key,
     required this.currentCPLH,
@@ -20,7 +28,32 @@ class ZoneStatusCard extends StatelessWidget {
     required this.opzStatus,
     required this.opzLabel,
     required this.opzSubLabel,
+    this.splhState,
   });
+
+  static OpzCplhBand _cplhBandFor(String status) {
+    switch (status) {
+      case 'above':
+        return OpzCplhBand.aboveCeiling;
+      case 'below':
+        return OpzCplhBand.belowFloor;
+      default:
+        return OpzCplhBand.inOpz;
+    }
+  }
+
+  static OpzSplhBand? _splhBandFor(String? state) {
+    switch (state) {
+      case 'below':
+        return OpzSplhBand.low;
+      case 'on':
+        return OpzSplhBand.onTarget;
+      case 'above':
+        return OpzSplhBand.high;
+      default:
+        return null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +110,20 @@ class ZoneStatusCard extends StatelessWidget {
             opzCeiling: opzCeilingCPLH,
             target: targetCPLH,
             current: currentCPLH,
+          ),
+          // 7.58 depth wave (slice 10.5.6): 3x3 cross-axis matrix grid +
+          // joint cross-axis sub-label, lifted inside the OPZ tile so
+          // operators see the joint diagnosis without scanning a sibling
+          // card.
+          OpzMatrixGrid(
+            cplh: _cplhBandFor(opzStatus),
+            splh: _splhBandFor(splhState),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            opzSubLabel,
+            key: const Key('opz_sub_label'),
+            style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ],
       ),
