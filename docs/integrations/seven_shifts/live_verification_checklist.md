@@ -60,6 +60,22 @@ that resolved each check that failed.
       `TestConnectionResult.note`, polling-only sync continues to
       land canonical facts.
       Test: `<test_path>:<line>`
+- [ ] **Hours & Wages report (Gourmet tier).** `/reports/hours_and_wages`
+      returns per-shift `total_pay` rows; adapter merges by
+      `(employee_id, shift_id)` onto the canonical fact and stamps
+      `wage_provenance = vendor_seven_shifts_per_employee_actual_dollars`.
+      Verifies the `LaborWageSourceClass.perEmployeeWithDollars`
+      qualification.
+      Test: `<test_path>:<line>`
+- [ ] **Hours & Wages report tier gating.** Toggle the sandbox dev
+      account to a lower tier → `/reports/hours_and_wages` returns
+      HTTP 403 (or 404, per developer-reference ambiguity) → adapter
+      catches `SevenShiftsHoursAndWagesReportGatedException`, appends
+      a `connector_sync_log` row via
+      `recordHoursAndWagesReportGated`, emits canonical facts WITHOUT
+      `actual_labor_dollars` + `wage_provenance =
+      vendor_seven_shifts_dollars_unavailable_target_wage_substituted`.
+      Test: `<test_path>:<line>`
 - [ ] **Field-mapping diff.** Observed sandbox response matches
       every `documented_per_seven_shifts_*` constant in fixtures
       (`documentedPerSevenShiftsV2FieldMapping` and the fixture
@@ -83,6 +99,29 @@ that resolved each check that failed.
       - `payroll_period.closed_at` — documented ISO-8601 with `Z` on
         both poll endpoint and webhook. Verify presence + key name.
         Fix: `<diff or PR ref>`
+      - `time_punch.shift_id` — documented int → to_string
+        (`8.spine-bridge.7S.upgrade`). Verify nullability when the
+        punch is unscheduled. Fix: `<diff or PR ref>`
+      - `reports.hours_and_wages.total_pay` — documented decimal,
+        per-shift gross wage. Verify decimal precision (cent vs
+        sub-cent vendor rounding) and merge key
+        `(employee_id, shift_id)` lines up against `/time_punches`
+        `shift_id`. Fix: `<diff or PR ref>`
+      - `reports.hours_and_wages.regular_pay` /
+        `reports.hours_and_wages.overtime_pay` — documented as the
+        regular + overtime split of `total_pay`. Verify
+        `regular + overtime ≈ total_pay` (modulo vendor rounding).
+        Fix: `<diff or PR ref>`
+      - Hours & Wages report endpoint — documented
+        `GET /v2/company/{id}/reports/hours_and_wages` with cursor
+        pagination. Verify path + pagination shape + that the
+        endpoint returns HTTP 403 / 404 on lower plan tiers (the
+        adapter handles both via
+        `SevenShiftsHoursAndWagesReportGatedException`). Fix:
+        `<diff or PR ref>`
+      - Hours & Wages report scope — documented `reports.read` in
+        `oauth_shape.md`. Verify exact scope string against the live
+        OAuth grant. Fix: `<diff or PR ref>`
       - OAuth flow — documented `authorization_code`. Verify exact
         grant type + scope strings. Fix: `<diff or PR ref>`
       - OAuth token TTLs — documented 1h access / 30-90d rotating
@@ -172,6 +211,15 @@ sandboxes sometimes lie).
       Test: `<test_path>:<line>`
 - [ ] **Plan-tier fallback.** Lower-tier production tenant connects;
       polling-only path runs end-to-end.
+      Test: `<test_path>:<line>`
+- [ ] **Hours & Wages report (Gourmet tier).** Production Gourmet
+      tenant lands canonical facts with `actual_labor_dollars`
+      populated from `/reports/hours_and_wages`; merge by
+      `(employee_id, shift_id)` resolves correctly.
+      Test: `<test_path>:<line>`
+- [ ] **Hours & Wages report tier gating.** Lower-tier production
+      tenant → adapter falls back to substituted-wage provenance +
+      appends a `connector_sync_log` gating row.
       Test: `<test_path>:<line>`
 - [ ] **Field-mapping diff.** Production response matches every
       documented constant.

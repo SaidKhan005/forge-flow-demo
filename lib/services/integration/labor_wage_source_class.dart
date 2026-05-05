@@ -83,11 +83,12 @@ LaborWageSourceClass? laborWageSourceClassFor(String vendorId) {
 ///     docs inaccessible (developer-portal landing page only).
 const Map<String, LaborWageSourceClass> _laborWageSourceClassByVendorId =
     <String, LaborWageSourceClass>{
-  // perEmployeeWithDollars — currently empty. 7shifts joins after
-  // `/reports/hours_and_wages` is wired (8.7S.upgrade follow-up).
+  // perEmployeeWithDollars — 7shifts joined here when the
+  // `8.spine-bridge.7S.upgrade` lane wired the
+  // `/reports/hours_and_wages` endpoint (per-shift `total_pay`).
+  kSevenShiftsVendorId: LaborWageSourceClass.perEmployeeWithDollars,
 
   kQuickBooksTimeVendorId: LaborWageSourceClass.perEmployeeWithRates,
-  kSevenShiftsVendorId: LaborWageSourceClass.perEmployeeWithRates,
 
   kHumanityVendorId: LaborWageSourceClass.perPositionWithRates,
   agendrixVendorId: LaborWageSourceClass.perPositionWithRates,

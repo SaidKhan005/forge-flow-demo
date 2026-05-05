@@ -46,6 +46,7 @@ Cite vendor doc: <https://developers.7shifts.com/reference/oauth>
 | GET | `/v2/company/{company_id}/users` | Per-employee wage rates + role assignments | shared | cursor |
 | GET | `/v2/company/{company_id}/roles` | Role hierarchy → FOH/BOH/manager/excluded mapping | shared | cursor |
 | GET | `/v2/company/{company_id}/payroll_periods?status=closed` | Latest closed payroll-period instant (Primary Driver binding) | shared | cursor |
+| GET | `/v2/company/{company_id}/reports/hours_and_wages` | Per-shift gross wage totals (Gourmet tier only — perEmployeeWithDollars wage class) | shared | cursor (`next_cursor`) |
 | POST | `/v2/company/{company_id}/webhooks` | Auto-register webhook subscription (Gourmet only) | shared | n/a |
 | DELETE | `/v2/company/{company_id}/webhooks/{webhook_id}` | Unregister on disconnect | shared | n/a |
 
@@ -131,3 +132,29 @@ the webhook endpoint:
 
 This shape is verified by the slice's plan-tier fallback test
 (`Test 9`) and walked through in `docs/_walkthroughs/8.S.7S.md`.
+
+---
+
+## Hours & Wages report (Gourmet tier)
+
+The `/v2/company/{company_id}/reports/hours_and_wages` endpoint
+exposes `total_pay` per shift (plus `regular_pay` and `overtime_pay`)
+and is Gourmet-tier-gated — lower plan tiers return HTTP 403 (or 404,
+per the developer reference's ambiguous gating doc). Lane
+`8.spine-bridge.7S.upgrade` (2026-05-05) added the report consumption
+so 7shifts qualifies as `LaborWageSourceClass.perEmployeeWithDollars`
+— the highest-fidelity wage class — per
+`docs/contracts/integration_spine_architecture_contract.md` 2026-05-05
+falsehood corrections #7. The adapter calls
+`fetchHoursAndWagesReport` alongside `listTimePunches` on every
+poll/backfill tick and merges by (employee_id, shift_id). On 403/404
+the adapter catches `SevenShiftsHoursAndWagesReportGatedException` and
+falls through to `/time_punches`-only emission with wage_provenance =
+`vendor_seven_shifts_dollars_unavailable_target_wage_substituted` so
+non-Gourmet operators still land canonical facts (sans dollars). On
+success, wage_provenance =
+`vendor_seven_shifts_per_employee_actual_dollars`. The behavior is
+verified by the `Hours & Wages report` test group in
+`test/integrations/labor/seven_shifts_labor_adapter_test.dart`.
+
+Cite vendor doc: <https://developers.7shifts.com/reference/get_reports-hours-and-wages>
