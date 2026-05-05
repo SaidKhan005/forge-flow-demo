@@ -351,18 +351,48 @@
       return messages.join(" ");
     }
 
-    function resetFailureMessage(body) {
+    function resetFailureMessage(body, status) {
+      const error = typeof (body && body.error) === "string"
+        ? body.error
+        : "";
       const rejections = Array.isArray(body && body.rejections)
         ? body.rejections
         : [];
-      if (rejections.includes("pwned_in_breach")) {
+      if (
+        error === "password_pwned" ||
+        rejections.includes("pwned_in_breach")
+      ) {
         return "This password has appeared in known breaches; please choose another.";
       }
-      if (rejections.includes("reused_from_history")) {
+      if (
+        error === "password_reused" ||
+        rejections.includes("reused_from_history")
+      ) {
         return "You can't reuse a recent password.";
       }
-      if (rejections.includes("violates_policy")) {
+      if (
+        error === "password_policy_failed" ||
+        rejections.includes("violates_policy")
+      ) {
         return body.message || "Choose a password that meets the password policy.";
+      }
+      if (
+        error === "hibp_unavailable" ||
+        rejections.includes("hibp_unavailable")
+      ) {
+        return "Password screening is unavailable. Please try again.";
+      }
+      if (
+        error === "password_history_unavailable" ||
+        rejections.includes("history_check_unavailable")
+      ) {
+        return "Password history is unavailable. Please try again.";
+      }
+      if (error === "password_reset_expired") {
+        return body.message || "Reset links expire after a short time. Request a new reset link and try again.";
+      }
+      if (status === 422) {
+        return "Choose a different password. It may be too weak, reused recently, or found in breach data.";
       }
       return body.message || "Password could not be updated. Request a new reset link and try again.";
     }
@@ -520,7 +550,7 @@
               if (response.status >= 400 && response.status < 500) {
                 clearIdempotencyKey();
               }
-              showMessage(resetFailureMessage(body), "error");
+              showMessage(resetFailureMessage(body, response.status), "error");
               return;
             }
             clearIdempotencyKey();
@@ -531,7 +561,7 @@
           } catch (_) {
             // Network/transport failure - keep the key so a retry
             // of the same submit replays the cached response.
-            showMessage("Password could not be updated. Request a new reset link and try again.", "error");
+            showMessage("Password could not be updated because the reset service could not be reached. Request a new reset link and try again.", "error");
           } finally {
             submitButton.disabled = false;
             submitButton.textContent = "Update password";
