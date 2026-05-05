@@ -24,8 +24,16 @@
 //      as a Phase 10a follow-up; the scaffold relies on the lease.
 //
 // Scope is intentionally minimal — single-shard worker, no concurrency,
-// no auto-replay, no tripwires, no retention sweep. Those land in
+// no auto-replay, no retention sweep. Those land in
 // the post-V1 lanes alongside the real Cloud Pub/Sub publisher.
+//
+// Phase 10a.4 — the bridge instruments its publish loop with a
+// minute-bucket counter (attempted / failed) and periodically flushes
+// deltas to `public.event_outbox_publish_metrics` through the
+// injected [RealtimeBridgePublishMetricsWriter]. The proxy `/health`
+// `event_outbox_publish_error_rate` producer reads the rolling
+// 5-minute sum from that table; tripwire thresholds (yellow ≥ 1 %,
+// red ≥ 5 %) live in the producer per Decision 33.
 //
 // Hard contract reminders:
 //   * NOTIFY is wake-up only; the 60s poll is the catch-all for
@@ -38,6 +46,10 @@
 //     never in a separate listener. NOTIFY is still wake-up only;
 //     the dead-letter MOVE shares the claim transaction's tenant
 //     context.
+//   * Phase 10a.4: publish-metrics flush runs OUTSIDE the per-
+//     operator drain on its own timer, and writes through the admin
+//     pool (no tenant context — the metrics table is platform-wide
+//     bridge bookkeeping).
 
 import 'dart:async';
 
@@ -68,6 +80,51 @@ typedef BridgeOperatorDiscoverer = Future<Set<String>> Function();
 /// discoverer (production wires this to a Postgres query against
 /// `public.event_outbox` with `delivered_at IS NULL`).
 Future<Set<String>> _emptyDiscoverer() async => const <String>{};
+
+/// Phase 10a.4 — one minute-aligned bucket of publish-attempt /
+/// publish-failure deltas the bridge worker accumulates between
+/// flushes. The writer (production: a `runAsSystem` UPSERT against
+/// `public.event_outbox_publish_metrics`) sums these deltas into the
+/// matching row keyed by `window_start`.
+class RealtimeBridgePublishMetricsBucket {
+  const RealtimeBridgePublishMetricsBucket({
+    required this.windowStart,
+    required this.attemptedDelta,
+    required this.failedDelta,
+  });
+
+  /// UTC bucket boundary, truncated to the minute.
+  final DateTime windowStart;
+
+  /// Publish attempts observed in the window since the last flush.
+  /// Always ≥ [failedDelta]: the bridge increments attempted BEFORE
+  /// optionally incrementing failed, so per-bucket cumulative
+  /// `failed ≤ attempted` always holds (the migration's CHECK
+  /// constraint pins this invariant server-side).
+  final int attemptedDelta;
+
+  /// Publish failures observed in the window since the last flush.
+  final int failedDelta;
+}
+
+/// Phase 10a.4 — sink the bridge worker hands flushed bucket deltas
+/// to. Production wires this to a `runAsSystem` UPSERT through the
+/// admin pool (see `tool/advisor_proxy/main.dart`); tests inject a
+/// recording callback. Returning a `Future` lets the writer batch the
+/// per-bucket UPSERTs in one transaction.
+typedef RealtimeBridgePublishMetricsWriter =
+    Future<void> Function(List<RealtimeBridgePublishMetricsBucket> buckets);
+
+/// Phase 10a.4 — default cadence at which the bridge flushes its
+/// accumulated publish-metric buckets to the writer. The proxy
+/// `/health` `event_outbox_publish_error_rate` producer reads the
+/// rolling 5-minute window, so a 30s flush gives at least 10
+/// observations per window in steady state — fine-grained enough that
+/// a brief publish-failure cluster is visible before the producer's
+/// next probe but coarse enough that the bridge's hot path is not
+/// dominated by metric writes.
+const Duration defaultRealtimeBridgePublishMetricsFlushInterval =
+    Duration(seconds: 30);
 
 /// Phase 10a.2 — env flag that caps the bridge's per-row attempt
 /// count before a row moves to `event_outbox_dead_letter`. The
@@ -114,6 +171,10 @@ class RealtimeBridgeWorker {
     Duration pollInterval = const Duration(seconds: 60),
     int batchSize = 50,
     int dlqCap = defaultEventOutboxDlqCap,
+    RealtimeBridgePublishMetricsWriter? publishMetricsWriter,
+    Duration publishMetricsFlushInterval =
+        defaultRealtimeBridgePublishMetricsFlushInterval,
+    DateTime Function()? clock,
     void Function(RealtimeBridgeLogEvent)? logger,
   }) : _listener = listener,
        _outboxRepository = outboxRepository,
@@ -125,6 +186,9 @@ class RealtimeBridgeWorker {
        _pollInterval = pollInterval,
        _batchSize = batchSize,
        _dlqCap = dlqCap < 1 ? defaultEventOutboxDlqCap : dlqCap,
+       _publishMetricsWriter = publishMetricsWriter,
+       _publishMetricsFlushInterval = publishMetricsFlushInterval,
+       _clock = clock ?? _systemClock,
        _logger = logger ?? _noopLogger;
 
   final OutboxNotificationListener _listener;
@@ -177,10 +241,51 @@ class RealtimeBridgeWorker {
   /// admin SQL only (no operator-facing tile).
   int get dlqCap => _dlqCap;
 
+  /// Phase 10a.4 — writer the bridge hands flushed minute-bucket
+  /// publish-metric deltas to. Null in tests / scaffold callers that
+  /// don't care about the metrics path; in that case the bridge still
+  /// accumulates buckets but the flush timer is never started.
+  final RealtimeBridgePublishMetricsWriter? _publishMetricsWriter;
+
+  /// Phase 10a.4 — cadence at which the bridge flushes accumulated
+  /// publish-metric buckets to [_publishMetricsWriter]. Tests pass a
+  /// short interval; production uses
+  /// [defaultRealtimeBridgePublishMetricsFlushInterval].
+  final Duration _publishMetricsFlushInterval;
+
+  /// Phase 10a.4 — clock seam so tests can pin the bucket boundary
+  /// without depending on wall-clock alignment. Production uses
+  /// `DateTime.now().toUtc()`.
+  final DateTime Function() _clock;
+
+  /// Phase 10a.4 — accumulator keyed on minute-aligned UTC bucket.
+  /// Each entry holds the deltas observed since the last successful
+  /// flush; on flush the bridge swaps in a fresh map and hands the
+  /// drained snapshot to the writer.
+  final Map<DateTime, _PublishMetricsCounter> _publishMetricsBuckets =
+      <DateTime, _PublishMetricsCounter>{};
+
+  /// Phase 10a.4 — process-lifetime totals for the publish path.
+  /// Tracks all attempts / failures observed since worker start; tests
+  /// assert these directly so the bucket-flush mechanics can be
+  /// exercised without driving the writer. The /health producer reads
+  /// the table, not these counters.
+  int _publishAttemptedTotal = 0;
+  int _publishFailedTotal = 0;
+
+  /// Phase 10a.4 — read-only view of the publish-attempt counter.
+  /// Cumulative since worker start; resets on restart. Only the
+  /// table-backed producer survives a restart.
+  int get publishAttemptedTotal => _publishAttemptedTotal;
+
+  /// Phase 10a.4 — read-only view of the publish-failure counter.
+  int get publishFailedTotal => _publishFailedTotal;
+
   final void Function(RealtimeBridgeLogEvent) _logger;
 
   StreamSubscription<OutboxNotification>? _notificationSubscription;
   Timer? _pollTimer;
+  Timer? _publishMetricsFlushTimer;
   bool _started = false;
 
   /// Drained operators waiting on a coalesced run. Notifications coming
@@ -210,6 +315,17 @@ class RealtimeBridgeWorker {
     _pollTimer = Timer.periodic(_pollInterval, (_) {
       unawaited(_runPollCycle());
     });
+    // Phase 10a.4 — start the publish-metrics flush timer ONLY when a
+    // writer is wired. Scaffold callers / demo mode pass null and
+    // skip the flush; the bridge still accumulates buckets in memory
+    // (cheap) but never tries to write them, so a missing admin pool
+    // cannot block the bridge from starting.
+    if (_publishMetricsWriter != null) {
+      _publishMetricsFlushTimer = Timer.periodic(
+        _publishMetricsFlushInterval,
+        (_) => unawaited(_flushPublishMetrics()),
+      );
+    }
     // Bootstrap: discover any operators with undelivered rows and
     // drain them. Without the discovery step, rows enqueued before
     // the bridge came up — and rows belonging to operators that have
@@ -222,12 +338,21 @@ class RealtimeBridgeWorker {
   Future<void> stop() async {
     _pollTimer?.cancel();
     _pollTimer = null;
+    _publishMetricsFlushTimer?.cancel();
+    _publishMetricsFlushTimer = null;
     await _notificationSubscription?.cancel();
     _notificationSubscription = null;
     await _listener.stop();
     // Wait for in-flight drains to finish so callers can rely on
     // "stopped" meaning no more publishes.
     await Future.wait(_pendingDrains.values);
+    // Phase 10a.4 — final flush so a graceful stop does not lose the
+    // last bucket of deltas. Nothing else can mutate
+    // `_publishMetricsBuckets` after the drains have settled, so
+    // racing with a publisher is impossible at this point.
+    if (_publishMetricsWriter != null) {
+      await _flushPublishMetrics();
+    }
     _started = false;
   }
 
@@ -387,9 +512,17 @@ class RealtimeBridgeWorker {
 
     for (final row in publishable) {
       final event = _toRealtimeEvent(row);
+      // Phase 10a.4 — record the attempt BEFORE the publish call so a
+      // throwing publisher still increments the attempt counter (the
+      // ratio's denominator). Truncating the bucket inside the
+      // recorder so the same bucket key is shared with the failure
+      // increment that may follow inside the catch.
+      final bucket = _publishMetricsBucketFor(_clock());
+      _recordPublishAttempted(bucket);
       try {
         await _publisher.publish(event);
       } catch (error, stack) {
+        _recordPublishFailed(bucket);
         _logger(
           RealtimeBridgeLogEvent.publishFailed(
             operatorId: operatorId,
@@ -428,6 +561,81 @@ class RealtimeBridgeWorker {
         // the lease expires. Consumers dedupe via `event_id`; the
         // contract acknowledges this at-least-once shape.
       }
+    }
+  }
+
+  /// Phase 10a.4 — truncate `now` to the start of its UTC minute so
+  /// every event observed inside that 60-second window lands in the
+  /// same bucket regardless of when within the second the publisher
+  /// was called.
+  DateTime _publishMetricsBucketFor(DateTime now) {
+    final utc = now.toUtc();
+    return DateTime.utc(utc.year, utc.month, utc.day, utc.hour, utc.minute);
+  }
+
+  void _recordPublishAttempted(DateTime bucket) {
+    _publishAttemptedTotal += 1;
+    _publishMetricsBuckets
+        .putIfAbsent(bucket, _PublishMetricsCounter.new)
+        .attempted += 1;
+  }
+
+  void _recordPublishFailed(DateTime bucket) {
+    _publishFailedTotal += 1;
+    _publishMetricsBuckets
+        .putIfAbsent(bucket, _PublishMetricsCounter.new)
+        .failed += 1;
+  }
+
+  /// Phase 10a.4 — drain the bucket map and hand the deltas to
+  /// [_publishMetricsWriter]. On writer failure the deltas are merged
+  /// back into the live map so the next flush retries; restart-loss
+  /// is bounded by the flush interval. Concurrent flushes are
+  /// prevented by a flight guard — the periodic timer cannot start a
+  /// second flush while one is already running, which keeps the
+  /// snapshot semantics clean.
+  bool _publishMetricsFlushInFlight = false;
+
+  Future<void> _flushPublishMetrics() async {
+    final writer = _publishMetricsWriter;
+    if (writer == null) return;
+    if (_publishMetricsFlushInFlight) return;
+    if (_publishMetricsBuckets.isEmpty) return;
+    _publishMetricsFlushInFlight = true;
+    final snapshot =
+        Map<DateTime, _PublishMetricsCounter>.from(_publishMetricsBuckets);
+    _publishMetricsBuckets.clear();
+    try {
+      final buckets = snapshot.entries
+          .map(
+            (e) => RealtimeBridgePublishMetricsBucket(
+              windowStart: e.key,
+              attemptedDelta: e.value.attempted,
+              failedDelta: e.value.failed,
+            ),
+          )
+          .toList(growable: false);
+      await writer(buckets);
+    } catch (error, stack) {
+      // Merge the snapshot back so the next flush retries the
+      // unwritten deltas. New deltas accumulated since the snapshot
+      // are ADDED on top so concurrent publishes don't lose count.
+      snapshot.forEach((bucket, counter) {
+        final live = _publishMetricsBuckets.putIfAbsent(
+          bucket,
+          _PublishMetricsCounter.new,
+        );
+        live.attempted += counter.attempted;
+        live.failed += counter.failed;
+      });
+      _logger(
+        RealtimeBridgeLogEvent.publishMetricsFlushFailed(
+          error: error,
+          stack: stack,
+        ),
+      );
+    } finally {
+      _publishMetricsFlushInFlight = false;
     }
   }
 
@@ -583,6 +791,20 @@ class RealtimeBridgeLogEvent {
     stack: stack,
   );
 
+  /// Phase 10a.4 — emitted when the publish-metrics writer throws.
+  /// The bridge merges the unwritten deltas back into the live map
+  /// and retries on the next flush; this event lets log search alarm
+  /// when the producer's `event_outbox_publish_error_rate` metric is
+  /// stale because the writer (not the producer) is broken.
+  factory RealtimeBridgeLogEvent.publishMetricsFlushFailed({
+    required Object error,
+    required StackTrace stack,
+  }) => RealtimeBridgeLogEvent._(
+    kind: RealtimeBridgeLogKind.publishMetricsFlushFailed,
+    error: error,
+    stack: stack,
+  );
+
   final RealtimeBridgeLogKind kind;
   final String? operatorId;
   final String? outboxId;
@@ -613,9 +835,25 @@ enum RealtimeBridgeLogKind {
   // Phase 10a.2 — DLQ MOVE outcomes.
   deadLettered,
   deadLetterMoveFailed,
+  // Phase 10a.4 — publish-metrics writer failed.
+  publishMetricsFlushFailed,
 }
 
 void _noopLogger(RealtimeBridgeLogEvent event) {}
+
+/// Phase 10a.4 — system clock used by the bridge worker when a test
+/// does not pin the clock seam. Returns UTC so the bucket truncation
+/// in `_publishMetricsBucketFor` is locale-independent.
+DateTime _systemClock() => DateTime.now().toUtc();
+
+/// Phase 10a.4 — mutable counter pair behind each minute bucket in
+/// the bridge's accumulator map. Private to the file because callers
+/// only ever see the immutable [RealtimeBridgePublishMetricsBucket]
+/// snapshot the writer receives.
+class _PublishMetricsCounter {
+  int attempted = 0;
+  int failed = 0;
+}
 
 /// Phase 10a.1 - env flag that swaps the bridge's outbound publisher
 /// to the Cloud Pub/Sub adapter. Default off; in-process binding

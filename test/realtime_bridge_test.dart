@@ -765,6 +765,255 @@ void main() {
     );
 
     test(
+      'Phase 10a.4 publish-metrics: success increments attempted '
+      'only; failure increments BOTH attempted and failed in the '
+      'same minute bucket',
+      () async {
+        final pinnedClock = DateTime.utc(2026, 5, 5, 12, 34, 17);
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '2001', operatorId: _opA, topic: 'rollup.invalidate.x'),
+            _row(id: '2002', operatorId: _opA, topic: 'rollup.invalidate.x'),
+            _row(id: '2003', operatorId: _opA, topic: 'rollup.invalidate.x'),
+          ],
+          updateRowCount: 1,
+        );
+        // First two publish OK, third throws.
+        final publisher = _CountingFlakyPublisher(failOnIndices: const {2});
+        final flushedBatches =
+            <List<RealtimeBridgePublishMetricsBucket>>[];
+        Future<void> writer(
+          List<RealtimeBridgePublishMetricsBucket> buckets,
+        ) async {
+          flushedBatches.add(List.unmodifiable(buckets));
+        }
+
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository:
+              EventOutboxRepository(TenantTransactionWrapper(pool)),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          publishMetricsWriter: writer,
+          // Long enough that the periodic timer never fires during
+          // the test; we drive the flush via worker.stop().
+          publishMetricsFlushInterval: const Duration(seconds: 5),
+          clock: () => pinnedClock,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        // Process-lifetime totals before stop().
+        expect(
+          worker.publishAttemptedTotal,
+          equals(3),
+          reason: 'every publish attempt bumps attempted, even the '
+              'one that throws',
+        );
+        expect(
+          worker.publishFailedTotal,
+          equals(1),
+          reason: 'only the throwing publish bumps failed',
+        );
+
+        await worker.stop();
+
+        // Final flush on stop emitted exactly one bucket (all three
+        // attempts share the same minute via the pinned clock).
+        expect(flushedBatches, hasLength(1));
+        expect(flushedBatches.single, hasLength(1));
+        final bucket = flushedBatches.single.single;
+        expect(
+          bucket.windowStart,
+          equals(DateTime.utc(2026, 5, 5, 12, 34)),
+          reason: 'bucket boundary is the start-of-minute UTC',
+        );
+        expect(bucket.attemptedDelta, equals(3));
+        expect(bucket.failedDelta, equals(1));
+      },
+    );
+
+    test(
+      'Phase 10a.4 publish-metrics: events that span a minute '
+      'boundary land in separate buckets',
+      () async {
+        final clockReturns = <DateTime>[
+          DateTime.utc(2026, 5, 5, 12, 34, 50), // bucket 12:34
+          DateTime.utc(2026, 5, 5, 12, 34, 59), // bucket 12:34
+          DateTime.utc(2026, 5, 5, 12, 35, 1),  // bucket 12:35
+        ];
+        var clockIndex = 0;
+        DateTime nextNow() {
+          final t = clockReturns[clockIndex];
+          clockIndex = (clockIndex + 1) % clockReturns.length;
+          return t;
+        }
+
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '3001', operatorId: _opA, topic: 'rollup.invalidate.x'),
+            _row(id: '3002', operatorId: _opA, topic: 'rollup.invalidate.x'),
+            _row(id: '3003', operatorId: _opA, topic: 'rollup.invalidate.x'),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _RecordingPublisher();
+        final flushed = <RealtimeBridgePublishMetricsBucket>[];
+        Future<void> writer(
+          List<RealtimeBridgePublishMetricsBucket> buckets,
+        ) async {
+          flushed.addAll(buckets);
+        }
+
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository:
+              EventOutboxRepository(TenantTransactionWrapper(pool)),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          publishMetricsWriter: writer,
+          publishMetricsFlushInterval: const Duration(seconds: 5),
+          clock: nextNow,
+        );
+        await worker.start();
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await worker.stop();
+
+        // Two distinct buckets: minute 34 (2 attempts) and minute 35
+        // (1 attempt). No failures in either.
+        final byBucket = <DateTime, RealtimeBridgePublishMetricsBucket>{
+          for (final b in flushed) b.windowStart: b,
+        };
+        expect(
+          byBucket.keys,
+          containsAll(<DateTime>[
+            DateTime.utc(2026, 5, 5, 12, 34),
+            DateTime.utc(2026, 5, 5, 12, 35),
+          ]),
+        );
+        expect(
+          byBucket[DateTime.utc(2026, 5, 5, 12, 34)]?.attemptedDelta,
+          equals(2),
+        );
+        expect(
+          byBucket[DateTime.utc(2026, 5, 5, 12, 34)]?.failedDelta,
+          equals(0),
+        );
+        expect(
+          byBucket[DateTime.utc(2026, 5, 5, 12, 35)]?.attemptedDelta,
+          equals(1),
+        );
+      },
+    );
+
+    test(
+      'Phase 10a.4 publish-metrics: writer failure merges deltas '
+      'back into the live map; the next flush retries them',
+      () async {
+        final pinnedClock = DateTime.utc(2026, 5, 5, 12, 36, 0);
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '4001', operatorId: _opA, topic: 'rollup.invalidate.x'),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _RecordingPublisher();
+        var callIndex = 0;
+        final logEvents = <RealtimeBridgeLogEvent>[];
+        final accepted = <RealtimeBridgePublishMetricsBucket>[];
+        Future<void> writer(
+          List<RealtimeBridgePublishMetricsBucket> buckets,
+        ) async {
+          callIndex += 1;
+          if (callIndex == 1) {
+            throw StateError('simulated writer failure');
+          }
+          accepted.addAll(buckets);
+        }
+
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository:
+              EventOutboxRepository(TenantTransactionWrapper(pool)),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          publishMetricsWriter: writer,
+          publishMetricsFlushInterval: const Duration(milliseconds: 50),
+          clock: () => pinnedClock,
+          logger: logEvents.add,
+        );
+        await worker.start();
+        // Let bootstrap publish, then wait for the first flush
+        // (which throws) AND a second flush (which retries).
+        await Future<void>.delayed(const Duration(milliseconds: 200));
+        await worker.stop();
+
+        // The first writer call threw; the bridge logged the failure
+        // and merged the snapshot back. A subsequent flush succeeded
+        // and `accepted` carries the original delta.
+        expect(callIndex, greaterThanOrEqualTo(2));
+        expect(
+          logEvents.where(
+            (e) => e.kind == RealtimeBridgeLogKind.publishMetricsFlushFailed,
+          ),
+          isNotEmpty,
+        );
+        expect(
+          accepted,
+          isNotEmpty,
+          reason: 'a successful retry must deliver the original deltas',
+        );
+        final retried = accepted.firstWhere(
+          (b) => b.windowStart == DateTime.utc(2026, 5, 5, 12, 36),
+        );
+        expect(retried.attemptedDelta, equals(1));
+        expect(retried.failedDelta, equals(0));
+      },
+    );
+
+    test(
+      'Phase 10a.4 publish-metrics: when no writer is wired, the '
+      'flush timer never starts and the publish loop runs unchanged',
+      () async {
+        final pool = _BridgePool(
+          claimedRows: <PostgresRow>[
+            _row(id: '5001', operatorId: _opA, topic: 'rollup.invalidate.x'),
+          ],
+          updateRowCount: 1,
+        );
+        final publisher = _RecordingPublisher();
+        final worker = RealtimeBridgeWorker(
+          listener: _FakeListener(),
+          outboxRepository:
+              EventOutboxRepository(TenantTransactionWrapper(pool)),
+          publisher: publisher,
+          locationResolver: (_) async => _locA,
+          bootstrapOperatorIds: const <String>{_opA},
+          // publishMetricsWriter intentionally null — backward compat.
+          publishMetricsFlushInterval: const Duration(milliseconds: 10),
+        );
+        await worker.start();
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        await worker.stop();
+
+        // Counters still tick (cheap accounting) but no flush surface
+        // observed, no log events emitted.
+        expect(worker.publishAttemptedTotal, equals(1));
+        expect(worker.publishFailedTotal, equals(0));
+        expect(publisher.published, hasLength(1));
+      },
+    );
+
+    test(
       'when no dead-letter repository is wired (existing demo / '
       'scaffold callers), the bridge runs the original publish loop '
       'without DLQ logic — preserves backward compatibility',
@@ -873,6 +1122,25 @@ class _FailingPublisher implements RealtimeEventPublisher {
   Future<void> publish(RealtimeEvent event) async {
     attempts += 1;
     throw const _SimulatedPublishFailure();
+  }
+}
+
+/// Phase 10a.4 — publisher that throws on a configurable subset of
+/// publish indices (1-based). The 10a.4 publish-metrics tests use
+/// this to drive a mix of success and failure in one drain.
+class _CountingFlakyPublisher implements RealtimeEventPublisher {
+  _CountingFlakyPublisher({required this.failOnIndices});
+
+  /// 1-based indices into the publish sequence that should throw.
+  final Set<int> failOnIndices;
+  int _calls = 0;
+
+  @override
+  Future<void> publish(RealtimeEvent event) async {
+    _calls += 1;
+    if (failOnIndices.contains(_calls)) {
+      throw const _SimulatedPublishFailure();
+    }
   }
 }
 
