@@ -2,6 +2,8 @@
 /// persisted current-state + active target profile + whole-day SchedulePlan.
 library;
 
+import 'package:flutter/foundation.dart';
+
 import '../data/app_defaults.dart';
 import '../domain/models/active_target_profile.dart';
 import '../domain/models/metric_provenance.dart';
@@ -58,6 +60,19 @@ class ShiftDashboardReadModel {
   final String opzStatus;
   final String opzLabel;
   final String opzSubLabel;
+
+  // ── 7.58 depth wave (slice 10.5.6): cross-axis SPLH state ───────────────
+  // [splhState] is `'below'` / `'on'` / `'above'` when BOH minutes are
+  // logged, and null when BOH is not yet punched in. The `_OpzMatrixGrid`
+  // widget renders 9 dim cells in the null case; the cross-axis sub-label
+  // resolver falls back to the single-axis CPLH sentence when null.
+  //
+  // [currentSplh] / [targetSplh] mirror `actualSPLH` and `targetSPLH` as
+  // standalone fields to keep the matrix widget input shape narrow and
+  // honest about its derivation.
+  final double currentSplh;
+  final double targetSplh;
+  final String? splhState;
 
   // ── Whole-day labor % ───────────────────────────────────────────────────
   // Planned labor package removed.
@@ -238,6 +253,9 @@ class ShiftDashboardReadModel {
     required this.opzStatus,
     required this.opzLabel,
     required this.opzSubLabel,
+    required this.currentSplh,
+    required this.targetSplh,
+    this.splhState,
     required this.actualLaborDollars,
     required this.actualLaborPct,
     required this.targetLaborPct,
@@ -383,7 +401,13 @@ class ShiftDashboardReadModel {
     final opzStatus = _computeOpzStatus(
         avgCPLH, profile.opzFloorCPLH, profile.opzCeilingCPLH);
     final opzLabel = _computeOpzLabel(opzStatus);
-    final opzSubLabel = _computeOpzSubLabel(opzStatus);
+    // 7.58 depth wave (slice 10.5.6): cross-axis SPLH state + sub-label.
+    final splhState = _computeSplhState(
+      actualBohHours: actBoh,
+      actualSplh: avgSPLH,
+      targetSplh: profile.targetSPLH,
+    );
+    final opzSubLabel = _computeOpzSubLabel(opzStatus, splhState);
 
     // Metric cards
     final cards = _buildMetricCards(
@@ -439,6 +463,9 @@ class ShiftDashboardReadModel {
       opzStatus: opzStatus,
       opzLabel: opzLabel,
       opzSubLabel: opzSubLabel,
+      currentSplh: avgSPLH,
+      targetSplh: profile.targetSPLH,
+      splhState: splhState,
       actualLaborDollars: computedActualLaborDollars,
       actualLaborPct: computedActualLaborPct,
       targetLaborPct: computedTargetLaborPct,
@@ -476,16 +503,89 @@ class ShiftDashboardReadModel {
     }
   }
 
-  static String _computeOpzSubLabel(String status) {
-    switch (status) {
+  // 7.58 depth wave (slice 10.5.6): cross-axis SPLH state.
+  //
+  // BOH minutes that resolve to zero hours (or no BOH labor read at all)
+  // mean the kitchen has not punched in yet, so this returns null. The
+  // matrix grid then renders without an active marker and the sub-label
+  // resolver falls back to the single-axis CPLH sentence. The +/- 5
+  // percent tolerance mirrors the per-period driver threshold so the
+  // two surfaces stay consistent.
+  static const double _splhTolerance = 0.05;
+
+  static String? _computeSplhState({
+    required int actualBohHours,
+    required double actualSplh,
+    required double targetSplh,
+  }) {
+    if (actualBohHours <= 0) return null;
+    if (targetSplh <= 0) return null;
+    final double ratio = actualSplh / targetSplh;
+    if (ratio < 1.0 - _splhTolerance) return 'below';
+    if (ratio > 1.0 + _splhTolerance) return 'above';
+    return 'on';
+  }
+
+  // 7.58 depth wave (slice 10.5.6): cross-axis sub-label resolver.
+  //
+  // Single-axis copy is preserved unchanged for the three cases where
+  // SPLH state is absent or agrees with CPLH on the on-target reading.
+  // Four cross-axis sentences swap in for the cells where the two axes
+  // disagree, sourced from Jim Taylor labor-model deep dive ch. 7.
+  static String _computeOpzSubLabel(
+    String cplhStatus, [
+    String? splhState,
+  ]) {
+    if (splhState != null) {
+      if (cplhStatus == 'below' && splhState == 'above') {
+        return 'Below OPZ floor. Team executed. Volume problem, not '
+            'staffing. Fix the forecast.';
+      }
+      if (cplhStatus == 'above' && splhState == 'below') {
+        return 'Above OPZ ceiling AND kitchen slowed. Pull ticket times '
+            'before adding hours.';
+      }
+      if (cplhStatus == 'in' && splhState == 'below') {
+        return 'In OPZ. PPA dropped. Watch upselling.';
+      }
+      if (cplhStatus == 'in' && splhState == 'above') {
+        return 'In OPZ. Kitchen running strong. Document this shift.';
+      }
+    }
+    switch (cplhStatus) {
       case 'below':
-        return 'Productivity is below the OPZ floor. Too many labor hours for the volume.';
+        return 'Productivity is below the OPZ floor. Too many labor '
+            'hours for the volume.';
       case 'above':
-        return 'Productivity is above the OPZ ceiling. Service quality may suffer.';
+        return 'Productivity is above the OPZ ceiling. Service quality '
+            'may suffer.';
       default:
         return 'Team is producing. Watch covers.';
     }
   }
+
+  /// Test-only accessor so the slice can pin every cell of the
+  /// (cplhStatus, splhState) input space without relying on the full
+  /// `buildWholeDay` path.
+  @visibleForTesting
+  static String computeOpzSubLabelForTest(
+    String cplhStatus,
+    String? splhState,
+  ) =>
+      _computeOpzSubLabel(cplhStatus, splhState);
+
+  /// Test-only accessor for the SPLH band classifier.
+  @visibleForTesting
+  static String? computeSplhStateForTest({
+    required int actualBohHours,
+    required double actualSplh,
+    required double targetSplh,
+  }) =>
+      _computeSplhState(
+        actualBohHours: actualBohHours,
+        actualSplh: actualSplh,
+        targetSplh: targetSplh,
+      );
 
   // ── Metric card builder ─────────────────────────────────────────────────
 

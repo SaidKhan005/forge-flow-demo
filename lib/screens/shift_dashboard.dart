@@ -202,6 +202,9 @@ class _ShiftDashboardState extends State<ShiftDashboard> {
                 opzStatus: rm.opzStatus,
                 opzLabel: rm.opzLabel,
                 opzSubLabel: rm.opzSubLabel,
+                // 7.58 depth wave (slice 10.5.6): SPLH band feeds the
+                // cross-axis matrix rendered inside the OPZ tile.
+                splhState: rm.splhState,
               ),
             ),
           ),
