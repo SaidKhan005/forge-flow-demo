@@ -47,9 +47,11 @@ class SimphonyGuestCheckPage {
     required this.lastModifiedSeen,
   });
 
-  /// Raw vendor-shape records — the keys mirror the `guestChecks[]`
-  /// field paths captured in `documented_per_oracle_micros_simphony_v2`
-  /// (see fixture).
+  /// Raw vendor-shape records — each record is one element of the Gen2
+  /// `items[]` array. Documented field paths under `items[].header.*`
+  /// (chkNum, guestCount, opnUTC, cmplOrClsdUTC, lastUpdatedUTC,
+  /// subTtlCents) are mirrored in
+  /// `documented_per_oracle_micros_simphony_v2` (see fixture).
   final List<Map<String, Object?>> records;
 
   /// Vendor pagination cursor at the end of this page. Empty string
@@ -277,7 +279,10 @@ class OracleMicrosSimphonyPosAdapter implements PosAdapter {
       );
 
       for (final record in page.records) {
-        final vendorEventId = (record['chkNum'] ?? '').toString();
+        final header = record['header'] is Map<String, Object?>
+            ? record['header']! as Map<String, Object?>
+            : const <String, Object?>{};
+        final vendorEventId = (header['chkNum'] ?? '').toString();
         final passed = await command.sanityHook(
           vendorEventId: vendorEventId,
           payload: record,
@@ -349,7 +354,10 @@ class OracleMicrosSimphonyPosAdapter implements PosAdapter {
       );
 
       for (final record in page.records) {
-        final vendorEventId = (record['chkNum'] ?? '').toString();
+        final header = record['header'] is Map<String, Object?>
+            ? record['header']! as Map<String, Object?>
+            : const <String, Object?>{};
+        final vendorEventId = (header['chkNum'] ?? '').toString();
         final passed = await command.sanityHook(
           vendorEventId: vendorEventId,
           payload: record,
@@ -435,29 +443,35 @@ class OracleMicrosSimphonyPosAdapter implements PosAdapter {
     );
   }
 
-  /// Map one Simphony `guestChecks[]` record to the canonical fact
-  /// shape. Field paths are captured as documented assumptions in the
-  /// fixture file's `documented_per_oracle_micros_simphony_v2` constant
-  /// — every change to this mapping requires a fixture-constant bump
-  /// + an `8.OR.live.sandbox` re-verification before merge.
+  /// Map one Simphony `items[]` record to the canonical fact shape.
+  /// Field paths under `items[].header.*` are captured as documented
+  /// assumptions in the fixture file's
+  /// `documented_per_oracle_micros_simphony_v2` constant — every change
+  /// to this mapping requires a fixture-constant bump + an
+  /// `8.OR.live.sandbox` re-verification before merge.
   @visibleForTesting
   Map<String, Object?> mapGuestCheckToCanonical(Map<String, Object?> record) =>
       _mapGuestCheckToCanonical(record);
 
   Map<String, Object?> _mapGuestCheckToCanonical(Map<String, Object?> record) {
-    final chkNum = record['chkNum'];
-    final numOfGst = record['numOfGst'];
-    final opnUtcRaw = record['opnUTC'];
-    final clsdUtcRaw = record['clsdUTC'];
-    final lastUpdatedRaw = record['lastUpdatedUTC'];
-    final subTtlCents = record['subTtlCents'];
+    final header = record['header'] is Map<String, Object?>
+        ? record['header']! as Map<String, Object?>
+        : const <String, Object?>{};
+    final chkNum = header['chkNum'];
+    final guestCount = header['guestCount'];
+    final opnUtcRaw = header['opnUTC'];
+    final cmplOrClsdUtcRaw = header['cmplOrClsdUTC'];
+    final lastUpdatedRaw = header['lastUpdatedUTC'];
+    final subTtlCents = header['subTtlCents'];
 
     return <String, Object?>{
       'vendor_id': oracleMicrosSimphonyVendorId,
       'vendor_entity_id': chkNum?.toString() ?? '',
-      'covers': numOfGst is int ? numOfGst : int.tryParse('${numOfGst ?? ''}'),
+      'covers': guestCount is int
+          ? guestCount
+          : int.tryParse('${guestCount ?? ''}'),
       'opened_at': _parseUtcInstant(opnUtcRaw),
-      'closed_at': _parseUtcInstant(clsdUtcRaw),
+      'closed_at': _parseUtcInstant(cmplOrClsdUtcRaw),
       'actual_sales': _centsToDollars(subTtlCents),
       'vendor_modified_at': _parseUtcInstant(lastUpdatedRaw),
       'covers_source': 'direct',
