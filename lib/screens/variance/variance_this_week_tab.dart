@@ -228,6 +228,8 @@ class _ThisWeekContentState extends State<_ThisWeekContent> {
                 sixtyDayImpact: weekData.sixtyDayDollarImpact,
                 annualizedImpact: weekData.annualizedDollarImpact,
                 footerText: 'Through ${weekData.lastClosedDay}',
+                theoreticalLaborPct: weekData.theoreticalLaborPct,
+                actualLaborPct: weekData.actualLaborPct,
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 24)),

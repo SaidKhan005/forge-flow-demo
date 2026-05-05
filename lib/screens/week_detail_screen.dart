@@ -122,6 +122,8 @@ class WeekDetailScreen extends StatelessWidget {
                   footerText: week.closedAt != null
                       ? 'As of close, ${_fmtClosedAt(week.closedAt!)}'
                       : 'At \$3M annual sales. One location.',
+                  theoreticalLaborPct: week.theoreticalLaborPct,
+                  actualLaborPct: week.actualLaborPct,
                 ),
               ),
             ],

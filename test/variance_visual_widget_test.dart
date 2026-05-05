@@ -557,8 +557,15 @@ void main() {
 
       expect(find.text('DOLLAR IMPACT', skipOffstage: false), findsOneWidget);
       expect(find.text('this week', skipOffstage: false), findsOneWidget);
+      // 7.58.UX.6: the footer now names the math floor as
+      // `Best Possible / Actual / Closable Gap` triplet instead of the
+      // pre-7.58.UX.6 "Through <day>" date-context line. Pin the new copy.
       expect(
-        find.textContaining('Through', skipOffstage: false),
+        find.textContaining('Best Possible:', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.textContaining('Closable Gap:', skipOffstage: false),
         findsOneWidget,
       );
       expect(find.text('annualized'), findsNothing);
