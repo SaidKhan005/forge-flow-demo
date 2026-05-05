@@ -167,6 +167,28 @@ void main() {
       expect(script, isNot(contains('--set-env-vars \$envAssignments')));
     });
 
+    test(
+      'unions Firebase auth action hosts into the proxy CORS allow-list',
+      () {
+        expect(script, contains('function Join-AdminCorsAllowedOrigins'));
+        expect(script, contains(r'"https://$Project.firebaseapp.com"'));
+        expect(script, contains(r'"https://$Project.web.app"'));
+        expect(script, contains(r'$effectiveAdminCorsAllowedOrigins'));
+        expect(
+          script,
+          contains(
+            r"$PSBoundParameters.ContainsKey('AdminCorsAllowedOrigins')",
+          ),
+        );
+        expect(
+          script,
+          contains(
+            'ADMIN_CORS_ALLOWED_ORIGINS includes Firebase auth action hosts',
+          ),
+        );
+      },
+    );
+
     test('derives FIREBASE_WEB_API_KEY from forgeflow google-services when '
         'local env omits it (default branch)', () {
       expect(script, contains('function Resolve-FirebaseWebApiKey'));

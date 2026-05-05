@@ -135,6 +135,12 @@ if (-not (Test-Path -LiteralPath $SecretsFile)) {
 if ([string]::IsNullOrWhiteSpace($env:FIREBASE_PROJECT_ID)) {
   [Environment]::SetEnvironmentVariable('FIREBASE_PROJECT_ID', $Project, 'Process')
 }
+if (
+  -not $PSBoundParameters.ContainsKey('AdminCorsAllowedOrigins') -and
+  -not [string]::IsNullOrWhiteSpace($env:ADMIN_CORS_ALLOWED_ORIGINS)
+) {
+  $AdminCorsAllowedOrigins = $env:ADMIN_CORS_ALLOWED_ORIGINS
+}
 if (-not $SkipSecretManagerSync) {
   Resolve-FirebaseWebApiKey
 }
@@ -251,6 +257,35 @@ $secretAssignments = (
   $secretEnv.GetEnumerator() |
     ForEach-Object { "$($_.Key)=$($_.Value):latest" }
 ) -join ','
+
+function Join-AdminCorsAllowedOrigins {
+  param(
+    [string] $ConfiguredOrigins,
+    [string[]] $RequiredOrigins
+  )
+
+  $origins = [System.Collections.Generic.List[string]]::new()
+  $seen = [System.Collections.Generic.HashSet[string]]::new(
+    [System.StringComparer]::Ordinal
+  )
+  foreach ($entry in (($ConfiguredOrigins -split ',') + $RequiredOrigins)) {
+    $origin = ([string] $entry).Trim()
+    if ([string]::IsNullOrWhiteSpace($origin)) { continue }
+    if ($seen.Add($origin)) {
+      $origins.Add($origin)
+    }
+  }
+  return ($origins -join ',')
+}
+
+$firebaseActionCorsOrigins = @(
+  "https://$Project.firebaseapp.com",
+  "https://$Project.web.app"
+)
+$effectiveAdminCorsAllowedOrigins = Join-AdminCorsAllowedOrigins `
+  -ConfiguredOrigins $AdminCorsAllowedOrigins `
+  -RequiredOrigins $firebaseActionCorsOrigins
+
 $envAssignments = [ordered] @{
   'FIREBASE_PROJECT_ID' = $env:FIREBASE_PROJECT_ID
   'PROXY_ENVIRONMENT' = $ProxyEnvironment
@@ -258,8 +293,9 @@ $envAssignments = [ordered] @{
   'CLOUD_RUN_REGION' = $Region
   'CLOUD_RUN_SERVICE_NAME' = $Service
 }
-if (-not [string]::IsNullOrWhiteSpace($AdminCorsAllowedOrigins)) {
-  $envAssignments['ADMIN_CORS_ALLOWED_ORIGINS'] = $AdminCorsAllowedOrigins
+if (-not [string]::IsNullOrWhiteSpace($effectiveAdminCorsAllowedOrigins)) {
+  $envAssignments['ADMIN_CORS_ALLOWED_ORIGINS'] =
+    $effectiveAdminCorsAllowedOrigins
 }
 
 function ConvertTo-YamlSingleQuotedValue {
@@ -344,6 +380,7 @@ Write-Host ' - FIREBASE_WEB_API_KEY'
 Write-Host ' - SERVICE_PRINCIPAL_JWT_SECRET'
 Write-Host ' - POSTGRES_URL'
 Write-Host ' - POSTGRES_ADMIN_URL'
+Write-Host ' - ADMIN_CORS_ALLOWED_ORIGINS includes Firebase auth action hosts'
 Write-Host ' - Cloud Run secret env refs backed by Secret Manager'
 if (-not [string]::IsNullOrWhiteSpace($VpcConnector)) {
   Write-Host " - VPC connector: $VpcConnector ($VpcEgress)"
