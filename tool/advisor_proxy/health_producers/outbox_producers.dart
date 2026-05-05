@@ -7,6 +7,7 @@
 //   - notify_queue_usage_ratio: yellow at 0.10 / red at 0.25
 
 import '../advisor_proxy.dart' show ProxyHealthMetric;
+import 'event_outbox_retention_producer.dart';
 import 'health_producer.dart';
 
 ProxyHealthMetric _eventOutboxUndeliveredTemplate() => const ProxyHealthMetric(
@@ -254,4 +255,6 @@ final Map<String, ProxyHealthProducer> outboxProducers =
       'notify_queue_usage_ratio': notifyQueueUsageRatioProducer,
       // Phase 10a.2 — DLQ depth.
       'event_outbox_dlq_depth': eventOutboxDlqDepthProducer,
+      // Phase 10a.3 — retention sweep backlog.
+      'event_outbox_retention_backlog': eventOutboxRetentionBacklogProducer,
     };
