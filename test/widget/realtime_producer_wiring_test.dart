@@ -317,7 +317,11 @@ class _ScriptedRealtimeTransport implements RealtimeTransport {
   _FakeRealtimeChannel? activeChannel;
 
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) async {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) async {
     final channel = _FakeRealtimeChannel();
     activeChannel = channel;
     return channel;

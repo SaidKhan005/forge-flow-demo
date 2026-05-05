@@ -497,7 +497,11 @@ class _AlwaysFailingTransport implements RealtimeTransport {
   String? lastTokenAttempted;
 
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) async {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) async {
     attempts += 1;
     lastTokenAttempted = authToken;
     throw const _SimulatedConnectFailure();
@@ -514,7 +518,11 @@ class _ScriptedTransport implements RealtimeTransport {
   }
 
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) async {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) async {
     attempts += 1;
     if (_queue.isEmpty) throw StateError('no scripted result for connect');
     final result = _queue.removeAt(0);
@@ -564,7 +572,11 @@ class _DeferredTransport implements RealtimeTransport {
       <Completer<RealtimeChannel>>[];
 
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) {
     final completer = Completer<RealtimeChannel>();
     pendingConnects.add(completer);
     return completer.future;

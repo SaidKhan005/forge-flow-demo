@@ -17,10 +17,31 @@ import 'realtime_transport.dart';
 class WebSocketChannelRealtimeTransport implements RealtimeTransport {
   const WebSocketChannelRealtimeTransport();
 
+  /// Query-parameter name for the reconnect-resume cursor. Lives on
+  /// the URL because it is non-secret (just an `event_outbox.id`
+  /// rendered as a string) and because browsers cannot set custom
+  /// WebSocket headers — the bearer subprotocol carrier is already
+  /// pulling double duty for auth and we don't want to mix concerns.
+  /// The route reads the same parameter via
+  /// `request.uri.queryParameters['last_event_id']`.
+  static const String lastEventIdQueryParam = 'last_event_id';
+
   @override
-  Future<RealtimeChannel> connect(Uri uri, {String? authToken}) async {
+  Future<RealtimeChannel> connect(
+    Uri uri, {
+    String? authToken,
+    String? lastEventId,
+  }) async {
+    final connectUri = lastEventId == null
+        ? uri
+        : uri.replace(
+            queryParameters: <String, String>{
+              ...uri.queryParameters,
+              lastEventIdQueryParam: lastEventId,
+            },
+          );
     final channel = WebSocketChannel.connect(
-      uri,
+      connectUri,
       protocols: authToken == null ? null : <String>['bearer.$authToken'],
     );
     await channel.ready;

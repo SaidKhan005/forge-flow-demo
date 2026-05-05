@@ -16,8 +16,18 @@
 //   * `dispose()` cancels reconnect timers, closes the active channel,
 //     and prevents future reconnects.
 //
+// Phase 10a.5 — `last_event_id` replay-on-reconnect. The subscription
+// tracks the most recent event_id seen on the current tenant scope and
+// forwards it to the transport on every (re)connect. The route's
+// WebSocket lifecycle section (phase_10a_shared_state_v1_plan.md) calls
+// for "On reconnect, client provides last-seen `event_id`; server
+// replays missed events from Pub/Sub message backlog (up to 5 minutes
+// retention)". Beyond that window the server emits a
+// `replay_truncated` control envelope; the client surfaces it on
+// [replayTruncated] and clears its cursor so the next reconnect does
+// not loop on the same stale id.
+//
 // Out of scope for this scaffold (Phase 10a follow-up):
-//   * `last_event_id` resume / Pub/Sub backlog replay
 //   * jittered back-off
 //   * retry-attempt cap with hard "give up" on cumulative failure
 //   * structured client-side telemetry (lag tile, undelivered count)
@@ -27,6 +37,15 @@ import 'dart:convert';
 
 import 'realtime_event.dart';
 import 'realtime_transport.dart';
+
+/// Phase 10a.5 — wire JSON key the route uses to mark non-event
+/// control envelopes. Must match the literal in
+/// `tool/advisor_proxy/realtime_route.dart`.
+const String _controlKey = 'control';
+
+/// Phase 10a.5 — control kind the route emits when the client's
+/// `last_event_id` is older than `kRealtimeReplayWindow` (5 min).
+const String _controlKindReplayTruncated = 'replay_truncated';
 
 /// Connection state surfaced to the UI for the `10a.UX.0` sync-state
 /// badge (sub-slice). Today the badge is not yet wired; surfaces are
@@ -93,6 +112,15 @@ class RealtimeSubscription {
   bool _disposed = false;
   RealtimeConnectionState _state = RealtimeConnectionState.idle;
 
+  /// Phase 10a.5 — most recent `event_id` observed on the current
+  /// tenant scope. Forwarded to the transport on every (re)connect so
+  /// the server can replay events missed during the disconnect window.
+  /// Cleared on [setTenantContext] / [clearTenantContext] (a new scope
+  /// has nothing to resume from) and on `replay_truncated` (server
+  /// signalled the cursor is stale beyond the replay window — full
+  /// refresh is the contract).
+  String? _lastEventId;
+
   /// Monotonic counter incremented on every [setTenantContext] and
   /// [dispose] call. [_connect] snapshots the current generation
   /// before awaiting the transport, then re-checks after the await
@@ -106,6 +134,8 @@ class RealtimeSubscription {
       StreamController<RealtimeEvent>.broadcast();
   final StreamController<RealtimeConnectionState> _stateController =
       StreamController<RealtimeConnectionState>.broadcast();
+  final StreamController<void> _replayTruncatedController =
+      StreamController<void>.broadcast();
 
   /// Stream of events the subscription has received from the server.
   Stream<RealtimeEvent> get events => _eventsController.stream;
@@ -114,7 +144,21 @@ class RealtimeSubscription {
   Stream<RealtimeConnectionState> get connectionState =>
       _stateController.stream;
 
+  /// Phase 10a.5 — fires when the server signals it cannot replay the
+  /// gap between the client's last_event_id and now (the gap is older
+  /// than the contract floor `kRealtimeReplayWindow` — default 5 min).
+  /// UI consumers should treat this as a prompt to do a full refresh
+  /// from Postgres on the affected tables; the per-event push stream
+  /// resumes normally on the same connection right after.
+  Stream<void> get replayTruncated => _replayTruncatedController.stream;
+
   RealtimeConnectionState get currentConnectionState => _state;
+
+  /// Visible for tests — most recent event_id the subscription would
+  /// forward to the transport on the next (re)connect. Null on first
+  /// connect for a fresh tenant scope and after a `replay_truncated`
+  /// signal.
+  String? get lastEventIdForTest => _lastEventId;
 
   /// Open (or reconnect) against the given tenant context. Resets the
   /// back-off curve so the new scope connects immediately. Safe to
@@ -124,6 +168,11 @@ class RealtimeSubscription {
     _tenantContext = context;
     _currentBackoff = Duration.zero;
     _generation += 1;
+    // The cursor belongs to the previous tenant scope and would be a
+    // cross-tenant leak if forwarded to the new operator's first
+    // connect. Reset to null so the new scope starts as "first
+    // connect, no replay".
+    _lastEventId = null;
     await _teardownChannel();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
@@ -145,6 +194,10 @@ class RealtimeSubscription {
     _tenantContext = null;
     _currentBackoff = Duration.zero;
     _generation += 1;
+    // Drop the resume cursor on sign-out for the same reason as
+    // setTenantContext: the next signed-in operator must not inherit
+    // the previous one's last_event_id.
+    _lastEventId = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     await _teardownChannel();
@@ -164,6 +217,7 @@ class RealtimeSubscription {
     _setState(RealtimeConnectionState.idle);
     await _eventsController.close();
     await _stateController.close();
+    await _replayTruncatedController.close();
   }
 
   /// Visible for tests — current back-off duration that will apply on
@@ -181,7 +235,18 @@ class RealtimeSubscription {
     );
     RealtimeChannel channel;
     try {
-      channel = await _transport.connect(uri, authToken: context.authToken);
+      channel = await _transport.connect(
+        uri,
+        authToken: context.authToken,
+        // Phase 10a.5 — forward the resume cursor so the route can
+        // replay anything missed during the disconnect window. Null
+        // on the very first connect for this tenant scope; set on
+        // every subsequent reconnect once at least one frame has
+        // arrived. The transport places it on the upgrade URI as a
+        // query parameter (browser-compatible — custom headers are
+        // not available on the WebSocket upgrade).
+        lastEventId: _lastEventId,
+      );
     } catch (error, stack) {
       _logger(
         RealtimeSubscriptionLogEvent.connectFailed(
@@ -239,7 +304,20 @@ class RealtimeSubscription {
       if (json is! Map<String, Object?>) {
         throw FormatException('frame is not a JSON object');
       }
+      // Phase 10a.5 — control envelopes are non-event server signals
+      // and never carry an `event_id`. The route emits exactly one
+      // control message today (`replay_truncated`) so the client knows
+      // its resume cursor is older than the contract floor (5 min) and
+      // a full Postgres refresh is required. Control frames take
+      // priority over RealtimeEvent.fromJson so the strict required-
+      // field check in the latter does not reject them as malformed.
+      final controlKind = json[_controlKey];
+      if (controlKind is String) {
+        _handleControlFrame(controlKind);
+        return;
+      }
       final event = RealtimeEvent.fromJson(json);
+      _lastEventId = event.eventId;
       _eventsController.add(event);
     } catch (error, stack) {
       _logger(
@@ -248,6 +326,33 @@ class RealtimeSubscription {
           stack: stack,
         ),
       );
+    }
+  }
+
+  void _handleControlFrame(String kind) {
+    switch (kind) {
+      case _controlKindReplayTruncated:
+        // Drop the cursor so the next reconnect does not loop on the
+        // same stale id. UI consumers refetch from Postgres on the
+        // notification; live frames keep arriving on the same socket.
+        _lastEventId = null;
+        if (!_replayTruncatedController.isClosed) {
+          _replayTruncatedController.add(null);
+        }
+        return;
+      default:
+        // Unknown control kind: log and drop. Forward-compat — the
+        // server may add new control kinds in later slices and the
+        // client should not crash on them.
+        _logger(
+          RealtimeSubscriptionLogEvent.frameParseFailed(
+            error: FormatException(
+              'unknown realtime control kind "$kind"',
+            ),
+            stack: StackTrace.current,
+          ),
+        );
+        return;
     }
   }
 
