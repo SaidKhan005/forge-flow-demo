@@ -13,6 +13,7 @@ These stay at the top level because they are the fastest-entry authority docs:
 - `docs/DATA_ALIGNMENT_TRACKER.md`
 - `docs/CODEX_PROMPT_GENERATION_STANDARD.md`
 - `docs/PERFORMANCE_FRAMEWORK.md`
+- `docs/UX_ADJUSTMENT_FRAMEWORK.md`
 
 ## 2. Contracts
 

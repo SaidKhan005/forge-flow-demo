@@ -62,7 +62,10 @@ Routing map only. Slice scopes live in their phase docs.
 7. `docs/PERFORMANCE_FRAMEWORK.md` — required for performance, scale,
    mobile responsiveness, web-console timing, load, polling, health, or
    bundle-size work.
-8. `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — required for live Browser Use,
+8. `docs/UX_ADJUSTMENT_FRAMEWORK.md` - required for UX polish, copy,
+   admin-console clarity, navigation grouping, button/modal styling, filters,
+   keys, tooltips, browser-tab polish, or no-regression UX adjustment work.
+9. `docs/MOBILE_WEB_CONSOLE_E2E_FRAMEWORK.md` — required for live Browser Use,
    web/admin console acceptance, mobile-device QA, safe-action sweeps, and
    branch-to-artifact-to-runtime proof.
 
