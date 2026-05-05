@@ -13,14 +13,29 @@ import '../utils/formatters.dart';
 /// that splits the dollar gap across the 16 lever axes (per
 /// `LaborModel.attributeDollarImpactByAxis`). When null, the card
 /// renders unchanged.
+///
+/// 7.58.UX.8: when the cplh / splh row's actual crosses the OPZ ceiling
+/// for that axis, the row label is suffixed with ` : team was stretched`
+/// so favorable dollars do not silently mask above-ceiling workload risk
+/// (Bold by Design Ch. 10). The four optional `actualCPLH` /
+/// `opzCeilingCPLH` / `actualSPLH` / `opzCeilingSPLH` params drive the
+/// per-axis predicate; when null, the row renders unchanged.
 class LeverCardWidget extends StatelessWidget {
   final LeverCardData data;
   final Map<String, double>? dollarImpactByAxis;
+  final double? actualCPLH;
+  final double? opzCeilingCPLH;
+  final double? actualSPLH;
+  final double? opzCeilingSPLH;
 
   const LeverCardWidget({
     super.key,
     required this.data,
     this.dollarImpactByAxis,
+    this.actualCPLH,
+    this.opzCeilingCPLH,
+    this.actualSPLH,
+    this.opzCeilingSPLH,
   });
 
   @override
@@ -85,6 +100,10 @@ class LeverCardWidget extends StatelessWidget {
             _DollarAttributionSection(
               dominantId: data.id,
               dollarImpactByAxis: dollarImpactByAxis!,
+              actualCPLH: actualCPLH,
+              opzCeilingCPLH: opzCeilingCPLH,
+              actualSPLH: actualSPLH,
+              opzCeilingSPLH: opzCeilingSPLH,
             ),
           ],
           const SizedBox(height: 16),
@@ -125,11 +144,38 @@ class LeverCardWidget extends StatelessWidget {
 class _DollarAttributionSection extends StatelessWidget {
   final String dominantId;
   final Map<String, double> dollarImpactByAxis;
+  final double? actualCPLH;
+  final double? opzCeilingCPLH;
+  final double? actualSPLH;
+  final double? opzCeilingSPLH;
 
   const _DollarAttributionSection({
     required this.dominantId,
     required this.dollarImpactByAxis,
+    this.actualCPLH,
+    this.opzCeilingCPLH,
+    this.actualSPLH,
+    this.opzCeilingSPLH,
   });
+
+  // 7.58.UX.8: per-axis "team was stretched" predicate.
+  // Annotation fires only when the row's axis is cplh or splh AND the
+  // actual exceeded the ceiling for that axis. When either input for
+  // an axis is null (no active target profile / legacy week record),
+  // the predicate is false and the row renders unchanged.
+  bool _isStretched(String axisLabel) {
+    if (axisLabel == 'cplh') {
+      final actual = actualCPLH;
+      final ceiling = opzCeilingCPLH;
+      return actual != null && ceiling != null && actual > ceiling;
+    }
+    if (axisLabel == 'splh') {
+      final actual = actualSPLH;
+      final ceiling = opzCeilingSPLH;
+      return actual != null && ceiling != null && actual > ceiling;
+    }
+    return false;
+  }
 
   // Pair lever ids into signed axes. `attributeDollarImpactByAxis` only
   // populates one half of each pair, so summing is safe and gives the
@@ -161,7 +207,11 @@ class _DollarAttributionSection extends StatelessWidget {
           (dollarImpactByAxis[a.favorableId] ?? 0);
       total += v;
       if (v.abs() >= 1.0) {
-        perAxis.add(_AxisRow(label: a.label, value: v));
+        perAxis.add(_AxisRow(
+          label: a.label,
+          value: v,
+          stretched: _isStretched(a.label),
+        ));
       }
     }
     perAxis.sort((a, b) => b.value.abs().compareTo(a.value.abs()));
@@ -215,7 +265,15 @@ class _AxisDef {
 class _AxisRow {
   final String label;
   final double value;
-  const _AxisRow({required this.label, required this.value});
+  // 7.58.UX.8: when true, the row label is rendered with the
+  // ` : team was stretched` suffix (cplh / splh axis whose actual
+  // crossed the OPZ ceiling).
+  final bool stretched;
+  const _AxisRow({
+    required this.label,
+    required this.value,
+    this.stretched = false,
+  });
 }
 
 class _AttributionRow extends StatelessWidget {
@@ -241,7 +299,7 @@ class _AttributionRow extends StatelessWidget {
             ),
           ),
           Text(
-            row.label,
+            row.stretched ? '${row.label} : team was stretched' : row.label,
             style: AppTextStyles.body13(color: AppColors.textSecondary),
           ),
         ],
