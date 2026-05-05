@@ -6754,6 +6754,7 @@ Future<void> routeRequest(
         final isAdminDebugPath = _isAdminDebugPath(path);
         final isAdminObservabilityPath = _isAdminObservabilityPath(path);
         final isDeepHealthPath = path == deepHealthPath;
+        final isAuthPath = _isAuthCorsPath(path);
         final List<String>? adminCorsMethods = isAdminOperatorLocationPath
             ? kAdminOperatorLocationCorsMethods
             : isAdminPricingPath
@@ -6770,6 +6771,8 @@ Future<void> routeRequest(
             ? kAdminObservabilityCorsMethods
             : isDeepHealthPath
             ? kAdminHealthCorsMethods
+            : isAuthPath
+            ? kAuthCorsMethods
             : null;
         if (adminCorsMethods != null) {
           if (request.method == 'OPTIONS') {
@@ -10544,6 +10547,10 @@ bool _isAdminIntegrationsPath(String path) {
       path == adminIntegrationsStatusPath;
 }
 
+bool _isAuthCorsPath(String path) {
+  return path.startsWith('/v1/auth/');
+}
+
 bool _isAdminIntegrationsOperation(String path, String method) {
   if (method == 'GET' &&
       (path == adminIntegrationsListPath ||
@@ -12365,6 +12372,7 @@ const List<String> kAdminFeatureFlagsCorsMethods = <String>[
 const List<String> kAdminDebugConsoleCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminObservabilityCorsMethods = <String>['GET', 'OPTIONS'];
 const List<String> kAdminHealthCorsMethods = <String>['GET', 'OPTIONS'];
+const List<String> kAuthCorsMethods = <String>['GET', 'POST', 'OPTIONS'];
 
 /// HARD-C — sole origin-decision site for admin CORS.
 ///
