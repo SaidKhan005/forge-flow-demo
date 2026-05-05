@@ -47,6 +47,8 @@ import 'package:forge_and_flow/infrastructure/persistence/postgres/tenant_transa
 import 'package:forge_and_flow/auth/permission_effect.dart';
 import 'package:forge_and_flow/auth/permission_keys.dart';
 import 'package:forge_and_flow/auth/permission_resolution.dart';
+import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/services/auth/account_info_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_operations_gateway.dart';
 import 'package:forge_and_flow/services/auth/auth_session_ledger_writer.dart';
@@ -67,6 +69,7 @@ import 'package:forge_and_flow/services/mfa/identity_toolkit_firebase_mfa_client
 import 'package:forge_and_flow/services/mfa/mfa_operations_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_recovery_request_gateway.dart';
 import 'package:forge_and_flow/services/mfa/mfa_removal_worker.dart';
+import 'package:forge_and_flow/services/integration/polling_tier_presets.dart';
 
 import '../advisor_corpus/advisor_corpus.dart'
     show
@@ -139,6 +142,7 @@ class ProxyProductionBindings {
     required this.mfaRemovalWorker,
     required this.operatorLocationAdminGateway,
     required this.pricingTierAdminGateway,
+    required this.dataAccuracyAdminGateway,
     required this.corpusAdminGateway,
     required this.graphCandidatesGateway,
     required this.integrationAdminGateway,
@@ -187,6 +191,7 @@ class ProxyProductionBindings {
   final MfaRemovalWorker mfaRemovalWorker;
   final OperatorLocationAdminProxyGateway operatorLocationAdminGateway;
   final PricingTierAdminProxyGateway pricingTierAdminGateway;
+  final DataAccuracyAdminProxyGateway dataAccuracyAdminGateway;
   final CorpusAdminProxyGateway corpusAdminGateway;
   final GraphCandidatesProxyGateway graphCandidatesGateway;
   final IntegrationAdminProxyGateway integrationAdminGateway;
@@ -586,6 +591,10 @@ ProxyProductionBindings buildProxyProductionBindings(
     // not tenant-scoped data. The repository runs through `withSystem`
     // (forge_admin BYPASSRLS) so the read/write covers every chunk +
     // version row.
+    dataAccuracyAdminGateway: RepositoryDataAccuracyAdminProxyGateway(
+      adminWrapper: adminWrapper,
+      auditRepository: adminAudit,
+    ),
     corpusAdminGateway: RepositoryCorpusAdminProxyGateway(
       corpusRepository: CorpusRepository(adminWrapper),
       auditRepository: adminAudit,
@@ -700,7 +709,7 @@ ProxyProductionBindings buildProxyProductionBindings(
     usageCounterStore: _AdvisorProxyUsageCounterStoreAdapter(
       AdvisorProxyUsageCounterStore(tenantWrapper),
     ),
-    // HARD-A — registry-backed `/health`. Runs all 57 producers
+    // HARD-A — registry-backed `/health`. Runs all 58 producers
     // with bounded concurrency against a separate admin-role pool with `set local role
     // forge_admin` (BYPASSRLS) so platform-wide reads (graph_health,
     // event_outbox, audit_logs, vector indexes, etc.) succeed without
@@ -1887,6 +1896,907 @@ class RepositoryPricingTierAdminProxyGateway
 /// into a server-side helper. The current binding rejects an upload
 /// until that helper is wired so the route never silently writes an
 /// empty version row in production.
+class RepositoryDataAccuracyAdminProxyGateway
+    implements DataAccuracyAdminProxyGateway {
+  RepositoryDataAccuracyAdminProxyGateway({
+    required TenantTransactionWrapper adminWrapper,
+    required AuthEventsAuditRepository auditRepository,
+  }) : _adminWrapper = adminWrapper,
+       _auditRepository = auditRepository;
+
+  final TenantTransactionWrapper _adminWrapper;
+  final AuthEventsAuditRepository _auditRepository;
+
+  static final DateTime _definitionEditedAt = DateTime.utc(2026, 5, 5);
+
+  @override
+  Future<List<Map<String, Object?>>> listDataAccuracyRows({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final rows = await exec.query(
+        'select '
+        'o.operator_id::text as operator_id, '
+        'o.business_name, '
+        'l.location_id::text as location_id, '
+        'l.name as location_name, '
+        's.setting_id::text as setting_id, '
+        's.covers_source_lunch, s.covers_source_dinner, '
+        's.covers_source_late_night, s.covers_manual_entries, '
+        's.wage_source, s.created_at, s.updated_at, s.updated_by '
+        'from operators o '
+        'join locations l on l.operator_id = o.operator_id '
+        'left join data_accuracy_settings s '
+        'on s.operator_id = l.operator_id '
+        'and s.location_id = l.location_id '
+        'order by o.business_name asc, l.created_at asc',
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.data_accuracy.list',
+        adminReason: adminReason,
+        payload: <String, Object?>{'row_count': rows.length},
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows) _dataAccuracyRowJson(row),
+      ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listAuditHistory({
+    required String actorUserId,
+    String? operatorId,
+    String? locationId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final params = <String, Object?>{};
+      var filter =
+          "where (event_type like 'admin.data_accuracy.%' "
+          "or event_type like 'admin.polling_pricing.%') ";
+      if (operatorId != null && operatorId.isNotEmpty) {
+        filter += 'and operator_id = @operator_id::uuid ';
+        params['operator_id'] = operatorId;
+      }
+      if (locationId != null && locationId.isNotEmpty) {
+        filter += 'and location_id = @location_id::uuid ';
+        params['location_id'] = locationId;
+      }
+      final rows = await exec.query(
+        'select event_id::text as event_id, event_type, occurred_at, '
+        'actor_user_id::text as actor_user_id, actor_kind, '
+        'operator_id::text as operator_id, location_id::text as location_id, '
+        'event_payload '
+        'from auth_events_audit '
+        '$filter'
+        'order by occurred_at desc '
+        'limit 100',
+        parameters: params,
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.data_accuracy.audit_history.list',
+        operatorId: operatorId,
+        locationId: locationId,
+        adminReason: adminReason,
+        payload: <String, Object?>{'event_count': rows.length},
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows) _auditEventJson(row),
+      ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> overrideDataAccuracy({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    String? coversSourceLunch,
+    String? coversSourceDinner,
+    String? coversSourceLateNight,
+    String? wageSource,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateCoversSource(coversSourceLunch, 'covers_source_lunch');
+    _validateCoversSource(coversSourceDinner, 'covers_source_dinner');
+    _validateCoversSource(coversSourceLateNight, 'covers_source_late_night');
+    _validateWageSource(wageSource);
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) return null;
+      final before = await _currentDataAccuracySettings(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      final rows = await exec.query(
+        'insert into data_accuracy_settings ('
+        'operator_id, location_id, covers_source_lunch, '
+        'covers_source_dinner, covers_source_late_night, wage_source, '
+        'updated_by) values ('
+        '@operator_id::uuid, @location_id::uuid, '
+        "coalesce(@covers_lunch, 'vendor'), "
+        "coalesce(@covers_dinner, 'vendor'), "
+        "coalesce(@covers_late_night, 'vendor'), "
+        "coalesce(@wage_source, 'vendor'), @updated_by) "
+        'on conflict (operator_id, location_id) do update set '
+        'covers_source_lunch = coalesce('
+        '@covers_lunch, data_accuracy_settings.covers_source_lunch), '
+        'covers_source_dinner = coalesce('
+        '@covers_dinner, data_accuracy_settings.covers_source_dinner), '
+        'covers_source_late_night = coalesce('
+        '@covers_late_night, '
+        'data_accuracy_settings.covers_source_late_night), '
+        'wage_source = coalesce('
+        '@wage_source, data_accuracy_settings.wage_source), '
+        'updated_at = now(), updated_by = @updated_by '
+        'returning '
+        'setting_id::text as setting_id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'covers_source_lunch, covers_source_dinner, '
+        'covers_source_late_night, covers_manual_entries, wage_source, '
+        'created_at, updated_at, updated_by',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'covers_lunch': coversSourceLunch,
+          'covers_dinner': coversSourceDinner,
+          'covers_late_night': coversSourceLateNight,
+          'wage_source': wageSource,
+          'updated_by': actorUserId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final after = _settingsJson(rows.single);
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.data_accuracy.override',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': _settingsDiff(before, after),
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{'operator_ref': ref, 'settings': after};
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listTierDefinitions({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final definitions = _tierDefinitions();
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.polling_pricing.tier_definitions.list',
+        adminReason: adminReason,
+        payload: <String, Object?>{'definition_count': definitions.length},
+      );
+      return definitions;
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>> updateTierDefinition({
+    required String actorUserId,
+    required String tierKey,
+    String? descriptionMd,
+    Map<String, int>? pollingCadencePerVendorSeconds,
+    int? defaultMonthlyPriceCents,
+    int? vendorApiCostEstimateCentsMonthly,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateTierKey(tierKey);
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 501,
+      code: 'tier_definitions_read_only',
+      message:
+          'tier definition persistence is not configured; update per-location assignments instead',
+    );
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listTierAssignments({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      final rows = await exec.query(
+        'select '
+        'o.operator_id::text as operator_id, '
+        'o.business_name, '
+        'l.location_id::text as location_id, '
+        'l.name as location_name, '
+        'a.assignment_id::text as assignment_id, '
+        'a.tier_key, a.polling_cadence_per_vendor_seconds, '
+        'a.monthly_price_cents, '
+        'a.vendor_api_cost_estimate_cents_monthly, '
+        'a.effective_at, a.effective_until, '
+        'a.assigned_by_admin_user_id, a.created_at '
+        'from operators o '
+        'join locations l on l.operator_id = o.operator_id '
+        'left join forge_flow_polling_tier_assignment a '
+        'on a.operator_id = l.operator_id '
+        'and a.location_id = l.location_id '
+        'and a.effective_until is null '
+        'order by o.business_name asc, l.created_at asc',
+      );
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.polling_pricing.assignments.list',
+        adminReason: adminReason,
+        payload: <String, Object?>{'row_count': rows.length},
+      );
+      return <Map<String, Object?>>[
+        for (final row in rows) _assignmentRowJson(row),
+      ];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> assignTier({
+    required String actorUserId,
+    required String operatorId,
+    required String locationId,
+    required String tierKey,
+    Map<String, int>? customCadencePerVendorSeconds,
+    int? monthlyPriceCentsOverride,
+    int? vendorApiCostEstimateCentsMonthlyOverride,
+    String? adminNotes,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    final tier = _validateTierKey(tierKey);
+    return _adminWrapper.runAsSystem<Map<String, Object?>?>((exec) async {
+      final ref = await _operatorLocationRef(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      if (ref == null) return null;
+      final before = await _currentTierAssignment(
+        exec,
+        operatorId: operatorId,
+        locationId: locationId,
+      );
+      final definition = _definitionFor(tier);
+      final cadence =
+          customCadencePerVendorSeconds ??
+          Map<String, int>.from(
+            definition['polling_cadence_per_vendor_seconds'] as Map,
+          );
+      final price =
+          monthlyPriceCentsOverride ??
+          definition['default_monthly_price_cents'] as int?;
+      final cost =
+          vendorApiCostEstimateCentsMonthlyOverride ??
+          definition['vendor_api_cost_estimate_cents_monthly'] as int?;
+      await exec.execute(
+        'update forge_flow_polling_tier_assignment '
+        'set effective_until = now() '
+        'where operator_id = @operator_id::uuid '
+        'and location_id = @location_id::uuid '
+        'and effective_until is null',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+        },
+      );
+      final rows = await exec.query(
+        'insert into forge_flow_polling_tier_assignment ('
+        'operator_id, location_id, tier_key, '
+        'polling_cadence_per_vendor_seconds, '
+        'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
+        'assigned_by_admin_user_id) values ('
+        '@operator_id::uuid, @location_id::uuid, @tier_key, '
+        '@cadence::jsonb, @monthly_price_cents, '
+        '@vendor_api_cost_estimate_cents_monthly, @admin_user_id) '
+        'returning '
+        'assignment_id::text as assignment_id, '
+        'operator_id::text as operator_id, '
+        'location_id::text as location_id, '
+        'tier_key, polling_cadence_per_vendor_seconds, '
+        'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
+        'effective_at, effective_until, '
+        'assigned_by_admin_user_id, created_at',
+        parameters: <String, Object?>{
+          'operator_id': operatorId,
+          'location_id': locationId,
+          'tier_key': tier.wire,
+          'cadence': jsonEncode(cadence),
+          'monthly_price_cents': price,
+          'vendor_api_cost_estimate_cents_monthly': cost,
+          'admin_user_id': actorUserId,
+        },
+      );
+      if (rows.isEmpty) return null;
+      final assignment = _assignmentJson(rows.single);
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        operatorId: operatorId,
+        locationId: locationId,
+        eventType: 'admin.polling_pricing.assign_tier',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'diff': <String, Object?>{
+            'tier_key': <String, Object?>{
+              'from': before?['tier_key'],
+              'to': tier.wire,
+            },
+            'polling_cadence_per_vendor_seconds': <String, Object?>{
+              'from': before?['polling_cadence_per_vendor_seconds'],
+              'to': cadence,
+            },
+            'monthly_price_cents': <String, Object?>{
+              'from': before?['monthly_price_cents'],
+              'to': price,
+            },
+            'vendor_api_cost_estimate_cents_monthly': <String, Object?>{
+              'from': before?['vendor_api_cost_estimate_cents_monthly'],
+              'to': cost,
+            },
+          },
+          if (adminNotes != null) 'admin_notes': adminNotes,
+          if (reasonNote != null) 'reason_note': reasonNote,
+          'admin_reason': adminReason,
+        },
+      );
+      return <String, Object?>{
+        'operator_ref': ref,
+        'assignment': assignment,
+        if (adminNotes != null) 'admin_notes': adminNotes,
+      };
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>> summarizeMargin({
+    required String actorUserId,
+    String? tierKey,
+    required String adminReason,
+  }) {
+    if (tierKey != null) _validateTierKey(tierKey);
+    return _adminWrapper.runAsSystem<Map<String, Object?>>((exec) async {
+      final assignments = await _currentAssignments(exec, tierKey: tierKey);
+      final rollup = _marginRollupJson(assignments);
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.polling_pricing.margin.summarize',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          if (tierKey != null) 'tier_key': tierKey,
+          'assignment_count': assignments.length,
+        },
+      );
+      return rollup;
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<String> exportMarginRollupCsv({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<String>((exec) async {
+      final assignments = await _currentAssignments(exec);
+      final rollup = _marginRollupJson(assignments);
+      final csv = _marginRollupCsv(rollup);
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.polling_pricing.margin.export_csv',
+        adminReason: adminReason,
+        payload: <String, Object?>{
+          'assignment_count': assignments.length,
+          'admin_reason': adminReason,
+        },
+      );
+      return csv;
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> listTierChangeRequests({
+    required String actorUserId,
+    required String adminReason,
+  }) {
+    return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
+      await _auditOn(
+        exec,
+        actorUserId: actorUserId,
+        eventType: 'admin.polling_pricing.change_requests.list',
+        adminReason: adminReason,
+        payload: const <String, Object?>{'request_count': 0},
+      );
+      return const <Map<String, Object?>>[];
+    }, reason: adminReason);
+  }
+
+  @override
+  Future<Map<String, Object?>?> resolveTierChangeRequest({
+    required String actorUserId,
+    required String requestId,
+    required String status,
+    String? reasonNote,
+    required String adminReason,
+  }) {
+    _validateTierChangeStatus(status);
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 501,
+      code: 'tier_change_requests_not_configured',
+      message: 'tier change request persistence is not configured',
+    );
+  }
+
+  Future<Map<String, Object?>?> _operatorLocationRef(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select o.operator_id::text as operator_id, '
+      'o.business_name, l.location_id::text as location_id, '
+      'l.name as location_name '
+      'from operators o '
+      'join locations l on l.operator_id = o.operator_id '
+      'where o.operator_id = @operator_id::uuid '
+      'and l.location_id = @location_id::uuid '
+      'limit 1',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    return _operatorRefJson(rows.single);
+  }
+
+  Future<Map<String, Object?>?> _currentDataAccuracySettings(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select setting_id::text as setting_id, '
+      'operator_id::text as operator_id, location_id::text as location_id, '
+      'covers_source_lunch, covers_source_dinner, covers_source_late_night, '
+      'covers_manual_entries, wage_source, created_at, updated_at, updated_by '
+      'from data_accuracy_settings '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    return _settingsJson(rows.single);
+  }
+
+  Future<Map<String, Object?>?> _currentTierAssignment(
+    PostgresExecutor exec, {
+    required String operatorId,
+    required String locationId,
+  }) async {
+    final rows = await exec.query(
+      'select assignment_id::text as assignment_id, '
+      'operator_id::text as operator_id, location_id::text as location_id, '
+      'tier_key, polling_cadence_per_vendor_seconds, '
+      'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
+      'effective_at, effective_until, assigned_by_admin_user_id, created_at '
+      'from forge_flow_polling_tier_assignment '
+      'where operator_id = @operator_id::uuid '
+      'and location_id = @location_id::uuid '
+      'and effective_until is null',
+      parameters: <String, Object?>{
+        'operator_id': operatorId,
+        'location_id': locationId,
+      },
+    );
+    if (rows.isEmpty) return null;
+    return _assignmentJson(rows.single);
+  }
+
+  Future<List<Map<String, Object?>>> _currentAssignments(
+    PostgresExecutor exec, {
+    String? tierKey,
+  }) async {
+    final params = <String, Object?>{};
+    var sql =
+        'select assignment_id::text as assignment_id, '
+        'operator_id::text as operator_id, location_id::text as location_id, '
+        'tier_key, polling_cadence_per_vendor_seconds, '
+        'monthly_price_cents, vendor_api_cost_estimate_cents_monthly, '
+        'effective_at, effective_until, assigned_by_admin_user_id, created_at '
+        'from forge_flow_polling_tier_assignment '
+        'where effective_until is null ';
+    if (tierKey != null) {
+      sql += 'and tier_key = @tier_key ';
+      params['tier_key'] = tierKey;
+    }
+    sql += 'order by effective_at desc';
+    final rows = await exec.query(sql, parameters: params);
+    return <Map<String, Object?>>[for (final row in rows) _assignmentJson(row)];
+  }
+
+  Future<void> _auditOn(
+    PostgresExecutor exec, {
+    required String actorUserId,
+    required String eventType,
+    required String adminReason,
+    String? operatorId,
+    String? locationId,
+    Map<String, Object?> payload = const <String, Object?>{},
+  }) {
+    return _auditRepository.insertSystemEventOn(
+      exec,
+      actorUserId: actorUserId,
+      operatorId: operatorId,
+      locationId: locationId,
+      eventType: eventType,
+      payload: <String, Object?>{'admin_reason': adminReason, ...payload},
+    );
+  }
+
+  static Map<String, Object?> _dataAccuracyRowJson(Map<String, Object?> row) {
+    return <String, Object?>{
+      'operator_ref': _operatorRefJson(row),
+      'settings': _settingsJson(row),
+    };
+  }
+
+  static Map<String, Object?> _operatorRefJson(Map<String, Object?> row) {
+    return <String, Object?>{
+      'operator_id': row['operator_id'],
+      'business_name': row['business_name'],
+      'location_id': row['location_id'],
+      'location_name': row['location_name'],
+    };
+  }
+
+  static Map<String, Object?> _settingsJson(Map<String, Object?> row) {
+    final operatorId = row['operator_id'] as String? ?? '';
+    final locationId = row['location_id'] as String? ?? '';
+    return <String, Object?>{
+      'setting_id':
+          row['setting_id'] as String? ?? 'default:$operatorId:$locationId',
+      'operator_id': operatorId,
+      'location_id': locationId,
+      'covers_source_lunch': row['covers_source_lunch'] as String? ?? 'vendor',
+      'covers_source_dinner':
+          row['covers_source_dinner'] as String? ?? 'vendor',
+      'covers_source_late_night':
+          row['covers_source_late_night'] as String? ?? 'vendor',
+      'covers_manual_entries': _jsonMap(row['covers_manual_entries']),
+      'wage_source': row['wage_source'] as String? ?? 'vendor',
+      'created_at':
+          _dateJson(row['created_at']) ?? DateTime.utc(1970).toIso8601String(),
+      'updated_at':
+          _dateJson(row['updated_at']) ?? DateTime.utc(1970).toIso8601String(),
+      'updated_by': row['updated_by'],
+    };
+  }
+
+  static Map<String, Object?> _assignmentRowJson(Map<String, Object?> row) {
+    return <String, Object?>{
+      'operator_ref': _operatorRefJson(row),
+      'assignment': row['assignment_id'] == null ? null : _assignmentJson(row),
+      'admin_notes': null,
+    };
+  }
+
+  static Map<String, Object?> _assignmentJson(Map<String, Object?> row) {
+    return <String, Object?>{
+      'assignment_id': row['assignment_id'],
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'tier_key': row['tier_key'],
+      'polling_cadence_per_vendor_seconds': _intMap(
+        _jsonMap(row['polling_cadence_per_vendor_seconds']),
+      ),
+      'monthly_price_cents': row['monthly_price_cents'],
+      'vendor_api_cost_estimate_cents_monthly':
+          row['vendor_api_cost_estimate_cents_monthly'],
+      'effective_at': _dateJson(row['effective_at']),
+      'effective_until': _dateJson(row['effective_until']),
+      'assigned_by_admin_user_id': row['assigned_by_admin_user_id'],
+      'created_at': _dateJson(row['created_at']),
+    };
+  }
+
+  static Map<String, Object?> _auditEventJson(Map<String, Object?> row) {
+    final payload = _jsonMap(row['event_payload']);
+    return <String, Object?>{
+      'event_id': row['event_id'],
+      'event_type': row['event_type'],
+      'occurred_at': _dateJson(row['occurred_at']),
+      'actor_user_id': row['actor_user_id'],
+      'actor_kind': row['actor_kind'] as String? ?? 'user',
+      'operator_id': row['operator_id'],
+      'location_id': row['location_id'],
+      'diff': _jsonMap(payload['diff']),
+      'reason_note': payload['reason_note'],
+    };
+  }
+
+  static List<Map<String, Object?>> _tierDefinitions() {
+    return <Map<String, Object?>>[
+      _tierDefinitionJson(
+        tierKey: PollingTierKey.standard,
+        description:
+            'Standard polling cadence for launch operators. Poll-only vendors use five-minute cadence defaults.',
+        cadence: kStandardTierPresets,
+        defaultPriceCents: 9900,
+        vendorCostCents: 1200,
+      ),
+      _tierDefinitionJson(
+        tierKey: PollingTierKey.premium,
+        description:
+            'Premium cadence for high-touch operators. Vendors that allow 60s polling use 60s cadence; Oracle remains at its vendor minimum.',
+        cadence: kPremiumTierPresets,
+        defaultPriceCents: 19900,
+        vendorCostCents: 4800,
+      ),
+      _tierDefinitionJson(
+        tierKey: PollingTierKey.custom,
+        description:
+            'Custom operator/location cadence. Admins set per-vendor values on each assignment.',
+        cadence: const <String, int>{},
+        defaultPriceCents: 0,
+        vendorCostCents: 0,
+      ),
+    ];
+  }
+
+  static Map<String, Object?> _definitionFor(PollingTierKey tier) {
+    return _tierDefinitions().singleWhere(
+      (definition) => definition['tier_key'] == tier.wire,
+    );
+  }
+
+  static Map<String, Object?> _tierDefinitionJson({
+    required PollingTierKey tierKey,
+    required String description,
+    required Map<String, int> cadence,
+    required int defaultPriceCents,
+    required int vendorCostCents,
+  }) {
+    return <String, Object?>{
+      'tier_key': tierKey.wire,
+      'description_md': description,
+      'polling_cadence_per_vendor_seconds': Map<String, int>.from(cadence),
+      'default_monthly_price_cents': defaultPriceCents,
+      'vendor_api_cost_estimate_cents_monthly': vendorCostCents,
+      'last_edited_at': _definitionEditedAt.toIso8601String(),
+      'last_edited_by': 'system',
+    };
+  }
+
+  static Map<String, Object?> _marginRollupJson(
+    List<Map<String, Object?>> assignments,
+  ) {
+    var totalPrice = 0;
+    var totalCost = 0;
+    final perTier = <String, _DataAccuracyTierAccumulator>{};
+    final perVendor = <String, int>{};
+    for (final assignment in assignments) {
+      final tier = assignment['tier_key'] as String? ?? 'custom';
+      final price = _asInt(assignment['monthly_price_cents']);
+      final cost = _asInt(assignment['vendor_api_cost_estimate_cents_monthly']);
+      totalPrice += price;
+      totalCost += cost;
+      final tierAcc = perTier.putIfAbsent(
+        tier,
+        () => _DataAccuracyTierAccumulator(tier),
+      );
+      tierAcc.assignmentCount += 1;
+      tierAcc.totalPriceCents += price;
+      tierAcc.totalCostCents += cost;
+      final vendorIds = _intMap(
+        _jsonMap(assignment['polling_cadence_per_vendor_seconds']),
+      ).keys.toList()..sort();
+      if (vendorIds.isEmpty) {
+        if (cost > 0) {
+          perVendor['__unallocated__'] =
+              (perVendor['__unallocated__'] ?? 0) + cost;
+        }
+        continue;
+      }
+      final base = cost ~/ vendorIds.length;
+      var remainder = cost - base * vendorIds.length;
+      for (final vendorId in vendorIds) {
+        final share = base + (remainder > 0 ? 1 : 0);
+        if (remainder > 0) remainder -= 1;
+        perVendor[vendorId] = (perVendor[vendorId] ?? 0) + share;
+      }
+    }
+    return <String, Object?>{
+      'total_monthly_price_cents': totalPrice,
+      'total_monthly_vendor_cost_cents': totalCost,
+      'per_tier': <Map<String, Object?>>[
+        for (final acc in perTier.values)
+          <String, Object?>{
+            'tier_key': acc.tierKey,
+            'assignment_count': acc.assignmentCount,
+            'total_monthly_price_cents': acc.totalPriceCents,
+            'total_monthly_vendor_cost_cents': acc.totalCostCents,
+          },
+      ],
+      'per_vendor': <Map<String, Object?>>[
+        for (final entry in perVendor.entries)
+          <String, Object?>{
+            'vendor_id': entry.key,
+            'total_monthly_vendor_cost_cents': entry.value,
+          },
+      ],
+    };
+  }
+
+  static String _marginRollupCsv(Map<String, Object?> rollup) {
+    final lines = <String>[
+      'section,key,assignment_count,total_monthly_price_cents,total_monthly_vendor_cost_cents,total_monthly_margin_cents',
+    ];
+    final totalPrice = _asInt(rollup['total_monthly_price_cents']);
+    final totalCost = _asInt(rollup['total_monthly_vendor_cost_cents']);
+    lines.add('total,all,,$totalPrice,$totalCost,${totalPrice - totalCost}');
+    for (final raw in (rollup['per_tier'] as List? ?? const [])) {
+      final row = Map<String, Object?>.from(raw as Map);
+      final price = _asInt(row['total_monthly_price_cents']);
+      final cost = _asInt(row['total_monthly_vendor_cost_cents']);
+      final tierKey = row['tier_key'];
+      final assignmentCount = row['assignment_count'];
+      lines.add(
+        'per_tier,$tierKey,$assignmentCount,$price,$cost,${price - cost}',
+      );
+    }
+    for (final raw in (rollup['per_vendor'] as List? ?? const [])) {
+      final row = Map<String, Object?>.from(raw as Map);
+      final vendorId = row['vendor_id'];
+      final vendorCost = row['total_monthly_vendor_cost_cents'];
+      lines.add('per_vendor,$vendorId,,,$vendorCost,');
+    }
+    return '${lines.join('\n')}\n';
+  }
+
+  static Map<String, Object?> _settingsDiff(
+    Map<String, Object?>? before,
+    Map<String, Object?> after,
+  ) {
+    final diff = <String, Object?>{};
+    const fields = <String>[
+      'covers_source_lunch',
+      'covers_source_dinner',
+      'covers_source_late_night',
+      'wage_source',
+    ];
+    for (final field in fields) {
+      final from =
+          before?[field] ?? (field == 'wage_source' ? 'vendor' : 'vendor');
+      final to = after[field];
+      if (from != to) {
+        diff[field] = <String, Object?>{'from': from, 'to': to};
+      }
+    }
+    return diff;
+  }
+
+  static Map<String, Object?> _jsonMap(Object? value) {
+    if (value is Map<String, Object?>) return value;
+    if (value is Map) return Map<String, Object?>.from(value);
+    if (value is String && value.isNotEmpty) {
+      final decoded = jsonDecode(value);
+      if (decoded is Map) return Map<String, Object?>.from(decoded);
+    }
+    return const <String, Object?>{};
+  }
+
+  static Map<String, int> _intMap(Map<String, Object?> value) {
+    return <String, int>{
+      for (final entry in value.entries) entry.key: _asInt(entry.value),
+    };
+  }
+
+  static int _asInt(Object? value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    if (value is String) return int.tryParse(value) ?? 0;
+    return 0;
+  }
+
+  static String? _dateJson(Object? value) {
+    if (value is DateTime) return value.toUtc().toIso8601String();
+    if (value is String && value.isNotEmpty) {
+      return DateTime.parse(value).toUtc().toIso8601String();
+    }
+    return null;
+  }
+
+  static void _validateCoversSource(String? value, String field) {
+    if (value == null) return;
+    try {
+      CoversSourceWire.fromWire(value);
+    } on ArgumentError {
+      throw DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_$field',
+        message: '$field must be vendor, forecast, or manual',
+      );
+    }
+  }
+
+  static void _validateWageSource(String? value) {
+    if (value == null) return;
+    try {
+      WageSourceWire.fromWire(value);
+    } on ArgumentError {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_wage_source',
+        message: 'wage_source must be vendor or manual_mix',
+      );
+    }
+  }
+
+  static PollingTierKey _validateTierKey(String value) {
+    try {
+      return PollingTierKeyWire.fromWire(value);
+    } on ArgumentError {
+      throw const DataAccuracyAdminGatewayValidationError(
+        statusCode: 400,
+        code: 'invalid_tier_key',
+        message: 'tier_key must be standard, premium, or custom',
+      );
+    }
+  }
+
+  static void _validateTierChangeStatus(String value) {
+    if (const <String>{
+      'pending',
+      'approved',
+      'denied',
+      'negotiating',
+    }.contains(value)) {
+      return;
+    }
+    throw const DataAccuracyAdminGatewayValidationError(
+      statusCode: 400,
+      code: 'invalid_status',
+      message: 'status must be pending, approved, denied, or negotiating',
+    );
+  }
+}
+
+class _DataAccuracyTierAccumulator {
+  _DataAccuracyTierAccumulator(this.tierKey);
+
+  final String tierKey;
+  int assignmentCount = 0;
+  int totalPriceCents = 0;
+  int totalCostCents = 0;
+}
+
 class RepositoryCorpusAdminProxyGateway implements CorpusAdminProxyGateway {
   RepositoryCorpusAdminProxyGateway({
     required CorpusRepository corpusRepository,

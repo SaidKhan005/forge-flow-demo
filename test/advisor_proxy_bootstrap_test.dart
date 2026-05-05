@@ -168,6 +168,10 @@ void main() {
         bindings.pricingTierAdminGateway,
         isA<RepositoryPricingTierAdminProxyGateway>(),
       );
+      expect(
+        bindings.dataAccuracyAdminGateway,
+        isA<RepositoryDataAccuracyAdminProxyGateway>(),
+      );
       // Phase 11A.7 — feature flags admin gateway is bound to the
       // admin pool (cross-operator reads/writes). Construction must
       // not open a database connection.
@@ -240,6 +244,20 @@ void main() {
         ),
       );
       expect(source, contains("'pricing_tier_admin': 'postgres'"));
+    });
+
+    test('passes data accuracy admin binding into routeRequest', () {
+      final source = File('tool/advisor_proxy/main.dart').readAsStringSync();
+
+      expect(
+        source,
+        matches(
+          RegExp(
+            r'dataAccuracyAdminGateway:\s*productionBindings\.dataAccuracyAdminGateway',
+          ),
+        ),
+      );
+      expect(source, contains("'data_accuracy_admin': 'postgres'"));
     });
 
     test('passes corpus admin binding into routeRequest', () {

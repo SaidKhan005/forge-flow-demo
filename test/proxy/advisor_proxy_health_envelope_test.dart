@@ -11,8 +11,8 @@ import '../../tool/advisor_proxy/health_producers/producer_registry.dart';
 
 void main() {
   group('proxy_health envelope — registry catalog inventory', () {
-    test('producer catalog covers exactly 57 distinct slots', () {
-      expect(proxyHealthRegisteredProducerCount(), equals(57));
+    test('producer catalog covers exactly 58 distinct slots', () {
+      expect(proxyHealthRegisteredProducerCount(), equals(58));
     });
 
     test('every catalog key maps to a reserved metric placeholder', () {
@@ -54,7 +54,7 @@ void main() {
   });
 
   group('proxy_health envelope — JSON shape', () {
-    test('all 57 metrics + 11 surfaces present with unknown defaults', () {
+    test('all 58 metrics + 11 surfaces present with unknown defaults', () {
       const status = ProxyHealthStatus(
         postgresOk: true,
         ageOk: true,
@@ -63,7 +63,7 @@ void main() {
       final json = status.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
 
       final metrics = json['metrics']! as Map<String, Object?>;
-      expect(metrics.length, equals(57));
+      expect(metrics.length, equals(58));
       for (final entry in metrics.entries) {
         final m = entry.value! as Map<String, Object?>;
         expect(
@@ -276,7 +276,7 @@ void main() {
 
   group('proxy_health envelope — registry-driven check', () {
     test('RegistryProxyHealthCheckStore runs producers, projects timeouts to '
-        'unknown, and renders all 57 slots', () async {
+        'unknown, and renders all 58 slots', () async {
       // Fake runner: every producer query gets an empty/clean response.
       Future<List<Map<String, Object?>>> runnerFn(
         String sql, {
@@ -505,7 +505,7 @@ void main() {
       final result = await store.check();
       final json = result.toJson(checkedAt: DateTime.utc(2026, 5, 1, 12));
       final metrics = json['metrics']! as Map<String, Object?>;
-      expect(metrics.length, equals(57));
+      expect(metrics.length, equals(58));
       // Tier-1 azure_extensions_present should be green when full set
       // is installed.
       final ext = metrics['azure_extensions_present']! as Map<String, Object?>;
