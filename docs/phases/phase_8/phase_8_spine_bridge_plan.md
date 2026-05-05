@@ -1,7 +1,7 @@
 # Phase 8 — Spine Bridge Plan
 
 Status: Active
-Updated: 2026-05-04
+Updated: 2026-05-05
 Owner: Phase 8 / 8R / 8.S spine-bridge sprint
 
 Authority (read in this order):
@@ -16,12 +16,12 @@ Authority (read in this order):
 
 ## Sprint shape
 
-**10 file-disjoint sub-lanes + 1 sequential proof** (was 9 before
-the 2026-05-05 7shifts-upgrade addition).
+**11 file-disjoint sub-lanes + 1 sequential proof** (was 9 before the
+2026-05-05 7shifts-upgrade addition; the 11th sub-lane is `.7S.upgrade`).
 
 Lane `.0` ships first. Lanes `.0a` / `.1.OR` / `.1.QBT` / `.1.LB` /
 `.2` / `.3` / `.A` / `.B` / `.C` / `.7S.upgrade` run in parallel after
-`.0` lands. Lane `.4` proof runs sequentially after all 10 land.
+`.0` lands. Lane `.4` proof runs sequentially after all 11 land.
 
 Plus an immediate follow-up wave:
 
@@ -45,7 +45,7 @@ trio). Mirrors Wave B's engineer-all-17 shape. Lands right after
 | `.B` Operator Web Data Accuracy tab | Queued | `lib/operator_web/screens/data_accuracy_screen.dart` + 7 widgets + tests + walkthrough | Wage source toggle (vendor / manual_mix); covers source toggle per daypart (vendor / forecast / manual / reservation+walk-in); polling cadence picker with cost projection; 60-day historical seed; walk-in handling card; vendor relativity labels |
 | `.C` F&F Ops Console per-location data accuracy + Polling & Pricing | Queued; **scope expanded 2026-05-05** | `lib/admin/screens/per_location_data_accuracy_screen.dart` + `lib/admin/screens/polling_and_pricing_admin_screen.dart` + 8 widgets + tests + walkthrough | Two-tab admin: Data Accuracy (per-location overrides) + Polling & Pricing (tier definitions / per-assignment / margin rollup / change requests / audit). All forge_admin-gated. Plain-English explainer card per `data_accuracy_settings_contract.md` "Polling & Pricing tab" section. Audit row on every change. |
 | `.7S.upgrade` (NEW 2026-05-05; per-vendor adapter capability extension) | Queued | edits to `lib/integrations/labor/seven_shifts_labor_adapter.dart` + new tests + `docs/integrations/seven_shifts/{api_consumed,field_mapping}.md` updates | Adds `/reports/hours_and_wages` endpoint consumption to the 7shifts adapter so it qualifies as `perEmployeeWithDollars` (vendor exposes `total_pay` per shift via this report). Enables the highest-fidelity wage class for 7shifts operators. File-scope: only seven_shifts adapter + its doc pack + its tests. |
-| `.4` Proof v2 (sequential) | Queued | `docs/_execution/<date>_8_integration_mobile_proof_v2_execution.md` + E2E harness | Re-run mobile-proof against complete spine; verify all 22 acceptance items (12 v1 + 10 added by spine-bridge concerns) |
+| `.4` Proof v2 (sequential) | Queued | `docs/_execution/<date>_8_integration_mobile_proof_v2_execution.md` + E2E harness | Re-run mobile-proof against complete spine; verify all 27 acceptance items (12 v1 + 10 added by spine-bridge concerns + 5 added by 2026-05-05 falsehood corrections) |
 
 ## 2026-05-05 falsehood corrections (binding) — supersedes 2026-05-04
 

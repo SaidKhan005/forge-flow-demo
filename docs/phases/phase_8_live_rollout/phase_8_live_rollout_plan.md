@@ -1,7 +1,7 @@
 # Phase 8.live — Vendor Live Rollout
 
-Updated: 2026-05-04
-Status: Open — rolling. Closes when the last `production_credentialed` vendor reaches `live_with_operators` OR a vendor is permanently abandoned (e.g., partnership denial documented in `partnership_status.md`).
+Updated: 2026-05-05
+Status: Open — rolling. Pre-live product proof PASSED 2026-05-05 (`8.integration-mobile-proof.v2`); the rollout phase now drives lifecycle promotion. Closes when the last `production_credentialed` vendor reaches `live_with_operators` OR a vendor is permanently abandoned (e.g., partnership denial documented in `partnership_status.md`).
 Owner: Phase 8 framework lane (engineering) + Ops (partnership lane)
 
 > **Engineering closeout split.** Phase 8 / 8R / 8.S close as
@@ -14,12 +14,12 @@ Owner: Phase 8 framework lane (engineering) + Ops (partnership lane)
 > (lifecycle promotion rules), `docs/contracts/per_vendor_doc_pack_contract.md`
 > (per-vendor doc pack references below), `memory/project_phase_8_engineer_all_17_doctrine.md`.
 >
-> 2026-05-04 closeout clarification:
+> 2026-05-04 closeout clarification (history):
 > `docs/_execution/2026-05-04_vendor_api_access_and_mobile_e2e_gap.md`
-> is the current vendor API access / Oracle evidence memo. Wave B produces
-> documented adapters; `8.integration-mobile-proof` must pass before Phase 8 /
-> 8R / 8.S are accepted as product-complete engineering. `8.live` remains the
-> lifecycle promotion lane once real credentials arrive.
+> was the original vendor API access / Oracle evidence memo. Wave B produced
+> documented adapters; `8.integration-mobile-proof.v2` PASSED 2026-05-05 (see
+> Pre-live Product Proof below). `8.live` remains the lifecycle promotion lane
+> once real credentials arrive.
 
 ## Goal
 
@@ -29,26 +29,15 @@ moves at its own pace; this phase never sprints.
 
 ## Pre-live Product Proof
 
-`8.integration-mobile-proof` ran 2026-05-04 against master @ `07184d2` and
-**FAILED** with bounded follow-up:
-`docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md`. Wave B
-left half (vendor fixture → real adapter → canonical-fact `Map` + sanity hook
-+ idempotency + watermark + signature reject + module disambiguation +
-demo-mode flip policy + metric honesty plumbing) is fully proven by 279
-fixture-based tests across 17 adapters + 51+ framework / dashboard / 11W
-tests. Wave B right half (canonical-fact dict → `ClosedShiftInput` →
-`ShiftFact` → Shift dashboard → benchmark / baseline / `DemandForecastContext`
-/ `SchedulePlan` / Variance / History / Learn / mobile refresh) is
-structurally absent: no concrete `OperatorScopedRepository`-backed
-`*CanonicalSink` implementations, no canonical-fact-dict → `ClosedShiftInput`
-aggregator service, no runtime adapter registry under `tool/advisor_proxy/`,
-no `tool/integration_sync_worker/`.
+**PASSED 2026-05-05.** `8.integration-mobile-proof.v2` re-ran against master after all 11 spine-bridge sub-lanes landed. Evidence: `docs/_execution/2026-05-05_8_integration_mobile_proof_v2_execution.md`.
 
-Phase 8 / 8R / 8.S engineering-complete acceptance is now gated on a new
-`8.spine-bridge` follow-up sprint (6 file-disjoint APP-LOGIC sub-lanes +
-1 sequential proof re-run — see `PROJECT_TRACKER.md` "Active Lanes" and
-the binding contract `docs/contracts/integration_spine_architecture_contract.md`)
-followed by `8.integration-mobile-proof.v2` against the enriched surface.
+- 27/27 acceptance items resolve to ✅ (12 v1 + 10 spine-bridge concerns + 5 falsehood corrections).
+- 686/686 tests PASS across spine-bridge unit suites + Wave B regression + dashboard regression + new E2E smoke harness (`test/_execution/spine_bridge_v2_smoke_test.dart`).
+- Architectural compliance audit clean: `target_profile_version_id` immutability (Concern A), no `vendorProvidedForecast` enum (Layer 6), no `open_shift_snapshots` writes from spine-bridge code (out-of-scope binding), provenance string naming rule honored.
+
+Phase 8 / 8R / 8.S close as engineering-complete on master with this verdict. Lifecycle promotion (`*.live.sandbox` → `*.live.prod`) rolls per Wave D as sandbox credentials arrive.
+
+Origin context (for history): `8.integration-mobile-proof` failed 2026-05-04 against master @ `07184d2` because the right-half spine was structurally absent (no Postgres-backed sinks, no aggregator, no registry, no sync worker). Evidence: `docs/_execution/2026-05-04_8_integration_mobile_proof_execution.md`. The 11-lane `8.spine-bridge` sprint closed that gap.
 
 Architecture target (from 2026-05-04 mobile drill-down): server pre-
 aggregates per-vendor canonical-fact dicts into `ShiftRecord` rows on
@@ -69,12 +58,8 @@ The fixture-based gate's intent stays the same:
 - Missing fields produce honest fallback/unavailable states, not phantom zeros.
 - Demo mode, refresh/invalidation, and local/offline cache behave correctly.
 
-Wave D `*.live.sandbox` slices below MAY fire individual sandbox auth +
-field-mapping diff portions in parallel with `8.integration-spine-bridge`,
-but they cannot exercise the full mobile spine until that follow-up lands.
-
-Evidence belongs under `docs/_execution/` and should reference the
-2026-05-04 vendor API access memo.
+Evidence belongs under `docs/_execution/`
+(2026-05-05 v2 verdict + 2026-05-04 origin memo).
 
 ## First Connected-Device Live Proof
 
