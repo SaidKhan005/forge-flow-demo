@@ -306,6 +306,9 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       targetLocationId: command.targetLocationId,
       targetOrgUnitId: command.targetOrgUnitId,
     );
+    if (command.operatorOwnerBootstrap) {
+      _validateOperatorOwnerBootstrap(scopeType: scopeType, command: command);
+    }
     // Phase 9 manager contract: location-scoped actors with
     // `team.users.invite` cannot broaden invite scope past their
     // assigned location. Operator-wide / org-unit invites require
@@ -313,8 +316,9 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
     // `team.users.invite`. The proxy permission gate alone is not
     // enough — it would pass for a mixed-scope actor whose
     // location-scoped role has the key.
-    if (scopeType == UserRoleScope.operatorWide ||
-        scopeType == UserRoleScope.orgUnit) {
+    if ((scopeType == UserRoleScope.operatorWide ||
+            scopeType == UserRoleScope.orgUnit) &&
+        !command.operatorOwnerBootstrap) {
       await _requireOperatorWidePermission(
         operatorId: command.operatorId,
         locationId: command.locationId,
@@ -413,6 +417,21 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
       expiresAt: expiresAt,
       userId: userId,
     );
+  }
+
+  void _validateOperatorOwnerBootstrap({
+    required UserRoleScope scopeType,
+    required TeamInviteCreateCommand command,
+  }) {
+    if (scopeType != UserRoleScope.operatorWide ||
+        command.roleId != 'operator_owner' ||
+        command.targetLocationId != null ||
+        command.targetOrgUnitId != null) {
+      throw ArgumentError(
+        'operatorOwnerBootstrap is only valid for the first operator_owner '
+        'operator-wide invite on a newly created operator',
+      );
+    }
   }
 
   @override
@@ -920,10 +939,7 @@ class RepositoryAuthOperationsGateway implements AuthOperationsGateway {
         actorUserId: command.actorUserId,
         targetUserId: command.actorUserId,
         eventType: 'auth.all_sessions_revoked',
-        payload: <String, Object?>{
-          'revoked_count': affected,
-          'reason': reason,
-        },
+        payload: <String, Object?>{'revoked_count': affected, 'reason': reason},
       );
     }
     return AuthAllSessionsRevoked(revokedCount: affected);

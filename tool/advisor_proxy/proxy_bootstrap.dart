@@ -1261,6 +1261,7 @@ class RepositoryOperatorLocationAdminProxyGateway
         email: adminUserEmail,
         roleId: 'operator_owner',
         scopeType: 'operator_wide',
+        operatorOwnerBootstrap: true,
       ),
     );
     final adminUserId = invite.userId;
@@ -3265,8 +3266,7 @@ class RepositoryDebugConsoleAdminProxyGateway
     required String adminReason,
   }) {
     return _adminWrapper.runAsSystem<List<Map<String, Object?>>>((exec) async {
-      final rows = await exec.query(
-        '''
+      final rows = await exec.query('''
 select
   flag_id::text as flag_id,
   operator_id::text as operator_id,
@@ -3279,8 +3279,7 @@ where flag_name = 'debug_console_full_content_enabled'
   and operator_id is not null
   and location_id is null
 order by operator_id::text
-''',
-      );
+''');
       return <Map<String, Object?>>[
         for (final row in rows)
           <String, Object?>{
