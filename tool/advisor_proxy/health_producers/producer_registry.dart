@@ -1,6 +1,6 @@
 // Phase 11A.B42 — central producer registry.
 //
-// One catalog of all 57 deep-health producers. The registry-backed
+// One catalog of all 58 deep-health producers. The registry-backed
 // [RegistryProxyHealthCheckStore] runs producers through a bounded
 // concurrency lane, applies each producer's individual budget, and assembles a
 // [ProxyHealthStatus] with the dependency probes resolved separately
@@ -47,7 +47,7 @@ Map<String, Map<String, ProxyHealthProducer>> proxyHealthProducerFamilies() {
   };
 }
 
-/// Flat key → producer map covering all 57 slots. The map is keyed by
+/// Flat key → producer map covering all 58 slots. The map is keyed by
 /// the metric name in the proxy `/health` envelope.
 Map<String, ProxyHealthProducer> proxyHealthProducerCatalog() {
   final result = <String, ProxyHealthProducer>{};
@@ -89,7 +89,7 @@ ProxyHealthRegistryProducer adaptFamilyProducer(ProxyHealthProducer producer) {
   };
 }
 
-/// All 57 producers, adapted to the registry signature so the proxy
+/// All 58 producers, adapted to the registry signature so the proxy
 /// boot can wire them into [RegistryProxyHealthCheckStore].
 ///
 /// Pass [expectedMigrationFilenames] (basenames of files in
@@ -113,7 +113,7 @@ Map<String, ProxyHealthRegistryProducer> buildProxyHealthRegistryProducers({
 }
 
 /// Sanity helper used in tests: returns the count of distinct producer
-/// keys in the catalog. The B42 contract pins this at exactly 57.
+/// keys in the catalog. The current producer catalog pins this at 58.
 int proxyHealthRegisteredProducerCount() => proxyHealthProducerCatalog().length;
 
 /// Internal: re-export an adapter for unit tests that want to call
