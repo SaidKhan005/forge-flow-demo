@@ -3,10 +3,10 @@
 **Vendor ID** (matches `VendorCapabilityProfile.vendorId` and
 `connector_connection.vendor_id`): `oracle_micros_simphony`
 **Category**: `pos`
-**Source documentation**: <https://docs.oracle.com/en/industries/food-beverage/simphony/>
+**Source documentation**: <https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/>
 (Simphony Transaction Services Gen 2 — STSGen2 Cloud API)
-**Retrieval date**: 2026-05-04
-**API version pinned**: `v2`
+**Retrieval date**: 2026-05-05
+**API version pinned**: `v2` (Gen2 — STSGen2)
 
 ---
 
@@ -33,12 +33,19 @@ Cite vendor doc:
 
 ## Endpoints consumed
 
+All paths below resolve under the Gen2 (STSGen2) base —
+`/sim/api/v2/...`. Response shape is the documented Gen2 envelope:
+`items[]` array of guest-check objects, each carrying a `header`
+sub-object with `chkNum`, `guestCount`, `opnUTC`, `cmplOrClsdUTC`,
+`lastUpdatedUTC`, `subTtlCents` (see `field_mapping.md`). The Gen1
+`guestChecks[]` envelope and `numOfGst` field are not consumed.
+
 | Method | Path | Purpose | Rate limit | Pagination shape |
 |---|---|---|---|---|
-| POST | `/sim/api/v2/oauth/token` | Token issuance (`client_credentials` grant) | partner-issued; vendor does not document a public number | n/a |
-| POST | `/sim/api/v2/posData/getGuestChecks` | Backfill + poll-incremental — paged listing of guest checks since `lastModified` | ~60 req/min/org (vendor-soft; partner activation may raise) | server-issued cursor token; empty cursor = end of listing |
-| GET | `/sim/api/v2/posData/getCheckById/{chkNum}` | Optional reconciliation lookup for a single check | shared with above | n/a |
-| GET | `/sim/api/v2/orgData/locations` | List the organization's locations so the connect flow can map an OAuth grant's `locRef` claim to one F&F `location_id` | low cadence | n/a |
+| POST | `/sim/api/v2/oauth/token` | Token issuance (`client_credentials` grant). Doc: <https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/authenticate.html> | partner-issued; vendor does not document a public number | n/a |
+| POST | `/sim/api/v2/posData/getGuestChecks` | Backfill + poll-incremental — paged listing of `items[]` guest checks since `lastModified`. Doc: <https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/getguestchecks.html> | ~60 req/min/org (vendor-soft; partner activation may raise) | server-issued cursor token; empty cursor = end of listing |
+| GET | `/sim/api/v2/posData/getCheckById/{chkNum}` | Optional reconciliation lookup for a single check. Doc: <https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/getcheckbyid.html> | shared with above | n/a |
+| GET | `/sim/api/v2/orgData/locations` | List the organization's locations so the connect flow can map an OAuth grant's `locRef` claim to one F&F `location_id`. Doc: <https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/getlocations.html> | low cadence | n/a |
 
 Every endpoint listed here is invoked by the adapter at
 `lib/integrations/pos/oracle_micros_simphony_pos_adapter.dart`; every
@@ -90,7 +97,7 @@ may raise per use case.
 (consult release notes section)
 **Adapter pinned to**: `v2` (STSGen2 Cloud API)
 **Vendor's last announced breaking change**: not announced as of
-2026-05-04 retrieval.
+2026-05-05 retrieval.
 **Re-verification cadence**: every 180 days OR on any vendor
 deprecation announcement, whichever is sooner. The
 `api_consumed.md` retrieval date drives the CI lint warning.

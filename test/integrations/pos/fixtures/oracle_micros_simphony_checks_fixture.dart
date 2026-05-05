@@ -1,7 +1,7 @@
 // Phase 8 / Wave B — Oracle MICROS Simphony POS adapter fixtures.
 //
-// Source documentation: https://docs.oracle.com/en/industries/food-beverage/simphony/
-// Retrieval date: 2026-05-04
+// Source documentation: https://docs.oracle.com/en/industries/food-beverage/simphony/omsstsg2api/
+// Retrieval date: 2026-05-05
 // API version pinned: v2 (Simphony Transaction Services Gen 2 — STSGen2 Cloud API)
 //
 // The `documented_per_oracle_micros_simphony_v2` constant captures
@@ -9,9 +9,16 @@
 // vendor field shape. The `8.OR.live.sandbox` slice diffs observed
 // vendor responses against this constant; any discrepancy lands as a
 // bounded fix (not a slice rebuild).
+//
+// 2026-05-05 falsehood correction (binding, per
+// `docs/contracts/integration_spine_architecture_contract.md`
+// section "2026-05-05 falsehood corrections"):
+//   * Gen2 covers field is `items[].header.guestCount`.
+//   * Gen1 `numOfGst` and the earlier Wave B guess `numberOfGuests`
+//     are both wrong; do not reintroduce.
 
 /// Documented field-mapping constants captured from the Oracle MICROS
-/// Simphony STSGen2 Cloud API documentation as of 2026-05-04. Every
+/// Simphony STSGen2 Cloud API documentation as of 2026-05-05. Every
 /// canonical field the adapter populates has a row in this map; the
 /// per-vendor doc pack at `docs/integrations/oracle_micros_simphony/
 /// field_mapping.md` mirrors this constant in human-readable form.
@@ -24,19 +31,19 @@
 // ignore: constant_identifier_names
 const Map<String, Object?> documented_per_oracle_micros_simphony_v2 =
     <String, Object?>{
-  'covers_path': 'guestChecks[].numOfGst',
+  'covers_path': 'items[].header.guestCount',
   'covers_type': 'int',
   'covers_source_classification': 'direct',
-  'opened_at_path': 'guestChecks[].opnUTC',
+  'opened_at_path': 'items[].header.opnUTC',
   'opened_at_type': 'ISO 8601 UTC (with explicit Z)',
-  'closed_at_path': 'guestChecks[].clsdUTC',
+  'closed_at_path': 'items[].header.cmplOrClsdUTC',
   'closed_at_type': 'ISO 8601 UTC (with explicit Z)',
-  'actual_sales_path': 'guestChecks[].subTtlCents',
+  'actual_sales_path': 'items[].header.subTtlCents',
   'actual_sales_type': 'int (cents)',
   'actual_sales_transform': 'cents -> dollars',
-  'vendor_entity_id_path': 'guestChecks[].chkNum',
+  'vendor_entity_id_path': 'items[].header.chkNum',
   'vendor_entity_id_type': 'int (stringified at canonical write)',
-  'vendor_modified_at_path': 'guestChecks[].lastUpdatedUTC',
+  'vendor_modified_at_path': 'items[].header.lastUpdatedUTC',
   'vendor_modified_at_type': 'ISO 8601 UTC (with explicit Z)',
   'pagination_shape': 'cursor token (server-issued; empty string = end)',
   'rate_limit': '60 requests/min per organization (vendor-documented '
@@ -49,31 +56,36 @@ const Map<String, Object?> documented_per_oracle_micros_simphony_v2 =
   'partnership_lead_time': '8-16 weeks',
 };
 
-/// One representative Simphony `guestChecks[]` record used by the
+/// One representative Simphony `items[]` record used by the
 /// `testConnection` and idempotency / sanity / watermark tests.
 ///
 /// The values follow the field-mapping constant above; covers = 5,
 /// `subTtlCents = 12485` projects to `actual_sales = 124.85`,
 /// `opened_at` and `closed_at` are explicit-Z ISO-8601 instants the
-/// adapter parses via `DateTime.parse(...).toUtc()`.
+/// adapter parses via `DateTime.parse(...).toUtc()`. Every documented
+/// field lives under the `header` sub-object per Gen2 shape.
 const Map<String, Object?> sampleSimphonyGuestCheck = <String, Object?>{
-  'chkNum': 412901,
-  'numOfGst': 5,
-  'opnUTC': '2026-05-02T22:45:00.000Z',
-  'clsdUTC': '2026-05-02T23:32:14.000Z',
-  'subTtlCents': 12485,
-  'lastUpdatedUTC': '2026-05-02T23:32:14.000Z',
+  'header': <String, Object?>{
+    'chkNum': 412901,
+    'guestCount': 5,
+    'opnUTC': '2026-05-02T22:45:00.000Z',
+    'cmplOrClsdUTC': '2026-05-02T23:32:14.000Z',
+    'subTtlCents': 12485,
+    'lastUpdatedUTC': '2026-05-02T23:32:14.000Z',
+  },
 };
 
 /// A second sample guest check (different `chkNum`) so multi-record
 /// tests can run without colliding on the canonical UNIQUE.
 const Map<String, Object?> secondSimphonyGuestCheck = <String, Object?>{
-  'chkNum': 412902,
-  'numOfGst': 2,
-  'opnUTC': '2026-05-02T23:05:00.000Z',
-  'clsdUTC': '2026-05-02T23:48:01.000Z',
-  'subTtlCents': 5790,
-  'lastUpdatedUTC': '2026-05-02T23:48:01.000Z',
+  'header': <String, Object?>{
+    'chkNum': 412902,
+    'guestCount': 2,
+    'opnUTC': '2026-05-02T23:05:00.000Z',
+    'cmplOrClsdUTC': '2026-05-02T23:48:01.000Z',
+    'subTtlCents': 5790,
+    'lastUpdatedUTC': '2026-05-02T23:48:01.000Z',
+  },
 };
 
 /// A future-dated guest check used to drive the sanity-hook reject
@@ -81,10 +93,12 @@ const Map<String, Object?> secondSimphonyGuestCheck = <String, Object?>{
 /// now() + 1 hour` as `opened_in_future`; the adapter must skip the
 /// canonical write when the hook returns `false`.
 const Map<String, Object?> futureDatedSimphonyGuestCheck = <String, Object?>{
-  'chkNum': 999001,
-  'numOfGst': 3,
-  'opnUTC': '2027-05-02T00:00:00.000Z',
-  'clsdUTC': '2027-05-02T01:00:00.000Z',
-  'subTtlCents': 6500,
-  'lastUpdatedUTC': '2027-05-02T01:00:00.000Z',
+  'header': <String, Object?>{
+    'chkNum': 999001,
+    'guestCount': 3,
+    'opnUTC': '2027-05-02T00:00:00.000Z',
+    'cmplOrClsdUTC': '2027-05-02T01:00:00.000Z',
+    'subTtlCents': 6500,
+    'lastUpdatedUTC': '2027-05-02T01:00:00.000Z',
+  },
 };
