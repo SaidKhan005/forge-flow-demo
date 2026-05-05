@@ -138,8 +138,9 @@ class DataAccuracyScreen extends StatefulWidget {
   /// [showPollingTierChangeRequestDialog].
   final Future<String?> Function(BuildContext)? onRequestTierChange;
 
-  bool get _canEditDataAccuracy =>
-      session.roles.any(kOperatorWebDataAccuracyAdmittedRoles.contains);
+  bool get _canEditDataAccuracy => session.roles.any(
+        kOperatorWebDataAccuracyAdmittedRoles.contains,
+      );
 
   @override
   State<DataAccuracyScreen> createState() => _DataAccuracyScreenState();
@@ -167,14 +168,14 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
     final seed = widget.initialSettings;
     _coversSourceLunch = seed?.coversSourceLunch ?? CoversSource.vendor;
     _coversSourceDinner = seed?.coversSourceDinner ?? CoversSource.vendor;
-    _coversSourceLateNight = seed?.coversSourceLateNight ?? CoversSource.vendor;
+    _coversSourceLateNight =
+        seed?.coversSourceLateNight ?? CoversSource.vendor;
     _wageSource = seed?.wageSource ?? WageSource.vendor;
     _manualEntries = <String, Map<String, int>>{
       for (final e in (seed?.coversManualEntries ?? const {}).entries)
         e.key: Map<String, int>.from(e.value),
     };
-    _walkInMode =
-        widget.walkInModeOverride ?? WalkInHandlingMode.reservationsOnly;
+    _walkInMode = widget.walkInModeOverride ?? WalkInHandlingMode.reservationsOnly;
     _loadBundle();
   }
 
@@ -255,7 +256,10 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   void _handleManualEntry(Daypart d, int? covers) {
     setState(() {
       final today = widget.businessDateIso;
-      final dayMap = _manualEntries.putIfAbsent(today, () => <String, int>{});
+      final dayMap = _manualEntries.putIfAbsent(
+        today,
+        () => <String, int>{},
+      );
       if (covers == null) {
         dayMap.remove(d.wire);
         if (dayMap.isEmpty) _manualEntries.remove(today);
@@ -297,8 +301,7 @@ class _DataAccuracyScreenState extends State<DataAccuracyScreen> {
   }
 
   Future<void> _handleRequestTierChange() async {
-    final opener =
-        widget.onRequestTierChange ??
+    final opener = widget.onRequestTierChange ??
         (BuildContext ctx) => showPollingTierChangeRequestDialog(ctx);
     await opener(context);
   }
@@ -511,7 +514,9 @@ class _ForbiddenSurface extends StatelessWidget {
                       'Location managers can keep reading dashboards '
                       'and shift views in the mobile app — most '
                       'day-to-day actions live there.',
-                      style: AppTextStyles.body13(color: AppColors.textPrimary),
+                      style: AppTextStyles.body13(
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ],
                 ),
@@ -523,3 +528,4 @@ class _ForbiddenSurface extends StatelessWidget {
     );
   }
 }
+
