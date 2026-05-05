@@ -27,6 +27,8 @@ import 'package:flutter_test/flutter_test.dart';
 
 const String _migrationFilename =
     '202605050000_phase_8_data_accuracy_settings.sql';
+const String _pollingEventKindsMigrationFilename =
+    '202605050100_phase_8_0a_polling_event_kinds.sql';
 
 String _readMigration() {
   final file = File('db/migrations/$_migrationFilename');
@@ -35,6 +37,17 @@ String _readMigration() {
     isTrue,
     reason: 'tests must run from repository root; expected '
         'db/migrations/$_migrationFilename to exist',
+  );
+  return file.readAsStringSync().replaceAll('\r\n', '\n');
+}
+
+String _readPollingEventKindsMigration() {
+  final file = File('db/migrations/$_pollingEventKindsMigrationFilename');
+  expect(
+    file.existsSync(),
+    isTrue,
+    reason: 'tests must run from repository root; expected '
+        'db/migrations/$_pollingEventKindsMigrationFilename to exist',
   );
   return file.readAsStringSync().replaceAll('\r\n', '\n');
 }
@@ -373,5 +386,30 @@ void main() {
         );
       },
     );
+  });
+
+  group('Phase 8 spine-bridge Lane .0a migration — partial staging safety', () {
+    test(
+      'guards connector_sync_log constraint repair when the integration '
+      'framework table is not present yet',
+      () {
+        final sql = _readPollingEventKindsMigration().toLowerCase();
+        expect(
+          sql,
+          contains("to_regclass('public.connector_sync_log') is not null"),
+        );
+        expect(sql, contains('alter table public.connector_sync_log'));
+        expect(sql, contains('connector_sync_log_event_kind_check'));
+      },
+    );
+
+    test('keeps the polling tier event kinds in the repaired CHECK list', () {
+      final sql = _readPollingEventKindsMigration().toLowerCase();
+      expect(sql, contains("'tier_assignment_missing'"));
+      expect(sql, contains("'cadence_clamped'"));
+      expect(sql, contains("'custom_tier_vendor_unset'"));
+      expect(sql, contains("'tier_assignment_lookup_failed'"));
+      expect(sql, contains("'vendor_not_registered'"));
+    });
   });
 }
