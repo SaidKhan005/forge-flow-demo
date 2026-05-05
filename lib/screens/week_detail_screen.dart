@@ -178,6 +178,19 @@ class WeekDetailScreen extends StatelessWidget {
                   return LeverCardWidget(
                     data: lever,
                     dollarImpactByAxis: dollarImpactByAxis,
+                    // 7.58.UX.8 — OPZ-aware row annotation. `WeekRecord`
+                    // does not yet preserve the OPZ ceiling alongside
+                    // its locked target rates, so closed-week rows pass
+                    // null and the annotation honestly stays off until
+                    // the ceiling is captured at close. This matches
+                    // the existing locked-target null fallback above:
+                    // no silent re-modeling against the current active
+                    // profile's ceiling, which would mis-label closed
+                    // weeks if the cycle's OPZ band has shifted since.
+                    actualCPLH: week.avgCPLH,
+                    opzCeilingCPLH: null,
+                    actualSPLH: week.avgSPLH,
+                    opzCeilingSPLH: null,
                   );
                 }),
               ),
