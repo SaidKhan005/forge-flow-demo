@@ -24,21 +24,17 @@ class TierDefinitionEditResult {
 }
 
 class TierDefinitionEditDialog extends StatefulWidget {
-  const TierDefinitionEditDialog({
-    super.key,
-    required this.initial,
-  });
+  const TierDefinitionEditDialog({super.key, required this.initial});
 
   final TierDefinition initial;
 
   static Future<TierDefinitionEditResult?> show(
     BuildContext context,
     TierDefinition initial,
-  ) =>
-      showDialog<TierDefinitionEditResult>(
-        context: context,
-        builder: (_) => TierDefinitionEditDialog(initial: initial),
-      );
+  ) => showDialog<TierDefinitionEditResult>(
+    context: context,
+    builder: (_) => TierDefinitionEditDialog(initial: initial),
+  );
 
   @override
   State<TierDefinitionEditDialog> createState() =>
@@ -145,8 +141,8 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                'Edit ${widget.initial.tierKey.wire} tier',
-                style: AppTextStyles.display20(color: AppColors.textPrimary),
+                'Edit ${_tierLabel(widget.initial.tierKey)} tier',
+                style: AdminButtonStyles.dialogTitleStyle,
               ),
               const SizedBox(height: 16),
               Expanded(
@@ -162,7 +158,9 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
                       ),
                       const SizedBox(height: 6),
                       TextField(
-                        key: const Key('admin_tier_definition_dialog_description'),
+                        key: const Key(
+                          'admin_tier_definition_dialog_description',
+                        ),
                         controller: _description,
                         maxLines: 4,
                         decoration: const InputDecoration(
@@ -192,8 +190,10 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
                                     'admin_tier_definition_dialog_price',
                                   ),
                                   controller: _priceDollars,
-                                  keyboardType: const TextInputType
-                                      .numberWithOptions(decimal: true),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
                                   inputFormatters: <TextInputFormatter>[
                                     FilteringTextInputFormatter.allow(
                                       RegExp(r'[0-9.]'),
@@ -229,8 +229,10 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
                                     'admin_tier_definition_dialog_cost',
                                   ),
                                   controller: _costDollars,
-                                  keyboardType: const TextInputType
-                                      .numberWithOptions(decimal: true),
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
                                   inputFormatters: <TextInputFormatter>[
                                     FilteringTextInputFormatter.allow(
                                       RegExp(r'[0-9.]'),
@@ -318,5 +320,16 @@ class _TierDefinitionEditDialogState extends State<TierDefinitionEditDialog> {
         ),
       ),
     );
+  }
+}
+
+String _tierLabel(PollingTierKey tier) {
+  switch (tier) {
+    case PollingTierKey.standard:
+      return 'Standard';
+    case PollingTierKey.premium:
+      return 'Premium';
+    case PollingTierKey.custom:
+      return 'Custom';
   }
 }

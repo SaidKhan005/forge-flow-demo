@@ -283,19 +283,30 @@ class _AdminSideNav extends StatelessWidget {
   final ValueChanged<String> onSelect;
 
   static const List<_NavSectionMeta> _sections = <_NavSectionMeta>[
-    _NavSectionMeta(section: AdminRouteSection.operations, label: 'Operations'),
+    _NavSectionMeta(
+      section: AdminRouteSection.operations,
+      label: 'Operations',
+      icon: Icons.storefront_outlined,
+      accentColor: AppColors.sunset,
+    ),
     _NavSectionMeta(
       section: AdminRouteSection.ai,
       label: 'AI',
+      icon: Icons.auto_awesome_outlined,
+      accentColor: AppColors.peacock,
       badge: 'Work in progress',
     ),
     _NavSectionMeta(
       section: AdminRouteSection.systemMonitoring,
       label: 'System monitoring',
+      icon: Icons.monitor_heart_outlined,
+      accentColor: AppColors.warning,
     ),
     _NavSectionMeta(
       section: AdminRouteSection.serviceSetup,
       label: 'Service setup',
+      icon: Icons.settings_input_component_outlined,
+      accentColor: AppColors.ocean,
     ),
   ];
 
@@ -331,16 +342,73 @@ class _AdminSideNav extends StatelessWidget {
         .toList(growable: false);
     if (sectionRoutes.isEmpty) return const <Widget>[];
     return <Widget>[
-      _NavSectionHeader(section: section),
-      for (final route in sectionRoutes)
-        _NavItem(
-          key: Key('admin_nav_item_${route.id}'),
-          route: route,
-          selected: route.id == selectedRouteId,
-          onTap: () => onSelect(route.id),
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: DecoratedBox(
+          key: Key('admin_nav_section_panel_${section.section.name}'),
+          decoration: BoxDecoration(
+            color: section.accentColor.withValues(alpha: 0.055),
+            border: Border.all(
+              color: section.accentColor.withValues(alpha: 0.18),
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _NavSectionHeader(section: section),
+                const SizedBox(height: 8),
+                _NavSectionDivider(section: section),
+                const SizedBox(height: 8),
+                for (final route in sectionRoutes)
+                  _NavItem(
+                    key: Key('admin_nav_item_${route.id}'),
+                    route: route,
+                    selected: route.id == selectedRouteId,
+                    onTap: () => onSelect(route.id),
+                  ),
+              ],
+            ),
+          ),
         ),
-      const SizedBox(height: 12),
+      ),
     ];
+  }
+}
+
+class _NavSectionDivider extends StatelessWidget {
+  const _NavSectionDivider({required this.section});
+
+  final _NavSectionMeta section;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      key: Key('admin_nav_section_divider_${section.section.name}'),
+      children: [
+        Container(
+          width: 34,
+          height: 2,
+          decoration: BoxDecoration(
+            color: section.accentColor.withValues(alpha: 0.52),
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Container(
+            height: 1,
+            decoration: BoxDecoration(
+              color: AppColors.borderSubtle.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -348,11 +416,15 @@ class _NavSectionMeta {
   const _NavSectionMeta({
     required this.section,
     required this.label,
+    required this.icon,
+    required this.accentColor,
     this.badge,
   });
 
   final AdminRouteSection section;
   final String label;
+  final IconData icon;
+  final Color accentColor;
   final String? badge;
 }
 
@@ -365,22 +437,48 @@ class _NavSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       key: Key('admin_nav_section_${section.section.name}'),
-      padding: const EdgeInsets.fromLTRB(10, 10, 8, 4),
-      child: Row(
+      padding: const EdgeInsets.fromLTRB(2, 0, 0, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Flexible(
-            child: Text(
-              section.label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.uiLabel(color: AppColors.textMuted),
-            ),
+          Row(
+            children: [
+              Container(
+                key: Key('admin_nav_section_icon_${section.section.name}'),
+                width: 26,
+                height: 26,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: section.accentColor.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Icon(
+                  section.icon,
+                  size: 16,
+                  color: Color.alphaBlend(
+                    section.accentColor.withValues(alpha: 0.88),
+                    AppColors.textPrimary,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  section.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyles.uiLabel(color: AppColors.textPrimary),
+                ),
+              ),
+            ],
           ),
           if (section.badge != null) ...[
-            const SizedBox(width: 8),
-            Flexible(
+            const SizedBox(height: 7),
+            Align(
+              alignment: Alignment.centerLeft,
               child: Container(
                 key: Key('admin_nav_section_badge_${section.section.name}'),
+                constraints: const BoxConstraints(maxWidth: 150),
                 padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: BoxDecoration(
                   color: AppColors.peacock.withValues(alpha: 0.10),

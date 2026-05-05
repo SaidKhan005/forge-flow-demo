@@ -607,7 +607,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
       title: Text(
         'Assign tier - ${widget.row.operatorRef.businessName} '
         '/ ${widget.row.operatorRef.locationName}',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
+        style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
         width: 560,
@@ -627,7 +627,7 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
                     .map(
                       (t) => DropdownMenuItem<PollingTierKey>(
                         value: t,
-                        child: Text(t.wire),
+                        child: Text(_tierLabel(t)),
                       ),
                     )
                     .toList(growable: false),
@@ -727,6 +727,17 @@ class _TierAssignmentDialogState extends State<_TierAssignmentDialog> {
         ),
       ],
     );
+  }
+}
+
+String _tierLabel(PollingTierKey tier) {
+  switch (tier) {
+    case PollingTierKey.standard:
+      return 'Standard';
+    case PollingTierKey.premium:
+      return 'Premium';
+    case PollingTierKey.custom:
+      return 'Custom';
   }
 }
 

@@ -215,23 +215,25 @@ class _PerLocationTierAssignmentTableState
       marginColor = AppColors.negative;
     }
     final priceLabel = assignment?.monthlyPriceCents == null
-        ? '-'
+        ? 'Tier default'
         : formatCents(assignment!.monthlyPriceCents!);
     final costLabel = assignment?.vendorApiCostEstimateCentsMonthly == null
-        ? '-'
+        ? 'Tier default'
         : formatCents(assignment!.vendorApiCostEstimateCentsMonthly!);
-    final marginLabel = margin == null ? '-' : formatCents(margin);
+    final marginLabel = margin == null ? 'Not calculated' : formatCents(margin);
     final cadences = assignment?.pollingCadencePerVendorSeconds;
     final cadenceLabel = (cadences == null || cadences.isEmpty)
-        ? '-'
+        ? 'Tier default'
         : '${cadences.length} vendor(s) set';
     final notes = row.adminNotes ?? '';
-    final notesLabel = notes.length > 30 ? '${notes.substring(0, 30)}…' : notes;
+    final notesLabel = notes.length > 30
+        ? '${notes.substring(0, 30)}...'
+        : notes;
     final tierLabel = assignment?.tierKey == null
-        ? '-'
+        ? 'Not assigned'
         : _tierLabel(assignment!.tierKey);
     final activeSinceLabel = assignment == null
-        ? '-'
+        ? 'Not assigned yet'
         : adminHumanDateTime(assignment.effectiveAt);
     // Contract Card 2 action label: "Assign / Update" - render as
     // "Assign" for never-assigned rows, "Update" for rows already
@@ -523,7 +525,7 @@ class _NotesBlock extends StatelessWidget {
         Text('Notes', style: AppTextStyles.uiLabel(color: AppColors.textMuted)),
         const SizedBox(height: 2),
         Text(
-          notesLabel.isEmpty ? '-' : notesLabel,
+          notesLabel.isEmpty ? 'No notes' : notesLabel,
           maxLines: 3,
           overflow: TextOverflow.ellipsis,
           style: AppTextStyles.body13(color: AppColors.textSecondary),
@@ -556,6 +558,11 @@ class _FilterBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasActiveFilters =
+        tierFilter != null ||
+        marginBandFilter != null ||
+        locationCountFilter != null ||
+        operatorNameController.text.trim().isNotEmpty;
     return Wrap(
       spacing: 12,
       runSpacing: 8,
@@ -656,6 +663,20 @@ class _FilterBar extends StatelessWidget {
             onChanged: onOperatorNameChanged,
           ),
         ),
+        if (hasActiveFilters)
+          OutlinedButton.icon(
+            key: const Key('admin_tier_assignment_clear_filters'),
+            style: AdminButtonStyles.secondary(minWidth: 120, minHeight: 40),
+            onPressed: () {
+              operatorNameController.clear();
+              onTierChanged?.call(null);
+              onMarginChanged?.call(null);
+              onLocationCountChanged?.call(null);
+              onOperatorNameChanged?.call('');
+            },
+            icon: const Icon(Icons.filter_alt_off_outlined, size: 16),
+            label: const Text('Clear filters'),
+          ),
       ],
     );
   }
