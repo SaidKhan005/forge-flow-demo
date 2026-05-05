@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 
 import '../admin_button_styles.dart';
+import '../admin_route_handoff.dart';
 import '../../utils/iana_timezones.dart';
 import '../models/operator_location_admin_models.dart';
 import '../services/operator_location_admin_gateway.dart';
@@ -32,10 +33,14 @@ class OperatorLocationAdminScreen extends StatefulWidget {
     required this.gateway,
     this.idempotencyKeyFactory,
     this.onOpenSupportLogs,
+    this.onOpenDataAccuracy,
+    this.onOpenPollingPricing,
   });
 
   final OperatorLocationAdminGateway gateway;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
 
   /// Factory for the idempotency key the gateway attaches to each
   /// mutating call. Production binds this to a UUID-shaped generator;
@@ -244,6 +249,8 @@ class _OperatorLocationAdminScreenState
               onRemoveLocation: _removeLocation,
               onSetPrimary: _setPrimaryLocation,
               onOpenSupportLogs: widget.onOpenSupportLogs,
+              onOpenDataAccuracy: widget.onOpenDataAccuracy,
+              onOpenPollingPricing: widget.onOpenPollingPricing,
             ),
     );
   }
@@ -630,6 +637,8 @@ class _OperatorDetail extends StatelessWidget {
     required this.onRemoveLocation,
     required this.onSetPrimary,
     required this.onOpenSupportLogs,
+    required this.onOpenDataAccuracy,
+    required this.onOpenPollingPricing,
   });
 
   final OperatorAdminBundle bundle;
@@ -641,6 +650,8 @@ class _OperatorDetail extends StatelessWidget {
   final ValueChanged<LocationAdminRecord> onRemoveLocation;
   final void Function(OperatorAdminBundle, LocationAdminRecord) onSetPrimary;
   final void Function(String operatorId, String? locationId)? onOpenSupportLogs;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenDataAccuracy;
+  final ValueChanged<AdminOperatorLocationScopeIntent>? onOpenPollingPricing;
 
   @override
   Widget build(BuildContext context) {
@@ -713,6 +724,36 @@ class _OperatorDetail extends StatelessWidget {
                       icon: const Icon(Icons.bug_report_outlined, size: 14),
                       label: const Text('View logs'),
                     ),
+                    OutlinedButton.icon(
+                      key: Key(
+                        'admin_operator_data_accuracy_${operator.operatorId}',
+                      ),
+                      onPressed: onOpenDataAccuracy == null
+                          ? null
+                          : () => onOpenDataAccuracy!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                operatorName: operator.businessName,
+                              ),
+                            ),
+                      icon: const Icon(Icons.fact_check_outlined, size: 14),
+                      label: const Text('Data accuracy'),
+                    ),
+                    OutlinedButton.icon(
+                      key: Key(
+                        'admin_operator_polling_pricing_${operator.operatorId}',
+                      ),
+                      onPressed: onOpenPollingPricing == null
+                          ? null
+                          : () => onOpenPollingPricing!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                operatorName: operator.businessName,
+                              ),
+                            ),
+                      icon: const Icon(Icons.payments_outlined, size: 14),
+                      label: const Text('Polling & pricing'),
+                    ),
                     if (operator.isSuspended)
                       OutlinedButton.icon(
                         key: const Key('admin_operator_reactivate_button'),
@@ -779,6 +820,26 @@ class _OperatorDetail extends StatelessWidget {
                               operator.operatorId,
                               location.locationId,
                             ),
+                      onOpenDataAccuracy: onOpenDataAccuracy == null
+                          ? null
+                          : () => onOpenDataAccuracy!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
+                      onOpenPollingPricing: onOpenPollingPricing == null
+                          ? null
+                          : () => onOpenPollingPricing!(
+                              AdminOperatorLocationScopeIntent(
+                                operatorId: operator.operatorId,
+                                locationId: location.locationId,
+                                operatorName: operator.businessName,
+                                locationName: location.name,
+                              ),
+                            ),
                     ),
                   ),
                 ],
@@ -801,6 +862,8 @@ class _LocationRow extends StatelessWidget {
     required this.onRemove,
     required this.onMakePrimary,
     required this.onOpenSupportLogs,
+    required this.onOpenDataAccuracy,
+    required this.onOpenPollingPricing,
   });
 
   final LocationAdminRecord location;
@@ -810,6 +873,8 @@ class _LocationRow extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onMakePrimary;
   final VoidCallback? onOpenSupportLogs;
+  final VoidCallback? onOpenDataAccuracy;
+  final VoidCallback? onOpenPollingPricing;
 
   @override
   Widget build(BuildContext context) {
@@ -846,6 +911,8 @@ class _LocationRow extends StatelessWidget {
       onRemove: onRemove,
       onMakePrimary: onMakePrimary,
       onOpenSupportLogs: onOpenSupportLogs,
+      onOpenDataAccuracy: onOpenDataAccuracy,
+      onOpenPollingPricing: onOpenPollingPricing,
     );
 
     return Opacity(
@@ -884,6 +951,8 @@ class _LocationActionWrap extends StatelessWidget {
     required this.onRemove,
     required this.onMakePrimary,
     required this.onOpenSupportLogs,
+    required this.onOpenDataAccuracy,
+    required this.onOpenPollingPricing,
   });
 
   final LocationAdminRecord location;
@@ -892,6 +961,8 @@ class _LocationActionWrap extends StatelessWidget {
   final VoidCallback onRemove;
   final VoidCallback onMakePrimary;
   final VoidCallback? onOpenSupportLogs;
+  final VoidCallback? onOpenDataAccuracy;
+  final VoidCallback? onOpenPollingPricing;
 
   @override
   Widget build(BuildContext context) {
@@ -919,6 +990,24 @@ class _LocationActionWrap extends StatelessWidget {
           tooltip: 'View logs for this location',
           minWidth: 116,
           onPressed: onOpenSupportLogs,
+        ),
+        _LocationActionButton(
+          buttonKey: Key('admin_location_data_accuracy_${location.locationId}'),
+          label: 'Data accuracy',
+          icon: Icons.fact_check_outlined,
+          tooltip: 'View data accuracy for this location',
+          minWidth: 136,
+          onPressed: onOpenDataAccuracy,
+        ),
+        _LocationActionButton(
+          buttonKey: Key(
+            'admin_location_polling_pricing_${location.locationId}',
+          ),
+          label: 'Polling & pricing',
+          icon: Icons.payments_outlined,
+          tooltip: 'View polling and pricing for this location',
+          minWidth: 148,
+          onPressed: onOpenPollingPricing,
         ),
         _LocationActionButton(
           buttonKey: Key('admin_location_edit_${location.locationId}'),

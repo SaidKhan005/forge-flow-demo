@@ -1,4 +1,4 @@
-// Phase 8 spine-bridge Lane .C — acceptance item B.
+// Phase 8 spine-bridge Lane .C - acceptance item B.
 //
 // Tab 1 admin override writes an `audit_logs` row with the diff +
 // reason note. Drives the screen click-path (Edit -> dialog -> submit)
@@ -14,14 +14,15 @@ import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
   Widget wrap(Widget child) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.themeData,
-        home: Scaffold(body: child),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: AppTheme.themeData,
+    home: Scaffold(body: child),
+  );
 
-  group('8.spine-bridge.C — Tab 1 admin override writes audit_logs row', () {
-    testWidgets('Edit -> dialog submit captures admin.data_accuracy.override',
-        (tester) async {
+  group('8.spine-bridge.C - Tab 1 admin override writes audit_logs row', () {
+    testWidgets('Edit -> dialog submit captures admin.data_accuracy.override', (
+      tester,
+    ) async {
       tester.view.physicalSize = const Size(1600, 1200);
       tester.view.devicePixelRatio = 1.0;
       addTearDown(() {
@@ -68,24 +69,22 @@ void main() {
       );
 
       // Change covers source for lunch from `vendor` to `manual`.
-      final lunchDropdown = find.byKey(
-        const Key('admin_data_accuracy_lunch'),
-      );
+      final lunchDropdown = find.byKey(const Key('admin_data_accuracy_lunch'));
       expect(lunchDropdown, findsOneWidget);
       await tester.tap(lunchDropdown);
       await tester.pumpAndSettle();
-      // Pick the `manual` option from the dropdown menu.
-      await tester.tap(find.text('manual').last);
+      // Pick the manual covers option from the dropdown menu.
+      await tester.tap(find.text('Manual entry').last);
       await tester.pumpAndSettle();
 
-      // Set wage source to `manual_mix`.
+      // Set wage source to manual mix.
       final wageDropdown = find.byKey(
         const Key('admin_data_accuracy_wage_source'),
       );
       expect(wageDropdown, findsOneWidget);
       await tester.tap(wageDropdown);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('manual_mix').last);
+      await tester.tap(find.text('Manual mix').last);
       await tester.pumpAndSettle();
 
       // Type a reason note.
