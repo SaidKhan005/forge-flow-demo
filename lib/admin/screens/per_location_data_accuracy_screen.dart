@@ -238,7 +238,7 @@ class _DataAccuracyOverrideDialogState
       key: const Key('admin_data_accuracy_override_dialog'),
       backgroundColor: AppColors.backgroundSurface,
       title: Text(
-        'Override data accuracy — ${widget.initial.operatorRef.businessName} '
+        'Override data accuracy: ${widget.initial.operatorRef.businessName} '
         '/ ${widget.initial.operatorRef.locationName}',
         style: AppTextStyles.display20(color: AppColors.textPrimary),
       ),
@@ -250,19 +250,19 @@ class _DataAccuracyOverrideDialogState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
               _CoversSourceField(
-                label: 'Covers source — lunch',
+                label: 'Covers source - lunch',
                 fieldKey: const Key('admin_data_accuracy_lunch'),
                 value: _lunch,
                 onChanged: (v) => setState(() => _lunch = v),
               ),
               _CoversSourceField(
-                label: 'Covers source — dinner',
+                label: 'Covers source - dinner',
                 fieldKey: const Key('admin_data_accuracy_dinner'),
                 value: _dinner,
                 onChanged: (v) => setState(() => _dinner = v),
               ),
               _CoversSourceField(
-                label: 'Covers source — late night',
+                label: 'Covers source - late night',
                 fieldKey: const Key('admin_data_accuracy_late_night'),
                 value: _lateNight,
                 onChanged: (v) => setState(() => _lateNight = v),
@@ -351,7 +351,7 @@ class _CoversSourceField extends StatelessWidget {
                   .map(
                     (c) => DropdownMenuItem<CoversSource>(
                       value: c,
-                      child: Text(c.wire),
+                      child: Text(_coversSourceLabel(c)),
                     ),
                   )
                   .toList(growable: false),
@@ -393,7 +393,7 @@ class _WageSourceField extends StatelessWidget {
                   .map(
                     (s) => DropdownMenuItem<WageSource>(
                       value: s,
-                      child: Text(s.wire),
+                      child: Text(_wageSourceLabel(s)),
                     ),
                   )
                   .toList(growable: false),
@@ -405,6 +405,26 @@ class _WageSourceField extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+String _coversSourceLabel(CoversSource source) {
+  switch (source) {
+    case CoversSource.vendor:
+      return 'Vendor feed';
+    case CoversSource.forecast:
+      return 'Forecast';
+    case CoversSource.manual:
+      return 'Manual entry';
+  }
+}
+
+String _wageSourceLabel(WageSource source) {
+  switch (source) {
+    case WageSource.vendor:
+      return 'Vendor wage data';
+    case WageSource.manualMix:
+      return 'Manual mix';
   }
 }
 
