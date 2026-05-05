@@ -24,6 +24,8 @@ import 'package:flutter_test/flutter_test.dart';
 import '../../tool/advisor_proxy/advisor_proxy.dart';
 
 const String _adminOrigin = 'https://admin.forgeandflow.app';
+const String _firebaseActionOrigin =
+    'https://forge-flow-staging.firebaseapp.com';
 const String _attackerOrigin = 'https://attacker.example';
 
 Future<T> _withRealHttp<T>(Future<T> Function() body) async {
@@ -105,12 +107,12 @@ Future<({int statusCode, HttpHeaders headers, String body})> _get(
   );
 }
 
-void _expectAllowed(({int statusCode, HttpHeaders headers, String body}) res) {
+void _expectAllowed(
+  ({int statusCode, HttpHeaders headers, String body}) res, {
+  String origin = _adminOrigin,
+}) {
   expect(res.statusCode, equals(HttpStatus.noContent));
-  expect(
-    res.headers.value('access-control-allow-origin'),
-    equals(_adminOrigin),
-  );
+  expect(res.headers.value('access-control-allow-origin'), equals(origin));
   expect(res.headers.value('access-control-allow-origin'), isNot(equals('*')));
   expect(res.headers.value('vary'), equals('Origin'));
   expect(res.headers.value('access-control-max-age'), equals('600'));
@@ -522,6 +524,82 @@ void main() {
           expect(res.headers.value('vary'), equals('Origin'));
           final decoded = jsonDecode(res.body) as Map<String, Object?>;
           expect(decoded['error'], equals('health_check_not_configured'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+  });
+
+  group('auth password reset CORS', () {
+    test('request preflight allows the operator web origin', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp(
+          allowList: const <String>[
+            _adminOrigin,
+            'https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app',
+          ],
+        );
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(authPasswordResetRequestPath),
+            requestMethod: 'POST',
+            origin: 'https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app',
+          );
+          _expectAllowed(
+            res,
+            origin: 'https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app',
+          );
+          final methods =
+              res.headers.value('access-control-allow-methods') ?? '';
+          expect(methods.toUpperCase(), contains('POST'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('confirm preflight allows the Firebase action page origin', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp(
+          allowList: const <String>[_adminOrigin, _firebaseActionOrigin],
+        );
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(authPasswordResetConfirmPath),
+            requestMethod: 'POST',
+            origin: _firebaseActionOrigin,
+          );
+          _expectAllowed(res, origin: _firebaseActionOrigin);
+          final allowedHeaders =
+              res.headers.value('access-control-allow-headers') ?? '';
+          expect(allowedHeaders.toLowerCase(), contains('idempotency-key'));
+        } finally {
+          ctx.client.close(force: true);
+          await ctx.server.close(force: true);
+        }
+      });
+    });
+
+    test('confirm preflight rejects an unlisted origin', () async {
+      await _withRealHttp(() async {
+        final ctx = await _spinUp(
+          allowList: const <String>[_adminOrigin, _firebaseActionOrigin],
+        );
+        try {
+          final res = await _options(
+            ctx.client,
+            ctx.baseUri.resolve(authPasswordResetConfirmPath),
+            requestMethod: 'POST',
+            origin: _attackerOrigin,
+          );
+          _expectDisallowed(res);
+          final decoded = jsonDecode(res.body) as Map<String, Object?>;
+          expect(decoded['error'], equals('cors_origin_not_allowed'));
         } finally {
           ctx.client.close(force: true);
           await ctx.server.close(force: true);

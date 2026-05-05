@@ -7,5 +7,6 @@
   "messagingSenderId": "78630909582",
   "projectNumber": "78630909582",
   "proxyBaseUri": "https://staging-api.feflow.org",
+  "operatorWebUrl": "https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app/",
   "version": "2"
 }

@@ -320,9 +320,13 @@ void main() {
     test(
       'unions Firebase auth action hosts into the proxy CORS allow-list',
       () {
+        expect(script, contains('function Get-UriOrigin'));
         expect(script, contains('function Join-AdminCorsAllowedOrigins'));
+        expect(script, contains('FORGE_FLOW_AUTH_ACTION_URL'));
         expect(script, contains(r'"https://$Project.firebaseapp.com"'));
         expect(script, contains(r'"https://$Project.web.app"'));
+        expect(script, contains(r'$authActionOrigin'));
+        expect(script, contains(r'$firebaseActionCorsOrigins += $authActionOrigin'));
         expect(script, contains(r'$effectiveAdminCorsAllowedOrigins'));
         expect(
           script,

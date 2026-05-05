@@ -220,7 +220,13 @@
         </form>
 
         <p id="message" class="message"></p>
-        <a id="continue-link" class="button-link hidden" href="forgeflow://sign-in">Back to sign in</a>
+        <a
+          id="continue-link"
+          class="button-link hidden"
+          href="https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app/"
+        >
+          Back to sign in
+        </a>
       </section>
     </div>
   </main>
@@ -238,7 +244,10 @@
     const mode = params.get("mode");
     const oobCode = params.get("oobCode");
     const continueUrl = params.get("continueUrl");
-    const defaultReturnUrl = "forgeflow://sign-in";
+    let defaultReturnUrl =
+      window.FORGE_FLOW_OPERATOR_WEB_URL ||
+      "https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app/";
+    const appReturnUrl = "forgeflow://sign-in";
     const androidReturnUrl =
       "intent://sign-in#Intent;scheme=forgeflow;package=com.forgeflow.app;end";
     const intro = document.querySelector("#intro");
@@ -256,6 +265,16 @@
       if (/Android/i.test(navigator.userAgent)) {
         event.preventDefault();
         window.location.href = androidReturnUrl;
+        return;
+      }
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+        event.preventDefault();
+        window.location.href = appReturnUrl;
+        window.setTimeout(() => {
+          if (!document.hidden) {
+            window.location.href = defaultReturnUrl;
+          }
+        }, 800);
       }
     });
 
@@ -372,6 +391,10 @@
 
       try {
         const firebaseConfig = await loadFirebaseConfig();
+        defaultReturnUrl =
+          firebaseConfig.operatorWebUrl ||
+          window.FORGE_FLOW_OPERATOR_WEB_URL ||
+          defaultReturnUrl;
         const proxyBaseUri = firebaseConfig.proxyBaseUri || window.FORGE_FLOW_PROXY_BASE_URI || "";
         if (!proxyBaseUri) {
           intro.textContent = "Password reset is not configured.";

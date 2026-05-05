@@ -186,6 +186,24 @@ function Resolve-FirebaseWebApiKey {
   }
 }
 
+function Get-UriOrigin {
+  param([string] $Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return $null
+  }
+
+  try {
+    $uri = [Uri] $Value
+    if (-not $uri.IsAbsoluteUri) {
+      return $null
+    }
+    return $uri.GetLeftPart([UriPartial]::Authority)
+  } catch {
+    return $null
+  }
+}
+
 if (-not (Test-Path -LiteralPath $SecretsFile)) {
   Write-Host 'BLOCKED: missing required env names:'
   Write-Host ' - forge_flow.secrets.ps1'
@@ -458,6 +476,12 @@ $firebaseActionCorsOrigins = @(
   "https://$Project.firebaseapp.com",
   "https://$Project.web.app"
 )
+$authActionOrigin = Get-UriOrigin -Value (
+  [Environment]::GetEnvironmentVariable('FORGE_FLOW_AUTH_ACTION_URL')
+)
+if (-not [string]::IsNullOrWhiteSpace($authActionOrigin)) {
+  $firebaseActionCorsOrigins += $authActionOrigin
+}
 $effectiveAdminCorsAllowedOrigins = Join-AdminCorsAllowedOrigins `
   -ConfiguredOrigins $AdminCorsAllowedOrigins `
   -RequiredOrigins $firebaseActionCorsOrigins

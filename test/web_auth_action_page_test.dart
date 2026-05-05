@@ -28,10 +28,21 @@ void main() {
     test('Firebase hosting config points reset confirms at staging proxy', () {
       expect(firebaseConfig, contains('"proxyBaseUri"'));
       expect(firebaseConfig, contains('https://staging-api.feflow.org'));
+      expect(firebaseConfig, contains('"operatorWebUrl"'));
+      expect(
+        firebaseConfig,
+        contains('https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app/'),
+      );
     });
 
     test('keeps mobile handoff and web fallback aligned with app copy', () {
       expect(html, contains('forgeflow://reset-password'));
+      expect(html, contains('forgeflow://sign-in'));
+      expect(
+        html,
+        contains('https://forge-flow-operator-web-rf7nosnoka-pd.a.run.app/'),
+      );
+      expect(html, contains('firebaseConfig.operatorWebUrl'));
       expect(html, contains('Forgot password?'));
       expect(html, isNot(contains('Email me a reset link')));
       expect(html, contains('Password updated. Please sign in.'));
