@@ -149,7 +149,8 @@ class _HeaderBar extends StatelessWidget {
           const SizedBox(width: 8),
           IconButton(
             key: const Key('operator_web_header_signout'),
-            tooltip: 'Sign out — ends this browser session and returns '
+            tooltip:
+                'Sign out — ends this browser session and returns '
                 'you to the welcome screen.',
             onPressed: onSignOut,
             icon: const Icon(
@@ -199,6 +200,7 @@ class _RolePill extends StatelessWidget {
   String _roleLabel(List<String> roles) {
     if (roles.contains('operator_owner')) return 'Owner';
     if (roles.contains('operator_admin')) return 'Admin';
+    if (roles.contains('operator_manager')) return 'Manager';
     if (roles.contains('location_manager')) return 'Location manager';
     if (roles.isEmpty) return 'Unknown role';
     return roles.first.replaceAll('_', ' ');

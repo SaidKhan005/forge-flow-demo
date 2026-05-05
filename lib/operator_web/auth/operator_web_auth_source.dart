@@ -51,6 +51,7 @@ class OperatorWebSession {
     required this.primaryLocationId,
     required this.primaryLocationName,
     this.roles = const <String>[],
+    this.permissions = const <String>{},
     this.phone,
     this.mfaEnrolled = false,
   });
@@ -83,6 +84,11 @@ class OperatorWebSession {
   /// the client uses them for read-only UI affordances.
   final List<String> roles;
 
+  /// Server-resolved permission keys allowed for this user. Live mode
+  /// hydrates this from `/v1/auth/permissions/snapshot`; demo mode
+  /// leaves it empty and continues to use role fixtures.
+  final Set<String> permissions;
+
   /// Optional phone-on-file for the operator user. Null when the
   /// proxy has no phone for the account; `11W.7` Account screen
   /// renders "Not on file" with a copy pointer to the operator
@@ -106,6 +112,15 @@ enum OnboardingStage {
   /// Magic-link landing has not produced a verified Firebase session
   /// yet. The router renders the welcome screen with the token field.
   needsToken,
+
+  /// Live mode: no Firebase session exists yet. The router renders
+  /// an email/password sign-in form rather than the demo magic-link
+  /// walkthrough.
+  signingIn,
+
+  /// Live mode: Firebase accepted email/password but requires a TOTP
+  /// challenge before it will issue an ID token.
+  mfaChallenge,
 
   /// Magic-link token verified; operator must set their password.
   settingPassword,
@@ -162,6 +177,38 @@ class OperatorWebNeedsToken extends OperatorWebAuthState {
   final String? lastErrorMessage;
 }
 
+class OperatorWebNeedsSignIn extends OperatorWebAuthState {
+  const OperatorWebNeedsSignIn({this.lastErrorMessage, this.lastInfoMessage});
+  @override
+  OnboardingStage get stage => OnboardingStage.signingIn;
+  @override
+  OperatorWebSession? get session => null;
+  @override
+  final String? lastErrorMessage;
+
+  /// Non-error confirmation copy, e.g. after a password reset request.
+  final String? lastInfoMessage;
+}
+
+class OperatorWebSignInMfaChallenge extends OperatorWebAuthState {
+  const OperatorWebSignInMfaChallenge({
+    required this.email,
+    required this.mfaSessionToken,
+    required this.factorIds,
+    this.lastErrorMessage,
+  });
+  @override
+  OnboardingStage get stage => OnboardingStage.mfaChallenge;
+  @override
+  OperatorWebSession? get session => null;
+
+  final String email;
+  final String mfaSessionToken;
+  final List<String> factorIds;
+  @override
+  final String? lastErrorMessage;
+}
+
 class OperatorWebSettingPassword extends OperatorWebAuthState {
   const OperatorWebSettingPassword({
     required this.session,
@@ -176,10 +223,7 @@ class OperatorWebSettingPassword extends OperatorWebAuthState {
 }
 
 class OperatorWebEnrollingMfa extends OperatorWebAuthState {
-  const OperatorWebEnrollingMfa({
-    required this.session,
-    this.lastErrorMessage,
-  });
+  const OperatorWebEnrollingMfa({required this.session, this.lastErrorMessage});
   @override
   OnboardingStage get stage => OnboardingStage.enrollingMfa;
   @override
@@ -248,6 +292,7 @@ class OperatorWebSignedOut extends OperatorWebAuthState {
 const Set<String> kOperatorWebAdmittedRoles = <String>{
   'operator_owner',
   'operator_admin',
+  'operator_manager',
   'location_manager',
 };
 
@@ -274,6 +319,29 @@ class TosVersion {
 abstract class OperatorWebAuthSource {
   Stream<OperatorWebAuthState> get stream;
   OperatorWebAuthState get current;
+
+  /// Live sign-in path. Demo implementations keep the magic-link
+  /// walkthrough and may leave this unsupported.
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) {
+    throw UnsupportedError('email/password sign-in is not wired');
+  }
+
+  /// Live MFA challenge completion for email/password sign-in.
+  Future<void> completeSignInMfaChallenge({
+    required String oneTimeCode,
+    String? factorId,
+  }) {
+    throw UnsupportedError('sign-in MFA challenge is not wired');
+  }
+
+  /// Live password reset request through Firebase Auth. Implementations
+  /// preserve account-existence privacy in user-facing copy.
+  Future<void> requestPasswordReset({required String email}) {
+    throw UnsupportedError('password reset request is not wired');
+  }
 
   /// Phase 11W.0 — magic-link landing. The welcome screen passes the
   /// `?token=` query param here. Implementations call the proxy
@@ -455,6 +523,42 @@ class DemoOperatorWebAuthSource implements OperatorWebAuthSource {
 
   @override
   OperatorWebAuthState get current => _state;
+
+  @override
+  Future<void> signInWithEmailPassword({
+    required String email,
+    required String password,
+  }) async {
+    _emit(
+      const OperatorWebNeedsToken(
+        lastErrorMessage:
+            'Demo mode uses the invite-code walkthrough. Enter demo-magic-link-token to continue.',
+      ),
+    );
+  }
+
+  @override
+  Future<void> completeSignInMfaChallenge({
+    required String oneTimeCode,
+    String? factorId,
+  }) async {
+    _emit(
+      const OperatorWebNeedsToken(
+        lastErrorMessage:
+            'Demo mode uses onboarding MFA after the invite code, not sign-in MFA.',
+      ),
+    );
+  }
+
+  @override
+  Future<void> requestPasswordReset({required String email}) async {
+    _emit(
+      const OperatorWebNeedsToken(
+        lastErrorMessage:
+            'Demo mode does not send email. Use demo-magic-link-token to continue.',
+      ),
+    );
+  }
 
   @override
   Future<void> verifyMagicLinkToken(String token) async {
@@ -669,15 +773,15 @@ const OperatorWebSession kDemoOperatorWebSession = OperatorWebSession(
 /// "switch sessions" step lands on the same business in the side nav.
 const OperatorWebSession kDemoOperatorWebLocationManagerSession =
     OperatorWebSession(
-  uid: 'demo-location-manager',
-  email: 'manager@demo.forgeflow.test',
-  displayName: 'Demo Location Manager',
-  operatorId: 'demo-operator',
-  businessName: 'Demo Restaurant Group',
-  primaryLocationId: 'demo-location',
-  primaryLocationName: 'Demo Main Street',
-  roles: <String>['location_manager'],
-);
+      uid: 'demo-location-manager',
+      email: 'manager@demo.forgeflow.test',
+      displayName: 'Demo Location Manager',
+      operatorId: 'demo-operator',
+      businessName: 'Demo Restaurant Group',
+      primaryLocationId: 'demo-location',
+      primaryLocationName: 'Demo Main Street',
+      roles: <String>['location_manager'],
+    );
 
 String _maskPhoneNumber(String raw) {
   final digits = raw.replaceAll(RegExp(r'\D'), '');

@@ -37,8 +37,11 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 
+import 'operator_web/auth/firebase_operator_web_auth_source.dart';
 import 'operator_web/auth/operator_web_auth_source.dart';
 import 'operator_web/operator_web_app.dart';
+import 'operator_web/services/operator_web_proxy_client.dart';
+import 'services/auth/firebase_auth_client_sdk.dart';
 import 'theme/app_theme.dart';
 
 /// Opt-in demo switch. **Must default to false** so a forgotten flag
@@ -77,10 +80,7 @@ Future<void> main() async {
     final source = await _resolveAuthSource();
     final magicLinkToken = _parseMagicLinkToken();
     runApp(
-      OperatorWebApp(
-        authSource: source,
-        initialMagicLinkToken: magicLinkToken,
-      ),
+      OperatorWebApp(authSource: source, initialMagicLinkToken: magicLinkToken),
     );
   } catch (error, stack) {
     // Fail-closed: any wiring error (Firebase init failure, missing
@@ -110,18 +110,10 @@ Future<OperatorWebAuthSource> _resolveAuthSource() async {
   if (!baseUri.hasScheme || !baseUri.hasAuthority) {
     throw StateError('OPERATOR_WEB_PROXY_BASE_URI must be an absolute URI');
   }
-  // Phase 11W.0 ships the shell + onboarding click path. The live HTTP
-  // wiring against the proxy lands as a thin gateway in a follow-up
   // `11W.0.live` slice (matches the Phase 11A.0 → 11A.1 cadence). The
-  // deploy script enforces this by refusing to publish a non-demo
-  // build until that gateway exists, so reaching this branch on a
-  // staging deploy surfaces the explicit StateError below rather than
-  // a silent fixture fallback.
-  throw StateError(
-    'Live Firebase + proxy auth source for the Operator Web Console '
-    'lands in slice 11W.0.live. For local dev / the 11W.0 walkthrough '
-    'pass --dart-define=OPERATOR_WEB_DEMO_AUTH=true to swap in '
-    'DemoOperatorWebAuthSource.',
+  return FirebaseOperatorWebAuthSource(
+    authClient: FirebaseAuthSdkClient(),
+    proxyClient: OperatorWebProxyClient(baseUri: baseUri),
   );
 }
 

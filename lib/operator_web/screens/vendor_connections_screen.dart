@@ -60,6 +60,7 @@
 import 'package:flutter/material.dart';
 
 import '../auth/operator_web_auth_source.dart';
+import '../services/operator_web_url_launcher.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../../integrations/ui/vendor_connections/vendor_connections_widget.dart';
 import '../../theme/app_theme.dart';
@@ -101,9 +102,9 @@ class VendorConnectionsScreen extends StatelessWidget {
 
   /// True iff the session has `integrations.configure` (i.e. role
   /// is `operator_admin` or `operator_owner`).
-  bool get _canConfigureIntegrations => session.roles.any(
-        kOperatorWebVendorConnectionsAdmittedRoles.contains,
-      );
+  bool get _canConfigureIntegrations =>
+      session.roles.any(kOperatorWebVendorConnectionsAdmittedRoles.contains) ||
+      session.permissions.contains('integrations.configure');
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +156,9 @@ class VendorConnectionsScreen extends StatelessWidget {
               operatorId: session.operatorId,
               locationId: locationId,
               gateway: gateway,
+              onConnectFlowStarted: gateway == null
+                  ? null
+                  : (flow) => openOperatorWebRedirect(flow.redirectUrl),
             ),
           ),
         ],
@@ -233,9 +237,7 @@ class _ForbiddenSurface extends StatelessWidget {
                       'reading dashboards and shift views in the '
                       'mobile app — most day-to-day actions live '
                       'there.',
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ],
                 ),
