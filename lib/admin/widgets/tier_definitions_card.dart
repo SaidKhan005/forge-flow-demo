@@ -102,7 +102,7 @@ class _TierDefinitionSubcard extends StatelessWidget {
             Expanded(
               child: Text(
                 _tierTitle(definition.tierKey),
-                style: AppTextStyles.mono15(color: AppColors.textPrimary),
+                style: AppTextStyles.body14(color: AppColors.textPrimary),
               ),
             ),
             Text(
@@ -151,7 +151,8 @@ class _TierDefinitionSubcard extends StatelessWidget {
           ),
           AdminDetailRow(
             label: 'Last edited',
-            value: '${adminHumanDateTime(definition.lastEditedAt)}'
+            value:
+                '${adminHumanDateTime(definition.lastEditedAt)}'
                 '${definition.lastEditedBy != null ? ' by ${definition.lastEditedBy}' : ''}',
           ),
           if (editingEnabled)
@@ -220,9 +221,7 @@ class _CadenceTable extends StatelessWidget {
                     width: 220,
                     child: Text(
                       kPollOnlyVendorDisplayNames[vendorId] ?? vendorId,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                   Text(

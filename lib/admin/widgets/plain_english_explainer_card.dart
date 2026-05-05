@@ -38,12 +38,12 @@ class PlainEnglishExplainerCard extends StatelessWidget {
             const SizedBox(height: 12),
             Text(
               kExplainerParagraph1,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
             const SizedBox(height: 12),
             Text(
               kExplainerParagraph2,
-              style: AppTextStyles.body14(color: AppColors.textPrimary),
+              style: AppTextStyles.body13(color: AppColors.textPrimary),
             ),
           ],
         ),

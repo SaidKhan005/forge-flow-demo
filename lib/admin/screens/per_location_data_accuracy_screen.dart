@@ -285,7 +285,7 @@ class _DataAccuracyOverrideDialogState
       title: Text(
         'Override data accuracy: ${widget.initial.operatorRef.businessName} '
         '/ ${widget.initial.operatorRef.locationName}',
-        style: AppTextStyles.display20(color: AppColors.textPrimary),
+        style: AdminButtonStyles.dialogTitleStyle,
       ),
       content: SizedBox(
         width: 520,

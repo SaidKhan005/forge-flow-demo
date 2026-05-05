@@ -7,12 +7,14 @@ import 'package:forge_and_flow/admin/admin_routes.dart';
 import 'package:forge_and_flow/admin/admin_shell.dart';
 import 'package:forge_and_flow/admin/models/operator_location_admin_models.dart';
 import 'package:forge_and_flow/admin/screens/operator_location_admin_screen.dart';
+import 'package:forge_and_flow/admin/screens/polling_and_pricing_admin_screen.dart';
 import 'package:forge_and_flow/admin/services/data_accuracy_admin_gateway.dart';
 import 'package:forge_and_flow/admin/services/operator_location_admin_gateway.dart';
 import 'package:forge_and_flow/admin/widgets/data_accuracy_audit_history_panel.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_data_accuracy_table.dart';
 import 'package:forge_and_flow/admin/widgets/per_location_tier_assignment_table.dart';
 import 'package:forge_and_flow/domain/models/data_accuracy_settings.dart';
+import 'package:forge_and_flow/domain/models/forge_flow_polling_tier_assignment.dart';
 import 'package:forge_and_flow/theme/app_theme.dart';
 
 void main() {
@@ -75,6 +77,26 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      expect(
+        find.byKey(const Key('admin_nav_section_panel_operations')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_section_panel_ai')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_section_icon_operations')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_section_divider_operations')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('admin_nav_section_count_operations')),
+        findsNothing,
+      );
       expect(
         find.byKey(const Key('admin_nav_section_badge_ai')),
         findsOneWidget,
@@ -238,12 +260,112 @@ void main() {
       expect(find.text('All location counts'), findsOneWidget);
       expect(find.text('Location count'), findsNothing);
       expect(find.text('All operators'), findsNothing);
+      expect(find.text('Not assigned'), findsOneWidget);
+      expect(find.text('Not assigned yet'), findsOneWidget);
+      expect(find.text('Tier default'), findsWidgets);
+      expect(find.text('Not calculated'), findsOneWidget);
+      expect(find.text('No notes'), findsOneWidget);
       expect(
         find.text(
           'Use filters to narrow operator locations. Each row keeps tier, cadence, pricing, margin, and notes together.',
         ),
         findsOneWidget,
       );
+    });
+
+    testWidgets('tier assignment filters can be cleared in one action', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      PollingTierKey? tierFilter = PollingTierKey.standard;
+      var cleared = false;
+
+      await tester.pumpWidget(
+        wrap(
+          StatefulBuilder(
+            builder: (context, setState) {
+              return PerLocationTierAssignmentTable(
+                rows: const <TierAssignmentAdminRow>[
+                  TierAssignmentAdminRow(operatorRef: ref, assignment: null),
+                ],
+                tierDefinitions: <TierDefinition>[
+                  kDemoStandardTierDefinition(),
+                  kDemoPremiumTierDefinition(),
+                  kDemoCustomTierDefinition(),
+                ],
+                editingEnabled: false,
+                onAssign: (_) {},
+                tierFilter: tierFilter,
+                onTierFilterChanged: (value) => setState(() {
+                  tierFilter = value;
+                  cleared = value == null;
+                }),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('admin_tier_assignment_clear_filters')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const Key('admin_tier_assignment_clear_filters')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(cleared, isTrue);
+      expect(
+        find.byKey(const Key('admin_tier_assignment_clear_filters')),
+        findsNothing,
+      );
+    });
+
+    testWidgets('tier assignment dialog uses human tier labels', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1200, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final gateway = InMemoryDataAccuracyAdminGateway(
+        operatorLocations: const <OperatorLocationRef>[ref],
+        initialTierDefinitions: <PollingTierKey, TierDefinition>{
+          PollingTierKey.standard: kDemoStandardTierDefinition(),
+          PollingTierKey.premium: kDemoPremiumTierDefinition(),
+          PollingTierKey.custom: kDemoCustomTierDefinition(),
+        },
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          home: Scaffold(
+            body: PollingAndPricingAdminScreen(
+              gateway: gateway,
+              actorUserId: 'demo-super-admin',
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(
+        find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const Key('admin_tier_assignment_assign_op-1_loc-1')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Standard'), findsWidgets);
+      expect(find.text('standard'), findsNothing);
     });
 
     testWidgets(

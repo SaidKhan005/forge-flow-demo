@@ -12,13 +12,17 @@ class AdminButtonStyles {
     vertical: 12,
   );
 
+  static TextStyle get dialogTitleStyle => AppTextStyles.pageTitle(
+    color: AppColors.textPrimary,
+  ).copyWith(fontSize: 20, height: 1.28);
+
   static ThemeData applyTo(ThemeData base) {
     return base.copyWith(
       dialogTheme: DialogThemeData(
         backgroundColor: AppColors.backgroundSurface,
         surfaceTintColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        titleTextStyle: AppTextStyles.display20(color: AppColors.textPrimary),
+        titleTextStyle: dialogTitleStyle,
         contentTextStyle: AppTextStyles.body13(color: AppColors.textSecondary),
         actionsPadding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         shape: RoundedRectangleBorder(
