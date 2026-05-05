@@ -14,14 +14,30 @@ import 'package:forge_and_flow/services/integration/labor_wage_source_class.dart
 void main() {
   group('LaborWageSourceClass — A. per-employee-with-rates classification',
       () {
-    test('QuickBooks Time and 7shifts both map to perEmployeeWithRates', () {
+    test('QuickBooks Time maps to perEmployeeWithRates', () {
       expect(
         laborWageSourceClassFor('quickbooks_time'),
         LaborWageSourceClass.perEmployeeWithRates,
       );
+    });
+  });
+
+  group(
+      'LaborWageSourceClass — A2. per-employee-with-dollars classification '
+      '(8.spine-bridge.7S.upgrade)', () {
+    test(
+        '7shifts maps to perEmployeeWithDollars after the '
+        '/reports/hours_and_wages adapter upgrade', () {
       expect(
         laborWageSourceClassFor('seven_shifts'),
-        LaborWageSourceClass.perEmployeeWithRates,
+        LaborWageSourceClass.perEmployeeWithDollars,
+        reason: '7shifts qualifies as perEmployeeWithDollars now that the '
+            'adapter consumes /reports/hours_and_wages — per-shift total_pay '
+            'merged onto canonical facts via (employee_id, shift_id). Lower '
+            'plan tiers fall back via SevenShiftsHoursAndWagesReportGated'
+            'Exception → substituted-wage provenance, but the SIDECAR '
+            'classification stays perEmployeeWithDollars (the aggregator '
+            'falls through to Stage 5 when dollars missing).',
       );
     });
   });
@@ -53,25 +69,28 @@ void main() {
     });
   });
 
-  group('LaborWageSourceClass — D. per-employee-with-dollars empty for V1',
-      () {
-    test('no Wave B labor vendor resolves to perEmployeeWithDollars', () {
-      const waveBLaborVendors = <String>[
+  group('LaborWageSourceClass — D. perEmployeeWithDollars membership', () {
+    test(
+        'only 7shifts is in perEmployeeWithDollars after the '
+        '8.spine-bridge.7S.upgrade lane wired /reports/hours_and_wages', () {
+      // Other Wave B labor vendors must NOT be in perEmployeeWithDollars
+      // (their adapter doc packs explicitly classify them otherwise per
+      // 2026-05-05 falsehood corrections #6, #8, #9).
+      const otherWaveBLaborVendors = <String>[
         'quickbooks_time',
-        'seven_shifts',
         'humanity',
         'agendrix',
         'adp',
         'push_operations',
       ];
-      for (final vendorId in waveBLaborVendors) {
+      for (final vendorId in otherWaveBLaborVendors) {
         expect(
           laborWageSourceClassFor(vendorId),
           isNot(LaborWageSourceClass.perEmployeeWithDollars),
           reason:
-              'no Wave B vendor qualifies for perEmployeeWithDollars at V1; '
-              '7shifts joins after the /reports/hours_and_wages follow-up '
-              '(8.7S.upgrade.hours_and_wages). Got hit on: $vendorId',
+              '$vendorId must NOT be perEmployeeWithDollars per 2026-05-05 '
+              'falsehood corrections (only 7shifts qualifies after the '
+              'hours_and_wages upgrade)',
         );
       }
     });
