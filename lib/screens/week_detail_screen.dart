@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../data/app_defaults.dart'; // LeverCards
 import '../models/week_record.dart';
+import '../services/labor_model.dart';
 import '../utils/formatters.dart';
 import '../widgets/comparison_group_band.dart';
 import '../widgets/comparison_metric_row.dart';
@@ -137,9 +138,45 @@ class WeekDetailScreen extends StatelessWidget {
                 child: Builder(builder: (context) {
                   // 7.58.UX.5 (F-1): explicit lookup; null → degraded card.
                   final lever = LeverCards.lookup(week.primaryLeverId);
-                  return lever == null
-                      ? const LeverCardNotYetAvailable()
-                      : LeverCardWidget(data: lever);
+                  if (lever == null) {
+                    return const LeverCardNotYetAvailable();
+                  }
+                  // 7.58.UX.1: per-axis dollar attribution. Locked targets
+                  // are required for closed weeks; if a legacy row lacks
+                  // them, skip attribution honestly rather than silently
+                  // re-modeling.
+                  Map<String, double>? dollarImpactByAxis;
+                  if (week.targetCPLH != null &&
+                      week.targetSPLH != null &&
+                      week.targetPPA != null &&
+                      week.targetFohWage != null &&
+                      week.targetBohWage != null) {
+                    dollarImpactByAxis =
+                        LaborModel.attributeDollarImpactByAxis(
+                      actualCovers: week.totalCovers,
+                      forecastCovers: week.forecastCovers,
+                      actualFohHours: week.totalFohHours,
+                      actualBohHours: week.totalBohHours,
+                      avgPPA: week.avgPPA,
+                      targetCPLH: week.storedTargetCPLH,
+                      targetSPLH: week.storedTargetSPLH,
+                      targetPPA: week.storedTargetPPA,
+                      targetFohWage: week.storedTargetFohWage,
+                      targetBohWage: week.storedTargetBohWage,
+                      avgCPLH: week.avgCPLH,
+                      avgSPLH: week.avgSPLH,
+                      avgFohBlendedWage: week.hasActualBlendedWageTruth
+                          ? week.blendedFohWage
+                          : null,
+                      avgBohBlendedWage: week.hasActualBlendedWageTruth
+                          ? week.blendedBohWage
+                          : null,
+                    );
+                  }
+                  return LeverCardWidget(
+                    data: lever,
+                    dollarImpactByAxis: dollarImpactByAxis,
+                  );
                 }),
               ),
             ],
