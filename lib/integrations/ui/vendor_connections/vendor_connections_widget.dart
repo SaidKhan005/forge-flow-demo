@@ -48,6 +48,7 @@ class VendorConnectionsWidget extends StatefulWidget {
     this.locationNameOverride,
     this.gateway,
     this.canMutate = true,
+    this.onConnectFlowStarted,
   });
 
   final String operatorId;
@@ -61,6 +62,12 @@ class VendorConnectionsWidget extends StatefulWidget {
   /// `false` for `ff_support` (read-only in F&F Ops Console). Hides
   /// connect / test / disconnect buttons but still renders status.
   final bool canMutate;
+
+  /// Optional host hook for OAuth/key-paste redirects. Web hosts can
+  /// navigate the browser; test/demo hosts can leave it null and keep
+  /// the in-memory flow on-page.
+  final Future<void> Function(VendorConnectFlowStart flow)?
+  onConnectFlowStarted;
 
   @override
   State<VendorConnectionsWidget> createState() =>
@@ -217,12 +224,13 @@ class _VendorConnectionsWidgetState extends State<VendorConnectionsWidget> {
       }
     }
     try {
-      await _gateway.startConnect(
+      final flow = await _gateway.startConnect(
         operatorId: widget.operatorId,
         locationId: widget.locationId,
         vendorId: picked.vendorId,
         module: module,
       );
+      await widget.onConnectFlowStarted?.call(flow);
       await _refresh();
     } on VendorConnectionsGatewayError catch (e) {
       _showError(e.message, remediation: e.remediation);
@@ -972,17 +980,17 @@ class _VendorPickerDialogState extends State<_VendorPickerDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-              Text(
-                _introFor(widget.category),
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                'Vendors marked Coming soon are visible before production '
-                'credentials are live.',
-                style: AppTextStyles.body13(color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 12),
+            Text(
+              _introFor(widget.category),
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Vendors marked Coming soon are visible before production '
+              'credentials are live.',
+              style: AppTextStyles.body13(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
             ConstrainedBox(
               constraints: const BoxConstraints(maxHeight: 360),
               child: ListView.separated(
@@ -1632,7 +1640,8 @@ class _DialogChoiceTile extends StatelessWidget {
                           for (final tag in tags)
                             _StatusChip(
                               label: tag,
-                              color: tag == 'Coming soon' ||
+                              color:
+                                  tag == 'Coming soon' ||
                                       tag == 'Sandbox verified'
                                   ? AppColors.textMuted
                                   : AppColors.peacockDark,

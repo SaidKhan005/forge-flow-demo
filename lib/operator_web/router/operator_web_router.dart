@@ -24,11 +24,15 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../../integrations/ui/vendor_connections/vendor_connections_gateway.dart';
 import '../auth/operator_web_auth_source.dart';
+import '../account/operator_web_account_actions.dart';
+import '../services/operator_web_vendor_connections_gateway.dart';
 import '../screens/account_screen.dart';
 import '../screens/data_accuracy_screen.dart';
 import '../screens/mfa_enrollment_screen.dart';
 import '../screens/password_setup_screen.dart';
+import '../screens/sign_in_screen.dart';
 import '../screens/tos_accept_screen.dart';
 import '../screens/vendor_connections_screen.dart';
 import '../screens/welcome_screen.dart';
@@ -129,47 +133,82 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       OperatorWebLoading() => const _LoadingSplash(),
       OperatorWebSignedOut() => _buildWelcome(state.lastErrorMessage),
       OperatorWebNeedsToken() => _buildWelcome(state.lastErrorMessage),
-      OperatorWebSettingPassword(:final lastErrorMessage) =>
-        PasswordSetupScreen(
-          onSubmitPassword: ({
-            required String password,
-            required String confirmation,
-          }) async {
+      OperatorWebNeedsSignIn(:final lastErrorMessage, :final lastInfoMessage) =>
+        OperatorWebSignInScreen(
+          onSignIn: ({required String email, required String password}) async {
             await _withBusy(
-              () => widget.source.submitPassword(
+              () => widget.source.signInWithEmailPassword(
+                email: email,
                 password: password,
-                confirmation: confirmation,
+              ),
+            );
+          },
+          onRequestPasswordReset: ({required String email}) async {
+            await _withBusy(
+              () => widget.source.requestPasswordReset(email: email),
+            );
+          },
+          errorMessage: lastErrorMessage,
+          infoMessage: lastInfoMessage,
+          submitting: _busy,
+        ),
+      OperatorWebSignInMfaChallenge(
+        :final email,
+        :final factorIds,
+        :final lastErrorMessage,
+      ) =>
+        OperatorWebSignInMfaChallengeScreen(
+          email: email,
+          factorIds: factorIds,
+          onConfirm: ({required String oneTimeCode, String? factorId}) async {
+            await _withBusy(
+              () => widget.source.completeSignInMfaChallenge(
+                oneTimeCode: oneTimeCode,
+                factorId: factorId,
               ),
             );
           },
           errorMessage: lastErrorMessage,
           submitting: _busy,
         ),
+      OperatorWebSettingPassword(:final lastErrorMessage) =>
+        PasswordSetupScreen(
+          onSubmitPassword:
+              ({required String password, required String confirmation}) async {
+                await _withBusy(
+                  () => widget.source.submitPassword(
+                    password: password,
+                    confirmation: confirmation,
+                  ),
+                );
+              },
+          errorMessage: lastErrorMessage,
+          submitting: _busy,
+        ),
       OperatorWebEnrollingMfa(:final session, :final lastErrorMessage) =>
         MfaEnrollmentScreen(
           operatorEmail: session.email,
-          onBeginEnrollment: ({
-            required MfaFactorType factorType,
-            String? phoneNumber,
-          }) async {
-            return _withBusy(
-              () => widget.source.beginMfaEnrollment(
-                factorType: factorType,
-                phoneNumber: phoneNumber,
-              ),
-            );
-          },
-          onConfirmEnrollment: ({
-            required String enrollmentId,
-            required String oneTimeCode,
-          }) async {
-            await _withBusy(
-              () => widget.source.confirmMfaEnrollment(
-                enrollmentId: enrollmentId,
-                oneTimeCode: oneTimeCode,
-              ),
-            );
-          },
+          onBeginEnrollment:
+              ({required MfaFactorType factorType, String? phoneNumber}) async {
+                return _withBusy(
+                  () => widget.source.beginMfaEnrollment(
+                    factorType: factorType,
+                    phoneNumber: phoneNumber,
+                  ),
+                );
+              },
+          onConfirmEnrollment:
+              ({
+                required String enrollmentId,
+                required String oneTimeCode,
+              }) async {
+                await _withBusy(
+                  () => widget.source.confirmMfaEnrollment(
+                    enrollmentId: enrollmentId,
+                    oneTimeCode: oneTimeCode,
+                  ),
+                );
+              },
           errorMessage: lastErrorMessage,
           submitting: _busy,
         ),
@@ -185,10 +224,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
           tosBodyMarkdown: tosBodyMarkdown,
           onAccept: ({required String versionId, required String scope}) async {
             await _withBusy(
-              () => widget.source.acceptTos(
-                versionId: versionId,
-                scope: scope,
-              ),
+              () => widget.source.acceptTos(versionId: versionId, scope: scope),
             );
           },
           errorMessage: lastErrorMessage,
@@ -198,7 +234,9 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         session: session,
         onSignOut: widget.source.signOut,
       ),
-      OperatorWebCompleted(:final session) => _buildPostOnboardingShell(session),
+      OperatorWebCompleted(:final session) => _buildPostOnboardingShell(
+        session,
+      ),
     };
   }
 
@@ -237,6 +275,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         body = VendorConnectionsScreen(
           session: session,
           locationId: session.primaryLocationId,
+          gateway: _vendorConnectionsGateway,
         );
         break;
       case kOperatorWebNavDataAccuracy:
@@ -246,7 +285,7 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
         );
         break;
       default:
-        body = AccountScreen(session: session);
+        body = AccountScreen(session: session, actions: _accountActions);
     }
     return WebAppShell(
       session: session,
@@ -259,6 +298,17 @@ class _OperatorWebRouterState extends State<OperatorWebRouter> {
       },
     );
   }
+
+  OperatorWebAccountActions? get _accountActions =>
+      widget.source is OperatorWebAccountActions
+      ? widget.source as OperatorWebAccountActions
+      : null;
+
+  VendorConnectionsGateway? get _vendorConnectionsGateway =>
+      widget.source is OperatorWebVendorConnectionsGatewayProvider
+      ? (widget.source as OperatorWebVendorConnectionsGatewayProvider)
+            .vendorConnectionsGateway
+      : null;
 }
 
 class _LoadingSplash extends StatelessWidget {

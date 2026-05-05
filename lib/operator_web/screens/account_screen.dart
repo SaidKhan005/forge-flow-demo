@@ -52,15 +52,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../account/operator_web_account_actions.dart';
 import '../auth/operator_web_auth_source.dart';
 import '../../theme/app_theme.dart';
 
 /// V1 Account screen. The router renders this at
 /// `kOperatorWebNavAccount` once onboarding completes.
 class AccountScreen extends StatefulWidget {
-  const AccountScreen({super.key, required this.session});
+  const AccountScreen({super.key, required this.session, this.actions});
 
   final OperatorWebSession session;
+  final OperatorWebAccountActions? actions;
 
   @override
   State<AccountScreen> createState() => _AccountScreenState();
@@ -126,7 +128,8 @@ class _AccountScreenState extends State<AccountScreen> {
   bool get _canWriteAccount {
     final roles = widget.session.roles;
     return roles.contains('operator_owner') ||
-        roles.contains('operator_admin');
+        roles.contains('operator_admin') ||
+        widget.session.permissions.contains('integrations.configure');
   }
 
   String get _readOnlyTooltipMfa =>
@@ -140,9 +143,34 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _handleEnrollMfa() async {
     if (!_canWriteAccount) return;
+    final actions = widget.actions;
+    MfaEnrollmentArtifact? artifact;
+    if (actions != null) {
+      try {
+        artifact = await actions.beginAccountMfaEnrollment(
+          email: widget.session.email,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not start MFA enrollment: $error')),
+        );
+        return;
+      }
+    }
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => _MfaEnrollDialog(operatorEmail: widget.session.email),
+      builder: (_) => _MfaEnrollDialog(
+        operatorEmail: widget.session.email,
+        artifact: artifact,
+        onConfirm: actions == null || artifact == null
+            ? null
+            : (code) => actions.confirmAccountMfaEnrollment(
+                enrollmentId: artifact!.enrollmentId,
+                oneTimeCode: code,
+              ),
+      ),
     );
     if (!mounted) return;
     if (confirmed == true) {
@@ -162,9 +190,20 @@ class _AccountScreenState extends State<AccountScreen> {
 
   Future<void> _handleChangePassword() async {
     if (!_canWriteAccount) return;
+    final actions = widget.actions;
     final updated = await showDialog<bool>(
       context: context,
-      builder: (_) => const _ChangePasswordDialog(),
+      builder: (_) => _ChangePasswordDialog(
+        onSubmit: actions == null
+            ? null
+            : ({
+                required String currentPassword,
+                required String newPassword,
+              }) => actions.changeAccountPassword(
+                currentPassword: currentPassword,
+                newPassword: newPassword,
+              ),
+      ),
     );
     if (!mounted) return;
     if (updated == true) {
@@ -384,8 +423,7 @@ class _ProfileSection extends StatelessWidget {
               spacing: 24,
               runSpacing: 12,
               children: [
-                for (final field in fields)
-                  SizedBox(width: 280, child: field),
+                for (final field in fields) SizedBox(width: 280, child: field),
               ],
             )
           : Column(
@@ -403,11 +441,7 @@ class _ProfileSection extends StatelessWidget {
 }
 
 class _ProfileField extends StatelessWidget {
-  const _ProfileField({
-    required this.label,
-    required this.value,
-    this.helper,
-  });
+  const _ProfileField({required this.label, required this.value, this.helper});
 
   final String label;
   final String value;
@@ -418,15 +452,9 @@ class _ProfileField extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: AppTextStyles.mono11(color: AppColors.textMuted),
-        ),
+        Text(label, style: AppTextStyles.mono11(color: AppColors.textMuted)),
         const SizedBox(height: 4),
-        Text(
-          value,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        ),
+        Text(value, style: AppTextStyles.body13(color: AppColors.textPrimary)),
         if (helper != null) ...[
           const SizedBox(height: 4),
           Text(
@@ -611,10 +639,7 @@ class _TosSection extends StatelessWidget {
               label: const Text('View current T&Cs'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.sunsetDark,
-                side: const BorderSide(
-                  color: AppColors.sunsetDark,
-                  width: 1,
-                ),
+                side: const BorderSide(color: AppColors.sunsetDark, width: 1),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(6),
                 ),
@@ -630,11 +655,7 @@ class _TosSection extends StatelessWidget {
 // ─── Shared chrome ──────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({
-    super.key,
-    required this.label,
-    required this.color,
-  });
+  const _StatusBadge({super.key, required this.label, required this.color});
 
   final String label;
   final Color color;
@@ -648,10 +669,7 @@ class _StatusBadge extends StatelessWidget {
         border: Border.all(color: color.withValues(alpha: 0.45), width: 1),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: Text(
-        label,
-        style: AppTextStyles.mono8(color: color),
-      ),
+      child: Text(label, style: AppTextStyles.mono8(color: color)),
     );
   }
 }
@@ -689,9 +707,7 @@ class _ActionRow extends StatelessWidget {
                 : AppColors.sunsetDark,
             width: 1,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(6),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
           padding: const EdgeInsets.symmetric(horizontal: 16),
           textStyle: AppTextStyles.mono14(
             color: AppColors.sunsetDark,
@@ -704,15 +720,9 @@ class _ActionRow extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          header,
-          style: AppTextStyles.mono11(color: AppColors.sunsetDark),
-        ),
+        Text(header, style: AppTextStyles.mono11(color: AppColors.sunsetDark)),
         const SizedBox(height: 4),
-        Text(
-          body,
-          style: AppTextStyles.body13(color: AppColors.textPrimary),
-        ),
+        Text(body, style: AppTextStyles.body13(color: AppColors.textPrimary)),
         const SizedBox(height: 10),
         Align(
           alignment: Alignment.centerLeft,
@@ -728,9 +738,15 @@ class _ActionRow extends StatelessWidget {
 // ─── Modals ─────────────────────────────────────────────────────────
 
 class _MfaEnrollDialog extends StatefulWidget {
-  const _MfaEnrollDialog({required this.operatorEmail});
+  const _MfaEnrollDialog({
+    required this.operatorEmail,
+    this.artifact,
+    this.onConfirm,
+  });
 
   final String operatorEmail;
+  final MfaEnrollmentArtifact? artifact;
+  final Future<void> Function(String code)? onConfirm;
 
   @override
   State<_MfaEnrollDialog> createState() => _MfaEnrollDialogState();
@@ -739,15 +755,16 @@ class _MfaEnrollDialog extends StatefulWidget {
 class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
   final _codeController = TextEditingController();
   String? _error;
+  bool _submitting = false;
 
   // Demo otpauth URI mirrors the MfaEnrollmentScreen artifact so the
   // walkthrough fixtures stay consistent across the onboarding click
   // path and the post-onboarding Account screen. 11W.0.live swaps in
   // a real proxy enrollment id.
-  static const String _qrUri =
+  static const String _demoQrUri =
       'otpauth://totp/Forge%20%26%20Flow:demo?'
       'secret=JBSWY3DPEHPK3PXP&issuer=Forge%20%26%20Flow';
-  static const String _sharedSecret = 'JBSWY3DPEHPK3PXP';
+  static const String _demoSharedSecret = 'JBSWY3DPEHPK3PXP';
 
   @override
   void dispose() {
@@ -755,9 +772,11 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
     super.dispose();
   }
 
-  void _confirm() {
+  Future<void> _confirm() async {
+    if (_submitting) return;
     final code = _codeController.text.trim();
-    if (code != '123456') {
+    final liveConfirm = widget.onConfirm;
+    if (liveConfirm == null && code != '123456') {
       setState(
         () => _error =
             'That code did not match. Codes refresh every 30 seconds. '
@@ -765,6 +784,23 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
             'the new one and try again.',
       );
       return;
+    }
+    if (liveConfirm != null) {
+      setState(() {
+        _submitting = true;
+        _error = null;
+      });
+      try {
+        await liveConfirm(code);
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _error = 'Could not verify that code: $error';
+        });
+        return;
+      }
+      if (!mounted) return;
     }
     Navigator.of(context).pop(true);
   }
@@ -774,6 +810,8 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
     final email = widget.operatorEmail.isEmpty
         ? 'this account'
         : widget.operatorEmail;
+    final qrUri = widget.artifact?.totpQrUri ?? _demoQrUri;
+    final sharedSecret = widget.artifact?.totpSharedSecret ?? _demoSharedSecret;
     return Dialog(
       key: const Key('mfa_enroll_dialog'),
       backgroundColor: AppColors.backgroundSurface,
@@ -801,20 +839,15 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: AppColors.cardGlow,
-                  border: Border.all(
-                    color: AppColors.borderSubtle,
-                    width: 1,
-                  ),
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     SelectableText(
-                      _qrUri,
-                      style: AppTextStyles.mono10(
-                        color: AppColors.textPrimary,
-                      ),
+                      qrUri,
+                      style: AppTextStyles.mono10(color: AppColors.textPrimary),
                     ),
                     const SizedBox(height: 6),
                     Row(
@@ -826,7 +859,7 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
                           ),
                         ),
                         SelectableText(
-                          _sharedSecret,
+                          sharedSecret,
                           style: AppTextStyles.mono12(
                             color: AppColors.textPrimary,
                           ),
@@ -869,18 +902,26 @@ class _MfaEnrollDialogState extends State<_MfaEnrollDialog> {
                 children: [
                   TextButton(
                     key: const Key('mfa_enroll_dialog_cancel'),
-                    onPressed: () => Navigator.of(context).pop(false),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     key: const Key('mfa_enroll_dialog_confirm'),
-                    onPressed: _confirm,
+                    onPressed: _submitting ? null : _confirm,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunset,
                       foregroundColor: AppColors.backgroundSurface,
                     ),
-                    child: const Text('Verify and turn on'),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Verify and turn on'),
                   ),
                 ],
               ),
@@ -940,10 +981,7 @@ class _BackupCodesDialog extends StatelessWidget {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: AppColors.cardGlow,
-                  border: Border.all(
-                    color: AppColors.borderSubtle,
-                    width: 1,
-                  ),
+                  border: Border.all(color: AppColors.borderSubtle, width: 1),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Column(
@@ -984,7 +1022,13 @@ class _BackupCodesDialog extends StatelessWidget {
 }
 
 class _ChangePasswordDialog extends StatefulWidget {
-  const _ChangePasswordDialog();
+  const _ChangePasswordDialog({this.onSubmit});
+
+  final Future<void> Function({
+    required String currentPassword,
+    required String newPassword,
+  })?
+  onSubmit;
 
   @override
   State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
@@ -995,6 +1039,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
   final _newController = TextEditingController();
   final _confirmController = TextEditingController();
   String? _error;
+  bool _submitting = false;
 
   @override
   void dispose() {
@@ -1004,7 +1049,8 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
+    if (_submitting) return;
     if (_currentController.text.isEmpty) {
       setState(
         () => _error =
@@ -1028,6 +1074,27 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
             'both fields and try again.',
       );
       return;
+    }
+    final submit = widget.onSubmit;
+    if (submit != null) {
+      setState(() {
+        _submitting = true;
+        _error = null;
+      });
+      try {
+        await submit(
+          currentPassword: _currentController.text,
+          newPassword: _newController.text,
+        );
+      } catch (error) {
+        if (!mounted) return;
+        setState(() {
+          _submitting = false;
+          _error = 'Could not update the password: $error';
+        });
+        return;
+      }
+      if (!mounted) return;
     }
     Navigator.of(context).pop(true);
   }
@@ -1062,6 +1129,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 controller: _currentController,
                 obscureText: true,
                 autofocus: true,
+                enabled: !_submitting,
                 decoration: const InputDecoration(
                   labelText: 'Current password',
                   border: OutlineInputBorder(),
@@ -1072,6 +1140,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 key: const Key('change_password_dialog_new'),
                 controller: _newController,
                 obscureText: true,
+                enabled: !_submitting,
                 decoration: const InputDecoration(
                   labelText: 'New password',
                   border: OutlineInputBorder(),
@@ -1082,6 +1151,7 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 key: const Key('change_password_dialog_confirm'),
                 controller: _confirmController,
                 obscureText: true,
+                enabled: !_submitting,
                 onSubmitted: (_) => _submit(),
                 decoration: const InputDecoration(
                   labelText: 'Confirm new password',
@@ -1101,18 +1171,26 @@ class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
                 children: [
                   TextButton(
                     key: const Key('change_password_dialog_cancel'),
-                    onPressed: () => Navigator.of(context).pop(false),
+                    onPressed: _submitting
+                        ? null
+                        : () => Navigator.of(context).pop(false),
                     child: const Text('Cancel'),
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
                     key: const Key('change_password_dialog_submit'),
-                    onPressed: _submit,
+                    onPressed: _submitting ? null : _submit,
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.sunset,
                       foregroundColor: AppColors.backgroundSurface,
                     ),
-                    child: const Text('Update password'),
+                    child: _submitting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Update password'),
                   ),
                 ],
               ),
@@ -1163,19 +1241,14 @@ class _ViewTosDialog extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: AppColors.cardGlow,
-                    border: Border.all(
-                      color: AppColors.borderSubtle,
-                      width: 1,
-                    ),
+                    border: Border.all(color: AppColors.borderSubtle, width: 1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: SingleChildScrollView(
                     key: const Key('view_tos_dialog_scroll'),
                     child: SelectableText(
                       body,
-                      style: AppTextStyles.body13(
-                        color: AppColors.textPrimary,
-                      ),
+                      style: AppTextStyles.body13(color: AppColors.textPrimary),
                     ),
                   ),
                 ),
